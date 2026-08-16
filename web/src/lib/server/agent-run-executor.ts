@@ -16,8 +16,8 @@ import { filterAgentPlannerModels } from "@/lib/server/agent-run-planning-profil
 import { buildAgentRunPlannerAudit } from "@/lib/server/agent-run-audit";
 import { orderCreativeAssetsByIds } from "@/lib/creative-asset-references";
 
-const globalAgentExecutors = globalThis as typeof globalThis & { __vozebProAgentRunControllers?: Map<string, AbortController> };
-const controllers = (globalAgentExecutors.__vozebProAgentRunControllers ??= new Map<string, AbortController>());
+const globalAgentExecutors = globalThis as typeof globalThis & { __octalaicanvasProAgentRunControllers?: Map<string, AbortController> };
+const controllers = (globalAgentExecutors.__octalaicanvasProAgentRunControllers ??= new Map<string, AbortController>());
 
 export function abortAgentRun(id: string) {
     controllers.get(id)?.abort();

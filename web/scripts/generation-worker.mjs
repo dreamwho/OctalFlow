@@ -4,16 +4,16 @@ import { randomUUID } from "node:crypto";
 import { resolveGenerationWorkerOrigin } from "./generation-runtime.mjs";
 import { nextGenerationWorkerPollPolicy } from "./generation-worker-policy.mjs";
 
-const token = process.env.VOZEB_PRO_WORKER_TOKEN?.trim() || "";
+const token = process.env.OCTALAICANVAS_WORKER_TOKEN?.trim() || "";
 const origin = resolveGenerationWorkerOrigin();
-const workerId = (process.env.VOZEB_PRO_GENERATION_WORKER_ID?.trim() || `generation-worker:${hostname()}:${process.pid}:${randomUUID()}`).slice(0, 150);
-const idleDelayMs = boundedNumber(process.env.VOZEB_PRO_GENERATION_WORKER_INTERVAL_MS, 2_000, 500, 30_000);
-const lanes = boundedNumber(process.env.VOZEB_PRO_GENERATION_WORKER_LANES, 2, 1, 8);
-const heartbeatIntervalMs = boundedNumber(process.env.VOZEB_PRO_GENERATION_WORKER_HEARTBEAT_MS, 15_000, 5_000, 60_000);
+const workerId = (process.env.OCTALAICANVAS_GENERATION_WORKER_ID?.trim() || `generation-worker:${hostname()}:${process.pid}:${randomUUID()}`).slice(0, 150);
+const idleDelayMs = boundedNumber(process.env.OCTALAICANVAS_GENERATION_WORKER_INTERVAL_MS, 2_000, 500, 30_000);
+const lanes = boundedNumber(process.env.OCTALAICANVAS_GENERATION_WORKER_LANES, 2, 1, 8);
+const heartbeatIntervalMs = boundedNumber(process.env.OCTALAICANVAS_GENERATION_WORKER_HEARTBEAT_MS, 15_000, 5_000, 60_000);
 let stopping = false;
 let heartbeatPending = false;
 
-if (token.length < 32) throw new Error("VOZEB_PRO_WORKER_TOKEN must contain at least 32 characters");
+if (token.length < 32) throw new Error("OCTALAICANVAS_WORKER_TOKEN must contain at least 32 characters");
 
 process.once("SIGTERM", stop);
 process.once("SIGINT", stop);
@@ -35,7 +35,7 @@ async function runLane(index) {
                 method: "POST",
                 headers: {
                     authorization: `Bearer ${token}`,
-                    "x-vozeb-pro-worker-id": laneId,
+                    "x-octalaicanvas-worker-id": laneId,
                 },
                 signal: AbortSignal.timeout(40 * 60_000),
             });
@@ -64,7 +64,7 @@ async function sendHeartbeat() {
             method: "POST",
             headers: {
                 authorization: `Bearer ${token}`,
-                "x-vozeb-pro-worker-id": workerId,
+                "x-octalaicanvas-worker-id": workerId,
             },
             signal: AbortSignal.timeout(10_000),
         });
@@ -86,7 +86,7 @@ async function runRefundLane() {
         try {
             const response = await fetch(`${origin}/api/maintenance/billing-refunds/run`, {
                 method: "POST",
-                headers: { authorization: `Bearer ${token}`, "x-vozeb-pro-worker-id": refundWorkerId },
+                headers: { authorization: `Bearer ${token}`, "x-octalaicanvas-worker-id": refundWorkerId },
                 signal: AbortSignal.timeout(2 * 60_000),
             });
             const payload = await response.json().catch(() => null);

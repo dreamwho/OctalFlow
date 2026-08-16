@@ -6,7 +6,7 @@ import { adjustPermanentPointsInPostgresTransaction } from "@/lib/server/points-
 
 import { createPostgresRepositories, ensurePostgresSchema, withPostgresTransaction } from "./index";
 
-const postgresIt = process.env.VOZEB_PRO_RUN_POSTGRES_INTEGRATION === "1" ? it : it.skip;
+const postgresIt = process.env.OCTALAICANVAS_RUN_POSTGRES_INTEGRATION === "1" ? it : it.skip;
 
 describe("PostgreSQL auth entity concurrency", () => {
     postgresIt("preserves profile, balance, point record and session across concurrent writes", async () => {

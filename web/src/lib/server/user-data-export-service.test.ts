@@ -183,7 +183,7 @@ describe("buildUserDataExport", () => {
         const stream = await createUserDataExportStream("user-one");
         const payload = JSON.parse(await new Response(stream).text());
 
-        expect(payload).toMatchObject({ format: "vozeb-pro-personal-data", version: 1, account: { id: "user-one" } });
+        expect(payload).toMatchObject({ format: "octalaicanvas-personal-data", version: 1, account: { id: "user-one" } });
         expect(payload).toHaveProperty("generationLogs");
         expect(payload).toHaveProperty("commercial");
         expect(payload.exclusions).toContain("密码、会话、验证码和 API 凭据");

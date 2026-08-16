@@ -4,7 +4,7 @@ run-name: Web 与文档质量检查 · ${{ github.ref_name }}
 on:
   push:
     branches: ["main"]
-    tags: ["v*", "VOZEB-PRO-v*"]
+    tags: ["v*", "OCTALAICANVAS-v*"]
   pull_request:
   workflow_dispatch:
 
@@ -18,13 +18,13 @@ jobs:
       postgres:
         image: postgres:16.6-alpine
         env:
-          POSTGRES_DB: vozeb_pro_e2e
-          POSTGRES_USER: vozeb
-          POSTGRES_PASSWORD: vozeb-e2e-password
+          POSTGRES_DB: octalaicanvas_e2e
+          POSTGRES_USER: octalaicanvas
+          POSTGRES_PASSWORD: octalaicanvas-e2e-password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U vozeb -d vozeb_pro_e2e"
+          --health-cmd "pg_isready -U octalaicanvas -d octalaicanvas_e2e"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -65,7 +65,7 @@ jobs:
       - name: Browser E2E
         run: pnpm run e2e
         env:
-          VOZEB_PRO_E2E_DATABASE_URL: postgres://vozeb:vozeb-e2e-password@127.0.0.1:5432/vozeb_pro_e2e
+          OCTALAICANVAS_E2E_DATABASE_URL: postgres://octalaicanvas:octalaicanvas-e2e-password@127.0.0.1:5432/octalaicanvas_e2e
       - name: PostgreSQL integration tests
         run: >-
           pnpm exec vitest run --no-file-parallelism
@@ -74,10 +74,10 @@ jobs:
           src/lib/server/points-wallet-idempotency.postgres.test.ts
           src/lib/server/database/work-community-postgres.test.ts
         env:
-          VOZEB_PRO_DATABASE_PROVIDER: postgres
-          DATABASE_URL: postgres://vozeb:vozeb-e2e-password@127.0.0.1:5432/vozeb_pro_e2e
-          VOZEB_PRO_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          VOZEB_PRO_RUN_POSTGRES_INTEGRATION: "1"
+          OCTALAICANVAS_DATABASE_PROVIDER: postgres
+          DATABASE_URL: postgres://octalaicanvas:octalaicanvas-e2e-password@127.0.0.1:5432/octalaicanvas_e2e
+          OCTALAICANVAS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          OCTALAICANVAS_RUN_POSTGRES_INTEGRATION: "1"
           RUN_WORK_COMMUNITY_POSTGRES_INTEGRATION: "1"
       - name: Upload browser artifacts
         if: failure()

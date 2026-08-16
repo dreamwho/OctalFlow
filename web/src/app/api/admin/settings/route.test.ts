@@ -118,9 +118,9 @@ describe("admin settings model routing", () => {
             ...DEFAULT_SITE_SETTINGS,
             socials: {
                 ...DEFAULT_SITE_SETTINGS.socials,
-                telegram: { enabled: true, label: "Telegram", url: "t.me/vozeb_group" },
-                x: { enabled: true, label: "X", url: "@vozeb_pro" },
-                instagram: { enabled: true, label: "Instagram", url: "instagram.com/vozeb.pro" },
+                telegram: { enabled: true, label: "Telegram", url: "t.me/octalaicanvas_group" },
+                x: { enabled: true, label: "X", url: "@octalaicanvas" },
+                instagram: { enabled: true, label: "Instagram", url: "instagram.com/octalaicanvas.pro" },
             },
         };
 

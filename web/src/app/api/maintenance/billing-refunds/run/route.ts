@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
     if (!isWorkerTokenConfigured()) return apiError(503, "Worker 令牌未配置或未与维护令牌分离");
     if (!isAuthorizedWorkerRequest(request)) return apiError(401, "Worker 认证失败");
-    const workerId = request.headers.get("x-vozeb-pro-worker-id")?.trim() || "";
+    const workerId = request.headers.get("x-octalaicanvas-worker-id")?.trim() || "";
     if (!workerId) return apiError(400, "退款 Worker ID 不能为空");
     try {
         if (getDatabaseProvider() !== "postgres") return apiSuccess({ claimed: 0 }, "当前存储模式无需处理退款补偿任务");

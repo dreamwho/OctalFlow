@@ -1,8 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const MIN_TOKEN_LENGTH = 32;
-const WORKER_USER_HEADER = "x-vozeb-pro-worker-user-id";
-const WORKER_CONTEXT_PREFIX = "vozeb-worker-v1";
+const WORKER_USER_HEADER = "x-octalaicanvas-worker-user-id";
+const WORKER_CONTEXT_PREFIX = "octalaicanvas-worker-v1";
 
 export function isMaintenanceTokenConfigured() {
     return maintenanceToken().length >= MIN_TOKEN_LENGTH;
@@ -65,11 +65,11 @@ export function requestRuntimeCredential(request: Request, userId: string) {
 }
 
 function maintenanceToken() {
-    return process.env.VOZEB_PRO_MAINTENANCE_TOKEN?.trim() || "";
+    return process.env.OCTALAICANVAS_MAINTENANCE_TOKEN?.trim() || "";
 }
 
 function workerToken() {
-    return process.env.VOZEB_PRO_WORKER_TOKEN?.trim() || "";
+    return process.env.OCTALAICANVAS_WORKER_TOKEN?.trim() || "";
 }
 
 function isAuthorizedBearerRequest(request: Request, configured: string, ready: boolean) {

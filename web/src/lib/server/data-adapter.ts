@@ -10,8 +10,8 @@ type DataDirectoryEntry = {
     isFile(): boolean;
 };
 
-const globalDataAdapter = globalThis as typeof globalThis & { __vozebProDataFileWriteQueues?: Map<string, Promise<void>> };
-const dataFileWriteQueues = (globalDataAdapter.__vozebProDataFileWriteQueues ??= new Map<string, Promise<void>>());
+const globalDataAdapter = globalThis as typeof globalThis & { __octalaicanvasProDataFileWriteQueues?: Map<string, Promise<void>> };
+const dataFileWriteQueues = (globalDataAdapter.__octalaicanvasProDataFileWriteQueues ??= new Map<string, Promise<void>>());
 
 export function resolveDataPath(pathName: string) {
     return resolveServerDataPath(pathName);

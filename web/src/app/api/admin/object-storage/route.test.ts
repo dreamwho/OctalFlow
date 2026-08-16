@@ -23,7 +23,7 @@ const settings = {
     endpoint: "https://oss.example.com",
     region: "auto",
     bucket: "media",
-    prefix: "vozeb-pro",
+    prefix: "octalaicanvas",
     forcePathStyle: false,
     hasAccessKeyId: true,
     hasSecretAccessKey: true,

@@ -44,7 +44,7 @@ import type { VideoTask } from "@/lib/server/video-task-store";
 import { queryVideoTaskUpstream } from "@/lib/server/video-task-runtime";
 import { createProtocolFixtureServer } from "../../../scripts/protocol-fixture-server.mjs";
 
-const INTERNAL_ORIGIN = "http://internal.vozeb.test";
+const INTERNAL_ORIGIN = "http://internal.octalaicanvas.test";
 const MULTIPLIERS = { imageQuality: { auto: 1, high: 1 }, videoQuality: { "720": 1, "1080": 1 }, videoSeconds: { "5": 1, "8": 1 } };
 const TEXT_PROTOCOLS = protocolCases("text");
 const IMAGE_PROTOCOLS = protocolCases("image");
@@ -57,12 +57,12 @@ let dataDir = "";
 
 describe("active protocols through persisted admin settings and the system proxy", () => {
     beforeEach(async () => {
-        vi.stubEnv("VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS", "1");
-        vi.stubEnv("VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
-        vi.stubEnv("VOZEB_PRO_DATABASE_PROVIDER", "file");
-        vi.stubEnv("VOZEB_PRO_ENCRYPTION_KEY", "a".repeat(64));
-        dataDir = await mkdtemp(join(tmpdir(), "vozeb-pro-protocol-roundtrip-"));
-        vi.stubEnv("VOZEB_PRO_DATA_DIR", dataDir);
+        vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
+        vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
+        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
+        vi.stubEnv("OCTALAICANVAS_ENCRYPTION_KEY", "a".repeat(64));
+        dataDir = await mkdtemp(join(tmpdir(), "octalaicanvas-protocol-roundtrip-"));
+        vi.stubEnv("OCTALAICANVAS_DATA_DIR", dataDir);
         fixture = createProtocolFixtureServer();
         await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));
         const address = fixture.server.address();
@@ -97,8 +97,8 @@ describe("active protocols through persisted admin settings and the system proxy
             headers: {
                 "idempotency-key": `text-${definition.id}`,
                 "x-client-request-id": `text-${definition.id}`,
-                "x-vozeb-pro-logical-model": channel.logicalModelId,
-                "x-vozeb-pro-upstream-model": model,
+                "x-octalaicanvas-logical-model": channel.logicalModelId,
+                "x-octalaicanvas-upstream-model": model,
             },
         });
 
@@ -162,7 +162,7 @@ describe("active protocols through persisted admin settings and the system proxy
                 "content-type": "application/json",
                 "idempotency-key": `audio-${definition.id}`,
                 "x-client-request-id": `audio-${definition.id}`,
-                "x-vozeb-pro-logical-model": channel.logicalModelId,
+                "x-octalaicanvas-logical-model": channel.logicalModelId,
             },
             body: JSON.stringify({ model, input: "protocol audio test", voice: "alloy", format: "wav" }),
         });
@@ -278,7 +278,7 @@ async function configureProxyChannel(definition: ChannelProtocolDefinition, capa
     expect(payload.settings.systemChannels[0]).toMatchObject({ apiKey: "", hasApiKey: true });
     const persisted = await readFile(join(dataDir, "auth.json"), "utf8");
     expect(persisted).not.toContain("fixture-key");
-    expect(persisted).toContain("vozeb-pro-secret:v1:");
+    expect(persisted).toContain("octalaicanvas-secret:v1:");
     return {
         channelId,
         logicalModelId,

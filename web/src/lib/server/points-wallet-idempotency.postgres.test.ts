@@ -7,7 +7,7 @@ import { createPostgresRepositories, ensurePostgresSchema, postgresQuery } from 
 import { cleanupExpiredStoredGenerationTasks } from "./generation-task-store";
 import { consumePoints } from "./points-wallet-service";
 
-const postgresIt = process.env.VOZEB_PRO_RUN_POSTGRES_INTEGRATION === "1" ? it : it.skip;
+const postgresIt = process.env.OCTALAICANVAS_RUN_POSTGRES_INTEGRATION === "1" ? it : it.skip;
 
 describe("PostgreSQL points wallet idempotency", () => {
     postgresIt("updates a decimal daily balance without integer parameter inference", async () => {

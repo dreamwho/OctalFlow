@@ -3,7 +3,7 @@ run-name: 文档站多架构镜像 · ${{ github.ref_name }}
 
 on:
   push:
-    tags: ["v*", "VOZEB-PRO-v*"]
+    tags: ["v*", "OCTALAICANVAS-v*"]
   workflow_dispatch:
 
 permissions:
@@ -58,7 +58,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/VOZEB-PRO-v') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/OCTALAICANVAS-v') }}
             type=ref,event=tag
             type=sha,prefix=
 
@@ -182,15 +182,15 @@ jobs:
         with:
           image: ${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.digest }}
           format: spdx-json
-          output-file: vozeb-pro-docs-sbom.spdx.json
+          output-file: octalaicanvas-docs-sbom.spdx.json
           upload-artifact: false
       - name: Upload SPDX SBOM
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: vozeb-pro-docs-sbom-${{ github.ref_name }}
-          path: vozeb-pro-docs-sbom.spdx.json
+          name: octalaicanvas-docs-sbom-${{ github.ref_name }}
+          path: octalaicanvas-docs-sbom.spdx.json
           if-no-files-found: error
       - name: Sign immutable image digest
         run: cosign sign --yes "${IMAGE_NAME}@${{ needs.merge.outputs.digest }}"
       - name: Attach signed SBOM attestation
-        run: cosign attest --yes --type spdxjson --predicate vozeb-pro-docs-sbom.spdx.json "${IMAGE_NAME}@${{ needs.merge.outputs.digest }}"
+        run: cosign attest --yes --type spdxjson --predicate octalaicanvas-docs-sbom.spdx.json "${IMAGE_NAME}@${{ needs.merge.outputs.digest }}"

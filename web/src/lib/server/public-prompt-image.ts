@@ -21,7 +21,7 @@ export async function createPublicPromptImage(pathValue: string | null, widthVal
     const width = normalizeImagePreviewWidth(widthValue, 640);
     return getOrCreateCachedImageVariant(`prompt:${COMMIT}:${imagePath}:${width}`, async () => {
         const response = await fetchSafeOutbound(`https://raw.githubusercontent.com/${REPOSITORY}/${COMMIT}/${imagePath}`, {
-            headers: { Accept: "image/avif,image/webp,image/png,image/jpeg", "User-Agent": "VOZEB-PRO prompt image proxy" },
+            headers: { Accept: "image/avif,image/webp,image/png,image/jpeg", "User-Agent": "OCTALAICANVAS prompt image proxy" },
             cache: "force-cache",
             signal: AbortSignal.timeout(15_000),
         });

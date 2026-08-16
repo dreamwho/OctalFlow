@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="web/public/logo.svg?v=0.0.6" width="108" alt="VOZEB PRO logo">
+  <img src="web/public/logo.svg?v=0.0.6" width="108" alt="OctalAICanvas logo">
 </p>
 
-<h1 align="center">VOZEB PRO</h1>
+<h1 align="center">OctalAICanvas</h1>
 
 <p align="center">面向统一创作 Agent、Canvas 与短剧生产的开源 AI 创作平台</p>
 
 <p align="center">
-  <a href="https://github.com/csyqlz/VOZEB-PRO"><img src="https://img.shields.io/github/stars/csyqlz/VOZEB-PRO?style=flat-square&logo=github" alt="GitHub stars"></a>
+  <a href="https://github.com/csyqlz/OCTALAICANVAS"><img src="https://img.shields.io/github/stars/csyqlz/OCTALAICANVAS?style=flat-square&logo=github" alt="GitHub stars"></a>
   <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.0.6-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-f97316?style=flat-square" alt="License"></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.2-000000?style=flat-square&logo=nextdotjs" alt="Next.js"></a>
@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.vozeb.com">演示站</a> ·
+  <a href="https://www.octalaicanvas.com">演示站</a> ·
   <a href="docs/index.md">文档索引</a> ·
   <a href="docs/content/docs/overview/configuration.mdx">0.0.6 发布说明</a> ·
   <a href="#目录与文件用途">目录与文件用途</a> ·
@@ -25,9 +25,9 @@
   <a href="CHANGELOG.md">更新记录</a>
 </p>
 
-![VOZEB PRO 首页](docs/public/screenshots/pages/01-home.webp)
+![OctalAICanvas 首页](docs/public/screenshots/pages/01-home.webp)
 
-VOZEB PRO 把统一创作 Agent、画布、短剧生产、素材库和商业运营后台放在同一套 Next.js 全栈应用中。PostgreSQL 保存账号与业务数据；媒体可写入服务器本地目录或 S3 兼容对象存储；模型、支付和存储密钥只在服务端使用。
+OctalAICanvas 把统一创作 Agent、画布、短剧生产、素材库和商业运营后台放在同一套 Next.js 全栈应用中。PostgreSQL 保存账号与业务数据；媒体可写入服务器本地目录或 S3 兼容对象存储；模型、支付和存储密钥只在服务端使用。
 
 ## 核心功能
 
@@ -372,7 +372,7 @@ flowchart LR
 
 ## 最低服务器配置
 
-VOZEB PRO 调用外部 AI 模型，不要求 GPU。服务器主要承担 Web、PostgreSQL、媒体下载/存储和可选 FFmpeg 转码。
+OctalAICanvas 调用外部 AI 模型，不要求 GPU。服务器主要承担 Web、PostgreSQL、媒体下载/存储和可选 FFmpeg 转码。
 
 | 使用方式                   | CPU      | 内存           | 磁盘      | 说明                                                                |
 | -------------------------- | -------- | -------------- | --------- | ------------------------------------------------------------------- |
@@ -392,20 +392,20 @@ VOZEB PRO 调用外部 AI 模型，不要求 GPU。服务器主要承担 Web、P
 环境要求：可运行 Docker Compose 的 Linux 服务器、HTTPS 域名，以及按业务需要准备的模型渠道。
 
 ```bash
-git clone https://github.com/csyqlz/VOZEB-PRO.git
-cd VOZEB-PRO
+git clone https://github.com/csyqlz/OCTALAICANVAS.git
+cd OCTALAICANVAS
 cp .env.example .env
 ```
 
 至少修改：
 
 ```dotenv
-NEXT_PUBLIC_SITE_URL=https://vozeb-pro.example.com
+NEXT_PUBLIC_SITE_URL=https://octalaicanvas.example.com
 POSTGRES_PASSWORD=replace-with-a-strong-password
-VOZEB_PRO_ENCRYPTION_KEY=replace-with-openssl-rand-hex-32
-VOZEB_PRO_INSTALL_TOKEN=replace-with-one-time-openssl-rand-hex-32
-VOZEB_PRO_MAINTENANCE_TOKEN=replace-with-another-openssl-rand-hex-32
-VOZEB_PRO_WORKER_TOKEN=replace-with-a-distinct-openssl-rand-hex-32
+OCTALAICANVAS_ENCRYPTION_KEY=replace-with-openssl-rand-hex-32
+OCTALAICANVAS_INSTALL_TOKEN=replace-with-one-time-openssl-rand-hex-32
+OCTALAICANVAS_MAINTENANCE_TOKEN=replace-with-another-openssl-rand-hex-32
+OCTALAICANVAS_WORKER_TOKEN=replace-with-a-distinct-openssl-rand-hex-32
 ```
 
 为四个变量分别执行一次下面的命令，并保存每次不同的输出。维护令牌与 Worker 令牌必须不同：
@@ -422,7 +422,7 @@ docker compose up -d
 docker compose ps
 ```
 
-`VOZEB_PRO_INSTALL_TOKEN` 只用于初始化数据库和创建首个管理员，必须从服务器 `.env` 粘贴到安装向导；安装完成后可从环境变量中移除。`VOZEB_PRO_MAINTENANCE_TOKEN` 只授权外部计划维护任务，`VOZEB_PRO_WORKER_TOKEN` 只授权 App 与生成 Worker 的内部任务领取、心跳和回调。Worker 不读取包含数据库、支付、安装令牌或外部维护令牌的完整 `.env`。完整变量说明见[配置说明](docs/content/docs/overview/configuration.mdx)。
+`OCTALAICANVAS_INSTALL_TOKEN` 只用于初始化数据库和创建首个管理员，必须从服务器 `.env` 粘贴到安装向导；安装完成后可从环境变量中移除。`OCTALAICANVAS_MAINTENANCE_TOKEN` 只授权外部计划维护任务，`OCTALAICANVAS_WORKER_TOKEN` 只授权 App 与生成 Worker 的内部任务领取、心跳和回调。Worker 不读取包含数据库、支付、安装令牌或外部维护令牌的完整 `.env`。完整变量说明见[配置说明](docs/content/docs/overview/configuration.mdx)。
 
 打开 `https://你的域名/install`，依次检查数据库、初始化表结构并创建首个管理员。
 
@@ -437,10 +437,10 @@ docker compose -f docker-compose.baota.yml up -d
 `.env` 中的数据库连接使用宿主机回环地址：
 
 ```dotenv
-VOZEB_PRO_DATABASE_PROVIDER=postgres
+OCTALAICANVAS_DATABASE_PROVIDER=postgres
 DATABASE_URL=postgres://user:password@127.0.0.1:5432/octalaicanvas
-VOZEB_PRO_DATABASE_SSL=0
-VOZEB_PRO_TRUSTED_PROXY_HOPS=1
+OCTALAICANVAS_DATABASE_SSL=0
+OCTALAICANVAS_TRUSTED_PROXY_HOPS=1
 ```
 
 宝塔 Nginx 反向代理到应用后，应转发 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto` 和 `X-Forwarded-For`。详细步骤见[生产上线基线](docs/content/docs/overview/production-readiness.mdx)和[Docker 部署](docs/content/docs/overview/docker.mdx)。
@@ -464,7 +464,7 @@ pnpm install --frozen-lockfile
 pnpm run dev
 ```
 
-`http://localhost:3000` 必须显示 VOZEB PRO 主应用；如果看到“VOZEB PRO 文档中心”，说明启动的是 `docs/` 子项目或旧版文档脚本，请停止该进程并从 `web/` 启动主应用。独立文档站只使用 `http://localhost:3001`。
+`http://localhost:3000` 必须显示 OctalAICanvas 主应用；如果看到“OctalAICanvas 文档中心”，说明启动的是 `docs/` 子项目或旧版文档脚本，请停止该进程并从 `web/` 启动主应用。独立文档站只使用 `http://localhost:3001`。
 
 ## 首次配置顺序
 
@@ -521,7 +521,7 @@ pnpm run dev
 ## 数据与安全
 
 - PostgreSQL 保存用户、会话、设置、创作会话、Canvas、素材、短剧、生成任务、积分和订单。
-- 外部存储关闭时新媒体只写 `VOZEB_PRO_DATA_DIR`；开启时新媒体只写 S3 兼容对象存储。历史媒体按登记 Provider 读取。
+- 外部存储关闭时新媒体只写 `OCTALAICANVAS_DATA_DIR`；开启时新媒体只写 S3 兼容对象存储。历史媒体按登记 Provider 读取。
 - 业务记录保存稳定站内 `storageKey`，不保存 base64、对象 Key 或临时签名 URL。
 - `.env`、API Key、支付密钥、数据库、媒体文件、备份、日志和构建产物不得提交 Git。
 - 生产备份必须同时覆盖 PostgreSQL 和本地媒体或对象存储，不能只备份其中一部分。
@@ -556,9 +556,9 @@ pnpm run build
 
 <table>
   <tr>
-    <td width="260"><a href="https://qm.qq.com/q/9MVLTxuRd6"><img src="docs/public/community/qq-vozeb-group-1049777515.webp" width="240" alt="VOZEB 开源交流 QQ 群二维码"></a></td>
+    <td width="260"><a href="https://qm.qq.com/q/9MVLTxuRd6"><img src="docs/public/community/qq-octalaicanvas-group-1049777515.webp" width="240" alt="OctalAICanvas 开源交流 QQ 群二维码"></a></td>
     <td>
-      <strong>VOZEB 开源交流</strong><br>
+      <strong>OctalAICanvas 开源交流</strong><br>
       QQ 群：<code>1049777515</code> · <a href="https://qm.qq.com/q/9MVLTxuRd6">点击加入群聊</a><br><br>
       欢迎交流部署、模型渠道适配、创作功能使用、Bug 复现和代码贡献。请勿在群内发送 API Key、数据库密码、支付密钥、服务器私钥或未经脱敏的生产日志。
     </td>

@@ -7,8 +7,8 @@ const workerToken = "worker-token-0123456789abcdef0123";
 
 describe("maintenance and worker authentication", () => {
     beforeEach(() => {
-        vi.stubEnv("VOZEB_PRO_MAINTENANCE_TOKEN", maintenanceToken);
-        vi.stubEnv("VOZEB_PRO_WORKER_TOKEN", workerToken);
+        vi.stubEnv("OCTALAICANVAS_MAINTENANCE_TOKEN", maintenanceToken);
+        vi.stubEnv("OCTALAICANVAS_WORKER_TOKEN", workerToken);
     });
 
     afterEach(() => vi.unstubAllEnvs());
@@ -25,7 +25,7 @@ describe("maintenance and worker authentication", () => {
     });
 
     it("rejects deployments that reuse the maintenance token for the Worker", () => {
-        vi.stubEnv("VOZEB_PRO_WORKER_TOKEN", maintenanceToken);
+        vi.stubEnv("OCTALAICANVAS_WORKER_TOKEN", maintenanceToken);
 
         expect(isWorkerTokenConfigured()).toBe(false);
         expect(isAuthorizedWorkerRequest(request(maintenanceToken, "user-one"))).toBe(false);
@@ -35,11 +35,11 @@ describe("maintenance and worker authentication", () => {
         const context = maintenanceWorkerContext("user-one");
         const headers = maintenanceWorkerContextHeaders(context);
 
-        expect(headers).toEqual({ authorization: `Bearer ${workerToken}`, "x-vozeb-pro-worker-user-id": "user-one" });
+        expect(headers).toEqual({ authorization: `Bearer ${workerToken}`, "x-octalaicanvas-worker-user-id": "user-one" });
         expect(maintenanceWorkerContextHeaders(`${context}tampered`)).toBeNull();
     });
 });
 
 function request(token: string, userId: string) {
-    return new Request("http://localhost", { headers: { authorization: `Bearer ${token}`, "x-vozeb-pro-worker-user-id": userId } });
+    return new Request("http://localhost", { headers: { authorization: `Bearer ${token}`, "x-octalaicanvas-worker-user-id": userId } });
 }

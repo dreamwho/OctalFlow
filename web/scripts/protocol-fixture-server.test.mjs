@@ -47,7 +47,7 @@ describe("protocol fixture server", () => {
 
     it("serves a configured fixture image without changing the default contract", async () => {
         await new Promise((resolve, reject) => fixture.server.close((error) => (error ? reject(error) : resolve())));
-        temporaryDirectory = await mkdtemp(path.join(tmpdir(), "vozeb-pro-protocol-image-"));
+        temporaryDirectory = await mkdtemp(path.join(tmpdir(), "octalaicanvas-protocol-image-"));
         const imagePath = path.join(temporaryDirectory, "fixture.png");
         const expected = await sharp({ create: { width: 7, height: 5, channels: 4, background: "#7c8cff" } })
             .png()
@@ -79,12 +79,12 @@ describe("protocol fixture server", () => {
         expect(media.headers.get("content-type")).toBe("video/mp4");
     });
 
-    it("serves the VOZEB recommended JSON video contract", async () => {
+    it("serves the OctalAICanvas recommended JSON video contract", async () => {
         const body = { model: "Seedance 2.0-fast-720p", prompt: "test", duration: 5, resolution: "720p", generate_audio: false, aspect_ratio: "16:9" };
         const created = await fetch(`${origin}/v1/videos/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((response) => response.json());
         const completed = await fetch(`${origin}/v1/videos/generations/${created.task_id}`).then((response) => response.json());
 
-        expect(created).toMatchObject({ id: "fixture-vozeb-video-1", task_id: "fixture-vozeb-video-1", status: "queued" });
+        expect(created).toMatchObject({ id: "fixture-octalaicanvas-video-1", task_id: "fixture-octalaicanvas-video-1", status: "queued" });
         expect(completed).toMatchObject({ status: "completed", metadata: { url: `${origin}/media/fixture.mp4` } });
         expect(fixture.requests[0]).toMatchObject({ contentType: "application/json" });
     });

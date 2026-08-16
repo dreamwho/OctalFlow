@@ -6,8 +6,8 @@ import type { AuthSettings } from "./store-types";
 import { serializePublicSettings, setSessionCookie } from "./session";
 
 afterEach(() => {
-    delete process.env.VOZEB_PRO_COOKIE_SECURE;
-    delete process.env.VOZEB_PRO_TRUSTED_PROXY_HOPS;
+    delete process.env.OCTALAICANVAS_COOKIE_SECURE;
+    delete process.env.OCTALAICANVAS_TRUSTED_PROXY_HOPS;
 });
 
 describe("serializePublicSettings", () => {
@@ -78,9 +78,9 @@ describe("serializePublicSettings", () => {
         ];
         settings.site.socials = {
             email: { enabled: true, label: "邮箱", url: "mailto:owner@example.com" },
-            telegram: { enabled: true, label: "Telegram", url: "https://t.me/vozeb_group" },
-            x: { enabled: true, label: "X", url: "https://x.com/vozeb_pro" },
-            instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/vozeb.pro" },
+            telegram: { enabled: true, label: "Telegram", url: "https://t.me/octalaicanvas_group" },
+            x: { enabled: true, label: "X", url: "https://x.com/octalaicanvas" },
+            instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/octalaicanvas.pro" },
         };
 
         const result = serializePublicSettings(settings);
@@ -125,7 +125,7 @@ describe("session cookie security", () => {
     });
 
     it("uses Secure behind a configured HTTPS reverse proxy", () => {
-        process.env.VOZEB_PRO_TRUSTED_PROXY_HOPS = "1";
+        process.env.OCTALAICANVAS_TRUSTED_PROXY_HOPS = "1";
         const response = NextResponse.json({ ok: true });
         setSessionCookie(response, "session", new Request("http://localhost", { headers: { "x-forwarded-proto": "https" } }));
 

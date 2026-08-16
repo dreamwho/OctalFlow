@@ -505,7 +505,7 @@ export function responseOutputText(payload: { output_text?: string; output?: Arr
 }
 
 export function readFunctionCallResult(argumentsText: string, headers: Headers, protocol?: AgentFunctionCallResult["protocol"], elapsedMs?: number): AgentFunctionCallResult {
-    const pointsRemaining = Number(headers.get("x-vozeb-pro-points-remaining"));
+    const pointsRemaining = Number(headers.get("x-octalaicanvas-points-remaining"));
     return {
         arguments: argumentsText,
         protocol,

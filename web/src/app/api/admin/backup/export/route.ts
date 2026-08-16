@@ -18,7 +18,7 @@ export async function POST(request: Request) {
         const exportedAt = new Date().toISOString();
         const data = await readAdminBackupData();
         const backup = {
-            app: "VOZEB PRO",
+            app: "OctalAICanvas",
             version: 1,
             backupType: "account-config",
             exportedAt,
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         return new NextResponse(JSON.stringify(backup, null, 2), {
             headers: {
                 "Content-Type": "application/json; charset=utf-8",
-                "Content-Disposition": `attachment; filename="vozeb-pro-data-backup-${exportedAt.slice(0, 10)}.json"`,
+                "Content-Disposition": `attachment; filename="octalaicanvas-data-backup-${exportedAt.slice(0, 10)}.json"`,
                 "Cache-Control": "private, no-store, max-age=0",
                 Pragma: "no-cache",
             },

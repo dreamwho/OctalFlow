@@ -23,7 +23,7 @@ import { AdminMfaChallengeError, beginAdminMfaSetup, disableAdminMfa, enableAdmi
 
 describe("administrator MFA service", () => {
     beforeEach(async () => {
-        process.env.VOZEB_PRO_ENCRYPTION_KEY = "1".repeat(64);
+        process.env.OCTALAICANVAS_ENCRYPTION_KEY = "1".repeat(64);
         const db = emptyDb();
         db.users.push({
             id: "admin-one",
@@ -50,7 +50,7 @@ describe("administrator MFA service", () => {
     it("stores an encrypted secret, challenges login, and revokes other sessions", async () => {
         const setup = await beginAdminMfaSetup("admin-one", "admin-password");
         const stored = mocks.db!.users[0];
-        expect(stored.mfaSecretCiphertext).toMatch(/^vozeb-pro-secret:v1:/);
+        expect(stored.mfaSecretCiphertext).toMatch(/^octalaicanvas-secret:v1:/);
         expect(stored.mfaSecretCiphertext).not.toContain(setup.secret);
         expect(stored.mfaEnabledAt).toBeUndefined();
 

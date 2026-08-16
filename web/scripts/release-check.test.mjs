@@ -55,7 +55,7 @@ describe("release type-check and build contract", () => {
     });
 
     it("copies static and complete public assets into a custom standalone dist directory", async () => {
-        const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "vozeb-standalone-"));
+        const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "octalaicanvas-standalone-"));
         try {
             const distDir = ".next-production";
             await Promise.all([

@@ -21,14 +21,14 @@ describe("disaster recovery core", () => {
         await ensureNewDirectory(recovery);
         const snapshot = await copyDirectorySnapshot(source, path.join(recovery, "local-media", "reference-assets"));
         const file = { ...snapshot.files[0], file: `local-media/reference-assets/${snapshot.files[0].path}` };
-        const databasePath = path.join(recovery, "database", "vozeb-pro.dump");
+        const databasePath = path.join(recovery, "database", "octalaicanvas.dump");
         await mkdir(path.dirname(databasePath), { recursive: true });
         await writeFile(databasePath, "database");
         const manifest = {
-            app: "VOZEB PRO",
+            app: "OctalAICanvas",
             formatVersion: 1,
             recoveryPointId: "point-one",
-            database: { ...(await hashFile(databasePath)), file: "database/vozeb-pro.dump" },
+            database: { ...(await hashFile(databasePath)), file: "database/octalaicanvas.dump" },
             localMedia: {
                 roots: [
                     { name: "reference-assets", files: [file] },
@@ -56,7 +56,7 @@ describe("disaster recovery core", () => {
 });
 
 async function temporaryDirectory() {
-    const root = path.join(os.tmpdir(), `vozeb-disaster-test-${crypto.randomUUID()}`);
+    const root = path.join(os.tmpdir(), `octalaicanvas-disaster-test-${crypto.randomUUID()}`);
     await mkdir(root, { recursive: true });
     return root;
 }

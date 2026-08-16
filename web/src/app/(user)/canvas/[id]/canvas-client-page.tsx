@@ -35,12 +35,12 @@ export default function CanvasPage() {
 
     if (!mounted) return <CanvasRefreshShell />;
 
-    return <VozebProCanvasPage />;
+    return <OctalaicanvasCanvasPage />;
 }
 
 import { useCanvasPageController } from "./use-canvas-page-controller";
 
-function VozebProCanvasPage() {
+function OctalaicanvasCanvasPage() {
     const [nodeCreatePosition, setNodeCreatePosition] = useState<Position | null>(null);
     const [interactionMode, setInteractionMode] = useState<CanvasInteractionMode>("pan");
     const controller = useCanvasPageController();

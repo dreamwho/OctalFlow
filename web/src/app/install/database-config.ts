@@ -34,14 +34,14 @@ export function buildDeploymentSnippets(config: DatabaseConfig) {
     const username = config.username.trim() || "octalaicanvas";
     const databaseUrl = buildPostgresUrl({ database, host, password: config.password, port, username });
     const databaseEnv = config.mode === "docker" ? `POSTGRES_DB=${database}\nPOSTGRES_USER=${username}\nPOSTGRES_PASSWORD=${config.password}` : `DATABASE_URL=${databaseUrl}`;
-    const envText = `VOZEB_PRO_DATABASE_PROVIDER=postgres
+    const envText = `OCTALAICANVAS_DATABASE_PROVIDER=postgres
 ${databaseEnv}
-VOZEB_PRO_DATABASE_POOL_MAX=10
-VOZEB_PRO_DATABASE_SSL=${config.ssl ? "1" : "0"}
-VOZEB_PRO_ENCRYPTION_KEY=${config.encryptionKey}
-VOZEB_PRO_INSTALL_TOKEN=${config.installToken}
-VOZEB_PRO_MAINTENANCE_TOKEN=${config.maintenanceToken}
-VOZEB_PRO_WORKER_TOKEN=${config.workerToken}${config.mode === "baota" ? "\nVOZEB_PRO_TRUSTED_PROXY_HOPS=1" : ""}`;
+OCTALAICANVAS_DATABASE_POOL_MAX=10
+OCTALAICANVAS_DATABASE_SSL=${config.ssl ? "1" : "0"}
+OCTALAICANVAS_ENCRYPTION_KEY=${config.encryptionKey}
+OCTALAICANVAS_INSTALL_TOKEN=${config.installToken}
+OCTALAICANVAS_MAINTENANCE_TOKEN=${config.maintenanceToken}
+OCTALAICANVAS_WORKER_TOKEN=${config.workerToken}${config.mode === "baota" ? "\nOCTALAICANVAS_TRUSTED_PROXY_HOPS=1" : ""}`;
 
     return {
         envText,
@@ -69,7 +69,7 @@ function bundledCompose(config: DatabaseConfig, database: string, username: stri
       POSTGRES_USER: ${quoteYaml(username)}
       POSTGRES_PASSWORD: ${quoteYaml(config.password)}
     volumes:
-      - vozeb-pro-postgres:/var/lib/postgresql/data
+      - octalaicanvas-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${username} -d ${database}"]
       interval: 5s
@@ -82,15 +82,15 @@ function bundledCompose(config: DatabaseConfig, database: string, username: stri
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - vozeb-pro-data:/app/web/.data
+      - octalaicanvas-data:/app/web/.data
     environment:
-      VOZEB_PRO_DATABASE_PROVIDER: "postgres"
+      OCTALAICANVAS_DATABASE_PROVIDER: "postgres"
       DATABASE_URL: ${quoteYaml(databaseUrl)}
-      VOZEB_PRO_DATABASE_SSL: "0"
-      VOZEB_PRO_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
-      VOZEB_PRO_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
-      VOZEB_PRO_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
-      VOZEB_PRO_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
+      OCTALAICANVAS_DATABASE_SSL: "0"
+      OCTALAICANVAS_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
+      OCTALAICANVAS_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
+      OCTALAICANVAS_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
+      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,8 +100,8 @@ ${appHealthcheck()}
 ${workerService(config.workerToken, "http://app:3000")}
 
 volumes:
-  vozeb-pro-data:
-  vozeb-pro-postgres:`;
+  octalaicanvas-data:
+  octalaicanvas-postgres:`;
 }
 
 function externalCompose(config: DatabaseConfig, databaseUrl: string) {
@@ -111,22 +111,22 @@ function externalCompose(config: DatabaseConfig, databaseUrl: string) {
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - vozeb-pro-data:/app/web/.data
+      - octalaicanvas-data:/app/web/.data
     environment:
-      VOZEB_PRO_DATABASE_PROVIDER: "postgres"
+      OCTALAICANVAS_DATABASE_PROVIDER: "postgres"
       DATABASE_URL: ${quoteYaml(databaseUrl)}
-      VOZEB_PRO_DATABASE_SSL: "${config.ssl ? "1" : "0"}"
-      VOZEB_PRO_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
-      VOZEB_PRO_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
-      VOZEB_PRO_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
-      VOZEB_PRO_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
+      OCTALAICANVAS_DATABASE_SSL: "${config.ssl ? "1" : "0"}"
+      OCTALAICANVAS_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
+      OCTALAICANVAS_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
+      OCTALAICANVAS_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
+      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
 ${appHealthcheck()}
     restart: unless-stopped
 
 ${workerService(config.workerToken, "http://app:3000")}
 
 volumes:
-  vozeb-pro-data:`;
+  octalaicanvas-data:`;
 }
 
 function baotaCompose(config: DatabaseConfig, databaseUrl: string) {
@@ -135,23 +135,23 @@ function baotaCompose(config: DatabaseConfig, databaseUrl: string) {
     image: ghcr.io/dreamwho/octalaicanvas:latest
     network_mode: host
     volumes:
-      - vozeb-pro-data:/app/web/.data
+      - octalaicanvas-data:/app/web/.data
     environment:
-      VOZEB_PRO_DATABASE_PROVIDER: "postgres"
+      OCTALAICANVAS_DATABASE_PROVIDER: "postgres"
       DATABASE_URL: ${quoteYaml(databaseUrl)}
-      VOZEB_PRO_DATABASE_SSL: "0"
-      VOZEB_PRO_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
-      VOZEB_PRO_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
-      VOZEB_PRO_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
-      VOZEB_PRO_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
-      VOZEB_PRO_TRUSTED_PROXY_HOPS: "1"
+      OCTALAICANVAS_DATABASE_SSL: "0"
+      OCTALAICANVAS_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
+      OCTALAICANVAS_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
+      OCTALAICANVAS_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
+      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
+      OCTALAICANVAS_TRUSTED_PROXY_HOPS: "1"
 ${appHealthcheck()}
     restart: unless-stopped
 
 ${workerService(config.workerToken, "http://127.0.0.1:3000", true)}
 
 volumes:
-  vozeb-pro-data:`;
+  octalaicanvas-data:`;
 }
 
 function appHealthcheck() {
@@ -168,8 +168,8 @@ function workerService(workerToken: string, origin: string, hostNetwork = false)
     image: ghcr.io/dreamwho/octalaicanvas:latest
     command: ["node", "/app/web/scripts/generation-worker.mjs"]${hostNetwork ? "\n    network_mode: host" : ""}
     environment:
-      VOZEB_PRO_WORKER_API_ORIGIN: ${origin}
-      VOZEB_PRO_WORKER_TOKEN: ${quoteYaml(workerToken)}
+      OCTALAICANVAS_WORKER_API_ORIGIN: ${origin}
+      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(workerToken)}
     depends_on:
       app:
         condition: service_healthy

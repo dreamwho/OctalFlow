@@ -20,8 +20,8 @@ describe("GlobalAiOpc media protocol matrix over TCP fixtures", () => {
     });
 
     beforeEach(() => {
-        vi.stubEnv("VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS", "1");
-        vi.stubEnv("VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
+        vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
+        vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
     });
 
     it("creates and queries every registered image and video preset exactly once", async () => {

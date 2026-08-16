@@ -42,13 +42,13 @@ describe("prompt optimization service", () => {
                 messages: expect.arrayContaining([expect.objectContaining({ role: "user", content: "做个国风角色海报 青衣" })]),
             }),
         );
-        expect(new Headers(vi.mocked(requestStructuredText).mock.calls[0]![0].headers).get("x-vozeb-pro-logical-model")).toBe("planner");
+        expect(new Headers(vi.mocked(requestStructuredText).mock.calls[0]![0].headers).get("x-octalaicanvas-logical-model")).toBe("planner");
     });
 
     it("refunds an invalid charged response instead of accepting hidden or empty output", async () => {
         vi.mocked(requestStructuredText).mockResolvedValue({
             arguments: JSON.stringify({ explanation: "内部分析" }),
-            headers: new Headers({ "x-vozeb-pro-points-cost": "3", "x-vozeb-pro-points-record-id": "points-one" }),
+            headers: new Headers({ "x-octalaicanvas-points-cost": "3", "x-octalaicanvas-points-record-id": "points-one" }),
             protocol: "chat",
             elapsedMs: 10,
         });

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-const INSTALL_TOKEN_ENV = "VOZEB_PRO_INSTALL_TOKEN";
+const INSTALL_TOKEN_ENV = "OCTALAICANVAS_INSTALL_TOKEN";
 const INSTALL_TOKEN_MIN_LENGTH = 32;
 const INSTALL_TOKEN_MAX_LENGTH = 512;
 

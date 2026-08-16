@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 const canvasRoot = dirname(fileURLToPath(import.meta.url));
 const packagePath = resolve(canvasRoot, "../../../../package.json");
 const forbiddenSourceMarkers = ["@xyflow/", "reactflow", "react-flow", "hero8152/Infinite-Canvas", "github.com/hero8152"];
-const removedCanvasEntrypoints = ["[id]/use-canvas-pointer-interactions.tsx", "components/vozeb-pro-canvas.tsx", "components/canvas-connections.tsx", "components/canvas-mini-map.tsx", "utils/canvas-connection-path.ts"];
+const removedCanvasEntrypoints = ["[id]/use-canvas-pointer-interactions.tsx", "components/octalaicanvas-canvas.tsx", "components/canvas-connections.tsx", "components/canvas-mini-map.tsx", "utils/canvas-connection-path.ts"];
 
 describe("Canvas clean-room boundary", () => {
     it("does not depend on a third-party canvas package or repository marker", async () => {

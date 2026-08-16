@@ -4,17 +4,17 @@ import { resolve } from "node:path";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const dataDir = resolve(tmpdir(), `vozeb-pro-generation-log-task-${process.pid}-${Date.now()}`);
-const previousDataDir = process.env.VOZEB_PRO_DATA_DIR;
-const previousProvider = process.env.VOZEB_PRO_DATABASE_PROVIDER;
+const dataDir = resolve(tmpdir(), `octalaicanvas-generation-log-task-${process.pid}-${Date.now()}`);
+const previousDataDir = process.env.OCTALAICANVAS_DATA_DIR;
+const previousProvider = process.env.OCTALAICANVAS_DATABASE_PROVIDER;
 
 let service: typeof import("./generation-log-task-service");
 let store: typeof import("./generation-log-store");
 
 describe("generation log task service", () => {
     beforeAll(async () => {
-        process.env.VOZEB_PRO_DATA_DIR = dataDir;
-        process.env.VOZEB_PRO_DATABASE_PROVIDER = "file";
+        process.env.OCTALAICANVAS_DATA_DIR = dataDir;
+        process.env.OCTALAICANVAS_DATABASE_PROVIDER = "file";
         vi.resetModules();
         service = await import("./generation-log-task-service");
         store = await import("./generation-log-store");
@@ -26,10 +26,10 @@ describe("generation log task service", () => {
     });
 
     afterAll(async () => {
-        if (previousDataDir === undefined) delete process.env.VOZEB_PRO_DATA_DIR;
-        else process.env.VOZEB_PRO_DATA_DIR = previousDataDir;
-        if (previousProvider === undefined) delete process.env.VOZEB_PRO_DATABASE_PROVIDER;
-        else process.env.VOZEB_PRO_DATABASE_PROVIDER = previousProvider;
+        if (previousDataDir === undefined) delete process.env.OCTALAICANVAS_DATA_DIR;
+        else process.env.OCTALAICANVAS_DATA_DIR = previousDataDir;
+        if (previousProvider === undefined) delete process.env.OCTALAICANVAS_DATABASE_PROVIDER;
+        else process.env.OCTALAICANVAS_DATABASE_PROVIDER = previousProvider;
         await rm(dataDir, { recursive: true, force: true });
     });
 

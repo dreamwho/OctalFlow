@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     if (!isAuthorizedWorkerRequest(request)) return NextResponse.json({ code: 401, data: null, msg: "Worker 认证失败" }, { status: 401 });
     try {
         if (!(await getInstallStatus()).database.schemaReady) return NextResponse.json({ code: 0, data: { claimed: 0 }, msg: "等待初始化数据库" });
-        const workerId = request.headers.get("x-vozeb-pro-worker-id")?.trim();
+        const workerId = request.headers.get("x-octalaicanvas-worker-id")?.trim();
         const result = await runGenerationTaskRecoveryBatch({
             origin: resolveInternalOrigin(new URL(request.url).origin),
             publicOrigin: process.env.NEXT_PUBLIC_SITE_URL?.trim() || new URL(request.url).origin,

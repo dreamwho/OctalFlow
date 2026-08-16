@@ -22,7 +22,7 @@ import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-rec
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { VIDEO_PROVIDER_MEDIA_KEYS, parseVideoProviderJson, readVideoProviderHttpError, readVideoProviderId, readVideoProviderUrl } from "@/lib/server/video-provider-response";
 import { buildSeedanceSpecialRequest } from "@/lib/seedance-special";
-import { assertVozebRecommendedVideoReferences, buildVozebRecommendedVideoRequest } from "@/lib/vozeb-recommended-video";
+import { assertOctalaicanvasRecommendedVideoReferences, buildOctalaicanvasRecommendedVideoRequest } from "@/lib/octalaicanvas-recommended-video";
 import { assertGeminiVideoReferences, buildGeminiVideoRequest, geminiVideoCreatePath, normalizeGeminiVideoDuration, parseGeminiVideoCreateResponse } from "@/lib/server/gemini-video-provider";
 import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
 import { maintenanceWorkerContextHeaders, requestRuntimeCredential } from "@/lib/server/maintenance-auth";
@@ -38,8 +38,8 @@ type CreateVideoTaskBody = { config?: Record<string, unknown>; prompt?: string; 
 export async function POST(request: Request) {
     const user = await getCurrentUser(request);
     if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
-    const headerRequestId = clean(request.headers.get("x-vozeb-pro-client-request-id"));
-    const headerAttemptNo = positiveAttemptNo(request.headers.get("x-vozeb-pro-attempt-no"));
+    const headerRequestId = clean(request.headers.get("x-octalaicanvas-client-request-id"));
+    const headerAttemptNo = positiveAttemptNo(request.headers.get("x-octalaicanvas-attempt-no"));
     if (headerRequestId) {
         const existing = await getStoredGenerationTaskByRequest<VideoTask>("video", user.id, headerRequestId, headerAttemptNo);
         if (existing) return NextResponse.json({ task: publicTask(existing) });
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
         const origin = resolveInternalOrigin(new URL(request.url).origin);
         const cookie = requestRuntimeCredential(request, user.id);
         const requestedParameters = resolveVideoGenerationParameters(body.config || {}, settings.generationDefaults);
-        const billingRequestId = clean(body.context?.clientRequestId) || clean(request.headers.get("x-vozeb-pro-client-request-id")) || `video-request:${user.id}:${Date.now()}`;
+        const billingRequestId = clean(body.context?.clientRequestId) || clean(request.headers.get("x-octalaicanvas-client-request-id")) || `video-request:${user.id}:${Date.now()}`;
         let lastError: unknown;
         let capabilityError: unknown;
         let attempts: GenerationAttempt[] = [];
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
                         references,
                     );
                     if (channel.advancedConfig?.protocol !== "yumeng") assertVideoReferenceRoles(channel.advancedConfig, references, globalPreset?.videoReferenceRoles);
-                    if (channel.advancedConfig?.protocol === "vozeb-recommended") assertVozebRecommendedVideoReferences(channel.model, references);
+                    if (channel.advancedConfig?.protocol === "octalaicanvas-recommended") assertOctalaicanvasRecommendedVideoReferences(channel.model, references);
                     if (channel.advancedConfig?.protocol === "yumeng") assertYumengVideoReferences(channel.model, references);
                     assertReferenceUrls(channel.advancedConfig, references, Boolean(globalPreset));
                 }
@@ -282,8 +282,8 @@ export async function createUpstream(
     const multipart = channel.advancedConfig?.requestTemplate?.trim().toLowerCase().startsWith("multipart/form-data") === true;
     const payload = multipart
         ? undefined
-        : channel.advancedConfig?.protocol === "vozeb-recommended"
-          ? buildVozebRecommendedVideoRequest({
+        : channel.advancedConfig?.protocol === "octalaicanvas-recommended"
+          ? buildOctalaicanvasRecommendedVideoRequest({
                 model: channel.model,
                 prompt,
                 duration: values.duration as number,
@@ -360,23 +360,23 @@ export async function createUpstream(
         try {
             data = parseVideoProviderJson(text);
         } catch (error) {
-            const pointsCost = billedPointsCost(response.headers.get("x-vozeb-pro-points-cost"));
-            const pointsRecordId = response.headers.get("x-vozeb-pro-points-record-id") || undefined;
+            const pointsCost = billedPointsCost(response.headers.get("x-octalaicanvas-points-cost"));
+            const pointsRecordId = response.headers.get("x-octalaicanvas-points-record-id") || undefined;
             if (pointsCost !== undefined && pointsRecordId) await refundUserPoints(userId, generationModelId(channel), pointsCost, "video", videoUnits(raw, multipliers), undefined, pointsRecordId);
             throw error instanceof Error ? error : new Error("视频接口返回了无效 JSON");
         }
         const providerError = readProviderError(data);
         if (isProviderBusinessError(data)) {
-            const pointsCost = billedPointsCost(response.headers.get("x-vozeb-pro-points-cost"));
-            const pointsRecordId = response.headers.get("x-vozeb-pro-points-record-id") || undefined;
+            const pointsCost = billedPointsCost(response.headers.get("x-octalaicanvas-points-cost"));
+            const pointsRecordId = response.headers.get("x-octalaicanvas-points-record-id") || undefined;
             if (pointsCost !== undefined && pointsRecordId) await refundUserPoints(userId, generationModelId(channel), pointsCost, "video", videoUnits(raw, multipliers), undefined, pointsRecordId);
             throw new SafeCandidateFailure(providerError || "视频接口请求失败");
         }
         const resultUrl = readVideoProviderUrl(data, channel.advancedConfig?.resultField);
         const id = readVideoProviderId(data) || (resultUrl ? `direct:${Date.now()}` : "");
         if (!id) {
-            const pointsCost = billedPointsCost(response.headers.get("x-vozeb-pro-points-cost"));
-            const pointsRecordId = response.headers.get("x-vozeb-pro-points-record-id") || undefined;
+            const pointsCost = billedPointsCost(response.headers.get("x-octalaicanvas-points-cost"));
+            const pointsRecordId = response.headers.get("x-octalaicanvas-points-record-id") || undefined;
             if (pointsCost !== undefined && pointsRecordId) await refundUserPoints(userId, generationModelId(channel), pointsCost, "video", videoUnits(raw, multipliers), undefined, pointsRecordId);
             throw new Error(providerError || "视频接口没有返回任务 ID");
         }
@@ -387,9 +387,9 @@ export async function createUpstream(
             pollPath: path,
             queryPath: undefined,
             resultUrl: resultUrl || undefined,
-            pointsCost: billedPointsCost(response.headers.get("x-vozeb-pro-points-cost")),
+            pointsCost: billedPointsCost(response.headers.get("x-octalaicanvas-points-cost")),
             pointsUnits: videoUnits(raw, multipliers),
-            pointsRecordId: response.headers.get("x-vozeb-pro-points-record-id") || undefined,
+            pointsRecordId: response.headers.get("x-octalaicanvas-points-record-id") || undefined,
         };
     }
     throw new SafeCandidateFailure(lastError || "没有可用的视频创建接口");
@@ -442,8 +442,8 @@ async function createGeminiVideoUpstream(input: {
         throw error instanceof Error ? error : new Error("Gemini Veo 返回了无效 JSON");
     }
     const created = parseGeminiVideoCreateResponse(data, input.channel.model);
-    const pointsCost = billedPointsCost(response.headers.get("x-vozeb-pro-points-cost"));
-    const pointsRecordId = response.headers.get("x-vozeb-pro-points-record-id") || undefined;
+    const pointsCost = billedPointsCost(response.headers.get("x-octalaicanvas-points-cost"));
+    const pointsRecordId = response.headers.get("x-octalaicanvas-points-record-id") || undefined;
     if (created.error) {
         if (pointsCost !== undefined && pointsRecordId) {
             await refundUserPoints(input.userId, generationModelId(input.channel), pointsCost, "video", videoUnits(input.raw, input.multipliers), undefined, pointsRecordId);

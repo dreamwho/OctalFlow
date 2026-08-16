@@ -21,13 +21,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
         const channel = settings.systemChannels.find((item) => item.id === channelId && item.enabled);
         if (!channel) return NextResponse.json({ code: 404, data: null, msg: "生成回调渠道不存在" }, { status: 404 });
         const payload = JSON.parse(rawBody) as unknown;
-        const eventId = request.headers.get("x-vozeb-pro-event-id")?.trim() || readProviderString(payload, "event.id", EVENT_KEYS);
+        const eventId = request.headers.get("x-octalaicanvas-event-id")?.trim() || readProviderString(payload, "event.id", EVENT_KEYS);
         const verification = verifyGenerationWebhookSignature({
             channelId,
             eventId,
-            timestamp: request.headers.get("x-vozeb-pro-timestamp") || request.headers.get("x-timestamp") || "",
+            timestamp: request.headers.get("x-octalaicanvas-timestamp") || request.headers.get("x-timestamp") || "",
             rawBody,
-            signature: request.headers.get("x-vozeb-pro-signature") || request.headers.get("x-signature") || "",
+            signature: request.headers.get("x-octalaicanvas-signature") || request.headers.get("x-signature") || "",
             secret: channel.webhookSecret || "",
         });
         const upstreamTaskId = readProviderString(payload, undefined, ID_KEYS);

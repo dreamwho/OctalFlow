@@ -35,8 +35,8 @@ describe("图片任务轮询", () => {
         if (!init) throw new Error("缺少图片任务请求参数");
         const headers = new Headers(init.headers);
         const body = JSON.parse(String(init.body)) as { context?: { clientRequestId?: string; attemptNo?: number } };
-        expect(headers.get("x-vozeb-pro-client-request-id")).toBe("image-workbench:conversation:slot");
-        expect(headers.get("x-vozeb-pro-attempt-no")).toBe("3");
+        expect(headers.get("x-octalaicanvas-client-request-id")).toBe("image-workbench:conversation:slot");
+        expect(headers.get("x-octalaicanvas-attempt-no")).toBe("3");
         expect(body.context).toMatchObject({ clientRequestId: "image-workbench:conversation:slot", attemptNo: 3 });
     });
 

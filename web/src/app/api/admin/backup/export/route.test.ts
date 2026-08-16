@@ -33,7 +33,7 @@ describe("POST /api/admin/backup/export", () => {
 
         expect(response.status).toBe(200);
         expect(response.headers.get("cache-control")).toContain("no-store");
-        expect(response.headers.get("content-disposition")).toContain("vozeb-pro-data-backup-");
+        expect(response.headers.get("content-disposition")).toContain("octalaicanvas-data-backup-");
         expect(JSON.stringify(backup)).not.toContain("passwordHash");
         expect(JSON.stringify(backup)).not.toContain("private@example.com");
         expect(mocks.safeRecordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "admin.backup.export", target: expect.objectContaining({ type: "backup" }) }));

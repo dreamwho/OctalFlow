@@ -38,7 +38,7 @@ type StoredDb = {
 describe("consumeEmailCode attempt tracking", () => {
     beforeEach(() => {
         memory.value = undefined;
-        vi.stubEnv("VOZEB_PRO_INSTALL_TOKEN", INSTALL_TOKEN);
+        vi.stubEnv("OCTALAICANVAS_INSTALL_TOKEN", INSTALL_TOKEN);
     });
 
     afterEach(() => {

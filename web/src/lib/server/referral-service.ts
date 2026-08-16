@@ -20,7 +20,7 @@ import { adjustPermanentPointsInPostgresTransaction } from "@/lib/server/points-
 
 const REGISTRATION_NETWORK_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const REGISTRATION_NETWORK_REVIEW_COUNT = 3;
-export const REFERRAL_COOKIE_NAME = "vozeb_referral";
+export const REFERRAL_COOKIE_NAME = "octalaicanvas_referral";
 
 export type ReferralProgramInput = {
     enabled?: unknown;
@@ -509,7 +509,7 @@ function referralCodeForAccountId(accountId: string) {
 
 function hashReferralRiskValue(kind: string, value: unknown) {
     const text = typeof value === "string" ? value.trim() : "";
-    const secret = process.env.VOZEB_PRO_ENCRYPTION_KEY?.trim() || "";
+    const secret = process.env.OCTALAICANVAS_ENCRYPTION_KEY?.trim() || "";
     if (!text || !secret) return undefined;
     return createHmac("sha256", secret).update(`${kind}\0${text}`).digest("hex");
 }

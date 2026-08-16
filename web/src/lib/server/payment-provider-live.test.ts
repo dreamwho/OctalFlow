@@ -77,8 +77,8 @@ let fixture: ReturnType<typeof createPaymentFixtureServer>;
 let origin: string;
 
 beforeEach(async () => {
-    vi.stubEnv("VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS", "1");
-    vi.stubEnv("VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
+    vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
+    vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
     fixture = createPaymentFixtureServer({ alipayPrivateKey, wechatPrivateKey: wechatPlatformPrivateKey });
     await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));
     const address = fixture.server.address();
@@ -93,23 +93,23 @@ afterEach(async () => {
 
 describe("payment providers over a live compatible HTTP fixture", () => {
     it("creates Stripe, Alipay, WeChat and PayPly checkouts", async () => {
-        const stripe = await createProviderCheckout("stripe", order, { origin: "https://app.test" }, config({ VOZEB_PRO_STRIPE_SECRET_KEY: "stripe-secret", VOZEB_PRO_STRIPE_API_BASE: `${origin}/stripe` }));
+        const stripe = await createProviderCheckout("stripe", order, { origin: "https://app.test" }, config({ OCTALAICANVAS_STRIPE_SECRET_KEY: "stripe-secret", OCTALAICANVAS_STRIPE_API_BASE: `${origin}/stripe` }));
         const alipay = await createProviderCheckout("alipay", { ...order, provider: "alipay" }, { origin: "https://app.test" }, alipayConfig());
         const wechat = await createProviderCheckout("wechat", { ...order, provider: "wechat" }, { origin: "https://app.test" }, wechatConfig());
-        const payply = await createProviderCheckout("payply", { ...order, provider: "payply" }, { origin: "https://app.test" }, config({ VOZEB_PRO_PAYPLY_API_KEY: "payply-secret", VOZEB_PRO_PAYPLY_CHECKOUT_URL: `${origin}/payply/checkout` }));
+        const payply = await createProviderCheckout("payply", { ...order, provider: "payply" }, { origin: "https://app.test" }, config({ OCTALAICANVAS_PAYPLY_API_KEY: "payply-secret", OCTALAICANVAS_PAYPLY_CHECKOUT_URL: `${origin}/payply/checkout` }));
 
         expect(stripe).toMatchObject({ kind: "redirect", providerOrderId: "cs_fixture", url: "https://checkout.fixture/stripe" });
         expect(alipay).toMatchObject({ kind: "qr", providerOrderId: order.orderNo, providerPaymentId: "alipay_trade_fixture", qrContent: "https://checkout.fixture/alipay-qr" });
         expect(wechat).toMatchObject({ kind: "qr", qrContent: "weixin://wxpay/bizpayurl?pr=fixture" });
         expect(payply).toMatchObject({ kind: "redirect", providerOrderId: "payply_trade_fixture", providerPaymentId: "payply_payment_fixture", url: "https://checkout.fixture/payply" });
         expect(fixture.requests.map((request) => request.path)).toEqual(["/stripe/v1/checkout/sessions", "/alipay/gateway.do", "/wechat/v3/pay/transactions/native", "/payply/checkout"]);
-        expect(fixture.requests[0]?.headers["idempotency-key"]).toBe("vozeb-pro-checkout-order-live");
+        expect(fixture.requests[0]?.headers["idempotency-key"]).toBe("octalaicanvas-checkout-order-live");
         expect(fixture.requests[2]?.headers.authorization).toContain('mchid="1900000001"');
         expect(fixture.requests[3]?.headers.authorization).toBe("Bearer payply-secret");
     });
 
     it("creates Stripe, Alipay, WeChat and PayPly refunds", async () => {
-        setRuntimeConfig({ VOZEB_PRO_STRIPE_SECRET_KEY: "stripe-secret", VOZEB_PRO_STRIPE_API_BASE: `${origin}/stripe` });
+        setRuntimeConfig({ OCTALAICANVAS_STRIPE_SECRET_KEY: "stripe-secret", OCTALAICANVAS_STRIPE_API_BASE: `${origin}/stripe` });
         const stripe = await refundPaymentTransaction(order, payment);
 
         setRuntimeConfig(alipayConfig().valuesByEnvName);
@@ -118,17 +118,17 @@ describe("payment providers over a live compatible HTTP fixture", () => {
         setRuntimeConfig(wechatConfig().valuesByEnvName);
         const wechat = await refundPaymentTransaction({ ...order, provider: "wechat" }, { ...payment, provider: "wechat", providerTradeId: "wechat_trade_fixture", providerPaymentId: "wechat_trade_fixture" });
 
-        setRuntimeConfig({ VOZEB_PRO_PAYPLY_API_KEY: "payply-secret", VOZEB_PRO_PAYPLY_REFUND_URL: `${origin}/payply/refund` });
+        setRuntimeConfig({ OCTALAICANVAS_PAYPLY_API_KEY: "payply-secret", OCTALAICANVAS_PAYPLY_REFUND_URL: `${origin}/payply/refund` });
         const payply = await refundPaymentTransaction({ ...order, provider: "payply" }, { ...payment, provider: "payply", providerTradeId: "payply_trade_fixture", providerPaymentId: "payply_payment_fixture" });
 
         expect(stripe).toMatchObject({ status: "succeeded", providerRefundId: "re_fixture" });
-        expect(alipay).toMatchObject({ status: "succeeded", providerRefundId: "vozeb-pro-refund-order-live" });
+        expect(alipay).toMatchObject({ status: "succeeded", providerRefundId: "octalaicanvas-refund-order-live" });
         expect(wechat).toMatchObject({ status: "succeeded", providerRefundId: "wx_refund_fixture" });
         expect(payply).toMatchObject({ status: "succeeded", providerRefundId: "payply_refund_fixture" });
         expect(fixture.requests.map((request) => request.path)).toEqual(["/stripe/v1/refunds", "/alipay/gateway.do", "/wechat/v3/refund/domestic/refunds", "/payply/refund"]);
-        expect(fixture.requests[0]?.headers["idempotency-key"]).toBe("vozeb-pro-refund-order-live");
+        expect(fixture.requests[0]?.headers["idempotency-key"]).toBe("octalaicanvas-refund-order-live");
         expect(fixture.requests[2]?.headers.authorization).toContain('mchid="1900000001"');
-        expect(fixture.requests[3]?.headers["idempotency-key"]).toBe("vozeb-pro-refund-order-live");
+        expect(fixture.requests[3]?.headers["idempotency-key"]).toBe("octalaicanvas-refund-order-live");
     });
 });
 
@@ -138,22 +138,22 @@ function config(valuesByEnvName: Record<string, string>): PaymentRuntimeConfig {
 
 function alipayConfig(): PaymentRuntimeConfig {
     return config({
-        VOZEB_PRO_ALIPAY_MODE: "face_to_face",
-        VOZEB_PRO_ALIPAY_APP_ID: "2026000000000000",
-        VOZEB_PRO_ALIPAY_PRIVATE_KEY: alipayPrivateKey,
-        VOZEB_PRO_ALIPAY_PUBLIC_KEY: alipayPublicKey,
-        VOZEB_PRO_ALIPAY_GATEWAY_URL: `${origin}/alipay/gateway.do`,
+        OCTALAICANVAS_ALIPAY_MODE: "face_to_face",
+        OCTALAICANVAS_ALIPAY_APP_ID: "2026000000000000",
+        OCTALAICANVAS_ALIPAY_PRIVATE_KEY: alipayPrivateKey,
+        OCTALAICANVAS_ALIPAY_PUBLIC_KEY: alipayPublicKey,
+        OCTALAICANVAS_ALIPAY_GATEWAY_URL: `${origin}/alipay/gateway.do`,
     });
 }
 
 function wechatConfig(): PaymentRuntimeConfig {
     return config({
-        VOZEB_PRO_WECHAT_PAY_APP_ID: "wx-fixture-app",
-        VOZEB_PRO_WECHAT_PAY_MCH_ID: "1900000001",
-        VOZEB_PRO_WECHAT_PAY_CERT_SERIAL_NO: "fixture-serial",
-        VOZEB_PRO_WECHAT_PAY_PRIVATE_KEY: wechatPrivateKey,
-        VOZEB_PRO_WECHAT_PAY_PLATFORM_PUBLIC_KEY: wechatPlatformPublicKey,
-        VOZEB_PRO_WECHAT_PAY_API_BASE: `${origin}/wechat`,
+        OCTALAICANVAS_WECHAT_PAY_APP_ID: "wx-fixture-app",
+        OCTALAICANVAS_WECHAT_PAY_MCH_ID: "1900000001",
+        OCTALAICANVAS_WECHAT_PAY_CERT_SERIAL_NO: "fixture-serial",
+        OCTALAICANVAS_WECHAT_PAY_PRIVATE_KEY: wechatPrivateKey,
+        OCTALAICANVAS_WECHAT_PAY_PLATFORM_PUBLIC_KEY: wechatPlatformPublicKey,
+        OCTALAICANVAS_WECHAT_PAY_API_BASE: `${origin}/wechat`,
     });
 }
 

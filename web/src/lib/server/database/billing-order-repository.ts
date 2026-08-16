@@ -2,7 +2,7 @@ import type { QueryExecutor } from "@/lib/server/database/postgres";
 import type { BillingOrderRecord, BillingOrderStatus, BillingSummaryRecord, PageInput, PageResult } from "./repository-shared";
 import { jsonParam, jsonValue, mapBillingOrder, normalizePage, normalizePageSize, numberValue, pageResult, stringValue } from "./repository-shared";
 
-export const BILLING_ORDER_NOTIFY_CHANNEL = "vozeb_pro_billing_order_events";
+export const BILLING_ORDER_NOTIFY_CHANNEL = "octalaicanvas_billing_order_events";
 
 export class BillingOrderRepository {
     constructor(private readonly db: QueryExecutor) {}

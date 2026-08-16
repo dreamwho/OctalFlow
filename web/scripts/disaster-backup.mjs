@@ -32,13 +32,13 @@ try {
     await writeFile(incompleteMarker, `${recoveryPointId}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
 
     const startedAt = new Date().toISOString();
-    const databaseFile = "database/vozeb-pro.dump";
+    const databaseFile = "database/octalaicanvas.dump";
     const databasePath = path.join(recoveryPointDir, databaseFile);
     await mkdir(path.dirname(databasePath), { recursive: true });
-    await runPostgresTool(process.env.VOZEB_PRO_PG_DUMP_PATH || "pg_dump", ["--format=custom", "--compress=6", "--no-owner", "--no-privileges", "--file", databasePath], databaseUrl);
+    await runPostgresTool(process.env.OCTALAICANVAS_PG_DUMP_PATH || "pg_dump", ["--format=custom", "--compress=6", "--no-owner", "--no-privileges", "--file", databasePath], databaseUrl);
     const database = { file: databaseFile, ...(await hashFile(databasePath)) };
 
-    const dataDir = path.resolve(process.env.VOZEB_PRO_DATA_DIR || path.join(process.cwd(), ".data"));
+    const dataDir = path.resolve(process.env.OCTALAICANVAS_DATA_DIR || path.join(process.cwd(), ".data"));
     const localMediaRoots = [];
     for (const name of LOCAL_MEDIA_ROOTS) {
         const snapshot = await copyDirectorySnapshot(path.join(dataDir, name), path.join(recoveryPointDir, "local-media", name));
@@ -49,11 +49,11 @@ try {
         });
     }
 
-    const objectStorageConfig = await loadDisasterObjectStorageConfig({ databaseUrl, dataDir, encryptionKey: process.env.VOZEB_PRO_ENCRYPTION_KEY });
+    const objectStorageConfig = await loadDisasterObjectStorageConfig({ databaseUrl, dataDir, encryptionKey: process.env.OCTALAICANVAS_ENCRYPTION_KEY });
     const objectStorage = await backupObjectStorage(objectStorageConfig, recoveryPointDir);
     const completedAt = new Date().toISOString();
     const manifest = {
-        app: "VOZEB PRO",
+        app: "OctalAICanvas",
         formatVersion: DISASTER_FORMAT_VERSION,
         recoveryPointId,
         backupType: "disaster",
@@ -67,7 +67,7 @@ try {
         database,
         localMedia: { roots: localMediaRoots },
         objectStorage,
-        requiredSecrets: ["DATABASE_URL", "VOZEB_PRO_ENCRYPTION_KEY"],
+        requiredSecrets: ["DATABASE_URL", "OCTALAICANVAS_ENCRYPTION_KEY"],
     };
     await writeJsonAtomic(path.join(recoveryPointDir, DISASTER_MANIFEST_FILE), manifest);
     await rm(incompleteMarker, { force: true });

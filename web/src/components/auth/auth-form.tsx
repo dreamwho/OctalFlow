@@ -152,7 +152,7 @@ export function AuthForm({
                             prefix={<LockKeyhole className="size-4 text-stone-500" />}
                             value={installToken}
                             onChange={(event) => onInstallTokenChange?.(event.target.value)}
-                            placeholder="从服务器 .env 中粘贴 VOZEB_PRO_INSTALL_TOKEN"
+                            placeholder="从服务器 .env 中粘贴 OCTALAICANVAS_INSTALL_TOKEN"
                             autoComplete="off"
                             disabled={submitting}
                             required

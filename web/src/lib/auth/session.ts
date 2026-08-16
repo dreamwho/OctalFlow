@@ -6,7 +6,7 @@ import { authorizedWorkerUserId } from "@/lib/server/maintenance-auth";
 import { getTrustedProxyHops } from "@/lib/server/trusted-proxy";
 import { parseSessionCookie } from "./store-normalizers";
 
-const SESSION_COOKIE_NAME = "vozeb_pro_session";
+const SESSION_COOKIE_NAME = "octalaicanvas_session";
 
 type CurrentUser = PublicUser;
 
@@ -54,7 +54,7 @@ export function clearSessionCookie(response: NextResponse, request?: Request) {
 }
 
 function shouldUseSecureSessionCookie(request?: Request) {
-    const override = process.env.VOZEB_PRO_COOKIE_SECURE?.trim().toLowerCase();
+    const override = process.env.OCTALAICANVAS_COOKIE_SECURE?.trim().toLowerCase();
     if (["1", "true", "yes", "on"].includes(override || "")) return true;
     if (["0", "false", "no", "off"].includes(override || "")) return false;
 

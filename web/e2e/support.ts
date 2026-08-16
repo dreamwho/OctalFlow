@@ -2,13 +2,13 @@ import type { APIRequestContext } from "@playwright/test";
 
 export const E2E_ADMIN = {
     username: "e2e_admin",
-    password: "VozebE2E!2026",
+    password: "OctalaicanvasE2E!2026",
     displayName: "E2E 管理员",
-    installToken: "vozeb-pro-e2e-install-token-32chars",
+    installToken: "octalaicanvas-e2e-install-token-32chars",
 };
 
-export const E2E_PROTOCOL_ORIGIN = `http://127.0.0.1:${Number(process.env.VOZEB_PRO_PROTOCOL_FIXTURE_PORT || 4010)}`;
-export const E2E_PAYMENT_WEBHOOK_SECRET = "vozeb-pro-e2e-payply-webhook-secret";
+export const E2E_PROTOCOL_ORIGIN = `http://127.0.0.1:${Number(process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_PORT || 4010)}`;
+export const E2E_PAYMENT_WEBHOOK_SECRET = "octalaicanvas-e2e-payply-webhook-secret";
 
 const models = ["e2e-text", "e2e-text-fallback", "e2e-text-fail", "e2e-image", "e2e-image-fallback", "e2e-video", "e2e-video-fallback", "e2e-video-slow", "e2e-audio", "e2e-audio-fallback"];
 

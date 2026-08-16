@@ -62,8 +62,8 @@ type ModelsResponse = Record<string, unknown> & {
 const MODEL_FETCH_COOLDOWN_MS = 30_000;
 const MODEL_FETCH_TIMEOUT_MS = 60_000;
 const MODEL_FETCH_MAX_PAGES = 20;
-const globalCooldownStore = globalThis as typeof globalThis & { __vozebProModelFetchCooldowns?: Map<string, number> };
-const modelFetchCooldowns = (globalCooldownStore.__vozebProModelFetchCooldowns ??= new Map<string, number>());
+const globalCooldownStore = globalThis as typeof globalThis & { __octalaicanvasProModelFetchCooldowns?: Map<string, number> };
+const modelFetchCooldowns = (globalCooldownStore.__octalaicanvasProModelFetchCooldowns ??= new Map<string, number>());
 
 export async function POST(request: Request) {
     const currentUser = await getCurrentUser();

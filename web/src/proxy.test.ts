@@ -14,7 +14,7 @@ describe("application proxy security", () => {
         });
 
         expect(proxy(request).status).toBe(403);
-        vi.stubEnv("VOZEB_PRO_TRUSTED_PROXY_HOPS", "1");
+        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "1");
         expect(proxy(request).status).toBe(200);
     });
 

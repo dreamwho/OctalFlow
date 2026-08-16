@@ -33,15 +33,15 @@ export async function listPointRecords(input: { page?: number; pageSize?: number
 
 export function syncUserPointsFromHeaders(headers: HeaderLike, apiSource?: "system" | "custom") {
     if (apiSource !== "system") return;
-    const value = readHeader(headers, "x-vozeb-pro-points-remaining");
+    const value = readHeader(headers, "x-octalaicanvas-points-remaining");
     if (value === undefined || value === null || value === "") return;
     const pointsBalance = Number(value);
     if (!Number.isFinite(pointsBalance)) return;
     const currentUser = useUserStore.getState().user;
     if (!currentUser) return;
-    const permanentPointsBalance = readFiniteHeader(headers, "x-vozeb-pro-points-permanent");
-    const dailyPointsBalance = readFiniteHeader(headers, "x-vozeb-pro-points-daily");
-    const dailyPointsExpiresAt = readHeader(headers, "x-vozeb-pro-points-daily-expires-at");
+    const permanentPointsBalance = readFiniteHeader(headers, "x-octalaicanvas-points-permanent");
+    const dailyPointsBalance = readFiniteHeader(headers, "x-octalaicanvas-points-daily");
+    const dailyPointsExpiresAt = readHeader(headers, "x-octalaicanvas-points-daily-expires-at");
     useUserStore.getState().setUser({
         ...currentUser,
         pointsBalance,

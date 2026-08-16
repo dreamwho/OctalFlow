@@ -6,7 +6,7 @@ import { ensurePostgresSchema, postgresQuery } from "@/lib/server/database";
 
 import { readAdminBackupData, restoreAdminBackupData } from "./admin-backup-store";
 
-const postgresIt = process.env.VOZEB_PRO_RUN_POSTGRES_INTEGRATION === "1" ? it : it.skip;
+const postgresIt = process.env.OCTALAICANVAS_RUN_POSTGRES_INTEGRATION === "1" ? it : it.skip;
 
 describe("admin backup PostgreSQL integration", () => {
     postgresIt("keeps backup-missing users and referenced Canvas, library, media and drama data", async () => {

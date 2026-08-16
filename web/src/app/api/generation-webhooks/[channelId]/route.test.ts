@@ -78,7 +78,7 @@ describe("POST /api/generation-webhooks/:channelId", () => {
 function request(body: unknown) {
     return new Request("http://localhost/api/generation-webhooks/channel-one", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-vozeb-pro-event-id": "event-one", "x-vozeb-pro-signature": "signature", "x-vozeb-pro-timestamp": "2026-08-01T00:00:00.000Z" },
+        headers: { "content-type": "application/json", "x-octalaicanvas-event-id": "event-one", "x-octalaicanvas-signature": "signature", "x-octalaicanvas-timestamp": "2026-08-01T00:00:00.000Z" },
         body: JSON.stringify(body),
     });
 }

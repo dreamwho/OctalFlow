@@ -37,8 +37,8 @@ describe("outbound url security", () => {
     });
 
     it("allows exact private hosts only when explicitly enabled and never allows metadata addresses", async () => {
-        vi.stubEnv("VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS", "1");
-        vi.stubEnv("VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS", "localhost,provider.internal,169.254.169.254");
+        vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
+        vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "localhost,provider.internal,169.254.169.254");
         mocks.lookup.mockResolvedValue([{ address: "10.0.0.8", family: 4 }]);
 
         await expect(isSafeOutboundUrl("http://provider.internal:11434/v1/models")).resolves.toBe(true);

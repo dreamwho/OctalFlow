@@ -71,28 +71,28 @@ test("admin site form persists social addresses, publishes them to the home foot
         await expect(emailInput).toBeVisible();
         await expect(emailInput).toHaveValue("mailto:before@example.com");
         await emailInput.fill("owner@example.com");
-        await telegramInput.fill("t.me/vozeb_group");
-        await xInput.fill("@vozeb_pro");
-        await instagramInput.fill("instagram.com/vozeb.pro");
+        await telegramInput.fill("t.me/octalaicanvas_group");
+        await xInput.fill("@octalaicanvas");
+        await instagramInput.fill("instagram.com/octalaicanvas.pro");
         await expect(emailInput).toHaveValue("owner@example.com");
         await page.getByRole("button", { name: "保存网站设置" }).click();
         await expect(page.getByLabel("当前密码")).toHaveCount(0);
         await expect(page.getByText("网站信息已保存")).toBeVisible();
         await expect(emailInput).toHaveValue("mailto:owner@example.com");
-        await expect(telegramInput).toHaveValue("https://t.me/vozeb_group");
-        await expect(xInput).toHaveValue("https://x.com/vozeb_pro");
-        await expect(instagramInput).toHaveValue("https://instagram.com/vozeb.pro");
+        await expect(telegramInput).toHaveValue("https://t.me/octalaicanvas_group");
+        await expect(xInput).toHaveValue("https://x.com/octalaicanvas");
+        await expect(instagramInput).toHaveValue("https://instagram.com/octalaicanvas.pro");
 
         await page.goto("/", { waitUntil: "domcontentloaded" });
-        await expect(page.locator('footer a[aria-label="Telegram"]')).toHaveAttribute("href", "https://t.me/vozeb_group");
-        await expect(page.locator('footer a[aria-label="X"]')).toHaveAttribute("href", "https://x.com/vozeb_pro");
-        await expect(page.locator('footer a[aria-label="Instagram"]')).toHaveAttribute("href", "https://instagram.com/vozeb.pro");
+        await expect(page.locator('footer a[aria-label="Telegram"]')).toHaveAttribute("href", "https://t.me/octalaicanvas_group");
+        await expect(page.locator('footer a[aria-label="X"]')).toHaveAttribute("href", "https://x.com/octalaicanvas");
+        await expect(page.locator('footer a[aria-label="Instagram"]')).toHaveAttribute("href", "https://instagram.com/octalaicanvas.pro");
 
         await page.goto("/admin?section=site", { waitUntil: "domcontentloaded" });
         await expect(emailInput).toHaveValue("mailto:owner@example.com");
-        await expect(telegramInput).toHaveValue("https://t.me/vozeb_group");
-        await expect(xInput).toHaveValue("https://x.com/vozeb_pro");
-        await expect(instagramInput).toHaveValue("https://instagram.com/vozeb.pro");
+        await expect(telegramInput).toHaveValue("https://t.me/octalaicanvas_group");
+        await expect(xInput).toHaveValue("https://x.com/octalaicanvas");
+        await expect(instagramInput).toHaveValue("https://instagram.com/octalaicanvas.pro");
         await page.getByRole("button", { name: "删除友情链接" }).click();
         await expect(page.getByLabel("当前密码")).toHaveCount(0);
         await expect(page.getByText("友情链接已删除")).toBeVisible();
@@ -106,9 +106,9 @@ test("admin site form persists social addresses, publishes them to the home foot
         await expect(page.getByText(testLink.label, { exact: true })).toHaveCount(0);
 
         expect(persisted.socials.email.url).toBe("mailto:owner@example.com");
-        expect(persisted.socials.telegram).toEqual({ enabled: true, label: "Telegram", url: "https://t.me/vozeb_group" });
-        expect(persisted.socials.x).toEqual({ enabled: true, label: "X", url: "https://x.com/vozeb_pro" });
-        expect(persisted.socials.instagram).toEqual({ enabled: true, label: "Instagram", url: "https://instagram.com/vozeb.pro" });
+        expect(persisted.socials.telegram).toEqual({ enabled: true, label: "Telegram", url: "https://t.me/octalaicanvas_group" });
+        expect(persisted.socials.x).toEqual({ enabled: true, label: "X", url: "https://x.com/octalaicanvas" });
+        expect(persisted.socials.instagram).toEqual({ enabled: true, label: "Instagram", url: "https://instagram.com/octalaicanvas.pro" });
 
         const publicResponse = await request.get("/api/auth/session");
         const publicSite = ((await publicResponse.json()) as { settings: { site: { socials: typeof socials } } }).settings.site;
@@ -167,7 +167,7 @@ test("text tasks return content, fail over automatically, and surface terminal f
 test("image task persists a real media result and reuses the same request identity", async ({ request }) => {
     const clientRequestId = `e2e-image:${randomUUID()}`;
     const body = { kind: "generation", config: { model: "e2e-image", quality: "standard", size: "64x64" }, prompt: "blue image", source: "image-workbench", context: { clientRequestId } };
-    const headers = { "X-VOZEB-PRO-Client-Request-Id": clientRequestId };
+    const headers = { "X-OCTALAICANVAS-Client-Request-Id": clientRequestId };
     const created = await request.post("/api/image-tasks", { data: body, headers });
     expect(created.ok(), await created.text()).toBe(true);
     const firstTask = ((await created.json()) as { task: { id: string } }).task;
@@ -225,7 +225,7 @@ test("unified creative page reaches the local planning and image protocols", asy
 test("video request replay and cancellation keep one upstream task", async ({ request }) => {
     const clientRequestId = `e2e-video:${randomUUID()}`;
     const body = { config: { model: "e2e-video-slow", size: "16:9", vquality: "720", videoSeconds: 5 }, prompt: "slow video", source: "video-workbench", context: { clientRequestId } };
-    const headers = { "X-VOZEB-PRO-Client-Request-Id": clientRequestId };
+    const headers = { "X-OCTALAICANVAS-Client-Request-Id": clientRequestId };
     const created = await request.post("/api/video-generation-tasks", { data: body, headers });
     expect(created.ok(), await created.text()).toBe(true);
     const firstTask = ((await created.json()) as { task: { id: string } }).task;
@@ -245,7 +245,7 @@ test("legacy image and video routes hand off to the unified creative Agent", asy
     for (const route of ["/image", "/video"]) {
         await page.goto(route, { waitUntil: "domcontentloaded" });
         await expect(page).toHaveURL(/\/create$/);
-        await expect(page.getByRole("heading", { name: "VOZEB PRO 创作 Agent" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "OctalAICanvas 创作 Agent" })).toBeVisible();
         await expect(page.getByRole("button", { name: /生成模型：/ })).toBeVisible();
     }
 });
@@ -308,7 +308,7 @@ test("new Agent Skill is saved before leaving the administrator page", async ({ 
 });
 
 test("PostgreSQL payment flow verifies missing fields, rejects trade reuse, and refunds", async ({ request }) => {
-    test.skip(!process.env.VOZEB_PRO_E2E_DATABASE_URL, "需要专用 PostgreSQL E2E 数据库");
+    test.skip(!process.env.OCTALAICANVAS_E2E_DATABASE_URL, "需要专用 PostgreSQL E2E 数据库");
     const productResponse = await request.post("/api/admin/billing/products", {
         data: { productKind: "points", name: `E2E 积分包 ${randomUUID().slice(0, 8)}`, description: "E2E", amountCents: 100, currency: "CNY", pointsAmount: 100, enabled: true },
     });
@@ -346,5 +346,5 @@ async function createOrder(request: APIRequestContext, productId: string) {
 
 async function postSignedWebhook(request: APIRequestContext, rawBody: string) {
     const signature = createHmac("sha256", E2E_PAYMENT_WEBHOOK_SECRET).update(rawBody).digest("hex");
-    return request.post("/api/billing/webhooks/payply", { data: rawBody, headers: { "content-type": "application/json", "x-vozeb-pro-signature": signature } });
+    return request.post("/api/billing/webhooks/payply", { data: rawBody, headers: { "content-type": "application/json", "x-octalaicanvas-signature": signature } });
 }

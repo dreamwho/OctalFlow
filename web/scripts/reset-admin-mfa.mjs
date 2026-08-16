@@ -28,16 +28,16 @@ async function resetPostgresProvider() {
     await client.connect();
     try {
         if (args.listAdmins) {
-            listAdmins((await client.query("SELECT id, username, email, status, mfa_enabled_at FROM vozeb_pro_users WHERE role = 'admin' ORDER BY created_at ASC")).rows);
+            listAdmins((await client.query("SELECT id, username, email, status, mfa_enabled_at FROM octalaicanvas_users WHERE role = 'admin' ORDER BY created_at ASC")).rows);
             return;
         }
         const selector = adminSelector();
         await client.query("BEGIN");
-        const result = await client.query(`SELECT id, username, email, status, mfa_secret_ciphertext, mfa_enabled_at FROM vozeb_pro_users WHERE role = 'admin' AND ${selector.sql} FOR UPDATE`, selector.values);
+        const result = await client.query(`SELECT id, username, email, status, mfa_secret_ciphertext, mfa_enabled_at FROM octalaicanvas_users WHERE role = 'admin' AND ${selector.sql} FOR UPDATE`, selector.values);
         const user = exactAdmin(result.rows);
         if (!user.mfa_secret_ciphertext && !user.mfa_enabled_at) fail("指定管理员没有可重置的 MFA 设置。");
-        await client.query("UPDATE vozeb_pro_users SET mfa_secret_ciphertext = NULL, mfa_enabled_at = NULL, updated_at = now() WHERE id = $1", [user.id]);
-        await client.query("DELETE FROM vozeb_pro_sessions WHERE user_id = $1", [user.id]);
+        await client.query("UPDATE octalaicanvas_users SET mfa_secret_ciphertext = NULL, mfa_enabled_at = NULL, updated_at = now() WHERE id = $1", [user.id]);
+        await client.query("DELETE FROM octalaicanvas_sessions WHERE user_id = $1", [user.id]);
         await client.query("COMMIT");
         console.log(`管理员 MFA 已重置：${user.username}`);
         console.log("该管理员的登录会话已全部撤销，请使用账号密码重新登录并设置 MFA。");
@@ -50,7 +50,7 @@ async function resetPostgresProvider() {
 }
 
 async function resetFileProvider() {
-    const dataDir = path.resolve(args.dataDir || process.env.VOZEB_PRO_DATA_DIR || path.join(webRoot, ".data"));
+    const dataDir = path.resolve(args.dataDir || process.env.OCTALAICANVAS_DATA_DIR || path.join(webRoot, ".data"));
     const authFile = path.join(dataDir, "auth.json");
     const raw = await readFile(authFile, "utf8").catch(() => fail(`无法读取 ${authFile}，请确认数据目录是否正确。`));
     const db = parseAuthDb(raw, authFile);
@@ -158,18 +158,18 @@ function parseAuthDb(raw, authFile) {
 }
 
 function databaseProvider() {
-    return process.env.VOZEB_PRO_DATABASE_PROVIDER?.trim().toLowerCase() === "file" ? "file" : "postgres";
+    return process.env.OCTALAICANVAS_DATABASE_PROVIDER?.trim().toLowerCase() === "file" ? "file" : "postgres";
 }
 
 function postgresSslConfig() {
-    if (!["1", "true", "yes", "on"].includes(process.env.VOZEB_PRO_DATABASE_SSL?.trim().toLowerCase() || "")) return undefined;
-    const rejectUnauthorized = !["0", "false", "no", "off"].includes(process.env.VOZEB_PRO_DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() || "");
-    const ca = process.env.VOZEB_PRO_DATABASE_SSL_CA?.trim().replace(/\\n/g, "\n") || "";
+    if (!["1", "true", "yes", "on"].includes(process.env.OCTALAICANVAS_DATABASE_SSL?.trim().toLowerCase() || "")) return undefined;
+    const rejectUnauthorized = !["0", "false", "no", "off"].includes(process.env.OCTALAICANVAS_DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() || "");
+    const ca = process.env.OCTALAICANVAS_DATABASE_SSL_CA?.trim().replace(/\\n/g, "\n") || "";
     return { rejectUnauthorized, ...(ca ? { ca } : {}) };
 }
 
 function printHelp() {
-    console.log(`VOZEB PRO 管理员 MFA 恢复
+    console.log(`OctalAICanvas 管理员 MFA 恢复
 
 用法：
   pnpm reset:admin-mfa -- --username admin

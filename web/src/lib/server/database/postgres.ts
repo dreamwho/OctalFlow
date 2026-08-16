@@ -8,7 +8,7 @@ export type QueryExecutor = {
     query<T extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<T>>;
 };
 
-const POSTGRES_TABLE_PREFIX = "vozeb_pro_";
+const POSTGRES_TABLE_PREFIX = "octalaicanvas_";
 const POSTGRES_TABLES = [
     "schema_migrations",
     "app_settings",
@@ -244,13 +244,13 @@ const POSTGRES_RELATION_LITERAL_FUNCTIONS = new Set<string>(["currval", "nextval
 const POSTGRES_CATALOG_OBJECT_NAME_COLUMNS = new Set<string>(["conname", "indexname", "proname", "relname", "sequencename", "tgname"]);
 
 const globalForPostgres = globalThis as typeof globalThis & {
-    __vozebProPostgresPool?: Pool;
-    __vozebProPostgresSchemaReady?: Promise<void>;
-    __vozebProPostgresNotifications?: PostgresNotificationState;
+    __octalaicanvasProPostgresPool?: Pool;
+    __octalaicanvasProPostgresSchemaReady?: Promise<void>;
+    __octalaicanvasProPostgresNotifications?: PostgresNotificationState;
 };
 
 type PostgresNotificationListener = (payload: string) => void;
-const POSTGRES_SCHEMA_LOCK_KEY = "vozeb-pro:schema";
+const POSTGRES_SCHEMA_LOCK_KEY = "octalaicanvas:schema";
 type PostgresNotificationState = {
     client?: Client;
     connecting?: Promise<void>;
@@ -259,7 +259,7 @@ type PostgresNotificationState = {
 };
 
 export function getDatabaseProvider(): DatabaseProvider {
-    return process.env.VOZEB_PRO_DATABASE_PROVIDER?.trim().toLowerCase() === "file" ? "file" : "postgres";
+    return process.env.OCTALAICANVAS_DATABASE_PROVIDER?.trim().toLowerCase() === "file" ? "file" : "postgres";
 }
 
 export function isPostgresDatabaseEnabled() {
@@ -272,17 +272,17 @@ export function getPostgresConnectionString() {
 
 function getPostgresPool() {
     const connectionString = getPostgresConnectionString();
-    if (!connectionString) throw new Error("DATABASE_URL is required when VOZEB_PRO_DATABASE_PROVIDER=postgres");
+    if (!connectionString) throw new Error("DATABASE_URL is required when OCTALAICANVAS_DATABASE_PROVIDER=postgres");
 
-    if (!globalForPostgres.__vozebProPostgresPool) {
-        globalForPostgres.__vozebProPostgresPool = new Pool({
+    if (!globalForPostgres.__octalaicanvasProPostgresPool) {
+        globalForPostgres.__octalaicanvasProPostgresPool = new Pool({
             connectionString,
-            max: normalizePoolMax(process.env.VOZEB_PRO_DATABASE_POOL_MAX),
+            max: normalizePoolMax(process.env.OCTALAICANVAS_DATABASE_POOL_MAX),
             ssl: postgresSslConfig(),
         });
     }
 
-    return globalForPostgres.__vozebProPostgresPool;
+    return globalForPostgres.__octalaicanvasProPostgresPool;
 }
 
 export async function postgresQuery<T extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]) {
@@ -331,7 +331,7 @@ export async function withPostgresTransaction<T>(handler: (client: QueryExecutor
 
 export async function subscribePostgresNotification(channel: string, listener: PostgresNotificationListener) {
     const name = normalizeNotificationChannel(channel);
-    const state: PostgresNotificationState = globalForPostgres.__vozebProPostgresNotifications ?? (globalForPostgres.__vozebProPostgresNotifications = { listeners: new Map() });
+    const state: PostgresNotificationState = globalForPostgres.__octalaicanvasProPostgresNotifications ?? (globalForPostgres.__octalaicanvasProPostgresNotifications = { listeners: new Map() });
     const existing = state.listeners.get(name);
     const listeners = existing || new Set<PostgresNotificationListener>();
     listeners.add(listener);
@@ -383,27 +383,27 @@ function normalizeNotificationChannel(value: string) {
 }
 
 export async function ensurePostgresSchema() {
-    if (globalForPostgres.__vozebProPostgresSchemaReady) return globalForPostgres.__vozebProPostgresSchemaReady;
+    if (globalForPostgres.__octalaicanvasProPostgresSchemaReady) return globalForPostgres.__octalaicanvasProPostgresSchemaReady;
 
-    const result = await getPostgresPool().query<{ table_name: string | null }>("SELECT to_regclass('public.vozeb_pro_users')::text AS table_name");
+    const result = await getPostgresPool().query<{ table_name: string | null }>("SELECT to_regclass('public.octalaicanvas_users')::text AS table_name");
     if (!result.rows[0]?.table_name) throw new Error("PostgreSQL schema has not been initialized");
 
     return initializePostgresSchema();
 }
 
 export async function initializePostgresSchema() {
-    if (!globalForPostgres.__vozebProPostgresSchemaReady) {
-        globalForPostgres.__vozebProPostgresSchemaReady = withPostgresTransaction(async (client) => {
+    if (!globalForPostgres.__octalaicanvasProPostgresSchemaReady) {
+        globalForPostgres.__octalaicanvasProPostgresSchemaReady = withPostgresTransaction(async (client) => {
             await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [POSTGRES_SCHEMA_LOCK_KEY]);
             await client.query(POSTGRESQL_SCHEMA_SQL);
         })
             .then(() => undefined)
             .catch((error) => {
-                globalForPostgres.__vozebProPostgresSchemaReady = undefined;
+                globalForPostgres.__octalaicanvasProPostgresSchemaReady = undefined;
                 throw error;
             });
     }
-    return globalForPostgres.__vozebProPostgresSchemaReady;
+    return globalForPostgres.__octalaicanvasProPostgresSchemaReady;
 }
 
 function prefixPostgresSql(sql: string) {
@@ -581,8 +581,8 @@ function parseBoolean(value: string | undefined) {
 }
 
 function postgresSslConfig() {
-    if (!parseBoolean(process.env.VOZEB_PRO_DATABASE_SSL)) return undefined;
-    const rejectUnauthorized = !["0", "false", "no", "off"].includes(process.env.VOZEB_PRO_DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() || "");
-    const ca = process.env.VOZEB_PRO_DATABASE_SSL_CA?.trim().replace(/\\n/g, "\n") || "";
+    if (!parseBoolean(process.env.OCTALAICANVAS_DATABASE_SSL)) return undefined;
+    const rejectUnauthorized = !["0", "false", "no", "off"].includes(process.env.OCTALAICANVAS_DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase() || "");
+    const ca = process.env.OCTALAICANVAS_DATABASE_SSL_CA?.trim().replace(/\\n/g, "\n") || "";
     return { rejectUnauthorized, ...(ca ? { ca } : {}) };
 }

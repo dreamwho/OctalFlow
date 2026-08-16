@@ -28,27 +28,27 @@ try {
 
     const databaseUrl = process.env.DATABASE_URL?.trim() || "";
     if (!databaseUrl) throw new Error("完整灾难恢复仅支持配置 DATABASE_URL 的 PostgreSQL 部署");
-    const dataDir = path.resolve(process.env.VOZEB_PRO_DATA_DIR || path.join(process.cwd(), ".data"));
+    const dataDir = path.resolve(process.env.OCTALAICANVAS_DATA_DIR || path.join(process.cwd(), ".data"));
     const safetyDir = await ensureNewDirectory(options["safety-dir"] || path.join(path.dirname(recoveryPointDir), `pre-restore-${manifest.recoveryPointId}`));
     assertIndependentSafetyDirectory(safetyDir, dataDir, recoveryPointDir);
     const startedAt = new Date().toISOString();
 
     const safetyDatabasePath = path.join(safetyDir, "database-before-restore.dump");
-    await runPostgresTool(process.env.VOZEB_PRO_PG_DUMP_PATH || "pg_dump", ["--format=custom", "--compress=6", "--no-owner", "--no-privileges", "--file", safetyDatabasePath], databaseUrl);
+    await runPostgresTool(process.env.OCTALAICANVAS_PG_DUMP_PATH || "pg_dump", ["--format=custom", "--compress=6", "--no-owner", "--no-privileges", "--file", safetyDatabasePath], databaseUrl);
     for (const name of LOCAL_MEDIA_ROOTS) await copyDirectorySnapshot(path.join(dataDir, name), path.join(safetyDir, "local-media", name));
 
     const databaseDump = resolveWithin(recoveryPointDir, manifest.database.file);
     await runPostgresTool(
-        process.env.VOZEB_PRO_PG_RESTORE_PATH || "pg_restore",
+        process.env.OCTALAICANVAS_PG_RESTORE_PATH || "pg_restore",
         ["--clean", "--if-exists", "--no-owner", "--no-privileges", "--exit-on-error", "--single-transaction", "--dbname", postgresDatabaseName(databaseUrl), databaseDump],
         databaseUrl,
     );
     await restoreLocalMedia(recoveryPointDir, dataDir, manifest);
 
-    const objectStorageConfig = await loadDisasterObjectStorageConfig({ databaseUrl, dataDir, encryptionKey: process.env.VOZEB_PRO_ENCRYPTION_KEY });
+    const objectStorageConfig = await loadDisasterObjectStorageConfig({ databaseUrl, dataDir, encryptionKey: process.env.OCTALAICANVAS_ENCRYPTION_KEY });
     const objectStorage = await restoreObjectStorage(objectStorageConfig, manifest.objectStorage, recoveryPointDir);
     await writeJsonAtomic(path.join(safetyDir, "restore-report.json"), {
-        app: "VOZEB PRO",
+        app: "OctalAICanvas",
         recoveryPointId: manifest.recoveryPointId,
         startedAt,
         completedAt: new Date().toISOString(),
@@ -63,8 +63,8 @@ try {
 }
 
 async function restoreLocalMedia(recoveryPointDir, dataDir, manifest) {
-    const stagingDir = path.join(path.dirname(dataDir), `.vozeb-restore-${manifest.recoveryPointId}`);
-    const rollbackDir = path.join(path.dirname(dataDir), `.vozeb-restore-rollback-${manifest.recoveryPointId}`);
+    const stagingDir = path.join(path.dirname(dataDir), `.octalaicanvas-restore-${manifest.recoveryPointId}`);
+    const rollbackDir = path.join(path.dirname(dataDir), `.octalaicanvas-restore-rollback-${manifest.recoveryPointId}`);
     await rm(stagingDir, { recursive: true, force: true });
     await rm(rollbackDir, { recursive: true, force: true });
     await mkdir(stagingDir, { recursive: true });

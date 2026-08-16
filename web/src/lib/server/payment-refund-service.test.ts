@@ -76,8 +76,8 @@ describe("payment refunds", () => {
 
     it("creates a Stripe refund with a payment intent and idempotency key", async () => {
         mocks.runtimeConfig.valuesByEnvName = {
-            VOZEB_PRO_STRIPE_SECRET_KEY: "sk_test_secret",
-            VOZEB_PRO_STRIPE_API_BASE: "https://stripe.test",
+            OCTALAICANVAS_STRIPE_SECRET_KEY: "sk_test_secret",
+            OCTALAICANVAS_STRIPE_API_BASE: "https://stripe.test",
         };
         const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ id: "re_123", status: "succeeded" }));
         vi.stubGlobal("fetch", fetchMock);
@@ -91,7 +91,7 @@ describe("payment refunds", () => {
                 method: "POST",
                 headers: expect.objectContaining({
                     authorization: "Bearer sk_test_secret",
-                    "Idempotency-Key": "vozeb-pro-refund-order-one",
+                    "Idempotency-Key": "octalaicanvas-refund-order-one",
                 }),
             }),
         );
@@ -103,7 +103,7 @@ describe("payment refunds", () => {
     });
 
     it("uses a Stripe charge when that is the only refundable provider id", async () => {
-        mocks.runtimeConfig.valuesByEnvName = { VOZEB_PRO_STRIPE_SECRET_KEY: "sk_test_secret" };
+        mocks.runtimeConfig.valuesByEnvName = { OCTALAICANVAS_STRIPE_SECRET_KEY: "sk_test_secret" };
         const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ id: "re_456", status: "pending" }));
         vi.stubGlobal("fetch", fetchMock);
 
@@ -116,7 +116,7 @@ describe("payment refunds", () => {
     });
 
     it("surfaces Stripe provider errors without treating the order as refunded", async () => {
-        mocks.runtimeConfig.valuesByEnvName = { VOZEB_PRO_STRIPE_SECRET_KEY: "sk_test_secret" };
+        mocks.runtimeConfig.valuesByEnvName = { OCTALAICANVAS_STRIPE_SECRET_KEY: "sk_test_secret" };
         vi.stubGlobal(
             "fetch",
             vi.fn(async () => Response.json({ error: { message: "No such payment_intent" } }, { status: 404 })),
@@ -134,16 +134,16 @@ describe("payment refunds", () => {
     });
 
     it("blocks PayPly refunds until an automatic refund endpoint is configured", async () => {
-        mocks.runtimeConfig.valuesByEnvName = { VOZEB_PRO_PAYPLY_API_KEY: "payply-secret" };
+        mocks.runtimeConfig.valuesByEnvName = { OCTALAICANVAS_PAYPLY_API_KEY: "payply-secret" };
 
         await expect(refundPaymentTransaction({ ...order, provider: "payply" }, { ...payment, provider: "payply" })).rejects.toThrow("未配置自动退款接口");
     });
 
     it("creates an Alipay refund with signed gateway parameters", async () => {
         mocks.runtimeConfig.valuesByEnvName = {
-            VOZEB_PRO_ALIPAY_APP_ID: "2026000000000000",
-            VOZEB_PRO_ALIPAY_PRIVATE_KEY: testPrivateKey(),
-            VOZEB_PRO_ALIPAY_GATEWAY_URL: "https://alipay.test/gateway.do",
+            OCTALAICANVAS_ALIPAY_APP_ID: "2026000000000000",
+            OCTALAICANVAS_ALIPAY_PRIVATE_KEY: testPrivateKey(),
+            OCTALAICANVAS_ALIPAY_GATEWAY_URL: "https://alipay.test/gateway.do",
         };
         const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
             Response.json({
@@ -183,12 +183,12 @@ describe("payment refunds", () => {
         const platformKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
         const platformPublicKey = platformKeyPair.publicKey.export({ type: "spki", format: "pem" }).toString();
         mocks.runtimeConfig.valuesByEnvName = {
-            VOZEB_PRO_WECHAT_PAY_MCH_ID: "1900000001",
-            VOZEB_PRO_WECHAT_PAY_CERT_SERIAL_NO: "serial-no",
-            VOZEB_PRO_WECHAT_PAY_PRIVATE_KEY: testPrivateKey(),
-            VOZEB_PRO_WECHAT_PAY_PLATFORM_PUBLIC_KEY: platformPublicKey,
-            VOZEB_PRO_WECHAT_PAY_API_BASE: "https://wechat.test",
-            VOZEB_PRO_WECHAT_PAY_REFUND_NOTIFY_URL: "https://example.com/refund-notify",
+            OCTALAICANVAS_WECHAT_PAY_MCH_ID: "1900000001",
+            OCTALAICANVAS_WECHAT_PAY_CERT_SERIAL_NO: "serial-no",
+            OCTALAICANVAS_WECHAT_PAY_PRIVATE_KEY: testPrivateKey(),
+            OCTALAICANVAS_WECHAT_PAY_PLATFORM_PUBLIC_KEY: platformPublicKey,
+            OCTALAICANVAS_WECHAT_PAY_API_BASE: "https://wechat.test",
+            OCTALAICANVAS_WECHAT_PAY_REFUND_NOTIFY_URL: "https://example.com/refund-notify",
         };
         const responseBody = JSON.stringify({ refund_id: "5030001", status: "PROCESSING" });
         const responseTimestamp = "1785600000";
@@ -233,12 +233,12 @@ describe("payment refunds", () => {
 
     it("sends configurable PayPly refund requests and reads provider result fields", async () => {
         mocks.runtimeConfig.valuesByEnvName = {
-            VOZEB_PRO_PAYPLY_API_KEY: "payply-secret",
-            VOZEB_PRO_PAYPLY_REFUND_URL: "https://payply.test/refund",
-            VOZEB_PRO_PAYPLY_REFUND_REQUEST_TEMPLATE: '{"tradeId":"{{providerTradeId}}","amount":{{amountCents}}}',
-            VOZEB_PRO_PAYPLY_REFUND_STATUS_FIELD: "data.state",
-            VOZEB_PRO_PAYPLY_REFUND_ID_FIELD: "data.refundNo",
-            VOZEB_PRO_PAYPLY_REFUND_EXTRA_HEADERS: '{"x-refund":"1"}',
+            OCTALAICANVAS_PAYPLY_API_KEY: "payply-secret",
+            OCTALAICANVAS_PAYPLY_REFUND_URL: "https://payply.test/refund",
+            OCTALAICANVAS_PAYPLY_REFUND_REQUEST_TEMPLATE: '{"tradeId":"{{providerTradeId}}","amount":{{amountCents}}}',
+            OCTALAICANVAS_PAYPLY_REFUND_STATUS_FIELD: "data.state",
+            OCTALAICANVAS_PAYPLY_REFUND_ID_FIELD: "data.refundNo",
+            OCTALAICANVAS_PAYPLY_REFUND_EXTRA_HEADERS: '{"x-refund":"1"}',
         };
         const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ data: { state: "success", refundNo: "rf_001" } }));
         vi.stubGlobal("fetch", fetchMock);
@@ -252,7 +252,7 @@ describe("payment refunds", () => {
                 method: "POST",
                 headers: expect.objectContaining({
                     authorization: "Bearer payply-secret",
-                    "idempotency-key": "vozeb-pro-refund-order-one",
+                    "idempotency-key": "octalaicanvas-refund-order-one",
                     "x-api-key": "payply-secret",
                     "x-refund": "1",
                 }),

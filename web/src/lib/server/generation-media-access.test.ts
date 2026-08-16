@@ -8,7 +8,7 @@ import { generationMediaProxyHeaders } from "./generation-media-authorization";
 
 describe("generation media proxy access", () => {
     beforeEach(() => {
-        vi.stubEnv("VOZEB_PRO_ENCRYPTION_KEY", "test-encryption-key-that-is-at-least-32-characters");
+        vi.stubEnv("OCTALAICANVAS_ENCRYPTION_KEY", "test-encryption-key-that-is-at-least-32-characters");
         mocks.getRecord.mockReset().mockResolvedValue({ userId: "user", status: "running", payload: { config: { baseUrl: "/api/ai/system/channel", model: "vendor-video" } } });
     });
 

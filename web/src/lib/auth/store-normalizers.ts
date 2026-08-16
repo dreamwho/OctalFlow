@@ -480,7 +480,7 @@ export function normalizeSiteFriendLinks(settings: unknown, siteTitle = DEFAULT_
     return links
         .map((link, index) => {
             const value = link as Partial<SiteFriendLink>;
-            const defaultHomeLink = value.id === "vozeb-pro-home" && value.url?.replace(/\/$/, "") === "https://www.vozeb.com";
+            const defaultHomeLink = value.id === "octalaicanvas-home" && value.url?.replace(/\/$/, "") === "https://www.octalaicanvas.com";
             return {
                 id: normalizeText(value.id, `friend-${index + 1}`, 80),
                 label: normalizeText(defaultHomeLink && (!value.label || value.label === DEFAULT_SITE_SETTINGS.title) ? siteTitle : value.label, "友情链接", 32),
@@ -555,9 +555,9 @@ export function normalizeText(value: unknown, fallback: string, maxLength: numbe
 }
 
 export function repairKnownMojibakeText(value: string) {
-    if (value.includes("VOZEB PRO") && value.includes("AI") && !value.includes("绘图") && value.includes(",")) return DEFAULT_SITE_SETTINGS.seoKeywords;
-    if (value.includes("VOZEB PRO") && value.includes("AI") && !value.includes("工作台")) return DEFAULT_SITE_SETTINGS.seoDescription;
-    if (value.includes("2026 VOZEB PRO") && !value.startsWith("©")) return "© 2026 VOZEB PRO. All rights reserved.";
+    if (value.includes("OctalAICanvas") && value.includes("AI") && !value.includes("绘图") && value.includes(",")) return DEFAULT_SITE_SETTINGS.seoKeywords;
+    if (value.includes("OctalAICanvas") && value.includes("AI") && !value.includes("工作台")) return DEFAULT_SITE_SETTINGS.seoDescription;
+    if (value.includes("2026 OctalAICanvas") && !value.startsWith("©")) return "© 2026 OctalAICanvas. All rights reserved.";
     if (value.startsWith("QQ ") && !value.includes("邮箱")) return "QQ 邮箱";
     return repairUtf8MojibakeText(value);
 }

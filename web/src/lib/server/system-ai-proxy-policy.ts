@@ -25,7 +25,7 @@ export type SystemAiProxyAccess =
     | { allowed: true; capability: LogicalModelCapability; logicalModelId: string; operation: "query" | "cancel"; upstreamTaskId: string }
     | { allowed: false; status: 400 | 403 | 404 | 405; error: string };
 
-const TASK_PARAMETER = "__VOZEB_TASK_PARAMETER__";
+const TASK_PARAMETER = "__OctalAICanvas_TASK_PARAMETER__";
 
 export function authorizeSystemAiProxyRequest(input: ProxyPolicyInput): SystemAiProxyAccess {
     const method = input.method.toUpperCase();

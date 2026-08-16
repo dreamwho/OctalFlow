@@ -5,10 +5,10 @@ const MIN_TOKEN_LENGTH = 32;
 
 export function generationRuntimeEnvironment({ environment = process.env, allowEphemeralToken = false } = {}) {
     const source = { ...environment };
-    const maintenanceToken = source.VOZEB_PRO_MAINTENANCE_TOKEN?.trim() || "";
-    const workerToken = source.VOZEB_PRO_WORKER_TOKEN?.trim() || "";
+    const maintenanceToken = source.OCTALAICANVAS_MAINTENANCE_TOKEN?.trim() || "";
+    const workerToken = source.OCTALAICANVAS_WORKER_TOKEN?.trim() || "";
     if (!allowEphemeralToken && (maintenanceToken.length < MIN_TOKEN_LENGTH || workerToken.length < MIN_TOKEN_LENGTH || maintenanceToken === workerToken)) {
-        throw new Error("VOZEB_PRO_MAINTENANCE_TOKEN and VOZEB_PRO_WORKER_TOKEN must be distinct and contain at least 32 characters");
+        throw new Error("OCTALAICANVAS_MAINTENANCE_TOKEN and OCTALAICANVAS_WORKER_TOKEN must be distinct and contain at least 32 characters");
     }
 
     const port = validPort(source.PORT) || 3000;
@@ -18,16 +18,16 @@ export function generationRuntimeEnvironment({ environment = process.env, allowE
     return {
         environment: {
             ...source,
-            VOZEB_PRO_MAINTENANCE_TOKEN: resolvedMaintenanceToken,
-            VOZEB_PRO_WORKER_TOKEN: resolvedWorkerToken,
-            VOZEB_PRO_WORKER_API_ORIGIN: resolveGenerationWorkerOrigin({ environment: source, fallbackOrigin: `http://127.0.0.1:${port}` }),
+            OCTALAICANVAS_MAINTENANCE_TOKEN: resolvedMaintenanceToken,
+            OCTALAICANVAS_WORKER_TOKEN: resolvedWorkerToken,
+            OCTALAICANVAS_WORKER_API_ORIGIN: resolveGenerationWorkerOrigin({ environment: source, fallbackOrigin: `http://127.0.0.1:${port}` }),
         },
         ephemeralToken: maintenanceToken.length < MIN_TOKEN_LENGTH || workerToken.length < MIN_TOKEN_LENGTH || maintenanceToken === workerToken,
     };
 }
 
 export function resolveGenerationWorkerOrigin({ environment = process.env, fallbackOrigin = "http://127.0.0.1:3000" } = {}) {
-    const raw = environment.VOZEB_PRO_WORKER_API_ORIGIN?.trim() || environment.VOZEB_PRO_INTERNAL_ORIGIN?.trim() || environment.NEXT_PUBLIC_SITE_URL?.trim() || fallbackOrigin;
+    const raw = environment.OCTALAICANVAS_WORKER_API_ORIGIN?.trim() || environment.OCTALAICANVAS_INTERNAL_ORIGIN?.trim() || environment.NEXT_PUBLIC_SITE_URL?.trim() || fallbackOrigin;
     const value = /^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`;
     const url = new URL(value);
     if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Generation worker origin must use HTTP or HTTPS");

@@ -23,7 +23,7 @@ const INSTALL_TOKEN = "install-token-".padEnd(48, "x");
 describe("administrator user-management duties", () => {
     beforeEach(() => {
         memory.value = undefined;
-        vi.stubEnv("VOZEB_PRO_INSTALL_TOKEN", INSTALL_TOKEN);
+        vi.stubEnv("OCTALAICANVAS_INSTALL_TOKEN", INSTALL_TOKEN);
     });
 
     afterEach(() => vi.unstubAllEnvs());

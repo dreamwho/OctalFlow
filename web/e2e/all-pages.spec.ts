@@ -7,8 +7,8 @@ import { expectNoHorizontalOverflow, expectVisibleControlsWithinViewport } from 
 import { E2E_ADMIN } from "./support";
 
 const PROFILE_SECTIONS = ["overview", "profile", "billing", "coupons", "orders", "points", "consume", "referrals", "security"] as const;
-const BASE_URL = `http://127.0.0.1:${Number(process.env.VOZEB_PRO_E2E_PORT || 3100)}`;
-const USES_POSTGRES = Boolean(process.env.VOZEB_PRO_E2E_DATABASE_URL?.trim());
+const BASE_URL = `http://127.0.0.1:${Number(process.env.OCTALAICANVAS_E2E_PORT || 3100)}`;
+const USES_POSTGRES = Boolean(process.env.OCTALAICANVAS_E2E_DATABASE_URL?.trim());
 const FILE_PROVIDER_LIMITATIONS = new Map([
     ["/api/public/gallery", 409],
     ["/api/notifications/interactions", 409],
@@ -76,11 +76,11 @@ test("signed-out, legal, installation and invalid public detail routes fail safe
     const page = await context.newPage();
     try {
         const theme = testInfo.project.name === "mobile-430" ? "dark" : "light";
-        await page.addInitScript((nextTheme) => localStorage.setItem("vozeb-pro:theme_store", JSON.stringify({ state: { theme: nextTheme }, version: 0 })), theme);
+        await page.addInitScript((nextTheme) => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: nextTheme }, version: 0 })), theme);
         const routes: RouteCase[] = [
             { path: "/", readyHeading: "一个入口 完成所有 AI 创作" },
-            { path: "/login", readyHeading: "登录 VOZEB PRO" },
-            { path: "/register", readyHeading: "注册 VOZEB PRO" },
+            { path: "/login", readyHeading: "登录 OctalAICanvas" },
+            { path: "/register", readyHeading: "注册 OctalAICanvas" },
             { path: "/forgot-password", readyHeading: "重置密码" },
             { path: "/privacy", readyHeading: "隐私政策" },
             { path: "/terms", readyHeading: "服务条款" },
@@ -122,7 +122,7 @@ async function createPageFixtures(request: APIRequestContext, viewportWidth: num
 
 async function setTheme(page: Page, theme: "light" | "dark") {
     if (page.url() === "about:blank") await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.evaluate((nextTheme) => localStorage.setItem("vozeb-pro:theme_store", JSON.stringify({ state: { theme: nextTheme }, version: 0 })), theme);
+    await page.evaluate((nextTheme) => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: nextTheme }, version: 0 })), theme);
 }
 
 async function verifyRoute(page: Page, route: RouteCase, label: string) {

@@ -107,8 +107,8 @@ function addressBlockListContains(address: string, version: number, ipv4: BlockL
 }
 
 function privateUpstreamHostAllowed(hostname: string) {
-    if (process.env.VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS !== "1") return false;
-    return (process.env.VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS || "").split(",").map(normalizeHostname).filter(Boolean).includes(hostname);
+    if (process.env.OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS !== "1") return false;
+    return (process.env.OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS || "").split(",").map(normalizeHostname).filter(Boolean).includes(hostname);
 }
 
 function isBlockedHostname(hostname: string) {

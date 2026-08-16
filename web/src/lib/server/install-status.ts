@@ -28,7 +28,7 @@ export type InstallStatus = {
 const READY_CACHE_TTL_MS = 15_000;
 const UNHEALTHY_CACHE_TTL_MS = 2_000;
 const globalForInstallStatus = globalThis as typeof globalThis & {
-    __vozebProInstallStatusCache?: {
+    __octalaicanvasProInstallStatusCache?: {
         key: string;
         value?: InstallStatus;
         expiresAt: number;
@@ -41,27 +41,27 @@ export async function getInstallStatus(): Promise<InstallStatus> {
     const encryption = getEncryptionKeyStatus();
     const key = `${provider}:${provider === "postgres" ? getPostgresConnectionString() : ""}:${encryption.ready}`;
     const now = Date.now();
-    const cached = globalForInstallStatus.__vozebProInstallStatusCache;
+    const cached = globalForInstallStatus.__octalaicanvasProInstallStatusCache;
     if (cached?.key === key) {
         if (cached.value && cached.expiresAt > now) return cached.value;
         if (cached.pending) return cached.pending;
     }
 
     const pending = loadInstallStatus(provider, encryption);
-    globalForInstallStatus.__vozebProInstallStatusCache = { key, expiresAt: 0, pending };
+    globalForInstallStatus.__octalaicanvasProInstallStatusCache = { key, expiresAt: 0, pending };
     try {
         const value = await pending;
         const ttl = value.firstAdminRequired ? 0 : value.ready ? READY_CACHE_TTL_MS : UNHEALTHY_CACHE_TTL_MS;
-        globalForInstallStatus.__vozebProInstallStatusCache = { key, value: ttl ? value : undefined, expiresAt: ttl ? Date.now() + ttl : 0 };
+        globalForInstallStatus.__octalaicanvasProInstallStatusCache = { key, value: ttl ? value : undefined, expiresAt: ttl ? Date.now() + ttl : 0 };
         return value;
     } catch (error) {
-        globalForInstallStatus.__vozebProInstallStatusCache = undefined;
+        globalForInstallStatus.__octalaicanvasProInstallStatusCache = undefined;
         throw error;
     }
 }
 
 export function invalidateInstallStatusCache() {
-    globalForInstallStatus.__vozebProInstallStatusCache = undefined;
+    globalForInstallStatus.__octalaicanvasProInstallStatusCache = undefined;
 }
 
 async function loadInstallStatus(provider: "file" | "postgres", encryption = getEncryptionKeyStatus()): Promise<InstallStatus> {
@@ -194,7 +194,7 @@ export async function initializeInstallDatabase(installToken: unknown) {
         if (error instanceof InstallTokenError) throw new InstallInitializationError(error.message, error.status);
         throw error;
     }
-    if (!getEncryptionKeyStatus().ready) throw new InstallInitializationError("请先配置有效的 VOZEB_PRO_ENCRYPTION_KEY", 400);
+    if (!getEncryptionKeyStatus().ready) throw new InstallInitializationError("请先配置有效的 OCTALAICANVAS_ENCRYPTION_KEY", 400);
     try {
         await initializePostgresSchema();
     } catch (error) {

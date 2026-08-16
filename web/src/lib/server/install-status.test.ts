@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     provider: "postgres" as "file" | "postgres",
-    connectionString: "postgres://vozeb:test@localhost:5432/vozeb",
+    connectionString: "postgres://octalaicanvas:test@localhost:5432/octalaicanvas",
     ensurePostgresSchema: vi.fn(),
     initializePostgresSchema: vi.fn(),
     postgresQuery: vi.fn(),
@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth/store", () => ({
-    DEFAULT_SITE_SETTINGS: { title: "VOZEB PRO", logoUrl: "/logo.svg" },
+    DEFAULT_SITE_SETTINGS: { title: "OctalAICanvas", logoUrl: "/logo.svg" },
     getPublicUserSummary: mocks.getPublicUserSummary,
 }));
 
@@ -31,10 +31,10 @@ import { getInstallStatus, initializeInstallDatabase, InstallInitializationError
 
 describe("install status cache", () => {
     beforeEach(() => {
-        vi.stubEnv("VOZEB_PRO_INSTALL_TOKEN", "install-token-".padEnd(48, "x"));
+        vi.stubEnv("OCTALAICANVAS_INSTALL_TOKEN", "install-token-".padEnd(48, "x"));
         invalidateInstallStatusCache();
         mocks.provider = "postgres";
-        mocks.connectionString = "postgres://vozeb:test@localhost:5432/vozeb";
+        mocks.connectionString = "postgres://octalaicanvas:test@localhost:5432/octalaicanvas";
         mocks.ensurePostgresSchema.mockReset().mockResolvedValue(undefined);
         mocks.initializePostgresSchema.mockReset().mockResolvedValue(undefined);
         mocks.postgresQuery.mockReset();
@@ -89,7 +89,7 @@ describe("install status cache", () => {
     it("runs schema DDL only through the explicit initializer", async () => {
         mockHealthySchema(["0"]);
 
-        await expect(initializeInstallDatabase(process.env.VOZEB_PRO_INSTALL_TOKEN)).resolves.toMatchObject({ firstAdminRequired: true, database: { schemaReady: true } });
+        await expect(initializeInstallDatabase(process.env.OCTALAICANVAS_INSTALL_TOKEN)).resolves.toMatchObject({ firstAdminRequired: true, database: { schemaReady: true } });
 
         expect(mocks.initializePostgresSchema).toHaveBeenCalledTimes(1);
         expect(mocks.ensurePostgresSchema).not.toHaveBeenCalled();
@@ -106,14 +106,14 @@ describe("install status cache", () => {
             return { rows: [{ total: "0" }] };
         });
 
-        await expect(initializeInstallDatabase(process.env.VOZEB_PRO_INSTALL_TOKEN)).resolves.toMatchObject({ firstAdminRequired: true, database: { schemaReady: true } });
+        await expect(initializeInstallDatabase(process.env.OCTALAICANVAS_INSTALL_TOKEN)).resolves.toMatchObject({ firstAdminRequired: true, database: { schemaReady: true } });
         expect(mocks.initializePostgresSchema).toHaveBeenCalledTimes(1);
     });
 
     it("rejects repeated initialization after the first user exists", async () => {
         mockHealthySchema(["1"]);
 
-        await expect(initializeInstallDatabase(process.env.VOZEB_PRO_INSTALL_TOKEN)).rejects.toEqual(
+        await expect(initializeInstallDatabase(process.env.OCTALAICANVAS_INSTALL_TOKEN)).rejects.toEqual(
             expect.objectContaining<Partial<InstallInitializationError>>({
                 message: "项目已完成安装，禁止重复初始化数据库",
                 status: 409,

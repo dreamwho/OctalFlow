@@ -77,7 +77,7 @@ describe("agent skill import refiner", () => {
     it("rejects model output that still contains provider setup instructions and refunds free usage", async () => {
         mocks.requestStructuredText.mockResolvedValue({
             arguments: JSON.stringify({ ...refined, instructions: "运行 scripts/generate.py 并配置 API_KEY=https://provider.example，然后生成商品图。" }),
-            headers: new Headers({ "x-vozeb-pro-points-cost": "0", "x-vozeb-pro-points-record-id": "record-1" }),
+            headers: new Headers({ "x-octalaicanvas-points-cost": "0", "x-octalaicanvas-points-record-id": "record-1" }),
             protocol: "chat",
             elapsedMs: 10,
         });

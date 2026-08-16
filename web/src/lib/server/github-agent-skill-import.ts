@@ -211,7 +211,7 @@ async function githubText(url: string, maxLength: number): Promise<string> {
     let response: Response;
     try {
         response = await fetchSafeOutbound(url, {
-            headers: { Accept: "application/vnd.github+json", "User-Agent": "VOZEB-PRO-agent-skill-import" },
+            headers: { Accept: "application/vnd.github+json", "User-Agent": "OCTALAICANVAS-agent-skill-import" },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             redirect: "error",
             cache: "no-store",

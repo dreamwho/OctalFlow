@@ -22,7 +22,7 @@ describe("GET /api/admin/object-storage/files", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.getCurrentUser.mockResolvedValue({ id: "admin", role: "admin", status: "active", adminPermissions: ["system.manage"] });
-        mocks.listExternalStorageFiles.mockResolvedValue({ items: [{ key: "media/image.webp", ownerUserId: "user-one" }], bucket: "media", prefix: "vozeb-pro/" });
+        mocks.listExternalStorageFiles.mockResolvedValue({ items: [{ key: "media/image.webp", ownerUserId: "user-one" }], bucket: "media", prefix: "octalaicanvas/" });
         mocks.getPublicUsersByIds.mockResolvedValue([{ id: "user-one", accountId: "0001", username: "creator", displayName: "创作者" }]);
         mocks.deleteExternalStorageFiles.mockResolvedValue({ deleted: 1, blocked: [] });
     });

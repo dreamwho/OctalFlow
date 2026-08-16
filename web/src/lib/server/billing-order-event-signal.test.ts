@@ -18,7 +18,7 @@ describe("billing order event signal", () => {
         const listener = vi.fn();
         const unsubscribe = await subscribeBillingOrderEvent(" order-one ", listener);
 
-        expect(mocks.subscribe).toHaveBeenCalledWith("vozeb_pro_billing_order_events", expect.any(Function));
+        expect(mocks.subscribe).toHaveBeenCalledWith("octalaicanvas_billing_order_events", expect.any(Function));
         mocks.notify?.("order-two");
         expect(listener).not.toHaveBeenCalled();
         mocks.notify?.(" order-one ");

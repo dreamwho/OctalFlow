@@ -24,7 +24,7 @@ function mediaAliases(value?: string) {
     if (!normalized) return [];
     if (!normalized.startsWith("/") && !/^https?:\/\//i.test(normalized)) return [normalized];
     try {
-        const parsed = new URL(normalized, "http://vozeb.local");
+        const parsed = new URL(normalized, "http://octalaicanvas.local");
         const source = parsed.searchParams.get("url")?.trim();
         return source && /^https?:\/\//i.test(source) ? [normalized, source] : [normalized];
     } catch {

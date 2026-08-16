@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 async function renderDrama(task: DramaRenderTask, shots: NormalizedDramaRenderShot[], sizeValue: string, origin: string, cookie: string) {
     const running = await transitionDramaRenderTask(task, ["pending"], { status: "running" });
     if (!running) return;
-    const workdir = await mkdtemp(join(tmpdir(), "vozeb-pro-drama-"));
+    const workdir = await mkdtemp(join(tmpdir(), "octalaicanvas-drama-"));
     const heartbeat = setInterval(() => {
         void touchDramaRenderTask(task.id);
     }, 60_000);

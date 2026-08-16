@@ -106,7 +106,7 @@ describe("video creation protocols over a live fixture", () => {
         expect(fixture.requests.map((request) => request.path)).toEqual(["/custom/videos", "/custom/results/" + upstream.id]);
     });
 
-    it("uses the VOZEB recommended JSON contract and reads metadata.url", async () => {
+    it("uses the OctalAICanvas recommended JSON contract and reads metadata.url", async () => {
         const fixture = createProtocolFixtureServer();
         await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));
         const address = fixture.server.address();
@@ -120,10 +120,10 @@ describe("video creation protocols over a live fixture", () => {
             apiFormat: "openai" as const,
             model: "Seedance 2.0-fast-720p",
             logicalModel: "video",
-            channelId: "vozeb-video",
+            channelId: "octalaicanvas-video",
             advancedConfig: {
                 ...emptyAdvancedConfig(),
-                protocol: "vozeb-recommended" as const,
+                protocol: "octalaicanvas-recommended" as const,
                 createPath: "/v1/videos/generations",
                 imageToVideoPath: "/v1/videos/generations",
                 queryPath: "/v1/videos/generations/:task_id",
@@ -147,7 +147,7 @@ describe("video creation protocols over a live fixture", () => {
             { videoSeconds: 5, size: "16:9", vquality: "720", videoGenerateAudio: true },
             [{ type: "image", url: referenceUrl }],
             { imageQuality: {}, videoQuality: { "720": 1 }, videoSeconds: { "5": 1 } },
-            "vozeb-video-request-live",
+            "octalaicanvas-video-request-live",
         );
 
         expect(upstream).toMatchObject({ model: config.model, pollPath: "/v1/videos/generations" });

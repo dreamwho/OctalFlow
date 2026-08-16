@@ -29,17 +29,17 @@ describe("database deployment config", () => {
         expect(snippets.composeText).toContain("network_mode: host");
         expect(snippets.composeText).not.toContain("postgres:\n");
         expect(snippets.composeText).not.toContain("ports:");
-        expect(snippets.composeText).toContain(`VOZEB_PRO_ENCRYPTION_KEY: "${baseConfig.encryptionKey}"`);
-        expect(snippets.envText).toContain(`VOZEB_PRO_INSTALL_TOKEN=${baseConfig.installToken}`);
-        expect(snippets.composeText.match(/VOZEB_PRO_INSTALL_TOKEN:/g)).toHaveLength(1);
-        expect(snippets.envText).toContain(`VOZEB_PRO_MAINTENANCE_TOKEN=${baseConfig.maintenanceToken}`);
-        expect(snippets.envText).toContain(`VOZEB_PRO_WORKER_TOKEN=${baseConfig.workerToken}`);
-        expect(snippets.composeText.match(/VOZEB_PRO_MAINTENANCE_TOKEN:/g)).toHaveLength(1);
-        expect(snippets.composeText.match(/VOZEB_PRO_WORKER_TOKEN:/g)).toHaveLength(2);
+        expect(snippets.composeText).toContain(`OCTALAICANVAS_ENCRYPTION_KEY: "${baseConfig.encryptionKey}"`);
+        expect(snippets.envText).toContain(`OCTALAICANVAS_INSTALL_TOKEN=${baseConfig.installToken}`);
+        expect(snippets.composeText.match(/OCTALAICANVAS_INSTALL_TOKEN:/g)).toHaveLength(1);
+        expect(snippets.envText).toContain(`OCTALAICANVAS_MAINTENANCE_TOKEN=${baseConfig.maintenanceToken}`);
+        expect(snippets.envText).toContain(`OCTALAICANVAS_WORKER_TOKEN=${baseConfig.workerToken}`);
+        expect(snippets.composeText.match(/OCTALAICANVAS_MAINTENANCE_TOKEN:/g)).toHaveLength(1);
+        expect(snippets.composeText.match(/OCTALAICANVAS_WORKER_TOKEN:/g)).toHaveLength(2);
         expect(snippets.composeText).toContain("generation-worker:");
-        expect(snippets.composeText).toContain("VOZEB_PRO_WORKER_API_ORIGIN: http://127.0.0.1:3000");
-        expect(snippets.envText).toContain("VOZEB_PRO_TRUSTED_PROXY_HOPS=1");
-        expect(snippets.composeText).toContain('VOZEB_PRO_TRUSTED_PROXY_HOPS: "1"');
+        expect(snippets.composeText).toContain("OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:3000");
+        expect(snippets.envText).toContain("OCTALAICANVAS_TRUSTED_PROXY_HOPS=1");
+        expect(snippets.composeText).toContain('OCTALAICANVAS_TRUSTED_PROXY_HOPS: "1"');
     });
 
     it.each([
@@ -49,11 +49,11 @@ describe("database deployment config", () => {
     ])("does not inject Baota proxy defaults into $mode mode", ({ mode, host, ssl }) => {
         const snippets = buildDeploymentSnippets({ ...baseConfig, mode, host, ssl });
 
-        expect(snippets.envText).not.toContain("VOZEB_PRO_TRUSTED_PROXY_HOPS");
-        expect(snippets.composeText).not.toContain("VOZEB_PRO_TRUSTED_PROXY_HOPS");
+        expect(snippets.envText).not.toContain("OCTALAICANVAS_TRUSTED_PROXY_HOPS");
+        expect(snippets.composeText).not.toContain("OCTALAICANVAS_TRUSTED_PROXY_HOPS");
         expect(snippets.composeText).toContain("generation-worker:");
-        expect(snippets.composeText.match(/VOZEB_PRO_MAINTENANCE_TOKEN:/g)).toHaveLength(1);
-        expect(snippets.composeText.match(/VOZEB_PRO_WORKER_TOKEN:/g)).toHaveLength(2);
+        expect(snippets.composeText.match(/OCTALAICANVAS_MAINTENANCE_TOKEN:/g)).toHaveLength(1);
+        expect(snippets.composeText.match(/OCTALAICANVAS_WORKER_TOKEN:/g)).toHaveLength(2);
     });
 
     it("uses the Compose service name for the bundled Worker origin", () => {
@@ -61,7 +61,7 @@ describe("database deployment config", () => {
 
         expect(snippets.envText).toContain(`POSTGRES_PASSWORD=${baseConfig.password}`);
         expect(snippets.envText).not.toContain("DATABASE_URL=");
-        expect(snippets.composeText).toContain("VOZEB_PRO_WORKER_API_ORIGIN: http://app:3000");
+        expect(snippets.composeText).toContain("OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000");
         expect(snippets.composeText).toContain('command: ["node", "/app/web/scripts/generation-worker.mjs"]');
         expect(snippets.composeText).toContain("condition: service_healthy");
     });
@@ -75,11 +75,11 @@ describe("database deployment config", () => {
 
         expect(Object.keys(document.services)).toContain("app");
         expect(Object.keys(document.services)).toContain("generation-worker");
-        expect(document.services.app.environment.VOZEB_PRO_MAINTENANCE_TOKEN).toBe(baseConfig.maintenanceToken);
-        expect(document.services.app.environment.VOZEB_PRO_WORKER_TOKEN).toBe(baseConfig.workerToken);
-        expect(document.services.app.environment.VOZEB_PRO_INSTALL_TOKEN).toBe(baseConfig.installToken);
-        expect(document.services["generation-worker"].environment.VOZEB_PRO_WORKER_TOKEN).toBe(baseConfig.workerToken);
-        expect(document.services["generation-worker"].environment.VOZEB_PRO_MAINTENANCE_TOKEN).toBeUndefined();
-        expect(document.services["generation-worker"].environment.VOZEB_PRO_INSTALL_TOKEN).toBeUndefined();
+        expect(document.services.app.environment.OCTALAICANVAS_MAINTENANCE_TOKEN).toBe(baseConfig.maintenanceToken);
+        expect(document.services.app.environment.OCTALAICANVAS_WORKER_TOKEN).toBe(baseConfig.workerToken);
+        expect(document.services.app.environment.OCTALAICANVAS_INSTALL_TOKEN).toBe(baseConfig.installToken);
+        expect(document.services["generation-worker"].environment.OCTALAICANVAS_WORKER_TOKEN).toBe(baseConfig.workerToken);
+        expect(document.services["generation-worker"].environment.OCTALAICANVAS_MAINTENANCE_TOKEN).toBeUndefined();
+        expect(document.services["generation-worker"].environment.OCTALAICANVAS_INSTALL_TOKEN).toBeUndefined();
     });
 });

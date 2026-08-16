@@ -9,7 +9,7 @@ const internalDispatcher = new Agent({
 });
 
 export function resolveInternalOrigin(publicOrigin: string) {
-    const configured = normalizeOrigin(process.env.VOZEB_PRO_INTERNAL_ORIGIN || "");
+    const configured = normalizeOrigin(process.env.OCTALAICANVAS_INTERNAL_ORIGIN || "");
     if (configured) return configured;
 
     const publicUrl = parseOrigin(publicOrigin);

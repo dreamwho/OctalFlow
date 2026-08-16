@@ -641,16 +641,16 @@ function responseHeaders(headers: Headers, pointsResult?: Awaited<ReturnType<typ
         const value = headers.get(key);
         if (value) nextHeaders.set(key, value);
     });
-    if (upstreamUrl) nextHeaders.set("x-vozeb-pro-upstream-url", upstreamUrl);
+    if (upstreamUrl) nextHeaders.set("x-octalaicanvas-upstream-url", upstreamUrl);
     if (pointsResult) {
-        nextHeaders.set("x-vozeb-pro-points-cost", String(pointsResult.cost));
-        nextHeaders.set("x-vozeb-pro-points-remaining", String(pointsResult.remaining));
-        nextHeaders.set("x-vozeb-pro-points-permanent", String(pointsResult.permanentRemaining));
-        nextHeaders.set("x-vozeb-pro-points-daily", String(pointsResult.dailyRemaining));
-        nextHeaders.set("x-vozeb-pro-points-daily-expires-at", pointsResult.dailyExpiresAt);
-        if (pointsResult.recordId) nextHeaders.set("x-vozeb-pro-points-record-id", pointsResult.recordId);
+        nextHeaders.set("x-octalaicanvas-points-cost", String(pointsResult.cost));
+        nextHeaders.set("x-octalaicanvas-points-remaining", String(pointsResult.remaining));
+        nextHeaders.set("x-octalaicanvas-points-permanent", String(pointsResult.permanentRemaining));
+        nextHeaders.set("x-octalaicanvas-points-daily", String(pointsResult.dailyRemaining));
+        nextHeaders.set("x-octalaicanvas-points-daily-expires-at", pointsResult.dailyExpiresAt);
+        if (pointsResult.recordId) nextHeaders.set("x-octalaicanvas-points-record-id", pointsResult.recordId);
     } else if (typeof refundedPointsRemaining === "number") {
-        nextHeaders.set("x-vozeb-pro-points-remaining", String(refundedPointsRemaining));
+        nextHeaders.set("x-octalaicanvas-points-remaining", String(refundedPointsRemaining));
     }
     return nextHeaders;
 }

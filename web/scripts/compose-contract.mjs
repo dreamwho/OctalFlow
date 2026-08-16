@@ -4,11 +4,11 @@ import path from "node:path";
 import { parse } from "yaml";
 
 export const composeProfiles = [
-    { file: "docker-compose.yml", embeddedPostgres: true, image: "${VOZEB_PRO_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://app:3000" },
-    { file: "docker-compose.local.yml", embeddedPostgres: true, image: "vozeb-pro:local", workerOrigin: "http://app:3000" },
-    { file: "docker-compose.baota.yml", embeddedPostgres: false, hostNetwork: true, image: "${VOZEB_PRO_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://127.0.0.1:3000" },
-    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${VOZEB_PRO_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://app:3000" },
-    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${VOZEB_PRO_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://app:3000" },
+    { file: "docker-compose.yml", embeddedPostgres: true, image: "${OCTALAICANVAS_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://app:3000" },
+    { file: "docker-compose.local.yml", embeddedPostgres: true, image: "octalaicanvas:local", workerOrigin: "http://app:3000" },
+    { file: "docker-compose.baota.yml", embeddedPostgres: false, hostNetwork: true, image: "${OCTALAICANVAS_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://127.0.0.1:3000" },
+    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${OCTALAICANVAS_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://app:3000" },
+    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${OCTALAICANVAS_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://app:3000" },
 ];
 
 export const docsComposeProfiles = [
@@ -16,9 +16,9 @@ export const docsComposeProfiles = [
     { file: "docs/docker-compose.local.yml", build: { context: "..", dockerfile: "docs/Dockerfile" } },
 ];
 
-const maintenanceToken = "${VOZEB_PRO_MAINTENANCE_TOKEN:?请在 .env 中配置至少 32 位维护令牌}";
-const workerToken = "${VOZEB_PRO_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}";
-const installToken = "${VOZEB_PRO_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}";
+const maintenanceToken = "${OCTALAICANVAS_MAINTENANCE_TOKEN:?请在 .env 中配置至少 32 位维护令牌}";
+const workerToken = "${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}";
+const installToken = "${OCTALAICANVAS_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}";
 
 export function validateComposeContracts({ repoRoot }) {
     return composeProfiles.map((profile) => {
@@ -79,19 +79,19 @@ export function validateComposeContract(source, profile) {
     ensure(JSON.stringify(worker.command) === JSON.stringify(["node", "/app/web/scripts/generation-worker.mjs"]), "Worker 启动命令不正确");
     ensure(app.env_file?.includes(".env"), "app 必须读取 .env");
     ensure(!worker.env_file, "generation-worker 不得读取包含安装令牌和业务密钥的 .env");
-    ensure(appEnvironment.VOZEB_PRO_INSTALL_TOKEN === installToken, "app 未声明强制一次性安装令牌");
-    ensure(!("VOZEB_PRO_INSTALL_TOKEN" in workerEnvironment), "generation-worker 不得获得一次性安装令牌");
-    ensure(appEnvironment.VOZEB_PRO_MAINTENANCE_TOKEN === maintenanceToken, "app 未声明强制维护令牌");
-    ensure(appEnvironment.VOZEB_PRO_WORKER_TOKEN === workerToken, "app 未声明强制 Worker 令牌");
-    ensure(workerEnvironment.VOZEB_PRO_WORKER_TOKEN === workerToken, "generation-worker 未声明同一强制 Worker 令牌");
-    ensure(!("VOZEB_PRO_MAINTENANCE_TOKEN" in workerEnvironment), "generation-worker 不得获得外部维护令牌");
-    ensure(workerEnvironment.VOZEB_PRO_WORKER_API_ORIGIN === profile.workerOrigin, `Worker API 地址必须为 ${profile.workerOrigin}`);
-    ensure(appEnvironment.VOZEB_PRO_DATABASE_PROVIDER === "postgres", "app 必须使用 PostgreSQL provider");
+    ensure(appEnvironment.OCTALAICANVAS_INSTALL_TOKEN === installToken, "app 未声明强制一次性安装令牌");
+    ensure(!("OCTALAICANVAS_INSTALL_TOKEN" in workerEnvironment), "generation-worker 不得获得一次性安装令牌");
+    ensure(appEnvironment.OCTALAICANVAS_MAINTENANCE_TOKEN === maintenanceToken, "app 未声明强制维护令牌");
+    ensure(appEnvironment.OCTALAICANVAS_WORKER_TOKEN === workerToken, "app 未声明强制 Worker 令牌");
+    ensure(workerEnvironment.OCTALAICANVAS_WORKER_TOKEN === workerToken, "generation-worker 未声明同一强制 Worker 令牌");
+    ensure(!("OCTALAICANVAS_MAINTENANCE_TOKEN" in workerEnvironment), "generation-worker 不得获得外部维护令牌");
+    ensure(workerEnvironment.OCTALAICANVAS_WORKER_API_ORIGIN === profile.workerOrigin, `Worker API 地址必须为 ${profile.workerOrigin}`);
+    ensure(appEnvironment.OCTALAICANVAS_DATABASE_PROVIDER === "postgres", "app 必须使用 PostgreSQL provider");
     ensure(typeof appEnvironment.DATABASE_URL === "string", "app 缺少 DATABASE_URL");
     ensure(!("DATABASE_URL" in workerEnvironment), "generation-worker 不应直接持有数据库连接串");
-    ensure(!("VOZEB_PRO_DATABASE_PROVIDER" in workerEnvironment), "generation-worker 不应直接访问数据库 provider");
-    ensure(app.volumes?.includes("vozeb-pro-data:/app/web/.data"), "app 缺少持久数据卷挂载");
-    ensure(Object.hasOwn(compose?.volumes || {}, "vozeb-pro-data"), "缺少 vozeb-pro-data 顶层数据卷");
+    ensure(!("OCTALAICANVAS_DATABASE_PROVIDER" in workerEnvironment), "generation-worker 不应直接访问数据库 provider");
+    ensure(app.volumes?.includes("octalaicanvas-data:/app/web/.data"), "app 缺少持久数据卷挂载");
+    ensure(Object.hasOwn(compose?.volumes || {}, "octalaicanvas-data"), "缺少 octalaicanvas-data 顶层数据卷");
     ensure(
         app.healthcheck?.test?.some((value) => String(value).includes("/api/health/live")),
         "app 健康检查必须调用 /api/health/live",
@@ -101,20 +101,20 @@ export function validateComposeContract(source, profile) {
     if (profile.embeddedPostgres) {
         ensure(Boolean(services.postgres), "默认或本地拓扑必须包含 PostgreSQL 服务");
         ensure(String(appEnvironment.DATABASE_URL || "").includes("@postgres:5432/"), "内置 PostgreSQL 拓扑必须连接 postgres 服务");
-        ensure(Object.hasOwn(compose?.volumes || {}, "vozeb-pro-postgres"), "内置 PostgreSQL 拓扑缺少数据库数据卷");
+        ensure(Object.hasOwn(compose?.volumes || {}, "octalaicanvas-postgres"), "内置 PostgreSQL 拓扑缺少数据库数据卷");
     } else {
         ensure(!services.postgres, "外部数据库拓扑不得内置 PostgreSQL 服务");
         ensure(String(appEnvironment.DATABASE_URL || "").startsWith("${DATABASE_URL:?"), "外部数据库拓扑必须显式要求 DATABASE_URL");
-        ensure(!Object.hasOwn(compose?.volumes || {}, "vozeb-pro-postgres"), "外部数据库拓扑不得声明无用的 PostgreSQL 数据卷");
+        ensure(!Object.hasOwn(compose?.volumes || {}, "octalaicanvas-postgres"), "外部数据库拓扑不得声明无用的 PostgreSQL 数据卷");
     }
 
     if (profile.hostNetwork) {
         ensure(app.network_mode === "host", "宝塔 app 必须使用 host 网络");
         ensure(worker.network_mode === "host", "宝塔 generation-worker 必须使用 host 网络");
-        ensure("VOZEB_PRO_TRUSTED_PROXY_HOPS" in appEnvironment, "宝塔拓扑缺少反向代理层数配置");
+        ensure("OCTALAICANVAS_TRUSTED_PROXY_HOPS" in appEnvironment, "宝塔拓扑缺少反向代理层数配置");
     } else {
         ensure(!app.network_mode && !worker.network_mode, "宝塔专用 host 网络不得泄漏到其他拓扑");
-        ensure(!("VOZEB_PRO_TRUSTED_PROXY_HOPS" in appEnvironment), "宝塔专用反向代理默认值不得泄漏到其他拓扑");
+        ensure(!("OCTALAICANVAS_TRUSTED_PROXY_HOPS" in appEnvironment), "宝塔专用反向代理默认值不得泄漏到其他拓扑");
     }
 
     if (violations.length > 0) throw new Error(`${profile.file} Compose 契约失败：\n- ${violations.join("\n- ")}`);

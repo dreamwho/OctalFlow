@@ -19,7 +19,7 @@ describe("installation page routing", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.getPublicSiteSettings.mockResolvedValue({
-            title: "VOZEB PRO",
+            title: "OctalAICanvas",
             logoUrl: "/logo.svg",
             seoDescription: "",
             footerCopyright: "",

@@ -14,9 +14,9 @@ const source = readFileSync(path.join(repoRoot, "render.yaml"), "utf8");
 describe("Render Blueprint contract", () => {
     it("keeps the Web, Worker, database, separated secrets, health check and disk topology aligned", () => {
         expect(validateRenderBlueprint({ repoRoot })).toEqual({
-            services: ["vozeb-pro", "vozeb-pro-generation-worker"],
-            database: "vozeb-pro-postgres",
-            environmentGroup: "vozeb-pro-runtime",
+            services: ["octalaicanvas", "octalaicanvas-generation-worker"],
+            database: "octalaicanvas-postgres",
+            environmentGroup: "octalaicanvas-runtime",
         });
     });
 
@@ -31,7 +31,7 @@ describe("Render Blueprint contract", () => {
     });
 
     it("rejects exposing the one-time install token to the Worker", () => {
-        const unsafe = source.replace("      - key: NODE_OPTIONS\n        value: --max-old-space-size=128", "      - key: VOZEB_PRO_INSTALL_TOKEN\n        generateValue: true\n      - key: NODE_OPTIONS\n        value: --max-old-space-size=128");
+        const unsafe = source.replace("      - key: NODE_OPTIONS\n        value: --max-old-space-size=128", "      - key: OCTALAICANVAS_INSTALL_TOKEN\n        generateValue: true\n      - key: NODE_OPTIONS\n        value: --max-old-space-size=128");
 
         expect(() => validateSource(unsafe)).toThrow("Render Worker 不得获得一次性安装令牌");
     });

@@ -11,7 +11,7 @@ import { inferModelCapability, normalizeModelId } from "@/lib/model-capability";
 import { materializeLogicalModelPointCosts } from "@/lib/model-point-cost";
 
 type ApiCallFormat = "openai" | "gemini";
-type SystemChannelProtocol = "auto" | "openai" | "yumeng" | "gemini" | "sub2api" | "newapi" | "vozeb-recommended" | "globalaiopc" | "seedance" | "stable-diffusion" | "volcengine-video" | "seedance-special" | "custom" | "compatible";
+type SystemChannelProtocol = "auto" | "openai" | "yumeng" | "gemini" | "sub2api" | "newapi" | "octalaicanvas-recommended" | "globalaiopc" | "seedance" | "stable-diffusion" | "volcengine-video" | "seedance-special" | "custom" | "compatible";
 
 type SystemChannelAdvancedConfig = {
     protocol: SystemChannelProtocol;
@@ -304,7 +304,7 @@ export const useConfigStore = create<ConfigStore>()((set) => ({
     updateConfig: (key, value) => set((state) => ({ config: enforceSystemClientConfig({ ...state.config, [key]: value }) })),
     isAiConfigReady: (config, model) => isAiConfigReady(config, model),
     openConfigDialog: (shouldPromptContinue = false) => {
-        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("vozeb-pro-system-config-missing", { detail: { shouldPromptContinue } }));
+        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("octalaicanvas-system-config-missing", { detail: { shouldPromptContinue } }));
         set({ isConfigOpen: false, shouldPromptContinue: false });
     },
     setConfigDialogOpen: (isOpen) => set({ isConfigOpen: isOpen, shouldPromptContinue: false }),

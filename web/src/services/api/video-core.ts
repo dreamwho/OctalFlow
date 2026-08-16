@@ -151,8 +151,8 @@ export async function createServerVideoGenerationTask(
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            ...(options?.clientRequestId ? { "X-VOZEB-PRO-Client-Request-Id": options.clientRequestId } : {}),
-            ...(options?.attemptNo ? { "X-VOZEB-PRO-Attempt-No": String(options.attemptNo) } : {}),
+            ...(options?.clientRequestId ? { "X-OCTALAICANVAS-Client-Request-Id": options.clientRequestId } : {}),
+            ...(options?.attemptNo ? { "X-OCTALAICANVAS-Attempt-No": String(options.attemptNo) } : {}),
         },
         body: JSON.stringify({
             config: {
@@ -199,7 +199,7 @@ export async function publishReferenceMedia(type: "image" | "video" | "audio", d
     if (!dataUrl) throw new Error("参考素材读取失败，请重新上传");
     const response = await fetch("/api/reference-assets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, dataUrl, persistent }) });
     const payload = (await response.json().catch(() => ({}))) as { upstreamUrl?: string; error?: string };
-    if (!response.ok || !payload.upstreamUrl) throw new Error(payload.error || "站内参考素材签名不可用，请配置 VOZEB_PRO_ENCRYPTION_KEY");
+    if (!response.ok || !payload.upstreamUrl) throw new Error(payload.error || "站内参考素材签名不可用，请配置 OCTALAICANVAS_ENCRYPTION_KEY");
     return payload.upstreamUrl;
 }
 

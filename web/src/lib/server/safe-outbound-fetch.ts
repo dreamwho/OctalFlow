@@ -12,8 +12,8 @@ const DISPATCHER_TTL_MS = 5 * 60_000;
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const CROSS_ORIGIN_REDIRECT_HEADERS = new Set(["accept", "accept-encoding", "accept-language", "content-language", "content-type", "range"]);
-const globalCache = globalThis as typeof globalThis & { __vozebProSafeOutboundDispatchers?: Map<string, CachedDispatcher> };
-const dispatchers = (globalCache.__vozebProSafeOutboundDispatchers ??= new Map<string, CachedDispatcher>());
+const globalCache = globalThis as typeof globalThis & { __octalaicanvasProSafeOutboundDispatchers?: Map<string, CachedDispatcher> };
+const dispatchers = (globalCache.__octalaicanvasProSafeOutboundDispatchers ??= new Map<string, CachedDispatcher>());
 
 export class UnsafeOutboundUrlError extends Error {
     constructor(message = "出站地址不允许访问") {

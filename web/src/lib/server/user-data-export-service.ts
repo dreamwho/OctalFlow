@@ -32,7 +32,7 @@ export async function buildUserDataExport(userId: string) {
     if (!account) throw new Error("Personal data export user does not exist");
 
     return {
-        format: "vozeb-pro-personal-data",
+        format: "octalaicanvas-personal-data",
         version: 1,
         exportedAt: new Date().toISOString(),
         account,
@@ -72,7 +72,7 @@ export async function createUserDataExportStream(userId: string) {
     return new ReadableStream<Uint8Array>({
         async start(controller) {
             try {
-                controller.enqueue(encoder.encode(`{"format":"vozeb-pro-personal-data","version":1,"exportedAt":${JSON.stringify(exportedAt)},"account":${JSON.stringify(account)}`));
+                controller.enqueue(encoder.encode(`{"format":"octalaicanvas-personal-data","version":1,"exportedAt":${JSON.stringify(exportedAt)},"account":${JSON.stringify(account)}`));
                 for (const [name, load] of sections) controller.enqueue(encoder.encode(`,${JSON.stringify(name)}:${JSON.stringify(await load())}`));
                 controller.enqueue(encoder.encode(`,"exclusions":${JSON.stringify(EXPORT_EXCLUSIONS)}}`));
                 controller.close();

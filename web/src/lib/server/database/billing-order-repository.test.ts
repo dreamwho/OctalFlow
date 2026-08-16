@@ -160,7 +160,7 @@ describe("BillingOrderRepository.expirePendingOrders", () => {
         expect(String(sql)).toContain("released_coupons AS");
         expect(String(sql)).toContain("coupon.locked_order_id = orders.id");
         expect(String(sql)).toContain("CASE WHEN coupon.expires_at <= $1 THEN 'expired' ELSE 'available' END");
-        expect(String(sql)).toContain("pg_notify('vozeb_pro_billing_order_events', closed_orders.id)");
+        expect(String(sql)).toContain("pg_notify('octalaicanvas_billing_order_events', closed_orders.id)");
         expect(params).toEqual(["2026-07-26T00:00:00.000Z", 100, null, "订单超时自动关闭", "expiration-job"]);
     });
 });
@@ -175,7 +175,7 @@ describe("BillingOrderRepository.updateOrder", () => {
         const [sql, rawParams] = query.mock.calls[0] || [];
         const params = rawParams as unknown[] | undefined;
         expect(String(sql)).toContain("WITH updated_order AS");
-        expect(String(sql)).toContain("CASE WHEN $7::text IS NOT NULL THEN pg_notify('vozeb_pro_billing_order_events', updated_order.id)");
+        expect(String(sql)).toContain("CASE WHEN $7::text IS NOT NULL THEN pg_notify('octalaicanvas_billing_order_events', updated_order.id)");
         expect(params?.[0]).toBe("order-one");
         expect(params?.[6]).toBe("paid");
     });

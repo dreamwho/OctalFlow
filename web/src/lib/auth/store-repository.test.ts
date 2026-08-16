@@ -5,14 +5,14 @@ import { POSTGRESQL_SCHEMA_SQL } from "@/lib/server/database/schema";
 import { encryptSecretValue } from "@/lib/server/secret-crypto";
 import { mapPostgresSettings, mutateAuthDb, readAuthDb, readPostgresAnnouncementsPage, readPostgresAuthSettings, readPostgresCdkListData, upsertPostgresSystemChannels } from "./store-repository";
 
-const originalEncryptionKey = process.env.VOZEB_PRO_ENCRYPTION_KEY;
-const originalDatabaseProvider = process.env.VOZEB_PRO_DATABASE_PROVIDER;
+const originalEncryptionKey = process.env.OCTALAICANVAS_ENCRYPTION_KEY;
+const originalDatabaseProvider = process.env.OCTALAICANVAS_DATABASE_PROVIDER;
 
 afterEach(() => {
-    if (originalEncryptionKey === undefined) delete process.env.VOZEB_PRO_ENCRYPTION_KEY;
-    else process.env.VOZEB_PRO_ENCRYPTION_KEY = originalEncryptionKey;
-    if (originalDatabaseProvider === undefined) delete process.env.VOZEB_PRO_DATABASE_PROVIDER;
-    else process.env.VOZEB_PRO_DATABASE_PROVIDER = originalDatabaseProvider;
+    if (originalEncryptionKey === undefined) delete process.env.OCTALAICANVAS_ENCRYPTION_KEY;
+    else process.env.OCTALAICANVAS_ENCRYPTION_KEY = originalEncryptionKey;
+    if (originalDatabaseProvider === undefined) delete process.env.OCTALAICANVAS_DATABASE_PROVIDER;
+    else process.env.OCTALAICANVAS_DATABASE_PROVIDER = originalDatabaseProvider;
 });
 
 function mockExecutor(rows: Record<string, unknown>[][]) {
@@ -22,13 +22,13 @@ function mockExecutor(rows: Record<string, unknown>[][]) {
 
 describe("PostgreSQL auth read paths", () => {
     it("rejects full-database auth mutations for PostgreSQL", async () => {
-        process.env.VOZEB_PRO_DATABASE_PROVIDER = "postgres";
+        process.env.OCTALAICANVAS_DATABASE_PROVIDER = "postgres";
 
         await expect(mutateAuthDb(() => undefined)).rejects.toThrow("PostgreSQL auth mutations must use entity repositories");
     });
 
     it("rejects full-database auth reads outside the backup transaction", async () => {
-        process.env.VOZEB_PRO_DATABASE_PROVIDER = "postgres";
+        process.env.OCTALAICANVAS_DATABASE_PROVIDER = "postgres";
 
         await expect(readAuthDb()).rejects.toThrow("PostgreSQL auth reads must use entity repositories");
     });
@@ -77,7 +77,7 @@ describe("PostgreSQL auth read paths", () => {
     });
 
     it("decrypts system channel API keys and webhook secrets on the settings fast path", async () => {
-        process.env.VOZEB_PRO_ENCRYPTION_KEY = "31".repeat(32);
+        process.env.OCTALAICANVAS_ENCRYPTION_KEY = "31".repeat(32);
         const encryptedApiKey = encryptSecretValue("provider-secret");
         const encryptedWebhookSecret = encryptSecretValue("0123456789abcdef0123456789abcdef");
         const { executor } = mockExecutor([
@@ -89,9 +89,9 @@ describe("PostgreSQL auth read paths", () => {
         const settings = await readPostgresAuthSettings(executor);
 
         expect(settings.systemChannels[0].apiKey).toBe("provider-secret");
-        expect(settings.systemChannels[0].apiKey).not.toContain("vozeb-pro-secret:v1:");
+        expect(settings.systemChannels[0].apiKey).not.toContain("octalaicanvas-secret:v1:");
         expect(settings.systemChannels[0].webhookSecret).toBe("0123456789abcdef0123456789abcdef");
-        expect(settings.systemChannels[0].webhookSecret).not.toContain("vozeb-pro-secret:v1:");
+        expect(settings.systemChannels[0].webhookSecret).not.toContain("octalaicanvas-secret:v1:");
     });
 
     it("persists channel configuration without validation records", async () => {

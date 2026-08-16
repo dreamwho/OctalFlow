@@ -26,14 +26,14 @@ vi.mock("@/lib/server/security", () => ({
     checkAuthRateLimit: mocks.checkAuthRateLimit,
     getClientIp: vi.fn(() => "203.0.113.8"),
 }));
-vi.mock("@/lib/server/referral-service", () => ({ REFERRAL_COOKIE_NAME: "vozeb_referral" }));
+vi.mock("@/lib/server/referral-service", () => ({ REFERRAL_COOKIE_NAME: "octalaicanvas_referral" }));
 
 import { POST } from "./route";
 
 function registerRequest(cookie = "COOKIE88") {
     return new NextRequest("http://localhost/api/auth/register", {
         method: "POST",
-        headers: { cookie: `vozeb_referral=${cookie}` },
+        headers: { cookie: `octalaicanvas_referral=${cookie}` },
     });
 }
 

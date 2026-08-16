@@ -20,7 +20,7 @@ import { maxDuration, POST } from "./route";
 describe("POST /api/maintenance/generation-tasks/run", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://vozeb.example");
+        vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://octalaicanvas.example");
         mocks.configured.mockReturnValue(true);
         mocks.authorized.mockReturnValue(true);
         mocks.recover.mockResolvedValue({ claimed: 0 });
@@ -50,7 +50,7 @@ describe("POST /api/maintenance/generation-tasks/run", () => {
         const response = await POST(request("worker-one"));
 
         expect(response.status).toBe(200);
-        expect(mocks.recover).toHaveBeenCalledWith({ origin: "http://internal:3000", publicOrigin: "https://vozeb.example", limit: 50, workerId: "worker-one" });
+        expect(mocks.recover).toHaveBeenCalledWith({ origin: "http://internal:3000", publicOrigin: "https://octalaicanvas.example", limit: 50, workerId: "worker-one" });
         expect(await response.json()).toMatchObject({ code: 0, data: { claimed: 2 } });
     });
 
@@ -70,7 +70,7 @@ function request(workerId = "") {
         method: "POST",
         headers: {
             authorization: "Bearer test-token",
-            ...(workerId ? { "x-vozeb-pro-worker-id": workerId } : {}),
+            ...(workerId ? { "x-octalaicanvas-worker-id": workerId } : {}),
         },
     });
 }

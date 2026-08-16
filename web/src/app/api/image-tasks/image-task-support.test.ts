@@ -36,8 +36,8 @@ describe("GlobalAiOpc image task paths", () => {
 
     it("preserves maintenance authorization for the internal system proxy", () => {
         const token = "m".repeat(32);
-        vi.stubEnv("VOZEB_PRO_MAINTENANCE_TOKEN", `${token}-maintenance`);
-        vi.stubEnv("VOZEB_PRO_WORKER_TOKEN", token);
+        vi.stubEnv("OCTALAICANVAS_MAINTENANCE_TOKEN", `${token}-maintenance`);
+        vi.stubEnv("OCTALAICANVAS_WORKER_TOKEN", token);
         const headers = taskHeaders(
             {
                 baseUrl: "/api/ai/system/channel-one",
@@ -51,8 +51,8 @@ describe("GlobalAiOpc image task paths", () => {
         );
 
         expect(headers.get("authorization")).toBe(`Bearer ${token}`);
-        expect(headers.get("x-vozeb-pro-worker-user-id")).toBe("user-one");
-        expect(headers.get("x-vozeb-pro-logical-model")).toBe("image-logical");
+        expect(headers.get("x-octalaicanvas-worker-user-id")).toBe("user-one");
+        expect(headers.get("x-octalaicanvas-logical-model")).toBe("image-logical");
     });
 
     it("upscales small exact dimensions for the provider instead of rejecting the task", () => {

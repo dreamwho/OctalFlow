@@ -272,7 +272,7 @@ describe("GlobalAiOpc native text proxy", () => {
         const createRequest = () =>
             new Request("http://localhost/api/ai/system/channel-one/chat/completions", {
                 method: "POST",
-                headers: { "content-type": "application/json", "x-vozeb-pro-logical-model": "writer", "x-vozeb-pro-points-idempotency-key": "forged-client-key" },
+                headers: { "content-type": "application/json", "x-octalaicanvas-logical-model": "writer", "x-octalaicanvas-points-idempotency-key": "forged-client-key" },
                 body: JSON.stringify({ model: "vendor-text", messages: [{ role: "user", content: "hello" }] }),
             });
 
@@ -471,8 +471,8 @@ describe("Stable Diffusion proxy", () => {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
-                    "x-vozeb-pro-logical-model": "image-local",
-                    "x-vozeb-pro-upstream-model": "sdxl",
+                    "x-octalaicanvas-logical-model": "image-local",
+                    "x-octalaicanvas-upstream-model": "sdxl",
                 },
                 body: JSON.stringify({ prompt: "test", width: 1024, height: 1024 }),
             }),
@@ -485,7 +485,7 @@ describe("Stable Diffusion proxy", () => {
     });
 });
 
-describe("VOZEB recommended video proxy", () => {
+describe("OctalAICanvas recommended video proxy", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
@@ -494,7 +494,7 @@ describe("VOZEB recommended video proxy", () => {
         mocks.taskAccess.mockReset().mockResolvedValue(true);
         mocks.getAuthSettings.mockResolvedValue({
             generationPointMultipliers: {},
-            logicalModels: [logicalModel("vozeb-video", "video", "Seedance 2.0-fast-720p")],
+            logicalModels: [logicalModel("octalaicanvas-video", "video", "Seedance 2.0-fast-720p")],
             systemChannels: [
                 {
                     id: "channel-one",
@@ -504,14 +504,14 @@ describe("VOZEB recommended video proxy", () => {
                     apiFormat: "openai",
                     models: ["Seedance 2.0-fast-720p"],
                     advancedConfig: {
-                        protocol: "vozeb-recommended",
+                        protocol: "octalaicanvas-recommended",
                         createPath: "/v1/videos/generations",
                         imageToVideoPath: "/v1/videos/generations",
                         queryPath: "/v1/videos/generations/:task_id",
                         modelConfigs: {
                             "seedance 2.0-fast-720p": {
                                 capability: "video",
-                                protocol: "vozeb-recommended",
+                                protocol: "octalaicanvas-recommended",
                                 createPath: "/v1/videos/generations",
                                 queryPath: "/v1/videos/generations/:task_id",
                             },
@@ -527,7 +527,7 @@ describe("VOZEB recommended video proxy", () => {
             .spyOn(globalThis, "fetch")
             .mockResolvedValueOnce(Response.json({ id: "video-one", task_id: "video-one", status: "queued" }))
             .mockResolvedValueOnce(Response.json({ id: "video-one", status: "completed", metadata: { url: "https://new.aiym.ink/v1/video-media/video-one.mp4" } }));
-        const headers = { "content-type": "application/json", ...systemModelHeaders("vozeb-video", "Seedance 2.0-fast-720p") };
+        const headers = { "content-type": "application/json", ...systemModelHeaders("octalaicanvas-video", "Seedance 2.0-fast-720p") };
         const createResponse = await POST(
             new Request("http://localhost/api/ai/system/channel-one/v1/videos/generations", {
                 method: "POST",
@@ -746,8 +746,8 @@ describe("custom protocol model routing", () => {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
-                    "x-vozeb-pro-logical-model": "image-tool",
-                    "x-vozeb-pro-upstream-model": "engine-one",
+                    "x-octalaicanvas-logical-model": "image-tool",
+                    "x-octalaicanvas-upstream-model": "engine-one",
                 },
                 body: JSON.stringify({ engine: "engine-one", prompt: "test" }),
             }),
@@ -825,7 +825,7 @@ function logicalModel(id: string, capability: "text" | "image" | "video" | "audi
 }
 
 function systemModelHeaders(logicalModelId: string, upstreamModel: string) {
-    return { "x-vozeb-pro-logical-model": logicalModelId, "x-vozeb-pro-upstream-model": upstreamModel };
+    return { "x-octalaicanvas-logical-model": logicalModelId, "x-octalaicanvas-upstream-model": upstreamModel };
 }
 
 function pngBytes() {

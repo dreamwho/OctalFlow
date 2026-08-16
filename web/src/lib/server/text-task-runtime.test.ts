@@ -50,15 +50,15 @@ describe("text task runtime recovery", () => {
 
     it("preserves maintenance authorization for the internal system proxy", () => {
         const token = "m".repeat(32);
-        vi.stubEnv("VOZEB_PRO_MAINTENANCE_TOKEN", `${token}-maintenance`);
-        vi.stubEnv("VOZEB_PRO_WORKER_TOKEN", token);
+        vi.stubEnv("OCTALAICANVAS_MAINTENANCE_TOKEN", `${token}-maintenance`);
+        vi.stubEnv("OCTALAICANVAS_WORKER_TOKEN", token);
 
         const headers = taskHeaders({ ...openAiConfig("channel-one", "/api/ai/system/channel-one"), apiKey: "system" }, maintenanceWorkerContext("user-one"), "text-task:test:attempt:1");
 
         expect(headers.get("authorization")).toBe(`Bearer ${token}`);
-        expect(headers.get("x-vozeb-pro-worker-user-id")).toBe("user-one");
-        expect(headers.get("x-vozeb-pro-logical-model")).toBe("text-model");
-        expect(headers.get("x-vozeb-pro-points-idempotency-key")).toBe("text-task:test:attempt:1");
+        expect(headers.get("x-octalaicanvas-worker-user-id")).toBe("user-one");
+        expect(headers.get("x-octalaicanvas-logical-model")).toBe("text-model");
+        expect(headers.get("x-octalaicanvas-points-idempotency-key")).toBe("text-task:test:attempt:1");
     });
 
     it("completes through a live OpenAI-compatible fixture", async () => {
@@ -184,7 +184,7 @@ describe("text task runtime recovery", () => {
     });
 
     it("refunds a zero-point recorded charge when the upstream task fails", async () => {
-        const headers = { "x-vozeb-pro-points-cost": "0", "x-vozeb-pro-points-record-id": "record-zero" };
+        const headers = { "x-octalaicanvas-points-cost": "0", "x-octalaicanvas-points-record-id": "record-zero" };
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(Response.json({ task_id: "upstream-zero", status: "queued" }, { headers }))

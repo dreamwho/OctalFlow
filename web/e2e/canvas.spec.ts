@@ -193,12 +193,12 @@ test("canvas video first and last frame roles persist and retry from the output 
     const submitted: Array<{ prompt: string; references: Array<{ type: string; role: string; url: string }>; clientRequestId: string }> = [];
 
     await page.addInitScript(() => {
-        if (!localStorage.getItem("vozeb-pro:theme_store")) localStorage.setItem("vozeb-pro:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+        if (!localStorage.getItem("octalaicanvas:theme_store")) localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
     });
     await page.route("**/api/video-generation-tasks", async (route) => {
         if (route.request().method() !== "POST") return route.continue();
         const body = route.request().postDataJSON() as { prompt: string; references: Array<{ type: string; role: string; url: string }>; config?: { model?: string } };
-        submitted.push({ prompt: body.prompt, references: body.references, clientRequestId: route.request().headers()["x-vozeb-pro-client-request-id"] || "" });
+        submitted.push({ prompt: body.prompt, references: body.references, clientRequestId: route.request().headers()["x-octalaicanvas-client-request-id"] || "" });
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ task: { id: `canvas-video-task-${submitted.length}`, model: body.config?.model || "video-v1", durationSeconds: 5 } }) });
     });
     await page.route("**/api/video-tasks/**", async (route) => {
@@ -253,7 +253,7 @@ test("canvas video first and last frame roles persist and retry from the output 
         }
 
         await page.setViewportSize({ width: 1280, height: 900 });
-        await page.evaluate(() => localStorage.setItem("vozeb-pro:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
+        await page.evaluate(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
         await page.reload({ waitUntil: "domcontentloaded" });
         await expect(page.locator("html")).toHaveClass(/dark/);
         settingsTrigger = page.locator('[data-node-id="video-config"]').getByRole("button", { name: /^视频设置：首尾帧/ });
@@ -410,7 +410,7 @@ test("canvas Agent toolbar stays ordered and its generation settings fit narrow 
     const project = await createCanvasProject(request, { title: `Canvas 参数布局 ${randomUUID().slice(0, 8)}`, nodes: [], connections: [] });
 
     try {
-        await page.addInitScript(() => localStorage.setItem("vozeb-pro:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 })));
+        await page.addInitScript(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 })));
 
         for (const width of [390, 430]) {
             await page.setViewportSize({ width, height: width === 390 ? 844 : 932 });
@@ -793,7 +793,7 @@ test("canvas restores all nine node types and opens text editing on a single cli
     };
 
     try {
-        await page.addInitScript(() => localStorage.setItem("vozeb-pro:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 })));
+        await page.addInitScript(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 })));
         await page.goto(`/canvas/${project.id}`, { waitUntil: "domcontentloaded" });
         await expect(page.locator("[data-canvas-surface]")).toBeVisible({ timeout: 20_000 });
         await expect.poll(async () => readCanvasViewport(request, `/api/canvas/projects/${project.id}`)).toEqual({ x: 90, y: 80, k: 0.75 });
@@ -827,7 +827,7 @@ test("canvas Agent attachment remove badge stays compact and theme readable", as
     const project = await createCanvasProject(request, { title: `Canvas 删除角标 ${randomUUID().slice(0, 8)}`, nodes: [], connections: [] });
 
     try {
-        await page.addInitScript(() => localStorage.setItem("vozeb-pro:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 })));
+        await page.addInitScript(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 })));
         await page.goto(`/canvas/${project.id}`, { waitUntil: "domcontentloaded" });
         const panel = page.getByRole("complementary", { name: "Canvas Agent 对话面板" });
         await expect(panel).toBeVisible({ timeout: 20_000 });

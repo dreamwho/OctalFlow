@@ -4,10 +4,10 @@ export type { AdminPermission } from "@/lib/admin-permissions";
 import type { AdminPermission } from "@/lib/admin-permissions";
 import type { GlobalAiOpcPresetId } from "@/lib/globalaiopc-catalog";
 import type { RegistrationPolicyConsent } from "@/lib/registration-consent";
-import { VOZEB_QQ_GROUP_URL } from "@/constant/community";
+import { OctalAICanvas_QQ_GROUP_URL } from "@/constant/community";
 
 export type ApiCallFormat = "openai" | "gemini";
-export type SystemChannelProtocol = "auto" | "openai" | "yumeng" | "gemini" | "sub2api" | "newapi" | "vozeb-recommended" | "globalaiopc" | "seedance" | "stable-diffusion" | "volcengine-video" | "seedance-special" | "custom" | "compatible";
+export type SystemChannelProtocol = "auto" | "openai" | "yumeng" | "gemini" | "sub2api" | "newapi" | "octalaicanvas-recommended" | "globalaiopc" | "seedance" | "stable-diffusion" | "volcengine-video" | "seedance-special" | "custom" | "compatible";
 export type SystemChannelAuthMode = "none" | "bearer" | "x-api-key" | "custom-header";
 
 export type SystemChannelModelConfig = {
@@ -326,8 +326,8 @@ export const DEFAULT_SITE_SOCIALS: SiteSocialSettings = {
 };
 
 export const DEFAULT_SITE_FRIEND_LINKS: SiteFriendLink[] = [
-    { id: "vozeb-pro-home", label: "VOZEB PRO", url: "https://www.vozeb.com/", enabled: true },
-    { id: "qq-vozeb-open-source", label: "VOZEB 开源交流 QQ 群", url: VOZEB_QQ_GROUP_URL, enabled: true },
+    { id: "octalaicanvas-home", label: "OctalAICanvas", url: "https://www.octalaicanvas.com/", enabled: true },
+    { id: "qq-octalaicanvas-open-source", label: "OctalAICanvas 开源交流 QQ 群", url: OctalAICanvas_QQ_GROUP_URL, enabled: true },
     { id: "linux-do", label: "Linux.do", url: "https://linux.do/", enabled: true },
 ];
 

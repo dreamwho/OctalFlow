@@ -4,7 +4,7 @@ import { hasSystemAiCharge, readSystemAiBilling, readVerifiedSystemAiBusinessReq
 
 describe("system AI billing helpers", () => {
     it("preserves a zero-cost consumption record so its quota can be refunded", () => {
-        const billing = readSystemAiBilling(new Headers({ "x-vozeb-pro-points-cost": "0", "x-vozeb-pro-points-record-id": "points-free-text" }));
+        const billing = readSystemAiBilling(new Headers({ "x-octalaicanvas-points-cost": "0", "x-octalaicanvas-points-record-id": "points-free-text" }));
 
         expect(billing).toEqual({ pointsCost: 0, pointsRecordId: "points-free-text" });
         expect(hasSystemAiCharge(billing)).toBe(true);
@@ -17,12 +17,12 @@ describe("system AI billing helpers", () => {
 
         expect(first).toBe(second);
         expect(first).toMatch(/^workbench-plan:[a-f0-9]{32}$/);
-        expect(headers.get("x-vozeb-pro-logical-model")).toBe("planner");
-        expect(headers.get("x-vozeb-pro-points-idempotency-key")).toBe(first);
-        expect(headers.get("x-vozeb-pro-points-signature")).toMatch(/^[A-Za-z0-9_-]+$/);
+        expect(headers.get("x-octalaicanvas-logical-model")).toBe("planner");
+        expect(headers.get("x-octalaicanvas-points-idempotency-key")).toBe(first);
+        expect(headers.get("x-octalaicanvas-points-signature")).toMatch(/^[A-Za-z0-9_-]+$/);
         expect(readVerifiedSystemAiBusinessRequestId(headers, "planner", "vendor-text")).toBe(first);
 
-        headers.set("x-vozeb-pro-points-idempotency-key", `${first}:forged`);
+        headers.set("x-octalaicanvas-points-idempotency-key", `${first}:forged`);
         expect(readVerifiedSystemAiBusinessRequestId(headers, "planner", "vendor-text")).toBeUndefined();
     });
 

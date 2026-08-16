@@ -11,8 +11,8 @@ import { fetchSafeOutbound, UnsafeOutboundUrlError } from "./safe-outbound-fetch
 
 describe("safe outbound fetch TCP pinning", () => {
     beforeEach(() => {
-        vi.stubEnv("VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS", "1");
-        vi.stubEnv("VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS", "provider.internal");
+        vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
+        vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "provider.internal");
         mocks.lookup.mockImplementation(async (hostname: string) => (hostname === "provider.internal" ? [{ address: "127.0.0.1", family: 4 }] : [{ address: "10.0.0.8", family: 4 }]));
     });
 

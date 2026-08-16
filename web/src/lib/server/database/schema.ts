@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE OR REPLACE FUNCTION vozeb_pro_set_updated_at()
+CREATE OR REPLACE FUNCTION octalaicanvas_set_updated_at()
 RETURNS trigger AS $$
 BEGIN
     NEW.updated_at = now();
@@ -487,7 +487,7 @@ CREATE TABLE IF NOT EXISTS object_storage_settings (
     endpoint text NOT NULL DEFAULT '',
     region text NOT NULL DEFAULT 'us-east-1',
     bucket text NOT NULL DEFAULT '',
-    prefix text NOT NULL DEFAULT 'vozeb-pro',
+    prefix text NOT NULL DEFAULT 'octalaicanvas',
     access_key_id_ciphertext text NOT NULL DEFAULT '',
     secret_access_key_ciphertext text NOT NULL DEFAULT '',
     force_path_style boolean NOT NULL DEFAULT false,
@@ -501,7 +501,7 @@ INSERT INTO object_storage_settings (id) VALUES ('default') ON CONFLICT (id) DO 
 DO $$
 DECLARE
     legacy_name text := 'local_' || 'media_assets';
-    target_name text := 'vozeb_pro_' || legacy_name;
+    target_name text := 'octalaicanvas_' || legacy_name;
 BEGIN
     IF to_regclass('public.' || legacy_name) IS NOT NULL AND to_regclass('public.' || target_name) IS NOT NULL THEN
         EXECUTE format(
@@ -983,6 +983,6 @@ CREATE INDEX IF NOT EXISTS audit_logs_target_idx ON audit_logs (target_type, tar
 ${POSTGRESQL_TRIGGER_SCHEMA_SQL}
 
 INSERT INTO schema_migrations (version)
-VALUES ('20260709_postgresql_commercial_base'), ('20260709_billing_foundation'), ('20260709_billing_checkout'), ('20260709_commercial_seed_products'), ('20260709_vozeb_pro_table_prefix'), ('20260711_generation_tasks'), ('20260716_billing_reconciliation'), ('20260725_account_deletion_requests'), ('20260726_promotion_coupon_commerce'), ('20260727_referral_growth_rewards'), ('20260727_work_publications'), ('20260727_work_community'), ('20260728_user_blocks')
+VALUES ('20260709_postgresql_commercial_base'), ('20260709_billing_foundation'), ('20260709_billing_checkout'), ('20260709_commercial_seed_products'), ('20260709_octalaicanvas_table_prefix'), ('20260711_generation_tasks'), ('20260716_billing_reconciliation'), ('20260725_account_deletion_requests'), ('20260726_promotion_coupon_commerce'), ('20260727_referral_growth_rewards'), ('20260727_work_publications'), ('20260727_work_community'), ('20260728_user_blocks')
 ON CONFLICT (version) DO NOTHING;
 `;

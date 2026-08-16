@@ -57,8 +57,8 @@ describe("video API service", () => {
         const body = JSON.parse(String(init.body)) as { references: Array<{ type: string; url: string }> };
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(fetchMock.mock.calls[0][0]).toBe("/api/video-generation-tasks");
-        expect(headers.get("x-vozeb-pro-client-request-id")).toBe("video-workbench:conversation:slot");
-        expect(headers.get("x-vozeb-pro-attempt-no")).toBe("2");
+        expect(headers.get("x-octalaicanvas-client-request-id")).toBe("video-workbench:conversation:slot");
+        expect(headers.get("x-octalaicanvas-attempt-no")).toBe("2");
         expect(body.references).toEqual([{ type: "image", role: "reference", url: "https://cdn.example.com/original-person.png" }]);
         expect(mocks.imageToDataUrl).not.toHaveBeenCalled();
     });

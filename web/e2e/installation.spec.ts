@@ -24,7 +24,7 @@ test("public session omits internal configuration fields", async ({ request }) =
     expect(serialized).not.toContain("advancedConfig");
     expect(serialized).not.toContain("agentSkills");
     expect(serialized).not.toContain('"mail"');
-    expect(serialized).not.toContain("VOZEB_PRO_");
+    expect(serialized).not.toContain("OCTALAICANVAS_");
 });
 
 test("initialization rejects a wrong token and creates the first administrator once", async ({ page, request }) => {

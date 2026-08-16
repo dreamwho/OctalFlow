@@ -93,7 +93,7 @@ function assertPaymentOrderIdentity(payment: VerifiedPaymentTransaction, order: 
 }
 
 async function queryStripePayment(order: BillingOrderRecord, payment: VerifiedPaymentTransaction, config: PaymentRuntimeConfig): Promise<VerifiedPaymentTransaction | null> {
-    const secret = requiredConfig(config, "VOZEB_PRO_STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY");
+    const secret = requiredConfig(config, "OCTALAICANVAS_STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY");
     const identifiers = [payment.providerTradeId, payment.providerPaymentId, order.providerPaymentId, order.providerOrderId].filter(Boolean) as string[];
     const id = identifiers.find((value) => /^(cs_|pi_|ch_)/.test(value));
     if (!id) return null;
@@ -109,8 +109,8 @@ async function queryStripePayment(order: BillingOrderRecord, payment: VerifiedPa
     const status = stripeStatus(payload, object);
     return {
         status,
-        orderId: clean(readPath(payload, "metadata.orderId") || readPath(payload, "metadata.vozebProOrderId") || readPath(object, "metadata.orderId") || readPath(object, "metadata.vozebProOrderId") || payload.client_reference_id, 120),
-        orderNo: clean(readPath(payload, "metadata.orderNo") || readPath(payload, "metadata.vozebProOrderNo") || readPath(object, "metadata.orderNo") || readPath(object, "metadata.vozebProOrderNo"), 120),
+        orderId: clean(readPath(payload, "metadata.orderId") || readPath(payload, "metadata.octalaicanvasProOrderId") || readPath(object, "metadata.orderId") || readPath(object, "metadata.octalaicanvasProOrderId") || payload.client_reference_id, 120),
+        orderNo: clean(readPath(payload, "metadata.orderNo") || readPath(payload, "metadata.octalaicanvasProOrderNo") || readPath(object, "metadata.orderNo") || readPath(object, "metadata.octalaicanvasProOrderNo"), 120),
         providerTradeId: clean(readPath(object, "id") || payload.payment_intent || (String(payload.id || "").startsWith("pi_") ? payload.id : undefined) || payload.id, 160),
         providerPaymentId: clean(readPath(object, "latest_charge") || payload.latest_charge || (String(payload.id || "").startsWith("ch_") ? payload.id : undefined), 160),
         amountCents: optionalInteger(payload.amount_total ?? payload.amount_received ?? payload.amount ?? object.amount_received ?? object.amount),
@@ -121,9 +121,9 @@ async function queryStripePayment(order: BillingOrderRecord, payment: VerifiedPa
 }
 
 async function queryAlipayPayment(order: BillingOrderRecord, payment: VerifiedPaymentTransaction, config: PaymentRuntimeConfig): Promise<VerifiedPaymentTransaction> {
-    const appId = requiredConfig(config, "VOZEB_PRO_ALIPAY_APP_ID");
-    const privateKey = loadPrivateKey(config, "VOZEB_PRO_ALIPAY_PRIVATE_KEY", "VOZEB_PRO_ALIPAY_PRIVATE_KEY_PATH");
-    const gateway = getPaymentRuntimeEnv(config, "VOZEB_PRO_ALIPAY_GATEWAY_URL") || "https://openapi.alipay.com/gateway.do";
+    const appId = requiredConfig(config, "OCTALAICANVAS_ALIPAY_APP_ID");
+    const privateKey = loadPrivateKey(config, "OCTALAICANVAS_ALIPAY_PRIVATE_KEY", "OCTALAICANVAS_ALIPAY_PRIVATE_KEY_PATH");
+    const gateway = getPaymentRuntimeEnv(config, "OCTALAICANVAS_ALIPAY_GATEWAY_URL") || "https://openapi.alipay.com/gateway.do";
     const bizContent: Record<string, string> = { out_trade_no: order.orderNo };
     const tradeNo = clean(payment.providerTradeId || payment.providerPaymentId, 160);
     if (tradeNo && !tradeNo.includes(":")) bizContent.trade_no = tradeNo;
@@ -144,7 +144,7 @@ async function queryAlipayPayment(order: BillingOrderRecord, payment: VerifiedPa
     if (!response.ok || String(result.code || "") !== "10000") throw new BillingInputError(readError(result, "支付宝交易查询失败"), response.status >= 500 ? 502 : 400);
     const sign = clean(payload.sign, 2000);
     const signContent = extractJsonObjectValue(raw, "alipay_trade_query_response");
-    if (!sign || !signContent || !verifyRsaSha256(signContent, sign, loadPaymentPublicKey(config, "VOZEB_PRO_ALIPAY_PUBLIC_KEY", "VOZEB_PRO_ALIPAY_PUBLIC_KEY_PATH"))) throw new BillingInputError("支付宝交易查询响应验签失败", 502);
+    if (!sign || !signContent || !verifyRsaSha256(signContent, sign, loadPaymentPublicKey(config, "OCTALAICANVAS_ALIPAY_PUBLIC_KEY", "OCTALAICANVAS_ALIPAY_PUBLIC_KEY_PATH"))) throw new BillingInputError("支付宝交易查询响应验签失败", 502);
     const tradeStatus = String(result.trade_status || "").toUpperCase();
     return {
         status: tradeStatus === "TRADE_SUCCESS" || tradeStatus === "TRADE_FINISHED" ? "succeeded" : tradeStatus === "TRADE_CLOSED" ? "failed" : "pending",
@@ -159,10 +159,10 @@ async function queryAlipayPayment(order: BillingOrderRecord, payment: VerifiedPa
 }
 
 async function queryWechatPayment(order: BillingOrderRecord, config: PaymentRuntimeConfig): Promise<VerifiedPaymentTransaction> {
-    const mchid = requiredConfig(config, "VOZEB_PRO_WECHAT_PAY_MCH_ID");
-    const serialNo = requiredConfig(config, "VOZEB_PRO_WECHAT_PAY_CERT_SERIAL_NO");
-    const privateKey = loadPrivateKey(config, "VOZEB_PRO_WECHAT_PAY_PRIVATE_KEY", "VOZEB_PRO_WECHAT_PAY_PRIVATE_KEY_PATH");
-    const apiBase = (getPaymentRuntimeEnv(config, "VOZEB_PRO_WECHAT_PAY_API_BASE") || "https://api.mch.weixin.qq.com").replace(/\/+$/, "");
+    const mchid = requiredConfig(config, "OCTALAICANVAS_WECHAT_PAY_MCH_ID");
+    const serialNo = requiredConfig(config, "OCTALAICANVAS_WECHAT_PAY_CERT_SERIAL_NO");
+    const privateKey = loadPrivateKey(config, "OCTALAICANVAS_WECHAT_PAY_PRIVATE_KEY", "OCTALAICANVAS_WECHAT_PAY_PRIVATE_KEY_PATH");
+    const apiBase = (getPaymentRuntimeEnv(config, "OCTALAICANVAS_WECHAT_PAY_API_BASE") || "https://api.mch.weixin.qq.com").replace(/\/+$/, "");
     const path = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.orderNo)}?mchid=${encodeURIComponent(mchid)}`;
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const nonce = randomBytes(16).toString("hex");
@@ -189,9 +189,9 @@ async function queryWechatPayment(order: BillingOrderRecord, config: PaymentRunt
 }
 
 async function queryPayplyPayment(order: BillingOrderRecord, payment: VerifiedPaymentTransaction, config: PaymentRuntimeConfig): Promise<VerifiedPaymentTransaction | null> {
-    const template = getPaymentRuntimeValue(config, "VOZEB_PRO_PAYPLY_QUERY_URL", "PAYPLY_QUERY_URL");
+    const template = getPaymentRuntimeValue(config, "OCTALAICANVAS_PAYPLY_QUERY_URL", "PAYPLY_QUERY_URL");
     if (!template) return null;
-    const apiKey = requiredConfig(config, "VOZEB_PRO_PAYPLY_API_KEY", "PAYPLY_API_KEY");
+    const apiKey = requiredConfig(config, "OCTALAICANVAS_PAYPLY_API_KEY", "PAYPLY_API_KEY");
     const values = {
         orderId: order.id,
         orderNo: order.orderNo,
@@ -200,23 +200,23 @@ async function queryPayplyPayment(order: BillingOrderRecord, payment: VerifiedPa
         providerPaymentId: payment.providerPaymentId || order.providerPaymentId || "",
     };
     const url = renderTemplate(template, values);
-    const customHeader = getPaymentRuntimeEnv(config, "VOZEB_PRO_PAYPLY_API_KEY_HEADER");
+    const customHeader = getPaymentRuntimeEnv(config, "OCTALAICANVAS_PAYPLY_API_KEY_HEADER");
     const headers: Record<string, string> = customHeader ? { [customHeader]: apiKey } : { authorization: `Bearer ${apiKey}`, "x-api-key": apiKey };
     const response = await fetchSafeOutbound(url, { headers, signal: AbortSignal.timeout(15_000) });
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) throw new BillingInputError(readError(payload, "PayPly 交易查询失败"), response.status >= 500 ? 502 : 400);
-    const status = String(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_STATUS_FIELD", ["status", "tradeStatus", "paymentStatus", "data.status", "data.tradeStatus"]) || "").toLowerCase();
+    const status = String(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_STATUS_FIELD", ["status", "tradeStatus", "paymentStatus", "data.status", "data.tradeStatus"]) || "").toLowerCase();
     return {
         status: ["success", "succeeded", "paid", "completed", "ok"].includes(status) ? "succeeded" : ["failed", "closed", "cancelled", "canceled"].includes(status) ? "failed" : "pending",
-        orderId: clean(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_ORDER_ID_FIELD", ["orderId", "data.orderId", "metadata.orderId"]), 120),
-        orderNo: clean(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_ORDER_NO_FIELD", ["orderNo", "outTradeNo", "out_trade_no", "data.orderNo"]), 120),
-        providerTradeId: clean(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_TRADE_ID_FIELD", ["providerTradeId", "tradeId", "trade_no", "transactionId", "data.tradeId"]), 160),
-        providerPaymentId: clean(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_PAYMENT_ID_FIELD", ["providerPaymentId", "paymentId", "payment_id", "transactionId", "data.paymentId"]), 160),
+        orderId: clean(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_ORDER_ID_FIELD", ["orderId", "data.orderId", "metadata.orderId"]), 120),
+        orderNo: clean(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_ORDER_NO_FIELD", ["orderNo", "outTradeNo", "out_trade_no", "data.orderNo"]), 120),
+        providerTradeId: clean(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_TRADE_ID_FIELD", ["providerTradeId", "tradeId", "trade_no", "transactionId", "data.tradeId"]), 160),
+        providerPaymentId: clean(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_PAYMENT_ID_FIELD", ["providerPaymentId", "paymentId", "payment_id", "transactionId", "data.paymentId"]), 160),
         amountCents:
-            optionalInteger(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_AMOUNT_CENTS_FIELD", ["amountCents", "data.amountCents"])) ??
-            decimalToCents(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_AMOUNT_FIELD", ["amount", "totalAmount", "data.amount"])),
-        currency: currency(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_CURRENCY_FIELD", ["currency", "data.currency"])),
-        paidAt: optionalIso(readConfiguredPath(config, payload, "VOZEB_PRO_PAYPLY_QUERY_PAID_AT_FIELD", ["paidAt", "successTime", "data.paidAt"])),
+            optionalInteger(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_AMOUNT_CENTS_FIELD", ["amountCents", "data.amountCents"])) ??
+            decimalToCents(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_AMOUNT_FIELD", ["amount", "totalAmount", "data.amount"])),
+        currency: currency(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_CURRENCY_FIELD", ["currency", "data.currency"])),
+        paidAt: optionalIso(readConfiguredPath(config, payload, "OCTALAICANVAS_PAYPLY_QUERY_PAID_AT_FIELD", ["paidAt", "successTime", "data.paidAt"])),
         rawPayload: sanitizeJson(payload),
     };
 }
@@ -234,7 +234,7 @@ function verifyWechatResponse(raw: string, headers: Headers, config: PaymentRunt
     const nonce = headers.get("wechatpay-nonce") || "";
     const signature = headers.get("wechatpay-signature") || "";
     if (!timestamp || !nonce || !signature) return false;
-    return verifyRsaSha256(`${timestamp}\n${nonce}\n${raw}\n`, signature, loadPaymentPublicKey(config, "VOZEB_PRO_WECHAT_PAY_PLATFORM_PUBLIC_KEY", "VOZEB_PRO_WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH"));
+    return verifyRsaSha256(`${timestamp}\n${nonce}\n${raw}\n`, signature, loadPaymentPublicKey(config, "OCTALAICANVAS_WECHAT_PAY_PLATFORM_PUBLIC_KEY", "OCTALAICANVAS_WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH"));
 }
 
 function loadPrivateKey(config: PaymentRuntimeConfig, valueName: string, pathName: string) {
@@ -313,7 +313,7 @@ function requiredConfig(config: PaymentRuntimeConfig, ...names: string[]) {
 }
 
 function stripeApiBase(config: PaymentRuntimeConfig) {
-    return (getPaymentRuntimeEnv(config, "VOZEB_PRO_STRIPE_API_BASE") || "https://api.stripe.com").replace(/\/+$/, "");
+    return (getPaymentRuntimeEnv(config, "OCTALAICANVAS_STRIPE_API_BASE") || "https://api.stripe.com").replace(/\/+$/, "");
 }
 
 function alipayTimestamp(date = new Date()) {

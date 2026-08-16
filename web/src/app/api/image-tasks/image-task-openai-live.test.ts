@@ -18,8 +18,8 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-    vi.stubEnv("VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS", "1");
-    vi.stubEnv("VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
+    vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
+    vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
 });
 
 describe("OpenAI image provider over a live compatible fixture", () => {

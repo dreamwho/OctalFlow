@@ -10,7 +10,7 @@ import pg from "pg";
 
 import { resolveWithin } from "./disaster-recovery-core.mjs";
 
-const ENCRYPTED_SECRET_PREFIX = "vozeb-pro-secret:v1:";
+const ENCRYPTED_SECRET_PREFIX = "octalaicanvas-secret:v1:";
 
 export async function loadDisasterObjectStorageConfig({ databaseUrl, dataDir, encryptionKey }) {
     const stored = databaseUrl ? await readPostgresSettings(databaseUrl) : await readFileSettings(dataDir);
@@ -105,7 +105,7 @@ async function readPostgresSettings(databaseUrl) {
     const client = new pg.Client({ connectionString: databaseUrl });
     await client.connect();
     try {
-        const result = await client.query("SELECT * FROM vozeb_pro_object_storage_settings WHERE id = 'default'");
+        const result = await client.query("SELECT * FROM octalaicanvas_object_storage_settings WHERE id = 'default'");
         return result.rows[0] || {};
     } catch (error) {
         if (error?.code === "42P01") return {};
@@ -131,7 +131,7 @@ function normalizeConfig(value, encryptionKey) {
         endpoint: text(source.endpoint),
         region: text(source.region) || "us-east-1",
         bucket: text(source.bucket),
-        prefix: text(source.prefix) || "vozeb-pro",
+        prefix: text(source.prefix) || "octalaicanvas",
         accessKeyId: decryptSecret(text(source.access_key_id_ciphertext ?? source.accessKeyIdCiphertext), encryptionKey),
         secretAccessKey: decryptSecret(text(source.secret_access_key_ciphertext ?? source.secretAccessKeyCiphertext), encryptionKey),
         forcePathStyle: source.force_path_style === true || source.forcePathStyle === true,
@@ -141,7 +141,7 @@ function normalizeConfig(value, encryptionKey) {
 function decryptSecret(value, rawKey) {
     if (!value || !value.startsWith(ENCRYPTED_SECRET_PREFIX)) return value;
     const key = parseEncryptionKey(rawKey);
-    if (!key) throw new Error("对象存储已启用，但 VOZEB_PRO_ENCRYPTION_KEY 缺失或格式不正确");
+    if (!key) throw new Error("对象存储已启用，但 OCTALAICANVAS_ENCRYPTION_KEY 缺失或格式不正确");
     const [ivText, tagText, encryptedText] = value.slice(ENCRYPTED_SECRET_PREFIX.length).split(".");
     if (!ivText || !tagText || !encryptedText) throw new Error("对象存储凭据密文格式不正确");
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivText, "base64url"));

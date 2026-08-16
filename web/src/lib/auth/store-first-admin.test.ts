@@ -22,7 +22,7 @@ import { createFirstAdmin, createUser } from "./store";
 describe("first administrator creation", () => {
     beforeEach(() => {
         memory.value = undefined;
-        vi.stubEnv("VOZEB_PRO_INSTALL_TOKEN", TOKEN);
+        vi.stubEnv("OCTALAICANVAS_INSTALL_TOKEN", TOKEN);
     });
 
     afterEach(() => {

@@ -32,7 +32,7 @@ describe("GET /api/auth/data-export", () => {
 
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toContain("application/json");
-        expect(response.headers.get("content-disposition")).toContain("vozeb-pro-personal-data-");
+        expect(response.headers.get("content-disposition")).toContain("octalaicanvas-personal-data-");
         expect(response.headers.get("cache-control")).toBe("private, no-store");
         expect(response.headers.get("x-content-type-options")).toBe("nosniff");
         expect(mocks.createUserDataExportStream).toHaveBeenCalledWith("user-one");

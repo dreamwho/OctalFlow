@@ -65,7 +65,7 @@ describe("payment webhook processing", () => {
         mocks.getPaymentConfig.mockResolvedValue({
             saved: { providers: {} },
             providers: { payply: { enabled: true, saved: true } },
-            valuesByEnvName: { VOZEB_PRO_PAYPLY_WEBHOOK_SECRET: webhookSecret },
+            valuesByEnvName: { OCTALAICANVAS_PAYPLY_WEBHOOK_SECRET: webhookSecret },
         } satisfies PaymentConfig);
         mocks.upsertEvent.mockResolvedValue({ event: { id: "provider-event-one" }, conflict: false });
         mocks.claimEvent.mockResolvedValue({ id: "provider-event-one" });
@@ -125,7 +125,7 @@ describe("payment webhook processing", () => {
     });
 
     it("records and rejects an invalid signature before claiming the event", async () => {
-        const headers = new Headers({ "x-vozeb-pro-signature": "invalid" });
+        const headers = new Headers({ "x-octalaicanvas-signature": "invalid" });
 
         await expect(processPaymentWebhook({ provider: "payply", rawBody, headers })).rejects.toMatchObject({ message: "支付回调签名无效", status: 401 });
         expect(mocks.upsertEvent).toHaveBeenCalledWith(expect.objectContaining({ provider: "payply", eventId: expect.stringContaining("event-one:invalid:"), signatureValid: false, error: "signature invalid" }));
@@ -160,5 +160,5 @@ describe("payment webhook processing", () => {
 });
 
 function signedHeaders(body: string) {
-    return new Headers({ "x-vozeb-pro-signature": createHmac("sha256", webhookSecret).update(body).digest("hex") });
+    return new Headers({ "x-octalaicanvas-signature": createHmac("sha256", webhookSecret).update(body).digest("hex") });
 }

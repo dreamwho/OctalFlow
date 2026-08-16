@@ -229,8 +229,8 @@ describe("video generation candidate failover", () => {
 
     it("forwards the authenticated maintenance worker identity to the internal system proxy", async () => {
         const token = "maintenance-token-used-by-generation-worker";
-        vi.stubEnv("VOZEB_PRO_MAINTENANCE_TOKEN", `${token}-maintenance`);
-        vi.stubEnv("VOZEB_PRO_WORKER_TOKEN", token);
+        vi.stubEnv("OCTALAICANVAS_MAINTENANCE_TOKEN", `${token}-maintenance`);
+        vi.stubEnv("OCTALAICANVAS_WORKER_TOKEN", token);
         mocks.fetchInternalApi.mockResolvedValue(json({ id: "upstream-worker", status: "queued" }));
 
         const response = await POST(
@@ -239,7 +239,7 @@ describe("video generation candidate failover", () => {
                 headers: {
                     authorization: `Bearer ${token}`,
                     "content-type": "application/json",
-                    "x-vozeb-pro-worker-user-id": "user",
+                    "x-octalaicanvas-worker-user-id": "user",
                 },
                 body: JSON.stringify({ config: { model: "video" }, prompt: "A test video", references: [] }),
             }),
@@ -248,7 +248,7 @@ describe("video generation candidate failover", () => {
 
         expect(response.status).toBe(200);
         expect(headers.get("authorization")).toBe(`Bearer ${token}`);
-        expect(headers.get("x-vozeb-pro-worker-user-id")).toBe("user");
+        expect(headers.get("x-octalaicanvas-worker-user-id")).toBe("user");
         expect(headers.has("cookie")).toBe(false);
         vi.unstubAllEnvs();
     });
@@ -315,10 +315,10 @@ describe("video generation candidate failover", () => {
         expect(imageResponse.status, JSON.stringify(imagePayload)).toBe(200);
         expect(textUrl).toContain("/api/ai/system/one/text-to-video");
         expect(imageUrl).toContain("/api/ai/system/one/image-to-video");
-        expect(textHeaders.get("x-vozeb-pro-logical-model")).toBe("video");
-        expect(textHeaders.get("x-vozeb-pro-upstream-model")).toBe("video-one");
-        expect(textHeaders.get("x-vozeb-pro-points-idempotency-key")).toBe("video-request:video-text");
-        expect(imageHeaders.get("x-vozeb-pro-points-idempotency-key")).toBe("video-request:video-image");
+        expect(textHeaders.get("x-octalaicanvas-logical-model")).toBe("video");
+        expect(textHeaders.get("x-octalaicanvas-upstream-model")).toBe("video-one");
+        expect(textHeaders.get("x-octalaicanvas-points-idempotency-key")).toBe("video-request:video-text");
+        expect(imageHeaders.get("x-octalaicanvas-points-idempotency-key")).toBe("video-request:video-image");
     });
 
     it("builds an OpenAI video multipart request and uses its image-to-video path", async () => {
@@ -727,8 +727,8 @@ function request(config: Record<string, unknown> = { model: "video" }, reference
         method: "POST",
         headers: {
             "content-type": "application/json",
-            ...(clientRequestId ? { "x-vozeb-pro-client-request-id": clientRequestId } : {}),
-            ...(typeof context?.attemptNo === "number" ? { "x-vozeb-pro-attempt-no": String(context.attemptNo) } : {}),
+            ...(clientRequestId ? { "x-octalaicanvas-client-request-id": clientRequestId } : {}),
+            ...(typeof context?.attemptNo === "number" ? { "x-octalaicanvas-attempt-no": String(context.attemptNo) } : {}),
         },
         body: JSON.stringify({ config, prompt: "A test video", references, context }),
     });

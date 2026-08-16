@@ -88,8 +88,8 @@ export async function createImageGenerationTask(config: AiConfig, prompt: string
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            ...(options?.clientRequestId ? { "X-VOZEB-PRO-Client-Request-Id": options.clientRequestId } : {}),
-            ...(options?.attemptNo ? { "X-VOZEB-PRO-Attempt-No": String(options.attemptNo) } : {}),
+            ...(options?.clientRequestId ? { "X-OCTALAICANVAS-Client-Request-Id": options.clientRequestId } : {}),
+            ...(options?.attemptNo ? { "X-OCTALAICANVAS-Attempt-No": String(options.attemptNo) } : {}),
         },
         body: JSON.stringify({
             kind: references.length || mask ? "edit" : "generation",

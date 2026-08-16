@@ -30,7 +30,7 @@ describe("channel protocol registry", () => {
     it("exposes only active protocols and keeps SD2 separate from Stable Diffusion", () => {
         const protocols = channelProtocolOptions().map((item) => item.value);
         expect(protocols).toEqual(["openai", "yumeng", "gemini", "seedance", "stable-diffusion", "volcengine-video", "sub2api", "newapi", "custom", "compatible", "auto"]);
-        expect(protocols).not.toEqual(expect.arrayContaining(["vozeb-recommended", "seedance-special", "globalaiopc"]));
+        expect(protocols).not.toEqual(expect.arrayContaining(["octalaicanvas-recommended", "seedance-special", "globalaiopc"]));
         expect(channelProtocolDefinition("openai").modelCatalogPaths).toEqual(["/v1/models"]);
         expect(channelProtocolDefinition("sub2api").modelCatalogPaths).toEqual(["/v1/models"]);
         expect(channelProtocolDefinition("newapi").modelCatalogPaths).toEqual(["/v1/models"]);
@@ -72,7 +72,7 @@ describe("channel protocol registry", () => {
             },
         });
         expect(channelProtocolDefinition("seedance-special").operations.video).toMatchObject({ createPath: "/v1/seedance-special/videos", queryPath: "/v1/result/:task_id" });
-        expect(channelProtocolDefinition("vozeb-recommended").operations.video).toMatchObject({
+        expect(channelProtocolDefinition("octalaicanvas-recommended").operations.video).toMatchObject({
             createPath: "/v1/videos/generations",
             imageToVideoPath: "/v1/videos/generations",
             queryPath: "/v1/videos/generations/:task_id",
@@ -102,12 +102,12 @@ describe("channel protocol registry", () => {
         }
     });
 
-    it("applies the VOZEB recommended preset to frontend channel drafts", () => {
-        const configured = applyChannelProtocol({ ...channel, baseUrl: "", models: ["Seedance 2.0-fast-720p"] }, "vozeb-recommended");
+    it("applies the OctalAICanvas recommended preset to frontend channel drafts", () => {
+        const configured = applyChannelProtocol({ ...channel, baseUrl: "", models: ["Seedance 2.0-fast-720p"] }, "octalaicanvas-recommended");
 
         expect(configured).toMatchObject({ baseUrl: "https://new.aiym.ink/v1", apiFormat: "openai" });
         expect(configured.advancedConfig).toMatchObject({
-            protocol: "vozeb-recommended",
+            protocol: "octalaicanvas-recommended",
             createPath: "/v1/videos/generations",
             queryPath: "/v1/videos/generations/:task_id",
             modelCatalogPaths: ["/v1/models"],
@@ -146,7 +146,7 @@ describe("channel protocol registry", () => {
 
     it("preserves an administrator-configured Base URL when selecting a protocol", () => {
         expect(applyChannelProtocol(channel, "gemini").baseUrl).toBe(channel.baseUrl);
-        expect(applyChannelProtocol(channel, "vozeb-recommended").baseUrl).toBe(channel.baseUrl);
+        expect(applyChannelProtocol(channel, "octalaicanvas-recommended").baseUrl).toBe(channel.baseUrl);
         expect(applyChannelProtocol(channel, "yumeng").baseUrl).toBe(channel.baseUrl);
     });
 

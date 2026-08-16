@@ -16,7 +16,7 @@ export async function GET() {
 
     try {
         const exportedAt = new Date();
-        const fileName = `vozeb-pro-personal-data-${exportedAt.toISOString().slice(0, 10)}.json`;
+        const fileName = `octalaicanvas-personal-data-${exportedAt.toISOString().slice(0, 10)}.json`;
         const stream = await createUserDataExportStream(currentUser.id);
         return new NextResponse(stream, {
             headers: {

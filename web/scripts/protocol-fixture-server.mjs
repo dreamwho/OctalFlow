@@ -167,11 +167,11 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
                 .toLowerCase()
                 .includes("application/json")
         )
-            return sendJson(response, 415, { code: "invalid_content_type", message: "VOZEB recommended video requests must use application/json", data: null });
+            return sendJson(response, 415, { code: "invalid_content_type", message: "OctalAICanvas recommended video requests must use application/json", data: null });
         const payload = jsonBody(body);
         if (payload.model === "Seedance 2.0-fast-720p" && payload.generate_audio !== false) return sendJson(response, 400, { code: "invalid_request", message: "generate_audio must be false", data: null });
-        const id = nextTaskId("vozeb-video");
-        tasks.set(id, { kind: "vozeb-video", status: "completed" });
+        const id = nextTaskId("octalaicanvas-video");
+        tasks.set(id, { kind: "octalaicanvas-video", status: "completed" });
         return sendJson(response, 200, { id, task_id: id, object: "video", model: payload.model, status: "queued", progress: 0, created_at: 0 });
     }
     if (request.method === "POST" && path === YUMENG_MODEL_CENTER_TASK_PATH) {
@@ -200,9 +200,9 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
     if (request.method === "GET" && customVideoId) {
         return sendJson(response, 200, { data: { task_id: decodeURIComponent(customVideoId), status: "completed", video_url: `${url.origin}/media/fixture.mp4` } });
     }
-    const vozebVideoId = path.match(/^\/videos\/generations\/([^/]+)$/)?.[1];
-    if (request.method === "GET" && vozebVideoId) {
-        const id = decodeURIComponent(vozebVideoId);
+    const octalaicanvasVideoId = path.match(/^\/videos\/generations\/([^/]+)$/)?.[1];
+    if (request.method === "GET" && octalaicanvasVideoId) {
+        const id = decodeURIComponent(octalaicanvasVideoId);
         return sendJson(response, 200, { id, task_id: id, object: "video", status: "completed", progress: 100, metadata: { url: `${url.origin}/media/fixture.mp4` } });
     }
     const videoId = videoTaskId(path);
@@ -414,13 +414,13 @@ function delay(ms) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
-    const port = Number(process.env.VOZEB_PRO_PROTOCOL_FIXTURE_PORT) || 4010;
-    const host = process.env.VOZEB_PRO_PROTOCOL_FIXTURE_HOST || "127.0.0.1";
+    const port = Number(process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_PORT) || 4010;
+    const host = process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_HOST || "127.0.0.1";
     const fixture = createProtocolFixtureServer({
-        imagePath: process.env.VOZEB_PRO_PROTOCOL_FIXTURE_IMAGE,
-        videoPath: process.env.VOZEB_PRO_PROTOCOL_FIXTURE_VIDEO,
-        responseDelayMs: process.env.VOZEB_PRO_PROTOCOL_FIXTURE_DELAY_MS,
-        failImage: process.env.VOZEB_PRO_PROTOCOL_FIXTURE_FAIL_IMAGE === "1",
+        imagePath: process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_IMAGE,
+        videoPath: process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_VIDEO,
+        responseDelayMs: process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_DELAY_MS,
+        failImage: process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_FAIL_IMAGE === "1",
     });
     fixture.server.listen(port, host, () => console.log(`Protocol fixture ready at http://${host}:${port}`));
 }

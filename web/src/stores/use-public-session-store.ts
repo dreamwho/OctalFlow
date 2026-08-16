@@ -33,7 +33,7 @@ type PublicSessionStore = {
 
 export const usePublicSessionStore = create<PublicSessionStore>(() => ({ payload: null, ready: false }));
 
-export const PUBLIC_SETTINGS_CHANGED_EVENT = "vozeb-pro-public-settings-changed";
+export const PUBLIC_SETTINGS_CHANGED_EVENT = "octalaicanvas-public-settings-changed";
 const SESSION_CACHE_TTL_MS = 30_000;
 let sessionRequest: Promise<PublicSessionPayload> | null = null;
 let sessionLoadedAt = 0;

@@ -13,7 +13,7 @@ body:
           required: true
   - type: input
     attributes:
-      label: VOZEB PRO 版本或提交
+      label: OctalAICanvas 版本或提交
       placeholder: 例如 v0.0.4 或 commit SHA
     validations:
       required: true

@@ -19,11 +19,11 @@ describe("resolvePublicRequestOrigin", () => {
 
     it("uses forwarded host and protocol only behind a trusted proxy", () => {
         vi.stubEnv("NEXT_PUBLIC_SITE_URL", "http://127.0.0.1:3000");
-        vi.stubEnv("VOZEB_PRO_TRUSTED_PROXY_HOPS", "1");
+        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "1");
         const request = new Request("http://127.0.0.1:3000/api/referrals", {
-            headers: { host: "127.0.0.1:3000", "x-forwarded-host": "vozeb.example.com", "x-forwarded-proto": "https" },
+            headers: { host: "127.0.0.1:3000", "x-forwarded-host": "octalaicanvas.example.com", "x-forwarded-proto": "https" },
         });
 
-        expect(resolvePublicRequestOrigin(request)).toBe("https://vozeb.example.com");
+        expect(resolvePublicRequestOrigin(request)).toBe("https://octalaicanvas.example.com");
     });
 });

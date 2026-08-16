@@ -2,11 +2,11 @@ import path from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
-const port = Number(process.env.VOZEB_PRO_E2E_PORT || 3100);
+const port = Number(process.env.OCTALAICANVAS_E2E_PORT || 3100);
 const baseURL = `http://127.0.0.1:${port}`;
-const protocolFixturePort = Number(process.env.VOZEB_PRO_PROTOCOL_FIXTURE_PORT || 4010);
-const paymentFixturePort = Number(process.env.VOZEB_PRO_PAYMENT_FIXTURE_PORT || 4020);
-const databaseUrl = process.env.VOZEB_PRO_E2E_DATABASE_URL?.trim() || "";
+const protocolFixturePort = Number(process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_PORT || 4010);
+const paymentFixturePort = Number(process.env.OCTALAICANVAS_PAYMENT_FIXTURE_PORT || 4020);
+const databaseUrl = process.env.OCTALAICANVAS_E2E_DATABASE_URL?.trim() || "";
 const storageState = path.join(process.cwd(), ".e2e-data", "admin-state.json");
 
 export default defineConfig({
@@ -41,14 +41,14 @@ export default defineConfig({
             url: `http://127.0.0.1:${protocolFixturePort}/health`,
             timeout: 30_000,
             reuseExistingServer: false,
-            env: { ...process.env, VOZEB_PRO_PROTOCOL_FIXTURE_PORT: String(protocolFixturePort) },
+            env: { ...process.env, OCTALAICANVAS_PROTOCOL_FIXTURE_PORT: String(protocolFixturePort) },
         },
         {
             command: "node scripts/payment-fixture-server.mjs",
             url: `http://127.0.0.1:${paymentFixturePort}/health`,
             timeout: 30_000,
             reuseExistingServer: false,
-            env: { ...process.env, VOZEB_PRO_PAYMENT_FIXTURE_PORT: String(paymentFixturePort) },
+            env: { ...process.env, OCTALAICANVAS_PAYMENT_FIXTURE_PORT: String(paymentFixturePort) },
         },
         {
             command: "pnpm run start",
@@ -59,21 +59,21 @@ export default defineConfig({
                 ...process.env,
                 PORT: String(port),
                 NEXT_PUBLIC_SITE_URL: baseURL,
-                VOZEB_PRO_DATABASE_PROVIDER: databaseUrl ? "postgres" : "file",
-                VOZEB_PRO_DATA_DIR: path.join(process.cwd(), ".e2e-data"),
-                VOZEB_PRO_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-                VOZEB_PRO_INSTALL_TOKEN: "vozeb-pro-e2e-install-token-32chars",
-                VOZEB_PRO_MAINTENANCE_TOKEN: "vozeb-pro-e2e-maintenance-token-32chars",
-                VOZEB_PRO_WORKER_TOKEN: "vozeb-pro-e2e-worker-token-separate-32chars",
-                VOZEB_PRO_ALLOW_PRIVATE_UPSTREAMS: "1",
-                VOZEB_PRO_PRIVATE_UPSTREAM_HOSTS: "127.0.0.1",
+                OCTALAICANVAS_DATABASE_PROVIDER: databaseUrl ? "postgres" : "file",
+                OCTALAICANVAS_DATA_DIR: path.join(process.cwd(), ".e2e-data"),
+                OCTALAICANVAS_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                OCTALAICANVAS_INSTALL_TOKEN: "octalaicanvas-e2e-install-token-32chars",
+                OCTALAICANVAS_MAINTENANCE_TOKEN: "octalaicanvas-e2e-maintenance-token-32chars",
+                OCTALAICANVAS_WORKER_TOKEN: "octalaicanvas-e2e-worker-token-separate-32chars",
+                OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS: "1",
+                OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS: "127.0.0.1",
                 ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
-                VOZEB_PRO_PAYPLY_API_KEY: "vozeb-pro-e2e-payply-production-key",
-                VOZEB_PRO_PAYPLY_CHECKOUT_URL: `http://127.0.0.1:${paymentFixturePort}/payply/checkout`,
-                VOZEB_PRO_PAYPLY_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/query?orderId={{orderId}}&orderNo={{orderNo}}&tradeId={{providerTradeId}}&paymentId={{providerPaymentId}}`,
-                VOZEB_PRO_PAYPLY_REFUND_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund`,
-                VOZEB_PRO_PAYPLY_REFUND_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund-query?refundId={{providerRefundId}}`,
-                VOZEB_PRO_PAYPLY_WEBHOOK_SECRET: "vozeb-pro-e2e-payply-webhook-secret",
+                OCTALAICANVAS_PAYPLY_API_KEY: "octalaicanvas-e2e-payply-production-key",
+                OCTALAICANVAS_PAYPLY_CHECKOUT_URL: `http://127.0.0.1:${paymentFixturePort}/payply/checkout`,
+                OCTALAICANVAS_PAYPLY_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/query?orderId={{orderId}}&orderNo={{orderNo}}&tradeId={{providerTradeId}}&paymentId={{providerPaymentId}}`,
+                OCTALAICANVAS_PAYPLY_REFUND_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund`,
+                OCTALAICANVAS_PAYPLY_REFUND_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund-query?refundId={{providerRefundId}}`,
+                OCTALAICANVAS_PAYPLY_WEBHOOK_SECRET: "octalaicanvas-e2e-payply-webhook-secret",
             },
         },
     ],
