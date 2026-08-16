@@ -37,7 +37,9 @@ const customWebhookAdapter: PaymentWebhookAdapter = {
             eventId,
             eventType,
             orderId: normalizeOptionalId(readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_ORDER_ID_FIELD`, ["orderId", "data.orderId", "metadata.orderId", "metadata.octalaicanvasProOrderId"])),
-            orderNo: normalizeOptionalId(readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_ORDER_NO_FIELD`, ["orderNo", "outTradeNo", "out_trade_no", "data.orderNo", "data.outTradeNo", "metadata.orderNo", "metadata.octalaicanvasProOrderNo"])),
+            orderNo: normalizeOptionalId(
+                readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_ORDER_NO_FIELD`, ["orderNo", "outTradeNo", "out_trade_no", "data.orderNo", "data.outTradeNo", "metadata.orderNo", "metadata.octalaicanvasProOrderNo"]),
+            ),
             status: normalizePaymentStatus(readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_STATUS_FIELD`, ["status", "tradeStatus", "trade_status", "data.status", "data.tradeStatus"]), provider, paymentConfig),
             providerTradeId: normalizeOptionalText(
                 readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_TRADE_ID_FIELD`, ["providerTradeId", "tradeId", "trade_no", "transactionId", "data.providerTradeId", "data.tradeId", "data.transactionId"]),

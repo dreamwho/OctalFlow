@@ -226,7 +226,15 @@ export const PAYMENT_PROVIDER_DEFINITIONS: PaymentProviderDefinition[] = [
                     { label: "表单", value: "application/x-www-form-urlencoded" },
                 ],
             },
-            { key: "extraHeaders", label: "额外请求头", kind: "textarea", envNames: ["OCTALAICANVAS_PAYPLY_EXTRA_HEADERS", "PAYPLY_EXTRA_HEADERS"], placeholder: '{"x-channel":"octalaicanvas"}', note: "填写 JSON 对象，值会随下单请求发送。", advanced: true },
+            {
+                key: "extraHeaders",
+                label: "额外请求头",
+                kind: "textarea",
+                envNames: ["OCTALAICANVAS_PAYPLY_EXTRA_HEADERS", "PAYPLY_EXTRA_HEADERS"],
+                placeholder: '{"x-channel":"octalaicanvas"}',
+                note: "填写 JSON 对象，值会随下单请求发送。",
+                advanced: true,
+            },
             {
                 key: "requestTemplate",
                 label: "下单请求体模板",
