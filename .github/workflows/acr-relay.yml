@@ -1,0 +1,42 @@
+name: ACR relay
+run-name: 镜像中转到阿里云 ACR · ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要中转的镜像 tag（如 v0.0.6）"
+        required: true
+        default: "v0.0.6"
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_IMAGE: ghcr.io/dreamwho/octalaicanvas
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Relay image to Aliyun ACR
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ACR_REGISTRY" ] || [ -z "$ACR_NAMESPACE" ] || [ -z "$ACR_USERNAME" ] || [ -z "$ACR_PASSWORD" ]; then
+            echo "::error::缺少 ACR secrets。请在仓库 Settings → Secrets and variables → Actions 配置 ACR_REGISTRY、ACR_NAMESPACE、ACR_USERNAME、ACR_PASSWORD 后重新运行"
+            exit 1
+          fi
+          echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
+          SOURCE="$SOURCE_IMAGE:$TAG"
+          TARGET="$ACR_REGISTRY/$ACR_NAMESPACE/octalaicanvas:$TAG"
+          echo "中转 $SOURCE -> $TARGET"
+          docker pull "$SOURCE"
+          docker tag "$SOURCE" "$TARGET"
+          docker push "$TARGET"
+          docker logout "$ACR_REGISTRY" || true
