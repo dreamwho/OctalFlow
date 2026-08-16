@@ -4,9 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { App } from "antd";
 import { APP_VERSION } from "@/constant/env";
 import { parseChangelog, type ReleaseInfo } from "@/lib/release";
+import { fetchVersionCheck } from "@/services/api/version-check";
 
-const latestVersionUrl = "https://raw.githubusercontent.com/dreamwho/OctalAICanvas/main/VERSION";
-const latestChangelogUrl = "https://raw.githubusercontent.com/dreamwho/OctalAICanvas/main/CHANGELOG.md";
 const currentReleaseMajor = toVersionParts(APP_VERSION)?.[0] ?? 0;
 
 function readLocalReleases(): ReleaseInfo[] {
@@ -66,28 +65,21 @@ export function useVersionCheck() {
     const hasNewVersion = isNewerVersion(latestVersion, currentVersion);
 
     const checkLatestVersion = useCallback(async () => {
-        try {
-            const response = await fetch(latestVersionUrl);
-            if (!response.ok) return false;
-            const version = await response.text();
-            const remoteVersion = version.trim() || currentVersion;
-            setLatestVersion(compareVersions(remoteVersion, currentVersion) > 0 ? remoteVersion : currentVersion);
-            return true;
-        } catch {
-            return false;
-        }
+        const result = await fetchVersionCheck();
+        if (!result?.available) return false;
+        const remoteVersion = result.version || currentVersion;
+        setLatestVersion(compareVersions(remoteVersion, currentVersion) > 0 ? remoteVersion : currentVersion);
+        return true;
     }, [currentVersion]);
 
     const checkLatestRelease = useCallback(
         async (showMessage = false) => {
             setChecking(true);
             try {
-                const [versionResponse, changelogResponse] = await Promise.all([fetch(latestVersionUrl), fetch(latestChangelogUrl)]);
-                if (!versionResponse.ok) throw new Error("版本读取失败");
-                if (!changelogResponse.ok) throw new Error("更新日志读取失败");
-                const [version, changelog] = await Promise.all([versionResponse.text(), changelogResponse.text()]);
-                const remoteVersion = version.trim() || currentVersion;
-                const remoteReleases = changelog.trim() ? filterCurrentReleaseLine(parseChangelog(changelog)) : [];
+                const result = await fetchVersionCheck();
+                if (!result?.available) throw new Error("版本读取失败");
+                const remoteVersion = result.version || currentVersion;
+                const remoteReleases = result.changelog.trim() ? filterCurrentReleaseLine(parseChangelog(result.changelog)) : [];
                 const remoteIsNewer = compareVersions(remoteVersion, currentVersion) > 0;
                 setLatestVersion(remoteIsNewer ? remoteVersion : currentVersion);
                 setReleases(remoteIsNewer ? mergeReleases(remoteReleases, localReleases) : mergeReleases(localReleases, remoteReleases));
@@ -96,7 +88,7 @@ export function useVersionCheck() {
             } catch {
                 setLatestVersion(currentVersion);
                 setReleases(localReleases);
-                if (showMessage) message.warning("GitHub 暂不可访问或仓库尚未公开，已显示本地版本记录");
+                if (showMessage) message.warning("暂时无法获取最新版本信息，已显示本地版本记录");
                 return false;
             } finally {
                 setChecking(false);
