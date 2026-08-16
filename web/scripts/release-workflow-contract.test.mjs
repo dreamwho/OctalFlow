@@ -35,7 +35,7 @@ describe("release workflow contract", () => {
         expect(source).toContain("pnpm exec playwright install --with-deps chromium");
         expect(source).toContain("version: 11.9.0");
         expect(source).toContain("gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7");
-        expect(source).toContain("github/codeql-action/analyze@47be0dbd5113ab1b79fe2dd3f68bdf7e426cdc87");
+        expect(source).not.toContain("github/codeql-action");
         expect(source).not.toMatch(/uses:\s+[^\s]+@(v\d|main|master)\b/);
     });
 
