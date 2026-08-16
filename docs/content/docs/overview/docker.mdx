@@ -83,7 +83,7 @@ docker compose -f docker-compose.local.yml up -d --build
 ```bash
 docker compose logs -f app
 docker compose logs -f postgres
-docker compose exec postgres pg_isready -U vozeb_pro -d vozeb_pro
+docker compose exec postgres pg_isready -U octalaicanvas -d octalaicanvas
 ```
 
 安装页报数据库错误时，重点检查 `.env`、PostgreSQL 健康状态、数据库密码和 Host。浏览器只显示安全分类提示，完整连接错误保留在服务器日志。

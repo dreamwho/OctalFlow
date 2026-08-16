@@ -111,7 +111,7 @@ async function loadInstallStatus(provider: "file" | "postgres", encryption = get
                 schemaReady: false,
                 connectionEnv,
                 message: "缺少 PostgreSQL 连接配置。请在服务器环境变量、.env.local 或 Docker Compose 中填写 DATABASE_URL。",
-                detail: "本机部署通常是 postgres://用户名:密码@localhost:5432/vozeb_pro；Docker Compose 通常是 postgres://用户名:密码@postgres:5432/vozeb_pro。",
+                detail: "本机部署通常是 postgres://用户名:密码@localhost:5432/octalaicanvas；Docker Compose 通常是 postgres://用户名:密码@postgres:5432/octalaicanvas。",
             },
         });
     }

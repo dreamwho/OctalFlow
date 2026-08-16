@@ -56,7 +56,7 @@ export function validateRenderBlueprint({ repoRoot, source, dockerfile: dockerfi
     ensure(!workerEnvironment.VOZEB_PRO_MAINTENANCE_TOKEN, "Render Worker 不得获得外部维护令牌");
     ensure(workerEnvironment.VOZEB_PRO_WORKER_API_ORIGIN?.fromService?.name === "vozeb-pro" && workerEnvironment.VOZEB_PRO_WORKER_API_ORIGIN?.fromService?.property === "hostport", "Worker 必须通过 Render 私网调用 Web");
     ensure(!workerEnvironment.DATABASE_URL && !workerEnvironment.VOZEB_PRO_DATABASE_PROVIDER, "Render Worker 不应直接持有数据库配置");
-    ensure(database?.plan === "basic-256mb" && database?.databaseName === "vozeb_pro" && database?.user === "vozeb_pro", "Render PostgreSQL 必须使用持久生产实例和稳定名称");
+    ensure(database?.plan === "basic-256mb" && database?.databaseName === "octalaicanvas" && database?.user === "octalaicanvas", "Render PostgreSQL 必须使用持久生产实例和稳定名称");
 
     if (violations.length > 0) throw new Error(`Render Blueprint 契约失败：\n- ${violations.join("\n- ")}`);
     return { services: services.map(({ name }) => name), database: database.name, environmentGroup: runtimeGroup.name };

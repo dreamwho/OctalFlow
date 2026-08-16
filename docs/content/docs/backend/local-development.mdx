@@ -15,8 +15,8 @@ description: 使用 Node.js、pnpm 和 PostgreSQL 开发 VOZEB PRO
 ## 数据库
 
 ```sql
-CREATE USER vozeb_pro WITH PASSWORD 'password';
-CREATE DATABASE vozeb_pro OWNER vozeb_pro;
+CREATE USER octalaicanvas WITH PASSWORD 'password';
+CREATE DATABASE octalaicanvas OWNER octalaicanvas;
 ```
 
 ## 环境变量
@@ -30,7 +30,7 @@ cp .env.example web/.env.local
 ```dotenv
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 VOZEB_PRO_DATABASE_PROVIDER=postgres
-DATABASE_URL=postgres://vozeb_pro:password@localhost:5432/vozeb_pro
+DATABASE_URL=postgres://octalaicanvas:password@localhost:5432/octalaicanvas
 VOZEB_PRO_DATABASE_POOL_MAX=10
 VOZEB_PRO_DATABASE_SSL=0
 VOZEB_PRO_ENCRYPTION_KEY=填写 openssl rand -hex 32 的输出

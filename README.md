@@ -438,7 +438,7 @@ docker compose -f docker-compose.baota.yml up -d
 
 ```dotenv
 VOZEB_PRO_DATABASE_PROVIDER=postgres
-DATABASE_URL=postgres://user:password@127.0.0.1:5432/vozeb_pro
+DATABASE_URL=postgres://user:password@127.0.0.1:5432/octalaicanvas
 VOZEB_PRO_DATABASE_SSL=0
 VOZEB_PRO_TRUSTED_PROXY_HOPS=1
 ```

@@ -2,8 +2,8 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-vozeb_pro}
-      POSTGRES_USER: ${POSTGRES_USER:-vozeb_pro}
+      POSTGRES_DB: ${POSTGRES_DB:-octalaicanvas}
+      POSTGRES_USER: ${POSTGRES_USER:-octalaicanvas}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中配置 POSTGRES_PASSWORD}
     volumes:
       - vozeb-pro-postgres:/var/lib/postgresql/data
@@ -11,7 +11,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-vozeb_pro} -d ${POSTGRES_DB:-vozeb_pro}",
+          "pg_isready -U ${POSTGRES_USER:-octalaicanvas} -d ${POSTGRES_DB:-octalaicanvas}",
         ]
       interval: 5s
       timeout: 5s
@@ -34,7 +34,7 @@ services:
       VOZEB_PRO_DATA_DIR: /app/web/.data
       VOZEB_PRO_INTERNAL_ORIGIN: http://127.0.0.1:3000
       VOZEB_PRO_DATABASE_PROVIDER: postgres
-      DATABASE_URL: postgres://${POSTGRES_USER:-vozeb_pro}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vozeb_pro}
+      DATABASE_URL: postgres://${POSTGRES_USER:-octalaicanvas}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-octalaicanvas}
       VOZEB_PRO_DATABASE_POOL_MAX: ${VOZEB_PRO_DATABASE_POOL_MAX:-10}
       VOZEB_PRO_DATABASE_SSL: "0"
       VOZEB_PRO_ENCRYPTION_KEY: ${VOZEB_PRO_ENCRYPTION_KEY:?请在 .env 中配置 VOZEB_PRO_ENCRYPTION_KEY}

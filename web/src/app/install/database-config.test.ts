@@ -7,8 +7,8 @@ const baseConfig = {
     mode: "baota" as const,
     host: "127.0.0.1",
     port: "5432",
-    database: "vozeb_pro",
-    username: "vozeb_pro",
+    database: "octalaicanvas",
+    username: "octalaicanvas",
     password: "safe password",
     ssl: false,
     encryptionKey: "ab".repeat(32),
@@ -25,7 +25,7 @@ describe("database deployment config", () => {
     it("uses host networking without a bundled PostgreSQL service in Baota mode", () => {
         const snippets = buildDeploymentSnippets(baseConfig);
 
-        expect(snippets.envText).toContain("@127.0.0.1:5432/vozeb_pro");
+        expect(snippets.envText).toContain("@127.0.0.1:5432/octalaicanvas");
         expect(snippets.composeText).toContain("network_mode: host");
         expect(snippets.composeText).not.toContain("postgres:\n");
         expect(snippets.composeText).not.toContain("ports:");

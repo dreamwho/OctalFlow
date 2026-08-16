@@ -59,8 +59,8 @@ services:
 databases:
   - name: vozeb-pro-postgres
     plan: basic-256mb
-    databaseName: vozeb_pro
-    user: vozeb_pro
+    databaseName: octalaicanvas
+    user: octalaicanvas
 
 envVarGroups:
   - name: vozeb-pro-runtime

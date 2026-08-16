@@ -30,8 +30,8 @@ export function generateDeploymentSecret() {
 export function buildDeploymentSnippets(config: DatabaseConfig) {
     const host = config.host.trim() || "localhost";
     const port = config.port.trim() || "5432";
-    const database = config.database.trim() || "vozeb_pro";
-    const username = config.username.trim() || "vozeb_pro";
+    const database = config.database.trim() || "octalaicanvas";
+    const username = config.username.trim() || "octalaicanvas";
     const databaseUrl = buildPostgresUrl({ database, host, password: config.password, port, username });
     const databaseEnv = config.mode === "docker" ? `POSTGRES_DB=${database}\nPOSTGRES_USER=${username}\nPOSTGRES_PASSWORD=${config.password}` : `DATABASE_URL=${databaseUrl}`;
     const envText = `VOZEB_PRO_DATABASE_PROVIDER=postgres
