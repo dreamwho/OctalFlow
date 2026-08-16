@@ -37,3 +37,6 @@ scripts/capture-readme-screenshots.mjs
 
 # 本地密码便签，禁止入库
 数据库密码.txt
+
+# 服务器部署包（含密钥，禁止入库）
+待上传文件_*
