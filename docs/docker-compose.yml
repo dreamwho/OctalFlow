@@ -1,0 +1,6 @@
+services:
+  docs:
+    image: ghcr.io/dreamwho/octalaicanvas-docs:v0.0.6
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
