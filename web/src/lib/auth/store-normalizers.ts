@@ -555,6 +555,7 @@ export function normalizeText(value: unknown, fallback: string, maxLength: numbe
 }
 
 export function repairKnownMojibakeText(value: string) {
+    if (value === DEFAULT_SITE_SETTINGS.title || value === DEFAULT_SITE_SETTINGS.seoTitle || value === DEFAULT_SITE_SETTINGS.seoKeywords) return value;
     if (value.includes("OctalAICanvas") && value.includes("AI") && !value.includes("绘图") && value.includes(",")) return DEFAULT_SITE_SETTINGS.seoKeywords;
     if (value.includes("OctalAICanvas") && value.includes("AI") && !value.includes("工作台")) return DEFAULT_SITE_SETTINGS.seoDescription;
     if (value.includes("2026 OctalAICanvas") && !value.startsWith("©")) return "© 2026 OctalAICanvas. All rights reserved.";
