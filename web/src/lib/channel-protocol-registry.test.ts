@@ -50,12 +50,24 @@ describe("channel protocol registry", () => {
             label: "无线创客",
             defaultBaseUrl: "https://api.lingkeai.ai/v1",
             modelCatalogPaths: ["/v1/models"],
-            capabilities: ["text", "image"],
+            capabilities: ["text", "image", "video"],
         });
         expect(channelProtocolDefinition("lingkeai").operations.image).toMatchObject({
             createPath: "/images/generations",
             resultField: "data[0].url / data[0].b64_json",
         });
+        expect(channelProtocolDefinition("lingkeai").operations.video).toMatchObject({
+            createPath: "/v1/media/generate",
+            queryPath: "/v1/media/status?task_id=:task_id",
+            resultField: "result_url",
+            statusField: "state",
+        });
+        const gptImage2 = channelProtocolDefinition("lingkeai").builtInModels?.find((item) => item.id === "gpt-image-2");
+        expect(gptImage2?.operation).toMatchObject({ createPath: "/images/generations", resultField: "data[0].url / data[0].b64_json" });
+        const geminiPreview = channelProtocolDefinition("lingkeai").builtInModels?.find((item) => item.id === "gemini-3.1-flash-image-preview");
+        expect(geminiPreview?.operation).toMatchObject({ createPath: "/v1/media/generate", queryPath: "/v1/media/status?task_id=:task_id", resultField: "result_url" });
+        const videoModel = channelProtocolDefinition("lingkeai").builtInModels?.find((item) => item.id === "grok-imagine-video-1.5-preview");
+        expect(videoModel?.operation).toMatchObject({ createPath: "/v1/media/generate", queryPath: "/v1/media/status?task_id=:task_id", resultField: "result_url" });
     });
 
     it("keeps strict protocol paths and request contracts isolated", () => {

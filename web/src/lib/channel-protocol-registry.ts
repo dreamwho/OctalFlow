@@ -47,6 +47,31 @@ const openAiOperations: ChannelProtocolDefinition["operations"] = {
     audio: { capability: "audio", createPath: "/audio/speech", requestTemplate: '{"model":"{{model}}","input":"{{prompt}}","voice":"alloy","response_format":"mp3"}', resultField: "binary" },
 };
 
+const lingkeaiSyncImageOperation: ProtocolOperation = {
+    capability: "image",
+    createPath: "/images/generations",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","n":1}',
+    resultField: "data[0].url / data[0].b64_json",
+};
+
+const lingkeaiMediaImageOperation: ProtocolOperation = {
+    capability: "image",
+    createPath: "/v1/media/generate",
+    queryPath: "/v1/media/status?task_id=:task_id",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","n":1}',
+    resultField: "result_url",
+    statusField: "state",
+};
+
+const lingkeaiMediaVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/media/generate",
+    queryPath: "/v1/media/status?task_id=:task_id",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","resolution":"{{resolution}}","n":1}',
+    resultField: "result_url",
+    statusField: "state",
+};
+
 const geminiVideoOperation: ProtocolOperation = {
     capability: "video",
     createPath: "/models/:model:predictLongRunning",
@@ -223,13 +248,21 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
     {
         id: "lingkeai",
         label: "无线创客",
-        description: "无线创客聚合网关（api.lingkeai.ai），OpenAI 兼容文本与 gpt-image-2 同步图片生成；gpt-image-2 不在公开模型目录，需手工添加。",
+        description: "无线创客聚合网关（api.lingkeai.ai）。gpt-image-2 走同步 /images/generations；gemini 图片与视频模型走 /v1/media/generate 异步任务；文本走 OpenAI 兼容 /chat/completions。",
         apiFormat: "openai",
         authMode: "bearer",
         defaultBaseUrl: "https://api.lingkeai.ai/v1",
         modelCatalogPaths: ["/v1/models"],
-        capabilities: ["text", "image"],
-        operations: { text: openAiOperations.text, image: openAiOperations.image },
+        capabilities: ["text", "image", "video"],
+        operations: { text: openAiOperations.text, image: lingkeaiSyncImageOperation, video: lingkeaiMediaVideoOperation },
+        builtInModels: [
+            { id: "gpt-image-2", label: "gpt-image-2", capability: "image", operation: lingkeaiSyncImageOperation },
+            { id: "gpt-image-2-guan", label: "gpt-image-2-guan", capability: "image", operation: lingkeaiSyncImageOperation },
+            { id: "gemini-3.1-flash-image-preview", label: "gemini-3.1-flash-image-preview", capability: "image", operation: lingkeaiMediaImageOperation },
+            { id: "gemini-3-pro-image-preview", label: "gemini-3-pro-image-preview", capability: "image", operation: lingkeaiMediaImageOperation },
+            { id: "grok-imagine-video-1.5-preview", label: "grok-imagine-video-1.5-preview", capability: "video", operation: lingkeaiMediaVideoOperation },
+            { id: "hailuo-h3", label: "hailuo-h3", capability: "video", operation: lingkeaiMediaVideoOperation },
+        ],
         strict: true,
     },
     {
@@ -457,7 +490,8 @@ export function channelProtocolValidationErrors(channel: SystemModelChannel) {
             errors.push(`${definition.label} 不支持 ${capability} 模型 ${model}`);
             continue;
         }
-        if (definition.builtInModels && !definition.builtInModels.some((item) => normalizeModelId(item.id) === key)) errors.push(`${model} 不在 ${definition.label} 文档模型列表中`);
+        const hasCapabilityDefault = Boolean(definition.operations[capability]);
+        if (definition.builtInModels && !definition.builtInModels.some((item) => normalizeModelId(item.id) === key) && !hasCapabilityDefault) errors.push(`${model} 不在 ${definition.label} 文档模型列表中`);
         if (!config) {
             errors.push(`${model} 缺少 ${definition.label} 的严格模型配置`);
             continue;

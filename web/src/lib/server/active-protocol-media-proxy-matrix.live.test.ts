@@ -116,6 +116,7 @@ describe("active protocols through persisted admin settings and the system proxy
         await expectImageResult(generated);
         expectProxyRequests(channel, operation.createPath, model, false);
 
+        if (!operation.supportsReferenceImage) return;
         fixture.requests.splice(0);
         const edited = await runImage(imageTask(channel, true), definition.id);
         await expectImageResult(edited);
@@ -134,6 +135,7 @@ describe("active protocols through persisted admin settings and the system proxy
         expectProxyRequests(channel, operation.createPath, model, false, operation.queryPath, created.id);
 
         fixture.requests.splice(0);
+        if (!operation.supportsReferenceImage) return;
         const createPath = operation.imageToVideoPath || operation.createPath;
         const referenced = await createUpstream(
             "proxy-user",
@@ -341,7 +343,7 @@ function imageTask(channel: ProxyChannel, edit: boolean): ImageTask {
 }
 
 async function runImage(task: ImageTask, protocol: SystemChannelProtocol) {
-    const declarative = protocol === "custom" || protocol === "stable-diffusion" || protocol === "yumeng";
+    const declarative = protocol === "custom" || protocol === "stable-diffusion" || protocol === "yumeng" || protocol === "lingkeai";
     const submitted = declarative ? await runCustomImageTask(task, INTERNAL_ORIGIN, fixtureOrigin, "", true) : await runOpenAiImageTask(task, INTERNAL_ORIGIN, fixtureOrigin, "", true);
     return submitted.pending ? pollCustomImageTask(task, submitted.pending.id, submitted.pending.pollBaseUrl, "", true) : submitted;
 }

@@ -37,7 +37,7 @@ describe("registered protocol model catalogs over a local TCP interface", () => 
             Object.fromEntries(expectedIds.map((id) => [id.toLowerCase(), id === "opaque-catalog-model" ? (definition.capabilities.length === 1 ? definition.capabilities[0] : "text") : id.replace("mock-", "")])),
         );
         const request = fixture.requests.at(-1);
-        expect(request?.path).toBe(path);
+        expect(request?.path ? new URL(request.path, origin).pathname : request?.path).toBe(path);
         if (definition.authMode === "none") expect(request?.headers.authorization).toBeUndefined();
         else if (definition.id === "gemini") expect(request?.headers["x-goog-api-key"]).toBe("fixture-key");
         else expect(request?.headers.authorization).toBe("Bearer fixture-key");

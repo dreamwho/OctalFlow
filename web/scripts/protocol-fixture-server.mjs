@@ -43,7 +43,7 @@ export function createProtocolFixtureServer(options = {}) {
         try {
             const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
             const body = await readRequestBody(request);
-            requests.push({ method: request.method || "GET", path: url.pathname, headers: request.headers, contentType: request.headers["content-type"] || "", body });
+            requests.push({ method: request.method || "GET", path: url.pathname + url.search, headers: request.headers, contentType: request.headers["content-type"] || "", body });
             await handleFixtureRequest({ request, response, url, body, tasks, requests, nextTaskId, options });
         } catch (error) {
             sendJson(response, 500, { error: { message: error instanceof Error ? error.message : "fixture failed" } });
@@ -152,6 +152,22 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
     }
     if (request.method === "POST" && path === "/custom/images") {
         return sendJson(response, 200, { data: { image_url: `${url.origin}/media/fixture.png` } });
+    }
+
+    if (request.method === "POST" && path === "/media/generate") {
+        const payload = jsonBody(body);
+        const kind = payload.resolution ? "video" : "image";
+        const id = nextTaskId(kind);
+        tasks.set(id, { kind, status: "completed" });
+        return sendJson(response, 200, { code: 200, data: { task_id: id, task_ids: [id] }, msg: "任务创建成功" });
+    }
+    const mediaTaskId = url.searchParams.get("task_id");
+    if (request.method === "GET" && path === "/media/status" && mediaTaskId) {
+        const task = tasks.get(mediaTaskId) || { kind: "video", status: "completed" };
+        const mediaUrl = task.kind === "image" ? `${url.origin}/media/fixture.png` : `${url.origin}/media/fixture.mp4`;
+        if (task.status === "pending") return sendJson(response, 200, { state: "pending", status: "等待中", progress: "0", is_final: false, result_type: task.kind, task_id: mediaTaskId });
+        if (task.status === "cancelled") return sendJson(response, 200, { state: "failed", status: "已取消", progress: "0", result_type: task.kind, error: "已取消", task_id: mediaTaskId });
+        return sendJson(response, 200, { state: "success", status: "已完成", progress: "100", is_final: true, result_type: task.kind, result_url: mediaUrl, task_id: mediaTaskId });
     }
 
     if (request.method === "POST" && (GLOBAL_AIOPC_VIDEO_PATHS.has(path) || ["/videos", "/contents/generations/tasks", "/seedance-special/videos"].includes(path))) {

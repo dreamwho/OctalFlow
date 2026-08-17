@@ -277,7 +277,7 @@ function imageTaskMediaResults(result: ImageTaskResult): ImageTaskMediaResult[] 
 }
 
 function usesDeclarativeImageProtocol(protocol: NonNullable<ImageTask["config"]["advancedConfig"]>["protocol"] | undefined) {
-    return protocol === "custom" || protocol === "stable-diffusion" || protocol === "yumeng";
+    return protocol === "custom" || protocol === "stable-diffusion" || protocol === "yumeng" || protocol === "lingkeai";
 }
 
 async function normalizeSafeImageResult(task: ImageTask, result: ImageTaskMediaResult, origin: string, authContext: string): Promise<ImageTaskMediaResult> {
