@@ -33,6 +33,7 @@ vi.mock("@/lib/auth/store", () => {
 vi.mock("@/lib/server/internal-origin", () => ({ fetchInternalApi: mocks.fetchInternalApi, resolveInternalOrigin: vi.fn(() => "http://localhost") }));
 vi.mock("@/lib/server/generation-task-store", () => ({
     withGenerationConcurrencyLimit: mocks.withGenerationConcurrencyLimit,
+    effectiveGenerationConcurrencyLimit: (_role: string | undefined, limit: number) => limit,
     linkStoredGenerationTask: mocks.linkStoredGenerationTask,
     getStoredGenerationTaskByRequest: mocks.getStoredGenerationTaskByRequest,
 }));

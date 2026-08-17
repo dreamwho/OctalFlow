@@ -4,7 +4,7 @@ import { getAuthSettings } from "@/lib/auth/store";
 import { CreativeRuntimeInputError, normalizeCreativeRunRequest, normalizeCreativeSurface } from "@/lib/creative-runtime-contract";
 import { readJsonBody } from "@/lib/auth/request";
 import { checkRateLimit } from "@/lib/server/security";
-import { withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
+import { effectiveGenerationConcurrencyLimit, withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
 import { createAgentRun, getAgentRunByClientRequestId, listAgentRuns } from "@/lib/server/agent-run-store";
 import { CreativeStoreConflict } from "@/lib/server/creative-runtime-store";
 import { resolveInternalOrigin } from "@/lib/server/internal-origin";
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
         const rate = await checkRateLimit(`agent-run:${user.id}`, { maxRequests: 10, windowMs: 60 * 1000 });
         if (!rate.allowed) return NextResponse.json({ code: 429, data: null, msg: "Agent 请求过于频繁，请稍后重试" }, { status: 429 });
         const settings = await getAuthSettings();
-        const response = await withGenerationConcurrencyLimit(user.id, "agent", 10 * 60 * 1000, settings.generationConcurrency.agent, async () => {
+        const response = await withGenerationConcurrencyLimit(user.id, "agent", 10 * 60 * 1000, effectiveGenerationConcurrencyLimit(user.role, settings.generationConcurrency.agent), async () => {
             const created = await createAgentRun(user.id, input);
             if (created.created) {
                 const origin = resolveInternalOrigin(new URL(request.url).origin);

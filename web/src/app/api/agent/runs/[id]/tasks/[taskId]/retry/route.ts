@@ -7,7 +7,7 @@ import { getAgentRun, updateAgentRunById } from "@/lib/server/agent-run-store";
 import { failedAgentTaskRetryOps, prepareFailedAgentTaskRetry } from "@/lib/server/agent-run-task-input";
 import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-recovery-service";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
-import { withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
+import { effectiveGenerationConcurrencyLimit, withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
 import { resolveInternalOrigin } from "@/lib/server/internal-origin";
 import { publicAgentRun } from "@/lib/server/agent-run-public";
 
@@ -30,7 +30,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const requestedTasks = run.tasks.filter((item) => requestedTaskIdSet.has(item.id));
     if (requestedTasks.length !== requestedTaskIds.length || requestedTasks.some((task) => task.status !== "failed")) return NextResponse.json({ code: 409, data: null, msg: "只有失败任务可以重试" }, { status: 409 });
     const settings = await getAuthSettings();
-    const limit = settings.generationConcurrency.agent;
+    const rawLimit = settings.generationConcurrency.agent;
+    const limit = effectiveGenerationConcurrencyLimit(user.role, rawLimit);
     const tasks = run.tasks.map((item) => {
         if (!requestedTaskIdSet.has(item.id)) return item;
         const completedChildren = item.childTasks?.filter((child) => child.status === "completed") || [];
@@ -60,7 +61,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }),
         run.id,
     );
-    if (result === null) return NextResponse.json({ code: 429, data: null, msg: `当前最多同时运行 ${limit} 个 Agent 任务` }, { status: 429 });
+    if (result === null) return NextResponse.json({ code: 429, data: null, msg: `当前最多同时运行 ${rawLimit} 个 Agent 任务` }, { status: 429 });
     const { updated } = result;
     if (!updated) return NextResponse.json({ code: 404, data: null, msg: "Agent 任务不存在" }, { status: 404 });
     const origin = resolveInternalOrigin(new URL(request.url).origin);

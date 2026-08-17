@@ -699,6 +699,10 @@ export async function countActiveStoredGenerationTasks(userId: string, type: Gen
     ).length;
 }
 
+export function effectiveGenerationConcurrencyLimit(role: string | undefined, limit: number) {
+    return role === "admin" ? Number.MAX_SAFE_INTEGER : limit;
+}
+
 export async function withGenerationConcurrencyLimit<T>(userId: string, type: GenerationTaskType, staleMs: number, limit: number, handler: () => Promise<T>, excludeTaskId?: string): Promise<T | null> {
     if (getDatabaseProvider() === "postgres") {
         await ensurePostgresSchema();

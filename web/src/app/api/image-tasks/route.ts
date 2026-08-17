@@ -17,7 +17,7 @@ import { createImageTask, getImageTask, touchImageTask, transitionImageTask, typ
 import { isGenerationSource, recordGenerationLog } from "@/lib/server/generation-log-store";
 import { writeReferenceImageDataUrl } from "@/lib/server/reference-asset-store";
 import { resolveImageTaskOptions } from "@/lib/server/image-task-config";
-import { getStoredGenerationTaskByRequest, linkStoredGenerationTask, withGenerationConcurrencyLimit, type GenerationTaskContext } from "@/lib/server/generation-task-store";
+import { effectiveGenerationConcurrencyLimit, getStoredGenerationTaskByRequest, linkStoredGenerationTask, withGenerationConcurrencyLimit, type GenerationTaskContext } from "@/lib/server/generation-task-store";
 import { registerGenerationTaskAssetsForUser } from "@/lib/server/creative-runtime-service";
 import { createSignedReferenceAssetUrl, signReferenceAssetInputUrl } from "@/lib/server/reference-asset-access";
 import { assertCapabilityConstraints } from "@/lib/server/capability-constraints";
@@ -152,7 +152,7 @@ export async function POST(request: Request) {
     }
     if (requestId) resolvedBody.context = { ...(resolvedBody.context || {}), clientRequestId: requestId, ...(headerAttemptNo ? { attemptNo: headerAttemptNo } : {}) };
     const settings = await getAuthSettings();
-    const response = await withGenerationConcurrencyLimit(currentUser.id, "image", 10 * 60 * 1000, settings.generationConcurrency.image, async () => {
+    const response = await withGenerationConcurrencyLimit(currentUser.id, "image", 10 * 60 * 1000, effectiveGenerationConcurrencyLimit(currentUser.role, settings.generationConcurrency.image), async () => {
         const configs = sanitizeConfigs(resolvedBody.config, settings);
         const prompt = (resolvedBody.prompt || "").trim();
         const kind = resolvedBody.kind === "edit" ? "edit" : "generation";

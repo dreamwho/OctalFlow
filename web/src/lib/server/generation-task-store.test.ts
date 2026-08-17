@@ -30,6 +30,7 @@ import {
     mutateStoredGenerationTask,
     summarizeStoredAgentPerformance,
     summarizeStoredGenerationTaskCosts,
+    effectiveGenerationConcurrencyLimit,
     withGenerationConcurrencyLimit,
 } from "./generation-task-store";
 
@@ -41,6 +42,19 @@ type TestTask = {
     createdAt: number;
     updatedAt: number;
 };
+
+describe("effectiveGenerationConcurrencyLimit", () => {
+    it("exempts admins from the per-user generation concurrency limit", () => {
+        expect(effectiveGenerationConcurrencyLimit("admin", 2)).toBe(Number.MAX_SAFE_INTEGER);
+        expect(effectiveGenerationConcurrencyLimit("admin", 0)).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it("keeps the configured limit for regular users and unknown roles", () => {
+        expect(effectiveGenerationConcurrencyLimit("user", 3)).toBe(3);
+        expect(effectiveGenerationConcurrencyLimit(undefined, 5)).toBe(5);
+        expect(effectiveGenerationConcurrencyLimit("", 7)).toBe(7);
+    });
+});
 
 describe("mutateStoredGenerationTask", () => {
     beforeEach(() => {

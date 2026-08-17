@@ -6,7 +6,7 @@ import { abortAgentRun } from "@/lib/server/agent-run-executor";
 import { getAgentRun, setAgentRunStatus, updateAgentRunById, type AgentRun, type AgentRunStatus } from "@/lib/server/agent-run-store";
 import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-recovery-service";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
-import { withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
+import { effectiveGenerationConcurrencyLimit, withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
 import { fetchInternalApi, resolveInternalOrigin } from "@/lib/server/internal-origin";
 import { publicAgentRun } from "@/lib/server/agent-run-public";
 
@@ -31,7 +31,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (action === "retry" && (run.status !== "failed" || run.tasks.length)) return NextResponse.json({ code: 409, data: null, msg: "只有规划阶段失败的任务可以整体重试" }, { status: 409 });
     if (action === "pause" && !["planning", "running"].includes(run.status)) return NextResponse.json({ code: 409, data: null, msg: "当前任务无法暂停" }, { status: 409 });
     if (action === "resume" && (run.status !== "paused" || run.cancellation)) return NextResponse.json({ code: 409, data: null, msg: run.cancellation ? "任务正在取消，无法恢复" : "只有暂停中的任务可以恢复" }, { status: 409 });
-    const limit = action === "resume" || action === "retry" ? (await getAuthSettings()).generationConcurrency.agent : 0;
+    const rawLimit = action === "resume" || action === "retry" ? (await getAuthSettings()).generationConcurrency.agent : 0;
+    const limit = effectiveGenerationConcurrencyLimit(user.role, rawLimit);
     if (action === "cancel" && ["completed", "failed", "cancelled"].includes(run.status)) return NextResponse.json({ code: 409, data: null, msg: "当前任务无法取消" }, { status: 409 });
     if (action === "cancel") return cancelAgentRun(request, run);
     if (action !== "resume") abortAgentRun(run.id);
@@ -47,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                 : await setAgentRunStatus(run, status!),
     });
     const result = action === "resume" || action === "retry" ? await withGenerationConcurrencyLimit(run.userId, "agent", 10 * 60 * 1000, limit, mutate, run.id) : await mutate();
-    if (result === null) return NextResponse.json({ code: 429, data: null, msg: `当前最多同时运行 ${limit} 个 Agent 任务` }, { status: 429 });
+    if (result === null) return NextResponse.json({ code: 429, data: null, msg: `当前最多同时运行 ${rawLimit} 个 Agent 任务` }, { status: 429 });
     const { updated } = result;
     if (!updated) return NextResponse.json({ code: 409, data: null, msg: "Agent 状态已变化，请刷新后重试" }, { status: 409 });
     const origin = resolveInternalOrigin(new URL(request.url).origin);
