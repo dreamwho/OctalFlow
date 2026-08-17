@@ -314,36 +314,36 @@ export async function createUpstream(
                     duration: values.duration === -1 ? 5 : (values.duration as number),
                     references,
                 })
-            : channel.advancedConfig?.protocol === "yumeng"
-              ? buildYumengVideoRequest({
-                    model: channel.model,
-                    prompt,
-                    duration: values.duration as number,
-                    aspectRatio: values.aspect_ratio as string,
-                    resolution: values.resolution as string,
-                    generateAudio,
-                    watermark: raw.videoWatermark === "true",
-                    images: requestImages,
-                    videos,
-                    audios,
-                    firstFrame: firstFrameUrl || undefined,
-                    lastFrame: lastFrameUrl || undefined,
-                })
-              : globalPreset
-                ? buildGlobalAiOpcVideoRequest(globalPreset, {
+              : channel.advancedConfig?.protocol === "yumeng"
+                ? buildYumengVideoRequest({
                       model: channel.model,
                       prompt,
                       duration: values.duration as number,
-                      ratio: values.ratio as string,
+                      aspectRatio: values.aspect_ratio as string,
                       resolution: values.resolution as string,
-                      images: requestImages.length ? requestImages : requestImage ? [requestImage] : [],
+                      generateAudio,
+                      watermark: raw.videoWatermark === "true",
+                      images: requestImages,
                       videos,
                       audios,
-                      generateAudio,
                       firstFrame: firstFrameUrl || undefined,
                       lastFrame: lastFrameUrl || undefined,
                   })
-                : buildVideoProviderRequest(channel.advancedConfig?.requestTemplate, defaults, values);
+                : globalPreset
+                  ? buildGlobalAiOpcVideoRequest(globalPreset, {
+                        model: channel.model,
+                        prompt,
+                        duration: values.duration as number,
+                        ratio: values.ratio as string,
+                        resolution: values.resolution as string,
+                        images: requestImages.length ? requestImages : requestImage ? [requestImage] : [],
+                        videos,
+                        audios,
+                        generateAudio,
+                        firstFrame: firstFrameUrl || undefined,
+                        lastFrame: lastFrameUrl || undefined,
+                    })
+                  : buildVideoProviderRequest(channel.advancedConfig?.requestTemplate, defaults, values);
     const requestBody = multipart
         ? await buildOpenAiVideoFormData({ model: channel.model, prompt, seconds: values.seconds as number, width: dimensions.width, height: dimensions.height, imageUrls: firstFrameUrl ? [firstFrameUrl] : images, origin, cookie })
         : JSON.stringify(payload);
