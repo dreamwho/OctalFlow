@@ -79,6 +79,33 @@ describe("video task upstream reconciliation", () => {
         expect(mocks.refund).not.toHaveBeenCalled();
     });
 
+    it("downloads a MiniMax H3 relative content path through the media proxy with a signed claim", async () => {
+        const task = videoTask({
+            config: {
+                channelId: "channel",
+                apiSource: "system",
+                baseUrl: "/api/ai/system/channel",
+                apiKey: "system",
+                apiFormat: "openai",
+                model: "minimax-h3-base",
+                advancedConfig: { protocol: "minimax-h3", queryPath: "/v1/videos/:task_id", statusField: "status", resultField: "/v1/videos/:task_id/content" } as NonNullable<VideoTask["config"]["advancedConfig"]>,
+            },
+            upstream: { id: "task_minimax", provider: "generation", model: "minimax-h3-base", pollPath: "/v1/videos", pointsCost: 1, pointsUnits: 1, pointsRecordId: "points-minimax" },
+        });
+        const completed = { ...task, status: "success" as const, result: { url: "/api/reference-assets/result.mp4", mimeType: "video/mp4", durationMs: 5_000 } };
+        mocks.claim.mockResolvedValue(task);
+        mocks.get.mockResolvedValue(task);
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: task.upstream.id, status: "completed", progress: 100 }));
+        mocks.complete.mockResolvedValue(completed);
+
+        const result = await refreshVideoTaskFromUpstream(task, "http://localhost", "session=test");
+
+        expect(result).toEqual(completed);
+        const normalizeInput = mocks.normalize.mock.calls[0]?.[0] as { url: string; internalHeaders: Headers };
+        expect(normalizeInput.url).toBe(`/api/ai/system/channel/_media?url=${encodeURIComponent("/v1/videos/task_minimax/content")}`);
+        expect(new Headers(normalizeInput.internalHeaders).get("x-media-auth")).toBe("signed");
+    });
+
     it("polls and completes through a live Seedance-compatible fixture", async () => {
         const fixture = createProtocolFixtureServer();
         await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));

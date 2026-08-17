@@ -80,6 +80,8 @@ const minimaxH3VideoOperation: ProtocolOperation = {
     createPath: "/v1/videos",
     imageToVideoPath: "/v1/videos",
     queryPath: "/v1/videos/:task_id",
+    cancelPath: "/v1/videos/:task_id/cancel",
+    cancelMethod: "POST",
     requestTemplate: "json: model、mode(t2va/i2va/fl2va/ref2va)、resolution(480p/720p)、seconds(5-15 整数)、aspect_ratio、prompt；参考媒体使用 images/videos/audios 公网 URL 数组，首尾帧按首帧在前的顺序写入 images。",
     resultField: "/v1/videos/:task_id/content",
     statusField: "status",

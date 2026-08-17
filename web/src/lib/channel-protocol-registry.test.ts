@@ -81,6 +81,7 @@ describe("channel protocol registry", () => {
             createPath: "/v1/videos",
             imageToVideoPath: "/v1/videos",
             queryPath: "/v1/videos/:task_id",
+            cancelPath: "/v1/videos/:task_id/cancel",
             resultField: "/v1/videos/:task_id/content",
             statusField: "status",
             durationRange: "5-15 秒",

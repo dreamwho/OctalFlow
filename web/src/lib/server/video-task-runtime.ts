@@ -90,7 +90,7 @@ async function completeVideoTask(task: VideoTask, resultUrl: string, origin: str
     await updateVideoTask(task.id, { attempts });
     const channelId = task.config.channelId || systemGenerationChannelId(task.config.baseUrl);
     const workerHeaders = new Headers(workerUserId ? maintenanceWorkerHeaders(workerUserId) : undefined);
-    if (/^https?:\/\//i.test(resultUrl) && channelId) {
+    if (resultUrl && channelId) {
         Object.entries(generationMediaProxyHeaders({ userId: task.userId, taskType: "video", taskId: task.id, channelId, upstreamModel: task.config.model, url: resultUrl })).forEach(([key, value]) => workerHeaders.set(key, value));
     }
     const result = task.result?.url

@@ -36,5 +36,5 @@ export function readVideoProviderUrl(value: unknown, configuredPath?: string) {
 
 export function videoProviderMediaUrl(baseUrl: string, url: string) {
     const base = baseUrl.replace(/\/+$/, "");
-    return /^https?:\/\//i.test(url) ? `${base}/_media?url=${encodeURIComponent(url)}` : `${base}/${url.replace(/^\/+/, "")}`;
+    return `${base}/_media?url=${encodeURIComponent(url)}`;
 }
