@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [上游] 新增「MiniMax H3」预置协议：按官方 `/v1/videos` 契约支持文生、首帧、首尾帧与多参考视频，完成后从取片端点下载成片。
 - [上游] 无线创客视频模型按官方文档开放参考图：`/v1/media/generate` 新增 `image_url` 参考图字段，grok-imagine-video-1.5-preview 等视频模型支持图生视频。
 
 ## v0.0.6

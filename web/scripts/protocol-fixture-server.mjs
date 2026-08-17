@@ -170,6 +170,37 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
         return sendJson(response, 200, { state: "success", status: "已完成", progress: "100", is_final: true, result_type: task.kind, result_url: mediaUrl, task_id: mediaTaskId });
     }
 
+    if (request.method === "POST" && path === "/videos") {
+        const payload = jsonBody(body);
+        if (payload && payload.mode !== undefined) {
+            const allowed = new Set(["model", "mode", "resolution", "seconds", "prompt", "prompt_optimization", "aspect_ratio", "images", "videos", "audios"]);
+            const unsupported = Object.keys(payload).filter((key) => !allowed.has(key));
+            if (unsupported.length)
+                return sendJson(response, 422, {
+                    code: "fail_to_fetch_task",
+                    message: `{"detail":"unsupported request field(s): ${unsupported.join(", ")}; use model, mode, resolution, aspect_ratio, seconds, prompt, prompt_optimization, images, videos, and audios"}`,
+                    data: null,
+                });
+            if (!payload.mode || !payload.resolution || payload.seconds === undefined) return sendJson(response, 422, { code: "fail_to_fetch_task", message: '{"detail":"mode is required for this model"}', data: null });
+            const seconds = Number(payload.seconds);
+            if (!Number.isInteger(seconds) || seconds < 5 || seconds > 15) return sendJson(response, 422, { code: "fail_to_fetch_task", message: '{"detail":"seconds must be between 5 and 15 for MiniMax H3"}', data: null });
+            const id = nextTaskId("minimax-video");
+            tasks.set(id, { kind: "minimax-video", status: "completed" });
+            return sendJson(response, 200, { id, task_id: id, object: "video", model: payload.model, mode: payload.mode, status: "queued", progress: 0, seconds: String(seconds), resolution: payload.resolution });
+        }
+    }
+    const minimaxVideoTask = path.match(/^\/videos\/([^/]+)(\/content)?$/);
+    if (request.method === "GET" && minimaxVideoTask) {
+        const id = decodeURIComponent(minimaxVideoTask[1]);
+        const task = tasks.get(id);
+        if (task?.kind === "minimax-video") {
+            if (minimaxVideoTask[2]) {
+                const bytes = options.videoPath ? await readFile(options.videoPath) : FALLBACK_MP4;
+                return sendBytes(response, 200, "video/mp4", bytes);
+            }
+            return sendJson(response, 200, { id, task_id: id, object: "video", status: "completed", progress: 100 });
+        }
+    }
     if (request.method === "POST" && (GLOBAL_AIOPC_VIDEO_PATHS.has(path) || ["/videos", "/contents/generations/tasks", "/seedance-special/videos"].includes(path))) {
         const model = requestedModel(body, request.headers["content-type"] || "");
         if (shouldFailRequest(request, model)) return sendJson(response, model.includes("-fail") ? 400 : 503, { error: { message: "fixture video failure" } });

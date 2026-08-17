@@ -22,6 +22,7 @@ import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-rec
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { VIDEO_PROVIDER_MEDIA_KEYS, parseVideoProviderJson, readVideoProviderHttpError, readVideoProviderId, readVideoProviderUrl } from "@/lib/server/video-provider-response";
 import { buildSeedanceSpecialRequest } from "@/lib/seedance-special";
+import { assertMinimaxH3VideoReferences, buildMinimaxH3VideoRequest } from "@/lib/minimax-h3";
 import { assertOctalaicanvasRecommendedVideoReferences, buildOctalaicanvasRecommendedVideoRequest } from "@/lib/octalaicanvas-recommended-video";
 import { assertGeminiVideoReferences, buildGeminiVideoRequest, geminiVideoCreatePath, normalizeGeminiVideoDuration, parseGeminiVideoCreateResponse } from "@/lib/server/gemini-video-provider";
 import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
@@ -118,6 +119,7 @@ export async function POST(request: Request) {
                     if (channel.advancedConfig?.protocol !== "yumeng") assertVideoReferenceRoles(channel.advancedConfig, references, globalPreset?.videoReferenceRoles);
                     if (channel.advancedConfig?.protocol === "octalaicanvas-recommended") assertOctalaicanvasRecommendedVideoReferences(channel.model, references);
                     if (channel.advancedConfig?.protocol === "yumeng") assertYumengVideoReferences(channel.model, references);
+                    if (channel.advancedConfig?.protocol === "minimax-h3") assertMinimaxH3VideoReferences(references);
                     assertReferenceUrls(channel.advancedConfig, references, Boolean(globalPreset));
                 }
             } catch (error) {
@@ -303,6 +305,15 @@ export async function createUpstream(
                   generateAudio,
                   references,
               })
+            : channel.advancedConfig?.protocol === "minimax-h3"
+              ? buildMinimaxH3VideoRequest({
+                    model: channel.model,
+                    prompt,
+                    resolution: values.resolution as string,
+                    aspectRatio: values.ratio as string,
+                    duration: values.duration === -1 ? 5 : (values.duration as number),
+                    references,
+                })
             : channel.advancedConfig?.protocol === "yumeng"
               ? buildYumengVideoRequest({
                     model: channel.model,

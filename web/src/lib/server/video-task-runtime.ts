@@ -33,7 +33,7 @@ export async function queryVideoTaskUpstream(task: VideoTask, origin: string, co
     if (isGeminiVideoTask(task)) return queryGeminiVideoUpstream(task, origin, cookie, workerUserId);
     const data = await queryVideoUpstream(task, origin, cookie, workerUserId);
     const status = readVideoProviderStatus(data, task.config.advancedConfig?.statusField);
-    const resultUrl = readVideoProviderUrl(data, task.config.advancedConfig?.resultField);
+    const resultUrl = readVideoProviderUrl(data, task.config.advancedConfig?.resultField) || contentEndpointResultUrl(task, status);
     if (resultUrl || VIDEO_PROVIDER_SUCCESS.has(status)) {
         return resultUrl ? { state: "result_ready", status: status || "completed", resultUrl } : { state: "failed", status: status || "completed", error: "视频任务已完成但没有返回视频地址" };
     }
@@ -220,6 +220,11 @@ function videoProxyHeaders(task: VideoTask, cookie: string, workerUserId: string
 function globalAiOpcPreset(task: VideoTask) {
     const preset = resolveGlobalAiOpcPreset(task.config.advancedConfig, task.config.model);
     return preset?.capability === "video" ? preset : undefined;
+}
+
+function contentEndpointResultUrl(task: VideoTask, status: string) {
+    const resultField = task.config.advancedConfig?.resultField || "";
+    return VIDEO_PROVIDER_SUCCESS.has(status) && resultField.startsWith("/") && resultField.includes(":task_id") ? resultField.replace(/:task_id\b/g, encodeURIComponent(task.upstream.id)) : "";
 }
 
 function isGeminiVideoTask(task: VideoTask) {

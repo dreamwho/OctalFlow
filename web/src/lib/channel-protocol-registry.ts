@@ -1,5 +1,6 @@
 import type { ApiCallFormat, LogicalModelCapability, SystemChannelAdvancedConfig, SystemChannelAuthMode, SystemChannelModelConfig, SystemChannelProtocol, SystemModelChannel } from "@/lib/auth/store-types";
 import { inferModelCapability, normalizeModelId } from "@/lib/model-capability";
+import { MINIMAX_H3_MODELS } from "@/lib/minimax-h3";
 import { SEEDANCE_SPECIAL_MODELS } from "@/lib/seedance-special";
 import { normalizeYumengModelCenterBaseUrl, YUMENG_DEFAULT_IMAGE_OPERATION, YUMENG_DEFAULT_VIDEO_OPERATION, YUMENG_MODEL_CENTER_BASE_URL, YUMENG_MODEL_CENTER_MODELS } from "@/lib/yumeng-model-center";
 
@@ -72,6 +73,21 @@ const lingkeaiMediaVideoOperation: ProtocolOperation = {
     statusField: "state",
     referenceRule: "参考图使用公网可访问的图片 URL，通过 image_url 字段提交，上游按该地址拉取图片生成视频。",
     supportsReferenceImage: true,
+};
+
+const minimaxH3VideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/videos",
+    imageToVideoPath: "/v1/videos",
+    queryPath: "/v1/videos/:task_id",
+    requestTemplate: "json: model、mode(t2va/i2va/fl2va/ref2va)、resolution(480p/720p)、seconds(5-15 整数)、aspect_ratio、prompt；参考媒体使用 images/videos/audios 公网 URL 数组，首尾帧按首帧在前的顺序写入 images。",
+    resultField: "/v1/videos/:task_id/content",
+    statusField: "status",
+    durationRange: "5-15 秒",
+    referenceRule: "参考媒体使用公网可访问 URL：普通参考进入 ref2va 的 images/videos/audios；首帧与首尾帧分别映射 i2va 与 fl2va 的 images，两种方式不能混用。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
 };
 
 const geminiVideoOperation: ProtocolOperation = {
@@ -265,6 +281,19 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
             { id: "grok-imagine-video-1.5-preview", label: "grok-imagine-video-1.5-preview", capability: "video", operation: lingkeaiMediaVideoOperation },
             { id: "hailuo-h3", label: "hailuo-h3", capability: "video", operation: lingkeaiMediaVideoOperation },
         ],
+        strict: true,
+    },
+    {
+        id: "minimax-h3",
+        label: "MiniMax H3",
+        description: "MiniMax H3 视频网关（minimax.api.easyframe.cn）。POST /v1/videos 按 mode 支持文生（t2va）、首帧（i2va）、首尾帧（fl2va）与多参考（ref2va）；GET /v1/videos/:task_id 轮询，完成后从 /v1/videos/:task_id/content 取片。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://minimax.api.easyframe.cn",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["video"],
+        operations: { video: minimaxH3VideoOperation },
+        builtInModels: MINIMAX_H3_MODELS.map((id) => ({ id, label: id, capability: "video" as const })),
         strict: true,
     },
     {
