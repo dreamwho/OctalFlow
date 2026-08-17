@@ -221,6 +221,18 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
         strict: true,
     },
     {
+        id: "lingkeai",
+        label: "无线创客",
+        description: "无线创客聚合网关（api.lingkeai.ai），OpenAI 兼容文本与 gpt-image-2 同步图片生成；gpt-image-2 不在公开模型目录，需手工添加。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://api.lingkeai.ai/v1",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image"],
+        operations: { text: openAiOperations.text, image: openAiOperations.image },
+        strict: true,
+    },
+    {
         id: "octalaicanvas-recommended",
         label: "OctalAICanvas推荐",
         description: "OctalAICanvas 推荐的 JSON 异步视频协议，支持多模态参考素材与持久结果地址。",

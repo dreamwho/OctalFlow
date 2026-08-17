@@ -29,7 +29,7 @@ const channel = {
 describe("channel protocol registry", () => {
     it("exposes only active protocols and keeps SD2 separate from Stable Diffusion", () => {
         const protocols = channelProtocolOptions().map((item) => item.value);
-        expect(protocols).toEqual(["openai", "yumeng", "gemini", "seedance", "stable-diffusion", "volcengine-video", "sub2api", "newapi", "custom", "compatible", "auto"]);
+        expect(protocols).toEqual(["openai", "yumeng", "gemini", "seedance", "stable-diffusion", "volcengine-video", "sub2api", "newapi", "lingkeai", "custom", "compatible", "auto"]);
         expect(protocols).not.toEqual(expect.arrayContaining(["octalaicanvas-recommended", "seedance-special", "globalaiopc"]));
         expect(channelProtocolDefinition("openai").modelCatalogPaths).toEqual(["/v1/models"]);
         expect(channelProtocolDefinition("sub2api").modelCatalogPaths).toEqual(["/v1/models"]);
@@ -46,6 +46,16 @@ describe("channel protocol registry", () => {
             builtInModels: expect.any(Array),
         });
         expect(channelProtocolDefinition("yumeng").builtInModels).toHaveLength(26);
+        expect(channelProtocolDefinition("lingkeai")).toMatchObject({
+            label: "无线创客",
+            defaultBaseUrl: "https://api.lingkeai.ai/v1",
+            modelCatalogPaths: ["/v1/models"],
+            capabilities: ["text", "image"],
+        });
+        expect(channelProtocolDefinition("lingkeai").operations.image).toMatchObject({
+            createPath: "/images/generations",
+            resultField: "data[0].url / data[0].b64_json",
+        });
     });
 
     it("keeps strict protocol paths and request contracts isolated", () => {

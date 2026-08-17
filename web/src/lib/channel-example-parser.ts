@@ -441,6 +441,7 @@ function protocolLabel(protocol: SystemChannelProtocol) {
     if (protocol === "yumeng") return "昱梦";
     if (protocol === "sub2api") return "sub2api";
     if (protocol === "newapi") return "New API";
+    if (protocol === "lingkeai") return "无线创客";
     if (protocol === "octalaicanvas-recommended") return "OctalAICanvas推荐";
     if (protocol === "globalaiopc") return "GlobalAiOpc";
     if (protocol === "seedance") return "Seedance";

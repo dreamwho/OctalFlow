@@ -321,6 +321,7 @@ function isChannelProtocol(value: unknown): value is SystemChannelProtocol {
         value === "gemini" ||
         value === "sub2api" ||
         value === "newapi" ||
+        value === "lingkeai" ||
         value === "octalaicanvas-recommended" ||
         value === "globalaiopc" ||
         value === "seedance" ||
