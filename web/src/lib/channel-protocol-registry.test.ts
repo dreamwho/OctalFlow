@@ -59,9 +59,10 @@ describe("channel protocol registry", () => {
         expect(channelProtocolDefinition("lingkeai").operations.video).toMatchObject({
             createPath: "/v1/media/generate",
             queryPath: "/v1/media/status?task_id=:task_id",
-            requestTemplate: expect.stringContaining('"params":{"resolution":"{{resolution}}","image_url":"{{image}}"}'),
+            requestTemplate: expect.stringContaining('"params":{"images":"{{images}}","aspect_ratio":"{{aspect_ratio}}","resolution":"{{resolution}}","duration":"{{duration}}"}'),
             resultField: "result_url",
             statusField: "state",
+            durationRange: "1-15 秒",
             supportsReferenceImage: true,
         });
         const gptImage2 = channelProtocolDefinition("lingkeai").builtInModels?.find((item) => item.id === "gpt-image-2");

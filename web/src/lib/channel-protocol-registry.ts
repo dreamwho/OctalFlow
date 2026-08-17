@@ -68,10 +68,11 @@ const lingkeaiMediaVideoOperation: ProtocolOperation = {
     capability: "video",
     createPath: "/v1/media/generate",
     queryPath: "/v1/media/status?task_id=:task_id",
-    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","params":{"resolution":"{{resolution}}","image_url":"{{image}}"}}',
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","params":{"images":"{{images}}","aspect_ratio":"{{aspect_ratio}}","resolution":"{{resolution}}","duration":"{{duration}}"}}',
     resultField: "result_url",
     statusField: "state",
-    referenceRule: "参考图使用公网可访问的图片 URL，通过 params.image_url 字段提交，上游按该地址拉取图片生成视频。",
+    durationRange: "1-15 秒",
+    referenceRule: "首帧参考图使用公网可访问的图片 URL，通过 params.images 数组提交（最多 1 张）；params.aspect_ratio、params.resolution、params.duration 为必填参数。",
     supportsReferenceImage: true,
 };
 

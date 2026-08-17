@@ -68,18 +68,18 @@ describe("provider task config", () => {
         expect(buildVideoProviderRequest(template, {}, { images: [], videos: [], audios: [], first_frame: "", last_frame: "" })).toEqual({});
     });
 
-    it("renders the Lingkeai media video contract with an optional params.image_url reference", () => {
-        const template = '{"model":"{{model}}","prompt":"{{prompt}}","params":{"resolution":"{{resolution}}","image_url":"{{image}}"}}';
+    it("renders the Lingkeai media video contract with required params fields", () => {
+        const template = '{"model":"{{model}}","prompt":"{{prompt}}","params":{"images":"{{images}}","aspect_ratio":"{{aspect_ratio}}","resolution":"{{resolution}}","duration":"{{duration}}"}}';
 
-        expect(buildVideoProviderRequest(template, {}, { model: "grok-imagine-video-1.5-preview", prompt: "animate the cat", resolution: "720p", image: "https://cdn.example.com/reference.png" })).toEqual({
+        expect(buildVideoProviderRequest(template, {}, { model: "grok-imagine-video-1.5-preview", prompt: "animate the cat", images: ["https://cdn.example.com/reference.png"], aspect_ratio: "16:9", resolution: "720p", duration: 6 })).toEqual({
             model: "grok-imagine-video-1.5-preview",
             prompt: "animate the cat",
-            params: { resolution: "720p", image_url: "https://cdn.example.com/reference.png" },
+            params: { images: ["https://cdn.example.com/reference.png"], aspect_ratio: "16:9", resolution: "720p", duration: 6 },
         });
-        expect(buildVideoProviderRequest(template, {}, { model: "grok-imagine-video-1.5-preview", prompt: "animate the cat", resolution: "720p", image: "" })).toEqual({
+        expect(buildVideoProviderRequest(template, {}, { model: "grok-imagine-video-1.5-preview", prompt: "animate the cat", images: [], aspect_ratio: "16:9", resolution: "720p", duration: 6 })).toEqual({
             model: "grok-imagine-video-1.5-preview",
             prompt: "animate the cat",
-            params: { resolution: "720p" },
+            params: { aspect_ratio: "16:9", resolution: "720p", duration: 6 },
         });
     });
 
