@@ -99,7 +99,8 @@ export async function POST(request: Request) {
 
     if (protocolDefinition.builtInModels?.length && !hasConfiguredCatalog) {
         const builtInCatalog = protocolDefinition.builtInModels.map(({ id, capability }) => ({ id, capability, source: "official" as const }));
-        const merged = mergeModelCatalogEntries(configuredCatalog, builtInCatalog);
+        // 渠道已维护过模型列表时只补全现有模型的预置配置，不再把用户删除的预置模型重新合并回来。
+        const merged = mergeModelCatalogEntries(configuredCatalog, configuredCatalog.length ? builtInCatalog.filter((item) => configuredCatalog.some((configured) => normalizeModelId(configured.id) === normalizeModelId(item.id))) : builtInCatalog);
         const builtInConfigs = Object.fromEntries(
             protocolDefinition.builtInModels.flatMap(({ id, capability }) => {
                 const config = protocolModelConfig(protocol, capability, id);

@@ -247,6 +247,27 @@ describe("admin models route", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it("does not re-add built-in preset models the admin removed from the channel list", async () => {
+        const fetchMock = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+
+        const response = await POST(
+            request({
+                baseUrl: "https://zcbservice.aizfw.cn/kyyReactApiServer",
+                apiKey: "seedance-secret",
+                protocol: "seedance-special",
+                configuredModels: ["sd_2.0_special_720p"],
+                modelCapabilities: { "sd_2.0_special_720p": "video" },
+            }),
+        );
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(payload.models).toEqual(["sd_2.0_special_720p"]);
+        expect(payload.models).not.toContain("sd_2.0_fast_special_720p");
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("pulls Yumeng models only from an explicitly configured v2 catalog", async () => {
         const fetchMock = vi.fn(async () =>
             Response.json({

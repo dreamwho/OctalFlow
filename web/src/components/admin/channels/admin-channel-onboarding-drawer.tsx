@@ -361,7 +361,11 @@ function ModelStep({ channel, fetching, onChange, onFetch }: { channel: SystemMo
                 <div>
                     <div className="text-sm font-semibold text-stone-950 dark:text-stone-100">上游模型</div>
                     <div className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                        {canSync ? "同步只会合并模型，不删除手工模型。" : hasDocumentedModels ? `已按官方文档预置 ${definition.builtInModels?.length} 个模型，无需目录同步。` : "当前协议没有公开模型目录，请填写上游提供的真实模型 ID。"}
+                        {canSync
+                            ? "同步只合并新增模型，已删除的预置模型不会恢复；手工模型保留。"
+                            : hasDocumentedModels
+                              ? `已按官方文档预置 ${definition.builtInModels?.length} 个模型，无需目录同步。`
+                              : "当前协议没有公开模型目录，请填写上游提供的真实模型 ID。"}
                     </div>
                 </div>
                 {canSync ? (
@@ -388,9 +392,9 @@ function ModelStep({ channel, fetching, onChange, onFetch }: { channel: SystemMo
                     className="w-full"
                     maxTagCount="responsive"
                     tokenSeparators={[",", "，", "\n"]}
-                    disabled={hasDocumentedModels}
+                    disabled={!canSync && hasDocumentedModels}
                     value={channel.models}
-                    placeholder={canSync ? "同步模型，或输入模型 ID 后按 Enter" : hasDocumentedModels ? "官方文档模型已预置" : "输入模型 ID 后按 Enter，可添加多个"}
+                    placeholder={canSync ? "同步模型，或输入模型 ID 后按 Enter，可删除不需要的预置模型" : hasDocumentedModels ? "官方文档模型已预置" : "输入模型 ID 后按 Enter，可添加多个"}
                     onChange={updateModels}
                 />
             </LabeledControl>
