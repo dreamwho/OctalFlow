@@ -68,21 +68,18 @@ describe("provider task config", () => {
         expect(buildVideoProviderRequest(template, {}, { images: [], videos: [], audios: [], first_frame: "", last_frame: "" })).toEqual({});
     });
 
-    it("renders the Lingkeai media video contract with an optional image_url reference", () => {
-        const template = '{"model":"{{model}}","prompt":"{{prompt}}","resolution":"{{resolution}}","n":1,"image_url":"{{image}}"}';
+    it("renders the Lingkeai media video contract with an optional params.image_url reference", () => {
+        const template = '{"model":"{{model}}","prompt":"{{prompt}}","params":{"resolution":"{{resolution}}","image_url":"{{image}}"}}';
 
         expect(buildVideoProviderRequest(template, {}, { model: "grok-imagine-video-1.5-preview", prompt: "animate the cat", resolution: "720p", image: "https://cdn.example.com/reference.png" })).toEqual({
             model: "grok-imagine-video-1.5-preview",
             prompt: "animate the cat",
-            resolution: "720p",
-            n: 1,
-            image_url: "https://cdn.example.com/reference.png",
+            params: { resolution: "720p", image_url: "https://cdn.example.com/reference.png" },
         });
         expect(buildVideoProviderRequest(template, {}, { model: "grok-imagine-video-1.5-preview", prompt: "animate the cat", resolution: "720p", image: "" })).toEqual({
             model: "grok-imagine-video-1.5-preview",
             prompt: "animate the cat",
-            resolution: "720p",
-            n: 1,
+            params: { resolution: "720p" },
         });
     });
 

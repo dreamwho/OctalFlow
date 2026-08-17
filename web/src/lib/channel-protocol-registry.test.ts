@@ -59,7 +59,7 @@ describe("channel protocol registry", () => {
         expect(channelProtocolDefinition("lingkeai").operations.video).toMatchObject({
             createPath: "/v1/media/generate",
             queryPath: "/v1/media/status?task_id=:task_id",
-            requestTemplate: expect.stringContaining('"image_url":"{{image}}"'),
+            requestTemplate: expect.stringContaining('"params":{"resolution":"{{resolution}}","image_url":"{{image}}"}'),
             resultField: "result_url",
             statusField: "state",
             supportsReferenceImage: true,

@@ -59,7 +59,7 @@ const lingkeaiMediaImageOperation: ProtocolOperation = {
     capability: "image",
     createPath: "/v1/media/generate",
     queryPath: "/v1/media/status?task_id=:task_id",
-    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","n":1}',
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","params":{"n":1}}',
     resultField: "result_url",
     statusField: "state",
 };
@@ -68,10 +68,10 @@ const lingkeaiMediaVideoOperation: ProtocolOperation = {
     capability: "video",
     createPath: "/v1/media/generate",
     queryPath: "/v1/media/status?task_id=:task_id",
-    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","resolution":"{{resolution}}","n":1,"image_url":"{{image}}"}',
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","params":{"resolution":"{{resolution}}","image_url":"{{image}}"}}',
     resultField: "result_url",
     statusField: "state",
-    referenceRule: "参考图使用公网可访问的图片 URL，通过 image_url 字段提交，上游按该地址拉取图片生成视频。",
+    referenceRule: "参考图使用公网可访问的图片 URL，通过 params.image_url 字段提交，上游按该地址拉取图片生成视频。",
     supportsReferenceImage: true,
 };
 

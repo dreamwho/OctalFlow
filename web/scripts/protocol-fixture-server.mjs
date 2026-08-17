@@ -156,7 +156,7 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
 
     if (request.method === "POST" && path === "/media/generate") {
         const payload = jsonBody(body);
-        const kind = payload.resolution ? "video" : "image";
+        const kind = payload?.params?.resolution ? "video" : "image";
         const id = nextTaskId(kind);
         tasks.set(id, { kind, status: "completed" });
         return sendJson(response, 200, { code: 200, data: { task_id: id, task_ids: [id] }, msg: "任务创建成功" });
