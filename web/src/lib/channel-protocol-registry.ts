@@ -67,9 +67,11 @@ const lingkeaiMediaVideoOperation: ProtocolOperation = {
     capability: "video",
     createPath: "/v1/media/generate",
     queryPath: "/v1/media/status?task_id=:task_id",
-    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","resolution":"{{resolution}}","n":1}',
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","resolution":"{{resolution}}","n":1,"image_url":"{{image}}"}',
     resultField: "result_url",
     statusField: "state",
+    referenceRule: "参考图使用公网可访问的图片 URL，通过 image_url 字段提交，上游按该地址拉取图片生成视频。",
+    supportsReferenceImage: true,
 };
 
 const geminiVideoOperation: ProtocolOperation = {
@@ -248,7 +250,7 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
     {
         id: "lingkeai",
         label: "无线创客",
-        description: "无线创客聚合网关（api.lingkeai.ai）。gpt-image-2 走同步 /images/generations；gemini 图片与视频模型走 /v1/media/generate 异步任务；文本走 OpenAI 兼容 /chat/completions。",
+        description: "无线创客聚合网关（api.lingkeai.ai）。gpt-image-2 走同步 /images/generations；gemini 图片与视频模型走 /v1/media/generate 异步任务，视频可通过 image_url 传公网参考图；文本走 OpenAI 兼容 /chat/completions。",
         apiFormat: "openai",
         authMode: "bearer",
         defaultBaseUrl: "https://api.lingkeai.ai/v1",
