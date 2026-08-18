@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v0.0.10
+
+- [上游] 新增「MiniMax H3 官方」协议：按官方视频生成 V2 契约（`/v2/video_generation`）支持文生、首尾帧与多模态参考，原「MiniMax H3」改名为「easyframe MiniMaxH3」以区分网关。
+- [Canvas] 修复视频节点生成完成后无法拖动：加标题栏作为拖动手柄，保留播放器控件交互。
+
 ## v0.0.9
 
 - [上游] 修正无线创客 `media/generate` 请求结构为 `model · prompt · params` 三字段：首帧参考图走 `params.images`，补齐 `aspect_ratio`、`resolution`、`duration` 必填参数，修复 grok-imagine-video 图生视频提示「需要提供图片」。
