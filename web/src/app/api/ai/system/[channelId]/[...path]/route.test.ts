@@ -547,6 +547,56 @@ describe("OctalAICanvas recommended video proxy", () => {
     });
 });
 
+describe("MiniMax H3 official video proxy", () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
+        mocks.refundUserPoints.mockReset();
+        mocks.safeUrl.mockResolvedValue(true);
+        mocks.taskAccess.mockReset().mockResolvedValue(true);
+        mocks.getAuthSettings.mockResolvedValue({
+            generationPointMultipliers: {},
+            logicalModels: [logicalModel("minimax-official-video", "video", "MiniMax-H3")],
+            systemChannels: [
+                {
+                    id: "channel-one",
+                    enabled: true,
+                    baseUrl: "https://api.minimaxi.com",
+                    apiKey: "secret",
+                    apiFormat: "openai",
+                    models: ["MiniMax-H3"],
+                    advancedConfig: {
+                        protocol: "minimax-h3-official",
+                        createPath: "/v2/video_generation",
+                        imageToVideoPath: "/v2/video_generation",
+                        queryPath: "/v2/query/video_generation/:task_id",
+                        modelConfigs: {
+                            "minimax-h3": { capability: "video", protocol: "minimax-h3-official", createPath: "/v2/video_generation", queryPath: "/v2/query/video_generation/:task_id" },
+                        },
+                    },
+                },
+            ],
+        });
+    });
+
+    it("keeps the /v2 path literal instead of nesting it under /v1", async () => {
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ task_id: "video-one" }));
+        const headers = { "content-type": "application/json", ...systemModelHeaders("minimax-official-video", "MiniMax-H3") };
+
+        const createResponse = await POST(
+            new Request("http://localhost/api/ai/system/channel-one/v2/video_generation", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ model: "MiniMax-H3", content: [{ type: "text", text: "test" }], resolution: "2K", duration: 5, ratio: "16:9" }),
+            }),
+            { params: Promise.resolve({ channelId: "channel-one", path: ["v2", "video_generation"] }) },
+        );
+
+        expect(createResponse.status).toBe(200);
+        expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["https://api.minimaxi.com/v2/video_generation"]);
+    });
+});
+
 describe("Gemini Veo native video proxy", () => {
     const model = "veo-3.1-generate-preview";
 
