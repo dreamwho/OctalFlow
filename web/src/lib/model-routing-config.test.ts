@@ -180,6 +180,20 @@ describe("model routing config", () => {
         expect(synchronizeLogicalModelsWithChannels(existing, [channel("one", ["vendor/image-v2"])])[0]?.name).toBe("商业图片 Pro");
     });
 
+    it("preserves a per-binding display name across catalog synchronization", () => {
+        const existing: LogicalModel[] = [
+            {
+                id: "gpt-image-2",
+                name: "GPT Image 2",
+                capability: "image",
+                enabled: true,
+                bindings: [{ id: "one", channelId: "one", upstreamModel: "gpt-image-2", enabled: true, priority: 1, displayName: "官方图片" }],
+            },
+        ];
+
+        expect(synchronizeLogicalModelsWithChannels(existing, [channel("one", ["gpt-image-2"])])[0]?.bindings[0]?.displayName).toBe("官方图片");
+    });
+
     it("keeps the upstream auto model classified as text", () => {
         const source = channel("one", ["auto"]);
         source.advancedConfig = { modelCapabilities: { auto: "audio" }, modelConfigs: { auto: { capability: "audio", source: "health" } } } as never;

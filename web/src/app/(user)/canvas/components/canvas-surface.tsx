@@ -8,7 +8,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNode, type CanvasNodeProps } from "./canvas-node";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type Position, type ViewportTransform } from "../types";
 import { NODE_STATUS_LOADING } from "../[id]/canvas-page-elements";
-import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, samePosition, selectNodesInBounds, worldFromScreen } from "../utils/canvas-surface-geometry";
+import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, resolveSnapGuides, samePosition, selectNodesInBounds, worldFromScreen, type SnapGuide } from "../utils/canvas-surface-geometry";
 
 type CanvasPointerEvent = ReactMouseEvent | ReactPointerEvent;
 type CanvasNodeUpdate = { id: string; position?: Position; width?: number; height?: number };
@@ -151,6 +151,7 @@ export function CanvasSurface({
     const [displayViewport, setDisplayViewport] = useState(viewport);
     const [connection, setConnection] = useState<ConnectionDraft | null>(null);
     const [boxSelection, setBoxSelection] = useState<BoxSelection | null>(null);
+    const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
     const [temporaryPan, setTemporaryPan] = useState(false);
     const [surfaceSize, setSurfaceSize] = useState({ width: 1280, height: 760 });
     const setSurfaceRef = useCallback(
@@ -326,6 +327,7 @@ export function CanvasSurface({
         });
         if (updates.length) onNodesCommit(updates);
         interactionRef.current = null;
+        setSnapGuides([]);
         onDragStateChange?.(false);
     }, [onDragStateChange, onNodesCommit]);
 
@@ -343,6 +345,7 @@ export function CanvasSurface({
         if (interaction?.kind === "drag") {
             localTransformsRef.current = {};
             setLocalTransforms({});
+            setSnapGuides([]);
             onDragStateChange?.(false);
         }
         commitViewport();
@@ -462,14 +465,22 @@ export function CanvasSurface({
                     const dx = (clientX - interaction.start.x) / displayViewportRef.current.k;
                     const dy = (clientY - interaction.start.y) / displayViewportRef.current.k;
                     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) interaction.moved = true;
+                    const dragged = interaction.nodeIds.flatMap((id) => {
+                        const start = interaction.positions.get(id);
+                        const base = nodesRef.current.find((node) => node.id === id);
+                        return start && base ? [{ x: start.x + dx, y: start.y + dy, width: base.width, height: base.height }] : [];
+                    });
+                    const statics = visibleDisplayNodesRef.current.filter((node) => !interaction.nodeIds.includes(node.id)).map((node) => ({ x: node.position.x, y: node.position.y, width: node.width, height: node.height }));
+                    const snap = resolveSnapGuides(dragged, statics, 8 / displayViewportRef.current.k);
                     const next = { ...localTransformsRef.current };
                     interaction.nodeIds.forEach((id) => {
                         const start = interaction.positions.get(id);
                         const current = next[id] || displayNodesRef.current.find((node) => node.id === id);
-                        if (start && current) next[id] = { position: { x: start.x + dx, y: start.y + dy }, width: current.width, height: current.height };
+                        if (start && current) next[id] = { position: { x: start.x + dx + snap.dx, y: start.y + dy + snap.dy }, width: current.width, height: current.height };
                     });
                     localTransformsRef.current = next;
                     setLocalTransforms(next);
+                    setSnapGuides(snap.guides);
                 });
                 return;
             }
@@ -714,7 +725,7 @@ export function CanvasSurface({
                                     d={path}
                                     fill="none"
                                     stroke={generating ? "#2f80ff" : active ? theme.node.activeStroke : theme.node.muted}
-                                    strokeWidth={generating ? 2.5 : active ? 3 : 2}
+                                    strokeWidth={generating ? 1.5 : active ? 2 : 1.5}
                                     strokeOpacity={generating || active ? 1 : 0.8}
                                     strokeLinecap="round"
                                     className={generating ? "canvas-edge-generating" : undefined}
@@ -732,12 +743,28 @@ export function CanvasSurface({
                             )}
                             fill="none"
                             stroke={theme.node.activeStroke}
-                            strokeWidth={2.5}
+                            strokeWidth={2}
                             strokeDasharray="6 5"
                             strokeLinecap="round"
                             style={{ pointerEvents: "none" }}
                         />
                     ) : null}
+                    {snapGuides.map((guide, index) => {
+                        const dash = 4 / displayViewport.k;
+                        return (
+                            <line
+                                key={`${guide.orientation}:${index}`}
+                                x1={guide.orientation === "vertical" ? guide.position : guide.start}
+                                y1={guide.orientation === "vertical" ? guide.start : guide.position}
+                                x2={guide.orientation === "vertical" ? guide.position : guide.end}
+                                y2={guide.orientation === "vertical" ? guide.end : guide.position}
+                                stroke="#f43f5e"
+                                strokeWidth={1 / displayViewport.k}
+                                strokeDasharray={`${dash} ${dash * 0.75}`}
+                                style={{ pointerEvents: "none" }}
+                            />
+                        );
+                    })}
                 </svg>
                 <div className="pointer-events-auto absolute inset-0 overflow-visible">
                     {renderedNodes.map((node) => {

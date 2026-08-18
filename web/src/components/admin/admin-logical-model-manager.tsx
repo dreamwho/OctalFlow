@@ -89,7 +89,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                             默认能力 {readyCount}/{availableDefaultFields.length} 可用
                         </Tag>
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">逻辑模型由渠道模型目录自动生成；同名上游模型跨渠道合并，前端昵称可独立设置。</p>
+                    <p className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">逻辑模型由渠道模型目录自动生成；同名上游模型跨渠道合并，前端昵称可独立设置。给同一模型的多个渠道设置不同「前端显示名称」后，前端会拆分为按渠道区分的独立选项。</p>
                 </div>
                 <Button icon={<RefreshCw className="size-4" />} onClick={syncChannelModels}>
                     重新同步
@@ -211,7 +211,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                         </div>
                         <div className="mt-5">
                             <h3 className="text-sm font-semibold text-stone-950 dark:text-stone-100">同名渠道绑定</h3>
-                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">渠道与上游模型由目录自动同步；这里调整路由优先级、启停和能力档案。</p>
+                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">渠道与上游模型由目录自动同步；这里调整路由优先级、启停、能力档案和前端显示名称。</p>
                             <div className="mt-3 space-y-3">
                                 {draft.bindings.map((binding) => (
                                     <BindingEditor
@@ -263,6 +263,18 @@ function BindingEditor({ binding, capability, channels, onChange }: { binding: L
                 <div className="flex h-8 items-center">
                     <Switch size="small" checked={binding.enabled} aria-label={`${channel?.name || "渠道"}绑定启用状态`} onChange={(enabled) => onChange({ enabled })} />
                 </div>
+            </div>
+            <div className="mt-3 grid gap-3 sm:max-w-[456px]">
+                <LabeledControl label="前端显示名称">
+                    <Input
+                        className="!w-full"
+                        aria-label={`${channel?.name || "渠道"}前端显示名称`}
+                        maxLength={120}
+                        value={binding.displayName || ""}
+                        placeholder="留空与其他渠道合并显示；同一模型多个渠道设置不同名称后，前端会拆分为独立选项"
+                        onChange={(event) => onChange({ displayName: event.target.value })}
+                    />
+                </LabeledControl>
             </div>
             <div className="mt-3 rounded-md border border-stone-200/80 bg-white/70 p-3 dark:border-stone-800 dark:bg-stone-950/40">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

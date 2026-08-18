@@ -56,6 +56,7 @@ export function synchronizeLogicalModelsWithChannels(existingModels: LogicalMode
                 const stored = findStoredBinding(existingModels, channel.id, upstreamModel);
                 const capabilityProfile = normalizeStoredCapabilityProfile(stored?.capabilityProfile);
                 const weight = clampWeight(stored?.weight);
+                const displayName = text(stored?.displayName, 120);
                 return {
                     id: text(stored?.id, 120) || `${channel.id}:${rawModelName(upstreamModel)}`,
                     channelId: channel.id,
@@ -64,6 +65,7 @@ export function synchronizeLogicalModelsWithChannels(existingModels: LogicalMode
                     priority: clampPriority(stored?.priority, channelIndex + 1),
                     ...(weight !== undefined ? { weight } : {}),
                     ...(capabilityProfile ? { capabilityProfile } : {}),
+                    ...(displayName ? { displayName } : {}),
                 };
             })
             .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));

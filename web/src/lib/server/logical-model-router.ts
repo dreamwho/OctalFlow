@@ -17,12 +17,14 @@ export function resolveLogicalModel(settings: Pick<AuthSettings, "logicalModels"
 }
 
 export function resolveLogicalModelCandidates(settings: Pick<AuthSettings, "logicalModels" | "systemChannels">, capability: LogicalModelCapability, requestedModelId: string, preferredChannelId = ""): ResolvedLogicalModel[] {
-    const requested = rawModelName(requestedModelId);
+    const { channelId: requestedChannelId } = splitChannelModel(requestedModelId);
+    const requested = rawModelName(requestedModelId).replace(/^models\//i, "");
     if (!requested) return [];
+    const effectivePreferredChannelId = preferredChannelId || requestedChannelId;
     const logical = settings.logicalModels.find((model) => model.enabled && model.capability === capability && model.id.toLowerCase() === requested.toLowerCase());
     if (logical) {
         const bindings = logical.bindings.filter((binding) => binding.enabled).sort((a, b) => a.priority - b.priority || (b.weight || 100) - (a.weight || 100) || a.id.localeCompare(b.id));
-        const preferred = preferredChannelId ? bindings.find((binding) => binding.channelId === preferredChannelId) : undefined;
+        const preferred = effectivePreferredChannelId ? bindings.find((binding) => binding.channelId === effectivePreferredChannelId) : undefined;
         const resolved: ResolvedLogicalModel[] = [];
         for (const binding of preferred ? [preferred, ...bindings.filter((item) => item !== preferred)] : bindings) {
             const channel = settings.systemChannels.find((item) => item.id === binding.channelId && item.enabled && channelConnectionReady(item) && channelSupportsModel(item.models, binding.upstreamModel));
@@ -34,7 +36,9 @@ export function resolveLogicalModelCandidates(settings: Pick<AuthSettings, "logi
         return capability === "text" ? resolved : filterHealthyRuntimeCandidates(resolved, capability);
     }
     if (settings.logicalModels.length) return [];
-    const ordered = preferredChannelId ? [...settings.systemChannels.filter((channel) => channel.id === preferredChannelId), ...settings.systemChannels.filter((channel) => channel.id !== preferredChannelId)] : settings.systemChannels;
+    const ordered = effectivePreferredChannelId
+        ? [...settings.systemChannels.filter((channel) => channel.id === effectivePreferredChannelId), ...settings.systemChannels.filter((channel) => channel.id !== effectivePreferredChannelId)]
+        : settings.systemChannels;
     const resolved = ordered
         .filter((item) => item.enabled && channelConnectionReady(item) && channelSupportsModel(item.models, requested) && channelModelCapability(item, requested) === capability)
         .map((channel) => ({ logicalModelId: requested, upstreamModel: requested, channelId: channel.id, channel, capabilityProfile: resolveLogicalModelCapabilityProfile({}, capability, channel, requested) }));
@@ -46,4 +50,9 @@ export function resolveLogicalBillingModel(logicalModels: AuthSettings["logicalM
         (logical) => logical.enabled && logical.capability === capability && logical.bindings.some((binding) => binding.enabled && binding.channelId === channelId && channelSupportsModel([binding.upstreamModel], upstreamModel)),
     );
     return matches.find((logical) => logical.id.toLowerCase() === preferredLogicalModelId.trim().toLowerCase())?.id || matches[0]?.id || upstreamModel;
+}
+
+function splitChannelModel(value: string) {
+    const separator = value.indexOf("::");
+    return separator >= 0 ? { channelId: value.slice(0, separator), model: value.slice(separator + 2) } : { channelId: "", model: value };
 }

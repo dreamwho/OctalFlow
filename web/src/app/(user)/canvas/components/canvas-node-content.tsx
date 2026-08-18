@@ -359,8 +359,9 @@ export function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
                 <Video className="size-4 shrink-0" />
                 <span className="truncate">{node.title || "视频"}</span>
             </div>
-            <div className="min-h-0 flex-1">
+            <div className="relative min-h-0 flex-1">
                 <video src={node.metadata.content} controls className="h-full w-full bg-black object-contain" data-canvas-no-zoom />
+                <div className="absolute inset-x-0 bottom-12 top-0 cursor-grab active:cursor-grabbing" aria-hidden="true" />
             </div>
         </div>
     );
@@ -435,7 +436,7 @@ export function ImageContent({
 
     return (
         <BatchFrame batchCount={isBatchRoot ? batchCount : 0} batchExpanded={batchExpanded} batchOpening={batchOpening} batchRecovering={batchRecovering} onToggleBatch={onToggleBatch}>
-            <div className="h-full w-full overflow-hidden rounded-3xl">
+            <div className="h-full w-full overflow-hidden rounded-[inherit]">
                 <img
                     ref={imageRef}
                     src={imagePreviewUrl(node.metadata!.content!, 1920)}

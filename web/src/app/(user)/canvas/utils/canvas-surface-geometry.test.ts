@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CanvasNodeType, type CanvasNodeData } from "../types";
-import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, samePosition, selectNodesInBounds, worldFromScreen } from "./canvas-surface-geometry";
+import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, resolveSnapGuides, samePosition, selectNodesInBounds, worldFromScreen } from "./canvas-surface-geometry";
 
 const source: CanvasNodeData = { id: "source", type: CanvasNodeType.Text, title: "来源", position: { x: 100, y: 120 }, width: 240, height: 160, metadata: {} };
 const target: CanvasNodeData = { id: "target", type: CanvasNodeType.Image, title: "目标", position: { x: 500, y: 220 }, width: 300, height: 200, metadata: {} };
@@ -78,5 +78,29 @@ describe("canvas surface geometry", () => {
     it("moves hidden image-batch children with the selected root", () => {
         const root = { ...source, metadata: { batchChildIds: ["child-a", "child-b"] } };
         expect(expandCanvasDragNodeIds([root, target], [root.id, target.id])).toEqual([root.id, target.id, "child-a", "child-b"]);
+    });
+
+    it("snaps a dragged node's top edge to another node's top edge", () => {
+        const result = resolveSnapGuides([{ x: 100, y: 100, width: 200, height: 100 }], [{ x: 500, y: 120, width: 200, height: 100 }], 30);
+
+        expect(result.dx).toBe(0);
+        expect(result.dy).toBe(20);
+        expect(result.guides).toEqual([{ orientation: "horizontal", position: 120, start: 100, end: 700 }]);
+    });
+
+    it("snaps a dragged node's left edge to another node's left edge", () => {
+        const result = resolveSnapGuides([{ x: 90, y: 100, width: 200, height: 100 }], [{ x: 300, y: 400, width: 200, height: 100 }], 30);
+
+        expect(result.dx).toBe(10);
+        expect(result.dy).toBe(0);
+        expect(result.guides).toEqual([{ orientation: "vertical", position: 300, start: 100, end: 500 }]);
+    });
+
+    it("does not snap when every candidate is beyond the threshold", () => {
+        expect(resolveSnapGuides([{ x: 0, y: 0, width: 100, height: 100 }], [{ x: 500, y: 500, width: 100, height: 100 }], 10)).toEqual({ dx: 0, dy: 0, guides: [] });
+    });
+
+    it("does not snap when there are no static nodes to align against", () => {
+        expect(resolveSnapGuides([{ x: 0, y: 0, width: 100, height: 100 }], [], 30)).toEqual({ dx: 0, dy: 0, guides: [] });
     });
 });

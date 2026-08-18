@@ -44,6 +44,28 @@ describe("resolveLogicalModel", () => {
         expect(resolveLogicalModelCandidates(settings, "text", "writer", "backup").map((item) => item.channelId)).toEqual(["backup", "primary"]);
     });
 
+    it("routes a channel-scoped model value to its specific channel first", () => {
+        const settings = {
+            systemChannels: [channel("primary", ["models/GPT-IMAGE-2"]), channel("backup", ["gpt-image-2"])],
+            logicalModels: [
+                {
+                    id: "gpt-image-2",
+                    name: "GPT Image 2",
+                    capability: "image" as const,
+                    enabled: true,
+                    bindings: [
+                        { id: "one", channelId: "primary", upstreamModel: "models/GPT-IMAGE-2", enabled: true, priority: 1 },
+                        { id: "two", channelId: "backup", upstreamModel: "gpt-image-2", enabled: true, priority: 2 },
+                    ],
+                },
+            ],
+        };
+
+        expect(resolveLogicalModelCandidates(settings, "image", "backup::gpt-image-2").map((item) => item.channelId)).toEqual(["backup", "primary"]);
+        expect(resolveLogicalModelCandidates(settings, "image", "primary::models/GPT-IMAGE-2").map((item) => item.channelId)).toEqual(["primary", "backup"]);
+        expect(resolveLogicalModelCandidates(settings, "image", "gpt-image-2").map((item) => item.channelId)).toEqual(["primary", "backup"]);
+    });
+
     it("uses binding weight inside the same priority and exposes capability limits", () => {
         const settings = {
             systemChannels: [channel("low", ["video-low"]), channel("high", ["video-high"])],

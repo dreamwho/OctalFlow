@@ -69,8 +69,8 @@ describe("CanvasNode image border", () => {
         const markup = renderImageNode();
 
         expect(markup).toContain(`border-color:${canvasThemes.light.node.stroke}`);
-        expect(markup).toContain("rounded-3xl border-2");
-        expect(markup).toContain("overflow-hidden rounded-3xl");
+        expect(markup).toContain("rounded-md border");
+        expect(markup).toContain("overflow-hidden rounded-[inherit]");
         expect(markup).toContain("/api/reference-assets/permanent/generated-image.png?format=webp&amp;width=1920");
     });
 
@@ -87,7 +87,7 @@ describe("CanvasNode image border", () => {
 
         const markup = renderImageNode({ data: batchChild, isRelated: true });
 
-        expect(markup).toContain(`class="relative h-full w-full overflow-visible rounded-3xl border-2" style="background:transparent;border-color:${canvasThemes.light.node.stroke}"`);
+        expect(markup).toContain(`class="relative h-full w-full overflow-visible rounded-md border" style="background:transparent;border-color:${canvasThemes.light.node.stroke}"`);
     });
 });
 

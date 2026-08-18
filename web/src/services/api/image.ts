@@ -94,7 +94,7 @@ export async function createImageGenerationTask(config: AiConfig, prompt: string
         body: JSON.stringify({
             kind: references.length || mask ? "edit" : "generation",
             config: {
-                model: requestConfig.model,
+                model: requestConfig.modelId || requestConfig.model,
                 quality: requestConfig.quality,
                 size: requestConfig.size,
             },

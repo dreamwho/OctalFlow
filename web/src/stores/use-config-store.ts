@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 
-import { flattenPublicCapabilityModels, resolvePublicCapabilityModels } from "@/lib/public-model-catalog";
+import { flattenPublicCapabilityModels } from "@/lib/public-model-catalog";
 import type { GlobalAiOpcPresetId } from "@/lib/globalaiopc-catalog";
 import { resolveChannelModelAdvancedConfig } from "@/lib/channel-protocol-registry";
 import { inferModelCapability, normalizeModelId } from "@/lib/model-capability";
@@ -89,7 +89,7 @@ type LogicalModel = {
     name: string;
     capability: ModelCapability;
     enabled: boolean;
-    bindings: Array<{ id: string; channelId: string; upstreamModel: string; enabled: boolean; priority: number }>;
+    bindings: Array<{ id: string; channelId: string; upstreamModel: string; enabled: boolean; priority: number; displayName?: string }>;
 };
 
 export type AiConfig = {
@@ -265,7 +265,7 @@ export function applyPublicSystemSettings(config: AiConfig, settings?: PublicSys
             model.bindings.some((binding) => binding.enabled && channels.some((channel) => channel.id === binding.channelId && channel.models.some((upstream) => normalizedModelName(upstream) === normalizedModelName(binding.upstreamModel)))),
     );
     const rawModels = modelOptionsFromChannels(channels);
-    const capabilityModels = resolvePublicCapabilityModels(logicalModels, {
+    const capabilityModels = expandPublicCapabilityModels(logicalModels, channels, {
         image: filterModelsByCapability(rawModels, "image"),
         video: filterModelsByCapability(rawModels, "video"),
         text: filterModelsByCapability(rawModels, "text"),
@@ -419,8 +419,27 @@ export function modelOptionLabel(config: AiConfig, value: string) {
     if (logical) return logical.name;
     const decoded = decodeChannelModel(value);
     if (!decoded) return value;
+    const binding = config.logicalModels.flatMap((model) => model.bindings).find((item) => item.channelId === decoded.channelId && normalizedModelName(item.upstreamModel) === normalizedModelName(decoded.model));
+    if (binding?.displayName?.trim()) return binding.displayName.trim();
     const channel = config.channels.find((item) => item.id === decoded.channelId);
     return channel ? `${decoded.model}（${channel.name}）` : decoded.model;
+}
+
+function expandPublicCapabilityModels(logicalModels: LogicalModel[], channels: ModelChannel[], fallback: Record<ModelCapability, string[]>) {
+    const channelIds = new Set(channels.map((channel) => channel.id));
+    return Object.fromEntries(
+        (Object.keys(fallback) as ModelCapability[]).map((capability) => {
+            const options = logicalModels.filter((model) => model.capability === capability).flatMap((model) => publicModelOptionValues(model, channelIds));
+            return [capability, options.length ? options : fallback[capability]];
+        }),
+    ) as Record<ModelCapability, string[]>;
+}
+
+function publicModelOptionValues(model: LogicalModel, channelIds: Set<string>): string[] {
+    const bindings = model.bindings.filter((binding) => binding.enabled && channelIds.has(binding.channelId)).sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));
+    const displayNames = Array.from(new Set(bindings.map((binding) => (binding.displayName || "").trim()).filter(Boolean)));
+    if (displayNames.length < 2) return [model.id];
+    return bindings.map((binding) => encodeChannelModel(binding.channelId, binding.upstreamModel));
 }
 
 function modelOptionsFromChannels(channels: ModelChannel[]) {
@@ -473,10 +492,9 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     const model = decoded?.model || value;
     const logical = config.logicalModels.find((item) => item.id === model && item.enabled);
-    const binding = logical?.bindings
-        .filter((item) => item.enabled)
-        .sort((a, b) => a.priority - b.priority)
-        .find((item) => channels.some((channel) => channel.id === item.channelId));
+    const enabledBindings = (logical?.bindings || []).filter((item) => item.enabled).sort((a, b) => a.priority - b.priority);
+    const preferredBinding = decoded ? enabledBindings.find((item) => item.channelId === decoded.channelId) : undefined;
+    const binding = preferredBinding || enabledBindings.find((item) => channels.some((channel) => channel.id === item.channelId));
     const matched = binding ? channels.find((channel) => channel.id === binding.channelId) : decoded ? channels.find((channel) => channel.id === decoded.channelId) : channels.find((channel) => channel.models.includes(model));
     return matched || channels[0] || createModelChannel({ id: "default", name: "默认渠道", models: config.models.map(modelOptionName) });
 }
@@ -488,6 +506,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
     return {
         ...config,
         model,
+        modelId: value || config.model,
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.advancedConfig?.modelConfigs?.[normalizeModelId(model)]?.apiFormat || channel.apiFormat,

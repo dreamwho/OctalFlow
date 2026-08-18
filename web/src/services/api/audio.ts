@@ -42,7 +42,7 @@ export async function createAudioGenerationTask(config: AiConfig, prompt: string
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             config: {
-                model,
+                model: requestConfig.modelId || requestConfig.model,
                 voice: normalizeAudioVoiceValue(config.audioVoice),
                 format,
                 speed: normalizeAudioSpeedValue(config.audioSpeed),

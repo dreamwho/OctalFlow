@@ -10,6 +10,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasNodeData, type Position } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
+import { resizeNodeBox } from "../utils/canvas-node-size";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 const selectionBlue = "#2f80ff";
@@ -187,41 +188,24 @@ export const CanvasNode = React.memo(function CanvasNode({
 
             const dx = (event.clientX - resizeRef.current.startX) / scale;
             const dy = (event.clientY - resizeRef.current.startY) / scale;
-            const minWidth = 220;
-            const minHeight = 160;
-            const startRight = resizeRef.current.startLeft + resizeRef.current.startWidth;
-            const startBottom = resizeRef.current.startTop + resizeRef.current.startHeight;
-            const fromLeft = resizeRef.current.corner.includes("left");
-            const fromTop = resizeRef.current.corner.includes("top");
-            const rawWidth = Math.max(minWidth, resizeRef.current.startWidth + (fromLeft ? -dx : dx));
-            const rawHeight = Math.max(minHeight, resizeRef.current.startHeight + (fromTop ? -dy : dy));
-            let width = rawWidth;
-            let height = rawHeight;
-            if (resizeRef.current.keepRatio) {
-                const ratio = resizeRef.current.ratio;
-                if (Math.abs(dx) >= Math.abs(dy)) {
-                    height = width / ratio;
-                } else {
-                    width = height * ratio;
-                }
-                if (height < minHeight) {
-                    height = minHeight;
-                    width = height * ratio;
-                }
-                if (width < minWidth) {
-                    width = minWidth;
-                    height = width / ratio;
-                }
-            }
-
-            const position = {
-                x: fromLeft ? startRight - width : resizeRef.current.startLeft,
-                y: fromTop ? startBottom - height : resizeRef.current.startTop,
-            };
-            resizeRef.current.currentWidth = width;
-            resizeRef.current.currentHeight = height;
-            resizeRef.current.currentPosition = position;
-            onResize(data.id, width, height, position);
+            const result = resizeNodeBox({
+                startLeft: resizeRef.current.startLeft,
+                startTop: resizeRef.current.startTop,
+                startWidth: resizeRef.current.startWidth,
+                startHeight: resizeRef.current.startHeight,
+                fromLeft: resizeRef.current.corner.includes("left"),
+                fromTop: resizeRef.current.corner.includes("top"),
+                dx,
+                dy,
+                keepRatio: resizeRef.current.keepRatio,
+                ratio: resizeRef.current.ratio,
+                minWidth: 220,
+                minHeight: 160,
+            });
+            resizeRef.current.currentWidth = result.width;
+            resizeRef.current.currentHeight = result.height;
+            resizeRef.current.currentPosition = result.position;
+            onResize(data.id, result.width, result.height, result.position);
         },
         [data.id, onResize, scale],
     );
@@ -343,7 +327,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             onContextMenu={(event) => onContextMenu(event, data.id)}
         >
             <div
-                className={`relative h-full w-full overflow-visible ${isConfig ? "rounded-2xl border" : "rounded-3xl border-2"}`}
+                className={`relative h-full w-full overflow-visible ${isConfig ? "rounded-lg border" : "rounded-md border"}`}
                 style={{
                     background: nodeBackground,
                     borderColor: hasImageContent ? imageBorderColor : isActive ? selectionBlue : isRelated ? theme.node.muted : theme.node.stroke,
@@ -410,7 +394,7 @@ export const CanvasNode = React.memo(function CanvasNode({
             <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onConnectStart={(event) => onConnectStart(event, data.id, "source")} />
 
             {showPanel && renderPanel ? (
-                <div data-canvas-no-drag className="absolute left-1/2 top-full z-[70] w-[500px] max-w-[calc(100vw-2rem)] -translate-x-1/2 pt-4">
+                <div data-canvas-no-drag className="absolute left-1/2 top-full z-[70] pt-4" style={{ width: "min(500px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}>
                     {renderPanel(data)}
                 </div>
             ) : null}

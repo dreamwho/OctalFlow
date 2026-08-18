@@ -55,6 +55,7 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
             placement={responsivePlacement}
             autoAdjustOverflow
             showCount={false}
+            tabless
             videoReferenceContent={<CanvasVideoReferenceSettings metadata={metadata} references={references} theme={theme} compact onChange={onMetadataChange} />}
             onChange={(patch) => applyVideoPreferencePatch(patch, onConfigChange)}
         />

@@ -154,6 +154,7 @@ export function serializePublicSettings(settings: AuthSettings) {
                         upstreamModel: binding.upstreamModel,
                         enabled: true,
                         priority: binding.priority,
+                        ...(binding.displayName ? { displayName: binding.displayName } : {}),
                     })),
             })),
         systemChannels: settings.systemChannels

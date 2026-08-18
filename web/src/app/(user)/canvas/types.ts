@@ -152,6 +152,7 @@ export type CanvasNodeMetadata = {
         provider: "openai" | "seedance" | "generation";
         model: string;
         pollPath?: string;
+        serverTaskId?: string;
     };
     imageTask?: {
         id: string;

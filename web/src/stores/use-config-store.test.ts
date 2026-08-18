@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyPublicSystemSettings, defaultConfig, modelMatchesCapability, modelOptionLabel, type PublicSystemSettings } from "./use-config-store";
+import { applyPublicSystemSettings, defaultConfig, modelMatchesCapability, modelOptionLabel, resolveModelChannel, type PublicSystemSettings } from "./use-config-store";
 
 const audioSettings: PublicSystemSettings = {
     systemChannels: [
@@ -113,6 +113,30 @@ describe("applyPublicSystemSettings", () => {
         expect(config.canvasImageCount).toBe("11");
         expect(config.count).toBe("12");
     });
+
+    it("splits a merged logical model into per-channel options when bindings carry distinct display names", () => {
+        const config = applyPublicSystemSettings(defaultConfig, splitDisplayNameSettings());
+
+        expect(config.imageModels).toEqual(["channel-a::gpt-image-2", "channel-b::gpt-image-2"]);
+        expect(modelOptionLabel(config, "channel-a::gpt-image-2")).toBe("官方图生图");
+        expect(modelOptionLabel(config, "channel-b::gpt-image-2")).toBe("备用图生图");
+    });
+
+    it("keeps a merged logical model when fewer than two bindings are named distinctly", () => {
+        const settings = splitDisplayNameSettings();
+        settings.logicalModels![0].bindings[1].displayName = undefined;
+
+        const config = applyPublicSystemSettings(defaultConfig, settings);
+
+        expect(config.imageModels).toEqual(["gpt-image-2"]);
+    });
+
+    it("resolves a split model option to its own bound channel", () => {
+        const config = applyPublicSystemSettings(defaultConfig, splitDisplayNameSettings());
+
+        expect(resolveModelChannel(config, "channel-a::gpt-image-2").id).toBe("channel-a");
+        expect(resolveModelChannel(config, "channel-b::gpt-image-2").id).toBe("channel-b");
+    });
 });
 
 function rawModelSettings(): PublicSystemSettings {
@@ -165,6 +189,27 @@ function misleadingVideoNameSettings(): PublicSystemSettings {
                 capability: "video",
                 enabled: true,
                 bindings: [{ id: "video-binding", channelId: "mixed-channel", upstreamModel: "video-v1", enabled: true, priority: 1 }],
+            },
+        ],
+    };
+}
+
+function splitDisplayNameSettings(): PublicSystemSettings {
+    return {
+        systemChannels: [
+            { id: "channel-a", name: "渠道A", baseUrl: "https://a.example.com/v1", apiKey: "", apiFormat: "openai", models: ["gpt-image-2"], enabled: true, hasApiKey: true },
+            { id: "channel-b", name: "渠道B", baseUrl: "https://b.example.com/v1", apiKey: "", apiFormat: "openai", models: ["gpt-image-2"], enabled: true, hasApiKey: true },
+        ],
+        logicalModels: [
+            {
+                id: "gpt-image-2",
+                name: "GPT Image 2",
+                capability: "image",
+                enabled: true,
+                bindings: [
+                    { id: "a", channelId: "channel-a", upstreamModel: "gpt-image-2", enabled: true, priority: 1, displayName: "官方图生图" },
+                    { id: "b", channelId: "channel-b", upstreamModel: "gpt-image-2", enabled: true, priority: 2, displayName: "备用图生图" },
+                ],
             },
         ],
     };

@@ -40,6 +40,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             triggerLabelClassName="whitespace-nowrap text-left !overflow-visible !text-clip"
             placement={responsivePlacement}
             autoAdjustOverflow
+            tabless
             fixedSizeLabel={fixedSizeLabel}
             onOpenChange={onOpenChange}
             onChange={(patch) => applyImagePreferencePatch(patch, onConfigChange)}

@@ -29,7 +29,7 @@ export async function createTextGenerationTask(config: AiConfig, messages: AiTex
     const response = await fetch("/api/text-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config: { model: requestConfig.model }, messages }),
+        body: JSON.stringify({ config: { model: requestConfig.modelId || requestConfig.model }, messages }),
         signal: options?.signal,
     });
     throwIfClientSessionExpired(response);

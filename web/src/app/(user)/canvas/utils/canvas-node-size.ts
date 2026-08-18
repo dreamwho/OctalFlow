@@ -26,6 +26,54 @@ export function fitNodeAspectRatio(width: number, height: number, maxWidth: numb
     return { width: w * scale, height: h * scale };
 }
 
+export type ResizeBoxInput = {
+    startLeft: number;
+    startTop: number;
+    startWidth: number;
+    startHeight: number;
+    fromLeft: boolean;
+    fromTop: boolean;
+    dx: number;
+    dy: number;
+    keepRatio: boolean;
+    ratio: number;
+    minWidth: number;
+    minHeight: number;
+};
+
+export function resizeNodeBox(input: ResizeBoxInput): { width: number; height: number; position: { x: number; y: number } } {
+    const { startLeft, startTop, startWidth, startHeight, fromLeft, fromTop, dx, dy, keepRatio, ratio, minWidth, minHeight } = input;
+    const startRight = startLeft + startWidth;
+    const startBottom = startTop + startHeight;
+
+    let width: number;
+    let height: number;
+    if (keepRatio) {
+        // Scale the box proportionally by projecting the mouse onto the diagonal from
+        // the fixed anchor corner, so the dragged corner follows the pointer smoothly
+        // instead of snapping to whichever axis currently dominates.
+        const ox = fromLeft ? -startWidth : startWidth;
+        const oy = fromTop ? -startHeight : startHeight;
+        const normSq = ox * ox + oy * oy;
+        const minScale = Math.max(minWidth / startWidth, minHeight / startHeight);
+        const scale = Math.max(minScale, normSq > 0 ? 1 + (dx * ox + dy * oy) / normSq : 1);
+        width = startWidth * scale;
+        height = startHeight * scale;
+    } else {
+        width = Math.max(minWidth, startWidth + (fromLeft ? -dx : dx));
+        height = Math.max(minHeight, startHeight + (fromTop ? -dy : dy));
+    }
+
+    return {
+        width,
+        height,
+        position: {
+            x: fromLeft ? startRight - width : startLeft,
+            y: fromTop ? startBottom - height : startTop,
+        },
+    };
+}
+
 export function resizeImageNodeToNaturalRatio(node: CanvasNodeData, naturalWidth: number, naturalHeight: number) {
     const dimensionsChanged = node.metadata?.naturalWidth !== naturalWidth || node.metadata?.naturalHeight !== naturalHeight;
     const metadata = dimensionsChanged ? { ...node.metadata, naturalWidth, naturalHeight } : node.metadata;

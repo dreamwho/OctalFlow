@@ -133,6 +133,7 @@ export type LogicalModelBinding = {
     priority: number;
     weight?: number;
     capabilityProfile?: LogicalModelCapabilityProfile;
+    displayName?: string;
 };
 
 export type LogicalModel = {

@@ -51,6 +51,52 @@ export function samePosition(a: Position, b: Position) {
     return Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01;
 }
 
+export type SnapGuide = {
+    orientation: "horizontal" | "vertical";
+    position: number;
+    start: number;
+    end: number;
+};
+
+type SnapBox = { x: number; y: number; width: number; height: number };
+type SnapBounds = { left: number; right: number; top: number; bottom: number; centerX: number; centerY: number };
+
+export function resolveSnapGuides(dragged: SnapBox[], statics: SnapBox[], threshold: number): { dx: number; dy: number; guides: SnapGuide[] } {
+    if (!dragged.length || !statics.length) return { dx: 0, dy: 0, guides: [] };
+    const group = snapBounds(dragged);
+    let bestX = { delta: Infinity, position: 0, start: 0, end: 0 };
+    let bestY = { delta: Infinity, position: 0, start: 0, end: 0 };
+    for (const node of statics) {
+        const bounds = snapBounds([node]);
+        for (const groupX of [group.left, group.centerX, group.right]) {
+            for (const staticX of [bounds.left, bounds.centerX, bounds.right]) {
+                const delta = staticX - groupX;
+                if (Math.abs(delta) < Math.abs(bestX.delta)) bestX = { delta, position: staticX, start: Math.min(group.top, bounds.top), end: Math.max(group.bottom, bounds.bottom) };
+            }
+        }
+        for (const groupY of [group.top, group.centerY, group.bottom]) {
+            for (const staticY of [bounds.top, bounds.centerY, bounds.bottom]) {
+                const delta = staticY - groupY;
+                if (Math.abs(delta) < Math.abs(bestY.delta)) bestY = { delta, position: staticY, start: Math.min(group.left, bounds.left), end: Math.max(group.right, bounds.right) };
+            }
+        }
+    }
+    const dx = Math.abs(bestX.delta) <= threshold ? bestX.delta : 0;
+    const dy = Math.abs(bestY.delta) <= threshold ? bestY.delta : 0;
+    const guides: SnapGuide[] = [];
+    if (dx !== 0) guides.push({ orientation: "vertical", position: bestX.position, start: bestX.start, end: bestX.end });
+    if (dy !== 0) guides.push({ orientation: "horizontal", position: bestY.position, start: bestY.start, end: bestY.end });
+    return { dx, dy, guides };
+}
+
+function snapBounds(nodes: SnapBox[]): SnapBounds {
+    const left = Math.min(...nodes.map((node) => node.x));
+    const right = Math.max(...nodes.map((node) => node.x + node.width));
+    const top = Math.min(...nodes.map((node) => node.y));
+    const bottom = Math.max(...nodes.map((node) => node.y + node.height));
+    return { left, right, top, bottom, centerX: (left + right) / 2, centerY: (top + bottom) / 2 };
+}
+
 export function selectNodesInBounds(nodes: CanvasNodeData[], start: Position, end: Position, initialNodeIds: Iterable<string> = []) {
     const minX = Math.min(start.x, end.x);
     const maxX = Math.max(start.x, end.x);

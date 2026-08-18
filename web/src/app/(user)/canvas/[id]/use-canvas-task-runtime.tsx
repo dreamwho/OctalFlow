@@ -6,7 +6,7 @@ import { createFreshGenerationTaskContext } from "@/lib/generation-request-conte
 import { storeGeneratedAudio, waitForAudioGenerationTask } from "@/services/api/audio";
 import { createImageGenerationTask, waitForImageGenerationTask, type ImageGenerationTask } from "@/services/api/image";
 import { waitForTextGenerationTask, type TextGenerationTask } from "@/services/api/text";
-import { storeGeneratedVideo, waitForVideoGenerationTask } from "@/services/api/video";
+import { storeGeneratedVideo, waitForVideoGenerationTask, cancelServerVideoGenerationTask } from "@/services/api/video";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import { CanvasNodeType, type CanvasNodeMetadata } from "../types";
@@ -179,6 +179,10 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
         });
         setRunningNodeId((current) => (current === runningId ? null : current));
         if (!affectedNodeIds.size) return;
+        nodesRef.current.forEach((node) => {
+            if (!affectedNodeIds.has(node.id) || node.metadata?.status !== NODE_STATUS_LOADING) return;
+            if (node.metadata?.videoTask) void cancelServerVideoGenerationTask(node.metadata.videoTask).catch(() => undefined);
+        });
         setNodes((prev) =>
             prev.map((node) =>
                 affectedNodeIds.has(node.id) && node.metadata?.status === NODE_STATUS_LOADING
