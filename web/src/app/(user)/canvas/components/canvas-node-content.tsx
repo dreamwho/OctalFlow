@@ -550,7 +550,17 @@ export function BatchFrame({
         </div>
     );
 }
-export function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDown: (event: React.MouseEvent, corner: ResizeCorner) => void }) {
+export function ResizeHandle({
+    corner,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+}: {
+    corner: ResizeCorner;
+    onPointerDown: (event: React.PointerEvent<HTMLDivElement>, corner: ResizeCorner) => void;
+    onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
+    onPointerUp: () => void;
+}) {
     const positionClass = {
         "top-left": "-left-[14px] -top-[14px] cursor-nwse-resize",
         "top-right": "-right-[14px] -top-[14px] cursor-nesw-resize",
@@ -558,7 +568,17 @@ export function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; on
         "bottom-right": "-bottom-[14px] -right-[14px] cursor-nwse-resize",
     }[corner];
 
-    return <div data-canvas-resize-corner={corner} className={`absolute z-50 size-7 ${positionClass}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
+    return (
+        <div
+            data-canvas-resize-corner={corner}
+            className={`absolute z-50 size-7 ${positionClass}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => onPointerDown(event, corner)}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+        />
+    );
 }
 
 export function ConnectionHandleDot({ side, visible, onConnectStart }: { side: "left" | "right"; visible: boolean; onConnectStart: (event: React.MouseEvent | React.PointerEvent) => void }) {

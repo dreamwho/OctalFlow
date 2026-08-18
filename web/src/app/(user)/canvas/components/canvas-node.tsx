@@ -183,7 +183,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     }, [isEditingContent]);
 
     const handleResizeMove = useCallback(
-        (event: MouseEvent) => {
+        (event: React.PointerEvent<HTMLDivElement>) => {
             if (!resizeRef.current.isResizing) return;
 
             const dx = (event.clientX - resizeRef.current.startX) / scale;
@@ -210,17 +210,16 @@ export const CanvasNode = React.memo(function CanvasNode({
         [data.id, onResize, scale],
     );
 
-    const handleResizeUp = useCallback(() => {
+    const finishResize = useCallback(() => {
         if (!resizeRef.current.isResizing) return;
         resizeRef.current.isResizing = false;
-        window.removeEventListener("mousemove", handleResizeMove);
-        window.removeEventListener("mouseup", handleResizeUp);
         onResizeEnd?.(data.id, resizeRef.current.currentWidth, resizeRef.current.currentHeight, resizeRef.current.currentPosition);
-    }, [data.id, handleResizeMove, onResizeEnd]);
+    }, [data.id, onResizeEnd]);
 
-    const handleResizeMouseDown = (event: React.MouseEvent, corner: ResizeCorner) => {
+    const handleResizePointerDown = (event: React.PointerEvent<HTMLDivElement>, corner: ResizeCorner) => {
         event.stopPropagation();
         event.preventDefault();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
         resizeRef.current = {
             isResizing: true,
             corner,
@@ -236,8 +235,6 @@ export const CanvasNode = React.memo(function CanvasNode({
             currentHeight: data.height,
             currentPosition: data.position,
         };
-        window.addEventListener("mousemove", handleResizeMove);
-        window.addEventListener("mouseup", handleResizeUp);
     };
 
     const handleNodeDoubleClick = (event: React.MouseEvent) => {
@@ -291,13 +288,6 @@ export const CanvasNode = React.memo(function CanvasNode({
         const start = clickStartRef.current;
         if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 6 && !event.shiftKey && !event.ctrlKey && !event.metaKey) setIsEditingContent(true);
     };
-
-    useEffect(() => {
-        return () => {
-            window.removeEventListener("mousemove", handleResizeMove);
-            window.removeEventListener("mouseup", handleResizeUp);
-        };
-    }, [handleResizeMove, handleResizeUp]);
 
     return (
         <div
@@ -384,17 +374,17 @@ export const CanvasNode = React.memo(function CanvasNode({
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} />
                 ) : null}
 
-                <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} />
-                <ResizeHandle corner="top-right" onMouseDown={handleResizeMouseDown} />
-                <ResizeHandle corner="bottom-left" onMouseDown={handleResizeMouseDown} />
-                <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} />
+                <ResizeHandle corner="top-left" onPointerDown={handleResizePointerDown} onPointerMove={handleResizeMove} onPointerUp={finishResize} />
+                <ResizeHandle corner="top-right" onPointerDown={handleResizePointerDown} onPointerMove={handleResizeMove} onPointerUp={finishResize} />
+                <ResizeHandle corner="bottom-left" onPointerDown={handleResizePointerDown} onPointerMove={handleResizeMove} onPointerUp={finishResize} />
+                <ResizeHandle corner="bottom-right" onPointerDown={handleResizePointerDown} onPointerMove={handleResizeMove} onPointerUp={finishResize} />
             </div>
 
             <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onConnectStart={(event) => onConnectStart(event, data.id, "target")} />
             <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onConnectStart={(event) => onConnectStart(event, data.id, "source")} />
 
             {showPanel && renderPanel ? (
-                <div data-canvas-no-drag className="absolute left-1/2 top-full z-[70] pt-4" style={{ width: "min(500px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}>
+                <div data-canvas-no-drag className="absolute left-1/2 top-full z-[70] pt-4" style={{ width: "min(640px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}>
                     {renderPanel(data)}
                 </div>
             ) : null}
