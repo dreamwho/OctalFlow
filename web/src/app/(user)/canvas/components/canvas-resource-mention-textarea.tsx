@@ -35,7 +35,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [hasSelection, setHasSelection] = useState(false);
-    const [focused, setFocused] = useState(false);
 
     useEffect(() => {
         if (!autoFocus) return;
@@ -103,7 +102,7 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     };
 
     const hasActiveLabelInValue = activeLabels.some((label) => value.includes(label));
-    const showOverlay = Boolean(value && hasActiveLabelInValue && !hasSelection && !focused);
+    const showOverlay = Boolean(value && hasActiveLabelInValue && !hasSelection);
     const mergedStyle = {
         ...(style || {}),
         color: showOverlay ? "transparent" : style?.color,
@@ -144,7 +143,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
                     props.onSelect?.(event);
                 }}
                 onFocus={(event) => {
-                    setFocused(true);
                     updateSelectionState();
                     props.onFocus?.(event);
                 }}
@@ -170,7 +168,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
                     props.onScroll?.(event);
                 }}
                 onBlur={(event) => {
-                    setFocused(false);
                     setHasSelection(false);
                     window.setTimeout(closeMention, 120);
                     props.onBlur?.(event);
@@ -189,7 +186,7 @@ function MentionHighlightText({ value, labels, placeholder }: { value: string; l
         <>
             {value.split(pattern).map((part, index) =>
                 labels.includes(part) ? (
-                    <span key={`${part}-${index}`} className="rounded-md bg-[#2f80ff]/16 px-1 py-0.5 font-medium text-[#2f80ff] ring-1 ring-[#2f80ff]/24">
+                    <span key={`${part}-${index}`} className="rounded bg-[#2f80ff]/16 text-[#2f80ff]">
                         {part}
                     </span>
                 ) : (
