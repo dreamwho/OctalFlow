@@ -26,7 +26,11 @@ vi.mock("@/lib/auth/store", () => {
         refundUserPoints: vi.fn(),
     };
 });
-vi.mock("@/lib/server/generation-task-store", () => ({ withGenerationConcurrencyLimit: vi.fn(async (_userId, _type, _staleMs, _limit, handler) => handler()), linkStoredGenerationTask: vi.fn() }));
+vi.mock("@/lib/server/generation-task-store", () => ({
+    withGenerationConcurrencyLimit: vi.fn(async (_userId, _type, _staleMs, _limit, handler) => handler()),
+    linkStoredGenerationTask: vi.fn(),
+    effectiveGenerationConcurrencyLimit: vi.fn((_role, limit) => limit),
+}));
 vi.mock("@/lib/server/security", () => ({
     checkGenerationRateLimit: vi.fn(async () => ({ allowed: true, remaining: 19, resetAt: Date.now() + 60_000 })),
     rateLimitHeaders: vi.fn(() => ({})),

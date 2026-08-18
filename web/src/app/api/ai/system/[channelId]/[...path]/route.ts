@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { consumeUserPoints, getAuthSettings, isAuthInputError, isQuotaExceededError, refundUserPoints, type ApiCallFormat, type GenerationPointMultipliers, type PointUsageKind } from "@/lib/auth/store";
+import { consumeUserPoints, getAuthSettings, isAdminUserId, isAuthInputError, isQuotaExceededError, refundUserPoints, type ApiCallFormat, type GenerationPointMultipliers, type PointUsageKind } from "@/lib/auth/store";
 import { getCurrentUser } from "@/lib/auth/session";
 import { DEFAULT_CHANNEL_CONNECT_ERROR } from "@/lib/server/generation-errors";
 import { UnsupportedMediaContentError } from "@/lib/server/media-content-validation";
@@ -173,7 +173,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         const refundedUser = await refundUserPoints(userId, pointsResult.model, pointsResult.cost, pointsResult.usageKind, pointsResult.units, undefined, pointsResult.recordId);
         refundedPointsRemaining = typeof refundedUser?.pointsBalance === "number" ? refundedUser.pointsBalance : null;
     };
-    if (pointsRequest) {
+    if (pointsRequest && !(currentUser?.role === "admin" || (!currentUser && (await isAdminUserId(userId))))) {
         try {
             pointsResult = await consumeUserPoints(userId, access.logicalModelId, pointsRequest.amount, pointsRequest.usageKind, pointsIdempotencyKey, requestFingerprint);
         } catch (error) {

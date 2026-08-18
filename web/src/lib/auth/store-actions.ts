@@ -721,6 +721,18 @@ export async function consumeUserPoints(userId: string, model: string, amount = 
     };
 }
 
+export async function isAdminUserId(userId: string) {
+    const normalizedUserId = userId.trim();
+    if (!normalizedUserId) return false;
+    if (isPostgresDatabaseEnabled()) {
+        const clock = walletClock();
+        const details = await createPostgresRepositories().users.getPublicDetails([normalizedUserId], { now: clock.now.toISOString(), date: clock.date });
+        return details[0]?.user.role === "admin";
+    }
+    const db = await readAuthDb();
+    return db.users.some((item) => item.id === normalizedUserId && item.role === "admin" && item.status === "active");
+}
+
 export async function refundUserPoints(userId: string, model: string, amount: number, usageKind: PointUsageKind = "api", units = 0, idempotencyKey?: string, sourceRecordId?: string) {
     const refund = normalizePointAmount(amount, 0);
     const sourceId = sourceRecordId?.trim();

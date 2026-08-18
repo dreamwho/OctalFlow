@@ -34,7 +34,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const overlayRef = useRef<HTMLDivElement | null>(null);
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
-    const [hasSelection, setHasSelection] = useState(false);
 
     useEffect(() => {
         if (!autoFocus) return;
@@ -96,13 +95,15 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
         overlayRef.current.scrollLeft = textareaRef.current.scrollLeft;
     };
 
-    const updateSelectionState = () => {
-        const textarea = textareaRef.current;
-        setHasSelection(Boolean(textarea && textarea.selectionStart !== textarea.selectionEnd));
-    };
-
     const hasActiveLabelInValue = activeLabels.some((label) => value.includes(label));
-    const showOverlay = Boolean(value && hasActiveLabelInValue && !hasSelection);
+    const showOverlay = Boolean(value && hasActiveLabelInValue);
+
+    useEffect(() => {
+        const converted = replacePictureTags(value, references);
+        if (converted !== value) updateValue(converted);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value, references]);
+
     const mergedStyle = {
         ...(style || {}),
         color: showOverlay ? "transparent" : style?.color,
@@ -133,25 +134,18 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
                     const next = event.target.value;
                     onChange(next);
                     syncMention(next, event.target.selectionStart);
-                    requestAnimationFrame(() => {
-                        syncOverlayScroll();
-                        updateSelectionState();
-                    });
+                    requestAnimationFrame(syncOverlayScroll);
                 }}
                 onSelect={(event) => {
-                    updateSelectionState();
                     props.onSelect?.(event);
                 }}
                 onFocus={(event) => {
-                    updateSelectionState();
                     props.onFocus?.(event);
                 }}
                 onKeyUp={(event) => {
-                    updateSelectionState();
                     props.onKeyUp?.(event);
                 }}
                 onPointerUp={(event) => {
-                    updateSelectionState();
                     props.onPointerUp?.(event);
                 }}
                 onKeyDown={(event) => {
@@ -168,7 +162,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
                     props.onScroll?.(event);
                 }}
                 onBlur={(event) => {
-                    setHasSelection(false);
                     window.setTimeout(closeMention, 120);
                     props.onBlur?.(event);
                 }}
@@ -285,4 +278,17 @@ function clamp(value: number, min: number, max: number) {
 
 function escapeRegExp(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const PICTURE_TAG_PATTERN = /<Picture\s+(\d+)>/gi;
+
+export function replacePictureTags(value: string, references: CanvasResourceReference[]) {
+    if (!value || !references.length) return value;
+    const images = references.filter((reference) => reference.kind === "image" && reference.active);
+    if (!images.length) return value;
+    return value.replace(PICTURE_TAG_PATTERN, (match, number: string) => {
+        const index = Number(number);
+        const reference = images.find((item) => item.label === `图片${index}`) || (index >= 1 && index <= images.length ? images[index - 1] : undefined);
+        return reference ? reference.label : match;
+    });
 }

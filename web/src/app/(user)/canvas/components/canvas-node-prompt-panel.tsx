@@ -6,6 +6,7 @@ import { Button, Modal, Tooltip } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
 import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
+import { imagePreviewUrl } from "@/lib/media-image-url";
 import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -45,6 +46,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const hasImageContent = isCanvasImageNodeType(node.type) && Boolean(node.metadata?.content);
     const isPanorama = node.type === CanvasNodeType.Panorama;
     const isEditingExistingContent = hasTextContent || hasImageContent;
+    const activeMentionReferences = mentionReferences.filter((reference) => reference.active);
     const [prompt, setPrompt] = useState(isEditingExistingContent ? "" : node.metadata?.prompt || "");
     const [expanded, setExpanded] = useState(false);
     const expandedEditorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -88,8 +90,19 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.stopPropagation()}
         >
             <div className="relative">
+                {activeMentionReferences.length ? (
+                    <div className="thin-scrollbar mb-2 flex items-center gap-1.5 overflow-x-auto">
+                        {activeMentionReferences.map((reference) => (
+                            <span key={reference.id} className="flex shrink-0 items-center gap-1.5 rounded-md border px-1.5 py-1" style={{ borderColor: theme.node.stroke, background: theme.node.fill }}>
+                                {reference.kind === "image" && reference.previewUrl ? <img src={imagePreviewUrl(reference.previewUrl, 64)} alt={reference.label} className="size-6 rounded object-cover" /> : null}
+                                <span className="text-xs font-medium text-[#2f80ff]">{reference.label}</span>
+                            </span>
+                        ))}
+                    </div>
+                ) : null}
                 <CanvasResourceMentionTextarea
                     autoFocus
                     value={prompt}

@@ -6,7 +6,7 @@ import { getAuthSettings, isAuthInputError } from "@/lib/auth/store";
 import { generationModelId, toSystemGenerationChannel } from "@/lib/server/generation-channel";
 import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-recovery-service";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
-import { withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
+import { effectiveGenerationConcurrencyLimit, withGenerationConcurrencyLimit } from "@/lib/server/generation-task-store";
 import { resolveInternalOrigin } from "@/lib/server/internal-origin";
 import { resolveLogicalModelCandidates } from "@/lib/server/logical-model-router";
 import { checkGenerationRateLimit, rateLimitHeaders } from "@/lib/server/security";
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const rate = await checkGenerationRateLimit(currentUser.id, request, "text");
     if (!rate.allowed) return NextResponse.json({ error: "文本生成请求过于频繁，请稍后重试" }, { status: 429, headers: rateLimitHeaders(rate) });
     const settings = await getAuthSettings();
-    const response = await withGenerationConcurrencyLimit(currentUser.id, "text", 5 * 60 * 1000, settings.generationConcurrency.text, async () => {
+    const response = await withGenerationConcurrencyLimit(currentUser.id, "text", 5 * 60 * 1000, effectiveGenerationConcurrencyLimit(currentUser.role, settings.generationConcurrency.text), async () => {
         let body: CreateTextTaskBody;
         try {
             body = await readJsonBody(request);

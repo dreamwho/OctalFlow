@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
     checkMediaProxyRateLimit: vi.fn(),
     consumeUserPoints: vi.fn(),
     getAuthSettings: vi.fn(),
+    getCurrentUser: vi.fn(async () => ({ id: "user-one", role: "user", pointsBalance: 5 })),
+    isAdminUserId: vi.fn(),
     refundUserPoints: vi.fn(),
     safeUrl: vi.fn(),
     acquire: vi.fn(),
@@ -13,10 +15,11 @@ const mocks = vi.hoisted(() => ({
     taskAccess: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/session", () => ({ getCurrentUser: vi.fn(async () => ({ id: "user-one", role: "user", pointsBalance: 5 })) }));
+vi.mock("@/lib/auth/session", () => ({ getCurrentUser: mocks.getCurrentUser }));
 vi.mock("@/lib/auth/store", () => ({
     consumeUserPoints: mocks.consumeUserPoints,
     getAuthSettings: mocks.getAuthSettings,
+    isAdminUserId: mocks.isAdminUserId,
     isAuthInputError: (error: unknown) => Boolean(error && typeof error === "object" && "status" in error),
     isQuotaExceededError: vi.fn(() => false),
     refundUserPoints: mocks.refundUserPoints,
@@ -222,6 +225,30 @@ describe("GlobalAiOpc native text proxy", () => {
 
         expect(response.status).toBe(200);
         expect(mocks.consumeUserPoints).toHaveBeenCalledWith("user-one", "writer", 1, "text", expect.stringMatching(/^system-ai:[a-f0-9]{64}$/), expect.stringMatching(/^[a-f0-9]{64}$/));
+    });
+
+    it("does not charge points for administrator requests", async () => {
+        mocks.getCurrentUser.mockResolvedValueOnce({ id: "user-one", role: "admin", pointsBalance: 0 });
+        mocks.getAuthSettings.mockResolvedValue({
+            generationPointMultipliers: {},
+            logicalModels: [
+                {
+                    id: "writer",
+                    name: "写作模型",
+                    capability: "text",
+                    enabled: true,
+                    bindings: [{ id: "writer-binding", channelId: "channel-one", upstreamModel: "vendor-text", enabled: true, priority: 1 }],
+                },
+            ],
+            systemChannels: [{ id: "channel-one", enabled: true, baseUrl: "https://api.example.com/v1", apiKey: "secret", apiFormat: "openai", models: ["vendor-text"] }],
+        });
+        vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ choices: [{ message: { content: "OK" } }] }));
+
+        const response = await POST(chatRequest({ model: "vendor-text", messages: [{ role: "user", content: "hello" }] }), textContext());
+
+        expect(response.status).toBe(200);
+        expect(mocks.consumeUserPoints).not.toHaveBeenCalled();
+        expect(mocks.isAdminUserId).not.toHaveBeenCalled();
     });
 
     it("uses the validated preferred logical model and stable idempotency key when aliases are shared", async () => {

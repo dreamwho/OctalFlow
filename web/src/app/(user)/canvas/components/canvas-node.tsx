@@ -384,7 +384,12 @@ export const CanvasNode = React.memo(function CanvasNode({
             <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onConnectStart={(event) => onConnectStart(event, data.id, "source")} />
 
             {showPanel && renderPanel ? (
-                <div data-canvas-no-drag className="absolute left-1/2 top-full z-[70] pt-4" style={{ width: "min(640px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}>
+                <div
+                    data-canvas-no-drag
+                    className="absolute left-1/2 top-full z-[70] pt-4"
+                    style={{ width: "min(640px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}
+                    onContextMenu={(event) => event.stopPropagation()}
+                >
                     {renderPanel(data)}
                 </div>
             ) : null}
