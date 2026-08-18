@@ -29,7 +29,7 @@ const channel = {
 describe("channel protocol registry", () => {
     it("exposes only active protocols and keeps SD2 separate from Stable Diffusion", () => {
         const protocols = channelProtocolOptions().map((item) => item.value);
-        expect(protocols).toEqual(["openai", "yumeng", "gemini", "seedance", "stable-diffusion", "volcengine-video", "sub2api", "newapi", "lingkeai", "minimax-h3", "custom", "compatible", "auto"]);
+        expect(protocols).toEqual(["openai", "yumeng", "gemini", "seedance", "stable-diffusion", "volcengine-video", "sub2api", "newapi", "lingkeai", "minimax-h3", "minimax-h3-official", "custom", "compatible", "auto"]);
         expect(protocols).not.toEqual(expect.arrayContaining(["octalaicanvas-recommended", "seedance-special", "globalaiopc"]));
         expect(channelProtocolDefinition("openai").modelCatalogPaths).toEqual(["/v1/models"]);
         expect(channelProtocolDefinition("sub2api").modelCatalogPaths).toEqual(["/v1/models"]);
@@ -72,7 +72,7 @@ describe("channel protocol registry", () => {
         const videoModel = channelProtocolDefinition("lingkeai").builtInModels?.find((item) => item.id === "grok-imagine-video-1.5-preview");
         expect(videoModel?.operation).toMatchObject({ createPath: "/v1/media/generate", queryPath: "/v1/media/status?task_id=:task_id", resultField: "result_url", supportsReferenceImage: true });
         expect(channelProtocolDefinition("minimax-h3")).toMatchObject({
-            label: "MiniMax H3",
+            label: "easyframe MiniMaxH3",
             defaultBaseUrl: "https://minimax.api.easyframe.cn",
             modelCatalogPaths: ["/v1/models"],
             capabilities: ["video"],
@@ -91,6 +91,27 @@ describe("channel protocol registry", () => {
             supportsReferenceAudio: true,
         });
         expect(channelProtocolDefinition("minimax-h3").builtInModels?.map((item) => item.id)).toEqual(["minimax-h3-mini", "minimax-h3-fast", "minimax-h3-base", "minimax-h3-pro"]);
+        expect(channelProtocolDefinition("minimax-h3-official")).toMatchObject({
+            label: "MiniMax H3 官方",
+            defaultBaseUrl: "https://api.minimaxi.com",
+            modelCatalogPaths: [],
+            capabilities: ["video"],
+            strict: true,
+        });
+        expect(channelProtocolDefinition("minimax-h3-official").operations.video).toMatchObject({
+            createPath: "/v2/video_generation",
+            imageToVideoPath: "/v2/video_generation",
+            queryPath: "/v2/query/video_generation/:task_id",
+            cancelPath: "/v2/video_generation/:task_id",
+            cancelMethod: "DELETE",
+            resultField: "task.content.url",
+            statusField: "task.status",
+            durationRange: "4-15 秒",
+            supportsReferenceImage: true,
+            supportsReferenceVideo: true,
+            supportsReferenceAudio: true,
+        });
+        expect(channelProtocolDefinition("minimax-h3-official").builtInModels?.map((item) => item.id)).toEqual(["MiniMax-H3"]);
     });
 
     it("keeps strict protocol paths and request contracts isolated", () => {

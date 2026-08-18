@@ -106,7 +106,7 @@ export function assertVideoReferenceRoles(config: SystemChannelAdvancedConfig | 
     const protocol = config?.protocol || "auto";
     const supported = new Set<VideoReferenceRole>(
         declaredRoles ||
-            (protocol === "seedance" || protocol === "volcengine-video" || protocol === "seedance-special" || protocol === "minimax-h3"
+            (protocol === "seedance" || protocol === "volcengine-video" || protocol === "seedance-special" || protocol === "minimax-h3" || protocol === "minimax-h3-official"
                 ? ["reference", "first_frame", "last_frame"]
                 : protocol === "yumeng"
                   ? templateVideoReferenceRoles(config?.requestTemplate)

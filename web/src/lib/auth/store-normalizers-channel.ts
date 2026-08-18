@@ -12,6 +12,7 @@ const CHANNEL_PROTOCOLS: SystemChannelProtocol[] = [
     "newapi",
     "lingkeai",
     "minimax-h3",
+    "minimax-h3-official",
     "octalaicanvas-recommended",
     "globalaiopc",
     "seedance",

@@ -23,6 +23,7 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { VIDEO_PROVIDER_MEDIA_KEYS, parseVideoProviderJson, readVideoProviderHttpError, readVideoProviderId, readVideoProviderUrl } from "@/lib/server/video-provider-response";
 import { buildSeedanceSpecialRequest } from "@/lib/seedance-special";
 import { assertMinimaxH3VideoReferences, buildMinimaxH3VideoRequest } from "@/lib/minimax-h3";
+import { assertMinimaxH3OfficialVideoReferences, buildMinimaxH3OfficialVideoRequest, minimaxH3OfficialResolution } from "@/lib/minimax-h3-official";
 import { assertOctalaicanvasRecommendedVideoReferences, buildOctalaicanvasRecommendedVideoRequest } from "@/lib/octalaicanvas-recommended-video";
 import { assertGeminiVideoReferences, buildGeminiVideoRequest, geminiVideoCreatePath, normalizeGeminiVideoDuration, parseGeminiVideoCreateResponse } from "@/lib/server/gemini-video-provider";
 import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
@@ -120,6 +121,7 @@ export async function POST(request: Request) {
                     if (channel.advancedConfig?.protocol === "octalaicanvas-recommended") assertOctalaicanvasRecommendedVideoReferences(channel.model, references);
                     if (channel.advancedConfig?.protocol === "yumeng") assertYumengVideoReferences(channel.model, references);
                     if (channel.advancedConfig?.protocol === "minimax-h3") assertMinimaxH3VideoReferences(references);
+                    if (channel.advancedConfig?.protocol === "minimax-h3-official") assertMinimaxH3OfficialVideoReferences(references);
                     assertReferenceUrls(channel.advancedConfig, references, Boolean(globalPreset));
                 }
             } catch (error) {
@@ -314,36 +316,45 @@ export async function createUpstream(
                     duration: values.duration === -1 ? 5 : (values.duration as number),
                     references,
                 })
-              : channel.advancedConfig?.protocol === "yumeng"
-                ? buildYumengVideoRequest({
+              : channel.advancedConfig?.protocol === "minimax-h3-official"
+                ? buildMinimaxH3OfficialVideoRequest({
                       model: channel.model,
                       prompt,
-                      duration: values.duration as number,
-                      aspectRatio: values.aspect_ratio as string,
-                      resolution: values.resolution as string,
-                      generateAudio,
-                      watermark: raw.videoWatermark === "true",
-                      images: requestImages,
-                      videos,
-                      audios,
-                      firstFrame: firstFrameUrl || undefined,
-                      lastFrame: lastFrameUrl || undefined,
+                      resolution: minimaxH3OfficialResolution(raw.vquality),
+                      ratio: values.ratio as string,
+                      duration: values.duration === -1 ? 5 : (values.duration as number),
+                      references,
                   })
-                : globalPreset
-                  ? buildGlobalAiOpcVideoRequest(globalPreset, {
+                : channel.advancedConfig?.protocol === "yumeng"
+                  ? buildYumengVideoRequest({
                         model: channel.model,
                         prompt,
                         duration: values.duration as number,
-                        ratio: values.ratio as string,
+                        aspectRatio: values.aspect_ratio as string,
                         resolution: values.resolution as string,
-                        images: requestImages.length ? requestImages : requestImage ? [requestImage] : [],
+                        generateAudio,
+                        watermark: raw.videoWatermark === "true",
+                        images: requestImages,
                         videos,
                         audios,
-                        generateAudio,
                         firstFrame: firstFrameUrl || undefined,
                         lastFrame: lastFrameUrl || undefined,
                     })
-                  : buildVideoProviderRequest(channel.advancedConfig?.requestTemplate, defaults, values);
+                  : globalPreset
+                    ? buildGlobalAiOpcVideoRequest(globalPreset, {
+                          model: channel.model,
+                          prompt,
+                          duration: values.duration as number,
+                          ratio: values.ratio as string,
+                          resolution: values.resolution as string,
+                          images: requestImages.length ? requestImages : requestImage ? [requestImage] : [],
+                          videos,
+                          audios,
+                          generateAudio,
+                          firstFrame: firstFrameUrl || undefined,
+                          lastFrame: lastFrameUrl || undefined,
+                      })
+                    : buildVideoProviderRequest(channel.advancedConfig?.requestTemplate, defaults, values);
     const requestBody = multipart
         ? await buildOpenAiVideoFormData({ model: channel.model, prompt, seconds: values.seconds as number, width: dimensions.width, height: dimensions.height, imageUrls: firstFrameUrl ? [firstFrameUrl] : images, origin, cookie })
         : JSON.stringify(payload);

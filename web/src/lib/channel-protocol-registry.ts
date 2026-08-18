@@ -1,6 +1,7 @@
 import type { ApiCallFormat, LogicalModelCapability, SystemChannelAdvancedConfig, SystemChannelAuthMode, SystemChannelModelConfig, SystemChannelProtocol, SystemModelChannel } from "@/lib/auth/store-types";
 import { inferModelCapability, normalizeModelId } from "@/lib/model-capability";
 import { MINIMAX_H3_MODELS } from "@/lib/minimax-h3";
+import { MINIMAX_H3_OFFICIAL_MODELS } from "@/lib/minimax-h3-official";
 import { SEEDANCE_SPECIAL_MODELS } from "@/lib/seedance-special";
 import { normalizeYumengModelCenterBaseUrl, YUMENG_DEFAULT_IMAGE_OPERATION, YUMENG_DEFAULT_VIDEO_OPERATION, YUMENG_MODEL_CENTER_BASE_URL, YUMENG_MODEL_CENTER_MODELS } from "@/lib/yumeng-model-center";
 
@@ -88,6 +89,24 @@ const minimaxH3VideoOperation: ProtocolOperation = {
     statusField: "status",
     durationRange: "5-15 秒",
     referenceRule: "参考媒体使用公网可访问 URL：普通参考进入 ref2va 的 images/videos/audios；首帧与首尾帧分别映射 i2va 与 fl2va 的 images，两种方式不能混用。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
+};
+
+const minimaxH3OfficialVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v2/video_generation",
+    imageToVideoPath: "/v2/video_generation",
+    queryPath: "/v2/query/video_generation/:task_id",
+    cancelPath: "/v2/video_generation/:task_id",
+    cancelMethod: "DELETE",
+    requestTemplate:
+        "json: model(MiniMax-H3)、content 多模态数组(text/image_url/video_url/audio_url)、resolution(768P/2K)、duration(4-15 整数)、ratio；首尾帧用 first_frame/last_frame 角色，参考图/视频/音频用 reference_image/reference_video/reference_audio 角色。",
+    resultField: "task.content.url",
+    statusField: "task.status",
+    durationRange: "4-15 秒",
+    referenceRule: "content 数组多模态输入：首帧、尾帧分别使用 role=first_frame/last_frame 的 image_url；多模态参考使用 role=reference_image/reference_video/reference_audio，且与首尾帧互斥。",
     supportsReferenceImage: true,
     supportsReferenceVideo: true,
     supportsReferenceAudio: true,
@@ -288,8 +307,8 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
     },
     {
         id: "minimax-h3",
-        label: "MiniMax H3",
-        description: "MiniMax H3 视频网关（minimax.api.easyframe.cn）。POST /v1/videos 按 mode 支持文生（t2va）、首帧（i2va）、首尾帧（fl2va）与多参考（ref2va）；GET /v1/videos/:task_id 轮询，完成后从 /v1/videos/:task_id/content 取片。",
+        label: "easyframe MiniMaxH3",
+        description: "easyframe 网关的 MiniMax H3 视频接口（minimax.api.easyframe.cn）。POST /v1/videos 按 mode 支持文生（t2va）、首帧（i2va）、首尾帧（fl2va）与多参考（ref2va）；GET /v1/videos/:task_id 轮询，完成后从 /v1/videos/:task_id/content 取片。",
         apiFormat: "openai",
         authMode: "bearer",
         defaultBaseUrl: "https://minimax.api.easyframe.cn",
@@ -297,6 +316,20 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
         capabilities: ["video"],
         operations: { video: minimaxH3VideoOperation },
         builtInModels: MINIMAX_H3_MODELS.map((id) => ({ id, label: id, capability: "video" as const })),
+        strict: true,
+    },
+    {
+        id: "minimax-h3-official",
+        label: "MiniMax H3 官方",
+        description:
+            "MiniMax 官方视频生成 V2 接口（api.minimaxi.com）。POST /v2/video_generation 按多模态 content 数组支持文生（t2va）、首尾帧（i2va）与多模态参考（r2va）；GET /v2/query/video_generation/:task_id 轮询，DELETE /v2/video_generation/:task_id 取消或删除。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://api.minimaxi.com",
+        modelCatalogPaths: [],
+        capabilities: ["video"],
+        operations: { video: minimaxH3OfficialVideoOperation },
+        builtInModels: MINIMAX_H3_OFFICIAL_MODELS.map((id) => ({ id, label: id, capability: "video" as const })),
         strict: true,
     },
     {

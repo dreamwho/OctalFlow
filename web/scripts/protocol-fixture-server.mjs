@@ -252,6 +252,22 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
         const id = decodeURIComponent(octalaicanvasVideoId);
         return sendJson(response, 200, { id, task_id: id, object: "video", status: "completed", progress: 100, metadata: { url: `${url.origin}/media/fixture.mp4` } });
     }
+    const minimaxOfficialQueryId = path.match(/^\/v2\/query\/video_generation\/([^/]+)$/)?.[1];
+    if (request.method === "GET" && minimaxOfficialQueryId) {
+        const id = decodeURIComponent(minimaxOfficialQueryId);
+        const task = tasks.get(id);
+        if (!task || task.kind !== "minimax-official-video") return sendJson(response, 404, { error: { message: "invalid task_id (4008)", type: "bad_request_error" } });
+        return sendJson(response, 200, { task: { id, model: "MiniMax-H3", status: "succeeded", content: { url: `${url.origin}/media/fixture.mp4` }, resolution: "2K", duration: 5, ratio: "16:9", task_type: "generation", modality: "video" } });
+    }
+    const minimaxOfficialDeleteId = path.match(/^\/v2\/video_generation\/([^/]+)$/)?.[1];
+    if (request.method === "DELETE" && minimaxOfficialDeleteId) {
+        return sendJson(response, 200, { task_id: decodeURIComponent(minimaxOfficialDeleteId) });
+    }
+    if (request.method === "POST" && path === "/v2/video_generation") {
+        const id = nextTaskId("minimax-official-video");
+        tasks.set(id, { kind: "minimax-official-video", status: "completed" });
+        return sendJson(response, 200, { task_id: id });
+    }
     const videoId = videoTaskId(path);
     if (request.method === "GET" && videoId) {
         const mediaUrl = `${url.origin}/media/fixture.mp4`;

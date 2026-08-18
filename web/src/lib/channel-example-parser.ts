@@ -442,7 +442,8 @@ function protocolLabel(protocol: SystemChannelProtocol) {
     if (protocol === "sub2api") return "sub2api";
     if (protocol === "newapi") return "New API";
     if (protocol === "lingkeai") return "无线创客";
-    if (protocol === "minimax-h3") return "MiniMax H3";
+    if (protocol === "minimax-h3") return "easyframe MiniMaxH3";
+    if (protocol === "minimax-h3-official") return "MiniMax H3 官方";
     if (protocol === "octalaicanvas-recommended") return "OctalAICanvas推荐";
     if (protocol === "globalaiopc") return "GlobalAiOpc";
     if (protocol === "seedance") return "Seedance";
