@@ -132,6 +132,22 @@ describe("CanvasNode task content", () => {
         expect(markup).toContain("mt-3 flex shrink-0");
     });
 
+    it("keeps a draggable title bar above the video player", () => {
+        const videoNode: CanvasNodeData = {
+            ...imageNode,
+            id: "video",
+            type: CanvasNodeType.Video,
+            title: "视频2",
+            metadata: { content: "/api/reference-assets/permanent/generated-video.mp4" },
+        };
+
+        const markup = renderContent(videoNode, canvasThemes.light);
+
+        expect(markup).toContain("<video");
+        expect(markup).toContain("controls");
+        expect(markup).toContain(">视频2</span>");
+    });
+
     it.each(["light", "dark"] as const)("keeps task states and supporting node chips readable in %s mode", (themeName) => {
         const theme = canvasThemes[themeName];
         const taskNode: CanvasNodeData = {

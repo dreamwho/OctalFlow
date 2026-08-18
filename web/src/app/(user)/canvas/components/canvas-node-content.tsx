@@ -353,7 +353,17 @@ export function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
                 <span className="text-sm">空视频节点</span>
             </div>
         );
-    return <video src={node.metadata.content} controls className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-no-zoom />;
+    return (
+        <div className="flex h-full w-full flex-col overflow-hidden" style={{ background: theme.node.fill, color: theme.node.text }}>
+            <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-sm opacity-70">
+                <Video className="size-4 shrink-0" />
+                <span className="truncate">{node.title || "视频"}</span>
+            </div>
+            <div className="min-h-0 flex-1">
+                <video src={node.metadata.content} controls className="h-full w-full bg-black object-contain" data-canvas-no-zoom />
+            </div>
+        </div>
+    );
 }
 
 export function PanoramaNodeContent({ node, theme }: NodeContentRendererProps) {
