@@ -7,6 +7,7 @@ import { canvasThemes, type CanvasBackgroundMode, type CanvasTheme } from "@/lib
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNode, type CanvasNodeProps } from "./canvas-node";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type Position, type ViewportTransform } from "../types";
+import { NODE_STATUS_LOADING } from "../[id]/canvas-page-elements";
 import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, samePosition, selectNodesInBounds, worldFromScreen } from "../utils/canvas-surface-geometry";
 
 type CanvasPointerEvent = ReactMouseEvent | ReactPointerEvent;
@@ -689,6 +690,7 @@ export function CanvasSurface({
                         const to = nodesById.get(item.toNodeId);
                         if (!from || !to) return null;
                         const active = selectedConnectionId === item.id || relatedConnectionIds.has(item.id);
+                        const generating = from.metadata?.status === NODE_STATUS_LOADING || to.metadata?.status === NODE_STATUS_LOADING;
                         const path = edgePath(from, to);
                         return (
                             <g key={item.id} data-connection-id={item.id}>
@@ -708,7 +710,16 @@ export function CanvasSurface({
                                         onEdgeContextMenu(event, item.id);
                                     }}
                                 />
-                                <path d={path} fill="none" stroke={active ? theme.node.activeStroke : theme.node.muted} strokeWidth={active ? 3 : 2} strokeOpacity={active ? 1 : 0.8} strokeLinecap="round" style={{ pointerEvents: "none" }} />
+                                <path
+                                    d={path}
+                                    fill="none"
+                                    stroke={generating ? "#2f80ff" : active ? theme.node.activeStroke : theme.node.muted}
+                                    strokeWidth={generating ? 2.5 : active ? 3 : 2}
+                                    strokeOpacity={generating || active ? 1 : 0.8}
+                                    strokeLinecap="round"
+                                    className={generating ? "canvas-edge-generating" : undefined}
+                                    style={{ pointerEvents: "none" }}
+                                />
                             </g>
                         );
                     })}

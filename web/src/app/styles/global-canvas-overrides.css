@@ -154,3 +154,15 @@ html.dark .canvas-agent-confirm-switch.ant-switch.ant-switch-checked:hover:not(.
 .canvas-topbar-actions {
     min-width: 0;
 }
+
+.canvas-edge-generating {
+    stroke-dasharray: 8 6;
+    animation: canvas-edge-flow 0.8s linear infinite;
+    filter: drop-shadow(0 0 3px rgba(47, 128, 255, 0.6));
+}
+
+@keyframes canvas-edge-flow {
+    to {
+        stroke-dashoffset: -28;
+    }
+}

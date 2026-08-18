@@ -17,6 +17,15 @@ describe("canvas surface geometry", () => {
         expect(edgePath(source, target)).toBe("M 340 200 C 420 200, 420 320, 500 320");
     });
 
+    it("keeps close horizontal connections as short forward curves instead of looping", () => {
+        const nearTarget = { ...target, position: { x: 350, y: 220 }, width: 300, height: 200 };
+        const path = edgePath(source, nearTarget);
+
+        expect(path).toContain(" C ");
+        expect(path).not.toContain(" Q ");
+        expect(path).not.toContain("-32");
+    });
+
     it("routes backward connections through a clear vertical gap", () => {
         const lowerTarget = { ...target, position: { x: 320, y: 280 }, width: 340, height: 240 };
         const shorterSource = { ...source, position: { x: 0, y: 0 }, width: 340, height: 210 };
