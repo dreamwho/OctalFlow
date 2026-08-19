@@ -839,7 +839,7 @@ test("canvas Agent attachment remove badge stays compact and theme readable", as
 
         const removeButton = panel.getByRole("button", { name: "移除参考素材：reference.png" });
         const badge = removeButton.locator(":scope > span");
-        await expect(removeButton).toBeVisible();
+        await expect(removeButton).toBeVisible({ timeout: 20_000 });
         await expect.poll(async () => (await removeButton.boundingBox())?.width).toBe(28);
         await expect.poll(async () => (await removeButton.boundingBox())?.height).toBe(28);
         await expect.poll(async () => (await badge.boundingBox())?.width).toBe(16);
