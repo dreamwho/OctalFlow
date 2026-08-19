@@ -281,6 +281,8 @@ async function configureProxyChannel(definition: ChannelProtocolDefinition, capa
     const persisted = await readFile(join(dataDir, "auth.json"), "utf8");
     expect(persisted).not.toContain("fixture-key");
     expect(persisted).toContain("octalaicanvas-secret:v1:");
+    // 渠道保存完成：后续生成请求改用普通用户身份，走真实积分扣费路径（管理员会豁免计费）
+    mocks.getCurrentUser.mockResolvedValue({ id: "proxy-user", role: "user", status: "active", adminPermissions: [], pointsBalance: 100 });
     return {
         channelId,
         logicalModelId,
@@ -404,7 +406,7 @@ function upstreamPath(baseUrl: string, path: string) {
 
 function requestContainsReference(request: (typeof fixture.requests)[number] | undefined) {
     const body = request?.body.toString(request.contentType.includes("multipart/form-data") ? "latin1" : "utf8") || "";
-    return /reference\.png|fixture\.png|iVBOR|input_reference|reference_images|image_urls|inlineData|image_url|"images"\s*:\s*\[\s*"http|"image"\s*:\s*\{/.test(body);
+    return /reference\.png|fixture\.png|iVBOR|input_reference|reference_images|image_urls|inlineData|image_url|"images"\s*:\s*\[\s*"http|"image"\s*:\s*\{|filename="reference|\x89PNG/.test(body);
 }
 
 async function dispatchInternalRequest(input: string | URL | Request, init?: RequestInit) {

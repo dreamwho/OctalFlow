@@ -171,22 +171,27 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
     }
 
     if (request.method === "POST" && path === "/videos") {
+        const contentType = request.headers["content-type"] || "";
         const payload = jsonBody(body);
-        if (payload && payload.mode !== undefined) {
+        const mode = payload.mode !== undefined ? String(payload.mode) : multipartField(body, contentType, "mode");
+        if (mode !== undefined) {
+            const resolution = payload.resolution !== undefined ? String(payload.resolution) : multipartField(body, contentType, "resolution") || "";
+            const secondsValue = payload.seconds !== undefined ? payload.seconds : multipartField(body, contentType, "seconds");
+            const model = payload.model !== undefined ? String(payload.model) : requestedModel(body, contentType);
             const allowed = new Set(["model", "mode", "resolution", "seconds", "prompt", "prompt_optimization", "aspect_ratio", "images", "videos", "audios"]);
-            const unsupported = Object.keys(payload).filter((key) => !allowed.has(key));
+            const unsupported = payload.mode !== undefined ? Object.keys(payload).filter((key) => !allowed.has(key)) : [];
             if (unsupported.length)
                 return sendJson(response, 422, {
                     code: "fail_to_fetch_task",
                     message: `{"detail":"unsupported request field(s): ${unsupported.join(", ")}; use model, mode, resolution, aspect_ratio, seconds, prompt, prompt_optimization, images, videos, and audios"}`,
                     data: null,
                 });
-            if (!payload.mode || !payload.resolution || payload.seconds === undefined) return sendJson(response, 422, { code: "fail_to_fetch_task", message: '{"detail":"mode is required for this model"}', data: null });
-            const seconds = Number(payload.seconds);
+            if (!mode || !resolution || secondsValue === undefined) return sendJson(response, 422, { code: "fail_to_fetch_task", message: '{"detail":"mode is required for this model"}', data: null });
+            const seconds = Number(secondsValue);
             if (!Number.isInteger(seconds) || seconds < 5 || seconds > 15) return sendJson(response, 422, { code: "fail_to_fetch_task", message: '{"detail":"seconds must be between 5 and 15 for MiniMax H3"}', data: null });
             const id = nextTaskId("minimax-video");
             tasks.set(id, { kind: "minimax-video", status: "completed" });
-            return sendJson(response, 200, { id, task_id: id, object: "video", model: payload.model, mode: payload.mode, status: "queued", progress: 0, seconds: String(seconds), resolution: payload.resolution });
+            return sendJson(response, 200, { id, task_id: id, object: "video", model, mode, status: "queued", progress: 0, seconds: String(seconds), resolution });
         }
     }
     const minimaxVideoTask = path.match(/^\/videos\/([^/]+)(\/content)?$/);
@@ -455,6 +460,12 @@ function requestedModel(body, contentType = "") {
     }
     const text = body.toString("utf8");
     return text.match(/name="model"\r?\n\r?\n([^\r\n]+)/i)?.[1]?.trim() || "";
+}
+
+function multipartField(body, contentType, name) {
+    if (!String(contentType).includes("multipart/form-data")) return undefined;
+    const text = body.toString("utf8");
+    return text.match(new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]+)`))?.[1]?.trim() || undefined;
 }
 
 function shouldFailRequest(request, model) {

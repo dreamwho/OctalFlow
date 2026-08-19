@@ -253,7 +253,7 @@ function expectVideoRequests(createPath: string, queryPath: string, model: strin
 function requestContainsReference(request: (typeof fixture.requests)[number] | undefined) {
     if (!request) return false;
     const body = requestBodyText(request);
-    return /reference\.png|fixture\.png|iVBOR|input_reference|reference_images|image_urls|inlineData|image_url|"images"\s*:\s*\[\s*"http|"image"\s*:\s*\{/.test(body);
+    return /reference\.png|fixture\.png|iVBOR|input_reference|reference_images|image_urls|inlineData|image_url|"images"\s*:\s*\[\s*"http|"image"\s*:\s*\{|filename="reference|\x89PNG/.test(body);
 }
 
 function requestBodyText(request: (typeof fixture.requests)[number] | undefined) {
