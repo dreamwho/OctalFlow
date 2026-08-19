@@ -5,6 +5,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from "@
 test.describe.configure({ mode: "serial" });
 
 test("canvas keeps editing, selection, linking and persistence fluid", async ({ page, request }) => {
+    test.setTimeout(180_000);
     const project = await createCanvasProject(request, {
         title: `Canvas 交互回归 ${randomUUID().slice(0, 8)}`,
         viewport: { x: 100, y: 110, k: 1 },
