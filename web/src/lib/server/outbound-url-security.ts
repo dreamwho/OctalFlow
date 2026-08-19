@@ -45,6 +45,10 @@ const PRIVATE_ALLOWLISTABLE_IPV6_ADDRESSES = addressBlockList([
     ["fc00::", 7, "ipv6"],
     ["fec0::", 10, "ipv6"],
 ]);
+// Clash/Surge 等代理工具 fake-IP 模式使用的保留段：系统 TUN 会按 Host 路由到真实公网目标，不属于可攻击的内网地址。
+const PROXY_FAKE_IP_IPV4_ADDRESSES = addressBlockList([["198.18.0.0", 15, "ipv4"]]);
+
+export type SafeOutboundOptions = { allowCredentials?: boolean; allowProxyFakeIpSpace?: boolean };
 
 export type SafeOutboundTarget = {
     url: URL;
@@ -52,7 +56,7 @@ export type SafeOutboundTarget = {
     family: 4 | 6;
 };
 
-export async function resolveSafeOutboundTarget(value: string | URL, options?: { allowCredentials?: boolean }): Promise<SafeOutboundTarget | null> {
+export async function resolveSafeOutboundTarget(value: string | URL, options?: SafeOutboundOptions): Promise<SafeOutboundTarget | null> {
     let url: URL;
     try {
         url = value instanceof URL ? new URL(value) : new URL(value);
@@ -67,18 +71,18 @@ export async function resolveSafeOutboundTarget(value: string | URL, options?: {
     const privateAllowed = privateUpstreamHostAllowed(hostname);
     if ((hostname === "localhost" || hostname.endsWith(".localhost")) && !privateAllowed) return null;
     const directFamily = isIP(hostname);
-    if (directFamily) return addressAllowed(hostname, privateAllowed) ? { url, address: hostname, family: directFamily as 4 | 6 } : null;
+    if (directFamily) return addressAllowed(hostname, privateAllowed, options) ? { url, address: hostname, family: directFamily as 4 | 6 } : null;
 
     try {
         const addresses = dedupeAddresses(await lookup(hostname, { all: true, verbatim: true }));
-        if (!addresses.length || !addresses.every((item) => addressAllowed(item.address, privateAllowed))) return null;
+        if (!addresses.length || !addresses.every((item) => addressAllowed(item.address, privateAllowed, options))) return null;
         return { url, address: addresses[0].address, family: addresses[0].family as 4 | 6 };
     } catch {
         return null;
     }
 }
 
-export async function isSafeOutboundUrl(value: string, options?: { allowCredentials?: boolean }) {
+export async function isSafeOutboundUrl(value: string, options?: SafeOutboundOptions) {
     return Boolean(await resolveSafeOutboundTarget(value, options));
 }
 
@@ -90,8 +94,8 @@ export function isPublicIpAddress(address: string) {
     return !addressBlockListContains(address, version, NON_PUBLIC_IPV4_ADDRESSES, NON_PUBLIC_IPV6_ADDRESSES);
 }
 
-function addressAllowed(address: string, privateAllowed: boolean) {
-    return isPublicIpAddress(address) || (privateAllowed && isPrivateAllowlistableAddress(address));
+function addressAllowed(address: string, privateAllowed: boolean, options?: SafeOutboundOptions) {
+    return isPublicIpAddress(address) || (privateAllowed && isPrivateAllowlistableAddress(address)) || (Boolean(options?.allowProxyFakeIpSpace) && isProxyFakeIpAddress(address));
 }
 
 function isPrivateAllowlistableAddress(address: string) {
@@ -100,6 +104,14 @@ function isPrivateAllowlistableAddress(address: string) {
     const mapped = mappedIpv4(address);
     if (mapped) return isPrivateAllowlistableAddress(mapped);
     return addressBlockListContains(address, version, PRIVATE_ALLOWLISTABLE_IPV4_ADDRESSES, PRIVATE_ALLOWLISTABLE_IPV6_ADDRESSES);
+}
+
+function isProxyFakeIpAddress(address: string) {
+    const version = isIP(address);
+    if (!version || version !== 4) return false;
+    const mapped = mappedIpv4(address);
+    if (mapped) return isProxyFakeIpAddress(mapped);
+    return PROXY_FAKE_IP_IPV4_ADDRESSES.check(address, "ipv4");
 }
 
 function addressBlockListContains(address: string, version: number, ipv4: BlockList, ipv6: BlockList) {

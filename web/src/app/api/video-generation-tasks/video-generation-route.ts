@@ -31,6 +31,7 @@ import { maintenanceWorkerContextHeaders, requestRuntimeCredential } from "@/lib
 import { resolvePublicRequestOrigin } from "@/lib/server/public-request-origin";
 import { writeVideoGenerationLog } from "@/lib/server/video-task-log";
 import { buildOpenAiVideoFormData } from "./video-task-openai";
+import { buildMinimaxH3VideoFormData } from "./video-task-minimax-h3";
 import { normalizeVideoGenerationReferences, regularVideoReferences, videoFrameReferences, type VideoGenerationReference } from "@/lib/video-reference-contract";
 import { assertYumengVideoReferences, buildYumengVideoRequest } from "@/lib/yumeng-model-center";
 
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
                     if (channel.advancedConfig?.protocol === "yumeng") assertYumengVideoReferences(channel.model, references);
                     if (channel.advancedConfig?.protocol === "minimax-h3") assertMinimaxH3VideoReferences(references);
                     if (channel.advancedConfig?.protocol === "minimax-h3-official") assertMinimaxH3OfficialVideoReferences(references);
-                    assertReferenceUrls(channel.advancedConfig, references, Boolean(globalPreset));
+                    assertReferenceUrls(channel.advancedConfig, references, Boolean(globalPreset), ["minimax-h3"]);
                 }
             } catch (error) {
                 capabilityError = error;
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
                 lastUpstreamStatus: "submitting",
             });
             try {
-                const upstream = await createUpstream(user.id, origin, cookie, channel, providerPrompt, parameters, references, settings.generationPointMultipliers, billingRequestId);
+                const upstream = await createUpstream(user.id, origin, cookie, channel, providerPrompt, parameters, references, settings.generationPointMultipliers, billingRequestId, publicOrigin);
                 await updateVideoTask(localTask.id, { config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts });
                 const task = { ...localTask, config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts };
                 const submittedAt = Date.now();
@@ -221,6 +222,7 @@ export async function createUpstream(
     references: VideoGenerationReference[],
     multipliers: Awaited<ReturnType<typeof getAuthSettings>>["generationPointMultipliers"],
     billingRequestId: string,
+    publicOrigin = "",
 ) {
     let lastError = "";
     const regularReferences = regularVideoReferences(references);
@@ -355,16 +357,34 @@ export async function createUpstream(
                           lastFrame: lastFrameUrl || undefined,
                       })
                     : buildVideoProviderRequest(channel.advancedConfig?.requestTemplate, defaults, values);
+    let minimaxH3Form: FormData | undefined;
+    if (!multipart && payload !== undefined && channel.advancedConfig?.protocol === "minimax-h3") {
+        try {
+            minimaxH3Form = await buildMinimaxH3VideoFormData({
+                model: channel.model,
+                prompt,
+                resolution: values.resolution as string,
+                aspectRatio: values.ratio as string,
+                duration: values.duration === -1 ? 5 : (values.duration as number),
+                references,
+                origin,
+                publicOrigin,
+                cookie,
+            });
+        } catch (error) {
+            throw new SafeCandidateFailure(error instanceof Error ? error.message : "参考素材读取失败");
+        }
+    }
     const requestBody = multipart
         ? await buildOpenAiVideoFormData({ model: channel.model, prompt, seconds: values.seconds as number, width: dimensions.width, height: dimensions.height, imageUrls: firstFrameUrl ? [firstFrameUrl] : images, origin, cookie })
-        : JSON.stringify(payload);
+        : (minimaxH3Form ?? JSON.stringify(payload));
     const imageToVideoPath = images.length || firstFrameUrl ? channel.advancedConfig?.imageToVideoPath?.trim() : "";
     const createPaths = globalPreset ? [globalPreset.createPath] : imageToVideoPath ? [imageToVideoPath] : resolvedProviderCreatePaths(channel.advancedConfig, "video", CREATE_PATHS);
     for (const path of createPaths) {
         const response = await proxyFetch(origin, channel.baseUrl, path, cookie, {
             method: "POST",
             headers: {
-                ...(multipart ? {} : { "Content-Type": "application/json" }),
+                ...(multipart || minimaxH3Form ? {} : { "Content-Type": "application/json" }),
                 "Idempotency-Key": billingRequestId,
                 "X-Client-Request-Id": billingRequestId,
                 ...systemAiBillingHeaders(generationModelId(channel), `video-request:${billingRequestId}`, channel.model),

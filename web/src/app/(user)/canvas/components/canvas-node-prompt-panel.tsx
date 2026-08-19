@@ -13,7 +13,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
-import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
+import { CanvasResourceMentionTextarea, insertTextAtSelection } from "./canvas-resource-mention-textarea";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasCameraControl } from "./canvas-camera-control";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasGenerationMode, type CanvasNodeData } from "../types";
@@ -49,6 +49,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const activeMentionReferences = mentionReferences.filter((reference) => reference.active);
     const [prompt, setPrompt] = useState(isEditingExistingContent ? "" : node.metadata?.prompt || "");
     const [expanded, setExpanded] = useState(false);
+    const promptEditorRef = useRef<HTMLTextAreaElement | null>(null);
     const expandedEditorRef = useRef<HTMLTextAreaElement | null>(null);
     const credits = requestCreditCost({
         apiSource: config.apiSource,
@@ -69,6 +70,20 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const updatePrompt = (value: string) => {
         setPrompt(value);
         if (!isEditingExistingContent) onPromptChange(node.id, value);
+    };
+
+    const insertReferenceAtCursor = (reference: CanvasResourceReference) => {
+        const textarea = promptEditorRef.current;
+        if (!textarea) return;
+        const focused = document.activeElement === textarea;
+        const start = focused ? textarea.selectionStart : prompt.length;
+        const end = focused ? textarea.selectionEnd : prompt.length;
+        const next = insertTextAtSelection(prompt, start, end, `${reference.label} `);
+        updatePrompt(next.value);
+        requestAnimationFrame(() => {
+            textarea.focus();
+            textarea.setSelectionRange(next.caret, next.caret);
+        });
     };
 
     const submit = () => {
@@ -96,14 +111,32 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 {activeMentionReferences.length ? (
                     <div className="thin-scrollbar mb-2 flex items-center gap-1.5 overflow-x-auto">
                         {activeMentionReferences.map((reference) => (
-                            <span key={reference.id} className="flex shrink-0 items-center gap-1.5 rounded-md border px-1.5 py-1" style={{ borderColor: theme.node.stroke, background: theme.node.fill }}>
+                            <button
+                                key={reference.id}
+                                type="button"
+                                data-canvas-no-drag
+                                title={`插入 ${reference.label}`}
+                                aria-label={`插入 ${reference.label}`}
+                                className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-1.5 py-1 transition hover:opacity-80 active:scale-[0.98]"
+                                style={{ borderColor: theme.node.stroke, background: theme.node.fill }}
+                                onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                }}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    insertReferenceAtCursor(reference);
+                                }}
+                            >
                                 {reference.kind === "image" && reference.previewUrl ? <img src={imagePreviewUrl(reference.previewUrl, 64)} alt={reference.label} className="size-6 rounded object-cover" /> : null}
                                 <span className="text-xs font-medium text-[#2f80ff]">{reference.label}</span>
-                            </span>
+                            </button>
                         ))}
                     </div>
                 ) : null}
                 <CanvasResourceMentionTextarea
+                    ref={promptEditorRef}
                     autoFocus
                     value={prompt}
                     references={mentionReferences}

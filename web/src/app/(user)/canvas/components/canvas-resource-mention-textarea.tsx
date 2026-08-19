@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent, PointerEvent, TextareaHTMLAttributes } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, TextareaHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
 import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
 
@@ -68,6 +68,19 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
         setActiveIndex(0);
     };
 
+    const handleReferenceLabelDeletion = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (!activeLabels.length || mention || (event.key !== "Backspace" && event.key !== "Delete")) return false;
+        if (event.nativeEvent.isComposing) return false;
+        const textarea = event.currentTarget;
+        const next = deleteReferenceLabelAtCaret(textarea.value, textarea.selectionStart, textarea.selectionEnd, event.key, activeLabels);
+        if (!next) return false;
+        event.preventDefault();
+        updateValue(next.value, next.cursor);
+        syncMention(next.value, next.cursor);
+        requestAnimationFrame(syncOverlayScroll);
+        return true;
+    };
+
     const syncMention = (nextValue: string, cursor: number) => {
         const prefix = nextValue.slice(0, cursor);
         const match = /(^|\s)@([^\s@]*)$/.exec(prefix);
@@ -108,14 +121,17 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
         ...(style || {}),
         color: showOverlay ? "transparent" : style?.color,
         caretColor: style?.color || theme.node.text,
-        ...(showOverlay ? { background: "transparent", backgroundColor: "transparent" } : {}),
     } as CSSProperties;
     const menu = mention && candidates.length && textareaRef.current ? <MentionMenu textarea={textareaRef.current} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} /> : null;
 
     return (
         <div className={`relative h-full w-full ${containerClassName || ""}`}>
             {showOverlay ? (
-                <div ref={overlayRef} className={`${className || ""} pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words`} style={{ ...style, color: theme.node.text }}>
+                <div
+                    ref={overlayRef}
+                    className={`${className || ""} pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words`}
+                    style={{ ...style, background: "transparent", backgroundColor: "transparent", color: theme.node.text }}
+                >
                     <MentionHighlightText value={value || props.placeholder?.toString() || ""} labels={activeLabels} placeholder={!value} />
                 </div>
             ) : null}
@@ -149,6 +165,7 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
                     props.onPointerUp?.(event);
                 }}
                 onKeyDown={(event) => {
+                    if (handleReferenceLabelDeletion(event)) return;
                     if (mention && handleMentionNavigation(event, candidates, activeIndex, setActiveIndex, insertReference, closeMention)) return;
                     if (event.key === "Enter" && onSubmit && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
                         event.preventDefault();
@@ -291,4 +308,34 @@ export function replacePictureTags(value: string, references: CanvasResourceRefe
         const reference = images.find((item) => item.label === `图片${index}`) || (index >= 1 && index <= images.length ? images[index - 1] : undefined);
         return reference ? reference.label : match;
     });
+}
+
+export function insertTextAtSelection(value: string, start: number, end: number, text: string) {
+    const from = clamp(start, 0, value.length);
+    const to = clamp(Math.max(end, from), from, value.length);
+    return { value: `${value.slice(0, from)}${text}${value.slice(to)}`, caret: from + text.length };
+}
+
+export function deleteReferenceLabelAtCaret(value: string, selectionStart: number, selectionEnd: number, key: "Backspace" | "Delete", labels: string[]) {
+    for (const label of labels) {
+        let index = value.indexOf(label);
+        while (index !== -1) {
+            const start = index;
+            const end = index + label.length;
+            const intersectsSelection = selectionStart !== selectionEnd && selectionStart < end && selectionEnd > start;
+            if (intersectsSelection) return { value: `${value.slice(0, start)}${value.slice(end)}`, cursor: start };
+            const insideOrAtEnd = key === "Backspace" && selectionStart > start && selectionStart <= end;
+            const afterTrailingSpace = key === "Backspace" && selectionStart === end + 1 && /\s/u.test(value[end] || "");
+            if (insideOrAtEnd || afterTrailingSpace) {
+                const swallowSpace = (selectionStart === end || afterTrailingSpace) && /\s/u.test(value[end] || "");
+                return { value: `${value.slice(0, start)}${value.slice(end + (swallowSpace ? 1 : 0))}`, cursor: start };
+            }
+            if (key === "Delete" && selectionStart >= start && selectionStart < end) {
+                const swallowSpace = selectionStart === start && /\s/u.test(value[end] || "");
+                return { value: `${value.slice(0, start)}${value.slice(end + (swallowSpace ? 1 : 0))}`, cursor: start };
+            }
+            index = value.indexOf(label, index + 1);
+        }
+    }
+    return undefined;
 }

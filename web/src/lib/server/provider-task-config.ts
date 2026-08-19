@@ -38,8 +38,14 @@ export function buildVideoProviderRequest(template: string | undefined, defaults
     return renderProviderRequest(template, values, alignVideoProviderFields);
 }
 
-export function assertReferenceUrls(config: SystemChannelAdvancedConfig | undefined, references: Array<{ url?: string }>, publicUrlRequired = false) {
+export function assertReferenceUrls(config: SystemChannelAdvancedConfig | undefined, references: Array<{ url?: string; type?: string }>, publicUrlRequired = false, fileSubmitProtocols: readonly string[] = []) {
     if (!references.length) return;
+    const protocol = config?.protocol || "auto";
+    if (fileSubmitProtocols.includes(protocol)) {
+        const localNonImage = references.find((reference) => reference.type !== "image" && !isExternallyReachableReferenceUrl(reference.url || ""));
+        if (localNonImage) throw new Error("当前渠道无法读取站内参考素材，请联系管理员检查站点部署地址");
+        return;
+    }
     const ruleRequiresPublicUrl = /公网|public|next_public_site_url|must.*\burl\b|\burl\b.*only|必须.*\burl\b|仅.*\burl\b|只.*\burl\b/i.test(config?.referenceRule || "");
     if (!publicUrlRequired && !ruleRequiresPublicUrl) return;
     if (references.some((reference) => !isExternallyReachableReferenceUrl(reference.url || "") || isUnsignedReferenceAssetUrl(reference.url || ""))) {
@@ -170,7 +176,7 @@ function shouldAlignReferenceTemplateValue(value: unknown): boolean {
     return Object.values(value).some(shouldAlignReferenceTemplateValue);
 }
 
-function isExternallyReachableReferenceUrl(value: string) {
+export function isExternallyReachableReferenceUrl(value: string) {
     if (/^assetId:\/\/[a-zA-Z0-9._:-]+$/i.test(value)) return true;
     try {
         const url = new URL(value);

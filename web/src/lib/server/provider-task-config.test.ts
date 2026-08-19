@@ -145,4 +145,15 @@ describe("provider task config", () => {
         expect(() => assertReferenceUrls(config, [{ url: "https://drama.example/api/reference-assets/temporary/2026/07/25/images/file.png?expires=1&signature=test" }])).toThrow("站内参考素材");
         expect(() => assertReferenceUrls(config, [{ url: "https://drama.example/api/reference-assets/temporary/2026/07/25/images/file.png?purpose=provider-read&expires=1&signature=test" }])).not.toThrow();
     });
+
+    it("allows site-internal images for file-submitting protocols but keeps rejecting local videos and audios", () => {
+        const config = { protocol: "minimax-h3", referenceRule: "参考媒体使用公网可访问 URL" } as never;
+        const localImage = { type: "image", url: "http://localhost:3000/api/reference-assets/a.png" };
+        const localVideo = { type: "video", url: "http://localhost:3000/api/reference-assets/a.mp4" };
+        expect(() => assertReferenceUrls(config, [localImage], false, ["minimax-h3"])).not.toThrow();
+        expect(() => assertReferenceUrls(config, [{ ...localImage, url: "https://cdn.example.com/a.png" }], false, ["minimax-h3"])).not.toThrow();
+        expect(() => assertReferenceUrls(config, [localVideo], false, ["minimax-h3"])).toThrow("站内参考素材");
+        expect(() => assertReferenceUrls(config, [localImage])).toThrow("站内参考素材");
+        expect(() => assertReferenceUrls({ protocol: "minimax-h3-official", referenceRule: "参考媒体使用公网可访问 URL" } as never, [localImage], false, ["minimax-h3"])).toThrow("站内参考素材");
+    });
 });

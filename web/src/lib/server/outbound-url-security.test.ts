@@ -46,4 +46,15 @@ describe("outbound url security", () => {
         await expect(isSafeOutboundUrl("http://169.254.169.254/latest/meta-data")).resolves.toBe(false);
         await expect(isSafeOutboundUrl("http://metadata.google.internal/computeMetadata/v1")).resolves.toBe(false);
     });
+
+    it("allows proxy-tool fake-IP space only for callers that opt in", async () => {
+        mocks.lookup.mockResolvedValue([{ address: "198.18.0.96", family: 4 }]);
+
+        await expect(isSafeOutboundUrl("https://cdn.example.com/result.mp4")).resolves.toBe(false);
+        await expect(isSafeOutboundUrl("https://cdn.example.com/result.mp4", { allowProxyFakeIpSpace: true })).resolves.toBe(true);
+        await expect(resolveSafeOutboundTarget("https://cdn.example.com/result.mp4", { allowProxyFakeIpSpace: true })).resolves.toMatchObject({ address: "198.18.0.96", family: 4 });
+        // 其它内网/保留地址即使开启选项也不放行
+        mocks.lookup.mockResolvedValue([{ address: "10.0.0.8", family: 4 }]);
+        await expect(isSafeOutboundUrl("https://cdn.example.com/result.mp4", { allowProxyFakeIpSpace: true })).resolves.toBe(false);
+    });
 });

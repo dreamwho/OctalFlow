@@ -243,7 +243,9 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
     if (!(await authorizeGenerationMediaProxyRequest(request, { userId, channelId: channel.id, url: rawUrl }))) return NextResponse.json({ error: "媒体路径未获任务授权" }, { status: 403 });
     const target = mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
     if (!target) return NextResponse.json({ error: "Invalid media url" }, { status: 400 });
-    if (!(await isSafeOutboundUrl(target.url, { allowCredentials: false }))) return NextResponse.json({ error: "媒体地址不允许访问内网或保留地址" }, { status: 400 });
+    // 媒体地址来自上游任务结果，且本请求携带按 URL 绑定的生成媒体授权：允许代理工具 fake-IP 段（198.18/15），由本机 TUN 按 Host 路由到真实公网目标。
+    const mediaOutboundOptions = { allowCredentials: false, allowProxyFakeIpSpace: true };
+    if (!(await isSafeOutboundUrl(target.url, mediaOutboundOptions))) return NextResponse.json({ error: "媒体地址不允许访问内网或保留地址" }, { status: 400 });
     const range = normalizeMediaProxyRange(request.headers.get("range"));
     if (range === "invalid") return NextResponse.json({ error: "Invalid media range" }, { status: 416 });
     const permit = acquireMediaConcurrency("proxy", `user:${userId}`);
@@ -290,11 +292,11 @@ async function fetchSystemMedia(target: { url: string; includeAuth: boolean }, m
     let currentUrl = target.url;
     let includeAuth = target.includeAuth;
     for (let redirects = 0; redirects <= MAX_SYSTEM_MEDIA_REDIRECTS; redirects += 1) {
-        if (!(await isSafeOutboundUrl(currentUrl, { allowCredentials: false }))) throw new Error("Unsafe media redirect");
+        if (!(await isSafeOutboundUrl(currentUrl, { allowCredentials: false, allowProxyFakeIpSpace: true }))) throw new Error("Unsafe media redirect");
         const headers = includeAuth ? new Headers(baseHeaders) : new Headers();
         const range = baseHeaders.get("range");
         if (range) headers.set("range", range);
-        const upstream = await fetchSafeOutbound(currentUrl, { method, headers, cache: "no-store", redirect: "manual", signal });
+        const upstream = await fetchSafeOutbound(currentUrl, { method, headers, cache: "no-store", redirect: "manual", signal }, { allowProxyFakeIpSpace: true });
         if (!isRedirectStatus(upstream.status)) return upstream;
         const location = upstream.headers.get("location");
         await upstream.body?.cancel().catch(() => undefined);

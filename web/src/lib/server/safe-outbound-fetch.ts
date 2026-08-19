@@ -2,7 +2,7 @@ import { Agent, ProxyAgent, fetch as undiciFetch, type Dispatcher } from "undici
 
 import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-lifecycle";
 import { resolveServerProxyUrl } from "@/lib/server/proxy-dispatcher";
-import { isPublicIpAddress, resolveSafeOutboundTarget } from "@/lib/server/outbound-url-security";
+import { isPublicIpAddress, resolveSafeOutboundTarget, type SafeOutboundOptions } from "@/lib/server/outbound-url-security";
 import { toUndiciRequestBody } from "@/lib/server/undici-request-body";
 
 type CachedDispatcher = { dispatcher: Dispatcher; lastUsedAt: number };
@@ -22,7 +22,7 @@ export class UnsafeOutboundUrlError extends Error {
     }
 }
 
-export async function fetchSafeOutbound(input: string | URL, init: RequestInit = {}, options?: { allowCredentials?: boolean }): Promise<Response> {
+export async function fetchSafeOutbound(input: string | URL, init: RequestInit = {}, options?: SafeOutboundOptions): Promise<Response> {
     let currentUrl: URL;
     try {
         currentUrl = input instanceof URL ? new URL(input) : new URL(input);
@@ -51,7 +51,7 @@ export async function fetchSafeOutbound(input: string | URL, init: RequestInit =
     throw new UnsafeOutboundUrlError("上游重定向次数过多");
 }
 
-async function fetchPinned(input: URL, init: RequestInit, options?: { allowCredentials?: boolean }) {
+async function fetchPinned(input: URL, init: RequestInit, options?: SafeOutboundOptions) {
     const target = await resolveSafeOutboundTarget(input, options);
     if (!target) throw new UnsafeOutboundUrlError();
 

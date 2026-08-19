@@ -24,6 +24,26 @@ export function assertMinimaxH3VideoReferences(references: VideoGenerationRefere
     }
 }
 
+export type MinimaxH3VideoMedia = {
+    mode: "t2va" | "i2va" | "fl2va" | "ref2va";
+    images: string[];
+    videos: string[];
+    audios: string[];
+};
+
+export function minimaxH3VideoMedia(references: VideoGenerationReference[]): MinimaxH3VideoMedia {
+    const normalized = normalizeVideoGenerationReferences(references);
+    const regular = regularVideoReferences(normalized);
+    const { firstFrame, lastFrame } = videoFrameReferences(normalized);
+    assertMinimaxH3VideoReferences(normalized);
+    const images = uniqueUrls(regular.filter((reference) => reference.type === "image").map((reference) => reference.url));
+    const videos = uniqueUrls(regular.filter((reference) => reference.type === "video").map((reference) => reference.url));
+    const audios = uniqueUrls(regular.filter((reference) => reference.type === "audio").map((reference) => reference.url));
+    const mode = regular.length ? "ref2va" : firstFrame && lastFrame ? "fl2va" : firstFrame ? "i2va" : "t2va";
+    const keyframeImages = mode === "fl2va" ? [firstFrame!.url, lastFrame!.url] : mode === "i2va" ? [firstFrame!.url] : [];
+    return { mode, images: [...keyframeImages, ...images], videos, audios };
+}
+
 export function buildMinimaxH3VideoRequest(input: { model: string; prompt: string; resolution: string; aspectRatio?: string; duration: number; references: VideoGenerationReference[] }) {
     const model = input.model.trim();
     if (!MINIMAX_H3_MODELS.includes(model as (typeof MINIMAX_H3_MODELS)[number])) throw new Error("模型不在 MiniMax H3 公开模型列表中");
@@ -35,16 +55,7 @@ export function buildMinimaxH3VideoRequest(input: { model: string; prompt: strin
     const resolution = input.resolution.trim() === "480p" ? "480p" : "720p";
     const aspectRatio = (input.aspectRatio || "").trim();
 
-    const normalized = normalizeVideoGenerationReferences(input.references);
-    const regular = regularVideoReferences(normalized);
-    const { firstFrame, lastFrame } = videoFrameReferences(normalized);
-    assertMinimaxH3VideoReferences(normalized);
-    const images = uniqueUrls(regular.filter((reference) => reference.type === "image").map((reference) => reference.url));
-    const videos = uniqueUrls(regular.filter((reference) => reference.type === "video").map((reference) => reference.url));
-    const audios = uniqueUrls(regular.filter((reference) => reference.type === "audio").map((reference) => reference.url));
-
-    const mode = regular.length ? "ref2va" : firstFrame && lastFrame ? "fl2va" : firstFrame ? "i2va" : "t2va";
-    const keyframeImages = mode === "fl2va" ? [firstFrame!.url, lastFrame!.url] : mode === "i2va" ? [firstFrame!.url] : [];
+    const { mode, images, videos, audios } = minimaxH3VideoMedia(input.references);
     return {
         model,
         mode,
@@ -52,7 +63,7 @@ export function buildMinimaxH3VideoRequest(input: { model: string; prompt: strin
         seconds: String(duration),
         prompt,
         ...(MINIMAX_H3_ASPECT_RATIOS.includes(aspectRatio as (typeof MINIMAX_H3_ASPECT_RATIOS)[number]) ? { aspect_ratio: aspectRatio } : {}),
-        ...(mode === "t2va" ? {} : { images: [...keyframeImages, ...images] }),
+        ...(mode === "t2va" ? {} : { images }),
         ...(videos.length ? { videos } : {}),
         ...(audios.length ? { audios } : {}),
     };
