@@ -158,7 +158,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const rootNode: CanvasNodeData = {
                         id: rootId,
                         type: resultType,
-                        title: effectivePrompt.slice(0, 32) || (isPanoramaNode ? "Generated Panorama" : "Generated Image"),
+                        title: isPanoramaNode ? "全景生成" : "图片生成",
                         position: {
                             x: isEmptyImageNode ? parentPosition.x : parentPosition.x + parentConfig.width + gap,
                             y: parentPosition.y + parentConfig.height / 2 - imageConfig.height / 2,
@@ -181,7 +181,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
                         id,
                         type: resultType,
-                        title: effectivePrompt.slice(0, 32) || (isPanoramaNode ? "Generated Panorama" : "Generated Image"),
+                        title: isPanoramaNode ? "全景生成" : "图片生成",
                         position: {
                             x: rootNode.position.x + rootNode.width + 120 + (index % 2) * (imageConfig.width + 36),
                             y: rootNode.position.y + Math.floor(index / 2) * (imageConfig.height + rowGap),
@@ -225,7 +225,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                                         : {
                                               ...node,
                                               type: CanvasNodeType.Text,
-                                              title: prompt.slice(0, 32) || "Prompt",
+                                              title: "文本",
                                               width: parentConfig.width,
                                               height: parentConfig.height,
                                               metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
@@ -312,7 +312,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const videoNode: CanvasNodeData = {
                         id: videoId,
                         type: CanvasNodeType.Video,
-                        title: effectivePrompt.slice(0, 32) || "Generated Video",
+                        title: "视频生成",
                         position: isEmptyVideoNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
                         width: isEmptyVideoNode ? sourceNode.width : spec.width,
                         height: isEmptyVideoNode ? sourceNode.height : spec.height,
@@ -360,7 +360,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const audioNode: CanvasNodeData = {
                         id: audioId,
                         type: CanvasNodeType.Audio,
-                        title: effectivePrompt.slice(0, 32) || "Generated Audio",
+                        title: "音频",
                         position: isEmptyAudioNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y + ((sourceNode?.height || spec.height) - spec.height) / 2 },
                         width: isEmptyAudioNode ? sourceNode.width : spec.width,
                         height: isEmptyAudioNode ? sourceNode.height : spec.height,
@@ -403,7 +403,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
                         id,
                         type: CanvasNodeType.Text,
-                        title: effectivePrompt.slice(0, 32) || "Generated Text",
+                        title: "文本",
                         position: {
                             x: parentPosition.x + parentConfig.width + 96,
                             y: parentPosition.y + parentConfig.height / 2 - textConfig.height / 2 + (index - (textCount - 1) / 2) * (textConfig.height + 36),
@@ -451,7 +451,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                             : node.id === nodeId && isConfigNode
                               ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } }
                               : node.id === nodeId && !editingTextNode
-                                ? { ...node, type: CanvasNodeType.Text, title: prompt.slice(0, 32) || "Generated Text", metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS, textTask: undefined } }
+                                ? { ...node, type: CanvasNodeType.Text, title: "文本", metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS, textTask: undefined } }
                                 : node,
                     ),
                 );
@@ -720,7 +720,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             const node: CanvasNodeData = {
                 id,
                 type: CanvasNodeType.Image,
-                title: image.prompt.slice(0, 32) || "Generated Image",
+                title: "图片生成",
                 position: { x: center.x - config.width / 2, y: center.y - config.height / 2 },
                 width: config.width,
                 height: config.height,
@@ -740,7 +740,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
             const node = {
                 ...createCanvasNode(CanvasNodeType.Text, center, { content: text, status: NODE_STATUS_SUCCESS }),
-                title: text.slice(0, 32) || "Assistant Text",
+                title: "文本",
             };
 
             setNodes((prev) => [...prev, node]);

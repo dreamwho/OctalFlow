@@ -44,7 +44,7 @@ export function useCanvasFileActions({ state, interactions }: { state: CanvasPag
         const newNode: CanvasNodeData = {
             id,
             type: CanvasNodeType.Image,
-            title: file.name,
+            title: "图片上传",
             position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
             width: size.width,
             height: size.height,
@@ -67,7 +67,7 @@ export function useCanvasFileActions({ state, interactions }: { state: CanvasPag
             {
                 id,
                 type: CanvasNodeType.Video,
-                title: file.name,
+                title: "视频上传",
                 position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
                 width: size.width,
                 height: size.height,
@@ -89,7 +89,7 @@ export function useCanvasFileActions({ state, interactions }: { state: CanvasPag
             {
                 id,
                 type: CanvasNodeType.Audio,
-                title: file.name,
+                title: "音频上传",
                 position: { x: position.x - spec.width / 2, y: position.y - spec.height / 2 },
                 width: spec.width,
                 height: spec.height,

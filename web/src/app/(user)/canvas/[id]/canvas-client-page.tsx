@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 
-import { Button, Modal } from "antd";
+import { Button, Input, Modal } from "antd";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { CanvasConfigComposer } from "../components/canvas-config-composer";
 import { CanvasConfigNodePanel } from "../components/canvas-config-node-panel";
@@ -43,6 +43,8 @@ import { useCanvasPageController } from "./use-canvas-page-controller";
 function OctalaicanvasCanvasPage() {
     const [nodeCreatePosition, setNodeCreatePosition] = useState<Position | null>(null);
     const [interactionMode, setInteractionMode] = useState<CanvasInteractionMode>("pan");
+    const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
+    const [renameDraft, setRenameDraft] = useState("");
     const controller = useCanvasPageController();
     const {
         message,
@@ -425,7 +427,6 @@ function OctalaicanvasCanvasPage() {
                     onNodeContextMenu={(event, id) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        setDialogNodeId(null);
                         setEditingNodeId(null);
                         setToolbarNodeId(null);
                         setContextMenu({ type: "node", x: event.clientX, y: event.clientY, nodeId: id });
@@ -517,6 +518,13 @@ function OctalaicanvasCanvasPage() {
                     <CanvasNodeContextMenu
                         menu={contextMenu}
                         onClose={() => setContextMenu(null)}
+                        onRename={() => {
+                            if (contextMenu.type !== "node") return;
+                            const node = nodes.find((item) => item.id === contextMenu.nodeId);
+                            setRenameDraft(node?.title || "");
+                            setRenameNodeId(contextMenu.nodeId);
+                            setContextMenu(null);
+                        }}
                         onDuplicate={() => {
                             if (contextMenu.type !== "node") return;
                             duplicateNode(contextMenu.nodeId);
@@ -537,6 +545,34 @@ function OctalaicanvasCanvasPage() {
                 <input ref={imageInputRef} type="file" accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
+
+                <Modal
+                    open={Boolean(renameNodeId)}
+                    title="重命名节点"
+                    centered
+                    okText="保存"
+                    cancelText="取消"
+                    okButtonProps={{ disabled: !renameDraft.trim() }}
+                    onOk={() => {
+                        const next = renameDraft.trim();
+                        if (next && renameNodeId) setNodes((prev) => prev.map((node) => (node.id === renameNodeId ? { ...node, title: next } : node)));
+                        setRenameNodeId(null);
+                    }}
+                    onCancel={() => setRenameNodeId(null)}
+                >
+                    <Input
+                        autoFocus
+                        value={renameDraft}
+                        maxLength={64}
+                        placeholder="请输入节点名称"
+                        onChange={(event) => setRenameDraft(event.target.value)}
+                        onPressEnter={() => {
+                            const next = renameDraft.trim();
+                            if (next && renameNodeId) setNodes((prev) => prev.map((node) => (node.id === renameNodeId ? { ...node, title: next } : node)));
+                            setRenameNodeId(null);
+                        }}
+                    />
+                </Modal>
 
                 {cropNode?.metadata?.content ? (
                     <CanvasNodeCropDialog

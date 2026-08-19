@@ -26,29 +26,26 @@ describe("canvas surface geometry", () => {
         expect(path).not.toContain("-32");
     });
 
-    it("routes backward connections through a clear vertical gap", () => {
+    it("routes backward connections as a short free-angle curve without detours", () => {
         const lowerTarget = { ...target, position: { x: 320, y: 280 }, width: 340, height: 240 };
         const shorterSource = { ...source, position: { x: 0, y: 0 }, width: 340, height: 210 };
         const path = edgePath(shorterSource, lowerTarget);
 
-        expect(path).toContain(" Q ");
-        expect(path).toContain("245");
-        expect(path).not.toContain(" C ");
+        expect(path).toBe("M 340 105 C 350 105, 310 400, 320 400");
     });
 
-    it("routes backward connections outside overlapping node bounds", () => {
+    it("routes overlapping backward connections with a smooth curve outside the nodes", () => {
         const from = { ...source, position: { x: 0, y: 0 }, width: 340, height: 240 };
         const to = { ...target, position: { x: 280, y: 80 }, width: 340, height: 240 };
         const path = edgePath(from, to);
 
-        expect(path).toContain("-32");
-        expect(path).toContain(" Q ");
+        expect(path).toBe("M 340 120 C 370 120, 250 200, 280 200");
     });
 
     it("builds previews in the direction of the active handle", () => {
         expect(previewPath({ x: 0, y: 20 }, { x: 100, y: 60 }, "source")).toBe("M 0 20 C 50 20, 50 60, 100 60");
         expect(previewPath({ x: 100, y: 60 }, { x: 0, y: 20 }, "target")).toBe("M 100 60 C 50 60, 50 20, 0 20");
-        expect(previewPath({ x: 100, y: 60 }, { x: 160, y: 20 }, "target")).toContain(" Q ");
+        expect(previewPath({ x: 100, y: 60 }, { x: 160, y: 20 }, "target")).toBe("M 100 60 C 70 60, 190 20, 160 20");
     });
 
     it("targets node bodies and nearby handles without selecting the origin", () => {

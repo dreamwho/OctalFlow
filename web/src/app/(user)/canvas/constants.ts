@@ -15,12 +15,12 @@ export const CANVAS_CONFIG_NODE_HEIGHT = {
 } as const;
 
 export const NODE_DEFAULT_SIZE = {
-    [CanvasNodeType.Image]: { width: 340, height: 240, title: "New Generation" },
-    [CanvasNodeType.Panorama]: { ...PANORAMA_NODE_SIZE, title: "全景图" },
-    [CanvasNodeType.Text]: { width: 340, height: 240, title: "Note" },
+    [CanvasNodeType.Image]: { width: 340, height: 240, title: "图片生成" },
+    [CanvasNodeType.Panorama]: { ...PANORAMA_NODE_SIZE, title: "全景生成" },
+    [CanvasNodeType.Text]: { width: 340, height: 240, title: "文本" },
     [CanvasNodeType.Config]: { width: 340, height: CANVAS_CONFIG_NODE_HEIGHT.collapsed, title: "生成配置" },
-    [CanvasNodeType.Video]: { width: 420, height: 236, title: "Video" },
-    [CanvasNodeType.Audio]: { width: 340, height: 120, title: "Audio" },
+    [CanvasNodeType.Video]: { width: 420, height: 236, title: "视频生成" },
+    [CanvasNodeType.Audio]: { width: 340, height: 120, title: "音频" },
     [CanvasNodeType.Brief]: { width: 380, height: 280, title: "创作简报" },
     [CanvasNodeType.Task]: { width: 340, height: 210, title: "Agent 任务" },
     [CanvasNodeType.BrandKit]: { width: 340, height: 240, title: "品牌规范" },

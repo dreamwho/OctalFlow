@@ -67,6 +67,18 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         setPrompt(isEditingExistingContent ? "" : node.metadata?.prompt || "");
     }, [isEditingExistingContent, node.id]);
 
+    useEffect(() => {
+        const textarea = promptEditorRef.current;
+        if (!textarea) return;
+        const scale = Math.min(1.15, Math.max(0.7, window.innerHeight / 1440));
+        const minHeight = Math.round(230 * scale);
+        const maxHeight = Math.round(330 * scale);
+        textarea.style.minHeight = `${minHeight}px`;
+        textarea.style.maxHeight = `${maxHeight}px`;
+        textarea.style.height = "auto";
+        textarea.style.height = `${Math.min(maxHeight, Math.max(minHeight, textarea.scrollHeight))}px`;
+    }, [prompt]);
+
     const updatePrompt = (value: string) => {
         setPrompt(value);
         if (!isEditingExistingContent) onPromptChange(node.id, value);
@@ -143,7 +155,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     onChange={updatePrompt}
                     onSubmit={submit}
                     aria-label="节点提示词"
-                    className="thin-scrollbar h-36 w-full resize-none rounded-xl px-3 py-2 pr-11 text-sm leading-5 outline-none"
+                    className="thin-scrollbar w-full resize-none overflow-y-auto rounded-xl px-3 py-2 pr-11 text-sm leading-5 outline-none"
                     style={{ background: theme.node.fill, color: theme.node.text }}
                     placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama)}
                 />

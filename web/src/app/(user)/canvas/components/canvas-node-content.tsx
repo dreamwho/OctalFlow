@@ -355,10 +355,6 @@ export function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
         );
     return (
         <div className="flex h-full w-full flex-col overflow-hidden" style={{ background: theme.node.fill, color: theme.node.text }}>
-            <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-sm opacity-70">
-                <Video className="size-4 shrink-0" />
-                <span className="truncate">{node.title || "视频"}</span>
-            </div>
             <div className="relative min-h-0 flex-1">
                 <video src={node.metadata.content} controls className="h-full w-full bg-black object-contain" data-canvas-no-zoom />
                 <div className="absolute inset-x-0 bottom-12 top-0 cursor-grab active:cursor-grabbing" aria-hidden="true" />
@@ -389,10 +385,6 @@ export function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
         );
     return (
         <div className="flex h-full w-full flex-col justify-center gap-3 px-4" style={{ background: theme.node.fill, color: theme.node.text }}>
-            <div className="flex min-w-0 items-center gap-2 text-sm opacity-70">
-                <Music2 className="size-4 shrink-0" />
-                <span className="truncate">{node.title || "音频"}</span>
-            </div>
             <audio src={node.metadata.content} controls className="w-full" data-canvas-no-zoom />
         </div>
     );

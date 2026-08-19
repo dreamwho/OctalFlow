@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { BriefcaseBusiness, ChevronRight, CircleCheck, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, Star, Video } from "lucide-react";
+import { BriefcaseBusiness, ChevronRight, CircleCheck, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, Star, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -17,6 +17,18 @@ const selectionBlue = "#2f80ff";
 
 function isInteractiveTarget(target: EventTarget | null) {
     return target instanceof Element && Boolean(target.closest("button,input,textarea,select,video,audio,[data-canvas-no-drag]"));
+}
+
+const NODE_TITLE_ICON: Partial<Record<CanvasNodeType, typeof Video>> = {
+    [CanvasNodeType.Image]: ImageIcon,
+    [CanvasNodeType.Panorama]: Globe2,
+    [CanvasNodeType.Video]: Video,
+    [CanvasNodeType.Audio]: Music2,
+};
+
+function NodeTitleIcon({ type }: { type: CanvasNodeType }) {
+    const Icon = NODE_TITLE_ICON[type];
+    return Icon ? <Icon className="size-5 shrink-0" /> : null;
 }
 
 export type CanvasNodeProps = {
@@ -67,7 +79,6 @@ import {
     ErrorContent,
     UnknownNodeContent,
     TextContent,
-    ResourceLabelBadge,
     ImageNodeContent,
     EmptyImageContent,
     VideoNodeContent,
@@ -90,7 +101,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     editRequestNonce = 0,
     showPanel,
     showImageInfo,
-    resourceLabel,
     mentionReferences = [],
     renderPanel,
     renderNodeContent,
@@ -116,7 +126,8 @@ export const CanvasNode = React.memo(function CanvasNode({
     onViewImage,
     onContextMenu,
 }: CanvasNodeProps) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const themeMode = useThemeStore((state) => state.theme);
+    const theme = canvasThemes[themeMode];
     const [hovered, setHovered] = useState(false);
     const [isEditingContent, setIsEditingContent] = useState(false);
     const hasImageContent = isCanvasImageNodeType(data.type) && Boolean(data.metadata?.content);
@@ -368,7 +379,16 @@ export const CanvasNode = React.memo(function CanvasNode({
                 </div>
 
                 {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
-                {resourceLabel ? <ResourceLabelBadge reference={resourceLabel} /> : null}
+
+                {NODE_TITLE_ICON[data.type] ? (
+                    <div
+                        className="pointer-events-none absolute -top-8 left-0 z-30 flex max-w-full items-center gap-1.5"
+                        style={{ color: theme.node.text, filter: `drop-shadow(0 1px 3px ${themeMode === "dark" ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.28)"})` }}
+                    >
+                        <NodeTitleIcon type={data.type} />
+                        <span className="truncate text-lg font-bold leading-tight">{data.title}</span>
+                    </div>
+                ) : null}
 
                 {!hasImageContent && !hasVideoContent && !hasAudioContent && data.type !== CanvasNodeType.Config ? (
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} />
@@ -387,7 +407,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 <div
                     data-canvas-no-drag
                     className="absolute left-1/2 top-full z-[70] pt-4"
-                    style={{ width: "min(640px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}
+                    style={{ width: "min(850px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}
                     onContextMenu={(event) => event.stopPropagation()}
                 >
                     {renderPanel(data)}

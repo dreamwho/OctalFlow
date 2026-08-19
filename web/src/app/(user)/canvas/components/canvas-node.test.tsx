@@ -132,7 +132,7 @@ describe("CanvasNode task content", () => {
         expect(markup).toContain("mt-3 flex shrink-0");
     });
 
-    it("keeps a draggable title bar above the video player", () => {
+    it("keeps the player draggable via a transparent capture layer above the video", () => {
         const videoNode: CanvasNodeData = {
             ...imageNode,
             id: "video",
@@ -145,7 +145,7 @@ describe("CanvasNode task content", () => {
 
         expect(markup).toContain("<video");
         expect(markup).toContain("controls");
-        expect(markup).toContain(">视频2</span>");
+        expect(markup).toContain("cursor-grab");
     });
 
     it.each(["light", "dark"] as const)("keeps task states and supporting node chips readable in %s mode", (themeName) => {
