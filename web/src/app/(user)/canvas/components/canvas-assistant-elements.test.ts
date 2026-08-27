@@ -42,8 +42,15 @@ describe("Canvas Agent session deletion", () => {
 
 describe("Canvas Agent current-turn references", () => {
     it("renders the current-turn references before the user text", async () => {
-        const item = assistantMessageToChatMessage({ id: "message", role: "user", text: "修改颜色", references: [{ id: "reference", type: CanvasNodeType.Image, title: "参考图", dataUrl: "/api/reference-assets/reference.webp" }] });
+        const item = assistantMessageToChatMessage({
+            id: "message",
+            role: "user",
+            text: "修改颜色",
+            skills: [{ id: "skill-real-vlog", name: "真人感 Vlog 导演" }],
+            references: [{ id: "reference", type: CanvasNodeType.Image, title: "参考图", dataUrl: "/api/reference-assets/reference.webp" }],
+        });
         expect(item.attachments).toEqual([{ id: "reference", name: "参考图", type: "image", url: "/api/reference-assets/reference.webp" }]);
+        expect(item.skills).toEqual([{ id: "skill-real-vlog", name: "真人感 Vlog 导演" }]);
 
         const source = await readFile(resolve(process.cwd(), "src/app/(user)/canvas/components/canvas-agent-chat-ui.tsx"), "utf8");
         const userMessageStart = source.indexOf("if (isUser)");
@@ -51,6 +58,7 @@ describe("Canvas Agent current-turn references", () => {
 
         expect(messageSource.indexOf("<AgentMessageAttachments")).toBeGreaterThanOrEqual(0);
         expect(messageSource.indexOf("<AgentMessageAttachments")).toBeLessThan(messageSource.indexOf("item.text"));
+        expect(messageSource).toContain("已调用 · {skill.name}");
         expect(messageSource.indexOf("<AgentUserAvatar")).toBeGreaterThan(messageSource.indexOf("item.text"));
     });
 
@@ -135,7 +143,7 @@ describe("Canvas Agent current-turn references", () => {
         expect(source).toContain("preferences: generationPreferences.mode ? generationPreferences : undefined");
         expect(source).toContain("<CanvasAgentGenerationSettings preferences={generationPreferences} onChange={setGenerationPreferences}");
         expect(source).toContain("controlCreativeAgentRun(run.runId, action, session.conversationId)");
-        expect(source).toContain("retryCreativeAgentTask(runId, taskId, session.conversationId)");
+        expect(source).toContain("retryCreativeAgentTaskWithState(runId, taskId, session.conversationId)");
         expect(source).toContain("conversationId: run.conversationId");
     });
 

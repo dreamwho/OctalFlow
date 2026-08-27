@@ -5,7 +5,7 @@ import { creativeAssetReferenceAliases } from "@/lib/creative-asset-references";
 import { fetchInternalApi } from "@/lib/server/internal-origin";
 import { resolveLogicalModel } from "@/lib/server/logical-model-router";
 import { reviewCreativeOutputs } from "@/lib/server/creative-review-service";
-import { requestStructuredText, type TextPlanningCandidate } from "@/lib/server/text-planning-runtime";
+import { requestStructuredText, type TextPlanningCandidate, type TextPlanningMessage } from "@/lib/server/text-planning-runtime";
 import { registerAgentTaskAssets } from "@/lib/server/agent-run-assets";
 import { buildAgentProjectHandoff } from "@/lib/server/agent-run-project-handoff";
 import { getAgentRun, updateAgentRunById, updateAgentRunTaskById, type AgentRun, type AgentRunChildTask, type AgentRunReference, type AgentRunTask } from "@/lib/server/agent-run-store";
@@ -23,6 +23,8 @@ import type { AgentFunctionCallResult } from "./agent-function-call";
 import { agentSurfaceImageSize, canvasReferenceContext, canvasReferenceSupportsTask, canvasSnapshotNodes, isMediaReferenceType, resolveAgentTaskRatio, resolveCanvasTaskTargetNodeId, selectedCanvasReferenceNodes } from "./agent-run-task-input";
 import { hasSystemAiCharge, readSystemAiBilling, systemAiBillingHeaders } from "./system-ai-billing";
 import { acceptsMediaReference, mergeTaskReferences, taskImageUrls, taskReferences, textConstraintInstruction } from "./agent-run-execution-helpers";
+import { isVideoRemakeComposeTask } from "./video-remake-orchestration";
+import { composeVideoRemakeTask } from "./video-remake-compose";
 
 export { planToOps, taskResultOps } from "./agent-run-canvas-ops";
 export { acceptsMediaReference, mergeTaskReferences, requestedTextLimit, reviewCorrection, taskImageUrls, taskReferences, taskResultItems, textConstraintInstruction } from "./agent-run-execution-helpers";
@@ -155,11 +157,11 @@ export function normalizeTasks(
     generationPreferences?: CreativeGenerationPreferences,
 ): AgentRunTask[] {
     const defaults = Object.assign({}, ...skills.map((skill) => skill.defaultConfig || {})) as Record<string, unknown>;
-    const skillInstructions = skills
-        .map((skill) => skill.instructions.trim())
-        .filter(Boolean)
-        .join("\n\n");
+    const skillExecutionContext = skills.length
+        ? `\n\n本任务已选择 Skill：${skills.map((skill) => skill.name).join("、")}。完整 Skill 规则已经在规划阶段落实到当前产物的提示词、依赖顺序和参数；这里只执行当前标题对应的单个产物。除非当前产物明确要求，不得把整套流程、多个分镜、角色板、场景板或说明文字合并进一个媒体结果。`
+        : "";
     const globalDefaults = settings.generationDefaults;
+    const mediaDeliverableCount = plan.deliverables.filter((item) => item.type !== "text").length;
     const nodes = canvasSnapshotNodes(snapshot);
     const selectedNodeIds = new Set(selectedCanvasNodeIds(snapshot).filter((id) => nodes.has(id)));
     const selectedCanvasReferences = surface === "canvas" ? selectedCanvasReferenceNodes(snapshot) : [];
@@ -173,7 +175,7 @@ export function normalizeTasks(
         const optimizedPrompt = item.prompt.trim();
         const preferredSize = item.type === "image" ? generationPreferences?.image?.size : item.type === "video" ? generationPreferences?.video?.size : undefined;
         const preferredQuality = item.type === "image" ? generationPreferences?.image?.quality : item.type === "video" ? generationPreferences?.video?.quality : undefined;
-        const targetNodeId = surface === "canvas" ? resolveCanvasTaskTargetNodeId(item.targetNodeId, item.type, selectedNodeIds, nodes) : undefined;
+        const targetNodeId = surface === "canvas" ? resolveCanvasTaskTargetNodeId(item.targetNodeId, item.type, selectedNodeIds, nodes, plan.deliverables.length === 1) : undefined;
         const target = targetNodeId ? nodes.get(targetNodeId) : undefined;
         const canvasReferences = selectedCanvasReferences.filter((reference) => canvasReferenceSupportsTask(reference.type, item.type));
         const frameIds = item.type === "video" ? videoFrameAssetIds(generationPreferences?.video) : [];
@@ -200,6 +202,8 @@ export function normalizeTasks(
         const primaryReference = references[0];
         const referenceContext = selectedAssets.map((asset) => creativeAssetContext(asset, referenceAliases.get(asset.id))).join("\n");
         const selectedCanvasContext = canvasReferenceContext(canvasReferences);
+        const canvasReferenceRole = !target && canvasReferences.length ? "画布引用只用于保持人物或主体身份、外观与已明确要求复用的风格；当前分镜提示词中的场景、动作、道具、构图和光线优先，除非当前分镜明确要求，否则不得复制参考图的背景、动作或构图。" : "";
+        const executionPrompt = item.type !== "text" && mediaDeliverableCount > 1 ? optimizedPrompt : withCreativeFoundation(optimizedPrompt, plan.foundation);
         return {
             id: item.id?.trim() || `task-${index}`,
             targetNodeId: target ? targetNodeId : undefined,
@@ -211,7 +215,7 @@ export function normalizeTasks(
             type: item.type,
             model: resolvePlannedModel(settings, item.type, item.model),
             optimizedPrompt,
-            prompt: `${withCreativeFoundation(optimizedPrompt, plan.foundation)}${skillInstructions ? `\n\n执行以下已选 Skill 约束：\n${skillInstructions}` : ""}${textConstraintInstruction(requestPrompt, item.type)}${target ? `\n\n基于画布已有节点进行局部修改：${target.summary}` : ""}${selectedCanvasContext ? `\n\n使用本轮画布引用：\n${selectedCanvasContext}` : ""}${referenceContext ? `\n\n使用已引用创作资产：${referenceContext}` : ""}`,
+            prompt: `${executionPrompt}${skillExecutionContext}${textConstraintInstruction(requestPrompt, item.type)}${target ? `\n\n基于画布已有节点进行局部修改：${target.summary}` : ""}${canvasReferenceRole ? `\n\n${canvasReferenceRole}` : ""}${selectedCanvasContext ? `\n\n使用本轮画布引用：\n${selectedCanvasContext}` : ""}${referenceContext ? `\n\n使用已引用创作资产：${referenceContext}` : ""}`,
             count: resolveAgentTaskCount(
                 item.type,
                 item.type === "image" ? generationPreferences?.image?.count || item.count : item.type === "video" ? generationPreferences?.video?.count || item.count : item.count,
@@ -465,7 +469,7 @@ export async function requestFunctionCall(
     origin: string,
     cookie: string,
     candidate: TextPlanningCandidate,
-    input: Array<{ role: string; content: string }>,
+    input: TextPlanningMessage[],
     tool: typeof agentPlanTool,
     name: string,
     signal: AbortSignal,
@@ -528,7 +532,7 @@ export async function runTaskWithRetry(runId: string, task: AgentRunTask, origin
     const resumeExisting = task.childTasks?.some((child) => child.status === "pending") || (task.status === "running" && task.taskId && !task.childTasks?.length);
     const attempt = resumeExisting ? Math.max(1, task.attempts) : task.attempts + 1;
     if (!(await canContinue(runId, executionId))) return;
-    if (!resumeExisting && !(await patchTask(runId, task.id, { status: "running", attempts: attempt, error: undefined }, "task.running", executionId))) return;
+    if ((!resumeExisting || !task.startedAt) && !(await patchTask(runId, task.id, { status: "running", attempts: attempt, startedAt: task.startedAt || Date.now(), completedAt: undefined, error: undefined }, "task.running", executionId))) return;
     try {
         const activeRun = await getAgentRun(runId);
         if (!activeRun || activeRun.executionId !== executionId) return;
@@ -553,6 +557,7 @@ export async function runTaskWithRetry(runId: string, task: AgentRunTask, origin
                 referenceUrl: executableTask.referenceUrl,
                 referenceType: executableTask.referenceType,
                 references: executableTask.references,
+                completedAt: Date.now(),
             },
             "task.completed",
             executionId,
@@ -571,7 +576,7 @@ export async function runTaskWithRetry(runId: string, task: AgentRunTask, origin
         if (await canContinue(runId, executionId)) {
             const latest = await getAgentRun(runId);
             const childTasks = latest?.tasks.find((item) => item.id === task.id)?.childTasks?.map((child) => (child.status === "pending" ? { ...child, status: "failed" as const, error: message } : child));
-            await patchTask(runId, task.id, { status: "failed", error: message, ...(childTasks ? { childTasks } : {}) }, "task.failed", executionId);
+            await patchTask(runId, task.id, { status: "failed", completedAt: Date.now(), error: message, ...(childTasks ? { childTasks } : {}) }, "task.failed", executionId);
         }
         return "failed" as const;
     }
@@ -617,6 +622,10 @@ export function taskPath(type: AgentRunTask["type"]) {
 export async function dispatchTask(task: AgentRunTask, origin: string, cookie: string, settings: Awaited<ReturnType<typeof getAuthSettings>>, run: AgentRun, executionId: string, attempt: number) {
     const directTextContent = run.surface === "canvas" ? directCanvasTextContent(task) : null;
     if (directTextContent) return { result: { content: directTextContent }, sourceTaskIds: [`direct-${run.id}-${task.id}`] };
+    if (isVideoRemakeComposeTask(task)) {
+        const result = await composeVideoRemakeTask(task, run, origin, cookie);
+        return { result, sourceTaskIds: [`compose-${run.id}-${task.id}`] };
+    }
     const model = resolvePlannedModel(settings, task.type, task.model);
     const resolved = resolveLogicalModel(settings, task.type, model || "");
     const channel = resolved?.channel;
@@ -777,7 +786,7 @@ export async function pollTask(origin: string, path: string, taskId: string, coo
     } catch {
         throw new AgentChildTaskDeferredError("生成任务状态暂时无法解析");
     }
-    if (payload.task?.needsReview) throw new AgentChildTaskDeferredError("上游创建状态待人工确认");
+    if (payload.task?.needsReview) throw new AgentChildTaskTerminalError("上游提交结果无法确认，系统已停止等待以避免重复生成和扣费，请单独重试此任务");
     const terminal = agentChildTaskTerminal(payload.task?.status);
     if (terminal === "success") return payload.task?.result;
     if (terminal === "error") throw new AgentChildTaskTerminalError(payload.task?.error || "生成任务失败");

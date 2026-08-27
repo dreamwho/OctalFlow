@@ -79,7 +79,7 @@ describe("protocol fixture server", () => {
         expect(media.headers.get("content-type")).toBe("video/mp4");
     });
 
-    it("serves the OctalFlow recommended JSON video contract", async () => {
+    it("serves the OctalAICanvas recommended JSON video contract", async () => {
         const body = { model: "Seedance 2.0-fast-720p", prompt: "test", duration: 5, resolution: "720p", generate_audio: false, aspect_ratio: "16:9" };
         const created = await fetch(`${origin}/v1/videos/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((response) => response.json());
         const completed = await fetch(`${origin}/v1/videos/generations/${created.task_id}`).then((response) => response.json());

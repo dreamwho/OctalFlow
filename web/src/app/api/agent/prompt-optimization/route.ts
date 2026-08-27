@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 2400;
 
-type PromptOptimizationBody = { requestId?: unknown; prompt?: unknown; mode?: unknown };
+type PromptOptimizationBody = { requestId?: unknown; prompt?: unknown; mode?: unknown; skillIds?: unknown };
 const modes = new Set(["agent", "image", "video", "audio"]);
 
 export async function POST(request: Request) {
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     const requestId = text(body.requestId, 160);
     const prompt = text(body.prompt, CREATE_AGENT_PROMPT_MAX_LENGTH);
     const mode = modes.has(String(body.mode || "")) ? (body.mode as "agent" | CreativeGenerationMode) : "agent";
+    const skillIds = Array.isArray(body.skillIds) ? [...new Set(body.skillIds.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean))] : [];
     if (!requestId || !prompt) return NextResponse.json({ code: 400, data: null, msg: "请先输入需要优化的提示词" }, { status: 400 });
 
     try {
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
             requestId,
             prompt,
             mode,
+            skillIds,
         });
         return NextResponse.json({ code: 0, data: { prompt: optimizedPrompt }, msg: "OK" });
     } catch (error) {

@@ -346,7 +346,7 @@ export async function createCreativeRunBundle<T extends AgentRunBase>(userId: st
             validateAssetOwnership(db.assets, input.assetIds, userId);
             const now = input.run.createdAt;
             const sequence = nextMessageSequence(db.messages, conversation.id);
-            const userMessage = message(input.run.inputMessageId, conversation.id, sequence, "user", "completed", input.prompt, input.run.id, { assetIds: input.assetIds }, now);
+            const userMessage = message(input.run.inputMessageId, conversation.id, sequence, "user", "completed", input.prompt, input.run.id, { ...input.userMetadata, assetIds: input.assetIds }, now);
             const assistantMessage = message(input.run.assistantMessageId, conversation.id, sequence + 1, "assistant", "running", input.acknowledgement || "已收到你的需求。", input.run.id, {}, now);
             const event = nextFileEvent(db, input.run.id, "run.created", undefined, now);
             const nextConversation = { ...conversation, title: conversation.title === "新对话" ? input.title : conversation.title, updatedAt: now, lastMessageAt: now };

@@ -15,6 +15,8 @@ import { rankTextPlanningCandidates } from "@/lib/server/text-planning-runtime";
 import { filterAgentPlannerModels } from "@/lib/server/agent-run-planning-profile";
 import { buildAgentRunPlannerAudit } from "@/lib/server/agent-run-audit";
 import { orderCreativeAssetsByIds } from "@/lib/creative-asset-references";
+import { finalizeVideoRemakeTasks, normalizeVideoRemakePlan } from "@/lib/server/video-remake-orchestration";
+import { canvasVideoRemakeSourceAsset, enrichVideoRemakeSourceAssets, videoRemakeStoryboardFrames } from "@/lib/server/video-remake-source-analysis";
 
 const globalAgentExecutors = globalThis as typeof globalThis & { __octalaicanvasProAgentRunControllers?: Map<string, AbortController> };
 const controllers = (globalAgentExecutors.__octalaicanvasProAgentRunControllers ??= new Map<string, AbortController>());
@@ -56,18 +58,21 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
             directModelSelection ? Promise.resolve(undefined) : getCreativeConversationContext(claimed.conversationId, claimed.userId, claimed.id),
             usesMemoryCandidates ? listRecentCreativeMediaAssets(claimed.conversationId, claimed.userId, 6) : Promise.resolve([]),
         ]);
-        const explicitAssets = orderCreativeAssetsByIds(loadedExplicitAssets, claimed.referencedAssetIds);
+        let explicitAssets = orderCreativeAssetsByIds(loadedExplicitAssets, claimed.referencedAssetIds);
         const allModels = agentModelOptions(settings);
         const availableModels = prioritizeAgentPlannerModels(filterAgentPlannerModels(allModels, claimed), claimed, settings);
         const skillOptions = plannerAgentSkills(settings, claimed);
         const skills = selectAgentSkills(settings, claimed.surface, claimed.selectedSkillIds);
+        const canvasSource = claimed.surface === "canvas" ? canvasVideoRemakeSourceAsset(claimed.snapshot, claimed.userId, claimed.conversationId) : undefined;
+        if (canvasSource && !explicitAssets.some((asset) => asset.type === "video")) explicitAssets = [canvasSource, ...explicitAssets];
+        explicitAssets = await enrichVideoRemakeSourceAssets(explicitAssets, skills, origin, cookie, controller.signal);
         if (!(await canContinue(run.id, executionId))) return;
         if (claimed.requestedModelIds?.length) {
             const directModelOptions = claimed.generationPreferences?.mode ? availableModels : allModels;
             const selectedModels = claimed.requestedModelIds.map((id) => directModelOptions.find((item) => item.id === id && item.capability !== "text")).filter((item): item is ReturnType<typeof agentModelOptions>[number] => Boolean(item));
             if (selectedModels.length !== claimed.requestedModelIds.length) throw new Error("部分所选模型当前不可用，请重新选择");
-            const plan = directAgentPlan(selectedModels, claimed.prompt, claimed.referencedAssetIds);
-            const tasks = normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, explicitAssets, claimed.requestedImageSize, claimed.generationPreferences);
+            const plan = normalizeVideoRemakePlan(directAgentPlan(selectedModels, claimed.prompt, claimed.referencedAssetIds), skills, explicitAssets, claimed.prompt);
+            const tasks = finalizeVideoRemakeTasks(normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, explicitAssets, claimed.requestedImageSize, claimed.generationPreferences), skills);
             await updateAgentRunById(run.id, {}, { type: "skills.selected", data: { skills: skills.map((skill) => ({ id: skill.id, name: skill.name })) } }, ["running"], executionId);
             const event = claimed.surface === "canvas" ? { type: "canvas.ops", data: { ops: planToOps(plan, tasks, run.id, claimed.snapshot), reply: plan.reply } } : { type: "run.planned", data: { reply: plan.reply, tasks: tasks.map(taskPlanSummary) } };
             await updateAgentRunById(
@@ -88,20 +93,26 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
         const fallbackExample = agentPlanFallbackExample(availableModels);
         const plannerContext = buildAgentPlannerInput(claimed, conversationContext!, referencedAssets, referenceSource, skillOptions, availableModels, settings);
         if (!(await updateAgentRunById(run.id, { plannerContext: plannerContext.summary }, { type: "skills.selected", data: { skills: skills.map((skill) => ({ id: skill.id, name: skill.name })) } }, ["running"], executionId))) return;
-        const planningInput = [
-            {
-                role: "system",
-                content: agentPlannerSystemPrompt(claimed.surface, fallbackExample),
-            },
-            {
-                role: "user",
-                content: JSON.stringify(plannerContext.input),
-            },
-        ];
+        const planningSystemPrompt = agentPlannerSystemPrompt(claimed.surface, fallbackExample);
+        const planningPayload = JSON.stringify(plannerContext.input);
+        const storyboardFrames = videoRemakeStoryboardFrames(referencedAssets);
         let plan: Awaited<ReturnType<typeof parseAgentPlanCall>> | undefined;
         let latestPlanningError: unknown;
         for (const candidate of rankTextPlanningCandidates(candidates.map((candidate) => ({ ...candidate, channelId: candidate.channel.id })))) {
             try {
+                const supportsStoryboard = Boolean(storyboardFrames.length && candidate.capabilityProfile?.supportsReferenceImage);
+                const planningInput = [
+                    { role: "system", content: planningSystemPrompt },
+                    {
+                        role: "user",
+                        content: supportsStoryboard
+                            ? [
+                                  { type: "text" as const, text: `${planningPayload}\n\n以下图片按时间顺序截取自参考视频。请结合它们分析镜头景别、构图、人物动作、场景变化、屏幕方向、光影与转场结构；只迁移结构和节奏，不复刻人物身份、品牌、水印或独创表达。` },
+                                  ...storyboardFrames.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+                              ]
+                            : planningPayload,
+                    },
+                ];
                 const planCall = await requestFunctionCall(
                     origin,
                     cookie,
@@ -166,7 +177,8 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
             planningPersisted = true;
             return;
         }
-        const tasks = normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, referencedAssets, claimed.requestedImageSize, claimed.generationPreferences);
+        plan = normalizeVideoRemakePlan(plan, skills, referencedAssets, claimed.prompt);
+        const tasks = finalizeVideoRemakeTasks(normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, referencedAssets, claimed.requestedImageSize, claimed.generationPreferences), skills);
         const projectHandoff = normalizeAgentProjectHandoff(plan, claimed.surface, referencedAssets, claimed.prompt);
         const reply = agentPlanReply({ ...plan, projectHandoff }, tasks, claimed.surface);
         const event = claimed.surface === "canvas" ? { type: "canvas.ops", data: { ops: planToOps(plan, tasks, run.id, claimed.snapshot), reply } } : { type: "run.planned", data: { reply, tasks: tasks.map(taskPlanSummary), projectHandoff } };

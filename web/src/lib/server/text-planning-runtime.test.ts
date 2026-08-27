@@ -105,6 +105,33 @@ describe("text planning runtime protocol matrix", () => {
         expect(requestBody()).toMatchObject({ contents: [{ role: "user", parts: [{ text: "test" }] }], systemInstruction: { parts: [{ text: expect.stringContaining("严格 JSON") }] } });
     });
 
+    it("修复兼容渠道工具参数中的轻微 JSON 语法错误", async () => {
+        mockedFetch.mockResolvedValue(Response.json({ choices: [{ message: { tool_calls: [{ function: { name: "make_plan", arguments: '{"result":"完成",}' } }] } }] }));
+
+        const result = await requestStructuredText(requestInput(candidate("newapi")));
+
+        expect(result.arguments).toBe('{"result":"完成"}');
+    });
+
+    it("视觉规划把顺序帧映射为 Responses input_image", async () => {
+        mockedFetch.mockResolvedValue(Response.json({ output_text: "{}" }));
+
+        await requestStructuredText({
+            ...requestInput(candidate("compatible", { createPath: "/responses" })),
+            messages: [
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "分析镜头" },
+                        { type: "image_url", image_url: { url: "data:image/jpeg;base64,AA==" } },
+                    ],
+                },
+            ],
+        });
+
+        expect(requestBody()).toMatchObject({ input: expect.arrayContaining([{ role: "user", content: [{ type: "input_text", text: "分析镜头" }, { type: "input_image", image_url: "data:image/jpeg;base64,AA==" }] }]) });
+    });
+
     it("自定义文本协议使用管理员模板、路径和结果字段", async () => {
         mockedFetch.mockResolvedValue(Response.json({ data: { plan: "{}" } }));
 

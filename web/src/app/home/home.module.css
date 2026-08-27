@@ -15,11 +15,11 @@
     --home-ring-violet: rgba(151, 87, 255, 0.22);
     --home-nav-glass: rgba(255, 255, 255, 0.6);
     --home-nav-glass-border: rgba(111, 133, 196, 0.2);
-    --home-primary-start: #1768ff;
-    --home-primary-end: #8047ef;
-    --home-glow: rgba(82, 100, 255, 0.3);
+    --home-primary-start: #5b5ce2;
+    --home-primary-end: #7277ff;
+    --home-glow: rgba(91, 92, 226, 0.3);
     --home-shadow: 0 24px 70px rgba(50, 72, 138, 0.14);
-    --home-header: rgba(251, 252, 255, 0.9);
+    --home-header: rgba(247, 248, 255, 0.88);
     background: radial-gradient(ellipse 74% 42% at 50% 14%, rgba(117, 151, 255, 0.13), transparent 70%), linear-gradient(180deg, #fbfdff 0%, #f7f9ff 38%, #ffffff 100%);
     color: var(--home-text);
     letter-spacing: 0;
@@ -43,11 +43,11 @@
     --home-ring-violet: rgba(145, 57, 255, 0.66);
     --home-nav-glass: rgba(17, 38, 73, 0.62);
     --home-nav-glass-border: rgba(125, 153, 244, 0.22);
-    --home-primary-start: #126eff;
-    --home-primary-end: #8b42ef;
-    --home-glow: rgba(70, 91, 255, 0.5);
+    --home-primary-start: #676cff;
+    --home-primary-end: #8d72ff;
+    --home-glow: rgba(91, 92, 226, 0.5);
     --home-shadow: 0 28px 82px rgba(0, 0, 0, 0.38);
-    --home-header: rgba(3, 14, 32, 0.82);
+    --home-header: rgba(2, 6, 17, 0.84);
     background:
         radial-gradient(ellipse 72% 42% at 50% 16%, rgba(32, 76, 167, 0.22), transparent 72%), radial-gradient(circle at 13% 18%, rgba(62, 86, 211, 0.12) 1px, transparent 1.5px),
         radial-gradient(circle at 78% 10%, rgba(162, 180, 255, 0.15) 1px, transparent 1.5px), linear-gradient(180deg, #020b1d 0%, #031127 52%, #04142d 100%);
@@ -129,8 +129,8 @@
 }
 
 .brandLogo {
-    height: 38px;
-    width: 38px;
+    height: 34px;
+    width: 42px;
 }
 
 .desktopNav {
@@ -199,7 +199,7 @@
 }
 
 .navLink:hover {
-    color: #5268ff;
+    color: #696eff;
 }
 
 .headerActions {
@@ -249,7 +249,7 @@
 }
 
 .primarySmallButton {
-    background: linear-gradient(135deg, #356fff 0%, #5d4cff 56%, #7934f5 100%);
+    background: #5b5ce2;
     border: 0;
     box-shadow: 0 9px 24px color-mix(in srgb, var(--home-glow) 65%, transparent);
     color: #ffffff;

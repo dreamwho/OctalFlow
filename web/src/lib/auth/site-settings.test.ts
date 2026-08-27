@@ -15,7 +15,7 @@ describe("site settings", () => {
         expect(settings.iconUrl).toBe("https://cdn.example.com/favicon.ico");
     });
 
-    it("defaults public contacts to the OctalFlow email and QQ group", () => {
+    it("defaults public contacts to the OctalAICanvas email and QQ group", () => {
         const settings = normalizeSiteSettings({});
 
         expect(settings.socials.email).toMatchObject({ enabled: true, url: "mailto:csyqlz@gmail.com" });
@@ -38,6 +38,29 @@ describe("site settings", () => {
             footerCopyright: expect.stringContaining("无限创作"),
         });
         expect(settings.friendLinks).toContainEqual(expect.objectContaining({ id: "octalaicanvas-home", label: "无限创作" }));
+    });
+
+    it("migrates legacy VOZEB defaults to the OctalFlow brand", () => {
+        const settings = normalizeSiteSettings({
+            title: "VOZEB PRO",
+            logoUrl: "/logo.svg",
+            iconUrl: "/icon.svg",
+            seoTitle: "VOZEB PRO",
+            footerCopyright: "© 2026 VOZEB PRO. All rights reserved.",
+            friendLinks: [
+                { id: "vozeb-pro-home", label: "VOZEB PRO", url: "https://www.vozeb.com/", enabled: true },
+                { id: "qq-vozeb-open-source", label: "VOZEB 开源交流 QQ 群", url: "https://qm.qq.com/q/9MVLTxuRd6", enabled: true },
+            ],
+        });
+
+        expect(settings).toMatchObject({
+            title: "OctalFlow",
+            logoUrl: "/brand/octaflow-mark.png",
+            iconUrl: "/brand/octaflow-icon.png",
+            seoTitle: "OctalFlow",
+            footerCopyright: "© 2026 OctalFlow. All rights reserved.",
+        });
+        expect(settings.friendLinks.map((link) => link.label)).toEqual(["OctalFlow", "OctalFlow 开源交流 QQ 群"]);
     });
 
     it("preserves explicitly customized brand copy when the title changes", () => {

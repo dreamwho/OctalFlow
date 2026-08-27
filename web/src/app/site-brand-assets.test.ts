@@ -7,19 +7,19 @@ import { DEFAULT_SITE_SETTINGS } from "@/lib/auth/store";
 
 describe("default infinite-evolution brand assets", () => {
     it("uses the built-in infinite-evolution logo for every default brand entry", () => {
-        expect(DEFAULT_SITE_SETTINGS.logoUrl).toBe("/logo.svg");
-        expect(DEFAULT_SITE_SETTINGS.iconUrl).toBe("/icon.svg");
+        expect(DEFAULT_SITE_SETTINGS.logoUrl).toBe("/brand/octaflow-mark.png");
+        expect(DEFAULT_SITE_SETTINGS.iconUrl).toBe("/brand/octaflow-icon.png");
     });
 
-    it("keeps web logo, browser icon and docs logo identical without triangle primitives", async () => {
-        const [logo, icon, docsLogo] = await Promise.all([readFile(resolve(process.cwd(), "public/logo.svg"), "utf8"), readFile(resolve(process.cwd(), "public/icon.svg"), "utf8"), readFile(resolve(process.cwd(), "../docs/public/logo.svg"), "utf8")]);
+    it("ships the OctalFlow raster mark for the web app, browser icon and docs", async () => {
+        const [logo, icon, docsLogo] = await Promise.all([
+            readFile(resolve(process.cwd(), "public/brand/octaflow-mark.png")),
+            readFile(resolve(process.cwd(), "public/brand/octaflow-icon.png")),
+            readFile(resolve(process.cwd(), "../docs/public/brand/octaflow-mark.png")),
+        ]);
 
-        expect(markupShape(icon)).toBe(markupShape(logo));
-        expect(markupShape(docsLogo)).toBe(markupShape(logo));
-        expect(logo).not.toMatch(/<(?:polygon|polyline)\b|triangle/i);
+        expect(logo.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+        expect(icon.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+        expect(docsLogo).toEqual(logo);
     });
 });
-
-function markupShape(svg: string) {
-    return svg.match(/<path\b[^>]*\bd="([^"]+)"/)?.[1];
-}

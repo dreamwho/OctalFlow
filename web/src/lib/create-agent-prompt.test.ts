@@ -22,4 +22,11 @@ describe("Agent prompt handoff", () => {
         expect(createAgentDraftFromHash("#source=home&mode=unknown&prompt=保留需求")).toEqual({ source: "home", prompt: "保留需求" });
         expect(createAgentPromptHref("", { source: "home", mode: "image" })).toBe("/create#source=home&mode=image");
     });
+
+    it("carries only safe explicitly selected Skill ids", () => {
+        const href = createAgentPromptHref("复刻这条 VLOG", { source: "home", mode: "agent", skillIds: ["video-remake-vlog", "video-remake-vlog", "bad skill"] });
+
+        expect(createAgentDraftFromHash(href.slice(href.indexOf("#")))).toEqual({ source: "home", prompt: "复刻这条 VLOG", mode: "agent", skillIds: ["video-remake-vlog"] });
+        expect(createAgentPromptHref("", { source: "home", skillIds: ["video-remake-universal"] })).toBe("/create#source=home&skills=video-remake-universal");
+    });
 });

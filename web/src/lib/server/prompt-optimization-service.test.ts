@@ -6,11 +6,11 @@ import { requestStructuredText } from "@/lib/server/text-planning-runtime";
 import { optimizeCreativePrompt } from "./prompt-optimization-service";
 
 vi.mock("@/lib/auth/store", () => ({ getAuthSettings: vi.fn(), refundUserPoints: vi.fn() }));
-vi.mock("@/lib/server/logical-model-router", () => ({ resolveLogicalModelCandidates: vi.fn() }));
 vi.mock("@/lib/server/text-planning-runtime", () => ({
-    rankTextPlanningCandidates: <T>(items: T[]) => items,
+    rankTextPlanningCandidates: vi.fn((candidates) => candidates),
     requestStructuredText: vi.fn(),
 }));
+vi.mock("@/lib/server/logical-model-router", () => ({ resolveLogicalModelCandidates: vi.fn() }));
 
 const candidate = {
     channelId: "text-channel",
@@ -22,7 +22,7 @@ describe("prompt optimization service", () => {
     beforeEach(() => {
         vi.mocked(getAuthSettings)
             .mockReset()
-            .mockResolvedValue({ defaultModels: { textModel: "planner" } } as Awaited<ReturnType<typeof getAuthSettings>>);
+            .mockResolvedValue({ defaultModels: { textModel: "planner" }, agentSkills: [] } as unknown as Awaited<ReturnType<typeof getAuthSettings>>);
         vi.mocked(resolveLogicalModelCandidates)
             .mockReset()
             .mockReturnValue([candidate] as ReturnType<typeof resolveLogicalModelCandidates>);
@@ -55,6 +55,26 @@ describe("prompt optimization service", () => {
 
         await expect(optimizeCreativePrompt({ origin: "http://localhost:3000", cookie: "session=1", userId: "user-one", requestId: "request-one", prompt: "优化这句话", mode: "agent" })).rejects.toThrow("默认文本模型没有返回有效提示词");
         expect(refundUserPoints).toHaveBeenCalledWith("user-one", "planner", 3, "text", 1, undefined, "points-one");
+    });
+
+    it("applies only explicitly selected skills that support the current mode", async () => {
+        vi.mocked(getAuthSettings).mockResolvedValue({
+            defaultModels: { textModel: "planner" },
+            agentSkills: [
+                { id: "cinema", name: "电影光影", description: "", plannerSummary: "", instructions: "先建立构图关系，再设计叙事光线。", enabled: true, keywords: [], workspaces: ["image"] },
+                { id: "h3", name: "视频提示词", description: "", plannerSummary: "", instructions: "按视频时间轴组织镜头。", enabled: true, keywords: [], workspaces: ["video"] },
+                { id: "hidden", name: "未选择能力", description: "", plannerSummary: "", instructions: "不应进入请求。", enabled: true, keywords: [], workspaces: ["image"] },
+            ],
+        } as unknown as Awaited<ReturnType<typeof getAuthSettings>>);
+        vi.mocked(requestStructuredText).mockResolvedValue({ arguments: JSON.stringify({ optimizedPrompt: "优化结果" }), headers: new Headers(), protocol: "chat", elapsedMs: 10 });
+
+        await optimizeCreativePrompt({ origin: "http://localhost:3000", cookie: "session=1", userId: "user-one", requestId: "request-skill", prompt: "做一张剧照", mode: "image", skillIds: ["cinema", "h3"] });
+
+        const systemMessage = vi.mocked(requestStructuredText).mock.calls[0]![0].messages[0]?.content || "";
+        expect(systemMessage).toContain("电影光影");
+        expect(systemMessage).toContain("先建立构图关系");
+        expect(systemMessage).not.toContain("视频提示词");
+        expect(systemMessage).not.toContain("未选择能力");
     });
 
     it("fails clearly when no default text binding is available", async () => {

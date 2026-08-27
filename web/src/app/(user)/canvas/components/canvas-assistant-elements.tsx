@@ -236,7 +236,7 @@ export function assistantImageReferenceLabel(references: CanvasAssistantReferenc
     return imageIndex >= 0 ? imageReferenceLabel(imageIndex) : undefined;
 }
 
-export function assistantMessageToChatMessage(message: CanvasAssistantMessage): CanvasAgentChatMessage {
+export function assistantMessageToChatMessage(message: CanvasAssistantMessage, fallbackCreatedAt?: string): CanvasAgentChatMessage {
     const attachments = message.references?.flatMap((item) => (item.dataUrl ? [{ id: item.id, name: item.title, url: item.dataUrl, type: item.type === CanvasNodeType.Video ? ("video" as const) : ("image" as const) }] : []));
     return {
         id: message.id,
@@ -245,6 +245,8 @@ export function assistantMessageToChatMessage(message: CanvasAssistantMessage): 
         text: message.role === "error" ? friendlyAgentError(message.text) : formatAgentMessageText(message.text),
         meta: message.meta,
         detail: message.detail,
+        skills: message.skills,
+        createdAt: message.createdAt || fallbackCreatedAt,
         ...(attachments?.length ? { attachments } : {}),
     };
 }
@@ -298,7 +300,12 @@ export function compactSnapshot(snapshot: CanvasAgentSnapshot) {
 
 export function canvasRunSelectedNodeIds(snapshot: CanvasAgentSnapshot, submittedReferenceIds: Set<string>) {
     const mediaNodeIds = new Set(snapshot.nodes.filter((node) => isCanvasImageNodeType(node.type) || node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio).map((node) => node.id));
-    return Array.from(new Set([...snapshot.selectedNodeIds.filter((id) => !mediaNodeIds.has(id)), ...submittedReferenceIds]));
+    const selectedRemakeIds = new Set(snapshot.nodes.filter((node) => node.type === CanvasNodeType.VideoRemake && snapshot.selectedNodeIds.includes(node.id)).map((node) => node.id));
+    const connectedVideoIds = snapshot.connections.flatMap((connection) => {
+        const otherId = selectedRemakeIds.has(connection.fromNodeId) ? connection.toNodeId : selectedRemakeIds.has(connection.toNodeId) ? connection.fromNodeId : "";
+        return otherId && snapshot.nodes.some((node) => node.id === otherId && node.type === CanvasNodeType.Video) ? [otherId] : [];
+    });
+    return Array.from(new Set([...snapshot.selectedNodeIds.filter((id) => !mediaNodeIds.has(id)), ...submittedReferenceIds, ...connectedVideoIds]));
 }
 
 export function compactMetadata(type: CanvasNodeType, metadata: CanvasNodeData["metadata"]) {
@@ -310,6 +317,9 @@ export function compactMetadata(type: CanvasNodeType, metadata: CanvasNodeData["
         size: metadata?.size,
         naturalWidth: metadata?.naturalWidth,
         naturalHeight: metadata?.naturalHeight,
+        durationMs: metadata?.durationMs,
+        selectedSkillIds: metadata?.selectedSkillIds,
+        remakeMode: metadata?.remakeMode,
         url: isStableCanvasMediaUrl(mediaUrl) ? mediaUrl : undefined,
     };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CanvasNodeType, type CanvasNodeData } from "../types";
-import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, resolveSnapGuides, samePosition, selectNodesInBounds, worldFromScreen } from "./canvas-surface-geometry";
+import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, resolvePromptComposerHeight, resolvePromptComposerTether, resolveSnapGuides, samePosition, selectNodesInBounds, worldFromScreen } from "./canvas-surface-geometry";
 
 const source: CanvasNodeData = { id: "source", type: CanvasNodeType.Text, title: "来源", position: { x: 100, y: 120 }, width: 240, height: 160, metadata: {} };
 const target: CanvasNodeData = { id: "target", type: CanvasNodeType.Image, title: "目标", position: { x: 500, y: 220 }, width: 300, height: 200, metadata: {} };
@@ -46,6 +46,27 @@ describe("canvas surface geometry", () => {
         expect(previewPath({ x: 0, y: 20 }, { x: 100, y: 60 }, "source")).toBe("M 0 20 C 50 20, 50 60, 100 60");
         expect(previewPath({ x: 100, y: 60 }, { x: 0, y: 20 }, "target")).toBe("M 100 60 C 50 60, 50 20, 0 20");
         expect(previewPath({ x: 100, y: 60 }, { x: 160, y: 20 }, "target")).toBe("M 100 60 C 70 60, 190 20, 160 20");
+    });
+
+    it("tracks the active media node when the canvas viewport or node position changes", () => {
+        const media = { ...target, position: { x: 100, y: 120 }, width: 200, height: 100 };
+        const initial = resolvePromptComposerTether(media, { x: 80, y: 40, k: 0.5 }, { width: 1536, height: 927 });
+        const moved = resolvePromptComposerTether({ ...media, position: { x: 300, y: 220 } }, { x: 80, y: 40, k: 0.5 }, { width: 1536, height: 927 });
+
+        expect(initial).toEqual({ source: { x: 180, y: 150 }, target: { x: 768, y: 501 }, path: "M 180 150 C 180 270, 768 381, 768 501" });
+        expect(moved?.source).toEqual({ x: 280, y: 200 });
+        expect(moved?.target).toEqual(initial?.target);
+        expect(resolvePromptComposerTether(media, { x: 0, y: 0, k: 1 }, { width: 390, height: 844 })).toBeNull();
+    });
+
+    it("clamps a resized composer and moves the tether target with its top edge", () => {
+        const media = { ...target, position: { x: 100, y: 120 }, width: 200, height: 100 };
+        expect(resolvePromptComposerHeight(927)).toBe(410);
+        expect(resolvePromptComposerHeight(927, 440)).toBe(440);
+        expect(resolvePromptComposerHeight(927, 1200)).toBe(775);
+        expect(resolvePromptComposerHeight(927, 100)).toBe(330);
+        expect(resolvePromptComposerTether(media, { x: 80, y: 40, k: 0.5 }, { width: 1536, height: 927 }, 440)?.target).toEqual({ x: 768, y: 471 });
+        expect(resolvePromptComposerTether({ ...media, position: { x: 668, y: 353 } }, { x: 0, y: 0, k: 1 }, { width: 1536, height: 927 }, 440)?.path).toBe("M 768 453 C 768 460.56, 768 463.44, 768 471");
     });
 
     it("targets node bodies and nearby handles without selecting the origin", () => {

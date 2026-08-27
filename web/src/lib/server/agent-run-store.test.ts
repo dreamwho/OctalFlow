@@ -96,6 +96,24 @@ describe("createAgentRun Canvas snapshot", () => {
         expect(mocks.createCreativeRunBundle).toHaveBeenCalledWith("user", expect.objectContaining({ run: expect.objectContaining({ snapshot: created.run.snapshot }) }));
     });
 
+    it("persists the explicitly selected Skill ids on the public user message", async () => {
+        await createAgentRun("user", {
+            clientRequestId: "request-skill-visible",
+            surface: "drama",
+            projectId: "drama-one",
+            prompt: "生成角色定妆图",
+            assetIds: [],
+            skillIds: ["skill-character-casting"],
+            modelIds: [],
+            snapshot: {},
+        });
+
+        expect(mocks.createCreativeRunBundle).toHaveBeenCalledWith(
+            "user",
+            expect.objectContaining({ userMetadata: { selectedSkillIds: ["skill-character-casting"] } }),
+        );
+    });
+
     it("keeps the complete compact Canvas when the current turn has no selected nodes", async () => {
         const created = await createAgentRun("user", {
             clientRequestId: "request-canvas-all",

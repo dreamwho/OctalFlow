@@ -10,6 +10,7 @@ import { createAudioGenerationTask } from "@/services/api/audio";
 import { isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
 import { createTextGenerationTask } from "@/services/api/text";
 import { createServerVideoGenerationTask } from "@/services/api/video";
+import { optimizePrompt } from "@/services/api/prompt-optimization";
 import type { InsertAssetPayload } from "../components/canvas-asset-insert";
 import { CANVAS_AGENT_PANEL_MOTION_MS } from "../components/canvas-agent-panel-motion";
 import { retryCanvasAgentNode } from "../components/canvas-agent-node-retry";
@@ -91,7 +92,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
     );
 
     const handleGenerateNode = useCallback(
-        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => {
+        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, skillIds: string[] = []) => {
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
@@ -100,14 +101,25 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             }
 
             setRunningNodeId(nodeId);
+            const userPrompt = prompt.trim();
+            let plannedPrompt = userPrompt;
+            if (skillIds.length && (mode === "image" || mode === "video")) {
+                try {
+                    plannedPrompt = await optimizePrompt({ requestId: `canvas-skill-${crypto.randomUUID()}`, prompt: userPrompt, mode, skillIds });
+                } catch (error) {
+                    message.error(error instanceof Error ? error.message : "Skill 提示词优化失败");
+                    setRunningNodeId(null);
+                    return;
+                }
+            }
             const runController = startGenerationRequest(nodeId, nodeId, nodeId);
             const sourceTextContent = sourceNode?.type === CanvasNodeType.Text ? sourceNode.metadata?.content?.trim() || "" : "";
             const editingTextNode = mode === "text" && Boolean(sourceTextContent);
             const generationContext = await hydrateNodeGenerationContext(
-                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${prompt}` : prompt),
+                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${plannedPrompt}` : plannedPrompt),
             );
-            const sourcePrompt = generationContext.prompt.trim();
-            const panoramaPrompt = sourceNode?.type === CanvasNodeType.Panorama ? buildPanoramaPrompt(sourcePrompt, generationContext.referenceImages.length > 0) : sourcePrompt;
+            const resolvedExecutionPrompt = generationContext.prompt.trim();
+            const panoramaPrompt = sourceNode?.type === CanvasNodeType.Panorama ? buildPanoramaPrompt(resolvedExecutionPrompt, generationContext.referenceImages.length > 0) : resolvedExecutionPrompt;
             const effectivePrompt = applyCameraPrompt(panoramaPrompt, sourceNode?.type === CanvasNodeType.Panorama ? undefined : sourceNode?.metadata?.cameraControl);
             if (runController.signal.aborted) {
                 finishGenerationRequest(nodeId, runController);
@@ -115,7 +127,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 return;
             }
             const markSourceStatus = !isCanvasImageNodeType(sourceNode?.type) && !editingTextNode;
-            const statusPrompt = sourceNode?.type === CanvasNodeType.Config ? effectivePrompt : prompt;
+            const statusPrompt = sourceNode?.type === CanvasNodeType.Config ? effectivePrompt : userPrompt;
             if (!effectivePrompt && (mode === "text" || mode === "audio")) {
                 finishGenerationRequest(nodeId, runController);
                 setRunningNodeId(null);
@@ -136,7 +148,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const imageGenerationConfig = {
                         ...generationConfig,
                         size: resolveImageRequestSize({
-                            prompt,
+                            prompt: userPrompt,
                             configuredSize: generationConfig.size,
                             referenceWidth: referenceImages[0]?.width,
                             referenceHeight: referenceImages[0]?.height,
@@ -167,13 +179,15 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         height: isEmptyImageNode ? sourceNode?.height || imageConfig.height : imageConfig.height,
                         metadata: {
                             prompt: effectivePrompt,
-                            sourcePrompt,
+                            sourcePrompt: userPrompt,
+                            executionPrompt: effectivePrompt,
+                            selectedSkillIds: skillIds.length ? skillIds : undefined,
                             status: NODE_STATUS_LOADING,
                             isBatchRoot: count > 1,
                             batchChildIds: count > 1 ? childIds : undefined,
                             batchUsesReferenceImages: referenceImages.length > 0,
                             ...generationMetadata,
-                            ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: sourcePrompt } : {}),
+                            ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: userPrompt } : {}),
                             ...(sourceNode?.metadata?.cameraControl && !isPanoramaNode ? { cameraControl: sourceNode.metadata.cameraControl } : {}),
                             imageBatchExpanded: count > 1 ? true : undefined,
                         },
@@ -190,11 +204,13 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         height: imageConfig.height,
                         metadata: {
                             prompt: effectivePrompt,
-                            sourcePrompt,
+                            sourcePrompt: userPrompt,
+                            executionPrompt: effectivePrompt,
+                            selectedSkillIds: skillIds.length ? skillIds : undefined,
                             status: NODE_STATUS_LOADING,
                             batchRootId: count > 1 ? rootId : undefined,
                             ...generationMetadata,
-                            ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: sourcePrompt } : {}),
+                            ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: userPrompt } : {}),
                             ...(sourceNode?.metadata?.cameraControl && !isPanoramaNode ? { cameraControl: sourceNode.metadata.cameraControl } : {}),
                         },
                     }));
@@ -206,7 +222,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                                 ? isConfigNode
                                     ? {
                                           ...node,
-                                          metadata: { ...node.metadata, prompt: effectivePrompt, sourcePrompt, status: NODE_STATUS_LOADING, errorDetails: undefined },
+                                              metadata: { ...node.metadata, prompt: effectivePrompt, sourcePrompt: userPrompt, executionPrompt: effectivePrompt, selectedSkillIds: skillIds.length ? skillIds : undefined, status: NODE_STATUS_LOADING, errorDetails: undefined },
                                       }
                                     : isEmptyImageNode
                                       ? {
@@ -228,7 +244,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                                               title: "文本",
                                               width: parentConfig.width,
                                               height: parentConfig.height,
-                                              metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
+                                              metadata: { ...node.metadata, content: userPrompt, prompt: userPrompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
                                           }
                                 : node,
                         ),
@@ -249,7 +265,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     await Promise.all(
                         targetIds.map(async (targetId) => {
                             try {
-                                await startAndCompleteImageTask(targetId, { ...imageGenerationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, controller);
+                                await startAndCompleteImageTask(targetId, { ...imageGenerationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, controller, userPrompt);
                                 hasSuccess = true;
                                 if (isConfigNode) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
                                 return true;
@@ -318,6 +334,9 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         height: isEmptyVideoNode ? sourceNode.height : spec.height,
                         metadata: {
                             prompt: effectivePrompt,
+                            sourcePrompt: userPrompt,
+                            executionPrompt: effectivePrompt,
+                            selectedSkillIds: skillIds.length ? skillIds : undefined,
                             status: NODE_STATUS_LOADING,
                             model: generationConfig.model,
                             size: generationConfig.size,
@@ -550,12 +569,12 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             }
 
             const retryPromptSource = isVideoRetry
-                ? node.metadata?.prompt || sourceNode.metadata?.prompt || sourceNode.metadata?.composerContent || ""
+                ? node.metadata?.executionPrompt || node.metadata?.prompt || sourceNode.metadata?.executionPrompt || sourceNode.metadata?.prompt || sourceNode.metadata?.composerContent || ""
                 : sourceNode.type === CanvasNodeType.Config && sourceNode.metadata?.composerContent
                   ? sourceNode.metadata.composerContent
-                  : sourceNode.metadata?.prompt || node.metadata?.prompt || "";
+                  : sourceNode.metadata?.executionPrompt || node.metadata?.executionPrompt || sourceNode.metadata?.prompt || node.metadata?.prompt || "";
             const context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, retryPromptSource));
-            const sourcePrompt = (savedImageMetadata?.sourcePrompt || sourceNode.metadata?.sourcePrompt || context?.prompt || savedImageMetadata?.prompt || sourceNode.metadata?.prompt || node.metadata?.prompt || "").trim();
+            const sourcePrompt = (savedImageMetadata?.executionPrompt || sourceNode.metadata?.executionPrompt || context?.prompt || savedImageMetadata?.prompt || sourceNode.metadata?.prompt || node.metadata?.prompt || "").trim();
             const panoramaPrompt = node.type === CanvasNodeType.Panorama ? buildPanoramaPrompt(sourcePrompt, Boolean(savedImageMetadata?.references?.length || context?.referenceImages.length)) : sourcePrompt;
             const prompt = applyCameraPrompt(panoramaPrompt, node.type === CanvasNodeType.Text || node.type === CanvasNodeType.Panorama ? undefined : savedImageMetadata?.cameraControl || sourceNode.metadata?.cameraControl);
             if (!prompt) {

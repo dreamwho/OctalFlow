@@ -4,7 +4,7 @@ export type { AdminPermission } from "@/lib/admin-permissions";
 import type { AdminPermission } from "@/lib/admin-permissions";
 import type { GlobalAiOpcPresetId } from "@/lib/globalaiopc-catalog";
 import type { RegistrationPolicyConsent } from "@/lib/registration-consent";
-import { OctalFlow_QQ_GROUP_URL } from "@/constant/community";
+import { OctalAICanvas_QQ_GROUP_URL } from "@/constant/community";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type SystemChannelProtocol =
@@ -345,7 +345,7 @@ export const DEFAULT_SITE_SOCIALS: SiteSocialSettings = {
 
 export const DEFAULT_SITE_FRIEND_LINKS: SiteFriendLink[] = [
     { id: "octalaicanvas-home", label: "OctalFlow", url: "https://www.octalaicanvas.com/", enabled: true },
-    { id: "qq-octalaicanvas-open-source", label: "OctalFlow 开源交流 QQ 群", url: OctalFlow_QQ_GROUP_URL, enabled: true },
+    { id: "qq-octalaicanvas-open-source", label: "OctalFlow 开源交流 QQ 群", url: OctalAICanvas_QQ_GROUP_URL, enabled: true },
     { id: "linux-do", label: "Linux.do", url: "https://linux.do/", enabled: true },
 ];
 

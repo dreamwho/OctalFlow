@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from "react";
 import { Button, Popover, Tooltip } from "antd";
-import { ArrowUp, Check, CheckCircle2, Circle, CircleAlert, Crosshair, LoaderCircle, Pause, Play, Plus, RotateCcw, Wrench, X, XCircle } from "lucide-react";
+import { ArrowUp, Check, CheckCircle2, Circle, CircleAlert, Crosshair, LoaderCircle, Pause, Play, Plus, RotateCcw, Sparkles, Wrench, X, XCircle } from "lucide-react";
 
 import { AgentMessageActions } from "@/components/agent/agent-message-actions";
 import { AgentMarkdown } from "@/components/agent/agent-markdown";
@@ -16,6 +16,7 @@ import { userAvatarFallback } from "@/lib/user-avatar";
 import { DEFAULT_SITE_TITLE, resolveSiteTitle } from "@/lib/site-brand";
 import { usePublicSessionStore } from "@/stores/use-public-session-store";
 import type { LocalUser } from "@/stores/use-user-store";
+import type { CreativeAgentRun } from "@/services/api/creative";
 import {
     canvasAgentMentionAtCursor,
     canvasAgentMentionCandidates,
@@ -46,6 +47,8 @@ export type CanvasAgentChatMessage = {
     meta?: string;
     detail?: unknown;
     attachments?: CanvasAgentChatAttachment[];
+    skills?: Array<{ id: string; name: string }>;
+    createdAt?: string;
 };
 
 export function AgentChatMessage({
@@ -76,16 +79,17 @@ export function AgentChatMessage({
                 <div className="max-w-[88%] px-3 py-1.5 text-center" style={{ color: theme.node.muted }}>
                     {item.text}
                     {item.meta ? <span className="ml-2 opacity-60">{item.meta}</span> : null}
+                    <MessageTime createdAt={item.createdAt} align="center" />
                 </div>
             </div>
         );
     }
     if (item.role === "tool") {
-        if (objectField(item.detail, "status") === "pending") return <AgentPendingToolCard summary={item.text} detail={item.detail} theme={theme} onReject={() => onRejectTool?.(item.id)} onApprove={() => onApproveTool?.(item.id)} />;
+        if (objectField(item.detail, "status") === "pending") return <AgentPendingToolCard summary={item.text} detail={item.detail} theme={theme} createdAt={item.createdAt} onReject={() => onRejectTool?.(item.id)} onApprove={() => onApproveTool?.(item.id)} />;
         return (
             <div className="flex items-start gap-3">
                 <AgentAvatar theme={theme} />
-                <AgentToolCard title={item.title || "工具调用"} text={item.text} detail={item.detail} theme={theme} />
+                <AgentToolCard title={item.title || "工具调用"} text={item.text} detail={item.detail} theme={theme} createdAt={item.createdAt} />
             </div>
         );
     }
@@ -99,8 +103,24 @@ export function AgentChatMessage({
                         </div>
                     ) : null}
                     <div className="col-start-1 row-start-2 min-w-0 text-right text-sm leading-6">
+                        {item.skills?.length ? (
+                            <div className="mb-1.5 flex flex-wrap justify-end gap-1.5" aria-label="本轮调用的 Skill">
+                                {item.skills.map((skill) => (
+                                    <span
+                                        key={skill.id}
+                                        data-canvas-agent-used-skill={skill.id}
+                                        className="inline-flex min-h-6 max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
+                                        style={{ borderColor: theme.node.activeStroke, background: theme.node.fill, color: theme.node.text }}
+                                    >
+                                        <Sparkles className="size-3 shrink-0" />
+                                        <span className="truncate">已调用 · {skill.name}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
                         <div className="whitespace-pre-wrap break-words text-left">{item.text}</div>
                         {item.meta ? <div className="mt-1 text-[11px] opacity-45">{item.meta}</div> : null}
+                        <MessageTime createdAt={item.createdAt} align="end" />
                         <AgentMessageActions text={item.text} onEdit={onEditMessage} align="end" className="text-current" style={{ color: theme.node.muted }} />
                     </div>
                     <div className="col-start-2 row-start-2">
@@ -143,7 +163,16 @@ export function AgentChatMessage({
                     </button>
                 ) : null}
                 {item.attachments?.length ? <AgentMessageAttachments attachments={item.attachments} /> : null}
-                {item.meta ? <div className="mt-1 text-[11px] opacity-45">{item.meta}</div> : null}
+                {item.meta ? (
+                    <div
+                        data-canvas-agent-plan-summary
+                        className="mt-2 inline-flex min-h-6 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
+                        style={{ borderColor: theme.node.stroke, background: theme.node.fill, color: theme.node.text }}
+                    >
+                        {item.meta}
+                    </div>
+                ) : null}
+                <MessageTime createdAt={item.createdAt} align="start" />
                 <AgentMessageActions
                     text={item.text}
                     downloads={item.attachments?.map((attachment) => ({ type: attachment.type || "image", url: attachment.url, title: attachment.name }))}
@@ -156,7 +185,7 @@ export function AgentChatMessage({
     );
 }
 
-function AgentPendingToolCard({ summary, detail, theme, onReject, onApprove }: { summary: string; detail?: unknown; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onReject?: () => void; onApprove?: () => void }) {
+function AgentPendingToolCard({ summary, detail, theme, createdAt, onReject, onApprove }: { summary: string; detail?: unknown; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; createdAt?: string; onReject?: () => void; onApprove?: () => void }) {
     return (
         <div className="flex items-start gap-3">
             <AgentAvatar theme={theme} />
@@ -197,12 +226,13 @@ function AgentPendingToolCard({ summary, detail, theme, onReject, onApprove }: {
                         </Button>
                     </div>
                 ) : null}
+                <MessageTime createdAt={createdAt} align="start" />
             </div>
         </div>
     );
 }
 
-function AgentToolCard({ title, text, detail, theme }: { title: string; text: string; detail?: unknown; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+function AgentToolCard({ title, text, detail, theme, createdAt }: { title: string; text: string; detail?: unknown; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; createdAt?: string }) {
     const state = toolCardState(title, text, detail);
     return (
         <details className="min-w-0 flex-1 rounded-xl border px-4 py-3.5 text-left" style={{ borderColor: theme.node.stroke, background: "transparent", color: theme.node.text }}>
@@ -230,17 +260,24 @@ function AgentToolCard({ title, text, detail, theme }: { title: string; text: st
                 </div>
             </summary>
             {detail ? <AgentDetailBlock detail={detail} theme={theme} /> : null}
+            <MessageTime createdAt={createdAt} align="start" />
         </details>
     );
 }
 
-export function AgentWorkingMessage({ theme, stage }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; stage: CanvasAgentRunStage }) {
+export function AgentWorkingMessage({ theme, stage, tasks = [], startedAt }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; stage: CanvasAgentRunStage; tasks?: CreativeAgentRun["tasks"]; startedAt?: number }) {
     const steps = canvasAgentProgressSteps(stage);
+    const now = useLiveAgentClock(tasks.some((task) => task.status === "running") || Boolean(startedAt));
     return (
         <div className="flex items-start gap-3" aria-live="polite">
             <AgentAvatar theme={theme} />
             <div className="min-w-0 w-[340px] max-w-[86%] rounded-xl border p-4" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
                 <div className="text-sm font-semibold">{stage.text}</div>
+                {startedAt ? (
+                    <div className="mt-1 text-[11px]" style={{ color: theme.node.muted }}>
+                        开始 {formatAgentClock(startedAt)} · 已持续 {formatAgentDuration(Math.max(0, now - startedAt))}
+                    </div>
+                ) : null}
                 <div className="mt-3 space-y-2">
                     {steps.map((step) => (
                         <div key={step.key} className="flex items-center gap-2 text-xs" style={{ color: step.status === "pending" ? theme.node.muted : theme.node.text, opacity: step.status === "pending" ? 0.58 : 1 }}>
@@ -252,9 +289,84 @@ export function AgentWorkingMessage({ theme, stage }: { theme: (typeof canvasThe
                         </div>
                     ))}
                 </div>
+                {tasks.length ? (
+                    <div data-canvas-agent-task-progress className="mt-4 space-y-2 border-t pt-3" style={{ borderColor: theme.node.stroke }}>
+                        <div className="text-[11px] font-medium" style={{ color: theme.node.muted }}>
+                            子任务进度 {tasks.filter((task) => task.status === "completed").length}/{tasks.length}
+                        </div>
+                        {tasks.map((task) => (
+                            <AgentTaskTimingRow key={task.id} task={task} fallbackStartedAt={startedAt} now={now} theme={theme} />
+                        ))}
+                    </div>
+                ) : null}
             </div>
         </div>
     );
+}
+
+function AgentTaskTimingRow({ task, fallbackStartedAt, now, theme }: { task: CreativeAgentRun["tasks"][number]; fallbackStartedAt?: number; now: number; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+    const taskStartedAt = task.startedAt || (task.status !== "ready" ? fallbackStartedAt : undefined);
+    const taskEndedAt = task.completedAt || (task.status === "running" ? now : undefined);
+    const duration = taskStartedAt && taskEndedAt ? formatAgentDuration(Math.max(0, taskEndedAt - taskStartedAt)) : "";
+    const state = agentTaskDisplayState(task.status);
+    return (
+        <div className="rounded-lg border px-2.5 py-2" style={{ borderColor: theme.node.stroke, background: theme.node.fill }}>
+            <div className="flex min-w-0 items-center gap-2 text-xs">
+                {state.icon}
+                <span className="min-w-0 flex-1 truncate" title={task.title}>
+                    {task.title}
+                </span>
+                <span className="shrink-0 text-[11px]" style={{ color: state.color }}>
+                    {state.label}
+                </span>
+            </div>
+            <div className="mt-1 pl-5 text-[10px] leading-4" style={{ color: theme.node.muted }}>
+                {taskStartedAt ? `开始 ${formatAgentClock(taskStartedAt)}${duration ? ` · ${task.status === "running" ? "已运行" : "耗时"} ${duration}` : ""}` : "等待开始"}
+            </div>
+        </div>
+    );
+}
+
+function agentTaskDisplayState(status: CreativeAgentRun["tasks"][number]["status"]) {
+    if (status === "completed") return { label: "已完成", color: "#16a34a", icon: <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" /> };
+    if (status === "failed") return { label: "失败", color: "#dc2626", icon: <XCircle className="size-3.5 shrink-0 text-red-500" /> };
+    if (status === "cancelled") return { label: "已取消", color: "#d97706", icon: <CircleAlert className="size-3.5 shrink-0 text-amber-500" /> };
+    if (status === "running") return { label: "执行中", color: "#0284c7", icon: <LoaderCircle className="size-3.5 shrink-0 animate-spin text-sky-500" /> };
+    return { label: "等待中", color: "#64748b", icon: <Circle className="size-3.5 shrink-0" /> };
+}
+
+function useLiveAgentClock(active: boolean) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!active) return;
+        setNow(Date.now());
+        const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+        return () => window.clearInterval(timer);
+    }, [active]);
+    return now;
+}
+
+function MessageTime({ createdAt, align }: { createdAt?: string; align: "start" | "center" | "end" }) {
+    if (!createdAt) return null;
+    const timestamp = Date.parse(createdAt);
+    if (!Number.isFinite(timestamp)) return null;
+    return (
+        <time dateTime={createdAt} title={new Date(timestamp).toLocaleString("zh-CN")} className={`mt-1 block text-[10px] leading-4 opacity-45 ${align === "center" ? "text-center" : align === "end" ? "text-right" : "text-left"}`}>
+            {formatAgentClock(timestamp, false)}
+        </time>
+    );
+}
+
+function formatAgentClock(timestamp: number, withSeconds = true) {
+    return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", ...(withSeconds ? { second: "2-digit" } : {}), hour12: false }).format(new Date(timestamp));
+}
+
+function formatAgentDuration(durationMs: number) {
+    const seconds = Math.max(0, Math.floor(durationMs / 1_000));
+    const hours = Math.floor(seconds / 3_600);
+    const minutes = Math.floor((seconds % 3_600) / 60);
+    const restSeconds = seconds % 60;
+    return hours ? `${hours}小时${minutes}分${restSeconds}秒` : minutes ? `${minutes}分${restSeconds}秒` : `${restSeconds}秒`;
 }
 
 const EMPTY_MENTION_ASSETS: CanvasAgentMentionAsset[] = [];

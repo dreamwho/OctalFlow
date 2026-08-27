@@ -555,7 +555,17 @@ function DramaAgentContent({
         };
         setMessages((current) => [
             ...current,
-            { id: temporaryUserId, conversationId: submission.conversationId || "pending", sequence, role: "user", status: "completed", content, metadata: { assetIds }, createdAt: now, updatedAt: now },
+            {
+                id: temporaryUserId,
+                conversationId: submission.conversationId || "pending",
+                sequence,
+                role: "user",
+                status: "completed",
+                content,
+                metadata: { assetIds, ...(submission.skillIds.length ? { selectedSkillIds: submission.skillIds } : {}) },
+                createdAt: now,
+                updatedAt: now,
+            },
             {
                 id: temporaryAssistantId,
                 conversationId: submission.conversationId || "pending",
@@ -743,10 +753,20 @@ function DramaAgentContent({
                 ) : null}
                 {messages.map((message) => {
                     const referencedAssets = message.role === "user" ? messageAssetIds(message).flatMap((id) => assetById.get(id) || []) : [];
+                    const messageSkills = message.role === "user" ? messageSkillIds(message).flatMap((id) => skills.find((skill) => skill.id === id) || []) : [];
                     const messageAssets = [...(assetsByRun.get(message.id) || []), ...(message.runId ? assetsByRun.get(message.runId) || [] : [])].filter((asset, index, list) => list.findIndex((item) => item.id === asset.id) === index);
                     const displayContent = message.status === "failed" ? friendlyAgentError(message.content) : formatAgentMessageText(message.content);
                     return (
                         <div key={message.id} className={`group/message min-w-0 ${message.role === "user" ? "pl-8 text-right" : "pr-2"}`}>
+                            {messageSkills.length ? (
+                                <div className="mb-1 flex flex-wrap justify-end gap-1" aria-label="本轮使用的 Skill">
+                                    {messageSkills.map((skill) => (
+                                        <span key={skill.id} className="rounded-full border border-amber-200/80 bg-amber-50/70 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+                                            Skill · {skill.name}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : null}
                             {referencedAssets.length ? <DramaMessageReferences assets={referencedAssets} /> : null}
                             <div className={`min-w-0 break-words text-sm leading-6 [overflow-wrap:anywhere] ${message.status === "failed" ? "text-red-500" : "text-foreground"}`}>
                                 {message.status === "running" ? <LoaderCircle className="mr-1 inline size-3.5 animate-spin" /> : null}
@@ -935,6 +955,11 @@ function DramaMessageReferences({ assets }: { assets: CreativeAsset[] }) {
 
 function messageAssetIds(message: CreativeMessage) {
     const value = message.metadata.assetIds;
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+}
+
+function messageSkillIds(message: CreativeMessage) {
+    const value = message.metadata.selectedSkillIds;
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
 }
 

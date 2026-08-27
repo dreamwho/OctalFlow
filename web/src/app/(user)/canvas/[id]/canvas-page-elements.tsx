@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe2, ImageIcon, List, Music2, Settings2, Video } from "lucide-react";
+import { Globe2, ImageIcon, List, Music2, Settings2, Sparkles, Video } from "lucide-react";
 import { nanoid } from "nanoid";
 
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
@@ -23,7 +23,7 @@ export type ConnectionDropTarget = {
     isNearNode: boolean;
 };
 
-export type CanvasCreatableNodeType = CanvasNodeType.Image | CanvasNodeType.Panorama | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video | CanvasNodeType.Audio;
+export type CanvasCreatableNodeType = CanvasNodeType.Image | CanvasNodeType.Panorama | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video | CanvasNodeType.VideoRemake | CanvasNodeType.Audio;
 
 export type CanvasHistoryEntry = Pick<CanvasClipboard, "nodes" | "connections"> & {
     chatSessions: CanvasAssistantSession[];
@@ -141,6 +141,7 @@ export function NodeCreateMenu({ position, onCreate, onClose }: { position: Posi
                 <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片" onClick={() => onCreate(CanvasNodeType.Image)} />
                 <ConnectionCreateOption theme={theme} icon={<Globe2 className="size-5" />} title="全景图" description="生成 2:1 环境全景" onClick={() => onCreate(CanvasNodeType.Panorama)} />
                 <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频" onClick={() => onCreate(CanvasNodeType.Video)} />
+                <ConnectionCreateOption theme={theme} icon={<Sparkles className="size-5" />} title="一键视频复刻" description="解析参考视频并批量重建" onClick={() => onCreate(CanvasNodeType.VideoRemake)} />
                 <ConnectionCreateOption theme={theme} icon={<Music2 className="size-5" />} title="音频" onClick={() => onCreate(CanvasNodeType.Audio)} />
                 <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="生成配置" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
             </div>
@@ -178,6 +179,7 @@ export function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: 
                 <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
                 <ConnectionCreateOption theme={theme} icon={<Globe2 className="size-5" />} title="全景生成" description="生成 2:1 环境全景" onClick={() => onCreate(CanvasNodeType.Panorama)} />
                 <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
+                <ConnectionCreateOption theme={theme} icon={<Sparkles className="size-5" />} title="一键视频复刻" description="继承当前视频的结构与节奏" onClick={() => onCreate(CanvasNodeType.VideoRemake)} />
                 <ConnectionCreateOption theme={theme} icon={<Music2 className="size-5" />} title="音频参考" onClick={() => onCreate(CanvasNodeType.Audio)} />
                 <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
             </div>

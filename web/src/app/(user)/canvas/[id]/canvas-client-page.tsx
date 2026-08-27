@@ -45,6 +45,7 @@ function OctalaicanvasCanvasPage() {
     const [interactionMode, setInteractionMode] = useState<CanvasInteractionMode>("pan");
     const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
     const [renameDraft, setRenameDraft] = useState("");
+    const [promptComposerHeight, setPromptComposerHeight] = useState<number | null>(null);
     const controller = useCanvasPageController();
     const {
         message,
@@ -260,6 +261,9 @@ function OctalaicanvasCanvasPage() {
         closeAgent,
     } = controller;
     const hiddenCanvasNodeIds = useMemo(() => new Set(nodes.filter((node) => isHiddenBatchChild(node, nodes, collapsingBatchIds)).map((node) => node.id)), [collapsingBatchIds, nodes]);
+    const activePromptNode = useMemo(() => nodes.find((node) => node.id === dialogNodeId && node.type !== CanvasNodeType.Config) || null, [dialogNodeId, nodes]);
+    const promptComposerOpen = Boolean(activePromptNode);
+
     if (!projectLoaded) return <CanvasRefreshShell />;
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.backdrop, color: theme.node.text }}>
@@ -307,7 +311,9 @@ function OctalaicanvasCanvasPage() {
                     viewport={viewport}
                     backgroundMode={backgroundMode}
                     interactionMode={interactionMode}
-                    minimapOpen={isMiniMapOpen}
+                    minimapOpen={isMiniMapOpen && !promptComposerOpen}
+                    focusNodeId={activePromptNode?.id}
+                    promptComposerHeight={promptComposerHeight}
                     selectedNodeIds={selectedNodeIds}
                     selectedConnectionId={selectedConnectionId}
                     relatedNodeIds={relatedHighlight.nodeIds}
@@ -337,7 +343,7 @@ function OctalaicanvasCanvasPage() {
                     }}
                     getNodeViewProps={(node) => ({
                         editRequestNonce: editingNodeId === node.id ? editRequestNonce : 0,
-                        showPanel: dialogNodeId === node.id,
+                        showPanel: dialogNodeId === node.id && node.type === CanvasNodeType.Config,
                         batchCount: batchChildCountById.get(node.id) || 0,
                         batchExpanded: Boolean(node.metadata?.imageBatchExpanded),
                         batchClosing: Boolean(node.metadata?.batchRootId && collapsingBatchIds.has(node.metadata.batchRootId)),
@@ -356,21 +362,7 @@ function OctalaicanvasCanvasPage() {
                                 onChange={(composerContent) => handleConfigNodeChange(panelNode.id, { composerContent })}
                                 onClose={() => setDialogNodeId(null)}
                             />
-                        ) : (
-                            <CanvasNodePromptPanel
-                                node={panelNode}
-                                isRunning={runningNodeId === panelNode.id}
-                                mentionReferences={mentionReferencesByNodeId.get(panelNode.id) || []}
-                                onPromptChange={handleNodePromptChange}
-                                onConfigChange={handleConfigNodeChange}
-                                onGenerate={handleGenerateNode}
-                                onStop={confirmStopGeneration}
-                                onImageSettingsOpenChange={(open) => {
-                                    setNodeImageSettingsOpen(open);
-                                    if (open) setToolbarNodeId(null);
-                                }}
-                            />
-                        )
+                        ) : null
                     }
                     renderNode={(contentNode) => (
                         <CanvasConfigNodePanel
@@ -458,6 +450,29 @@ function OctalaicanvasCanvasPage() {
                     }
                 />
 
+                {activePromptNode ? (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[85] flex justify-center px-3 sm:px-5" data-canvas-prompt-composer-overlay>
+                        <div className="pointer-events-auto relative w-[min(1150px,100%)]">
+                            <CanvasNodePromptPanel
+                                node={activePromptNode}
+                                isRunning={runningNodeId === activePromptNode.id}
+                                mentionReferences={mentionReferencesByNodeId.get(activePromptNode.id) || []}
+                                onPromptChange={handleNodePromptChange}
+                                onConfigChange={handleConfigNodeChange}
+                                onGenerate={handleGenerateNode}
+                                onStop={confirmStopGeneration}
+                                onClose={() => setDialogNodeId(null)}
+                                height={promptComposerHeight}
+                                onHeightChange={setPromptComposerHeight}
+                                onImageSettingsOpenChange={(open) => {
+                                    setNodeImageSettingsOpen(open);
+                                    if (open) setToolbarNodeId(null);
+                                }}
+                            />
+                        </div>
+                    </div>
+                ) : null}
+
                 <CanvasNodeHoverToolbar
                     node={isNodeDragging || nodeImageSettingsOpen ? null : toolbarNode}
                     viewport={viewport}
@@ -490,12 +505,14 @@ function OctalaicanvasCanvasPage() {
                     canUndo={historyState.canUndo}
                     canRedo={historyState.canRedo}
                     agentOpen={assistantOpen}
+                    composerOpen={promptComposerOpen}
                     backgroundMode={backgroundMode}
                     interactionMode={interactionMode}
                     showImageInfo={showImageInfo}
                     onAddImage={() => createNode(CanvasNodeType.Image)}
                     onAddPanorama={() => createNode(CanvasNodeType.Panorama)}
                     onAddVideo={() => createNode(CanvasNodeType.Video)}
+                    onAddVideoRemake={() => createNode(CanvasNodeType.VideoRemake)}
                     onAddAudio={() => createNode(CanvasNodeType.Audio)}
                     onAddText={() => createNode(CanvasNodeType.Text)}
                     onAddConfig={() => createNode(CanvasNodeType.Config)}
@@ -512,7 +529,7 @@ function OctalaicanvasCanvasPage() {
                     }}
                 />
 
-                <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
+                <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} composerOpen={promptComposerOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
 
                 {contextMenu ? (
                     <CanvasNodeContextMenu

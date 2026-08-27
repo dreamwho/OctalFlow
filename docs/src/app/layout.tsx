@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     template: "%s | OctalFlow 文档",
   },
   description:
-    "OctalFlow - AI创意工作台官方文档，提供图片、视频、音频、短剧等多种AI生成能力的完整指南。",
+    "OctalFlow - AI 创意工作台官方文档，提供图片、视频、音频、短剧等多种 AI 生成能力的完整指南。",
   keywords: [
     "OctalFlow",
     "AI创意",
@@ -37,15 +37,15 @@ export const metadata: Metadata = {
     locale: "zh_CN",
     url: "/",
     title: "OctalFlow 文档",
-    description: "OctalFlow - AI创意工作台官方文档",
+    description: "OctalFlow - AI 创意工作台官方文档",
     siteName: "OctalFlow 文档",
-    images: ["/logo.svg"],
+    images: ["/brand/octaflow-mark.png"],
   },
   twitter: {
     card: "summary_large_image",
     title: "OctalFlow 文档",
-    description: "OctalFlow - AI创意工作台官方文档",
-    images: ["/logo.svg"],
+    description: "OctalFlow - AI 创意工作台官方文档",
+    images: ["/brand/octaflow-mark.png"],
   },
   robots: {
     index: true,

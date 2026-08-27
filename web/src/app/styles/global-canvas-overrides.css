@@ -156,13 +156,52 @@ html.dark .canvas-agent-confirm-switch.ant-switch.ant-switch-checked:hover:not(.
 }
 
 .canvas-edge-generating {
-    stroke-dasharray: 8 6;
-    animation: canvas-edge-flow 0.8s linear infinite;
-    filter: drop-shadow(0 0 3px rgba(47, 128, 255, 0.6));
+    stroke-dasharray: 2 15;
+    animation: canvas-edge-flow 0.72s linear infinite;
+    filter: drop-shadow(0 0 2px rgba(70, 154, 255, 0.74));
+    will-change: stroke-dashoffset;
+}
+
+.canvas-panel-bridge-pulse {
+    animation: canvas-panel-bridge-pulse 1.6s ease-in-out infinite;
+}
+
+.canvas-composer-tether-path {
+    filter: drop-shadow(0 0 4px rgba(91, 92, 226, 0.24));
+}
+
+.canvas-composer-tether-flow {
+    stroke-dasharray: 6 14;
+    animation: canvas-composer-tether-flow 0.9s linear infinite;
+    filter: drop-shadow(0 0 3px rgba(91, 92, 226, 0.72));
+}
+
+html:not(.dark) .canvas-scene-composer {
+    box-shadow: 0 22px 70px rgba(37, 43, 74, 0.16), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+html:not(.dark) .canvas-toolbar-dock.is-composer-open,
+html:not(.dark) .canvas-zoom-dock {
+    box-shadow: 0 12px 34px rgba(45, 49, 88, 0.1);
 }
 
 @keyframes canvas-edge-flow {
     to {
-        stroke-dashoffset: -28;
+        stroke-dashoffset: -34;
     }
+}
+
+@keyframes canvas-panel-bridge-pulse {
+    0%, 100% { filter: drop-shadow(0 0 0 rgba(91, 92, 226, 0.2)); }
+    50% { filter: drop-shadow(0 0 6px rgba(91, 92, 226, 0.72)); }
+}
+
+@keyframes canvas-composer-tether-flow {
+    to { stroke-dashoffset: -40; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .canvas-edge-generating,
+    .canvas-panel-bridge-pulse,
+    .canvas-composer-tether-flow { animation: none; }
 }

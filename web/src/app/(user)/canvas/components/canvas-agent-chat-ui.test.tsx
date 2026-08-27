@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { canvasThemes } from "@/lib/canvas-theme";
-import { AgentChatComposer } from "./canvas-agent-chat-ui";
+import { AgentChatComposer, AgentChatMessage, AgentWorkingMessage } from "./canvas-agent-chat-ui";
 
 const baseProps = {
     prompt: "换成紫毛",
@@ -56,5 +56,35 @@ describe("Canvas Agent image attachments", () => {
         expect(markup).toContain(`--remove-hover-surface:${theme.node.dangerSurface}`);
         expect(markup).toContain("group-hover/remove:bg-[var(--remove-hover-surface)]");
         expect(markup).toContain("group-focus-visible/remove:bg-[var(--remove-hover-surface)]");
+    });
+});
+
+describe("Canvas Agent execution timing", () => {
+    it("shows the timestamp for each persisted chat message", () => {
+        const createdAt = "2026-08-27T08:30:00.000Z";
+        const markup = renderToStaticMarkup(<AgentChatMessage item={{ id: "message", role: "user", text: "生成三组分镜", createdAt }} theme={canvasThemes.light} user={null} />);
+
+        expect(markup).toContain(`<time dateTime="${createdAt}"`);
+    });
+
+    it("shows multi-task start time and elapsed duration while the Agent is running", () => {
+        const markup = renderToStaticMarkup(
+            <AgentWorkingMessage
+                theme={canvasThemes.light}
+                stage={{ key: "executing", text: "正在执行生成任务" }}
+                startedAt={1_000}
+                tasks={[
+                    { id: "one", title: "分镜一", status: "running", startedAt: 2_000 },
+                    { id: "two", title: "分镜二", status: "ready" },
+                ]}
+            />,
+        );
+
+        expect(markup).toContain("子任务进度 0/2");
+        expect(markup).toContain("分镜一");
+        expect(markup).toContain("执行中");
+        expect(markup).toContain("已运行");
+        expect(markup).toContain("分镜二");
+        expect(markup).toContain("等待开始");
     });
 });

@@ -51,17 +51,26 @@ describe("canvas resource mention textarea", () => {
         expect(deleteReferenceLabelAtCaret("图片10 图片1", 8, 8, "Backspace", ["图片10", "图片1"])).toEqual({ value: "图片10 ", cursor: 5 });
     });
 
-    it("keeps the textarea caret visible under the mention highlight overlay", () => {
+    it("keeps reference highlights visible above the editor surface without covering the caret", () => {
         const markup = renderToStaticMarkup(<CanvasResourceMentionTextarea value="参考 图片1 的造型" references={[image("图片1")]} onChange={() => undefined} style={{ background: "#1a1a1a", color: "#ffffff" }} />);
         const overlayStart = markup.indexOf("<div");
         const textareaStart = markup.indexOf("<textarea");
         const overlaySegment = markup.slice(overlayStart, textareaStart);
-        // 高亮层不携带背景，避免盖住底层 textarea 绘制的光标
+        const textareaSegment = markup.slice(textareaStart);
+        // 背景由外层承载，高亮层与输入层都保持透明，引用文字与光标可以同时显示。
+        expect(markup).toContain('style="background:#1a1a1a"');
         expect(overlaySegment).toContain("background:transparent");
         expect(overlaySegment).toContain("background-color:transparent");
-        expect(overlaySegment).not.toContain("background:#1a1a1a");
-        // textarea 保留背景并显式光标颜色
+        expect(textareaSegment).toContain("background:transparent");
+        expect(textareaSegment).toContain("background-color:transparent");
+        expect(textareaSegment).toContain("caret-color:#ffffff");
+    });
+
+    it("renders ordinary prompt text directly when no active reference label appears in the value", () => {
+        const markup = renderToStaticMarkup(<CanvasResourceMentionTextarea value="镜头缓慢推进" references={[image("图片1")]} onChange={() => undefined} style={{ background: "#1a1a1a", color: "#ffffff" }} />);
+
+        expect(markup).not.toContain('aria-hidden="true"');
         expect(markup).toContain("background:#1a1a1a");
-        expect(markup).toContain("caret-color:#ffffff");
+        expect(markup).toContain("color:#ffffff");
     });
 });

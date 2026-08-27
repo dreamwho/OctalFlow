@@ -1,6 +1,7 @@
 import type { CreativeRunEvent } from "@/lib/creative-runtime-contract";
 import { toSafeGenerationErrorMessage } from "./generation-errors";
 import type { AgentRun, AgentRunTask } from "./agent-run-store";
+import { isVideoRemakeComposeTask } from "./video-remake-orchestration";
 
 export function publicAgentRun(run: AgentRun) {
     return {
@@ -41,12 +42,13 @@ export function publicAgentRunEvent(event: CreativeRunEvent): CreativeRunEvent {
 }
 
 function publicAgentRunTask(task: AgentRunTask) {
-    const optimizedPrompt = task.optimizedPrompt?.trim() || publicPromptFromExecutionPrompt(task.prompt);
+    const composing = isVideoRemakeComposeTask(task);
+    const optimizedPrompt = composing ? "" : task.optimizedPrompt?.trim() || publicPromptFromExecutionPrompt(task.prompt);
     return {
         id: task.id,
         title: task.title,
         type: task.type,
-        model: task.model,
+        model: composing ? undefined : task.model,
         optimizedPrompt: optimizedPrompt || undefined,
         ratio: task.ratio,
         quality: task.quality,
@@ -58,6 +60,8 @@ function publicAgentRunTask(task: AgentRunTask) {
         speed: task.speed,
         count: task.count,
         status: task.status,
+        startedAt: task.startedAt,
+        completedAt: task.completedAt,
         error: task.error ? toSafeGenerationErrorMessage(task.error, "生成任务失败") : undefined,
     };
 }

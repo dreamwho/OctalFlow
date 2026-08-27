@@ -3,7 +3,7 @@ import { ArrowRight, CheckCircle2, ExternalLink, ShieldCheck, UsersRound } from 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { GitHubLink } from "@/components/layout/github-link";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
-import { OctalFlow_QQ_GROUP_URL } from "@/constant/community";
+import { OctalAICanvas_QQ_GROUP_URL } from "@/constant/community";
 import { APP_VERSION } from "@/constant/env";
 import { resolveSiteTitle } from "@/lib/site-brand";
 import { usePublicSessionStore } from "@/stores/use-public-session-store";
@@ -11,9 +11,9 @@ import { usePublicSessionStore } from "@/stores/use-public-session-store";
 export function UpdateCenterPanel() {
     const siteTitle = usePublicSessionStore((state) => resolveSiteTitle(state.payload?.settings?.site?.title));
     const releaseLinks = [
-        { label: "Release", href: "https://github.com/dreamwho/OctalFlow/releases", description: "查看正式版本包和升级说明" },
-        { label: "Issues", href: "https://github.com/dreamwho/OctalFlow/issues", description: "提交问题、部署异常和功能建议" },
-        { label: "Docs", href: "https://github.com/dreamwho/OctalFlow", description: "查看开源仓库与部署入口" },
+        { label: "Release", href: "https://github.com/dreamwho/OctalAICanvas/releases", description: "查看正式版本包和升级说明" },
+        { label: "Issues", href: "https://github.com/dreamwho/OctalAICanvas/issues", description: "提交问题、部署异常和功能建议" },
+        { label: "Docs", href: "https://github.com/dreamwho/OctalAICanvas", description: "查看开源仓库与部署入口" },
     ];
     const upgradeChecks = ["备份 PostgreSQL 数据库", "确认 .env / Docker 环境变量", "阅读 CHANGELOG 破坏性变更", "保留当前版本回滚方式"];
     return (
@@ -32,7 +32,7 @@ export function UpdateCenterPanel() {
                                 <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-5 sm:flex sm:flex-wrap">
                                     <VersionReleaseModal className="admin-update-primary-button inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-semibold transition sm:h-10 sm:rounded-xl sm:px-4 sm:text-sm" label="查看更新日志" />
                                     <a
-                                        href="https://github.com/dreamwho/OctalFlow/releases"
+                                        href="https://github.com/dreamwho/OctalAICanvas/releases"
                                         target="_blank"
                                         rel="noreferrer"
                                         className="admin-update-secondary-link inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition sm:h-10 sm:gap-2 sm:rounded-xl sm:px-4 sm:text-sm"
@@ -41,7 +41,7 @@ export function UpdateCenterPanel() {
                                         打开 Release
                                     </a>
                                     <a
-                                        href={OctalFlow_QQ_GROUP_URL}
+                                        href={OctalAICanvas_QQ_GROUP_URL}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="admin-update-secondary-link col-span-2 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition sm:col-auto sm:h-10 sm:gap-2 sm:rounded-xl sm:px-4 sm:text-sm"

@@ -334,7 +334,7 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
     },
     {
         id: "octalaicanvas-recommended",
-        label: "OctalFlow推荐",
+        label: "OctalFlow 推荐",
         description: "OctalFlow 推荐的 JSON 异步视频协议，支持多模态参考素材与持久结果地址。",
         apiFormat: "openai",
         authMode: "bearer",

@@ -21,10 +21,11 @@ export type HomeNavigationItem = {
 };
 
 export const HOME_NAVIGATION = [
-    { label: "创作 Agent", href: "/create", action: "protected" },
-    { label: "短剧制作", href: "/drama", action: "protected" },
-    { label: "作品广场", href: "/gallery", action: "link" },
-    { label: "价格方案", href: "/billing", action: "billing" },
+    { label: "发现", href: "/gallery", action: "link" },
+    { label: "创作", href: "/create", action: "protected" },
+    { label: "资产", href: "/assets", action: "protected" },
+    { label: "Skill", href: "/create", action: "protected" },
+    { label: "价格", href: "/billing", action: "billing" },
 ] as const satisfies readonly HomeNavigationItem[];
 
 export const HOME_CREATION_MODES = [

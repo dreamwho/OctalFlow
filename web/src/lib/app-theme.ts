@@ -3,8 +3,8 @@ import { theme as antdTheme } from "antd";
 
 const neutral = {
     light: {
-        primary: "#171717",
-        primaryHover: "#000000",
+        primary: "#5b5ce2",
+        primaryHover: "#696eff",
         primaryText: "#ffffff",
         menuBg: "#f5f5f5",
         menuText: "#171717",
@@ -23,9 +23,9 @@ const neutral = {
         textSecondary: "#697381",
     },
     dark: {
-        primary: "#fafafa",
-        primaryHover: "#ffffff",
-        primaryText: "#171717",
+        primary: "#7277ff",
+        primaryHover: "#8589ff",
+        primaryText: "#ffffff",
         menuBg: "#262626",
         menuText: "#fafafa",
         selectActiveBg: "#262b31",
@@ -49,7 +49,7 @@ export function getAntThemeConfig(dark: boolean): ThemeConfig {
 
     return {
         algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        cssVar: { key: dark ? "octalaicanvas-dark" : "octalaicanvas-light" },
+        cssVar: { key: dark ? "octaflow-dark" : "octaflow-light" },
         token: {
             colorPrimary: color.primary,
             colorInfo: color.primary,

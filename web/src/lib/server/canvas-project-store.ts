@@ -349,7 +349,7 @@ function withMutationId(project: CanvasProject, mutationId: string): StoredCanva
 
 function toPublicProject(project: StoredCanvasProject): CanvasProject {
     const { __canvasLastMutationId: _mutationId, ...publicProject } = project;
-    return publicProject;
+    return { ...publicProject, title: publicCanvasTitle(publicProject.title) };
 }
 
 function mutateDatabase(mutator: (database: CanvasProjectDatabase) => CanvasProjectDatabase) {
@@ -363,7 +363,7 @@ function mapPostgresOverview(row: Record<string, unknown>): CreateOverviewProjec
     const seen = new Set<string>();
     return {
         id: String(row.id || ""),
-        title: String(row.title || ""),
+        title: publicCanvasTitle(String(row.title || "")),
         updatedAt: isoDate(row.updated_at),
         nodeCount: Math.max(0, Number(row.node_count) || 0),
         connectionCount: Math.max(0, Number(row.connection_count) || 0),
@@ -387,12 +387,16 @@ function mapProjectSummary(row: Record<string, unknown>): CanvasProjectSummary {
         id: String(row.id || ""),
         ...(sourceHandoffId ? { sourceHandoffId } : {}),
         ...(creativeConversationId ? { creativeConversationId } : {}),
-        title: String(row.title || ""),
+        title: publicCanvasTitle(String(row.title || "")),
         nodeCount: Math.max(0, Number(row.node_count) || 0),
         connectionCount: Math.max(0, Number(row.connection_count) || 0),
         createdAt: isoDate(row.created_at),
         updatedAt: isoDate(row.updated_at),
     };
+}
+
+function publicCanvasTitle(value: string) {
+    return value.replace(/^(?:VOZEB PRO|OctalAICanvas)( 画布(?: \d+)?)$/, "OctalFlow$1");
 }
 
 function jsonArray(value: unknown): unknown[] {

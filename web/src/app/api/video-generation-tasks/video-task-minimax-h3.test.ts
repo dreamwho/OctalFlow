@@ -58,6 +58,17 @@ describe("minimax-h3 multipart form", () => {
         expect(imageReferenceToFile).toHaveBeenCalledWith({ dataUrl: "", url: "/api/reference-assets/token?purpose=provider-read&expires=1&signature=test" }, "reference-1.png", "http://localhost:3000", "");
     });
 
+    it("uploads a server-owned image even when it uses the configured public tunnel origin", async () => {
+        const publicOrigin = "https://active-tunnel.example.com";
+        const imageUrl = `${publicOrigin}/api/generation-log-assets/permanent/shot.png?purpose=provider-read&signature=test`;
+
+        const form = await build([reference({ url: imageUrl })], { publicOrigin });
+
+        expect(form!.get("mode")).toBe("ref2va");
+        expect(form!.get("images")).toBeInstanceOf(File);
+        expect(imageReferenceToFile).toHaveBeenCalledWith({ dataUrl: "", url: "/api/generation-log-assets/permanent/shot.png?purpose=provider-read&signature=test" }, "reference-1.png", "http://localhost:3000", "");
+    });
+
     it("keeps first and last frame order for fl2va", async () => {
         const form = await build([reference({ role: "first_frame", url: LOCAL_IMAGE }), reference({ role: "last_frame", url: `${LOCAL_IMAGE}&index=2` })]);
         expect(form!.get("mode")).toBe("fl2va");

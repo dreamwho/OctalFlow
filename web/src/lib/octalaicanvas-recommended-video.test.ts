@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { assertOctalaicanvasRecommendedVideoReferences, buildOctalaicanvasRecommendedVideoRequest } from "./octalaicanvas-recommended-video";
 
-describe("OctalFlow recommended video protocol", () => {
+describe("OctalAICanvas recommended video protocol", () => {
     it("forces the 720p Seedance model to disable generated audio", () => {
         expect(
             buildOctalaicanvasRecommendedVideoRequest({

@@ -15,6 +15,8 @@ export type TextPlanningCandidate = {
 };
 export type TextPlanningTool = { name: string; description: string; parameters: Record<string, unknown> };
 export type TextPlanningCall = { arguments: string; headers: Headers; protocol: TextPlanningProtocol; elapsedMs: number };
+export type TextPlanningMessageContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+export type TextPlanningMessage = { role: string; content: TextPlanningMessageContent };
 
 type RuntimeState = {
     preferred?: TextPlanningProtocol;
@@ -31,7 +33,7 @@ export type StructuredTextRequest = {
     origin: string;
     cookie: string;
     candidate: TextPlanningCandidate;
-    messages: Array<{ role: string; content: string }>;
+    messages: TextPlanningMessage[];
     tool: TextPlanningTool;
     headers?: HeadersInit;
     signal?: AbortSignal;
@@ -93,7 +95,7 @@ export function resetTextPlanningRuntime() {
     states.clear();
 }
 
-function planningProtocolRequest(candidate: TextPlanningCandidate, messages: Array<{ role: string; content: string }>): ProtocolRequest {
+function planningProtocolRequest(candidate: TextPlanningCandidate, messages: TextPlanningMessage[]): ProtocolRequest {
     const resolved = resolveTextProtocol({
         model: candidate.upstreamModel,
         apiFormat: candidate.channel.apiFormat,
@@ -106,32 +108,32 @@ function planningProtocolRequest(candidate: TextPlanningCandidate, messages: Arr
     return chatRequest(candidate.upstreamModel, messages, resolved.path);
 }
 
-function chatRequest(model: string, messages: Array<{ role: string; content: string }>, path = "/chat/completions"): ProtocolRequest {
+function chatRequest(model: string, messages: TextPlanningMessage[], path = "/chat/completions"): ProtocolRequest {
     return { protocol: "chat", path, body: { model, messages } };
 }
 
-function responsesRequest(model: string, messages: Array<{ role: string; content: string }>, path = "/responses"): ProtocolRequest {
-    return { protocol: "responses", path, body: { model, input: messages } };
+function responsesRequest(model: string, messages: TextPlanningMessage[], path = "/responses"): ProtocolRequest {
+    return { protocol: "responses", path, body: { model, input: messages.map((message) => ({ role: message.role, content: responsesPlanningContent(message.content) })) } };
 }
 
-function geminiRequest(model: string, configuredPath: string, messages: Array<{ role: string; content: string }>): ProtocolRequest {
+function geminiRequest(model: string, configuredPath: string, messages: TextPlanningMessage[]): ProtocolRequest {
     const systemText = messages
         .filter((message) => message.role === "system")
-        .map((message) => message.content)
+        .map((message) => planningContentText(message.content))
         .join("\n\n");
     const path = configuredPath || `/models/${encodeURIComponent(model.replace(/^models\//, ""))}:generateContent`;
     return {
         protocol: "gemini",
         path,
         body: {
-            contents: messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: message.content }] })),
+            contents: messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: geminiPlanningParts(message.content) })),
             ...(systemText ? { systemInstruction: { parts: [{ text: systemText }] } } : {}),
         },
     };
 }
 
-function customRequest(model: string, configuredPath: string, requestTemplate: string, resultField: string, messages: Array<{ role: string; content: string }>): ProtocolRequest {
-    const prompt = messages.map((message) => `${message.role}: ${message.content}`).join("\n\n");
+function customRequest(model: string, configuredPath: string, requestTemplate: string, resultField: string, messages: TextPlanningMessage[]): ProtocolRequest {
+    const prompt = messages.map((message) => `${message.role}: ${planningContentText(message.content)}`).join("\n\n");
     const values = { model, messages, prompt, input: prompt, text: prompt };
     return { protocol: "custom", path: configuredPath, body: buildProviderRequest(requestTemplate, values, values), resultField };
 }
@@ -189,15 +191,34 @@ function readProtocolArguments(payload: Record<string, unknown>, toolName: strin
 
 function planningMessages(input: StructuredTextRequest) {
     const instruction = `请先在模型内部完成需求理解、约束分析、模型选择、任务拆分与依赖规划，再只返回一个严格 JSON 对象，作为 ${input.tool.name} 的最终参数。任务用途：${input.tool.description}。不要使用 Markdown、代码围栏、解释或额外文字。JSON 必须符合以下 Schema：${JSON.stringify(input.tool.parameters)}`;
-    if (input.messages[0]?.role === "system") return [{ ...input.messages[0], content: `${instruction}\n\n${input.messages[0].content}` }, ...input.messages.slice(1)];
+    if (input.messages[0]?.role === "system") return [{ ...input.messages[0], content: `${instruction}\n\n${planningContentText(input.messages[0].content)}` }, ...input.messages.slice(1)];
     return [{ role: "system", content: instruction }, ...input.messages];
+}
+
+function responsesPlanningContent(content: TextPlanningMessageContent) {
+    if (!Array.isArray(content)) return content;
+    return content.map((item) => (item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url }));
+}
+
+function geminiPlanningParts(content: TextPlanningMessageContent) {
+    if (!Array.isArray(content)) return [{ text: content }];
+    return content.map((item) => {
+        if (item.type === "text") return { text: item.text };
+        const match = item.image_url.url.match(/^data:([^;,]+);base64,(.+)$/);
+        return match ? { inlineData: { mimeType: match[1], data: match[2] } } : { fileData: { mimeType: "image/jpeg", fileUri: item.image_url.url } };
+    });
+}
+
+function planningContentText(content: TextPlanningMessageContent) {
+    if (!Array.isArray(content)) return content;
+    return content.map((item) => (item.type === "text" ? item.text : "[storyboard frame]")).join("\n");
 }
 
 function chatArguments(payload: Record<string, unknown>, toolName: string, allowNaturalLanguage: boolean) {
     const message = firstRecord(payload.choices)?.message as Record<string, unknown> | undefined;
     const call = records(message?.tool_calls).find((item) => record(item.function)?.name === toolName);
     const argumentsText = record(call?.function)?.arguments;
-    if (typeof argumentsText === "string" && argumentsText.trim()) return argumentsText.trim();
+    if (typeof argumentsText === "string" && argumentsText.trim()) return strictJsonObjectText(argumentsText) || (allowNaturalLanguage ? argumentsText.trim() : "");
     const content = typeof message?.content === "string" ? message.content.trim() : "";
     if (content) return strictJsonObjectText(content) || (allowNaturalLanguage ? content : "");
     // Some compatible gateways wrap a Chat result as a Responses payload.
@@ -207,7 +228,7 @@ function chatArguments(payload: Record<string, unknown>, toolName: string, allow
 function responsesArguments(payload: Record<string, unknown>, toolName: string, allowNaturalLanguage: boolean) {
     const output = records(payload.output);
     const call = output.find((item) => item.type === "function_call" && item.name === toolName);
-    if (typeof call?.arguments === "string" && call.arguments.trim()) return call.arguments.trim();
+    if (typeof call?.arguments === "string" && call.arguments.trim()) return strictJsonObjectText(call.arguments) || (allowNaturalLanguage ? call.arguments.trim() : "");
     const direct = typeof payload.output_text === "string" ? payload.output_text.trim() : "";
     const content =
         direct ||

@@ -1,0 +1,296 @@
+.page {
+    background: #f5f6fa;
+}
+
+:global(.dark) .page {
+    background: #07090f;
+}
+
+.landingScroll {
+    background: #f5f6fa;
+}
+
+:global(.dark) .landingScroll {
+    background: #07090f;
+}
+
+.landing {
+    min-height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+.landingBackdrop {
+    inset: 0 0 auto;
+    height: min(900px, 100svh);
+    overflow: hidden;
+    pointer-events: none;
+    position: absolute;
+}
+
+.landingBackdrop::before,
+.landingBackdrop span {
+    background-image: url("/brand/octaflow-flow-light.png");
+    background-position: center 18%;
+    background-repeat: no-repeat;
+    background-size: cover;
+    content: "";
+    inset: -10%;
+    position: absolute;
+}
+
+.landingBackdrop::before {
+    animation: studio-pan 18s ease-in-out infinite alternate;
+    opacity: 0.98;
+    transform: scale(1.08);
+}
+
+.landingBackdrop span {
+    animation: studio-drift 13s ease-in-out infinite alternate;
+    mix-blend-mode: multiply;
+    opacity: 0.22;
+    transform: scale(1.18) scaleX(-1);
+}
+
+.landingBackdrop::after {
+    background: linear-gradient(180deg, rgba(247, 248, 253, 0.04) 0%, rgba(247, 248, 253, 0.38) 56%, #f5f6fa 96%);
+    content: "";
+    inset: 0;
+    position: absolute;
+}
+
+:global(.dark) .landingBackdrop::before,
+:global(.dark) .landingBackdrop span {
+    background-image: url("/brand/octaflow-flow-dark.png");
+}
+
+:global(.dark) .landingBackdrop span {
+    mix-blend-mode: screen;
+    opacity: 0.34;
+}
+
+:global(.dark) .landingBackdrop::after {
+    background: linear-gradient(180deg, rgba(4, 7, 14, 0.1) 0%, rgba(5, 8, 16, 0.38) 58%, #07090f 98%);
+}
+
+.landingHero {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin: 0 auto;
+    min-height: min(860px, calc(100svh - 16px));
+    padding: 54px 28px 48px;
+    position: relative;
+    width: min(1180px, 100%);
+    z-index: 1;
+}
+
+.landingEyebrow {
+    align-items: center;
+    color: #596279;
+    display: flex;
+    font-size: 11px;
+    font-weight: 720;
+    gap: 9px;
+    letter-spacing: 0.18em;
+}
+
+.landingEyebrow span {
+    background: #6266ee;
+    border-radius: 999px;
+    box-shadow: 0 0 0 5px rgba(98, 102, 238, 0.12);
+    height: 6px;
+    width: 6px;
+}
+
+:global(.dark) .landingEyebrow {
+    color: #b9c0d2;
+}
+
+.landingTitle {
+    color: #121523;
+    font-size: clamp(46px, 6vw, 88px);
+    font-weight: 760;
+    letter-spacing: -0.068em;
+    line-height: 0.98;
+    margin: 22px auto 0;
+    max-width: 1000px;
+    text-align: center;
+    text-wrap: balance;
+}
+
+.landingTitle span {
+    color: #5a5ed9;
+    display: block;
+}
+
+:global(.dark) .landingTitle {
+    color: #f6f7fb;
+}
+
+:global(.dark) .landingTitle span {
+    color: #9c9fff;
+}
+
+.landingSubtitle {
+    color: #5f687d;
+    font-size: clamp(14px, 1.2vw, 18px);
+    line-height: 1.7;
+    margin: 19px auto 0;
+    max-width: 680px;
+    text-align: center;
+}
+
+:global(.dark) .landingSubtitle {
+    color: #aab2c4;
+}
+
+.landingComposer {
+    margin-top: clamp(30px, 4.6vh, 48px);
+    width: min(840px, 100%);
+}
+
+.landingComposer :global(.creative-composer-input)::placeholder {
+    color: rgba(35, 31, 62, 0.54) !important;
+    opacity: 1;
+}
+
+:global(.dark) .landingComposer :global(.creative-composer-input)::placeholder {
+    color: rgba(245, 243, 255, 0.58) !important;
+}
+
+.landingComposer :global(.creative-composer) {
+    background: rgba(255, 255, 255, 0.76);
+    border-color: rgba(96, 103, 160, 0.2);
+    box-shadow: 0 28px 82px rgba(31, 38, 92, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(28px) saturate(1.24);
+}
+
+:global(.dark) .landingComposer :global(.creative-composer) {
+    background: rgba(10, 14, 25, 0.76);
+    border-color: rgba(158, 164, 255, 0.22);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.skillRail {
+    display: flex;
+    gap: 7px;
+    margin-top: 14px;
+    max-width: 920px;
+    overflow-x: auto;
+    padding: 2px 4px 8px;
+    scrollbar-width: none;
+    width: 100%;
+}
+
+.skillRail::-webkit-scrollbar {
+    display: none;
+}
+
+.skillRail button,
+.skillLoading {
+    align-items: center;
+    backdrop-filter: blur(18px);
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(95, 102, 145, 0.18);
+    border-radius: 999px;
+    color: #3d4557;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 620;
+    gap: 7px;
+    height: 34px;
+    padding: 0 12px;
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.skillRail button:hover {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(90, 94, 217, 0.46);
+    transform: translateY(-1px);
+}
+
+:global(.dark) .skillRail button,
+:global(.dark) .skillLoading {
+    background: rgba(13, 18, 31, 0.62);
+    border-color: rgba(157, 164, 224, 0.2);
+    color: #e0e3ec;
+}
+
+:global(.dark) .skillRail button:hover {
+    background: rgba(25, 31, 49, 0.9);
+    border-color: rgba(156, 159, 255, 0.52);
+}
+
+.scrollCue {
+    align-items: center;
+    bottom: 24px;
+    color: #7b8394;
+    display: flex;
+    font-size: 11px;
+    gap: 9px;
+    letter-spacing: 0.08em;
+    position: absolute;
+}
+
+.scrollCue span {
+    animation: scroll-pulse 1.8s ease-in-out infinite;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    height: 22px;
+    position: relative;
+    width: 13px;
+}
+
+.scrollCue span::after {
+    background: currentColor;
+    border-radius: 999px;
+    content: "";
+    height: 4px;
+    left: 5px;
+    position: absolute;
+    top: 4px;
+    width: 1px;
+}
+
+.landingContent {
+    margin: 0 auto;
+    padding: 12px 28px 56px;
+    position: relative;
+    width: min(1280px, 100%);
+    z-index: 1;
+}
+
+@keyframes studio-pan {
+    from { transform: scale(1.08) translate3d(-1.5%, -1%, 0); }
+    to { transform: scale(1.16) translate3d(2%, 1.5%, 0); }
+}
+
+@keyframes studio-drift {
+    from { transform: scale(1.18) scaleX(-1) translate3d(2%, -1%, 0); }
+    to { transform: scale(1.28) scaleX(-1) translate3d(-2%, 2%, 0); }
+}
+
+@keyframes scroll-pulse {
+    0%, 100% { opacity: 0.48; transform: translateY(0); }
+    50% { opacity: 1; transform: translateY(3px); }
+}
+
+@media (max-width: 720px) {
+    .landingBackdrop { height: 760px; }
+    .landingHero { justify-content: flex-start; min-height: 740px; padding: 74px 13px 48px; }
+    .landingTitle { font-size: clamp(40px, 12vw, 58px); line-height: 1.02; margin-top: 18px; }
+    .landingSubtitle { font-size: 14px; margin-top: 14px; max-width: 90%; }
+    .landingComposer { margin-top: 28px; }
+    .skillRail { justify-content: flex-start; margin-top: 10px; }
+    .scrollCue { bottom: 18px; }
+    .landingContent { padding: 4px 13px 36px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .landingBackdrop::before,
+    .landingBackdrop span,
+    .scrollCue span { animation: none; }
+}

@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
     watch: vi.fn(),
 }));
 
-vi.mock("@/services/api/creative", () => ({ retryCreativeAgentTask: mocks.retry }));
+vi.mock("@/services/api/creative", () => ({ retryCreativeAgentTaskWithState: mocks.retry }));
 vi.mock("./canvas-agent-run-client", () => ({ watchCanvasAgentRun: mocks.watch }));
 
 import { CanvasNodeType, type CanvasNodeData } from "../types";
@@ -14,11 +14,22 @@ import { retryCanvasAgentNode } from "./canvas-agent-node-retry";
 describe("Canvas Agent node retry", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mocks.retry.mockResolvedValue({});
+        mocks.retry.mockResolvedValue({ run: { tasks: [{ id: "task", status: "running" }] } });
         mocks.watch.mockImplementation(async (_runId, handlers) => {
             handlers.onOps([{ type: "update_node", id: "output-run-0-0", metadata: { status: "loading" } }]);
             handlers.onOps([{ type: "update_node", id: "output-run-0-0", metadata: { status: "success" } }]);
         });
+    });
+
+    it("reconciles a task completed in another tab without submitting it again", async () => {
+        const applyOps = vi.fn();
+        const ops = [{ type: "update_node", id: "output-run-0-0", metadata: { status: "success", content: "/completed.webp" } }];
+        mocks.retry.mockResolvedValue({ run: { tasks: [{ id: "task", status: "completed" }] }, ops, reconciled: true, retriedTaskIds: [] });
+
+        await expect(retryCanvasAgentNode(node(), applyOps)).resolves.toBe(true);
+
+        expect(applyOps).toHaveBeenCalledWith(ops);
+        expect(mocks.watch).not.toHaveBeenCalled();
     });
 
     it("retries the persisted Agent task and updates the same output node", async () => {

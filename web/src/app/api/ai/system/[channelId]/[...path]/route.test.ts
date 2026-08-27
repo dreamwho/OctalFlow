@@ -512,7 +512,7 @@ describe("Stable Diffusion proxy", () => {
     });
 });
 
-describe("OctalFlow recommended video proxy", () => {
+describe("OctalAICanvas recommended video proxy", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);

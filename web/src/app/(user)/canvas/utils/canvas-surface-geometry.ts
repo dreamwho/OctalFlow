@@ -16,6 +16,37 @@ export function previewPath(start: Position, end: Position, handleType: "source"
     return smoothCurve(start, end, handleType === "source" ? 1 : -1);
 }
 
+export type PromptComposerTetherGeometry = {
+    path: string;
+    source: Position;
+    target: Position;
+};
+
+export const PROMPT_COMPOSER_MIN_HEIGHT = 330;
+export const PROMPT_COMPOSER_DEFAULT_MAX_HEIGHT = 410;
+export const PROMPT_COMPOSER_BOTTOM_INSET = 16;
+export const PROMPT_COMPOSER_SAFE_TOP = 136;
+
+export function resolvePromptComposerHeight(surfaceHeight: number, requestedHeight?: number | null) {
+    const defaultHeight = Math.min(PROMPT_COMPOSER_DEFAULT_MAX_HEIGHT, Math.max(PROMPT_COMPOSER_MIN_HEIGHT, surfaceHeight * 0.58));
+    const maxHeight = Math.max(PROMPT_COMPOSER_MIN_HEIGHT, surfaceHeight - PROMPT_COMPOSER_SAFE_TOP - PROMPT_COMPOSER_BOTTOM_INSET);
+    return Math.min(maxHeight, Math.max(PROMPT_COMPOSER_MIN_HEIGHT, requestedHeight ?? defaultHeight));
+}
+
+export function resolvePromptComposerTether(node: CanvasNodeData, viewport: ViewportTransform, surface: { width: number; height: number }, requestedHeight?: number | null): PromptComposerTetherGeometry | null {
+    if (surface.width < 768) return null;
+    const panelHeight = resolvePromptComposerHeight(surface.height, requestedHeight);
+    const source = {
+        x: viewport.x + (node.position.x + node.width / 2) * viewport.k,
+        y: viewport.y + (node.position.y + node.height) * viewport.k,
+    };
+    const target = { x: surface.width / 2, y: surface.height - panelHeight - PROMPT_COMPOSER_BOTTOM_INSET };
+    const gap = target.y - source.y;
+    if (gap < 8) return null;
+    const bend = Math.min(120, Math.max(4, gap * 0.42));
+    return { source, target, path: `M ${source.x} ${source.y} C ${source.x} ${source.y + bend}, ${target.x} ${target.y - bend}, ${target.x} ${target.y}` };
+}
+
 export function samePosition(a: Position, b: Position) {
     return Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01;
 }

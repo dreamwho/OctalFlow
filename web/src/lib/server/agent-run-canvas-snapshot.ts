@@ -12,6 +12,9 @@ export type AgentRunCanvasSnapshotNode = {
         url?: string;
         naturalWidth?: number;
         naturalHeight?: number;
+        durationMs?: number;
+        selectedSkillIds?: string[];
+        remakeMode?: string;
     };
 };
 
@@ -132,6 +135,9 @@ function normalizeNode(node: Record<string, unknown>, id: string, type: string):
             url: safeMediaUrl(metadata.serverUrl) || safeMediaUrl(metadata.remoteUrl) || safeMediaUrl(metadata.url),
             naturalWidth: positiveNumber(metadata.naturalWidth),
             naturalHeight: positiveNumber(metadata.naturalHeight),
+            durationMs: positiveNumber(metadata.durationMs),
+            selectedSkillIds: uniqueStrings(metadata.selectedSkillIds),
+            remakeMode: optionalText(metadata.remakeMode),
         },
     };
 }

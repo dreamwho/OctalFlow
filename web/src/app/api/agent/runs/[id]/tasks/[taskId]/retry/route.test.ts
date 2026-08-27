@@ -106,6 +106,59 @@ describe("Agent child task retry concurrency", () => {
         expect(mocks.runGenerationTaskRecoveryBatch).toHaveBeenCalledTimes(1);
     });
 
+    it("reconciles a task completed in another tab instead of rejecting the stale retry", async () => {
+        mocks.getAgentRun.mockResolvedValue({
+            id: "run",
+            userId: "user",
+            conversationId: "conversation-one",
+            status: "completed",
+            tasks: [
+                {
+                    id: "task",
+                    title: "Vlog分镜1",
+                    type: "image",
+                    prompt: "晨间工作室",
+                    count: 1,
+                    dependencies: [],
+                    status: "completed",
+                    attempts: 2,
+                    result: { results: [{ serverUrl: "/api/media/completed.webp", width: 1024, height: 1024 }] },
+                },
+            ],
+        });
+
+        const response = await POST(new Request("http://localhost/api/agent/runs/run/tasks/task/retry", { method: "POST" }), { params: Promise.resolve({ id: "run", taskId: "task" }) });
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(payload.data).toMatchObject({ reconciled: true, retriedTaskIds: [], run: { status: "completed", tasks: [{ id: "task", status: "completed" }] } });
+        expect(payload.data.ops).toContainEqual({
+            type: "update_node",
+            id: "output-run-0-0",
+            patch: { title: "Vlog分镜1" },
+            metadata: expect.objectContaining({ status: "success", content: "/api/media/completed.webp", agentRunId: "run", agentTaskId: "task" }),
+        });
+        expect(mocks.getAuthSettings).not.toHaveBeenCalled();
+        expect(mocks.updateAgentRunById).not.toHaveBeenCalled();
+        expect(mocks.scheduleGenerationTask).not.toHaveBeenCalled();
+    });
+
+    it("reconciles a concurrent retry that changed state before the guarded update", async () => {
+        const failedRun = { id: "run", userId: "user", status: "failed", tasks: [{ id: "task", title: "分镜", type: "image", count: 1, dependencies: [], status: "failed", attempts: 1 }] };
+        const runningRun = { ...failedRun, status: "running", tasks: [{ ...failedRun.tasks[0], status: "running", startedAt: 100 }] };
+        mocks.countActive.mockResolvedValue(0);
+        mocks.getAgentRun.mockResolvedValueOnce(failedRun).mockResolvedValueOnce(runningRun);
+        mocks.updateAgentRunById.mockResolvedValue(null);
+
+        const response = await POST(new Request("http://localhost/api/agent/runs/run/tasks/task/retry", { method: "POST" }), { params: Promise.resolve({ id: "run", taskId: "task" }) });
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(payload.data).toMatchObject({ reconciled: true, retriedTaskIds: [], run: { status: "running", tasks: [{ id: "task", status: "running" }] } });
+        expect(payload.data.ops).toContainEqual(expect.objectContaining({ type: "update_node", id: "output-run-0-0", metadata: expect.objectContaining({ status: "loading" }) }));
+        expect(mocks.scheduleGenerationTask).not.toHaveBeenCalled();
+    });
+
     it("discards failed child task IDs before starting a new retry", async () => {
         const run = {
             id: "run",
@@ -120,6 +173,8 @@ describe("Agent child task retry concurrency", () => {
                     taskIds: ["child-failed"],
                     childTasks: [{ id: "child-failed", status: "failed", attempt: 3, error: "上游超时" }],
                     error: "视频生成超时",
+                    startedAt: 100,
+                    completedAt: 200,
                 },
             ],
         };
@@ -131,7 +186,7 @@ describe("Agent child task retry concurrency", () => {
 
         expect(response.status).toBe(200);
         const tasks = mocks.updateAgentRunById.mock.calls[0]?.[1]?.tasks;
-        expect(tasks).toEqual([expect.objectContaining({ id: "task", status: "ready", attempts: 3, taskId: undefined, taskIds: undefined, childTasks: undefined, result: undefined, error: undefined })]);
+        expect(tasks).toEqual([expect.objectContaining({ id: "task", status: "ready", attempts: 3, taskId: undefined, taskIds: undefined, childTasks: undefined, result: undefined, error: undefined, startedAt: undefined, completedAt: undefined })]);
         expect(mocks.scheduleGenerationTask).toHaveBeenCalledWith("agent", "run", expect.objectContaining({ executionPhase: "created", nextPollAt: expect.any(Number), lastUpstreamStatus: "task_retry" }));
     });
 

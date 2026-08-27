@@ -98,6 +98,64 @@ describe("Canvas Agent 事件流", () => {
         expect(ops).toEqual([{ type: "update_node", id: "output-run-0-0", metadata: { status: "cancelled" } }]);
     });
 
+    it("reports the selected Skill and visible storyboard count from the plan", async () => {
+        vi.stubGlobal("EventSource", FakeEventSource);
+        const selectedSkills: unknown[] = [];
+        const summaries: unknown[] = [];
+        const promise = watchCanvasAgentRun("run", {
+            onPlan: (_ops, _reply, summary) => summaries.push(summary),
+            onSkills: (skills) => selectedSkills.push(skills),
+            onAssistant: () => undefined,
+            onStage: () => undefined,
+            onPaused: () => undefined,
+            onOps: () => undefined,
+        });
+
+        FakeEventSource.instance.emit("skills.selected", { data: { skills: [{ id: "skill-real-vlog", name: "真人感 Vlog 导演" }] } });
+        FakeEventSource.instance.emit("canvas.ops", {
+            data: {
+                ops: Array.from({ length: 6 }, (_, index) => ({ type: "add_node", nodeType: "task", title: `Vlog分镜${index + 1}` })),
+            },
+        });
+        FakeEventSource.instance.emit("run.completed", { data: { reply: "完成" } });
+        await promise;
+
+        expect(selectedSkills).toEqual([[{ id: "skill-real-vlog", name: "真人感 Vlog 导演" }]]);
+        expect(summaries).toEqual([{ taskCount: 6, label: "本轮计划：6 个分镜" }]);
+    });
+
+    it("streams task start and completion timing for the multi-task progress card", async () => {
+        vi.stubGlobal("EventSource", FakeEventSource);
+        const progress: unknown[] = [];
+        const promise = watchCanvasAgentRun("run", {
+            onPlan: () => undefined,
+            onAssistant: () => undefined,
+            onStage: () => undefined,
+            onPaused: () => undefined,
+            onOps: () => undefined,
+            onRunProgress: (value) => progress.push(value),
+        });
+
+        FakeEventSource.instance.emit("run.snapshot", {
+            status: "running",
+            timings: { requestAcceptedAt: 100 },
+            tasks: [
+                { id: "one", title: "分镜一", status: "ready" },
+                { id: "two", title: "分镜二", status: "ready" },
+            ],
+        });
+        FakeEventSource.instance.emit("task.running", { data: { taskId: "one", title: "分镜一", status: "running", startedAt: 200 } });
+        FakeEventSource.instance.emit("task.completed", { data: { taskId: "one", title: "分镜一", status: "completed", startedAt: 200, completedAt: 500 } });
+        FakeEventSource.instance.emit("run.completed", { data: { reply: "完成" } });
+        await promise;
+
+        expect(progress).toEqual([
+            { startedAt: 100, tasks: [{ id: "one", title: "分镜一", status: "ready" }, { id: "two", title: "分镜二", status: "ready" }] },
+            { startedAt: 100, tasks: [{ id: "one", title: "分镜一", status: "running", startedAt: 200 }, { id: "two", title: "分镜二", status: "ready" }] },
+            { startedAt: 100, tasks: [{ id: "one", title: "分镜一", status: "completed", startedAt: 200, completedAt: 500 }, { id: "two", title: "分镜二", status: "ready" }] },
+        ]);
+    });
+
     it("keeps failed task identity and applies retry repair operations", async () => {
         vi.stubGlobal("EventSource", FakeEventSource);
         const messages: Array<{ text: string; detail: unknown }> = [];

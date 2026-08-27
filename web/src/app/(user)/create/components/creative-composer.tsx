@@ -20,6 +20,7 @@ import { CreativeAssetMentionPicker } from "./creative-asset-mention-picker";
 import { CreativeGenerationControls, type CreativeModelOption } from "./creative-generation-controls";
 import { CreativeModeIcon, creativeModeOptions } from "@/components/creative-generation-preferences";
 import { CreativeVideoFrameControls } from "./creative-video-frame-controls";
+import { creativeSkillCommandAtCursor, creativeSkillMatchesQuery, removeCreativeSkillCommand, type CreativeSkillCommand } from "./creative-skill-command";
 
 type SkillOption = {
     id: string;
@@ -46,7 +47,7 @@ export function CreativeComposer({
     selectedAssetIds,
     skills,
     skillsLoading,
-    selectedSkill,
+    selectedSkills,
     models,
     selectedModels,
     smartPlanning,
@@ -85,7 +86,7 @@ export function CreativeComposer({
     selectedAssetIds: string[];
     skills: SkillOption[];
     skillsLoading: boolean;
-    selectedSkill?: SkillOption;
+    selectedSkills: SkillOption[];
     models: CreativeModelOption[];
     selectedModels: CreativeModelOption[];
     smartPlanning: boolean;
@@ -95,7 +96,7 @@ export function CreativeComposer({
     onRemoveAttachment: (id: string) => void;
     onReferenceAsset: (id: string) => void;
     onSelectSkill: (skill: SkillOption) => void;
-    onRemoveSkill: () => void;
+    onRemoveSkill: (id: string) => void;
     onToggleModel: (model: CreativeModelOption) => void;
     onClearModels: () => void;
     onToggleSmartPlanning: () => void;
@@ -111,6 +112,7 @@ export function CreativeComposer({
 }) {
     const [ready, setReady] = useState(false);
     const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+    const [skillCommand, setSkillCommand] = useState<CreativeSkillCommand | null>(null);
     const [modePickerOpen, setModePickerOpen] = useState(false);
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
     const [skillCategory, setSkillCategory] = useState<SkillCategory>("all");
@@ -119,7 +121,7 @@ export function CreativeComposer({
     const { scrollRef: skillCategoryScrollRef, dragScrollProps: skillCategoryDragScrollProps } = useHorizontalMouseDragScroll<HTMLDivElement>();
 
     const skillCategories = skillCategoryOptions(skills);
-    const visibleSkills = skills.filter((skill) => matchesSkillCategory(skill, skillCategory));
+    const visibleSkills = skills.filter((skill) => matchesSkillCategory(skill, skillCategory) && creativeSkillMatchesQuery(skill, skillCommand?.query || ""));
     const currentMode = creativeModeOptions.find((option) => option.value === creationMode) || creativeModeOptions[0];
     const videoPreference = generationPreferences.video;
     const frameMode = videoPreference?.referenceMode || "reference";
@@ -144,6 +146,7 @@ export function CreativeComposer({
         if (!compact) return;
         setModePickerOpen(false);
         setSkillPickerOpen(false);
+        setSkillCommand(null);
         setMentionQuery(null);
     }, [compact]);
 
@@ -151,11 +154,22 @@ export function CreativeComposer({
         caretRef.current = cursor;
         onChange(next);
         setMentionQuery(creativeAssetMentionAtCursor(next, cursor)?.query ?? null);
+        const nextSkillCommand = creativeSkillCommandAtCursor(next, cursor);
+        setSkillCommand(nextSkillCommand);
+        if (nextSkillCommand) {
+            setSkillCategory("all");
+            setSkillPickerOpen(true);
+        } else if (skillCommand) {
+            setSkillPickerOpen(false);
+        }
     };
 
     const updateMentionCursor = (next: string, cursor: number) => {
         caretRef.current = cursor;
         setMentionQuery(creativeAssetMentionAtCursor(next, cursor)?.query ?? null);
+        const nextSkillCommand = creativeSkillCommandAtCursor(next, cursor);
+        setSkillCommand(nextSkillCommand);
+        if (nextSkillCommand) setSkillPickerOpen(true);
     };
 
     const focusComposerAt = (cursor: number) => {
@@ -187,6 +201,20 @@ export function CreativeComposer({
         focusComposerAt(result.cursor);
     };
 
+    const selectComposerSkill = (skill: SkillOption) => {
+        if (skillCommand) {
+            const result = removeCreativeSkillCommand(value, skillCommand);
+            caretRef.current = result.cursor;
+            onChange(result.value);
+            focusComposerAt(result.cursor);
+        } else {
+            window.requestAnimationFrame(() => inputRef.current?.focus());
+        }
+        onSelectSkill(skill);
+        setSkillCommand(null);
+        setSkillPickerOpen(false);
+    };
+
     const composerInput = (compactMode: boolean) => (
         <Popover
             trigger={[]}
@@ -212,7 +240,7 @@ export function CreativeComposer({
                         "creative-composer-input relative z-[1] min-w-0 !border-0 !bg-transparent !px-1 !py-1 !text-[15px] !leading-7 !shadow-none !outline-none sm:!px-2",
                         hasMentionReferences && "!text-transparent caret-[#20242a] dark:caret-[#f3f5f7]",
                     )}
-                    placeholder={compactMode ? "输入你的创作想法" : "输入你的创作想法、脚本或画面要求"}
+                    placeholder={compactMode ? "输入你的创作想法" : "输入创作要求，使用 / 选择 Skill"}
                     onFocus={() => {
                         if (compactMode) onExpand?.();
                     }}
@@ -232,6 +260,12 @@ export function CreativeComposer({
                         updateMentionCursor(event.currentTarget.value, event.currentTarget.selectionStart);
                     }}
                     onKeyDown={(event) => {
+                        if (event.key === "Escape" && skillPickerOpen) {
+                            event.preventDefault();
+                            setSkillPickerOpen(false);
+                            setSkillCommand(null);
+                            return;
+                        }
                         if (event.key === "Backspace" || event.key === "Delete") {
                             const deletion = creativeAssetMentionDeletionAtKey(value, event.currentTarget.selectionStart, event.currentTarget.selectionEnd, event.key, referenceAliases);
                             if (deletion) {
@@ -257,6 +291,11 @@ export function CreativeComposer({
                         if (mentionQuery !== null && mentionCandidates.length) {
                             event.preventDefault();
                             selectMentionAsset(mentionCandidates[0]);
+                            return;
+                        }
+                        if (skillCommand && visibleSkills.length) {
+                            event.preventDefault();
+                            selectComposerSkill(visibleSkills[0]);
                             return;
                         }
                         if (event.shiftKey) return;
@@ -346,25 +385,25 @@ export function CreativeComposer({
                 data-compact="false"
                 className={cn("creative-composer border border-[#e2e6ea] bg-white shadow-[0_10px_32px_rgba(32,36,42,0.06)] dark:border-[#30363e] dark:bg-[#181b20] dark:shadow-black/24", centered ? "rounded-[22px] p-3 sm:p-4" : "rounded-2xl p-2.5")}
             >
-                {selectedSkill || otherAttachments.length ? (
+                {selectedSkills.length || otherAttachments.length ? (
                     <div className="flex gap-2 overflow-x-auto px-2 pb-1 pt-1">
-                        {selectedSkill ? (
-                            <span className="flex h-9 max-w-60 shrink-0 items-center gap-2 rounded-lg border border-[#d6dee8] bg-[#f1f4f8] px-2.5 text-xs font-medium text-[#344152] shadow-[0_2px_8px_rgba(38,49,65,0.07)] dark:border-[#3b4653] dark:bg-[#252b33] dark:text-[#edf1f5] dark:shadow-black/20">
+                        {selectedSkills.map((skill) => (
+                            <span key={skill.id} className="flex h-9 max-w-60 shrink-0 items-center gap-2 rounded-lg border border-[#d6dee8] bg-[#f1f4f8] px-2.5 text-xs font-medium text-[#344152] shadow-[0_2px_8px_rgba(38,49,65,0.07)] dark:border-[#3b4653] dark:bg-[#252b33] dark:text-[#edf1f5] dark:shadow-black/20">
                                 <span className="grid size-5 shrink-0 place-items-center rounded-md bg-[#d3a44f]/16 text-[#95681d] dark:bg-[#e4bb70]/14 dark:text-[#e4bb70]">
                                     <Sparkles className="size-3.5" />
                                 </span>
-                                <span className="truncate">Skill · {selectedSkill.name}</span>
+                                <span className="truncate">Skill · {skill.name}</span>
                                 <button
                                     type="button"
                                     className="grid size-5 shrink-0 place-items-center rounded-md text-[#7c8795] transition hover:bg-[#dfe5ec] hover:text-[#263141] dark:text-[#aab3bf] dark:hover:bg-[#343c46] dark:hover:text-white"
-                                    onClick={onRemoveSkill}
-                                    aria-label={`移除 Skill ${selectedSkill.name}`}
+                                    onClick={() => onRemoveSkill(skill.id)}
+                                    aria-label={`移除 Skill ${skill.name}`}
                                     title="移除 Skill"
                                 >
                                     <X className="size-3" />
                                 </button>
                             </span>
-                        ) : null}
+                        ))}
                         {otherAttachments.map((asset) => {
                             const Icon = asset.type === "image" ? ImageIcon : asset.type === "video" ? FileVideo : FileAudio;
                             return (
@@ -512,10 +551,19 @@ export function CreativeComposer({
                             autoAdjustOverflow={creativeComposerPopoverOverflow(composerPopoverPlacement)}
                             arrow={false}
                             open={skillPickerOpen}
-                            onOpenChange={setSkillPickerOpen}
+                            onOpenChange={(open) => {
+                                setSkillPickerOpen(open);
+                                if (!open) setSkillCommand(null);
+                            }}
                             content={
-                                <div className="w-[calc(100vw-56px)] max-w-[300px] py-1 sm:w-80 sm:max-w-none">
-                                    <p className="px-2 pb-2 text-sm font-semibold text-[#20242a] dark:text-[#f3f5f7]">选择创作 Skill</p>
+                                <div className="w-[calc(100vw-56px)] max-w-[320px] py-1 sm:w-[680px] sm:max-w-[calc(100vw-64px)]">
+                                    <div className="flex items-center justify-between gap-3 px-2 pb-2">
+                                        <div>
+                                            <p className="text-sm font-semibold text-[#20242a] dark:text-[#f3f5f7]">使用 Skill</p>
+                                            <p className="mt-0.5 text-[11px] text-[#8b949f] dark:text-[#7f8996]">可组合多个能力；输入 /名称 可快速筛选</p>
+                                        </div>
+                                        {selectedSkills.length ? <span className="shrink-0 rounded-full bg-[#eef1f4] px-2 py-1 text-[11px] text-[#596572] dark:bg-[#292f37] dark:text-[#b6bec8]">已选 {selectedSkills.length}</span> : null}
+                                    </div>
                                     {skillsLoading ? <p className="px-2 py-3 text-xs text-[#8b949f] dark:text-[#7f8996]">正在加载...</p> : null}
                                     {!skillsLoading && !skills.length ? <p className="px-2 py-3 text-xs text-[#8b949f] dark:text-[#7f8996]">暂无可用 Skill</p> : null}
                                     {skills.length ? (
@@ -565,10 +613,10 @@ export function CreativeComposer({
                                         </div>
                                     ) : null}
                                     <div className="relative">
-                                        <div className="hide-scrollbar max-h-[142px] space-y-1 overflow-y-auto overscroll-contain [scrollbar-width:none] sm:max-h-[154px] [&::-webkit-scrollbar]:hidden">
+                                        <div className="hide-scrollbar grid max-h-[260px] grid-cols-1 gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] sm:max-h-[340px] sm:grid-cols-2 lg:grid-cols-3 [&::-webkit-scrollbar]:hidden">
                                             {!skillsLoading && skills.length && !visibleSkills.length ? <p className="px-2 py-5 text-center text-xs text-[#8b949f] dark:text-[#7f8996]">当前分类暂无可用 Skill</p> : null}
                                             {visibleSkills.map((skill) => {
-                                                const selected = selectedSkill?.id === skill.id;
+                                                const selected = selectedSkills.some((item) => item.id === skill.id);
                                                 const visual = skillOptionVisual(skill);
                                                 const Icon = visual.icon;
                                                 return (
@@ -580,8 +628,7 @@ export function CreativeComposer({
                                                             selected ? "bg-[#eef1f4] text-[#20242a] dark:bg-[#292f37] dark:text-white" : "text-[#4d5662] hover:bg-[#f4f6f8] dark:text-[#c2c9d1] dark:hover:bg-[#242930]",
                                                         )}
                                                         onClick={() => {
-                                                            onSelectSkill(skill);
-                                                            setSkillPickerOpen(false);
+                                                            selectComposerSkill(skill);
                                                         }}
                                                     >
                                                         <span className={cn("mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg", visual.surfaceClass)}>
@@ -600,8 +647,15 @@ export function CreativeComposer({
                                 </div>
                             }
                         >
-                            <Button type="text" className={creativeComposerToolButtonClass(skillPickerOpen)} icon={<Boxes className="size-4" />} aria-label="选择创作 Skill" aria-haspopup="menu" aria-expanded={skillPickerOpen}>
-                                <span className="hidden text-xs font-medium sm:inline">使用 Skill</span>
+                            <Button
+                                type="text"
+                                className={creativeComposerToolButtonClass(skillPickerOpen)}
+                                icon={<Boxes className="size-4" />}
+                                aria-label={selectedSkills.length ? `已选择 ${selectedSkills.length} 个创作 Skill` : "选择创作 Skill"}
+                                aria-haspopup="menu"
+                                aria-expanded={skillPickerOpen}
+                            >
+                                <span className="hidden text-xs font-medium sm:inline">Skill{selectedSkills.length ? ` · ${selectedSkills.length}` : ""}</span>
                             </Button>
                         </Popover>
                         <Tooltip title="优化提示词">

@@ -20,6 +20,7 @@ export const NODE_DEFAULT_SIZE = {
     [CanvasNodeType.Text]: { width: 340, height: 240, title: "文本" },
     [CanvasNodeType.Config]: { width: 340, height: CANVAS_CONFIG_NODE_HEIGHT.collapsed, title: "生成配置" },
     [CanvasNodeType.Video]: { width: 420, height: 236, title: "视频生成" },
+    [CanvasNodeType.VideoRemake]: { width: 380, height: 224, title: "一键视频复刻" },
     [CanvasNodeType.Audio]: { width: 340, height: 120, title: "音频" },
     [CanvasNodeType.Brief]: { width: 380, height: 280, title: "创作简报" },
     [CanvasNodeType.Task]: { width: 340, height: 210, title: "Agent 任务" },
@@ -46,6 +47,16 @@ const NODE_SPECS = {
     [CanvasNodeType.Video]: {
         ...NODE_DEFAULT_SIZE[CanvasNodeType.Video],
         metadata: { content: "", status: "idle" },
+    },
+    [CanvasNodeType.VideoRemake]: {
+        ...NODE_DEFAULT_SIZE[CanvasNodeType.VideoRemake],
+        metadata: {
+            content: "连接或选中参考视频后，在 Agent 中描述改编方向。系统将只学习结构、镜头节奏与转场，并创建全新角色、场景、声音和表达。",
+            status: "idle",
+            generationMode: "video",
+            selectedSkillIds: ["video-remake-universal"],
+            remakeMode: "universal",
+        },
     },
     [CanvasNodeType.Audio]: {
         ...NODE_DEFAULT_SIZE[CanvasNodeType.Audio],

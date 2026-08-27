@@ -57,6 +57,9 @@ export function planToOps(plan: AgentPlan, tasks: AgentRunTask[], runId: string,
             { type: "connect_nodes", fromNodeId: brandId, toNodeId: taskNodeId },
         );
         if (targetNodeId) ops.push({ type: "connect_nodes", fromNodeId: targetNodeId, toNodeId: taskNodeId });
+        for (const referenceNodeId of new Set((task.references || []).map((reference) => reference.nodeId).filter((id): id is string => Boolean(id && existingNodeIds.has(id) && id !== targetNodeId)))) {
+            ops.push({ type: "connect_nodes", fromNodeId: referenceNodeId, toNodeId: taskNodeId });
+        }
         for (const dependency of task.dependencies) {
             const dependencyNodeId = taskNodeIds.get(dependency);
             if (dependencyNodeId) ops.push({ type: "connect_nodes", fromNodeId: dependencyNodeId, toNodeId: taskNodeId });

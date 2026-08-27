@@ -295,6 +295,7 @@ const CANVAS_NODE_TYPE_LABELS = {
     [CanvasNodeType.Text]: "文本",
     [CanvasNodeType.Config]: "生成配置",
     [CanvasNodeType.Video]: "视频",
+    [CanvasNodeType.VideoRemake]: "一键视频复刻",
     [CanvasNodeType.Audio]: "音频",
     [CanvasNodeType.Brief]: "创作简报",
     [CanvasNodeType.Task]: "Agent 任务",

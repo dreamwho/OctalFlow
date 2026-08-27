@@ -49,6 +49,20 @@ describe("creativeRunPresentation", () => {
         ]);
     });
 
+    it("shows the actual ready result count instead of the requested count", () => {
+        const run = {
+            id: "run-partial",
+            conversationId: "conversation-one",
+            inputMessageId: "user-partial",
+            assistantMessageId: "assistant-partial",
+            status: "cancelled",
+            assetIds: ["one", "two", "three", "four"],
+            tasks: [{ id: "task-one", title: "六张分镜", type: "image", model: "image-pro", count: 6, status: "completed" }],
+        } satisfies CreativeAgentRun;
+
+        expect(creativeRunPresentation(run, new Map(), 4)).toContainEqual({ key: "count", label: "数量", value: "4个结果" });
+    });
+
     it("formats the persisted run duration without inventing a timeout", () => {
         expect(creativeRunDuration({ createdAt: 1_000, updatedAt: 66_000 } as CreativeAgentRun)).toBe("1分5秒");
         expect(creativeRunDuration({ createdAt: 1_000, updatedAt: 1_200 } as CreativeAgentRun)).toBe("1秒");

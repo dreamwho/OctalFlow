@@ -23,6 +23,7 @@ export default function nextConfig(phase: string): NextConfig {
     return {
         distDir,
         output: "standalone",
+        serverExternalPackages: ["node-unrar-js"],
         outputFileTracingRoot: webDir,
         turbopack: { root: webDir },
         typescript: { ignoreBuildErrors: skipBuildTypeCheck },
@@ -33,7 +34,7 @@ export default function nextConfig(phase: string): NextConfig {
         },
         experimental: {
             ...(Number.isSafeInteger(configuredBuildCpus) && configuredBuildCpus > 0 ? { cpus: configuredBuildCpus } : {}),
-            proxyClientMaxBodySize: "32mb",
+            proxyClientMaxBodySize: "130mb",
         },
         async rewrites() {
             return {

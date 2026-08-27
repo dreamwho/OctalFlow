@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Alert, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch } from "antd";
-import { Download, GitBranch, PencilLine } from "lucide-react";
+import { Alert, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Upload } from "antd";
+import { Download, FileArchive, GitBranch, PencilLine, UploadCloud } from "lucide-react";
 import { nanoid } from "nanoid";
 
+import { AGENT_SKILL_ARCHIVE_MAX_BYTES } from "@/lib/agent-skill-import-types";
 import type { AgentSkill } from "@/lib/auth/store-types";
-import { importAgentSkillFromGithub, type AgentSkillImportCandidate, type ImportedAgentSkill } from "@/services/api/admin-agent-skills";
+import {
+    importAgentSkillFromGithub,
+    importAgentSkillFromFile,
+    type AgentSkillImportCandidate,
+    type ImportedAgentSkill,
+} from "@/services/api/admin-agent-skills";
 
 type AgentSkillCreateModalProps = {
     open: boolean;
@@ -38,8 +44,9 @@ const workspaceOptions = [
 
 export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate }: AgentSkillCreateModalProps) {
     const [form] = Form.useForm<SkillFormValues>();
-    const [mode, setMode] = useState<"manual" | "github">("github");
+    const [mode, setMode] = useState<"file" | "github" | "manual">("file");
     const [sourceUrl, setSourceUrl] = useState("");
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [candidates, setCandidates] = useState<AgentSkillImportCandidate[]>([]);
     const [selectedPath, setSelectedPath] = useState("");
     const [importedSkill, setImportedSkill] = useState<ImportedAgentSkill>();
@@ -48,16 +55,29 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
 
     useEffect(() => {
         if (!open) return;
-        setMode("github");
+        setMode("file");
         setSourceUrl("");
+        setSelectedFile(null);
         setCandidates([]);
         setSelectedPath("");
         setImportedSkill(undefined);
         setImportError("");
-        form.setFieldsValue({ name: "", description: "", instructions: "", keywords: "", workspaces: ["image"], action: "generate", requiresReference: false, size: "", quality: "", count: 1, videoSeconds: 5 });
+        form.setFieldsValue({
+            name: "",
+            description: "",
+            instructions: "",
+            keywords: "",
+            workspaces: ["image"],
+            action: "generate",
+            requiresReference: false,
+            size: "",
+            quality: "",
+            count: 1,
+            videoSeconds: 5,
+        });
     }, [form, open]);
 
-    const extract = async () => {
+    const extractFromGithub = async () => {
         if (!sourceUrl.trim()) {
             setImportError("请输入公开 GitHub 地址");
             return;
@@ -78,6 +98,35 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
             }
         } catch (error) {
             setImportError(error instanceof Error ? error.message : "提取 GitHub Skill 失败");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const extractFromFile = async (pathOverride?: string) => {
+        if (!selectedFile) {
+            setImportError("请选择要上传的技能压缩包或 Markdown 文件");
+            return;
+        }
+        setImportError("");
+        setLoading(true);
+        try {
+            const result = await importAgentSkillFromFile({
+                file: selectedFile,
+                path: pathOverride || selectedPath || undefined,
+            });
+            setCandidates(result.candidates);
+            if (result.candidates.length && !result.skill) {
+                setSelectedPath(result.candidates[0].path);
+                setImportedSkill(undefined);
+                return;
+            }
+            if (result.skill) {
+                setImportedSkill(result.skill);
+                form.setFieldsValue(valuesFromSkill(result.skill));
+            }
+        } catch (error) {
+            setImportError(error instanceof Error ? error.message : "解析本地压缩包 Skill 失败");
         } finally {
             setLoading(false);
         }
@@ -145,10 +194,20 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                     value={mode}
                     options={[
                         {
+                            value: "file",
+                            label: (
+                                <span className="inline-flex items-center justify-center gap-2">
+                                    <FileArchive className="size-4" aria-hidden />
+                                    本地文件
+                                </span>
+                            ),
+                        },
+                        {
                             value: "github",
                             label: (
                                 <span className="inline-flex items-center justify-center gap-2">
-                                    <GitBranch className="size-4" aria-hidden />从 GitHub 提取
+                                    <GitBranch className="size-4" aria-hidden />
+                                    GitHub
                                 </span>
                             ),
                         },
@@ -162,8 +221,93 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                             ),
                         },
                     ]}
-                    onChange={(value) => setMode(value as "manual" | "github")}
+                    onChange={(value) => setMode(value as "file" | "github" | "manual")}
                 />
+
+                {mode === "file" ? (
+                    <div className="space-y-3 rounded-lg border border-purple-200 bg-purple-50/60 p-4 dark:border-purple-900/70 dark:bg-purple-950/20">
+                        <div className="text-sm font-semibold text-stone-900 dark:text-stone-100">上传本地 Skill 压缩包 (.zip / .rar / .md)</div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <Upload
+                                accept=".zip,.rar,.md,.markdown,application/zip,application/vnd.rar,text/markdown"
+                                beforeUpload={(file) => {
+                                    const extension = file.name.split(".").at(-1)?.toLowerCase() || "";
+                                    if (!["zip", "rar", "md", "markdown"].includes(extension)) {
+                                        setImportError("只支持 .zip、.rar、.md 或 .markdown Skill 文件");
+                                        return Upload.LIST_IGNORE;
+                                    }
+                                    if (file.size > AGENT_SKILL_ARCHIVE_MAX_BYTES) {
+                                        setImportError(`Skill 文件不能超过 ${Math.floor(AGENT_SKILL_ARCHIVE_MAX_BYTES / 1024 / 1024)}MB`);
+                                        return Upload.LIST_IGNORE;
+                                    }
+                                    setSelectedFile(file);
+                                    setImportError("");
+                                    setCandidates([]);
+                                    setSelectedPath("");
+                                    setImportedSkill(undefined);
+                                    return false;
+                                }}
+                                maxCount={1}
+                                showUploadList={{ showRemoveIcon: true }}
+                                onRemove={() => {
+                                    setSelectedFile(null);
+                                    setCandidates([]);
+                                    setSelectedPath("");
+                                    setImportedSkill(undefined);
+                                }}
+                            >
+                                <Button icon={<UploadCloud className="size-4" />}>选择压缩包或文件</Button>
+                            </Upload>
+                            <Button
+                                type="primary"
+                                icon={<Download className="size-4" />}
+                                loading={loading}
+                                disabled={!selectedFile}
+                                onClick={() => void extractFromFile()}
+                            >
+                                解析并导入
+                            </Button>
+                        </div>
+                        {importError ? <Alert type="error" showIcon message={importError} /> : null}
+                        {candidates.length ? (
+                            <div className="space-y-2">
+                                <div className="text-xs text-stone-600 dark:text-stone-300">
+                                    压缩包中发现 {candidates.length} 个候选文件，请选择一个并提取：
+                                </div>
+                                <Select
+                                    className="w-full"
+                                    value={selectedPath}
+                                    options={candidates.map((item) => ({ value: item.path, label: `${item.name} · ${item.path}` }))}
+                                    onChange={setSelectedPath}
+                                />
+                                <Button
+                                    icon={<Download className="size-4" />}
+                                    loading={loading}
+                                    onClick={() => void extractFromFile(selectedPath)}
+                                >
+                                    读取选中的 Skill
+                                </Button>
+                            </div>
+                        ) : null}
+                        {importedSkill ? (
+                            <Alert
+                                type="success"
+                                showIcon
+                                message={<span>AI 解析完成：{importedSkill.name}</span>}
+                                description={
+                                    <span className="break-all">
+                                        来源：{importedSkill.sourcePath}
+                                        {importedSkill.license ? ` · ${importedSkill.license}` : ""}
+                                    </span>
+                                }
+                            />
+                        ) : (
+                            <div className="text-xs leading-5 text-stone-600 dark:text-stone-400">
+                                只读取 SKILL.md 及同目录参考文档，不执行压缩包内脚本；解析后可继续编辑名称和规则。
+                            </div>
+                        )}
+                    </div>
+                ) : null}
 
                 {mode === "github" ? (
                     <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900/70 dark:bg-blue-950/20">
@@ -182,7 +326,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                                     setImportedSkill(undefined);
                                 }}
                             />
-                            <Button type="primary" icon={<Download className="size-4" />} loading={loading} onClick={() => void extract()}>
+                            <Button type="primary" icon={<Download className="size-4" />} loading={loading} onClick={() => void extractFromGithub()}>
                                 提取
                             </Button>
                         </div>
@@ -191,7 +335,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                             <div className="space-y-2">
                                 <div className="text-xs text-stone-600 dark:text-stone-300">发现 {candidates.length} 个 SKILL.md，请选择一个后读取。</div>
                                 <Select className="w-full" value={selectedPath} options={candidates.map((item) => ({ value: item.path, label: `${item.name} · ${item.path}` }))} onChange={setSelectedPath} />
-                                <Button icon={<Download className="size-4" />} loading={loading} onClick={() => void extract()}>
+                                <Button icon={<Download className="size-4" />} loading={loading} onClick={() => void extractFromGithub()}>
                                     读取选中的 Skill
                                 </Button>
                             </div>
@@ -216,7 +360,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
 
                 <Form form={form} layout="vertical" requiredMark={false} onFinish={submit}>
                     <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
-                        <Form.Item label="Skill 名称" name="name" rules={[{ required: true, message: "请输入 Skill 名称" }]}>
+                        <Form.Item label="Skill 名称（可编辑）" name="name" rules={[{ required: true, message: "请输入 Skill 名称" }]}>
                             <Input placeholder="例如：电商海报策划" />
                         </Form.Item>
                         <Form.Item label="触发关键词" name="keywords">

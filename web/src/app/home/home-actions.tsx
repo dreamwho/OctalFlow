@@ -20,7 +20,7 @@ type HomeActions = {
     openLogin: (nextPath?: string) => void;
     openBillingPlans: () => void;
     openProtectedPath: (path: string) => void;
-    startCreating: (prompt?: string, mode?: CreateAgentMode) => void;
+    startCreating: (prompt?: string, mode?: CreateAgentMode, options?: { skillIds?: string[] }) => void;
 };
 
 const HomeActionsContext = createContext<HomeActions | null>(null);
@@ -39,7 +39,7 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
             ...initialSite,
             ...(sessionSite || {}),
             title: resolveSiteTitle(sessionSite?.title || initialSite.title),
-            logoUrl: sessionSite?.logoUrl?.trim() || initialSite.logoUrl || "/logo.svg",
+            logoUrl: sessionSite?.logoUrl?.trim() || initialSite.logoUrl || "/brand/octaflow-mark.png",
             friendLinks: sessionSite?.friendLinks || initialSite.friendLinks,
             socials: (sessionSite?.socials as HomeSiteSettings["socials"] | undefined) || initialSite.socials,
         }),
@@ -55,7 +55,7 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
         if (authenticated) router.push(path);
         else openLogin(path);
     };
-    const startCreating = (prompt = "", mode: CreateAgentMode = "agent") => openProtectedPath(createAgentPromptHref(prompt, { source: "home", mode }));
+    const startCreating = (prompt = "", mode: CreateAgentMode = "agent", options: { skillIds?: string[] } = {}) => openProtectedPath(createAgentPromptHref(prompt, { source: "home", mode, skillIds: options.skillIds }));
 
     return (
         <HomeActionsContext.Provider value={{ authenticated, sessionReady, site, openLogin, openBillingPlans: () => setBillingPlansOpen(true), openProtectedPath, startCreating }}>

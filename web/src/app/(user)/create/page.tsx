@@ -30,6 +30,7 @@ import { CreateWorkbenchOverview } from "./components/create-workbench-overview"
 import { publicCreativeAssetPrompt, remapCreativeAssetReferences } from "./components/creative-asset-mention";
 import { createConversationHref, createConversationIdFromSearch } from "./create-conversation-navigation";
 import { useCreateAgent } from "./use-create-agent";
+import studioStyles from "./create-studio.module.css";
 
 const SKILL_VISUALS = [
     { icon: ShoppingBag, iconClass: "text-sky-600 dark:text-sky-300", surfaceClass: "bg-sky-50 dark:bg-sky-400/10" },
@@ -59,7 +60,7 @@ export default function CreatePage() {
     const [optimizingPrompt, setOptimizingPrompt] = useState(false);
     const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
     const [skillsLoading, setSkillsLoading] = useState(true);
-    const [selectedSkillId, setSelectedSkillId] = useState<string>();
+    const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
     const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
     const [smartPlanning, setSmartPlanning] = useState(true);
     const [creationMode, setCreationMode] = useState<"agent" | CreativeGenerationMode>("agent");
@@ -75,7 +76,7 @@ export default function CreatePage() {
     const newAgentConversation = agent.newConversation;
     const hasConversation = agent.messages.length > 0;
     const showConversation = hasConversation || agent.conversationLoading;
-    const selectedSkill = skills.find((skill) => skill.id === selectedSkillId);
+    const selectedSkills = skills.filter((skill) => selectedSkillIds.includes(skill.id));
     const modelOptions = useCreativeAgentModels();
     const selectedModels = modelOptions.filter((model) => selectedModelIds.includes(model.id));
     const updatePrompt = useCallback((value: string) => {
@@ -116,15 +117,16 @@ export default function CreatePage() {
         if (initialPromptRestoredRef.current) return;
         initialPromptRestoredRef.current = true;
         const incomingDraft = createAgentDraftFromHash(window.location.hash);
-        if (!incomingDraft || (!incomingDraft.prompt && !incomingDraft.mode)) return;
+        if (!incomingDraft || (!incomingDraft.prompt && !incomingDraft.mode && !incomingDraft.skillIds?.length)) return;
         if (incomingDraft.prompt) updatePrompt(incomingDraft.prompt);
         if (incomingDraft.mode) {
             setCreationMode(incomingDraft.mode);
             setGenerationPreferences(incomingDraft.mode === "agent" ? {} : { mode: incomingDraft.mode });
         }
+        if (incomingDraft.skillIds?.length) setSelectedSkillIds(incomingDraft.skillIds);
         router.replace("/create");
         window.requestAnimationFrame(() => inputRef.current?.focus());
-        message.success(incomingDraft.prompt ? "已填入创作需求" : "已选择创作类型");
+        message.success(incomingDraft.skillIds?.length ? "已载入视频复刻 Skill" : incomingDraft.prompt ? "已填入创作需求" : "已选择创作类型");
     }, [message, router, updatePrompt]);
 
     useEffect(() => {
@@ -175,6 +177,7 @@ export default function CreatePage() {
 
     const newConversation = () => {
         newAgentConversation();
+        setSelectedSkillIds([]);
         router.replace("/create");
     };
 
@@ -204,13 +207,13 @@ export default function CreatePage() {
             if (
                 await agent.submit(prompt, {
                     publicPrompt: publicCreativeAssetPrompt(prompt),
-                    skillIds: selectedSkillId ? [selectedSkillId] : [],
+                    skillIds: selectedSkillIds,
                     ...(!smartPlanning && selectedModelIds.length ? { modelIds: selectedModelIds } : {}),
                     ...(Object.keys(preferences).length ? { preferences } : {}),
                 })
             ) {
                 updatePrompt("");
-                setSelectedSkillId(undefined);
+                setSelectedSkillIds([]);
                 setGenerationPreferences((current) => (current.video ? { ...current, video: { ...current.video, firstFrameAssetId: undefined, lastFrameAssetId: undefined } } : current));
             }
         } catch (error) {
@@ -271,7 +274,7 @@ export default function CreatePage() {
         optimizingRef.current = true;
         setOptimizingPrompt(true);
         try {
-            const optimized = await optimizePrompt({ requestId: `prompt-${crypto.randomUUID()}`, prompt: source, mode: creationMode });
+            const optimized = await optimizePrompt({ requestId: `prompt-${crypto.randomUUID()}`, prompt: source, mode: creationMode, skillIds: selectedSkillIds });
             if (promptRevisionRef.current !== revision) {
                 message.info("输入内容已变化，未覆盖当前提示词");
                 return;
@@ -313,7 +316,7 @@ export default function CreatePage() {
     };
 
     const selectSkill = (skill: AgentSkillSummary) => {
-        setSelectedSkillId(skill.id);
+        setSelectedSkillIds((current) => (current.includes(skill.id) ? current : [...current, skill.id]));
         window.requestAnimationFrame(() => inputRef.current?.focus());
     };
 
@@ -476,7 +479,7 @@ export default function CreatePage() {
             attachments={agent.selectedAssets}
             skills={skills}
             skillsLoading={skillsLoading}
-            selectedSkill={selectedSkill}
+            selectedSkills={selectedSkills}
             models={modelOptions}
             selectedModels={selectedModels}
             smartPlanning={smartPlanning}
@@ -490,7 +493,7 @@ export default function CreatePage() {
             }}
             onRemoveAttachment={removeAttachment}
             onSelectSkill={selectSkill}
-            onRemoveSkill={() => setSelectedSkillId(undefined)}
+            onRemoveSkill={(id) => setSelectedSkillIds((current) => current.filter((skillId) => skillId !== id))}
             onToggleModel={toggleModel}
             onClearModels={() => {
                 setSelectedModelIds([]);
@@ -566,7 +569,7 @@ export default function CreatePage() {
     );
 
     return (
-        <main className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fcfdff_100%)] text-[#20242a] dark:bg-[linear-gradient(180deg,#111316_0%,#12151a_100%)] dark:text-[#f3f5f7]">
+        <main className={cn(studioStyles.page, "relative flex h-full min-h-0 flex-col overflow-hidden text-[#20242a] dark:text-[#f3f5f7]")}>
             <div className="flex min-h-0 flex-1">
                 {historyOpen && screens.lg ? <aside className="h-full min-h-0 w-[min(280px,24vw)] shrink-0 border-r border-[#eceef1] dark:border-[#2b3036]">{historyPanel}</aside> : null}
                 <div className="relative flex min-w-0 flex-1 flex-col">
@@ -621,7 +624,7 @@ export default function CreatePage() {
                     <section
                         ref={conversationScrollRef}
                         data-testid="creative-conversation-scroll"
-                        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+                        className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto", !showConversation && studioStyles.landingScroll)}
                         onScroll={(event) => updateConversationScrollState(event.currentTarget)}
                         onWheelCapture={(event) => {
                             if (event.deltaY < 0) {
@@ -647,36 +650,35 @@ export default function CreatePage() {
                                 olderLoading={agent.olderMessagesLoading}
                                 onLoadOlder={() => void agent.loadOlderMessages()}
                                 followLatest={!awayFromLatest}
+                                skills={skills}
                             />
                         ) : (
-                            <div className="mx-auto flex min-h-full w-full min-w-0 max-w-[1240px] flex-col items-center px-2.5 pb-3 pt-5 sm:px-8 sm:pb-8 sm:pt-14 lg:pt-[10vh]">
-                                <div className="text-center">
-                                    <h1 className="text-[23px] font-semibold leading-tight sm:text-[31px]">{siteTitle} 创作 Agent</h1>
-                                    <p className="mt-2 text-sm text-[#8b949f] dark:text-[#7f8996]">从一个想法开始</p>
+                            <div className={studioStyles.landing}>
+                                <div className={studioStyles.landingBackdrop} aria-hidden="true"><span /></div>
+                                <div className={studioStyles.landingHero}>
+                                    <div className={studioStyles.landingEyebrow}><span /> OCTAFLOW CREATIVE OS</div>
+                                    <h1 className={studioStyles.landingTitle}>让一个想法，<span>长成完整作品。</span></h1>
+                                    <p className={studioStyles.landingSubtitle}>{siteTitle} 将策划、资产、镜头与生成编排在同一个创作现场。</p>
+                                    <div className={studioStyles.landingComposer}>{composer}</div>
+                                    <div className={studioStyles.skillRail} aria-label="快捷 Skill">
+                                        {skillsLoading ? <span className={studioStyles.skillLoading}>正在加载创作 Skill...</span> : null}
+                                        {skills.slice(0, 12).map((skill, index) => {
+                                            const visual = skillVisual(skill, index);
+                                            const Icon = visual.icon;
+                                            return (
+                                                <button key={skill.id} type="button" aria-label={`使用 ${skill.name} Skill`} title={skill.description} onClick={() => selectSkill(skill)}>
+                                                    <Icon className={`size-3.5 ${visual.iconClass}`} />
+                                                    <span>{skill.name}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className={studioStyles.scrollCue} aria-hidden="true"><span />向下探索工作台</div>
                                 </div>
-                                <div className="mt-5 w-full sm:mt-8">{composer}</div>
-                                <div className="mt-2 flex w-full min-w-0 flex-wrap justify-center gap-1.5 sm:mt-3 sm:gap-2">
-                                    {skillsLoading ? <span className="px-2 py-2 text-xs text-[#9aa2ad]">正在加载创作 Skill...</span> : null}
-                                    {skills.map((skill, index) => {
-                                        const visual = skillVisual(skill, index);
-                                        const Icon = visual.icon;
-                                        return (
-                                            <button
-                                                key={skill.id}
-                                                type="button"
-                                                aria-label={`使用 ${skill.name} Skill`}
-                                                title={skill.description}
-                                                className="inline-flex h-9 items-center gap-2 rounded-full border border-[#e3e7eb] bg-white px-3 text-sm font-medium text-[#343b44] transition hover:border-[#cfd6dd] hover:bg-[#f7f8fa] dark:border-[#343a42] dark:bg-[#181b20] dark:text-[#dce1e7] dark:hover:border-[#4a525d] dark:hover:bg-[#20242a]"
-                                                onClick={() => selectSkill(skill)}
-                                            >
-                                                <Icon className={`size-4 ${visual.iconClass}`} />
-                                                <span>{skill.name}</span>
-                                            </button>
-                                        );
-                                    })}
+                                <div className={studioStyles.landingContent}>
+                                    <CreateWorkbenchOverview onUseAsset={useRecentAsset} />
+                                    <CreateInspirationGallery onUsePrompt={usePublicPrompt} onUseImage={usePublicImage} />
                                 </div>
-                                <CreateWorkbenchOverview onUseAsset={useRecentAsset} />
-                                <CreateInspirationGallery onUsePrompt={usePublicPrompt} onUseImage={usePublicImage} />
                             </div>
                         )}
                     </section>

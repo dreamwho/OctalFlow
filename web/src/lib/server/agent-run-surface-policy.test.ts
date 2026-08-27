@@ -119,7 +119,8 @@ describe("agentPlannerInput", () => {
         expect(context.recentMessages.at(-1)?.sequence).toBe(10);
         expect(input.referencedAssets).toEqual(assets.map((asset) => expect.objectContaining({ id: asset.id, textContent: asset.textContent })));
         expect(skill.plannerSummary).toBe("精简规划说明".repeat(40));
-        expect(skill).not.toHaveProperty("instructions");
+        expect(skill.instructions).toBe("完整执行说明".repeat(1000));
+        expect(skill.defaultConfig).toEqual({});
         expect(JSON.stringify(input).length).toBeGreaterThan(12_000);
         expect(input).not.toHaveProperty("planningBudget");
     });
@@ -253,5 +254,12 @@ describe("agentPlannerInput", () => {
         expect(plannerAgentSkills(DEFAULT_SETTINGS, { surface: "chat", selectedSkillIds: [] })).toEqual([]);
         expect(plannerAgentSkills(DEFAULT_SETTINGS, { surface: "chat", selectedSkillIds: ["image-motion"] }).map((skill) => skill.id)).toEqual(["image-motion"]);
         expect(plannerAgentSkills(DEFAULT_SETTINGS, { surface: "chat", selectedSkillIds: ["image-motion", "character-design"] }).map((skill) => skill.id)).toEqual(["image-motion", "character-design"]);
+    });
+
+    it("treats selected Skill instructions as planning constraints", () => {
+        const prompt = agentPlannerSystemPrompt("canvas", "{}");
+
+        expect(prompt).toContain("instructions 是必须落实到 deliverables 数量、结构、顺序、提示词和参数的硬约束");
+        expect(prompt).toContain("defaultConfig 仅在用户没有明确参数时作为默认值");
     });
 });

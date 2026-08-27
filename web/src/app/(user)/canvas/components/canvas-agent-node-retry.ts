@@ -1,4 +1,4 @@
-import { retryCreativeAgentTask } from "@/services/api/creative";
+import { retryCreativeAgentTaskWithState } from "@/services/api/creative";
 
 import type { CanvasNodeData } from "../types";
 import type { CanvasAgentOp } from "../utils/canvas-agent-ops";
@@ -9,7 +9,9 @@ export async function retryCanvasAgentNode(node: CanvasNodeData, applyOps: (ops?
     const taskId = node.metadata?.agentTaskId?.trim();
     if (!runId || !taskId) return false;
 
-    await retryCreativeAgentTask(runId, taskId);
+    const retry = await retryCreativeAgentTaskWithState(runId, taskId);
+    if (retry.ops?.length) applyOps(retry.ops as CanvasAgentOp[]);
+    if (retry.run.tasks.find((task) => task.id === taskId)?.status === "completed") return true;
     let failure = "";
     await watchCanvasAgentRun(runId, {
         onPlan: (ops) => applyOps(ops),

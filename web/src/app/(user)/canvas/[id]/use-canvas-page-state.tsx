@@ -96,7 +96,7 @@ export function useCanvasPageState() {
     const connectionsRef = useRef(connections);
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
-    const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => Promise<void>) | null>(null);
+    const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, skillIds?: string[]) => Promise<void>) | null>(null);
     const agentCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const autoOpenedAgentRef = useRef(false);
     const pendingConnectionCreateRef = useRef(pendingConnectionCreate);

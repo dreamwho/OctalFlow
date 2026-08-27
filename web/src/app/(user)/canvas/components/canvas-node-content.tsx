@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { BriefcaseBusiness, ChevronRight, CircleCheck, CircleX, Clock3, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, Star, Video } from "lucide-react";
+import { BriefcaseBusiness, ChevronRight, CircleCheck, CircleX, Clock3, Film, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, ShieldCheck, Sparkles, Star, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -53,11 +53,34 @@ export const nodeContentRenderers = {
     [CanvasNodeType.Panorama]: PanoramaNodeContent,
     [CanvasNodeType.Config]: EmptyImageContent,
     [CanvasNodeType.Video]: VideoNodeContent,
+    [CanvasNodeType.VideoRemake]: VideoRemakeNodeContent,
     [CanvasNodeType.Audio]: AudioNodeContent,
     [CanvasNodeType.Brief]: BriefNodeContent,
     [CanvasNodeType.Task]: TaskNodeContent,
     [CanvasNodeType.BrandKit]: BrandKitNodeContent,
 } satisfies Record<CanvasNodeType, (props: NodeContentRendererProps) => ReactNode>;
+
+export function VideoRemakeNodeContent({ node, theme }: NodeContentRendererProps) {
+    return (
+        <div className="flex h-full min-h-0 flex-col p-5" style={{ color: theme.node.text }}>
+            <div className="flex items-start justify-between gap-3">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl" style={{ background: theme.node.subtleSurface, color: theme.node.activeStroke }}>
+                    <Sparkles className="size-5" />
+                </span>
+                <span className="rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{ background: theme.node.subtleSurface, borderColor: theme.node.subtleBorder, color: theme.node.subtleText }}>
+                    通用复刻
+                </span>
+            </div>
+            <p className="mt-4 min-h-0 flex-1 overflow-y-auto text-sm leading-6" style={{ color: theme.node.muted }}>
+                {node.metadata?.content}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]" style={{ color: theme.node.placeholder }}>
+                <span className="inline-flex items-center gap-1.5"><Film className="size-3.5" />最长 15 秒/片段</span>
+                <span className="inline-flex items-center justify-end gap-1.5"><ShieldCheck className="size-3.5" />原创资产替换</span>
+            </div>
+        </div>
+    );
+}
 
 export function BriefNodeContent({ node, theme }: NodeContentRendererProps) {
     const brief = node.metadata?.agentBrief;
@@ -286,7 +309,7 @@ export function TextContent({ node, theme, isEditingContent, textareaRef, mentio
 
 export function ResourceLabelBadge({ reference }: { reference: CanvasResourceReference }) {
     return (
-        <span className={`pointer-events-none absolute right-2 top-0 z-[80] -translate-y-[calc(100%+6px)] rounded-md px-1.5 py-0.5 text-[10px] font-medium ${reference.active ? "bg-[#2f80ff] text-white shadow-sm" : "bg-black/35 text-white/75"}`}>
+        <span className={`pointer-events-none absolute right-2 top-0 z-[80] -translate-y-[calc(100%+6px)] rounded-md px-1.5 py-0.5 text-[10px] font-medium ${reference.active ? "bg-[#5b5ce2] text-white shadow-sm" : "bg-black/35 text-white/75"}`}>
             {reference.label}
         </span>
     );
@@ -468,7 +491,7 @@ export function ImageContent({
                     onMouseDown={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
                 >
-                    <Star className="size-3.5 text-[#2f80ff]" />
+                    <Star className="size-3.5 text-[#5b5ce2]" />
                     设为主图
                 </button>
             ) : null}

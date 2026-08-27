@@ -252,11 +252,11 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
     }, []);
 
     const startAndCompleteImageTask = useCallback(
-        async (nodeId: string, generationConfig: AiConfig, prompt: string, references: ReferenceImage[] = [], mask: ReferenceImage | undefined, controller: AbortController) => {
+        async (nodeId: string, generationConfig: AiConfig, prompt: string, references: ReferenceImage[] = [], mask: ReferenceImage | undefined, controller: AbortController, publicPrompt = prompt) => {
             const task = await createImageGenerationTask(generationConfig, prompt, references, mask, {
                 signal: controller.signal,
                 logSource: "canvas",
-                logTitle: prompt.slice(0, 36) || "画布生图",
+                logTitle: publicPrompt.slice(0, 36) || "画布生图",
                 conversationId: currentProject?.creativeConversationId,
                 surface: "canvas",
                 projectId,

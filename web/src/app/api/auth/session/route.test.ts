@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth/store", () => ({
-    DEFAULT_SITE_SETTINGS: { title: "OctalFlow", logoUrl: "/logo.svg" },
+    DEFAULT_SITE_SETTINGS: { title: "OctalAICanvas", logoUrl: "/logo.svg" },
     getAuthSettings: mocks.getAuthSettings,
 }));
 
@@ -40,7 +40,7 @@ describe("public session route before installation", () => {
 
         await expect(response.json()).resolves.toMatchObject({
             user: null,
-            settings: { site: { title: "OctalFlow" } },
+            settings: { site: { title: "OctalAICanvas" } },
             install: { database: { healthy: true, schemaReady: false } },
         });
         expect(mocks.getCurrentUser).toHaveBeenCalledTimes(1);

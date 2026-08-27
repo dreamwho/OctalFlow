@@ -17,7 +17,7 @@ describe("Drama project Agent references", () => {
         expect(source).toContain("clientRequestId: submission.clientRequestId");
         expect(source).toContain("failedSubmissionsRef.current.get(assistantMessageId)");
         expect(source).toContain('aria-label="重试本次项目 Agent 请求"');
-        expect(source).toContain("metadata: { assetIds }");
+        expect(source).toContain("metadata: { assetIds, ...(submission.skillIds.length ? { selectedSkillIds: submission.skillIds } : {}) }");
         expect(source).toMatch(/messageAssetIds\(message\)\s*\.filter/);
     });
 
@@ -72,6 +72,8 @@ describe("Drama project Agent references", () => {
         expect(source).toContain("data-drama-agent-composer");
         expect(source).toContain("data-drama-agent-input-row");
         expect(source).toContain("data-drama-agent-toolbar");
+        expect(source).toContain('aria-label="本轮使用的 Skill"');
+        expect(source).toContain("selectedSkillIds: submission.skillIds");
         expect(source).toContain("<textarea");
         expect(source).not.toContain("<Input.TextArea");
         expect(source).toContain("dramaAgentMentionAtCursor");

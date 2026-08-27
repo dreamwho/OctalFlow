@@ -22,16 +22,24 @@ describe("storyboardReferenceImages", () => {
         ]);
     });
 
-    it("keeps storyboard mode as a first-frame-only request", () => {
+    it("uses a single storyboard as a normal visual reference instead of an unsupported local first-frame upload", () => {
         const references = storyboardReferenceImages({
             id: "shot-two",
             title: "单帧分镜",
-            storyboardFrameMode: "first_frame",
+            storyboardFrameMode: "single",
             storyboardImageUrl: "https://cdn.example.com/start.png",
             storyboardEndImageUrl: "https://cdn.example.com/end.png",
         } as never);
 
-        expect(references).toEqual([expect.objectContaining({ id: "storyboard-start-shot-two", videoRole: "first_frame", remoteUrl: "https://cdn.example.com/start.png" })]);
+        expect(references).toEqual([expect.objectContaining({ id: "storyboard-start-shot-two", remoteUrl: "https://cdn.example.com/start.png" })]);
+        expect(references[0]).not.toHaveProperty("videoRole");
+    });
+
+    it("keeps an unspecified legacy single-frame storyboard in normal reference mode", () => {
+        const references = storyboardReferenceImages({ id: "legacy", title: "旧分镜", storyboardImageUrl: "/api/generation-log-assets/start.png" } as never);
+
+        expect(references[0]).toMatchObject({ id: "storyboard-start-legacy", serverUrl: "/api/generation-log-assets/start.png" });
+        expect(references[0]).not.toHaveProperty("videoRole");
     });
 
     it("keeps every matching project reference instead of taking the first four", () => {

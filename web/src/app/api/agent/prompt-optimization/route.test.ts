@@ -28,11 +28,11 @@ describe("prompt optimization route", () => {
     });
 
     it("returns the optimized public prompt through the standard API envelope", async () => {
-        const response = await POST(request({ requestId: "request-one", prompt: "原始提示词", mode: "video" }));
+        const response = await POST(request({ requestId: "request-one", prompt: "原始提示词", mode: "video", skillIds: ["h3", "h3", "director"] }));
 
         expect(response.status).toBe(200);
         await expect(response.json()).resolves.toEqual({ code: 0, data: { prompt: "优化后的提示词" }, msg: "OK" });
-        expect(mocks.optimizeCreativePrompt).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-one", requestId: "request-one", prompt: "原始提示词", mode: "video" }));
+        expect(mocks.optimizeCreativePrompt).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-one", requestId: "request-one", prompt: "原始提示词", mode: "video", skillIds: ["h3", "director"] }));
     });
 
     it("rejects empty prompts without calling the model", async () => {

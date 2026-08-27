@@ -1,7 +1,7 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
-import { CircleDot, Eraser, FolderOpen, Globe2, Grid2x2, Hand, Image as ImageIcon, Info, Moon, MousePointer2, Music2, Palette, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { CircleDot, Eraser, FolderOpen, Globe2, Grid2x2, Hand, Image as ImageIcon, Info, Moon, MousePointer2, Music2, Palette, Redo2, Settings2, Sparkles, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -13,12 +13,14 @@ export function CanvasToolbar({
     canUndo,
     canRedo,
     agentOpen,
+    composerOpen,
     backgroundMode,
     interactionMode,
     showImageInfo,
     onAddImage,
     onAddPanorama,
     onAddVideo,
+    onAddVideoRemake,
     onAddAudio,
     onAddText,
     onAddConfig,
@@ -36,12 +38,14 @@ export function CanvasToolbar({
     canUndo: boolean;
     canRedo: boolean;
     agentOpen?: boolean;
+    composerOpen?: boolean;
     backgroundMode: CanvasBackgroundMode;
     interactionMode: CanvasInteractionMode;
     showImageInfo: boolean;
     onAddImage: () => void;
     onAddPanorama: () => void;
     onAddVideo: () => void;
+    onAddVideoRemake: () => void;
     onAddAudio: () => void;
     onAddText: () => void;
     onAddConfig: () => void;
@@ -63,7 +67,7 @@ export function CanvasToolbar({
     const [tipX, setTipX] = useState(0);
     const [appearanceOpen, setAppearanceOpen] = useState(false);
     const [panelX, setPanelX] = useState(0);
-    const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 10px 30px rgba(0,0,0,.24)" : "0 10px 28px rgba(15,23,42,.08)" };
+    const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 10px 30px rgba(0,0,0,.24)" : "0 12px 34px rgba(45,49,88,.10)" };
     const hoverStyle = { background: theme.toolbar.itemHover, color: theme.toolbar.activeText };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
     const tip = hovered ? toolLabel(hovered) : "";
@@ -80,11 +84,14 @@ export function CanvasToolbar({
     }, [appearanceOpen]);
 
     return (
-        <div className="canvas-toolbar-dock-wrap pointer-events-none absolute bottom-5 left-0 right-0 z-50 flex justify-center">
+        <div
+            className="canvas-toolbar-dock-wrap pointer-events-none absolute left-0 right-0 z-50 flex justify-center transition-[top,bottom] duration-200"
+            style={composerOpen ? { left: 0, right: 0, top: 72, bottom: "auto" } : { bottom: 20 }}
+        >
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
             <div
                 ref={wrapRef}
-                className={`canvas-toolbar-dock thin-scrollbar pointer-events-auto flex h-[52px] max-w-full items-center gap-1 overflow-x-auto rounded-lg border px-2 backdrop-blur [&>*]:shrink-0 ${agentOpen ? "is-agent-open" : ""}`}
+                className={`canvas-toolbar-dock thin-scrollbar pointer-events-auto flex h-[48px] max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 backdrop-blur-xl [&>*]:shrink-0 ${agentOpen ? "is-agent-open" : ""} ${composerOpen ? "is-composer-open" : ""}`}
                 style={dockStyle}
             >
                 <ToolbarButton
@@ -119,6 +126,9 @@ export function CanvasToolbar({
                 </ToolbarButton>
                 <ToolbarButton id="tool-video" label="视频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
                     <Video className="size-4.5" />
+                </ToolbarButton>
+                <ToolbarButton id="tool-video-remake" label="一键视频复刻" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideoRemake}>
+                    <Sparkles className="size-4.5" />
                 </ToolbarButton>
                 <ToolbarButton id="tool-audio" label="音频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
                     <Music2 className="size-4.5" />
@@ -317,6 +327,7 @@ function toolLabel(id: string) {
     if (id === "tool-image") return "图片";
     if (id === "tool-panorama") return "全景图";
     if (id === "tool-video") return "视频";
+    if (id === "tool-video-remake") return "一键视频复刻";
     if (id === "tool-audio") return "音频";
     if (id === "tool-config") return "生成配置";
     if (id === "tool-upload") return "上传素材";

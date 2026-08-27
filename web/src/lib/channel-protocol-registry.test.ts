@@ -168,7 +168,7 @@ describe("channel protocol registry", () => {
         }
     });
 
-    it("applies the OctalFlow recommended preset to frontend channel drafts", () => {
+    it("applies the OctalAICanvas recommended preset to frontend channel drafts", () => {
         const configured = applyChannelProtocol({ ...channel, baseUrl: "", models: ["Seedance 2.0-fast-720p"] }, "octalaicanvas-recommended");
 
         expect(configured).toMatchObject({ baseUrl: "https://new.aiym.ink/v1", apiFormat: "openai" });

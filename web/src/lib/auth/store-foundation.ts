@@ -1,6 +1,7 @@
 import { ECOMMERCE_IMAGE_SKILL } from "@/lib/server/agent-skills/ecommerce-image";
 import { YANAI_BEAUTY_SKILL } from "@/lib/server/agent-skills/yanai-beauty";
 import { DEFAULT_CREATIVE_SHORTCUT_SKILLS } from "@/lib/server/agent-skills/creative-shortcuts";
+import { VIDEO_REMAKE_SKILLS } from "@/lib/server/agent-skills/video-remake";
 import {
     type UserRole,
     type UserStatus,
@@ -83,11 +84,11 @@ export const DEFAULT_USER_POINTS = 0;
 export const DEFAULT_MODEL_POINT_COST_KEY = "__default__";
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     title: "OctalFlow",
-    logoUrl: "/logo.svg",
-    iconUrl: "/icon.svg",
+    logoUrl: "/brand/octaflow-mark.png",
+    iconUrl: "/brand/octaflow-icon.png",
     seoTitle: "OctalFlow",
     seoDescription: "面向 Agent、图片、视频、画布与短剧生产的一体化 AI 创作工作台",
-    seoKeywords: "OctalFlow,AI Agent,AI 绘图,AI 视频,画布,短剧,提示词库,素材管理",
+    seoKeywords: "OctalFlow,AI Agent,AI 绘图,AI 视频,无限画布,短剧,视频复刻,提示词库,素材管理",
     footerCopyright: "© 2026 OctalFlow. All rights reserved.",
     termsUrl: "/terms",
     termsVersion: "1.0",
@@ -177,6 +178,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
         { ...ECOMMERCE_IMAGE_SKILL, keywords: [...ECOMMERCE_IMAGE_SKILL.keywords], workspaces: [...ECOMMERCE_IMAGE_SKILL.workspaces] },
         { ...YANAI_BEAUTY_SKILL, keywords: [...YANAI_BEAUTY_SKILL.keywords], workspaces: [...YANAI_BEAUTY_SKILL.workspaces] },
         ...DEFAULT_CREATIVE_SHORTCUT_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...skill.workspaces] })),
+        ...VIDEO_REMAKE_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...(skill.workspaces || [])] })),
     ],
 };
 export const AUTH_DATA_FILE = "auth.json";

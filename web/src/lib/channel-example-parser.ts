@@ -444,7 +444,7 @@ function protocolLabel(protocol: SystemChannelProtocol) {
     if (protocol === "lingkeai") return "无线创客";
     if (protocol === "minimax-h3") return "easyframe MiniMaxH3";
     if (protocol === "minimax-h3-official") return "MiniMax H3 官方";
-    if (protocol === "octalaicanvas-recommended") return "OctalFlow推荐";
+    if (protocol === "octalaicanvas-recommended") return "OctalFlow 推荐";
     if (protocol === "globalaiopc") return "GlobalAiOpc";
     if (protocol === "seedance") return "Seedance";
     if (protocol === "volcengine-video") return "火山方舟视频";

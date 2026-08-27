@@ -10,7 +10,7 @@ describe("video settings duration options", () => {
             },
         } as unknown as Parameters<typeof videoSecondOptionsFromConfig>[0];
 
-        expect(videoSecondOptionsFromConfig(config)).toEqual([5, 10, 60, 120]);
+        expect(videoSecondOptionsFromConfig(config)).toEqual([5, 10, 15, 60, 120]);
     });
 
     it("applies a duration ceiling only when a protocol-specific limit is provided", () => {

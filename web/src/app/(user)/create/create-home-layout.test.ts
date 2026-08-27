@@ -16,7 +16,9 @@ describe("create Agent home layout", () => {
             readFile(resolve(process.cwd(), "src/components/works/public-work-preview-modal.tsx"), "utf8"),
         ]);
 
-        expect(page).toContain("创作 Agent");
+        expect(page).toContain("让一个想法");
+        expect(page).toContain("OCTAFLOW CREATIVE OS");
+        expect(page).toContain("create-studio.module.css");
         expect(page).toContain("createAgentDraftFromHash");
         expect(page).toContain("setCreationMode(incomingDraft.mode)");
         expect(page).toContain('data-testid="creative-conversation-scroll"');

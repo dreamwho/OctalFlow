@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
-import { CanvasNode } from "./canvas-node";
+import { CanvasNode, resolvePromptPanelLayout } from "./canvas-node";
 import { NodeContent } from "./canvas-node-content";
 
 const imageNode: CanvasNodeData = {
@@ -75,7 +75,30 @@ describe("CanvasNode image border", () => {
     });
 
     it("keeps the blue active border when the image is selected", () => {
-        expect(renderImageNode({ isSelected: true })).toContain("border-color:#2f80ff");
+        expect(renderImageNode({ isSelected: true })).toContain("border-color:#5b5ce2");
+    });
+
+    it("visually bridges an opened prompt panel back to its media node", () => {
+        const markup = renderImageNode({ showPanel: true, renderPanel: () => <div>生成提示词</div> });
+
+        expect(markup).toContain('data-canvas-prompt-connection="true"');
+        expect(markup).toContain('data-canvas-prompt-placement="below"');
+        expect(markup).toContain("canvas-panel-bridge");
+        expect(markup).toContain("生成提示词");
+    });
+
+    it("keeps an opened prompt panel inside the viewport and flips it above a low node", () => {
+        const panel = { left: 680, right: 1500, top: 620, bottom: 950, width: 820, height: 330 } as DOMRect;
+        const node = { left: 900, right: 1220, top: 560, bottom: 800, width: 320, height: 240 } as DOMRect;
+
+        expect(resolvePromptPanelLayout(panel, node, 970, 608)).toEqual({ horizontalCorrection: -546, verticalCorrection: 0, placement: "above" });
+    });
+
+    it("keeps the prompt panel reachable when neither side of the node has enough room", () => {
+        const panel = { left: 58, right: 878, top: -133, bottom: 194, width: 820, height: 327 } as DOMRect;
+        const node = { left: 410, right: 830, top: 222, bottom: 458, width: 420, height: 236 } as DOMRect;
+
+        expect(resolvePromptPanelLayout(panel, node, 970, 608)).toEqual({ horizontalCorrection: 0, verticalCorrection: 177, placement: "above" });
     });
 
     it("keeps the muted highlight for a related image", () => {

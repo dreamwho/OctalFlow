@@ -7,7 +7,7 @@ import { motion } from "motion/react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { nanoid } from "nanoid";
-import { controlCreativeAgentRun, createCreativeAgentRun, listCreativeAgentRuns, retryCreativeAgentTask } from "@/services/api/creative";
+import { controlCreativeAgentRun, createCreativeAgentRun, listCreativeAgentRuns, retryCreativeAgentTaskWithState } from "@/services/api/creative";
 import { updateCreativeConversation } from "@/services/api/creative";
 import { deleteCanvasAssistantConversations } from "@/services/api/canvas-projects";
 import { refreshUserPointsIfSystem } from "@/services/api/points";
@@ -118,6 +118,14 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
     const selectedMediaReferenceIds = useMemo(() => selectedMediaReferences.map((item) => item.id), [selectedMediaReferences]);
     const referenceAliases = useMemo(() => canvasAgentReferenceAliases(mentionAssets, selectedMediaReferenceIds), [mentionAssets, selectedMediaReferenceIds]);
     const selectedTextReferences = selectedReferences.filter((item) => !item.dataUrl);
+    const selectedNodeSkillId = useMemo(
+        () => nodes.find((node) => selectedNodeIds.has(node.id))?.metadata?.selectedSkillIds?.find((id) => id.startsWith("video-remake-")),
+        [nodes, selectedNodeIds],
+    );
+
+    useEffect(() => {
+        if (selectedNodeSkillId && skills.some((skill) => skill.id === selectedNodeSkillId)) setSelectedSkillId(selectedNodeSkillId);
+    }, [selectedNodeSkillId, skills]);
     const readyReferenceIds = useMemo(() => allSelectedReferences.map((item) => item.id), [allSelectedReferences]);
     const { uploads, addFiles, retryUpload, removeUpload } = useCanvasAgentAttachments(onPasteImage, readyReferenceIds);
     const composerAttachments = [
@@ -150,21 +158,37 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
     };
 
     const appendMessage = (sessionId: string, message: CanvasAssistantMessage) => {
+        const now = new Date().toISOString();
         updateSession(sessionId, (session) => ({
             ...session,
             title: session.messages.length ? session.title : message.text.slice(0, 18) || "新对话",
-            messages: [...session.messages, message],
-            updatedAt: new Date().toISOString(),
+            messages: [...session.messages, { ...message, createdAt: message.createdAt || now }],
+            updatedAt: now,
         }));
     };
 
     const upsertMessage = (sessionId: string, message: CanvasAssistantMessage) => {
+        const now = new Date().toISOString();
         updateSession(sessionId, (session) => {
             const exists = session.messages.some((item) => item.id === message.id);
             return {
                 ...session,
                 title: session.messages.length ? session.title : message.text.slice(0, 18) || "新对话",
-                messages: exists ? session.messages.map((item) => (item.id === message.id ? { ...item, ...message } : item)) : [...session.messages, message],
+                messages: exists ? session.messages.map((item) => (item.id === message.id ? { ...item, ...message, createdAt: item.createdAt || message.createdAt || now } : item)) : [...session.messages, { ...message, createdAt: message.createdAt || now }],
+                updatedAt: now,
+            };
+        });
+    };
+
+    const attachSkillsToRunMessage = (sessionId: string, assistantId: string, selectedSkills: Array<{ id: string; name: string }>) => {
+        if (!selectedSkills.length) return;
+        updateSession(sessionId, (session) => {
+            const assistantIndex = session.messages.findIndex((item) => item.id === assistantId);
+            const userIndex = session.messages.slice(0, assistantIndex < 0 ? session.messages.length : assistantIndex).findLastIndex((item) => item.role === "user");
+            if (userIndex < 0) return session;
+            return {
+                ...session,
+                messages: session.messages.map((item, index) => (index === userIndex ? { ...item, skills: selectedSkills } : item)),
                 updatedAt: new Date().toISOString(),
             };
         });
@@ -247,9 +271,10 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
         }
 
         const refs = savedReferences || selectedReferences;
+        const submittedSkills = selectedSkill ? [{ id: selectedSkill.id, name: selectedSkill.name }] : [];
         const submittedReferenceIds = new Set(refs.map((item) => item.id));
         const runSnapshot = compactSnapshot(snapshotRef.current);
-        const userMessage: CanvasAssistantMessage = { id: nanoid(), role: "user", text, references: refs };
+        const userMessage: CanvasAssistantMessage = { id: nanoid(), role: "user", text, references: refs, ...(submittedSkills.length ? { skills: submittedSkills } : {}) };
         const assistantId = nanoid();
         const planningStage = { key: "planning" as const, text: "正在理解你的需求" };
         requestLatest();
@@ -270,7 +295,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                 prompt: text,
                 snapshot: { ...runSnapshot, selectedNodeIds: canvasRunSelectedNodeIds(snapshotRef.current, submittedReferenceIds) },
                 assetIds: [],
-                skillIds: selectedSkillId ? [selectedSkillId] : [],
+                skillIds: submittedSkills.map((skill) => skill.id),
                 modelIds: smartPlanning ? [] : selectedModelIds,
                 preferences: generationPreferences.mode ? generationPreferences : undefined,
             });
@@ -279,7 +304,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
             restoredRunIdsRef.current.add(run.id);
             updateSession(session.id, (current) => ({ ...current, conversationId: run.conversationId }));
             upsertMessage(session.id, { id: assistantId, runId: run.id, role: "assistant", text: submittedReferenceIds.size ? "收到，我会基于当前选中素材处理这次创作需求。" : "收到，我会结合当前画布处理这次创作需求。" });
-            bindSessionRun(session.id, { runId: run.id, assistantMessageId: assistantId, paused: false, stage: planningStage });
+            bindSessionRun(session.id, { runId: run.id, assistantMessageId: assistantId, paused: false, stage: planningStage, startedAt: run.timings?.requestAcceptedAt || run.createdAt, tasks: run.tasks });
             setSelectedSkillId(undefined);
             await waitForBackendAgent(run.id, session.id, assistantId);
         } catch (error) {
@@ -301,10 +326,11 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                 await watchCanvasAgentRun(
                     runId,
                     {
-                        onPlan: (ops, reply) => {
+                        onPlan: (ops, reply, summary) => {
                             onApplyOps(ops);
-                            upsertMessage(sessionId, { id: assistantId, role: "assistant", text: reply });
+                            upsertMessage(sessionId, { id: assistantId, role: "assistant", text: reply, meta: summary.taskCount ? summary.label : undefined });
                         },
+                        onSkills: (selectedSkills) => attachSkillsToRunMessage(sessionId, assistantId, selectedSkills),
                         onAssistant: (text, detail) => {
                             if (detail?.runId && detail.taskId) {
                                 const replace = detail.taskId === retryTaskId || (replaceFirstFailure && !retryTaskId);
@@ -317,6 +343,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                         },
                         onStage: (stage) => updateSessionRun(sessionId, runId, { stage }),
                         onPaused: (paused) => updateSessionRun(sessionId, runId, { paused }),
+                        onRunProgress: ({ tasks, startedAt }) => updateSessionRun(sessionId, runId, { tasks, ...(startedAt ? { startedAt } : {}) }),
                         onOps: onApplyOps,
                     },
                     { signal: controller.signal },
@@ -358,7 +385,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                         session = {
                             ...session,
                             title: "进行中的 Agent 任务",
-                            messages: [{ id: assistantId, runId: run.id, role: "assistant", text: "已恢复刷新前仍在执行的 Agent 任务。" }],
+                            messages: [{ id: assistantId, runId: run.id, role: "assistant", text: "已恢复刷新前仍在执行的 Agent 任务。", createdAt: new Date(run.createdAt || Date.now()).toISOString() }],
                         };
                         nextSessions = [session, ...nextSessions];
                     } else {
@@ -375,6 +402,8 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                         assistantMessageId: assistantId,
                         paused: run.status === "paused",
                         stage: run.status === "paused" ? { key: "paused", text: "任务已暂停" } : run.status === "planning" ? { key: "planning", text: "正在理解你的需求" } : { key: "executing", text: "任务仍在后台运行，正在恢复连接" },
+                        startedAt: run.timings?.requestAcceptedAt || run.createdAt,
+                        tasks: run.tasks,
                     };
                     watches.push({ runId: run.id, sessionId: session.id, assistantId });
                 });
@@ -426,11 +455,19 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
         const session = activeSession || localSessions[0];
         if (!session || runStatesBySession[session.id]) return;
         const assistantId = failedMessageId;
-        bindSessionRun(session.id, { runId, assistantMessageId: assistantId, paused: false, stage: { key: "executing", text: "正在重新执行失败任务" } });
+        bindSessionRun(session.id, { runId, assistantMessageId: assistantId, paused: false, stage: { key: "executing", text: "正在重新执行失败任务" }, startedAt: Date.now() });
         upsertMessage(session.id, { id: assistantId, runId, role: "assistant", title: undefined, text: "正在重新执行失败任务…", detail: undefined });
         try {
-            if (taskId) await retryCreativeAgentTask(runId, taskId, session.conversationId);
-            else await controlCreativeAgentRun(runId, "retry", session.conversationId);
+            const retry = taskId ? await retryCreativeAgentTaskWithState(runId, taskId, session.conversationId) : { run: (await controlCreativeAgentRun(runId, "retry", session.conversationId)).run };
+            if (retry.ops?.length) onApplyOps(retry.ops as CanvasAgentOp[]);
+            const retriedRun = retry.run;
+            updateSessionRun(session.id, runId, { tasks: retriedRun.tasks, startedAt: retriedRun.timings?.requestAcceptedAt || retriedRun.createdAt || Date.now() });
+            const reconciledTask = taskId ? retriedRun.tasks.find((task) => task.id === taskId) : undefined;
+            if (reconciledTask?.status === "completed") {
+                upsertMessage(session.id, { id: assistantId, runId, role: "assistant", title: undefined, text: `「${reconciledTask.title || "创作任务"}」已完成，画布结果已同步。`, detail: undefined });
+                releaseSessionRun(session.id, runId);
+                return;
+            }
             await waitForBackendAgent(runId, session.id, assistantId, taskId, !taskId);
         } catch (error) {
             upsertMessage(session.id, { id: assistantId, runId, role: "error", title: "重试失败", text: friendlyAgentError(error, "任务重试失败，请稍后再试。"), detail: { runId, taskId } });
@@ -549,13 +586,14 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                             {messages.map((message) => (
                                 <div key={message.id} className="space-y-1">
                                     <AgentChatMessage
-                                        item={assistantMessageToChatMessage(message)}
+                                        item={assistantMessageToChatMessage(message, activeSession?.createdAt)}
                                         theme={theme}
                                         user={user}
                                         onLocateNode={onLocateNode}
                                         onRetryTask={(runId, taskId) => void retryFailedTask(runId, taskId, message.id)}
                                         onEditMessage={() => {
                                             setPrompt(message.text);
+                                            setSelectedSkillId(message.skills?.[0]?.id);
                                             setRemovedReferenceIds(new Set());
                                             onSelectNodeIds(new Set((message.references || []).map((item) => item.id).filter((id) => nodes.some((node) => node.id === id))));
                                         }}
@@ -564,7 +602,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                             ))}
                             {isRunning ? (
                                 <>
-                                    <AgentWorkingMessage theme={theme} stage={runStage} />
+                                    <AgentWorkingMessage theme={theme} stage={runStage} tasks={activeRunState?.tasks} startedAt={activeRunState?.startedAt} />
                                     <div className="flex justify-end gap-2">
                                         <Button size="small" icon={runPaused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />} onClick={() => void controlRun(runPaused ? "resume" : "pause")}>
                                             {runPaused ? "继续" : "暂停"}

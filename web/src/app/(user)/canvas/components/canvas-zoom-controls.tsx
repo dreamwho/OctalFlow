@@ -11,10 +11,11 @@ type CanvasZoomControlsProps = {
     onScaleChange: (scale: number) => void;
     onReset: () => void;
     isMiniMapOpen: boolean;
+    composerOpen?: boolean;
     onToggleMiniMap: () => void;
 };
 
-export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
+export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, composerOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
@@ -22,8 +23,13 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
 
     return (
-        <div className="canvas-zoom-controls pointer-events-none absolute bottom-5 left-5 z-50" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-            <div className="canvas-zoom-dock pointer-events-auto flex h-14 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur" style={dockStyle}>
+        <div
+            className="canvas-zoom-controls pointer-events-none absolute left-5 z-50 transition-[bottom] duration-200"
+            style={{ bottom: composerOpen ? "calc(min(58vh, 410px) + 28px)" : 20 }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+        >
+            <div className="canvas-zoom-dock pointer-events-auto flex h-12 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur-xl" style={dockStyle}>
                 <Tooltip title={isMiniMapOpen ? "关闭小地图" : "打开小地图"}>
                     <Button
                         type="text"

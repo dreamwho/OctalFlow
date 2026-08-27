@@ -47,6 +47,7 @@ export function browserIconHref(site: Pick<SiteSettings, "iconUrl" | "logoUrl">)
     const iconUrl = site.iconUrl.trim();
     const logoUrl = site.logoUrl.trim();
     const directIconUrl = iconUrl === "/favicon.ico" || iconUrl === "/api/site-icon" ? "" : iconUrl;
-    if (directIconUrl && (directIconUrl !== DEFAULT_SITE_SETTINGS.iconUrl || logoUrl === DEFAULT_SITE_SETTINGS.logoUrl)) return directIconUrl;
+    const usesBundledIcon = directIconUrl === DEFAULT_SITE_SETTINGS.iconUrl || directIconUrl === "/icon.svg";
+    if (directIconUrl && (!usesBundledIcon || logoUrl === DEFAULT_SITE_SETTINGS.logoUrl || logoUrl === "/logo.svg")) return directIconUrl;
     return logoUrl || directIconUrl || DEFAULT_SITE_SETTINGS.iconUrl;
 }

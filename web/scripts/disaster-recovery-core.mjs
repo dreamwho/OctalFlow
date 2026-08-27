@@ -200,7 +200,7 @@ function toPortablePath(value) {
 }
 
 function validateManifestShape(value) {
-    if (!value || value.app !== "OctalFlow" || value.formatVersion !== DISASTER_FORMAT_VERSION || typeof value.recoveryPointId !== "string" || !value.recoveryPointId) throw new Error("灾备恢复点清单格式不正确");
+    if (!value || value.app !== "OctalAICanvas" || value.formatVersion !== DISASTER_FORMAT_VERSION || typeof value.recoveryPointId !== "string" || !value.recoveryPointId) throw new Error("灾备恢复点清单格式不正确");
     if (!value.database?.file?.startsWith("database/") || !value.database.sha256) throw new Error("灾备恢复点缺少 PostgreSQL 快照");
     const roots = Array.isArray(value.localMedia?.roots) ? value.localMedia.roots : [];
     if (roots.length !== LOCAL_MEDIA_ROOTS.length || !LOCAL_MEDIA_ROOTS.every((name) => roots.some((root) => root?.name === name))) throw new Error("灾备恢复点缺少完整本地媒体目录清单");

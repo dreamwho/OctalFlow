@@ -64,6 +64,69 @@ describe("directAgentPlan", () => {
         expect(ops).toContainEqual({ type: "connect_nodes", fromNodeId: "task-run-0", toNodeId: "output-run-0-0" });
     });
 
+    it("多分镜任务把选中图片作为身份参考而不是共同的原位编辑目标", () => {
+        const plan = {
+            intent: "generation",
+            objective: "女室内设计师的一天 Vlog",
+            reply: "开始生成",
+            decisions: [],
+            foundation: {
+                complexity: "complex",
+                brief: { objective: "生成恰好三张 Vlog 分镜", constraints: ["每个产物都输出三张图片"] },
+                direction: { summary: "真人纪实", lighting: "清晨、午后与夜晚三种光线同时出现", avoid: ["不得少于三张"] },
+            },
+            deliverables: [
+                { id: "morning", title: "Vlog分镜1：晨间工作室", type: "image", model: "image-pro", prompt: "晨间在工作室挑选材料", count: 1, dependencies: [] },
+                { id: "site", title: "Vlog分镜2：施工现场", type: "image", model: "image-pro", prompt: "午后在毛坯房用测距仪量房", count: 1, dependencies: [] },
+                { id: "evening", title: "Vlog分镜3：晚间复盘", type: "image", model: "image-pro", prompt: "晚间在咖啡馆复盘方案", count: 1, dependencies: [] },
+            ],
+        };
+        const snapshot = {
+            selectedNodeIds: ["person-reference"],
+            nodes: [{ id: "person-reference", type: "image", title: "人物参考", metadata: { url: "/api/reference-assets/person.webp", prompt: "旧楼阳台上的女孩" } }],
+        };
+
+        const tasks = normalizeTasks(plan as never, [], generationSettings() as never, snapshot, "女室内设计师的一天 Vlog", "canvas", []);
+
+        expect(tasks).toHaveLength(3);
+        expect(tasks.every((task) => !task.targetNodeId)).toBe(true);
+        expect(tasks.every((task) => task.referenceUrl === "/api/reference-assets/person.webp")).toBe(true);
+        expect(tasks[1].optimizedPrompt).toContain("毛坯房");
+        expect(tasks[1].prompt).not.toContain("基于画布已有节点进行局部修改");
+        expect(tasks[1].prompt).not.toContain("旧楼阳台上的女孩");
+        expect(tasks[1].prompt).not.toContain("统一创作约束");
+        expect(tasks[1].prompt).not.toContain("每个产物都输出三张图片");
+        expect(tasks[1].prompt).not.toContain("清晨、午后与夜晚三种光线同时出现");
+        expect(tasks[1].prompt).toContain("不得复制参考图的背景、动作或构图");
+        const ops = planToOps(plan as never, tasks, "run", snapshot);
+        expect(ops).toContainEqual({ type: "connect_nodes", fromNodeId: "person-reference", toNodeId: "task-run-1" });
+    });
+
+    it("媒体执行任务只携带当前产物约束，不把完整 Skill 流程塞进单张图片", () => {
+        const plan = {
+            intent: "generation",
+            objective: "制作短剧",
+            reply: "开始生成",
+            decisions: [],
+            foundation: { complexity: "complex", brief: { objective: "制作短剧" }, direction: { summary: "都市悬疑" } },
+            deliverables: [{ id: "character", title: "角色基准图：林夏", type: "image", model: "image-pro", prompt: "中性背景、正面半身角色基准照", count: 1, dependencies: [] }],
+        };
+        const skills = [
+            {
+                id: "drama",
+                name: "短剧全流程导演",
+                instructions: "先写完整剧本，再生成八个分镜，把所有阶段合成一张制作板。",
+                defaultConfig: {},
+            },
+        ];
+
+        const [task] = normalizeTasks(plan as never, skills as never, generationSettings() as never, undefined, "制作短剧", "drama", []);
+
+        expect(task.prompt).toContain("本任务已选择 Skill：短剧全流程导演");
+        expect(task.prompt).toContain("这里只执行当前标题对应的单个产物");
+        expect(task.prompt).not.toContain("把所有阶段合成一张制作板");
+    });
+
     it("选中图片并要求替换主体时不会被错误规划成视频", () => {
         const plan = {
             intent: "generation",

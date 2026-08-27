@@ -26,6 +26,16 @@ export type CreativeAgentRun = {
     generationPreferences?: CreativeGenerationPreferences;
     createdAt?: number;
     updatedAt?: number;
+    timings?: {
+        requestAcceptedAt: number;
+        planningStartedAt?: number;
+        planningCompletedAt?: number;
+        firstTaskSubmittedAt?: number;
+        firstResultReadyAt?: number;
+        allResultsReadyAt?: number;
+        reviewCompletedAt?: number;
+        runCompletedAt?: number;
+    };
     assetIds: string[];
     tasks: Array<{
         id: string;
@@ -43,6 +53,8 @@ export type CreativeAgentRun = {
         speed?: number;
         count?: number;
         status: "ready" | "running" | "completed" | "failed" | "cancelled";
+        startedAt?: number;
+        completedAt?: number;
         error?: string;
     }>;
     cancellation?: { pendingCount: number };
@@ -114,17 +126,32 @@ export function listCreativeAgentRuns(surface: CreativeRunRequest["surface"] = "
 }
 
 export function retryCreativeAgentTask(runId: string, taskId: string, expectedConversationId?: string) {
-    return retryCreativeAgentTasks(runId, [taskId], expectedConversationId);
+    return retryCreativeAgentTaskWithState(runId, taskId, expectedConversationId).then((data) => data.run);
 }
 
 export function retryCreativeAgentTasks(runId: string, taskIds: string[], expectedConversationId?: string) {
+    return retryCreativeAgentTasksWithState(runId, taskIds, expectedConversationId).then((data) => data.run);
+}
+
+export type CreativeAgentTaskRetryState = {
+    run: CreativeAgentRun;
+    ops?: Array<Record<string, unknown>>;
+    reconciled?: boolean;
+    retriedTaskIds?: string[];
+};
+
+export function retryCreativeAgentTaskWithState(runId: string, taskId: string, expectedConversationId?: string) {
+    return retryCreativeAgentTasksWithState(runId, [taskId], expectedConversationId);
+}
+
+export function retryCreativeAgentTasksWithState(runId: string, taskIds: string[], expectedConversationId?: string) {
     const [taskId] = taskIds;
     if (!taskId) return Promise.reject(new Error("请选择需要重试的失败任务"));
-    return request<{ run: CreativeAgentRun }>(`/api/agent/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/retry`, {
+    return request<CreativeAgentTaskRetryState>(`/api/agent/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/retry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...(expectedConversationId ? { conversationId: expectedConversationId } : {}), taskIds }),
-    }).then((data) => data.run);
+    });
 }
 
 export function updateCreativeConversation(conversationId: string, patch: { title?: string; status?: CreativeConversation["status"] }) {

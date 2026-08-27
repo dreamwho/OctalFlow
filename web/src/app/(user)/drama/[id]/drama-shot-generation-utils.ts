@@ -18,8 +18,9 @@ export function shotReferenceImages(project: DramaProject, shot: DramaShot) {
 }
 
 export function storyboardReferenceImages(shot: DramaShot) {
+    const startFrameRole = shot.storyboardFrameMode === "first_last" ? "first_frame" : undefined;
     return [
-        shot.storyboardImageUrl ? referenceImage(`storyboard-start-${shot.id}`, `${shot.title}-起始帧.png`, shot.storyboardImageUrl, "image/png", shot.storyboardImageWidth, shot.storyboardImageHeight, "first_frame") : null,
+        shot.storyboardImageUrl ? referenceImage(`storyboard-start-${shot.id}`, `${shot.title}-分镜参考.png`, shot.storyboardImageUrl, "image/png", shot.storyboardImageWidth, shot.storyboardImageHeight, startFrameRole) : null,
         shot.storyboardFrameMode === "first_last" && shot.storyboardEndImageUrl
             ? referenceImage(`storyboard-end-${shot.id}`, `${shot.title}-结束帧.png`, shot.storyboardEndImageUrl, "image/png", shot.storyboardEndImageWidth, shot.storyboardEndImageHeight, "last_frame")
             : null,

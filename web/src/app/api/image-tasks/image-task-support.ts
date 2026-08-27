@@ -1,4 +1,4 @@
-import { rawReferenceRequestUrlCandidates } from "./image-task-reference-urls";
+import { providerUploadReferenceRequestUrl, rawReferenceRequestUrlCandidates } from "./image-task-reference-urls";
 import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
@@ -697,10 +697,11 @@ export async function imageReferenceToFile(reference: ImageTaskReference, name: 
         try {
             if (/^data:image\//i.test(value)) return dataUrlToFile(value, name, reference.type);
             if (/^blob:/i.test(value)) throw new Error("参考图已失效，请重新上传");
-            const fetchUrl = value.startsWith("/") ? `${origin}${value}` : value;
+            const uploadUrl = providerUploadReferenceRequestUrl(value);
+            const fetchUrl = uploadUrl.startsWith("/") ? `${origin}${uploadUrl}` : uploadUrl;
             if (!isRemoteMediaUrl(fetchUrl)) throw new Error("参考图地址无效，请重新上传参考图");
             const workerHeaders = maintenanceWorkerContextHeaders(cookie);
-            const response = await (value.startsWith("/") ? fetchInternalApi(fetchUrl, {
+            const response = await (uploadUrl.startsWith("/") ? fetchInternalApi(fetchUrl, {
                 headers: workerHeaders || (cookie ? { cookie } : undefined),
                 cache: "no-store",
                 signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),
@@ -716,7 +717,7 @@ export async function imageReferenceToFile(reference: ImageTaskReference, name: 
             if (bytes.length > MAX_INLINE_IMAGE_BYTES) throw new Error("参考图过大，请压缩后重试");
             const mimeType = response.headers.get("content-type")?.split(";", 1)[0] || reference.type || "image/png";
             if (!mimeType.startsWith("image/")) throw new Error("参考图不是有效图片");
-            return new File([bytes], name, { type: mimeType });
+            return new File([bytes], mimeType === "image/webp" ? name.replace(/\.[^.]+$/, "") + ".webp" : name, { type: mimeType });
         } catch (error) {
             lastError = error;
         }

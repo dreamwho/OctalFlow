@@ -44,6 +44,14 @@ describe("canvas project file provider", () => {
         expect(await getCanvasProject("one", "user-one")).toMatchObject({ title: "已更新", nodes: [{ id: "node-one" }] });
     });
 
+    it("migrates legacy default canvas titles without changing custom project names", async () => {
+        await createCanvasProject("user-one", project("legacy", "VOZEB PRO 画布 1"));
+        await createCanvasProject("user-one", project("custom", "VOZEB PRO 品牌宣传片"));
+
+        await expect(getCanvasProject("legacy", "user-one")).resolves.toMatchObject({ title: "OctalFlow 画布 1" });
+        await expect(getCanvasProject("custom", "user-one")).resolves.toMatchObject({ title: "VOZEB PRO 品牌宣传片" });
+    });
+
     it("rejects a stale file-provider snapshot instead of overwriting a newer save", async () => {
         const initial = project("one", "初始项目");
         await createCanvasProject("user-one", initial);

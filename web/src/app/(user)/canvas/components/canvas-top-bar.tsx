@@ -5,6 +5,7 @@ import { Dropdown, Modal } from "antd";
 import { BookOpen, Bot, LibraryBig, Menu, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
+import { SiteLogo } from "@/components/layout/site-logo";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { CanvasProjectSaveState } from "../stores/use-canvas-store";
@@ -83,7 +84,11 @@ export function CanvasTopBar({
 
     return (
         <>
-            <div className="canvas-topbar pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-16 items-center justify-between gap-2 px-3 sm:h-20 sm:px-6" data-save-status={saveState?.status || "saved"}>
+            <div
+                className="canvas-topbar pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-16 items-center justify-between gap-2 border-b px-3 backdrop-blur-xl sm:px-5"
+                data-save-status={saveState?.status || "saved"}
+                style={{ background: colorTheme === "light" ? "rgba(255,255,255,.9)" : "rgba(9,11,16,.88)", borderColor: theme.toolbar.border }}
+            >
                 <div className="canvas-topbar-left pointer-events-auto flex min-w-0 items-center gap-2 sm:gap-3">
                     <Dropdown
                         open={menuOpen}
@@ -108,6 +113,12 @@ export function CanvasTopBar({
                             <Menu className="size-5" />
                         </button>
                     </Dropdown>
+
+                    <div className="hidden shrink-0 items-center gap-2 sm:flex" aria-label="OctalFlow">
+                        <SiteLogo logoUrl="/brand/octaflow-mark.png" className="size-7" />
+                        <span className="text-sm font-semibold tracking-[-0.02em]">OctalFlow</span>
+                    </div>
+                    <span className="hidden h-4 w-px shrink-0 sm:block" style={{ background: theme.toolbar.border }} aria-hidden="true" />
 
                     <div ref={titleRef} className="canvas-topbar-title flex min-w-0 items-center gap-2">
                         {isTitleEditing ? (

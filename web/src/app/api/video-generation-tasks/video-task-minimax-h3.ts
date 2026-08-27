@@ -4,7 +4,8 @@ import { isExternallyReachableReferenceUrl } from "@/lib/server/provider-task-co
 import type { VideoGenerationReference } from "@/lib/video-reference-contract";
 
 // EasyFrame MiniMax H3：带本地媒体文件时使用 multipart/form-data，images/videos/audios 字段接受 file|URL。
-// 参考图无法被上游公网访问（站点未部署在公网）时下载为文件随表单提交；可公网访问时仍走 URL/JSON 原路径。
+// 站点自产媒体即使被拼成公网 URL，也由服务端读取后作为文件提交，避免临时隧道或签名地址失效。
+// 只有真正属于外部站点的公网媒体继续走 URL/JSON 原路径。
 export async function buildMinimaxH3VideoFormData(input: {
     model: string;
     prompt: string;
@@ -28,7 +29,7 @@ export async function buildMinimaxH3VideoFormData(input: {
     const videos = payload.videos ?? [];
     const audios = payload.audios ?? [];
     if (!images.length && !videos.length && !audios.length) return undefined;
-    if ([...images, ...videos, ...audios].every((url) => isExternallyReachableReferenceUrl(url))) return undefined;
+    if ([...images, ...videos, ...audios].every((url) => isExternalProviderReference(url, input.publicOrigin))) return undefined;
 
     const form = new FormData();
     form.set("model", payload.model);
@@ -38,7 +39,7 @@ export async function buildMinimaxH3VideoFormData(input: {
     form.set("prompt", payload.prompt);
     if (payload.aspect_ratio) form.set("aspect_ratio", payload.aspect_ratio);
     for (const [index, url] of images.entries()) {
-        if (isExternallyReachableReferenceUrl(url)) {
+        if (isExternalProviderReference(url, input.publicOrigin)) {
             form.append("images", url);
             continue;
         }
@@ -48,6 +49,13 @@ export async function buildMinimaxH3VideoFormData(input: {
     for (const url of videos) form.append("videos", url);
     for (const url of audios) form.append("audios", url);
     return form;
+}
+
+function isExternalProviderReference(url: string, publicOrigin: string) {
+    const value = url.trim();
+    if (!isExternallyReachableReferenceUrl(value)) return false;
+    const origin = normalizeOrigin(publicOrigin);
+    return !origin || !value.startsWith(`${origin}/`);
 }
 
 function internalReferenceInput(url: string, publicOrigin: string) {

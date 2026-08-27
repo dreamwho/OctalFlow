@@ -4,6 +4,7 @@ vi.mock("@/lib/server/safe-outbound-fetch", () => ({ fetchSafeOutbound: (url: st
 
 import { GenerationSubmissionSafeFailure } from "@/lib/server/generation-submission-error";
 import { maintenanceWorkerContext } from "@/lib/server/maintenance-auth";
+import { providerUploadReferenceRequestUrl } from "./image-task-reference-urls";
 import {
     allowsImageProtocolFallback,
     ImageQueryContractError,
@@ -139,6 +140,16 @@ describe("GlobalAiOpc image task paths", () => {
 
         expect(result?.dataUrl).toBe("https://cdn.example.com/first.png");
         expect(result?.results?.map((item) => item.dataUrl)).toEqual(["https://cdn.example.com/first.png", "https://cdn.example.com/second.png"]);
+    });
+
+    it("uses the established WebP media variant for local provider reference uploads", () => {
+        expect(providerUploadReferenceRequestUrl("/api/generation-log-assets/permanent/scene.png")).toBe(
+            "/api/generation-log-assets/permanent/scene.png?format=webp&width=1600",
+        );
+        expect(providerUploadReferenceRequestUrl("/api/reference-assets/permanent/character.png?token=test")).toBe(
+            "/api/reference-assets/permanent/character.png?token=test&format=webp&width=1600",
+        );
+        expect(providerUploadReferenceRequestUrl("https://cdn.example.com/original.png")).toBe("https://cdn.example.com/original.png");
     });
 
     it("classifies an HTML polling response as an invalid query contract", async () => {

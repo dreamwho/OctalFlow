@@ -47,6 +47,7 @@ export function CreativeMessages({
     olderLoading,
     onLoadOlder,
     followLatest = true,
+    skills = [],
 }: {
     messages: CreativeMessage[];
     assets: CreativeAsset[];
@@ -63,6 +64,7 @@ export function CreativeMessages({
     olderLoading?: boolean;
     onLoadOlder?: () => void;
     followLatest?: boolean;
+    skills?: Array<{ id: string; name: string }>;
 }) {
     const endRef = useRef<HTMLDivElement>(null);
     const site = usePublicSessionStore((state) => state.payload?.settings?.site) || { title: DEFAULT_SITE_TITLE, logoUrl: "/logo.svg" };
@@ -81,6 +83,7 @@ export function CreativeMessages({
     }, [assets]);
     const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
     const modelNames = useMemo(() => new Map(models.map((model) => [model.id, model.name])), [models]);
+    const skillNames = useMemo(() => new Map(skills.map((skill) => [skill.id, skill.name])), [skills]);
     const entries = useMemo(() => creativeConversationEntries(messages, runDetails), [messages, runDetails]);
     const failedRoundsByAssistantId = useMemo(() => {
         const map = new Map<string, Extract<CreativeConversationEntry, { type: "round" }>>();
@@ -133,6 +136,7 @@ export function CreativeMessages({
                             outputAssets={outputAssets}
                             run={mediaRound.run}
                             modelNames={modelNames}
+                            skillNames={skillNames}
                             projectLinks={projectLinks}
                             projectErrors={projectErrors}
                             materializingProjectId={materializingProjectId}
@@ -160,6 +164,7 @@ export function CreativeMessages({
                     <article key={item.id} className={cn("group/message flex min-w-0 items-start gap-4 sm:gap-5", item.role === "user" ? "justify-end" : "justify-start")}>
                         {item.role === "assistant" ? <CreativeAssistantAvatar className="mt-0" logoUrl={site.logoUrl} /> : null}
                         <div className={cn("min-w-0", item.role === "user" ? "max-w-[520px] text-right" : "min-w-0 flex-1")}>
+                            {item.role === "user" ? <CreativeUserSkillBadges message={item} skillNames={skillNames} /> : null}
                             {item.role === "user" && itemAssets.length ? <CreativeRoundReferenceStrip assets={itemAssets} /> : null}
                             {item.role === "assistant" && item.status === "running" ? (
                                 <CreativeGenerationWaiting run={run} message={item} />
@@ -206,6 +211,7 @@ function CreativeMediaRound({
     outputAssets,
     run,
     modelNames,
+    skillNames,
     projectLinks,
     projectErrors,
     materializingProjectId,
@@ -220,6 +226,7 @@ function CreativeMediaRound({
     outputAssets: CreativeAsset[];
     run?: CreativeAgentRun;
     modelNames: ReadonlyMap<string, string>;
+    skillNames: ReadonlyMap<string, string>;
     projectLinks: Record<string, MaterializedCreativeProject>;
     projectErrors: Record<string, string>;
     materializingProjectId?: string;
@@ -250,6 +257,7 @@ function CreativeMediaRound({
                 <div data-testid="creative-round-request" className="ml-auto min-w-0 max-w-[640px] text-right lg:-mr-8">
                     <div className="flex items-start justify-end gap-3">
                         <div className="min-w-0 max-w-[520px]">
+                            <CreativeUserSkillBadges message={userMessage} skillNames={skillNames} />
                             {referencedAssets.length ? <CreativeRoundReferenceStrip assets={referencedAssets} /> : null}
                             <p className="whitespace-pre-wrap break-words rounded-[14px] bg-[linear-gradient(135deg,#f3f1ff_0%,#ebeaff_100%)] px-[18px] py-3 text-left text-[15px] leading-6 text-[#111827] dark:bg-[linear-gradient(135deg,#2d2a46_0%,#26243a_100%)] dark:text-[#f3f5f7]">
                                 {userMessage.content}
@@ -269,7 +277,7 @@ function CreativeMediaRound({
                                     <h2 className="truncate text-[17px] font-semibold leading-7 text-[#1f2937] dark:text-[#f3f5f7]">{resultTitle}</h2>
                                     <CreativeRunTiming run={run} time={assistantMessage.createdAt} />
                                 </div>
-                                <CreativeRunSummary run={run} modelNames={modelNames} />
+                                <CreativeRunSummary run={run} modelNames={modelNames} resultCount={mediaOutputs.length} />
                             </>
                         ) : null}
                         <div data-testid="creative-result-group" className="mt-3 flex w-fit max-w-full flex-col items-start">
@@ -391,6 +399,21 @@ function CreativeUserMessageMeta({ message }: { message: CreativeMessage }) {
     );
 }
 
+function CreativeUserSkillBadges({ message, skillNames }: { message: CreativeMessage; skillNames: ReadonlyMap<string, string> }) {
+    const value = message.metadata.selectedSkillIds;
+    const ids = Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+    if (!ids.length) return null;
+    return (
+        <div className="mb-1 flex flex-wrap justify-end gap-1" aria-label="本轮使用的 Skill">
+            {ids.map((id) => (
+                <span key={id} className="rounded-full border border-amber-200/80 bg-amber-50/70 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+                    Skill · {skillNames.get(id) || id}
+                </span>
+            ))}
+        </div>
+    );
+}
+
 function CreativeAssistantAvatar({ logoUrl, className }: { logoUrl?: string; className?: string }) {
     return (
         <span
@@ -403,8 +426,8 @@ function CreativeAssistantAvatar({ logoUrl, className }: { logoUrl?: string; cla
     );
 }
 
-function CreativeRunSummary({ run, modelNames }: { run?: CreativeAgentRun; modelNames: ReadonlyMap<string, string> }) {
-    const items = creativeRunPresentation(run, modelNames);
+function CreativeRunSummary({ run, modelNames, resultCount }: { run?: CreativeAgentRun; modelNames: ReadonlyMap<string, string>; resultCount?: number }) {
+    const items = creativeRunPresentation(run, modelNames, resultCount);
     if (!items.length) return null;
     const summaryItems = items.filter((item) => item.key !== "mode" && item.key !== "status");
     const duration = creativeRunDuration(run);

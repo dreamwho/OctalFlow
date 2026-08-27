@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { BriefcaseBusiness, ChevronRight, CircleCheck, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, Star, Video } from "lucide-react";
+import { BriefcaseBusiness, ChevronRight, CircleCheck, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, Sparkles, Star, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -13,7 +13,7 @@ import type { CanvasResourceReference } from "../utils/canvas-resource-reference
 import { resizeNodeBox } from "../utils/canvas-node-size";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
-const selectionBlue = "#2f80ff";
+const selectionBlue = "#5b5ce2";
 
 function isInteractiveTarget(target: EventTarget | null) {
     return target instanceof Element && Boolean(target.closest("button,input,textarea,select,video,audio,[data-canvas-no-drag]"));
@@ -23,6 +23,7 @@ const NODE_TITLE_ICON: Partial<Record<CanvasNodeType, typeof Video>> = {
     [CanvasNodeType.Image]: ImageIcon,
     [CanvasNodeType.Panorama]: Globe2,
     [CanvasNodeType.Video]: Video,
+    [CanvasNodeType.VideoRemake]: Sparkles,
     [CanvasNodeType.Audio]: Music2,
 };
 
@@ -140,7 +141,11 @@ export const CanvasNode = React.memo(function CanvasNode({
     const isActive = isConnectionTarget || isSelected || isFocusRelated;
     const imageBorderColor = isActive ? selectionBlue : isRelated && !isBatchChild ? theme.node.muted : theme.node.stroke;
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const promptPanelRef = useRef<HTMLDivElement>(null);
     const clickStartRef = useRef<{ x: number; y: number } | null>(null);
+    const [promptPanelOffsetX, setPromptPanelOffsetX] = useState(0);
+    const [promptPanelOffsetY, setPromptPanelOffsetY] = useState(0);
+    const [promptPanelPlacement, setPromptPanelPlacement] = useState<"above" | "below">("below");
     const resizeRef = useRef({
         isResizing: false,
         corner: "bottom-right" as ResizeCorner,
@@ -172,6 +177,39 @@ export const CanvasNode = React.memo(function CanvasNode({
         textarea?.focus();
         textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
     }, [isEditingContent]);
+
+    useLayoutEffect(() => {
+        if (!showPanel || !promptPanelRef.current) {
+            setPromptPanelOffsetX(0);
+            setPromptPanelOffsetY(0);
+            setPromptPanelPlacement("below");
+            return;
+        }
+
+        const panel = promptPanelRef.current;
+        const updateLayout = () => {
+            const panelRect = panel.getBoundingClientRect();
+            const nodeRect = panel.closest<HTMLElement>("[data-node-id]")?.getBoundingClientRect();
+            if (!nodeRect) return;
+            const layout = resolvePromptPanelLayout(panelRect, nodeRect, window.innerWidth, window.innerHeight);
+            setPromptPanelOffsetX((current) => {
+                const next = Math.round((current + layout.horizontalCorrection) * 100) / 100;
+                return Math.abs(next - current) < 0.5 ? current : next;
+            });
+            setPromptPanelOffsetY(layout.verticalCorrection);
+            setPromptPanelPlacement(layout.placement);
+        };
+
+        const frame = requestAnimationFrame(updateLayout);
+        const resizeObserver = new ResizeObserver(updateLayout);
+        resizeObserver.observe(panel);
+        window.addEventListener("resize", updateLayout);
+        return () => {
+            cancelAnimationFrame(frame);
+            resizeObserver.disconnect();
+            window.removeEventListener("resize", updateLayout);
+        };
+    }, [data.id, scale, showPanel]);
 
     useEffect(() => {
         if (!editRequestNonce || data.type !== CanvasNodeType.Text) return;
@@ -274,7 +312,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
     const rememberNodePointer = (event: React.MouseEvent | React.PointerEvent) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest("button,input,textarea,select,video,audio,[data-canvas-no-drag]")) return;
+        if (target?.closest("button,input,textarea,select,[data-canvas-no-drag]")) return;
         clickStartRef.current = { x: event.clientX, y: event.clientY };
     };
 
@@ -284,7 +322,7 @@ export const CanvasNode = React.memo(function CanvasNode({
         if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return;
         if (event.shiftKey || event.ctrlKey || event.metaKey) return;
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest("button,input,textarea,select,video,audio,[data-canvas-no-drag]")) return;
+        if (target?.closest("button,input,textarea,select,[data-canvas-no-drag]")) return;
         if (data.type === CanvasNodeType.Text) {
             setIsEditingContent(true);
             return;
@@ -405,14 +443,45 @@ export const CanvasNode = React.memo(function CanvasNode({
 
             {showPanel && renderPanel ? (
                 <div
+                    ref={promptPanelRef}
                     data-canvas-no-drag
-                    className="absolute left-1/2 top-full z-[70] pt-4"
-                    style={{ width: "min(850px, calc(100vw - 2rem))", transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`, transformOrigin: "top center" }}
+                    data-canvas-prompt-connection
+                    data-canvas-prompt-placement={promptPanelPlacement}
+                    className={`absolute left-1/2 z-[70] ${promptPanelPlacement === "above" ? "bottom-full pb-7" : "top-full pt-7"}`}
+                    style={{
+                        left: `calc(50% + ${promptPanelOffsetX / Math.max(scale, 0.01)}px)`,
+                        ...(promptPanelPlacement === "above" ? { bottom: `calc(100% - ${promptPanelOffsetY / Math.max(scale, 0.01)}px)` } : { top: `calc(100% + ${promptPanelOffsetY / Math.max(scale, 0.01)}px)` }),
+                        width: "min(820px, calc(100vw - 2rem))",
+                        transform: `translateX(-50%) scale(${1 / Math.max(scale, 0.01)})`,
+                        transformOrigin: promptPanelPlacement === "above" ? "bottom center" : "top center",
+                    }}
                     onContextMenu={(event) => event.stopPropagation()}
                 >
+                    {Math.abs(promptPanelOffsetY) < 0.5 ? (
+                        <span
+                            className={`canvas-panel-bridge pointer-events-none absolute h-7 -translate-x-1/2 border-l-2 ${promptPanelPlacement === "above" ? "bottom-0" : "top-0"}`}
+                            style={{ borderColor: selectionBlue, left: `calc(50% - ${promptPanelOffsetX}px)` }}
+                            aria-hidden="true"
+                        >
+                            <span className={`canvas-panel-bridge-pulse absolute -left-[5px] size-2.5 rounded-full border-2 bg-white dark:bg-[#11151c] ${promptPanelPlacement === "above" ? "top-0" : "bottom-0"}`} style={{ borderColor: selectionBlue }} />
+                        </span>
+                    ) : null}
                     {renderPanel(data)}
                 </div>
             ) : null}
         </div>
     );
 });
+
+export function resolvePromptPanelLayout(panelRect: DOMRect, nodeRect: DOMRect, viewportWidth: number, viewportHeight: number) {
+    const viewportMargin = 16;
+    const topSafeMargin = 72;
+    const horizontalCorrection = panelRect.left < viewportMargin ? viewportMargin - panelRect.left : panelRect.right > viewportWidth - viewportMargin ? viewportWidth - viewportMargin - panelRect.right : 0;
+    const roomBelow = viewportHeight - viewportMargin - nodeRect.bottom;
+    const roomAbove = nodeRect.top - viewportMargin;
+    const placement = panelRect.height <= roomBelow || roomBelow >= roomAbove ? "below" : "above";
+    const rawTop = placement === "above" ? nodeRect.top - panelRect.height : nodeRect.bottom;
+    const rawBottom = placement === "above" ? nodeRect.top : nodeRect.bottom + panelRect.height;
+    const verticalCorrection = rawTop < topSafeMargin ? topSafeMargin - rawTop : rawBottom > viewportHeight - viewportMargin ? viewportHeight - viewportMargin - rawBottom : 0;
+    return { horizontalCorrection, verticalCorrection, placement } as const;
+}

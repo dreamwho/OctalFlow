@@ -42,6 +42,20 @@ export function rawReferenceRequestUrlCandidates(reference: ImageTaskReference) 
     return uniqueStrings([reference.remoteUrl, reference.url, reference.serverUrl, reference.dataUrl].map((value) => (value || "").trim()).filter(Boolean));
 }
 
+export function providerUploadReferenceRequestUrl(value: string) {
+    const input = value.trim();
+    if (!input || /^(data|blob):/i.test(input)) return input;
+    try {
+        const absolute = new URL(input, "http://local.invalid");
+        if (!/^\/api\/(?:generation-log-assets|reference-assets)\//.test(absolute.pathname)) return input;
+        absolute.searchParams.set("format", "webp");
+        absolute.searchParams.set("width", "1600");
+        return input.startsWith("/") ? `${absolute.pathname}${absolute.search}${absolute.hash}` : absolute.toString();
+    } catch {
+        return input;
+    }
+}
+
 export function uniqueStrings(values: string[]) {
     return Array.from(new Set(values));
 }

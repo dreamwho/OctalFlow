@@ -464,7 +464,17 @@ export function useCreateAgent() {
             if (isCurrentConversation(submittedConversationId, generation)) {
                 setMessages((current) => [
                     ...current,
-                    { id: temporaryUserId, conversationId: optimisticConversationId, sequence, role: "user", status: "completed", content, metadata: { assetIds }, createdAt: now, updatedAt: now },
+                    {
+                        id: temporaryUserId,
+                        conversationId: optimisticConversationId,
+                        sequence,
+                        role: "user",
+                        status: "completed",
+                        content,
+                        metadata: { assetIds, ...(snapshot.skillIds.length ? { selectedSkillIds: snapshot.skillIds } : {}) },
+                        createdAt: now,
+                        updatedAt: now,
+                    },
                     {
                         id: temporaryAssistantId,
                         conversationId: optimisticConversationId,

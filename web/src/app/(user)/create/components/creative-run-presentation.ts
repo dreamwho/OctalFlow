@@ -3,7 +3,7 @@ import type { CreativeAgentRun } from "@/services/api/creative";
 
 export type CreativeRunPresentationItem = { key: string; label: string; value: string };
 
-export function creativeRunPresentation(run: CreativeAgentRun | undefined, modelNames: ReadonlyMap<string, string>) {
+export function creativeRunPresentation(run: CreativeAgentRun | undefined, modelNames: ReadonlyMap<string, string>, resultCount?: number) {
     if (!run) return [];
     const mode = creativeRunMode(run);
     const tasks = mode ? run.tasks.filter((task) => task.type === mode) : run.tasks;
@@ -28,7 +28,7 @@ export function creativeRunPresentation(run: CreativeAgentRun | undefined, model
     const format = firstText(tasks.map((task) => task.format)) || (preferences && "format" in preferences ? preferences.format : undefined);
     if (format) items.push({ key: "format", label: "格式", value: format.toUpperCase() });
 
-    const count = tasks.reduce((total, task) => total + (task.count || 1), 0);
+    const count = resultCount ?? tasks.reduce((total, task) => total + (task.count || 1), 0);
     if (count > 1) items.push({ key: "count", label: "数量", value: `${count}个结果` });
     items.push({ key: "status", label: "状态", value: runStatusLabel(run.status) });
     return items;

@@ -1,15 +1,20 @@
 import type { CanvasAgentOp } from "../utils/canvas-agent-ops";
 import type { CanvasAgentRunStage, CanvasAgentStableStageKey } from "./canvas-agent-progress";
-import { getCreativeAgentRun } from "@/services/api/creative";
+import { getCreativeAgentRun, type CreativeAgentRun } from "@/services/api/creative";
 import { ClientSessionExpiredError, stopIfClientSessionExpired } from "@/services/api/session-expiration";
 
 type RunHandlers = {
-    onPlan: (ops: CanvasAgentOp[], reply: string) => void;
+    onPlan: (ops: CanvasAgentOp[], reply: string, summary: CanvasAgentPlanSummary) => void;
+    onSkills?: (skills: Array<{ id: string; name: string }>) => void;
     onAssistant: (text: string, detail?: { nodeIds?: string[]; taskType?: "text" | "image" | "video" | "audio"; runId?: string; taskId?: string; title?: string }) => void;
     onStage: (stage: CanvasAgentRunStage) => void;
     onPaused: (paused: boolean) => void;
     onOps: (ops: CanvasAgentOp[]) => void;
+    onRunProgress?: (progress: CanvasAgentRunProgress) => void;
 };
+
+export type CanvasAgentPlanSummary = { taskCount: number; label: string };
+export type CanvasAgentRunProgress = { tasks: CreativeAgentRun["tasks"]; startedAt?: number };
 
 export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, options: { signal?: AbortSignal } = {}) {
     if (options.signal?.aborted) return Promise.resolve();
@@ -22,6 +27,8 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
         let paused: boolean | undefined;
         let latestStageKey: CanvasAgentStableStageKey = "planning";
         let latestOutput: { nodeIds?: string[]; taskType?: "text" | "image" | "video" | "audio" } | undefined;
+        let runStartedAt: number | undefined;
+        const taskStates = new Map<string, CreativeAgentRun["tasks"][number]>();
         const completedOutputNodeIds = new Set<string>();
         let latestFailedTask: { taskId: string; title?: string } | undefined;
         const finish = (error?: Error) => {
@@ -48,6 +55,28 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
             if (stage.key !== "reconnecting") latestStageKey = stage.key;
             handlers.onStage(stage);
         };
+        const emitRunProgress = () => handlers.onRunProgress?.({ tasks: Array.from(taskStates.values()), startedAt: runStartedAt });
+        const replaceRunProgress = (tasks: CreativeAgentRun["tasks"] = [], startedAt?: number) => {
+            taskStates.clear();
+            tasks.forEach((task) => taskStates.set(task.id, task));
+            runStartedAt = startedAt || runStartedAt;
+            emitRunProgress();
+        };
+        const patchTaskProgress = (data?: Partial<CreativeAgentRun["tasks"][number]> & { taskId?: string }) => {
+            const id = data?.taskId || data?.id;
+            if (!id) return;
+            const current = taskStates.get(id);
+            taskStates.set(id, {
+                ...current,
+                id,
+                title: data?.title || current?.title || "创作任务",
+                status: data?.status || current?.status || "running",
+                ...(data?.startedAt !== undefined ? { startedAt: data.startedAt } : {}),
+                ...(data?.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+                ...(data?.error !== undefined ? { error: data.error } : {}),
+            });
+            emitRunProgress();
+        };
         const reconcileRun = async () => {
             if (await stopIfClientSessionExpired()) {
                 reportStage({ key: "reconnecting", resumeKey: latestStageKey, text: "登录状态已失效，任务仍可能在后台运行；重新登录后可继续查看" });
@@ -57,6 +86,7 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
             try {
                 const run = await getCreativeAgentRun(runId);
                 if (settled) return;
+                replaceRunProgress(run.tasks, run.timings?.requestAcceptedAt || run.createdAt);
                 if (run.status === "completed") {
                     handlers.onAssistant("Agent 任务已完成，结果已经返回。", latestOutput);
                     finish();
@@ -88,26 +118,38 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
         };
 
         listen("run.planning", () => reportStage({ key: "planning", text: "正在理解需求并分析当前画布" }));
-        listen("skills.selected", () => reportStage({ key: "skills", text: "正在匹配合适的创作技能" }));
+        listen("skills.selected", (event) => {
+            const payload = read<{ data?: { skills?: Array<{ id?: string; name?: string }> } }>(event);
+            const skills = (payload.data?.skills || []).flatMap((skill) => (skill.id?.trim() && skill.name?.trim() ? [{ id: skill.id.trim(), name: skill.name.trim() }] : []));
+            if (skills.length) handlers.onSkills?.(skills);
+            reportStage({ key: "skills", text: skills.length ? `正在执行 Skill「${skills.map((skill) => skill.name).join("、")}」` : "正在匹配合适的创作技能" });
+        });
         listen("canvas.ops", (event) => {
             const payload = read<{ data?: { ops?: CanvasAgentOp[]; reply?: string } }>(event);
             if (!appliedPlan && payload.data?.ops?.length) {
                 appliedPlan = true;
-                handlers.onPlan(payload.data.ops, payload.data.reply || "创作计划已添加到画布，后台正在执行任务。");
+                handlers.onPlan(payload.data.ops, payload.data.reply || "创作计划已添加到画布，后台正在执行任务。", canvasAgentPlanSummary(payload.data.ops));
             }
             reportStage({ key: "plan", text: "文本执行计划已生成，正在准备任务" });
         });
         listen("task.running", (event) => {
-            const payload = read<{ data?: { title?: string; attempts?: number; ops?: CanvasAgentOp[] } }>(event);
+            const payload = read<{ data?: Partial<CreativeAgentRun["tasks"][number]> & { taskId?: string; attempts?: number; ops?: CanvasAgentOp[] } }>(event);
+            patchTaskProgress(payload.data);
             if (payload.data?.ops?.length) handlers.onOps(payload.data.ops);
             reportStage({ key: "executing", text: `正在执行「${payload.data?.title || "创作任务"}」${payload.data?.attempts ? `（第 ${payload.data.attempts} 次）` : ""}` });
         });
         listen("task.created", (event) => {
-            const payload = read<{ data?: { ops?: CanvasAgentOp[] } }>(event);
+            const payload = read<{ data?: Partial<CreativeAgentRun["tasks"][number]> & { taskId?: string; ops?: CanvasAgentOp[] } }>(event);
+            patchTaskProgress(payload.data);
             if (payload.data?.ops?.length) handlers.onOps(payload.data.ops);
+        });
+        listen("task.waiting", (event) => {
+            const payload = read<{ data?: Partial<CreativeAgentRun["tasks"][number]> & { taskId?: string } }>(event);
+            patchTaskProgress(payload.data);
         });
         listen("task.child.completed", (event) => {
             const payload = read<{ data?: ChildTaskEventData }>(event);
+            patchTaskProgress(payload.data);
             if (payload.data?.ops?.length) handlers.onOps(payload.data.ops);
             for (const nodeId of payload.data?.outputNodeIds || []) completedOutputNodeIds.add(nodeId);
             latestOutput = { nodeIds: Array.from(completedOutputNodeIds), taskType: payload.data?.type };
@@ -117,19 +159,22 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
         });
         listen("task.child.failed", (event) => {
             const payload = read<{ data?: ChildTaskEventData }>(event);
+            patchTaskProgress(payload.data);
             if (payload.data?.ops?.length) handlers.onOps(payload.data.ops);
             const progress = childProgressText(payload.data);
             reportStage({ key: "executing", text: progress });
             handlers.onAssistant(progress, latestOutput);
         });
         listen("task.completed", (event) => {
-            const payload = read<{ data?: { message?: string; title?: string; outputNodeIds?: string[]; type?: "text" | "image" | "video" | "audio"; ops?: CanvasAgentOp[] } }>(event);
+            const payload = read<{ data?: Partial<CreativeAgentRun["tasks"][number]> & { taskId?: string; message?: string; outputNodeIds?: string[]; ops?: CanvasAgentOp[] } }>(event);
+            patchTaskProgress(payload.data);
             if (payload.data?.ops?.length) handlers.onOps(payload.data.ops);
             latestOutput = { nodeIds: payload.data?.outputNodeIds, taskType: payload.data?.type };
             handlers.onAssistant(payload.data?.message || `「${payload.data?.title || "创作任务"}」已完成，正在继续处理。`, latestOutput);
         });
         listen("task.failed", (event) => {
-            const payload = read<{ data?: { taskId?: string; title?: string; error?: string; ops?: CanvasAgentOp[] } }>(event);
+            const payload = read<{ data?: Partial<CreativeAgentRun["tasks"][number]> & { taskId?: string; ops?: CanvasAgentOp[] } }>(event);
+            patchTaskProgress(payload.data);
             if (payload.data?.ops?.length) handlers.onOps(payload.data.ops);
             if (!payload.data?.taskId) return;
             latestFailedTask = { taskId: payload.data.taskId, title: payload.data.title };
@@ -167,7 +212,8 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
             reportStage({ key: "executing", text: "任务已恢复，正在继续执行" });
         });
         listen("run.snapshot", (event) => {
-            const payload = read<{ status?: string; tasks?: Array<{ id?: string; title?: string; status?: string; error?: string }> }>(event);
+            const payload = read<{ status?: string; tasks?: CreativeAgentRun["tasks"]; timings?: CreativeAgentRun["timings"] }>(event);
+            replaceRunProgress(payload.tasks, payload.timings?.requestAcceptedAt);
             if (payload.status === "cancelled") {
                 handlers.onAssistant("Agent 任务已取消。");
                 finish();
@@ -200,9 +246,23 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
     });
 }
 
+export function canvasAgentPlanSummary(ops: CanvasAgentOp[]): CanvasAgentPlanSummary {
+    const tasks = ops.filter((op) => op.type === "add_node" && op.nodeType === "task");
+    const storyboardCount = tasks.filter((op) => op.type === "add_node" && /分镜/u.test(op.title || "")).length;
+    return {
+        taskCount: tasks.length,
+        label: storyboardCount === tasks.length && storyboardCount > 0 ? `本轮计划：${storyboardCount} 个分镜` : `本轮计划：${tasks.length} 个创作任务`,
+    };
+}
+
 type ChildTaskEventData = {
+    taskId?: string;
     title?: string;
     type?: "text" | "image" | "video" | "audio";
+    status?: CreativeAgentRun["tasks"][number]["status"];
+    startedAt?: number;
+    completedAt?: number;
+    error?: string;
     completedCount?: number;
     failedCount?: number;
     totalCount?: number;

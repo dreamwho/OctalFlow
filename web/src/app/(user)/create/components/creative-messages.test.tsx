@@ -6,6 +6,44 @@ import type { CreativeAsset, CreativeMessage } from "@/lib/creative-runtime-cont
 
 import { CreativeMessages, creativeReferenceAction, creativeResultPrompt } from "./creative-messages";
 
+describe("creative Skill visibility", () => {
+    it("shows the explicitly selected Skill on the public user message", () => {
+        const userMessage: CreativeMessage = {
+            id: "user-skill",
+            conversationId: "conversation-one",
+            sequence: 1,
+            role: "user",
+            status: "completed",
+            content: "生成角色设定图",
+            metadata: { selectedSkillIds: ["character-design"] },
+            createdAt: 1,
+            updatedAt: 1,
+        };
+        const markup = renderToStaticMarkup(
+            <App>
+                <CreativeMessages
+                    messages={[userMessage]}
+                    assets={[]}
+                    loading={false}
+                    projectLinks={{}}
+                    projectErrors={{}}
+                    runDetails={{}}
+                    onMaterializeProject={async () => {
+                        throw new Error("not used");
+                    }}
+                    onRetryMessage={vi.fn()}
+                    selectedAssetIds={[]}
+                    onToggleAsset={vi.fn()}
+                    skills={[{ id: "character-design", name: "角色设定" }]}
+                />
+            </App>,
+        );
+
+        expect(markup).toContain('aria-label="本轮使用的 Skill"');
+        expect(markup).toContain("Skill · 角色设定");
+    });
+});
+
 describe("creative result references", () => {
     const first = mediaAsset("first");
     const second = mediaAsset("second");

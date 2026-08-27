@@ -81,6 +81,6 @@ describe("site metadata routes", () => {
 
         const response = await favicon(new Request("http://localhost:3000/api/site-icon"));
 
-        expect(response.headers.get("location")).toBe("/icon.svg");
+        expect(response.headers.get("location")).toBe("/brand/octaflow-icon.png");
     });
 });

@@ -1,4 +1,5 @@
 import type { CanvasAssistantSession } from "../types";
+import type { CreativeAgentRun } from "@/services/api/creative";
 import type { CanvasAgentRunStage } from "./canvas-agent-progress";
 
 export type CanvasAssistantRunState = {
@@ -6,6 +7,8 @@ export type CanvasAssistantRunState = {
     assistantMessageId: string;
     paused: boolean;
     stage: CanvasAgentRunStage;
+    startedAt?: number;
+    tasks?: CreativeAgentRun["tasks"];
 };
 
 export type CanvasAssistantRunStates = Record<string, CanvasAssistantRunState>;

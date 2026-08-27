@@ -52,6 +52,8 @@ export type AgentRunTask = {
     dependencies: string[];
     status: "ready" | "running" | "completed" | "failed" | "cancelled";
     attempts: number;
+    startedAt?: number;
+    completedAt?: number;
     taskId?: string;
     taskIds?: string[];
     childTasks?: AgentRunChildTask[];
@@ -153,6 +155,7 @@ export async function createAgentRun(userId: string, input: CreativeRunRequest) 
         prompt: publicPrompt,
         title: publicPrompt.slice(0, 48),
         assetIds: input.assetIds,
+        userMetadata: input.skillIds.length ? { selectedSkillIds: input.skillIds } : undefined,
         acknowledgement: agentRequirementAcknowledgement(publicPrompt, input.surface, input.assetIds.length > 0 || (input.surface === "canvas" && selectedCanvasNodeIds(snapshot).length > 0)),
         ttlMs: TTL,
     });
@@ -267,6 +270,8 @@ export async function updateAgentRunTaskById(id: string, taskId: string, patch: 
                         type: task.type,
                         status: task.status,
                         attempts: task.attempts,
+                        startedAt: task.startedAt,
+                        completedAt: task.completedAt,
                         error: task.error,
                         completedCount: completedChildren,
                         failedCount: failedChildren,

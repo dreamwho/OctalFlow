@@ -15,7 +15,7 @@ describe("SiteLogo", () => {
     it("keeps the bundled mark as a safe loading fallback", () => {
         const markup = renderToStaticMarkup(<SiteLogo logoUrl="/logo.svg" className="size-8" />);
 
-        expect(markup).toContain("url(/logo.svg)");
-        expect(markup).toContain('aria-hidden="true"');
+        expect(markup).toContain('src="/brand/octaflow-mark.png"');
+        expect(markup).toContain('class="shrink-0 object-contain size-8"');
     });
 });

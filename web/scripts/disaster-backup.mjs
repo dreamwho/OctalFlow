@@ -53,7 +53,7 @@ try {
     const objectStorage = await backupObjectStorage(objectStorageConfig, recoveryPointDir);
     const completedAt = new Date().toISOString();
     const manifest = {
-        app: "OctalFlow",
+        app: "OctalAICanvas",
         formatVersion: DISASTER_FORMAT_VERSION,
         recoveryPointId,
         backupType: "disaster",

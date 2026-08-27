@@ -8,7 +8,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNode, type CanvasNodeProps } from "./canvas-node";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type Position, type ViewportTransform } from "../types";
 import { NODE_STATUS_LOADING } from "../[id]/canvas-page-elements";
-import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, resolveSnapGuides, samePosition, selectNodesInBounds, worldFromScreen, type SnapGuide } from "../utils/canvas-surface-geometry";
+import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, PROMPT_COMPOSER_BOTTOM_INSET, PROMPT_COMPOSER_SAFE_TOP, resolvePromptComposerHeight, resolvePromptComposerTether, resolveSnapGuides, samePosition, selectNodesInBounds, worldFromScreen, type SnapGuide } from "../utils/canvas-surface-geometry";
 
 type CanvasPointerEvent = ReactMouseEvent | ReactPointerEvent;
 type CanvasNodeUpdate = { id: string; position?: Position; width?: number; height?: number };
@@ -32,6 +32,8 @@ type CanvasSurfaceProps = {
     backgroundMode: CanvasBackgroundMode;
     interactionMode: CanvasInteractionMode;
     minimapOpen: boolean;
+    focusNodeId?: string;
+    promptComposerHeight?: number | null;
     selectedNodeIds: Set<string>;
     selectedConnectionId: string | null;
     relatedNodeIds: Set<string>;
@@ -104,6 +106,8 @@ export function CanvasSurface({
     backgroundMode,
     interactionMode,
     minimapOpen,
+    focusNodeId,
+    promptComposerHeight,
     selectedNodeIds,
     selectedConnectionId,
     relatedNodeIds,
@@ -145,6 +149,7 @@ export function CanvasSurface({
     const frameActionsRef = useRef(new Map<string, () => void>());
     const wheelFrameRef = useRef<WheelFrame | null>(null);
     const wheelCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const focusViewportKeyRef = useRef("");
     const boxSelectionRef = useRef<BoxSelection | null>(null);
     const temporaryPanRef = useRef(false);
     const [localTransforms, setLocalTransforms] = useState<Record<string, CanvasNodeTransform>>({});
@@ -274,6 +279,33 @@ export function CanvasSurface({
         observer.observe(element);
         return () => observer.disconnect();
     }, []);
+
+    useEffect(() => {
+        if (!focusNodeId || surfaceSize.width < 768) {
+            focusViewportKeyRef.current = "";
+            return;
+        }
+        const node = nodes.find((item) => item.id === focusNodeId);
+        if (!node) return;
+        const focusKey = `${node.id}:${surfaceSize.width}x${surfaceSize.height}`;
+        if (focusViewportKeyRef.current === focusKey) return;
+        const current = displayViewportRef.current;
+        const panelHeight = resolvePromptComposerHeight(surfaceSize.height, promptComposerHeight);
+        const panelTop = surfaceSize.height - panelHeight - PROMPT_COMPOSER_BOTTOM_INSET;
+        const safeTop = PROMPT_COMPOSER_SAFE_TOP;
+        const safeBottom = Math.max(safeTop + 80, panelTop - 48);
+        const desiredTop = Math.max(safeTop, safeBottom - node.height * current.k);
+        const next = {
+            x: surfaceSize.width / 2 - (node.position.x + node.width / 2) * current.k,
+            y: desiredTop - node.position.y * current.k,
+            k: current.k,
+        };
+        focusViewportKeyRef.current = focusKey;
+        displayViewportRef.current = next;
+        previousViewportPropRef.current = next;
+        setDisplayViewport(next);
+        onViewportCommit(next);
+    }, [focusNodeId, nodes, onViewportCommit, promptComposerHeight, surfaceSize.height, surfaceSize.width]);
 
     const screenToWorld = useCallback((clientX: number, clientY: number) => {
         const rect = surfaceRef.current?.getBoundingClientRect();
@@ -655,6 +687,7 @@ export function CanvasSurface({
         commitViewport();
     }, [commitViewport, flushFrame]);
     const worldStyle: CSSProperties = { transform: `translate(${displayViewport.x}px, ${displayViewport.y}px) scale(${displayViewport.k})`, transformOrigin: "0 0" };
+    const promptComposerTether = focusNodeId && nodesById.get(focusNodeId) ? resolvePromptComposerTether(nodesById.get(focusNodeId)!, displayViewport, surfaceSize, promptComposerHeight) : null;
     const canvasStyle: CSSProperties = { background: theme.canvas.backdrop, color: theme.node.text, touchAction: "none", cursor: temporaryPan || interactionMode === "pan" ? "grab" : "default" };
     const gridSize = Math.max(4, (backgroundMode === "dots" ? 22 : 32) * displayViewport.k);
     const selectionStyle = boxSelection
@@ -695,7 +728,7 @@ export function CanvasSurface({
                 />
             ) : null}
             <div className="pointer-events-none absolute inset-0 overflow-visible" style={worldStyle}>
-                <svg className="absolute left-0 top-0 h-full w-full overflow-visible" style={{ pointerEvents: "none" }} aria-hidden="true">
+                <svg className="absolute left-0 top-0 h-full w-full overflow-visible" shapeRendering="geometricPrecision" style={{ pointerEvents: "none" }} aria-hidden="true">
                     {flowConnections.map((item) => {
                         const from = nodesById.get(item.fromNodeId);
                         const to = nodesById.get(item.toNodeId);
@@ -710,6 +743,7 @@ export function CanvasSurface({
                                     fill="none"
                                     stroke="transparent"
                                     strokeWidth={18}
+                                    vectorEffect="non-scaling-stroke"
                                     style={{ pointerEvents: "stroke", cursor: "pointer" }}
                                     onClick={(event) => {
                                         event.stopPropagation();
@@ -724,13 +758,38 @@ export function CanvasSurface({
                                 <path
                                     d={path}
                                     fill="none"
-                                    stroke={generating ? "#2f80ff" : active ? theme.node.activeStroke : theme.node.muted}
-                                    strokeWidth={generating ? 1 : active ? 1.5 : 1}
-                                    strokeOpacity={generating || active ? 1 : 0.75}
+                                    stroke={theme.canvas.background}
+                                    strokeWidth={4.5}
+                                    strokeOpacity={0.7}
                                     strokeLinecap="round"
-                                    className={generating ? "canvas-edge-generating" : undefined}
+                                    strokeLinejoin="round"
+                                    vectorEffect="non-scaling-stroke"
                                     style={{ pointerEvents: "none" }}
                                 />
+                                <path
+                                    d={path}
+                                    fill="none"
+                                    stroke={generating ? "#5b5ce2" : active ? theme.node.activeStroke : theme.node.muted}
+                                    strokeWidth={generating ? 2.35 : active ? 2.15 : 1.75}
+                                    strokeOpacity={generating || active ? 1 : 0.75}
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    vectorEffect="non-scaling-stroke"
+                                    style={{ pointerEvents: "none" }}
+                                />
+                                {generating ? (
+                                    <path
+                                        d={path}
+                                        fill="none"
+                                        stroke="#bfe1ff"
+                                        strokeWidth={2.75}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        vectorEffect="non-scaling-stroke"
+                                        className="canvas-edge-generating"
+                                        style={{ pointerEvents: "none" }}
+                                    />
+                                ) : null}
                             </g>
                         );
                     })}
@@ -746,6 +805,8 @@ export function CanvasSurface({
                             strokeWidth={2}
                             strokeDasharray="6 5"
                             strokeLinecap="round"
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
                             style={{ pointerEvents: "none" }}
                         />
                     ) : null}
@@ -795,6 +856,22 @@ export function CanvasSurface({
                     {overlay}
                 </div>
             </div>
+            {promptComposerTether ? (
+                <svg
+                    data-canvas-focus-tether
+                    data-source-x={promptComposerTether.source.x}
+                    data-source-y={promptComposerTether.source.y}
+                    className="pointer-events-none absolute inset-0 z-30 size-full"
+                    viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                >
+                    <path d={promptComposerTether.path} fill="none" stroke={theme.canvas.background} strokeWidth={5} strokeOpacity={0.78} strokeLinecap="round" />
+                    <path d={promptComposerTether.path} fill="none" stroke={theme.node.activeStroke} strokeWidth={2} strokeOpacity={0.72} strokeLinecap="round" className="canvas-composer-tether-path" />
+                    <path d={promptComposerTether.path} fill="none" stroke="#c4c5ff" strokeWidth={2.5} strokeLinecap="round" className="canvas-composer-tether-flow" />
+                    <circle cx={promptComposerTether.source.x} cy={promptComposerTether.source.y} r={5} fill={theme.canvas.backdrop} stroke={theme.node.activeStroke} strokeWidth={2} className="canvas-panel-bridge-pulse" />
+                </svg>
+            ) : null}
             {minimapOpen ? <CanvasMiniMap nodes={visibleDisplayNodes} viewport={displayViewport} viewportSize={surfaceSize} theme={theme} onViewportPreview={previewMinimapViewport} onViewportCommit={commitMinimapViewport} /> : null}
         </div>
     );

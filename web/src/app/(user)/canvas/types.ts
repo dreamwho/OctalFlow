@@ -17,6 +17,7 @@ export enum CanvasNodeType {
     Text = "text",
     Config = "config",
     Video = "video",
+    VideoRemake = "video-remake",
     Audio = "audio",
     Brief = "brief",
     Task = "task",
@@ -106,6 +107,9 @@ export type CanvasNodeMetadata = {
     composerContent?: string;
     prompt?: string;
     sourcePrompt?: string;
+    executionPrompt?: string;
+    selectedSkillIds?: string[];
+    remakeMode?: "universal" | "vlog" | "drama" | "talking-head" | "product" | "tutorial";
     status?: CanvasNodeStatus;
     errorDetails?: string;
     fontSize?: number;
@@ -212,6 +216,8 @@ export type CanvasAssistantMessage = {
     meta?: string;
     detail?: unknown;
     references?: CanvasAssistantReference[];
+    skills?: Array<{ id: string; name: string }>;
+    createdAt?: string;
 };
 
 export type CanvasAssistantSession = {

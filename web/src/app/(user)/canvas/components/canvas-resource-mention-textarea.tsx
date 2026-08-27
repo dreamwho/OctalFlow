@@ -3,17 +3,108 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, TextareaHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
-import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
+import { FileText, Image as ImageIcon, Music2, Video, Sparkles } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 import { handleMentionNavigation } from "../utils/canvas-mention-navigation";
+import type { AgentSkillSummary } from "@/services/api/agent-skills";
+
+export function insertTextAtSelection(value: string, selectionStart: number, selectionEnd: number, textToInsert: string): { value: string; caret: number } {
+    const start = Math.max(0, Math.min(selectionStart, value.length));
+    const end = Math.max(start, Math.min(selectionEnd, value.length));
+    const nextValue = `${value.slice(0, start)}${textToInsert}${value.slice(end)}`;
+    return {
+        value: nextValue,
+        caret: start + textToInsert.length,
+    };
+}
+
+export function deleteReferenceLabelAtCaret(value: string, selectionStart: number, selectionEnd: number, key: string, activeLabels: string[]): { value: string; cursor: number } | undefined {
+    if (!activeLabels.length) return undefined;
+
+    // 如果有选区，检查选区是否完全或部分覆盖某个 label
+    if (selectionStart !== selectionEnd) {
+        for (const label of activeLabels) {
+            const labelIndex = value.indexOf(label);
+            if (labelIndex !== -1 && selectionStart <= labelIndex + label.length && selectionEnd >= labelIndex) {
+                const start = Math.min(selectionStart, labelIndex);
+                const end = Math.max(selectionEnd, labelIndex + label.length);
+                return {
+                    value: `${value.slice(0, start)}${value.slice(end)}`,
+                    cursor: start,
+                };
+            }
+        }
+        return undefined;
+    }
+
+    if (key === "Backspace") {
+        for (const label of activeLabels) {
+            // 1. 光标在 label 之后，或 label 紧跟一个空格后
+            if (value.slice(0, selectionStart).endsWith(label)) {
+                const removeThrough = value[selectionStart] === " " ? selectionStart + 1 : selectionStart;
+                return {
+                    value: `${value.slice(0, selectionStart - label.length)}${value.slice(removeThrough)}`,
+                    cursor: selectionStart - label.length,
+                };
+            }
+            if (value.slice(0, selectionStart).endsWith(`${label} `)) {
+                return {
+                    value: `${value.slice(0, selectionStart - label.length - 1)}${value.slice(selectionStart)}`,
+                    cursor: selectionStart - label.length - 1,
+                };
+            }
+            // 2. 光标在 label 内部
+            const before = value.slice(0, selectionStart);
+            const after = value.slice(selectionStart);
+            for (let i = 1; i < label.length; i++) {
+                if (before.endsWith(label.slice(0, i)) && after.startsWith(label.slice(i))) {
+                    return {
+                        value: `${value.slice(0, selectionStart - i)}${value.slice(selectionStart + label.length - i)}`,
+                        cursor: selectionStart - i,
+                    };
+                }
+            }
+        }
+    } else if (key === "Delete") {
+        for (const label of activeLabels) {
+            if (value.slice(selectionStart).startsWith(label)) {
+                const removeThrough = value[selectionStart + label.length] === " " ? selectionStart + label.length + 1 : selectionStart + label.length;
+                return {
+                    value: `${value.slice(0, selectionStart)}${value.slice(removeThrough)}`,
+                    cursor: selectionStart,
+                };
+            }
+            // 光标在 label 内部或起始
+            const before = value.slice(0, selectionStart);
+            const after = value.slice(selectionStart);
+            for (let i = 0; i < label.length; i++) {
+                if (before.endsWith(label.slice(0, i)) && after.startsWith(label.slice(i))) {
+                    return {
+                        value: `${value.slice(0, selectionStart - i)}${value.slice(selectionStart + label.length - i)}`,
+                        cursor: selectionStart - i,
+                    };
+                }
+            }
+        }
+    }
+    return undefined;
+}
+
+export function replacePictureTags(value: string, references: CanvasResourceReference[]): string {
+    return value.replace(/<Picture\s+(\d+)>/gi, (_match, id) => {
+        const found = references.find((r) => r.active && (r.id === id || r.label === `图片${id}` || r.label === `@图片${id}`));
+        return found ? found.label : _match;
+    });
+}
 
 type MentionState = {
     start: number;
     query: string;
+    type: "mention" | "slash";
 };
 
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "value"> & {
@@ -23,10 +114,12 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "val
     onSubmit?: () => void;
     containerClassName?: string;
     highlightLabels?: boolean;
+    skills?: AgentSkillSummary[];
+    onSelectSkill?: (skill: AgentSkillSummary) => void;
 };
 
 export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function CanvasResourceMentionTextarea(
-    { value, references, onChange, onSubmit, onKeyDown, className, containerClassName, style, highlightLabels = true, autoFocus, ...props },
+    { value, references, onChange, onSubmit, onKeyDown, className, containerClassName, style, highlightLabels = true, skills = [], onSelectSkill, autoFocus, ...props },
     forwardedRef,
 ) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -34,7 +127,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const overlayRef = useRef<HTMLDivElement | null>(null);
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
-
     useEffect(() => {
         if (!autoFocus) return;
         const frame = requestAnimationFrame(() => {
@@ -45,13 +137,20 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
         });
         return () => cancelAnimationFrame(frame);
     }, [autoFocus]);
+
     const candidates = useMemo(() => {
         if (!mention) return [];
         const query = mention.query.trim().toLowerCase();
-        const activeReferences = references.filter((item) => item.active);
-        if (!query) return activeReferences;
-        return activeReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
-    }, [mention, references]);
+        if (mention.type === "mention") {
+            const activeReferences = references.filter((item) => item.active);
+            if (!query) return activeReferences;
+            return activeReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
+        }
+        // Slash commands for skills
+        if (!query) return skills;
+        return skills.filter((s) => `${s.name} ${s.description || ""}`.toLowerCase().includes(query));
+    }, [mention, references, skills]);
+
     const activeLabels = useMemo(() => (highlightLabels ? Array.from(new Set(references.filter((item) => item.active).map((item) => item.label))).sort((a, b) => b.length - a.length) : []), [highlightLabels, references]);
 
     const updateValue = (next: string, selectionStart?: number) => {
@@ -83,20 +182,35 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
 
     const syncMention = (nextValue: string, cursor: number) => {
         const prefix = nextValue.slice(0, cursor);
-        const match = /(^|\s)@([^\s@]*)$/.exec(prefix);
-        if (!match || !references.some((item) => item.active)) {
-            closeMention();
+        const atMatch = /(^|\s)@([^\s@]*)$/.exec(prefix);
+        if (atMatch && references.some((item) => item.active)) {
+            setMention({ start: cursor - atMatch[2].length - 1, query: atMatch[2], type: "mention" });
+            setActiveIndex(0);
             return;
         }
-        setMention({ start: cursor - match[2].length - 1, query: match[2] });
-        setActiveIndex(0);
+
+        const slashMatch = /(^|\s)\/([^\s\/]*)$/.exec(prefix);
+        if (slashMatch && skills.length > 0) {
+            setMention({ start: cursor - slashMatch[2].length - 1, query: slashMatch[2], type: "slash" });
+            setActiveIndex(0);
+            return;
+        }
+
+        closeMention();
     };
 
-    const insertReference = (reference: CanvasResourceReference) => {
+    const insertReference = (item: CanvasResourceReference | AgentSkillSummary) => {
         if (!mention) return;
         const textarea = textareaRef.current;
         const end = textarea?.selectionStart ?? value.length;
-        const insertText = `${reference.label} `;
+        let insertText = "";
+        if (mention.type === "mention") {
+            const ref = item as CanvasResourceReference;
+            insertText = `${ref.label} `;
+        } else {
+            const skill = item as AgentSkillSummary;
+            onSelectSkill?.(skill);
+        }
         const next = `${value.slice(0, mention.start)}${insertText}${value.slice(end)}`;
         closeMention();
         updateValue(next, mention.start + insertText.length);
@@ -105,126 +219,131 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const syncOverlayScroll = () => {
         if (!overlayRef.current || !textareaRef.current) return;
         overlayRef.current.scrollTop = textareaRef.current.scrollTop;
-        overlayRef.current.scrollLeft = textareaRef.current.scrollLeft;
     };
 
-    const hasActiveLabelInValue = activeLabels.some((label) => value.includes(label));
-    const showOverlay = Boolean(value && hasActiveLabelInValue);
+    const highlightedOverlay = useMemo(() => {
+        if (!highlightLabels || !activeLabels.length || !value || !activeLabels.some((label) => value.includes(label))) return null;
+        const pattern = new RegExp(`(${activeLabels.map(escapeRegExp).join("|")})`, "g");
+        const parts = value.split(pattern);
 
-    useEffect(() => {
-        const converted = replacePictureTags(value, references);
-        if (converted !== value) updateValue(converted);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value, references]);
+        return parts.map((part, index) => {
+            if (!activeLabels.includes(part)) return <span key={index}>{part}</span>;
+            return (
+                <span key={index} className="rounded px-1 py-0.5 font-medium" style={{ background: "rgba(91, 92, 226, 0.14)", color: "#5b5ce2" }}>
+                    {part}
+                </span>
+            );
+        });
+    }, [activeLabels, highlightLabels, theme.toolbar.activeBg, theme.toolbar.activeText, value]);
 
-    const mergedStyle = {
-        ...(style || {}),
-        color: showOverlay ? "transparent" : style?.color,
-        caretColor: style?.color || theme.node.text,
-    } as CSSProperties;
-    const menu = mention && candidates.length && textareaRef.current ? <MentionMenu textarea={textareaRef.current} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} /> : null;
+    const editorSurface = highlightedOverlay
+        ? {
+              background: style?.background,
+              backgroundColor: style?.backgroundColor,
+              borderRadius: style?.borderRadius,
+          }
+        : undefined;
 
     return (
-        <div className={`relative h-full w-full ${containerClassName || ""}`}>
-            {showOverlay ? (
+        <div className={`relative ${containerClassName || ""}`} style={editorSurface}>
+            {highlightedOverlay ? (
                 <div
                     ref={overlayRef}
-                    className={`${className || ""} pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words`}
-                    style={{ ...style, background: "transparent", backgroundColor: "transparent", color: theme.node.text }}
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute inset-0 z-10 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-xl border bg-transparent p-3 text-xs leading-relaxed ${className || ""}`}
+                    style={{ ...style, background: "transparent", backgroundColor: "transparent", borderColor: theme.toolbar.border, color: style?.color ?? theme.node.text }}
                 >
-                    <MentionHighlightText value={value || props.placeholder?.toString() || ""} labels={activeLabels} placeholder={!value} />
+                    {highlightedOverlay}
                 </div>
             ) : null}
+
             <textarea
                 {...props}
-                autoFocus={autoFocus}
                 ref={(node) => {
                     textareaRef.current = node;
                     if (typeof forwardedRef === "function") forwardedRef(node);
                     else if (forwardedRef) forwardedRef.current = node;
                 }}
                 value={value}
-                className={className}
-                style={mergedStyle}
+                rows={props.rows ?? 4}
+                className={`relative z-20 w-full resize-none rounded-xl border bg-transparent p-3 text-xs leading-relaxed outline-none transition ${className || ""}`}
+                style={{
+                    ...style,
+                    ...(highlightedOverlay ? { background: "transparent", backgroundColor: "transparent" } : null),
+                    color: highlightedOverlay ? "transparent" : (style?.color ?? theme.node.text),
+                    WebkitTextFillColor: highlightedOverlay ? "transparent" : style?.WebkitTextFillColor,
+                    caretColor: style?.color ?? theme.node.text,
+                    borderColor: theme.toolbar.border,
+                }}
+                onScroll={syncOverlayScroll}
                 onChange={(event) => {
-                    const next = event.target.value;
-                    onChange(next);
-                    syncMention(next, event.target.selectionStart);
+                    const nextValue = event.target.value;
+                    const cursor = event.target.selectionStart ?? nextValue.length;
+                    updateValue(nextValue, cursor);
+                    syncMention(nextValue, cursor);
                     requestAnimationFrame(syncOverlayScroll);
                 }}
-                onSelect={(event) => {
-                    props.onSelect?.(event);
-                }}
-                onFocus={(event) => {
-                    props.onFocus?.(event);
+                onClick={(event) => {
+                    const cursor = event.currentTarget.selectionStart ?? value.length;
+                    syncMention(value, cursor);
                 }}
                 onKeyUp={(event) => {
-                    props.onKeyUp?.(event);
-                }}
-                onPointerUp={(event) => {
-                    props.onPointerUp?.(event);
+                    if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
+                        const cursor = event.currentTarget.selectionStart ?? value.length;
+                        syncMention(value, cursor);
+                    }
                 }}
                 onKeyDown={(event) => {
                     if (handleReferenceLabelDeletion(event)) return;
-                    if (mention && handleMentionNavigation(event, candidates, activeIndex, setActiveIndex, insertReference, closeMention)) return;
-                    if (event.key === "Enter" && onSubmit && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+
+                    if (mention && candidates.length > 0) {
+                        const handled = handleMentionNavigation(event, candidates, activeIndex, setActiveIndex, insertReference, closeMention);
+                        if (handled) return;
+                    }
+
+                    if (event.key === "Escape" && mention) {
+                        event.preventDefault();
+                        closeMention();
+                        return;
+                    }
+
+                    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && onSubmit) {
                         event.preventDefault();
                         onSubmit();
                         return;
                     }
+
                     onKeyDown?.(event);
                 }}
-                onScroll={(event) => {
-                    syncOverlayScroll();
-                    props.onScroll?.(event);
-                }}
-                onBlur={(event) => {
-                    window.setTimeout(closeMention, 120);
-                    props.onBlur?.(event);
-                }}
             />
-            {menu}
+
+            {mention && candidates.length > 0 ? <MentionPortal textarea={textareaRef.current} candidates={candidates} activeIndex={activeIndex} type={mention.type} theme={theme} onSelect={insertReference} /> : null}
         </div>
     );
 });
 
-function MentionHighlightText({ value, labels, placeholder }: { value: string; labels: string[]; placeholder: boolean }) {
-    if (placeholder) return <span className="opacity-45">{value}</span>;
-    if (!labels.length) return <>{value}</>;
-    const pattern = new RegExp(`(${labels.map(escapeRegExp).join("|")})`, "g");
-    return (
-        <>
-            {value.split(pattern).map((part, index) =>
-                labels.includes(part) ? (
-                    <span key={`${part}-${index}`} className="rounded bg-[#2f80ff]/16 text-[#2f80ff]">
-                        {part}
-                    </span>
-                ) : (
-                    <span key={`${part}-${index}`}>{part}</span>
-                ),
-            )}
-        </>
-    );
-}
-
-function MentionMenu({
+function MentionPortal({
     textarea,
-    references,
+    candidates,
     activeIndex,
+    type,
     theme,
     onSelect,
 }: {
-    textarea: HTMLTextAreaElement;
-    references: CanvasResourceReference[];
+    textarea: HTMLTextAreaElement | null;
+    candidates: (CanvasResourceReference | AgentSkillSummary)[];
     activeIndex: number;
+    type: "mention" | "slash";
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
-    onSelect: (reference: CanvasResourceReference) => void;
+    onSelect: (item: CanvasResourceReference | AgentSkillSummary) => void;
 }) {
     const selectedRef = useRef(false);
+    if (!textarea || typeof window === "undefined") return null;
+
     const rect = textarea.getBoundingClientRect();
     const boundary = textarea.closest(".ant-modal-content")?.getBoundingClientRect() || { left: 8, top: 8, right: window.innerWidth - 8, bottom: window.innerHeight - 8 };
-    const menuWidth = 256;
-    const maxMenuHeight = 224;
+    const menuWidth = 280;
+    const maxMenuHeight = 240;
     const gap = 6;
     const left = clamp(rect.left, boundary.left + 8, boundary.right - menuWidth - 8);
     const showAbove = rect.bottom + gap + maxMenuHeight > boundary.bottom && rect.top - gap - maxMenuHeight >= boundary.top;
@@ -233,45 +352,68 @@ function MentionMenu({
     const stopCanvasInteraction = (event: PointerEvent | MouseEvent) => {
         event.stopPropagation();
     };
-    const selectReference = (reference: CanvasResourceReference) => {
+    const selectItem = (item: CanvasResourceReference | AgentSkillSummary) => {
         if (selectedRef.current) return;
         selectedRef.current = true;
-        onSelect(reference);
+        onSelect(item);
     };
 
     return createPortal(
         <div
             data-canvas-resource-mention-menu="true"
-            className="fixed z-[120] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl backdrop-blur-md"
+            className="fixed z-[120] max-h-60 w-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl backdrop-blur-md"
             style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onPointerDown={stopCanvasInteraction}
             onMouseDown={stopCanvasInteraction}
             onClick={(event) => event.stopPropagation()}
         >
-            {references.map((reference, index) => (
-                <button
-                    key={reference.id}
-                    type="button"
-                    className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition"
-                    style={{ background: index === activeIndex ? theme.toolbar.activeBg : "transparent", color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }}
-                    onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        selectReference(reference);
-                    }}
-                    onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        selectReference(reference);
-                    }}
-                >
-                    <ReferencePreview reference={reference} />
-                    <span className="min-w-0 flex-1">
-                        <span className="block font-medium">{reference.label}</span>
-                        <span className="block truncate opacity-65">{reference.text || reference.title}</span>
-                    </span>
-                </button>
-            ))}
+            <div className="px-2 py-1 text-[11px] font-semibold opacity-50 flex items-center gap-1 border-b mb-1 pb-1" style={{ borderColor: theme.toolbar.border }}>
+                {type === "mention" ? "选择引用节点 (@)" : "选择引用 Skill 技能 (/)"}
+            </div>
+            {candidates.map((item, index) => {
+                const isMention = type === "mention";
+                const ref = item as CanvasResourceReference;
+                const skill = item as AgentSkillSummary;
+
+                return (
+                    <button
+                        key={item.id}
+                        type="button"
+                        className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition"
+                        style={{ background: index === activeIndex ? theme.toolbar.activeBg : "transparent", color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }}
+                        onPointerDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            selectItem(item);
+                        }}
+                        onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            selectItem(item);
+                        }}
+                    >
+                        {isMention ? (
+                            <>
+                                <ReferencePreview reference={ref} />
+                                <span className="min-w-0 flex-1">
+                                    <span className="block font-medium">{ref.label}</span>
+                                    <span className="block truncate opacity-65">{ref.text || ref.title}</span>
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[#5b5ce2]/10 text-[#5b5ce2]">
+                                    <Sparkles className="size-4" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="block font-medium text-[#5b5ce2]">{skill.name}</span>
+                                    <span className="block truncate opacity-65 text-[11px]">{skill.description || skill.id}</span>
+                                </span>
+                            </>
+                        )}
+                    </button>
+                );
+            })}
         </div>,
         document.body,
     );
@@ -295,47 +437,4 @@ function clamp(value: number, min: number, max: number) {
 
 function escapeRegExp(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-const PICTURE_TAG_PATTERN = /<Picture\s+(\d+)>/gi;
-
-export function replacePictureTags(value: string, references: CanvasResourceReference[]) {
-    if (!value || !references.length) return value;
-    const images = references.filter((reference) => reference.kind === "image" && reference.active);
-    if (!images.length) return value;
-    return value.replace(PICTURE_TAG_PATTERN, (match, number: string) => {
-        const index = Number(number);
-        const reference = images.find((item) => item.label === `图片${index}`) || (index >= 1 && index <= images.length ? images[index - 1] : undefined);
-        return reference ? reference.label : match;
-    });
-}
-
-export function insertTextAtSelection(value: string, start: number, end: number, text: string) {
-    const from = clamp(start, 0, value.length);
-    const to = clamp(Math.max(end, from), from, value.length);
-    return { value: `${value.slice(0, from)}${text}${value.slice(to)}`, caret: from + text.length };
-}
-
-export function deleteReferenceLabelAtCaret(value: string, selectionStart: number, selectionEnd: number, key: "Backspace" | "Delete", labels: string[]) {
-    for (const label of labels) {
-        let index = value.indexOf(label);
-        while (index !== -1) {
-            const start = index;
-            const end = index + label.length;
-            const intersectsSelection = selectionStart !== selectionEnd && selectionStart < end && selectionEnd > start;
-            if (intersectsSelection) return { value: `${value.slice(0, start)}${value.slice(end)}`, cursor: start };
-            const insideOrAtEnd = key === "Backspace" && selectionStart > start && selectionStart <= end;
-            const afterTrailingSpace = key === "Backspace" && selectionStart === end + 1 && /\s/u.test(value[end] || "");
-            if (insideOrAtEnd || afterTrailingSpace) {
-                const swallowSpace = (selectionStart === end || afterTrailingSpace) && /\s/u.test(value[end] || "");
-                return { value: `${value.slice(0, start)}${value.slice(end + (swallowSpace ? 1 : 0))}`, cursor: start };
-            }
-            if (key === "Delete" && selectionStart >= start && selectionStart < end) {
-                const swallowSpace = selectionStart === start && /\s/u.test(value[end] || "");
-                return { value: `${value.slice(0, start)}${value.slice(end + (swallowSpace ? 1 : 0))}`, cursor: start };
-            }
-            index = value.indexOf(label, index + 1);
-        }
-    }
-    return undefined;
 }

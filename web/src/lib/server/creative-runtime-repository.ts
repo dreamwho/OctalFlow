@@ -34,6 +34,7 @@ export type CreateRunBundleInput<T extends AgentRunBase> = {
     prompt: string;
     conversationId?: string;
     assetIds: string[];
+    userMetadata?: Record<string, unknown>;
     acknowledgement?: string;
     ttlMs: number;
 };
@@ -75,7 +76,7 @@ export async function createPostgresRunBundle<T extends AgentRunBase>(userId: st
         const sequenceResult = await client.query<{ sequence: number }>("SELECT COALESCE(MAX(sequence), 0)::int AS sequence FROM creative_messages WHERE conversation_id = $1", [conversation.id]);
         const sequence = Number(sequenceResult.rows[0]?.sequence || 0) + 1;
         const now = input.run.createdAt;
-        const userMessage = message(input.run.inputMessageId, conversation.id, sequence, "user", "completed", input.prompt, input.run.id, { assetIds: input.assetIds }, now);
+        const userMessage = message(input.run.inputMessageId, conversation.id, sequence, "user", "completed", input.prompt, input.run.id, { ...input.userMetadata, assetIds: input.assetIds }, now);
         const assistantMessage = message(input.run.assistantMessageId, conversation.id, sequence + 1, "assistant", "running", input.acknowledgement || "已收到你的需求。", input.run.id, {}, now);
         await insertPostgresMessage(client, userMessage);
         await insertPostgresMessage(client, assistantMessage);

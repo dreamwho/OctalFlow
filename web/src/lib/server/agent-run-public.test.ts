@@ -38,6 +38,8 @@ describe("publicAgentRun", () => {
                     dependencies: [],
                     status: "failed",
                     attempts: 1,
+                    startedAt: 100,
+                    completedAt: 250,
                     taskId: "child-secret",
                     childTasks: [{ id: "child-secret", status: "failed", attempt: 1, result: { raw: "secret" } }],
                     result: { raw: "secret" },
@@ -81,7 +83,7 @@ describe("publicAgentRun", () => {
         expect(publicRun).toMatchObject({
             prompt: "图片1 用户原始需求",
             cancellation: { pendingCount: 1 },
-            tasks: [{ id: "video", model: "video-pro", optimizedPrompt: "电影感海边日落运镜，人物动作自然流畅", seconds: 60, generateAudio: false, watermark: true, status: "failed" }],
+            tasks: [{ id: "video", model: "video-pro", optimizedPrompt: "电影感海边日落运镜，人物动作自然流畅", seconds: 60, generateAudio: false, watermark: true, status: "failed", startedAt: 100, completedAt: 250 }],
         });
         expect(serialized).not.toContain("内部执行提示词-secret");
         expect(serialized).not.toContain("@图片1");

@@ -96,10 +96,14 @@ export function AdminSkillsSection({ controller }: { controller: AdminDashboardC
                         <div className="flex items-center justify-between gap-3 sm:mb-3">
                             <div>
                                 <div className="font-semibold">{skill.name}</div>
-                                {skill.sourceUrl ? (
+                                {skill.sourceUrl?.startsWith("https://") ? (
                                     <a href={skill.sourceUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 dark:text-blue-400">
                                         {skill.sourceVersion || "GitHub"} · {skill.license || "来源"}
                                     </a>
+                                ) : skill.sourceRepository || skill.sourcePath ? (
+                                    <div className="max-w-64 truncate text-xs text-stone-500" title={[skill.sourceRepository, skill.sourcePath].filter(Boolean).join(" · ")}>
+                                        本地导入 · {skill.sourceRepository || skill.sourcePath}
+                                    </div>
                                 ) : null}
                             </div>
                             <div className="flex items-center gap-2">
@@ -124,6 +128,7 @@ export function AdminSkillsSection({ controller }: { controller: AdminDashboardC
                                 <ChevronDown className="size-3.5 transition group-open:rotate-180" />
                             </summary>
                             <div className="mt-3 hidden group-open:block sm:mt-0 sm:!block">
+                                <div className="mb-1 text-xs font-medium text-stone-600 dark:text-stone-300">Skill 名称（可编辑）</div>
                                 <Input
                                     value={skill.name}
                                     placeholder="Skill 名称"

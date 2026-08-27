@@ -75,13 +75,15 @@ export function canvasReferenceSupportsTask(referenceType: AgentRunReference["ty
     return false;
 }
 
-export function resolveCanvasTaskTargetNodeId(plannedTargetNodeId: string | undefined, taskType: AgentRunTask["type"], selectedNodeIds: Set<string>, nodes: Map<string, CanvasTaskReferenceNode>) {
+export function resolveCanvasTaskTargetNodeId(plannedTargetNodeId: string | undefined, taskType: AgentRunTask["type"], selectedNodeIds: Set<string>, nodes: Map<string, CanvasTaskReferenceNode>, allowSelectedFallback = true) {
     const planned = plannedTargetNodeId?.trim();
-    if (selectedNodeIds.size) {
-        if (planned && selectedNodeIds.has(planned) && nodeSupportsTaskReference(nodes.get(planned)?.type, taskType)) return planned;
-        return Array.from(selectedNodeIds).find((id) => nodeSupportsTaskReference(nodes.get(id)?.type, taskType));
+    const selectedFallback = () => Array.from(selectedNodeIds).find((id) => nodeSupportsTaskReference(nodes.get(id)?.type, taskType));
+    if (planned) {
+        if (selectedNodeIds.size && !selectedNodeIds.has(planned)) return allowSelectedFallback ? selectedFallback() : undefined;
+        if (nodeSupportsTaskReference(nodes.get(planned)?.type, taskType)) return planned;
+        return allowSelectedFallback ? selectedFallback() : undefined;
     }
-    return planned && nodeSupportsTaskReference(nodes.get(planned)?.type, taskType) ? planned : undefined;
+    return allowSelectedFallback ? selectedFallback() : undefined;
 }
 
 export function resolveAgentTaskRatio(input: {
