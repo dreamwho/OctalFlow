@@ -1,6 +1,6 @@
 # Web 应用
 
-该目录包含 OctalAICanvas 主应用，包括用户创作工作台、Canvas、短剧项目、管理后台、Route Handler、身份认证、服务端存储和生成任务 Worker。
+该目录包含 OctalFlow 主应用，包括用户创作工作台、Canvas、短剧项目、管理后台、Route Handler、身份认证、服务端存储和生成任务 Worker。
 
 ## 本地开发
 

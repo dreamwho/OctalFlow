@@ -48,7 +48,7 @@ try {
     const objectStorageConfig = await loadDisasterObjectStorageConfig({ databaseUrl, dataDir, encryptionKey: process.env.OCTALAICANVAS_ENCRYPTION_KEY });
     const objectStorage = await restoreObjectStorage(objectStorageConfig, manifest.objectStorage, recoveryPointDir);
     await writeJsonAtomic(path.join(safetyDir, "restore-report.json"), {
-        app: "OctalAICanvas",
+        app: "OctalFlow",
         recoveryPointId: manifest.recoveryPointId,
         startedAt,
         completedAt: new Date().toISOString(),

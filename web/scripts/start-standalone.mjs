@@ -12,12 +12,13 @@ const standaloneRoot = path.join(buildRoot, "standalone");
 await prepareStandaloneAssets({ webRoot, distDir });
 
 const runtime = generationRuntimeEnvironment({
+    allowEphemeralToken: true,
     environment: {
         ...process.env,
-        PORT: process.env.PORT || "3000",
+        PORT: process.env.PORT || "3333",
         HOSTNAME: process.env.HOSTNAME || "0.0.0.0",
         OCTALAICANVAS_DATA_DIR: process.env.OCTALAICANVAS_DATA_DIR || path.join(webRoot, ".data"),
-        OCTALAICANVAS_INTERNAL_ORIGIN: process.env.OCTALAICANVAS_INTERNAL_ORIGIN || `http://127.0.0.1:${process.env.PORT || "3000"}`,
+        OCTALAICANVAS_INTERNAL_ORIGIN: process.env.OCTALAICANVAS_INTERNAL_ORIGIN || `http://127.0.0.1:${process.env.PORT || "3333"}`,
     },
 });
 process.exitCode = await superviseGenerationRuntime({

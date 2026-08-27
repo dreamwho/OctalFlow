@@ -187,7 +187,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                             <CanvasImageSettingsPopover
                                 config={config}
                                 placement="topLeft"
-                                buttonClassName="canvas-composer-settings !h-8 !max-w-[11rem] !justify-start !rounded-full !px-3"
+                                buttonClassName="canvas-composer-settings !h-8 !max-w-[14rem] !justify-start !rounded-full !px-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                                 onOpenChange={onImageSettingsOpenChange}
                                 fixedSizeLabel={isPanorama ? "全景 2:1" : undefined}
@@ -196,7 +196,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                                 <CanvasCameraControl
                                     value={node.metadata?.cameraControl}
                                     onChange={(cameraControl) => onConfigChange(node.id, { cameraControl })}
-                                    buttonClassName="canvas-composer-settings !h-8 !max-w-[11rem] !justify-start !rounded-full !px-3"
+                                    buttonClassName="canvas-composer-settings !h-8 !max-w-[12rem] !justify-start !rounded-full !px-3"
                                 />
                             ) : null}
                         </>
@@ -207,14 +207,14 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                                 config={config}
                                 metadata={node.metadata}
                                 references={mentionReferences}
-                                buttonClassName="canvas-composer-settings !h-8 !max-w-[11rem] !justify-start !rounded-full !px-3"
+                                buttonClassName="canvas-composer-settings !h-8 !max-w-[14rem] !justify-start !rounded-full !px-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, canvasVideoConfigPatch(key, value))}
                                 onMetadataChange={(patch) => onConfigChange(node.id, patch)}
                             />
                             <CanvasCameraControl
                                 value={node.metadata?.cameraControl}
                                 onChange={(cameraControl) => onConfigChange(node.id, { cameraControl })}
-                                buttonClassName="canvas-composer-settings !h-8 !max-w-[11rem] !justify-start !rounded-full !px-3"
+                                buttonClassName="canvas-composer-settings !h-8 !max-w-[12rem] !justify-start !rounded-full !px-3"
                             />
                         </>
                     ) : mode === "audio" ? (
@@ -222,7 +222,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                             <ModelPicker className="min-w-[9rem]" config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="audio" onMissingConfig={() => openConfigDialog(true)} />
                             <CanvasAudioSettingsPopover
                                 config={config}
-                                buttonClassName="canvas-composer-settings !h-8 !max-w-[11rem] !justify-start !rounded-full !px-3"
+                                buttonClassName="canvas-composer-settings !h-8 !max-w-[14rem] !justify-start !rounded-full !px-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, canvasAudioConfigPatch(key, value))}
                             />
                         </>

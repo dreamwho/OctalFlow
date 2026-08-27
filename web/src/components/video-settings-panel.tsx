@@ -22,7 +22,7 @@ const sizeOptions = [
     { value: "auto", label: "auto", width: 0, height: 0 },
 ];
 
-const defaultSecondOptions = [5, 10];
+const defaultSecondOptions = [5, 10, 15];
 const legacyDefaultSecondKeys = new Set(["12", "16"]);
 
 type VideoSettingsPanelProps = {

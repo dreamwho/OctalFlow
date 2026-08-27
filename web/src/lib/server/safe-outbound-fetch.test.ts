@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     fetch: vi.fn(),
     resolve: vi.fn(),
     isPublic: vi.fn(() => true),
+    isProxyFakeIp: vi.fn(() => false),
     proxyUrl: vi.fn(() => ""),
 }));
 vi.mock("undici", () => ({
@@ -22,7 +23,11 @@ vi.mock("undici", () => ({
     },
     fetch: mocks.fetch,
 }));
-vi.mock("@/lib/server/outbound-url-security", () => ({ isPublicIpAddress: mocks.isPublic, resolveSafeOutboundTarget: mocks.resolve }));
+vi.mock("@/lib/server/outbound-url-security", () => ({
+    isPublicIpAddress: mocks.isPublic,
+    isProxyFakeIpAddress: mocks.isProxyFakeIp,
+    resolveSafeOutboundTarget: mocks.resolve,
+}));
 vi.mock("@/lib/server/proxy-dispatcher", () => ({ resolveServerProxyUrl: mocks.proxyUrl }));
 
 import { fetchSafeOutbound, UnsafeOutboundUrlError } from "./safe-outbound-fetch";

@@ -139,7 +139,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     }
 
     const target = targetUrl(globalPreset?.baseUrl || channel.baseUrl, globalPreset?.apiFormat || apiFormat, globalAdaptation?.path || path, new URL(request.url).search, globalChannel, modelConfig?.protocol || channel.advancedConfig?.protocol);
-    if (!(await isSafeOutboundUrl(target, { allowCredentials: false }))) return NextResponse.json({ error: "接口地址不允许访问内网或保留地址" }, { status: 400 });
+    if (!(await isSafeOutboundUrl(target, { allowCredentials: false, allowProxyFakeIpSpace: true }))) return NextResponse.json({ error: "接口地址不允许访问内网或保留地址" }, { status: 400 });
     const headers = new Headers();
     if (contentType && !isMultipart) headers.set("content-type", contentType);
     if (accept) headers.set("accept", accept);
@@ -186,14 +186,18 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
 
     let upstream: Response;
     try {
-        upstream = await fetchSafeOutbound(target, {
-            method: request.method,
-            headers,
-            body: globalAdaptation?.body || requestBody.body,
-            cache: "no-store",
-            redirect: "manual",
-            signal: request.signal,
-        });
+        upstream = await fetchSafeOutbound(
+            target,
+            {
+                method: request.method,
+                headers,
+                body: globalAdaptation?.body || requestBody.body,
+                cache: "no-store",
+                redirect: "manual",
+                signal: request.signal,
+            },
+            { allowProxyFakeIpSpace: true },
+        );
     } catch (error) {
         await refundConsumedPoints();
         console.error("System API proxy request failed", error instanceof Error ? error.message : error);

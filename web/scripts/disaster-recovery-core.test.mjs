@@ -25,7 +25,7 @@ describe("disaster recovery core", () => {
         await mkdir(path.dirname(databasePath), { recursive: true });
         await writeFile(databasePath, "database");
         const manifest = {
-            app: "OctalAICanvas",
+            app: "OctalFlow",
             formatVersion: 1,
             recoveryPointId: "point-one",
             database: { ...(await hashFile(databasePath)), file: "database/octalaicanvas.dump" },

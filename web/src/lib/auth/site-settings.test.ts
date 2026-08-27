@@ -15,7 +15,7 @@ describe("site settings", () => {
         expect(settings.iconUrl).toBe("https://cdn.example.com/favicon.ico");
     });
 
-    it("defaults public contacts to the OctalAICanvas email and QQ group", () => {
+    it("defaults public contacts to the OctalFlow email and QQ group", () => {
         const settings = normalizeSiteSettings({});
 
         expect(settings.socials.email).toMatchObject({ enabled: true, url: "mailto:csyqlz@gmail.com" });

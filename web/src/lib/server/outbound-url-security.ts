@@ -106,7 +106,7 @@ function isPrivateAllowlistableAddress(address: string) {
     return addressBlockListContains(address, version, PRIVATE_ALLOWLISTABLE_IPV4_ADDRESSES, PRIVATE_ALLOWLISTABLE_IPV6_ADDRESSES);
 }
 
-function isProxyFakeIpAddress(address: string) {
+export function isProxyFakeIpAddress(address: string) {
     const version = isIP(address);
     if (!version || version !== 4) return false;
     const mapped = mappedIpv4(address);

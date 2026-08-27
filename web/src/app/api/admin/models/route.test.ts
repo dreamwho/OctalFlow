@@ -149,7 +149,7 @@ describe("admin models route", () => {
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ models: ["same-origin-model"] });
         expect(mocks.isSafeOutboundUrl).toHaveBeenCalledTimes(1);
-        expect(mocks.isSafeOutboundUrl).toHaveBeenCalledWith("https://api.example.com/v1");
+        expect(mocks.isSafeOutboundUrl).toHaveBeenCalledWith("https://api.example.com/v1", { allowCredentials: false, allowProxyFakeIpSpace: true });
         expect(fetchMock).toHaveBeenCalledWith("https://api.example.com/v1/models", expect.any(Object));
     });
 

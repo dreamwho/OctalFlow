@@ -102,7 +102,7 @@ export async function writeRemoteAsset(url: string, type: GenerationLogKind, con
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SERVER_ASSET_DOWNLOAD_TIMEOUT_MS);
     try {
-        const response = await fetchSafeOutbound(url, { cache: "no-store", redirect: "manual", signal: controller.signal });
+        const response = await fetchSafeOutbound(url, { cache: "no-store", redirect: "manual", signal: controller.signal }, { allowProxyFakeIpSpace: true });
         if (!response.ok || !response.body) return null;
         const contentLength = Number(response.headers.get("content-length") || 0);
         const maxBytes = maxServerAssetBytes(type);
@@ -120,7 +120,7 @@ export async function writeRemoteAsset(url: string, type: GenerationLogKind, con
 }
 
 export async function isSafeRemoteAssetUrl(value: string) {
-    return isSafeOutboundUrl(value, { allowCredentials: false });
+    return isSafeOutboundUrl(value, { allowCredentials: false, allowProxyFakeIpSpace: true });
 }
 
 export async function writeAssetBytes(bytes: Buffer, mimeType: string, type: GenerationLogKind, context: GenerationAssetContext): Promise<GenerationLogAsset> {

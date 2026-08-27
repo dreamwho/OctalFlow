@@ -111,7 +111,7 @@ async function imageInlineData(value: string, origin: string, cookie: string): P
     const target = referenceFetchTarget(value, origin);
     if (!target) throw new Error("参考图地址无效，请重新上传参考图");
     const workerHeaders = maintenanceWorkerContextHeaders(cookie);
-    const response = await (target.internal ? fetchInternalApi : fetchSafeOutbound)(target.url, {
+    const response = await (target.internal ? fetchInternalApi : (url: string | URL, init?: RequestInit) => fetchSafeOutbound(url, init, { allowProxyFakeIpSpace: true }))(target.url, {
         headers: target.internal ? workerHeaders || (cookie ? { cookie } : undefined) : undefined,
         cache: "no-store",
         signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),

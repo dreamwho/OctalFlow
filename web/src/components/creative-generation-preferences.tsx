@@ -67,6 +67,7 @@ const videoQualityOptions = [
 const videoDurationOptions = [
     { value: 5, label: "5 秒" },
     { value: 10, label: "10 秒" },
+    { value: 15, label: "15 秒" },
 ] as const;
 
 const generationCountOptions = [

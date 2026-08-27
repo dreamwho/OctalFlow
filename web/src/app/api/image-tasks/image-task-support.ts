@@ -257,7 +257,7 @@ export function taskFetch(config: ImageTaskConfig, url: string, init: RequestIni
         ...init,
         signal: init.signal || AbortSignal.timeout(imageTaskRequestTimeoutMs(config)),
     };
-    if (!isInternalApiBaseUrl(config.baseUrl)) return fetchSafeOutbound(url, nextInit);
+    if (!isInternalApiBaseUrl(config.baseUrl)) return fetchSafeOutbound(url, nextInit, { allowProxyFakeIpSpace: true });
     return fetchInternalApi(url, nextInit);
 }
 
@@ -553,11 +553,14 @@ export async function inlineRemoteImageResult(value: string, origin: string, coo
         const workerHeaders = maintenanceWorkerContextHeaders(cookie);
         const headers = new Headers(workerHeaders || (cookie ? { cookie } : undefined));
         new Headers(internalHeaders).forEach((headerValue, key) => headers.set(key, headerValue));
-        const response = await (url.startsWith("/") ? fetchInternalApi : fetchSafeOutbound)(fetchUrl, {
-            headers: url.startsWith("/") ? headers : undefined,
+        const response = await (url.startsWith("/") ? fetchInternalApi(fetchUrl, {
+            headers,
             cache: "no-store",
             signal: controller.signal,
-        });
+        }) : fetchSafeOutbound(fetchUrl, {
+            cache: "no-store",
+            signal: controller.signal,
+        }, { allowProxyFakeIpSpace: true }));
         if (!response.ok || !response.body) return { dataUrl: url, remoteUrl: fallbackUrl };
         const contentLength = Number(response.headers.get("content-length") || 0);
         if (contentLength > MAX_INLINE_IMAGE_BYTES) return { dataUrl: url, remoteUrl: fallbackUrl };
@@ -697,11 +700,14 @@ export async function imageReferenceToFile(reference: ImageTaskReference, name: 
             const fetchUrl = value.startsWith("/") ? `${origin}${value}` : value;
             if (!isRemoteMediaUrl(fetchUrl)) throw new Error("参考图地址无效，请重新上传参考图");
             const workerHeaders = maintenanceWorkerContextHeaders(cookie);
-            const response = await (value.startsWith("/") ? fetchInternalApi : fetchSafeOutbound)(fetchUrl, {
-                headers: value.startsWith("/") ? workerHeaders || (cookie ? { cookie } : undefined) : undefined,
+            const response = await (value.startsWith("/") ? fetchInternalApi(fetchUrl, {
+                headers: workerHeaders || (cookie ? { cookie } : undefined),
                 cache: "no-store",
                 signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),
-            });
+            }) : fetchSafeOutbound(fetchUrl, {
+                cache: "no-store",
+                signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),
+            }, { allowProxyFakeIpSpace: true }));
             if (!response.ok || !response.body) throw new Error("参考图读取失败");
             const contentLength = Number(response.headers.get("content-length") || 0);
             if (contentLength > MAX_INLINE_IMAGE_BYTES) throw new Error("参考图过大，请压缩后重试");

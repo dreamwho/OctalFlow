@@ -725,8 +725,8 @@ export function CanvasSurface({
                                     d={path}
                                     fill="none"
                                     stroke={generating ? "#2f80ff" : active ? theme.node.activeStroke : theme.node.muted}
-                                    strokeWidth={generating ? 1.5 : active ? 2 : 1.5}
-                                    strokeOpacity={generating || active ? 1 : 0.8}
+                                    strokeWidth={generating ? 1 : active ? 1.5 : 1}
+                                    strokeOpacity={generating || active ? 1 : 0.75}
                                     strokeLinecap="round"
                                     className={generating ? "canvas-edge-generating" : undefined}
                                     style={{ pointerEvents: "none" }}

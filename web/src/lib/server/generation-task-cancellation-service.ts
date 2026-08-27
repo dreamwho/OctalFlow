@@ -88,7 +88,7 @@ async function cancellationFetch(target: GenerationCancellationTarget, origin: s
         return fetchInternalApi(url, { method, headers, cache: "no-store", signal: AbortSignal.timeout(10_000) });
     }
     Object.entries(protocolAuthHeaders(target.config.apiKey, target.config.advancedConfig, target.config.apiFormat)).forEach(([key, value]) => headers.set(key, value));
-    return fetchSafeOutbound(url, { method, headers, cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(10_000) });
+    return fetchSafeOutbound(url, { method, headers, cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(10_000) }, { allowProxyFakeIpSpace: true });
 }
 
 function cancellableUpstreamTaskId(value: string | undefined) {

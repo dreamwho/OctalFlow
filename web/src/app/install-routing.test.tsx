@@ -19,7 +19,7 @@ describe("installation page routing", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.getPublicSiteSettings.mockResolvedValue({
-            title: "OctalAICanvas",
+            title: "OctalFlow",
             logoUrl: "/logo.svg",
             seoDescription: "",
             footerCopyright: "",

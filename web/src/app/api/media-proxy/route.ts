@@ -66,16 +66,20 @@ async function readTargetUrl(request: Request) {
 async function fetchMedia(target: URL, method: "GET" | "HEAD", range: string | null, signal: AbortSignal) {
     let current = target;
     for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
-        const response = await fetchSafeOutbound(current, {
-            method,
-            headers: {
-                "User-Agent": "OCTALAICANVAS-Media-Proxy/0.0.6",
-                ...(range ? { Range: range } : {}),
+        const response = await fetchSafeOutbound(
+            current,
+            {
+                method,
+                headers: {
+                    "User-Agent": "OCTALAICANVAS-Media-Proxy/0.0.6",
+                    ...(range ? { Range: range } : {}),
+                },
+                cache: "no-store",
+                redirect: "manual",
+                signal,
             },
-            cache: "no-store",
-            redirect: "manual",
-            signal,
-        });
+            { allowProxyFakeIpSpace: true },
+        );
         if (![301, 302, 303, 307, 308].includes(response.status)) return response;
         const location = response.headers.get("location");
         if (!location || redirects === MAX_REDIRECTS) throw new Error("Too many media redirects");
@@ -99,5 +103,5 @@ function mediaHeaders(source: Headers, mimeType: string) {
 }
 
 async function isSafeTarget(target: URL) {
-    return isSafeOutboundUrl(target.toString(), { allowCredentials: false });
+    return isSafeOutboundUrl(target.toString(), { allowCredentials: false, allowProxyFakeIpSpace: true });
 }

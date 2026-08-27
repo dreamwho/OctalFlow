@@ -169,7 +169,7 @@ function postgresSslConfig() {
 }
 
 function printHelp() {
-    console.log(`OctalAICanvas 管理员 MFA 恢复
+    console.log(`OctalFlow 管理员 MFA 恢复
 
 用法：
   pnpm reset:admin-mfa -- --username admin

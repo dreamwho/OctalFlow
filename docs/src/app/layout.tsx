@@ -4,13 +4,13 @@ import "./global.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "OctalAICanvas 文档",
-    template: "%s | OctalAICanvas 文档",
+    default: "OctalFlow 文档",
+    template: "%s | OctalFlow 文档",
   },
   description:
-    "OctalAICanvas - AI创意工作台官方文档，提供图片、视频、音频、短剧等多种AI生成能力的完整指南。",
+    "OctalFlow - AI创意工作台官方文档，提供图片、视频、音频、短剧等多种AI生成能力的完整指南。",
   keywords: [
-    "OctalAICanvas",
+    "OctalFlow",
     "AI创意",
     "图片生成",
     "视频生成",
@@ -18,9 +18,9 @@ export const metadata: Metadata = {
     "AI工作台",
     "文档",
   ],
-  authors: [{ name: "OctalAICanvas Team" }],
-  creator: "OctalAICanvas Team",
-  publisher: "OctalAICanvas",
+  authors: [{ name: "OctalFlow Team" }],
+  creator: "OctalFlow Team",
+  publisher: "OctalFlow",
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "https://docs.octalaicanvas.pro",
   ),
@@ -36,15 +36,15 @@ export const metadata: Metadata = {
     type: "website",
     locale: "zh_CN",
     url: "/",
-    title: "OctalAICanvas 文档",
-    description: "OctalAICanvas - AI创意工作台官方文档",
-    siteName: "OctalAICanvas 文档",
+    title: "OctalFlow 文档",
+    description: "OctalFlow - AI创意工作台官方文档",
+    siteName: "OctalFlow 文档",
     images: ["/logo.svg"],
   },
   twitter: {
     card: "summary_large_image",
-    title: "OctalAICanvas 文档",
-    description: "OctalAICanvas - AI创意工作台官方文档",
+    title: "OctalFlow 文档",
+    description: "OctalFlow - AI创意工作台官方文档",
     images: ["/logo.svg"],
   },
   robots: {

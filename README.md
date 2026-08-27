@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="web/public/logo.svg?v=0.0.6" width="108" alt="OctalAICanvas logo">
+  <img src="web/public/logo.svg?v=0.0.6" width="108" alt="OctalFlow logo">
 </p>
 
-<h1 align="center">OctalAICanvas</h1>
+<h1 align="center">OctalFlow</h1>
 
 <p align="center">面向统一创作 Agent、Canvas 与短剧生产的开源 AI 创作平台</p>
 
 <p align="center">
-  <a href="https://github.com/csyqlz/OCTALAICANVAS"><img src="https://img.shields.io/github/stars/csyqlz/OCTALAICANVAS?style=flat-square&logo=github" alt="GitHub stars"></a>
+  <a href="https://github.com/dreamwho/OctalFlow"><img src="https://img.shields.io/github/stars/dreamwho/OctalFlow?style=flat-square&logo=github" alt="GitHub stars"></a>
   <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.0.6-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-f97316?style=flat-square" alt="License"></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.2-000000?style=flat-square&logo=nextdotjs" alt="Next.js"></a>
@@ -25,9 +25,9 @@
   <a href="CHANGELOG.md">更新记录</a>
 </p>
 
-![OctalAICanvas 首页](docs/public/screenshots/pages/01-home.webp)
+![OctalFlow 首页](docs/public/screenshots/pages/01-home.webp)
 
-OctalAICanvas 把统一创作 Agent、画布、短剧生产、素材库和商业运营后台放在同一套 Next.js 全栈应用中。PostgreSQL 保存账号与业务数据；媒体可写入服务器本地目录或 S3 兼容对象存储；模型、支付和存储密钥只在服务端使用。
+OctalFlow 把统一创作 Agent、画布、短剧生产、素材库和商业运营后台放在同一套 Next.js 全栈应用中。PostgreSQL 保存账号与业务数据；媒体可写入服务器本地目录或 S3 兼容对象存储；模型、支付和存储密钥只在服务端使用。
 
 ## 核心功能
 
@@ -372,7 +372,7 @@ flowchart LR
 
 ## 最低服务器配置
 
-OctalAICanvas 调用外部 AI 模型，不要求 GPU。服务器主要承担 Web、PostgreSQL、媒体下载/存储和可选 FFmpeg 转码。
+OctalFlow 调用外部 AI 模型，不要求 GPU。服务器主要承担 Web、PostgreSQL、媒体下载/存储和可选 FFmpeg 转码。
 
 | 使用方式                   | CPU      | 内存           | 磁盘      | 说明                                                                |
 | -------------------------- | -------- | -------------- | --------- | ------------------------------------------------------------------- |
@@ -392,8 +392,8 @@ OctalAICanvas 调用外部 AI 模型，不要求 GPU。服务器主要承担 Web
 环境要求：可运行 Docker Compose 的 Linux 服务器、HTTPS 域名，以及按业务需要准备的模型渠道。
 
 ```bash
-git clone https://github.com/csyqlz/OCTALAICANVAS.git
-cd OCTALAICANVAS
+git clone https://github.com/dreamwho/OctalFlow.git
+cd OctalFlow
 cp .env.example .env
 ```
 
@@ -464,7 +464,7 @@ pnpm install --frozen-lockfile
 pnpm run dev
 ```
 
-`http://localhost:3000` 必须显示 OctalAICanvas 主应用；如果看到“OctalAICanvas 文档中心”，说明启动的是 `docs/` 子项目或旧版文档脚本，请停止该进程并从 `web/` 启动主应用。独立文档站只使用 `http://localhost:3001`。
+`http://localhost:3000` 必须显示 OctalFlow 主应用；如果看到“OctalFlow 文档中心”，说明启动的是 `docs/` 子项目或旧版文档脚本，请停止该进程并从 `web/` 启动主应用。独立文档站只使用 `http://localhost:3001`。
 
 ## 首次配置顺序
 
@@ -556,9 +556,9 @@ pnpm run build
 
 <table>
   <tr>
-    <td width="260"><a href="https://qm.qq.com/q/9MVLTxuRd6"><img src="docs/public/community/qq-octalaicanvas-group-1049777515.webp" width="240" alt="OctalAICanvas 开源交流 QQ 群二维码"></a></td>
+    <td width="260"><a href="https://qm.qq.com/q/9MVLTxuRd6"><img src="docs/public/community/qq-octalaicanvas-group-1049777515.webp" width="240" alt="OctalFlow 开源交流 QQ 群二维码"></a></td>
     <td>
-      <strong>OctalAICanvas 开源交流</strong><br>
+      <strong>OctalFlow 开源交流</strong><br>
       QQ 群：<code>1049777515</code> · <a href="https://qm.qq.com/q/9MVLTxuRd6">点击加入群聊</a><br><br>
       欢迎交流部署、模型渠道适配、创作功能使用、Bug 复现和代码贡献。请勿在群内发送 API Key、数据库密码、支付密钥、服务器私钥或未经脱敏的生产日志。
     </td>

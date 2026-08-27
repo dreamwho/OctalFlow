@@ -43,8 +43,8 @@ export function baseOptions(): BaseLayoutProps {
       },
       {
         type: "icon",
-        text: "OctalAICanvas 开源交流 QQ 群",
-        label: "OctalAICanvas 开源交流 QQ 群（1049777515）",
+        text: "OctalFlow 开源交流 QQ 群",
+        label: "OctalFlow 开源交流 QQ 群（1049777515）",
         url: qqGroupUrl,
         external: true,
         on: "menu",

@@ -65,9 +65,10 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
 export function canvasVideoPreferenceSummary(preferences: GenerationPreferences) {
     const video = preferences.video;
     const size = !video?.size || video.size === "auto" ? "智能" : video.size.replace("x", "×");
-    if (/^\d+x\d+$/i.test(video?.size || "")) return size;
     const quality = !video?.quality || video.quality === "auto" ? "智能" : `${video.quality.replace(/p$/i, "")}P`;
-    return `${size} · ${quality}`;
+    const seconds = video?.seconds ? `${video.seconds}s` : "";
+    if (/^\d+x\d+$/i.test(video?.size || "")) return [size, seconds].filter(Boolean).join(" · ");
+    return [size, quality, seconds].filter(Boolean).join(" · ");
 }
 
 function applyVideoPreferencePatch(patch: CreativeGenerationPreferencePatch, onChange: (key: keyof AiConfig, value: string) => void) {

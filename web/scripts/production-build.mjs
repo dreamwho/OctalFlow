@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +7,14 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const skipTypeCheck = process.env.NEXT_SKIP_BUILD_TYPECHECK === "1";
 const trackedBuildFiles = ["tsconfig.json", "next-env.d.ts"].map((fileName) => ({ fileName, path: path.join(webRoot, fileName), content: readBuildFile(fileName) }));
 let exitCode = 0;
+
+// 清理可能因异常退出残留的 Next.js 构建锁
+const lockPath = path.join(webRoot, ".next", "lock");
+if (existsSync(lockPath)) {
+    try {
+        rmSync(lockPath, { force: true });
+    } catch {}
+}
 
 try {
     if (!skipTypeCheck) {

@@ -12,8 +12,10 @@ const runtime = generationRuntimeEnvironment({ allowEphemeralToken: true });
 const environment = { ...runtime.environment, NEXT_DIST_DIR: runtime.environment.NEXT_DIST_DIR?.trim() || ".next-dev" };
 if (runtime.ephemeralToken) console.log("Generated ephemeral maintenance and worker tokens for this local development process.");
 
+const requestedPort = process.env.PORT || "3333";
+
 process.exitCode = await superviseGenerationRuntime({
-    app: { command: process.execPath, args: [nextEntry, "dev", "--webpack", "-H", "0.0.0.0", "-p", "3000"], cwd: webRoot },
+    app: { command: process.execPath, args: [nextEntry, "dev", "--webpack", "-H", "0.0.0.0", "-p", requestedPort], cwd: webRoot },
     workerScript: path.join(webRoot, "scripts", "generation-worker.mjs"),
     environment,
 });

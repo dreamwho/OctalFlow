@@ -257,7 +257,7 @@ function providerFetch(task: AudioTask, origin: string, cookie: string, workerUs
     const channelId = task.config.channelId || systemGenerationChannelId(task.config.baseUrl);
     if (mediaUrl && channelId) Object.entries(generationMediaProxyHeaders({ userId: task.userId, taskType: "audio", taskId: task.id, channelId, upstreamModel: task.config.model, url: mediaUrl })).forEach(([key, value]) => headers.set(key, value));
     if (!task.config.baseUrl.startsWith("/")) headers.set(task.config.apiFormat === "gemini" ? "x-goog-api-key" : "authorization", task.config.apiFormat === "gemini" ? task.config.apiKey : `Bearer ${task.config.apiKey}`);
-    return isInternalApiBaseUrl(task.config.baseUrl) ? fetchInternalApi(url, { ...init, headers }) : fetchSafeOutbound(url, { ...init, headers });
+    return isInternalApiBaseUrl(task.config.baseUrl) ? fetchInternalApi(url, { ...init, headers }) : fetchSafeOutbound(url, { ...init, headers }, { allowProxyFakeIpSpace: true });
 }
 
 function mediaUrlFromProxyPath(path: string) {

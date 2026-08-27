@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 
-const VERSION_URL = "https://raw.githubusercontent.com/dreamwho/OctalAICanvas/main/VERSION";
-const CHANGELOG_URL = "https://raw.githubusercontent.com/dreamwho/OctalAICanvas/main/CHANGELOG.md";
+const VERSION_URL = "https://raw.githubusercontent.com/dreamwho/OctalFlow/main/VERSION";
+const CHANGELOG_URL = "https://raw.githubusercontent.com/dreamwho/OctalFlow/main/CHANGELOG.md";
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const UPSTREAM_TIMEOUT_MS = 5000;
 

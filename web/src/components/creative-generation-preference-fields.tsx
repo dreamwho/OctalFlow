@@ -66,7 +66,7 @@ export function SuggestedPositiveIntegerField({
     return (
         <div className="grid gap-1.5">
             <p className="text-[11px] font-medium text-[#7b8591] dark:text-[#98a2ae]">{label}</p>
-            <div className="grid grid-cols-[repeat(2,minmax(0,1fr))_minmax(0,1.35fr)] gap-1">
+            <div style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr)) minmax(0, 1.35fr)` }} className="grid gap-1">
                 {options.map((option) => (
                     <OptionButton key={option.value} selected={value === option.value} label={option.label} ariaLabel={`${ariaLabel} ${option.label}`} onClick={() => onChange(option.value)} />
                 ))}

@@ -520,7 +520,7 @@ function taskFetch(config: TextTaskConfig, url: string, init: RequestInit) {
         ...init,
         signal: init.signal || AbortSignal.timeout(resolveModelRequestTimeoutMs(config, "text")),
     };
-    return isInternalApiBaseUrl(config.baseUrl) ? fetchInternalApi(url, nextInit) : fetchSafeOutbound(url, nextInit);
+    return isInternalApiBaseUrl(config.baseUrl) ? fetchInternalApi(url, nextInit) : fetchSafeOutbound(url, nextInit, { allowProxyFakeIpSpace: true });
 }
 
 async function submissionFetch(config: TextTaskConfig, url: string, init: RequestInit) {

@@ -1,16 +1,16 @@
 ---
 title: Docker 部署
-description: 使用 Docker Compose、PostgreSQL 和发布镜像部署 OctalAICanvas
+description: 使用 Docker Compose、PostgreSQL 和发布镜像部署 OctalFlow
 ---
 
 # Docker 部署
 
-主 Compose 会启动 OctalAICanvas 和 PostgreSQL 16。正式部署前先复制并修改 `.env`。
+主 Compose 会启动 OctalFlow 和 PostgreSQL 16。正式部署前先复制并修改 `.env`。
 
 ## 安装
 
 ```bash
-git clone https://github.com/dreamwho/OctalAICanvas.git
+git clone https://github.com/dreamwho/OctalFlow.git
 cd OCTALAICANVAS
 cp .env.example .env
 ```
@@ -37,7 +37,7 @@ docker compose ps
 
 ```text
 postgres -> PostgreSQL 16，数据卷 octalaicanvas-postgres
-app      -> OctalAICanvas standalone，数据卷 octalaicanvas-data
+app      -> OctalFlow standalone，数据卷 octalaicanvas-data
 ```
 
 应用通过容器网络连接：
