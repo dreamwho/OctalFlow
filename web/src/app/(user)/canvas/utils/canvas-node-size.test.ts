@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CanvasNodeType, type CanvasNodeData } from "../types";
-import { fitNodeAspectRatio, resizeImageNodeToNaturalRatio, resizeNodeBox } from "./canvas-node-size";
+import { fitCanvasImageNodeSize, fitNodeAspectRatio, nodeSizeFromRatio, resizeImageNodeToNaturalRatio, resizeNodeBox } from "./canvas-node-size";
 
 const imageNode: CanvasNodeData = {
     id: "image",
@@ -18,10 +18,25 @@ describe("Canvas image node sizing", () => {
         expect(fitNodeAspectRatio(1024, 1024, 340, 340)).toEqual({ width: 340, height: 340 });
     });
 
+    it("keeps Agent ratio-specified nodes inside their configured bounds", () => {
+        expect(fitCanvasImageNodeSize(1024, 1024)).toEqual({ width: 240, height: 240 });
+        expect(fitCanvasImageNodeSize(8192, 6144)).toEqual({ width: 320, height: 240 });
+        expect(fitCanvasImageNodeSize(1600, 900)).toMatchObject({ height: 240 });
+        expect(fitCanvasImageNodeSize(1600, 900).width).toBeCloseTo(426.6667, 3);
+        expect(fitCanvasImageNodeSize(900, 1600)).toMatchObject({ width: 240 });
+        expect(fitCanvasImageNodeSize(900, 1600).height).toBeCloseTo(426.6667, 3);
+        const landscape = nodeSizeFromRatio("16:9", 340, 240);
+        const portrait = nodeSizeFromRatio("9:16", 340, 240);
+        expect(landscape?.width).toBeCloseTo(340, 3);
+        expect(landscape?.height).toBeCloseTo(191.25, 3);
+        expect(portrait?.width).toBeCloseTo(135, 3);
+        expect(portrait?.height).toBeCloseTo(240, 3);
+    });
+
     it("keeps the node center while correcting a saved frame ratio", () => {
         const resized = resizeImageNodeToNaturalRatio(imageNode, 1024, 1024);
 
-        expect(resized).toMatchObject({ width: 340, height: 340, position: { x: 100, y: 150 }, metadata: { naturalWidth: 1024, naturalHeight: 1024 } });
+        expect(resized).toMatchObject({ width: 240, height: 240, position: { x: 150, y: 200 }, metadata: { naturalWidth: 1024, naturalHeight: 1024 } });
     });
 
     it("preserves an intentional free-resize frame", () => {

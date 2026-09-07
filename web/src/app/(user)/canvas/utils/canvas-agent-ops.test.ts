@@ -21,7 +21,21 @@ describe("Agent 产物排版", () => {
 
         expect(first.selectedNodeIds).toEqual(["reference"]);
         expect(replay.nodes.filter((node) => node.id === "output-run-0-0")).toHaveLength(1);
-        expect(replay.nodes.find((node) => node.id === "output-run-0-0")).toMatchObject({ width: 340, height: 191.25, metadata: { status: "success", naturalWidth: 1600, naturalHeight: 900 } });
+        expect(replay.nodes.find((node) => node.id === "output-run-0-0")).toMatchObject({ metadata: { status: "success", naturalWidth: 1600, naturalHeight: 900 } });
+        expect(replay.nodes.find((node) => node.id === "output-run-0-0")?.width).toBeCloseTo(340, 3);
+        expect(replay.nodes.find((node) => node.id === "output-run-0-0")?.height).toBeCloseTo(191.25, 3);
+    });
+
+    it("keeps Agent image and video outputs within their configured node bounds", () => {
+        const created = applyCanvasAgentOps(snapshot, [
+            { type: "add_node", id: "image-output", nodeType: CanvasNodeType.Image, position: { x: 0, y: 0 }, metadata: { agentRunId: "run", size: "16:9" } },
+            { type: "add_node", id: "video-output", nodeType: CanvasNodeType.Video, position: { x: 0, y: 0 }, metadata: { agentRunId: "run", size: "16:9" } },
+        ]);
+
+        expect(created.nodes.find((node) => node.id === "image-output")?.width).toBeCloseTo(340, 3);
+        expect(created.nodes.find((node) => node.id === "image-output")?.height).toBeCloseTo(191.25, 3);
+        expect(created.nodes.find((node) => node.id === "video-output")?.width).toBeCloseTo(419.5556, 3);
+        expect(created.nodes.find((node) => node.id === "video-output")?.height).toBeCloseTo(236, 3);
     });
 
     it("places every Agent Run node in a free position and replays stable ids idempotently", () => {
@@ -60,7 +74,7 @@ describe("Agent 产物排版", () => {
     it("finds a guaranteed free position without a fixed candidate limit", () => {
         const occupied = [{ id: "wall", type: CanvasNodeType.Image, title: "超大已有节点", position: { x: 0, y: 0 }, width: 5000, height: 20000 }] as CanvasAgentSnapshot["nodes"];
 
-        expect(findFreeNodePosition(occupied, { x: 0, y: 0 }, 340, 340)).toEqual({ x: 5036, y: 0 });
+        expect(findFreeNodePosition(occupied, { x: 0, y: 0 }, 340, 340)).toEqual({ x: 5044, y: 0 });
     });
 
     it("keeps manually added nodes at their requested position", () => {
@@ -78,13 +92,13 @@ describe("Agent 产物排版", () => {
             { type: "add_node", id: "output-agent-run-0-0", nodeType: CanvasNodeType.Image, position: { x: 400, y: 20 }, metadata: { agentRunId: "run", content: "/image.png", naturalWidth: 1024, naturalHeight: 1024 } },
         ]);
 
-        expect(created.nodes[0]).toMatchObject({ width: 340, height: 340, metadata: { naturalWidth: 1024, naturalHeight: 1024 } });
+        expect(created.nodes[0]).toMatchObject({ width: 240, height: 240, metadata: { naturalWidth: 1024, naturalHeight: 1024 } });
     });
 
     it("uses the requested image ratio before natural dimensions are available", () => {
         const created = applyCanvasAgentOps(snapshot, [{ type: "add_node", id: "output-agent-run-0-0", nodeType: CanvasNodeType.Image, position: { x: 400, y: 20 }, metadata: { agentRunId: "run", content: "/image.png", size: "1:1" } }]);
 
-        expect(created.nodes[0]).toMatchObject({ width: 340, height: 340 });
+        expect(created.nodes[0]).toMatchObject({ width: 240, height: 240 });
     });
 
     it("applies node, connection, selection, movement, resize, viewport, and delete ops", () => {

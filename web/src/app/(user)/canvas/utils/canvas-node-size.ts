@@ -1,6 +1,7 @@
 "use client";
 
 import type { CanvasNodeData } from "../types";
+import { IMAGE_NODE_DEFAULT_SIZE } from "../constants";
 
 export function fitNodeSize(width: number, height: number, maxWidth = 640, maxHeight = 640) {
     const w = Math.max(1, width);
@@ -16,7 +17,11 @@ export function nodeSizeFromRatio(size: string, baseWidth: number, baseHeight: n
     const height = Number(match[2]);
     const ratio = width / Math.max(1, height);
     if (ratio < 0.25 || ratio > 4) return { width: baseWidth, height: baseHeight };
-    return ratio >= baseWidth / baseHeight ? { width: baseWidth, height: baseWidth / ratio } : { width: baseHeight * ratio, height: baseHeight };
+    return ratio >= 1 ? fitNodeAspectRatio(ratio, 1, baseWidth, baseHeight) : fitNodeAspectRatio(1, 1 / ratio, baseWidth, baseHeight);
+}
+
+function sizeFromRatio(ratio: number, shortEdge: number) {
+    return ratio >= 1 ? { width: shortEdge * ratio, height: shortEdge } : { width: shortEdge, height: shortEdge / ratio };
 }
 
 export function fitNodeAspectRatio(width: number, height: number, maxWidth: number, maxHeight: number) {
@@ -24,6 +29,10 @@ export function fitNodeAspectRatio(width: number, height: number, maxWidth: numb
     const h = Math.max(1, height);
     const scale = Math.min(maxWidth / w, maxHeight / h);
     return { width: w * scale, height: h * scale };
+}
+
+export function fitCanvasImageNodeSize(width: number, height: number) {
+    return sizeFromRatio(Math.max(1, width) / Math.max(1, height), IMAGE_NODE_DEFAULT_SIZE.height);
 }
 
 export type ResizeBoxInput = {
@@ -83,8 +92,7 @@ export function resizeImageNodeToNaturalRatio(node: CanvasNodeData, naturalWidth
     const naturalRatio = naturalWidth / naturalHeight;
     if (Math.abs(currentRatio - naturalRatio) / naturalRatio < 0.01) return dimensionsChanged ? { ...node, metadata } : node;
 
-    const maxEdge = Math.max(node.width, node.height);
-    const size = fitNodeAspectRatio(naturalWidth, naturalHeight, maxEdge, maxEdge);
+    const size = sizeFromRatio(naturalWidth / naturalHeight, Math.min(node.width, node.height));
     const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
     return {
         ...node,

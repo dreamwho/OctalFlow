@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { getNodeSpec } from "../constants";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type ViewportTransform } from "../types";
 import { fitNodeAspectRatio, nodeSizeFromRatio } from "./canvas-node-size";
+import { CANVAS_NODE_GAP } from "./canvas-surface-geometry";
 
 export type CanvasAgentOp =
     | { type: "add_node"; id?: string; nodeType?: CanvasNodeType; title?: string; position?: { x: number; y: number }; x?: number; y?: number; width?: number; height?: number; metadata?: CanvasNodeMetadata }
@@ -42,17 +43,16 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
                 if (!isAgentNode) selectedNodeIds = [existing.id];
                 return;
             }
-            const requestedPosition = op.position || { x: op.x ?? index * 36, y: op.y ?? index * 36 };
+            const requestedPosition = op.position || { x: op.x ?? index * CANVAS_NODE_GAP, y: op.y ?? index * CANVAS_NODE_GAP };
             const metadata = { ...spec.metadata, ...op.metadata };
             const naturalWidth = metadata.naturalWidth;
             const naturalHeight = metadata.naturalHeight;
             const baseSize = { width: op.width || spec.width, height: op.height || spec.height };
-            const maxEdge = Math.max(baseSize.width, baseSize.height);
             const size =
                 isCanvasVisualMedia(nodeType) && !op.width && !op.height && naturalWidth && naturalHeight
-                    ? fitNodeAspectRatio(naturalWidth, naturalHeight, maxEdge, maxEdge)
+                    ? fitNodeAspectRatio(naturalWidth, naturalHeight, spec.width, spec.height)
                     : isCanvasVisualMedia(nodeType) && !op.width && !op.height && metadata.size
-                      ? nodeSizeFromRatio(metadata.size, maxEdge, maxEdge) || baseSize
+                      ? nodeSizeFromRatio(metadata.size, spec.width, spec.height) || baseSize
                       : baseSize;
             const position = isAgentNode ? findFreeNodePosition(nodes, requestedPosition, size.width, size.height) : requestedPosition;
             const node: CanvasNodeData = {
@@ -75,7 +75,8 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
                 const naturalWidth = updated.metadata?.naturalWidth;
                 const naturalHeight = updated.metadata?.naturalHeight;
                 if (!isCanvasVisualMedia(updated.type) || !naturalWidth || !naturalHeight || updated.metadata?.freeResize) return updated;
-                const size = fitNodeAspectRatio(naturalWidth, naturalHeight, Math.max(updated.width, updated.height), Math.max(updated.width, updated.height));
+                const spec = getNodeSpec(updated.type);
+                const size = fitNodeAspectRatio(naturalWidth, naturalHeight, spec.width, spec.height);
                 const center = { x: updated.position.x + updated.width / 2, y: updated.position.y + updated.height / 2 };
                 const resized = { ...updated, width: size.width, height: size.height, position: { x: center.x - size.width / 2, y: center.y - size.height / 2 } };
                 if (!resized.metadata?.agentRunId) return resized;
@@ -118,7 +119,7 @@ function isCanvasVisualMedia(type: CanvasNodeType) {
 }
 
 export function findFreeNodePosition(nodes: CanvasNodeData[], start: { x: number; y: number }, width: number, height: number) {
-    const gap = 36;
+    const gap = CANVAS_NODE_GAP;
     const blockers = nodes.filter((node) => start.y < node.position.y + node.height + gap && start.y + height + gap > node.position.y).sort((left, right) => left.position.x - right.position.x);
     let x = start.x;
     for (const node of blockers) {
