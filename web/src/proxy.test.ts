@@ -26,8 +26,19 @@ describe("application proxy security", () => {
         expect(policy).toMatch(/script-src 'self' 'nonce-[a-f0-9]+' 'strict-dynamic'/);
         expect(policy).not.toMatch(/script-src[^;]*'unsafe-inline'/);
         expect(policy).toContain("connect-src 'self' https:");
-        expect(policy).not.toMatch(/connect-src[^;]*http:/);
+        expect(policy).not.toContain("http://localhost:*");
         expect(policy).toContain("upgrade-insecure-requests");
+    });
+
+    it("permits the token-gated local Canvas Agent bridge only from a local canvas host", () => {
+        vi.stubEnv("NODE_ENV", "production");
+
+        const policy = proxy(new NextRequest("http://localhost:3333/canvas/canvas-one")).headers.get("content-security-policy") || "";
+
+        expect(policy).toContain("http://localhost:*");
+        expect(policy).toContain("http://127.0.0.1:*");
+        expect(policy).not.toContain("http://[::1]:*");
+        expect(policy).not.toContain("upgrade-insecure-requests");
     });
 });
 

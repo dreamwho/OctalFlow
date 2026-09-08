@@ -20,6 +20,9 @@ describe("image size input", () => {
         const base = { prompt: "生成图片", configuredSize: "1824x1024", referenceWidth: 1024, referenceHeight: 1536, plannedSize: "1:1", defaultSize: "4:3" };
 
         expect(resolveImageRequestSize({ ...base, prompt: "生成 1280x720 图片" })).toBe("1280x720");
+        expect(resolveImageRequestSize({ ...base, selectedSize: "16:9", configuredSize: "1:1", referenceWidth: 1024, referenceHeight: 1024 })).toBe("16:9");
+        expect(resolveImageRequestSize({ ...base, prompt: "请按 4:3 生成", selectedSize: "16:9" })).toBe("4:3");
+        expect(resolveImageRequestSize({ ...base, selectedSize: "auto", configuredSize: "1:1" })).toBe("2:3");
         expect(resolveImageRequestSize(base)).toBe("1824x1024");
         expect(resolveImageRequestSize({ ...base, configuredSize: "1:1" })).toBe("2:3");
         expect(resolveImageRequestSize({ ...base, configuredSize: "1:1", referenceWidth: undefined, referenceHeight: undefined })).toBe("1:1");

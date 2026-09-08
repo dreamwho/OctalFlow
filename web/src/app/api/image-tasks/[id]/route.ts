@@ -9,6 +9,7 @@ import { resolveInternalOrigin } from "@/lib/server/internal-origin";
 import { pointsResponseHeaders } from "@/lib/server/points-response";
 import { generationModelId } from "@/lib/server/generation-channel";
 import { cancellationExecutionPatch, type GenerationCancellationTarget } from "@/lib/server/generation-task-cancellation-service";
+import { GenerationTaskReviewResumeError, resumeImageGenerationReview } from "@/lib/server/generation-task-review-service";
 import { refundImageTask } from "@/lib/server/image-task-refund";
 import { getStoredGenerationTaskRecord } from "@/lib/server/generation-task-store";
 
@@ -73,6 +74,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     const parsed = await readJsonBodyResult<{ status?: string }>(request);
     if (!parsed.ok) return NextResponse.json({ error: parsed.message }, { status: parsed.status });
     const body = parsed.data;
+    if (body.status === "resume") {
+        try {
+            await resumeImageGenerationReview(task, executionPhase);
+        } catch (error) {
+            if (error instanceof GenerationTaskReviewResumeError) return NextResponse.json({ error: error.message }, { status: 409 });
+            throw error;
+        }
+        const origin = resolveInternalOrigin(new URL(request.url).origin);
+        after(() => runGenerationTaskRecoveryBatch({ origin, publicOrigin: requestPublicOrigin(request), cookie: request.headers.get("cookie") || "", limit: 1, taskIds: [task.id] }));
+        return NextResponse.json({ task: { id: task.id, status: task.status, executionPhase: "submitted" } });
+    }
     if (body.status !== "cancelled" || !["pending", "running"].includes(task.status)) return NextResponse.json({ error: "当前任务无法取消" }, { status: 409 });
     const target: GenerationCancellationTarget = {
         type: "image",

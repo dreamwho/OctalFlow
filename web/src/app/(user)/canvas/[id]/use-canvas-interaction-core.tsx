@@ -7,10 +7,11 @@ import { buildNodeGenerationInputs, type NodeGenerationInput } from "../componen
 import { CanvasNodeType, type ConnectionHandle } from "../types";
 import { useCanvasLocalAgentBridge } from "../use-canvas-local-agent-bridge";
 import { applyCanvasAgentOps, type CanvasAgentOp, type CanvasAgentSnapshot } from "../utils/canvas-agent-ops";
+import { CANVAS_NODE_GAP, resolveCanvasNodePlacement } from "../utils/canvas-surface-geometry";
 import { buildCanvasResourceReferences, buildNodeMentionReferences } from "../utils/canvas-resource-references";
 
 import { PendingConnectionCreate, type CanvasCreatableNodeType, createCanvasNode } from "./canvas-page-elements";
-import { getGenerationCount, normalizeConnection } from "./canvas-page-utils";
+import { getGenerationCount, normalizeConnection, normalizeCreatedNodeConnection } from "./canvas-page-utils";
 
 import type { CanvasPageState } from "./use-canvas-page-state";
 
@@ -85,7 +86,8 @@ export function useCanvasInteractionCore({ state }: { state: CanvasPageState }) 
         [nodeImageSettingsOpen],
     );
 
-    const hideNodeToolbar = useCallback(() => {
+    const hideNodeToolbar = useCallback((nodeId?: string) => {
+        if (nodeId && selectedNodeIdsRef.current.size === 1 && selectedNodeIdsRef.current.has(nodeId)) return;
         if (toolbarHideTimerRef.current) clearTimeout(toolbarHideTimerRef.current);
         toolbarHideTimerRef.current = setTimeout(() => {
             setToolbarNodeId(null);
@@ -115,8 +117,16 @@ export function useCanvasInteractionCore({ state }: { state: CanvasPageState }) 
     const createConnectedNode = useCallback(
         (type: CanvasCreatableNodeType, pending: PendingConnectionCreate) => {
             const metadata = type === CanvasNodeType.Config ? { model: effectiveConfig.imageModel || effectiveConfig.model, size: effectiveConfig.size, count: getGenerationCount(effectiveConfig.canvasImageCount || effectiveConfig.count) } : undefined;
-            const newNode = createCanvasNode(type, pending.position, metadata);
-            const connection = normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType);
+            const draftNode = createCanvasNode(type, pending.position, metadata);
+            const origin = nodesRef.current.find((node) => node.id === pending.connection.nodeId);
+            const preferredPosition = origin
+                ? {
+                      x: pending.connection.handleType === "source" ? origin.position.x + origin.width + CANVAS_NODE_GAP : origin.position.x - draftNode.width - CANVAS_NODE_GAP,
+                      y: origin.position.y,
+                  }
+                : pending.position;
+            const newNode = { ...draftNode, position: resolveCanvasNodePlacement(nodesRef.current, draftNode, pending.position, preferredPosition) };
+            const connection = normalizeCreatedNodeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode]);
             if (!connection) {
                 message.warning("配置节点之间不能连接");
                 return;

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-export function VideoQualityField({ value, options, onChange }: { value: string; options: readonly { value: string; label: string; shortLabel?: string }[]; onChange: (value: string) => void }) {
+export function VideoQualityField({ value, options, allowCustom = true, onChange }: { value: string; options: readonly { value: string; label: string; shortLabel?: string }[]; allowCustom?: boolean; onChange: (value: string) => void }) {
     const customSelected = !options.some((option) => option.value === value);
     const [draft, setDraft] = useState(customSelected ? value : "");
 
@@ -21,28 +21,30 @@ export function VideoQualityField({ value, options, onChange }: { value: string;
                     <OptionButton key={option.value} selected={value === option.value} label={option.shortLabel || option.label} ariaLabel={`选择视频清晰度 ${option.label}`} onClick={() => onChange(option.value)} />
                 ))}
             </div>
-            <label
-                className={cn(
-                    "grid min-w-0 grid-cols-[1fr_auto] items-center rounded-lg border px-2 transition",
-                    customSelected
-                        ? "border-[#9bbdce] bg-[#f2f8fb] text-[#315d78] dark:border-[#557f96] dark:bg-[#20333d] dark:text-[#a8c8dc]"
-                        : "border-[#dce2e7] bg-white text-[#687481] focus-within:border-[#7da6ba] focus-within:ring-2 focus-within:ring-[#7da6ba]/15 dark:border-[#3e4650] dark:bg-[#181b20] dark:text-[#a6afb9]",
-                )}
-            >
-                <input
-                    aria-label="输入自定义视频清晰度"
-                    value={draft}
-                    placeholder="自定义，例如 2160 或 4K"
-                    onChange={(event) => {
-                        const next = event.target.value;
-                        setDraft(next);
-                        const normalized = normalizeVideoQuality(next);
-                        if (normalized) onChange(normalized);
-                    }}
-                    className="h-8 min-w-0 bg-transparent text-xs outline-none placeholder:text-[#aeb6be] dark:placeholder:text-[#697480]"
-                />
-                <span className="text-[10px] text-[#9aa4ae]">建议值可直接选择</span>
-            </label>
+            {allowCustom ? (
+                <label
+                    className={cn(
+                        "grid min-w-0 grid-cols-[1fr_auto] items-center rounded-lg border px-2 transition",
+                        customSelected
+                            ? "octaflow-selection-surface"
+                            : "border-[#dce2e7] bg-white text-[#687481] focus-within:border-[#7da6ba] focus-within:ring-2 focus-within:ring-[#7da6ba]/15 dark:border-[#3e4650] dark:bg-[#181b20] dark:text-[#a6afb9]",
+                    )}
+                >
+                    <input
+                        aria-label="输入自定义视频清晰度"
+                        value={draft}
+                        placeholder="自定义，例如 2160 或 4K"
+                        onChange={(event) => {
+                            const next = event.target.value;
+                            setDraft(next);
+                            const normalized = normalizeVideoQuality(next);
+                            if (normalized) onChange(normalized);
+                        }}
+                        className="h-8 min-w-0 bg-transparent text-xs outline-none placeholder:text-[#aeb6be] dark:placeholder:text-[#697480]"
+                    />
+                    <span className="text-[10px] text-[#9aa4ae]">建议值可直接选择</span>
+                </label>
+            ) : null}
         </div>
     );
 }
@@ -53,6 +55,8 @@ export function SuggestedPositiveIntegerField({
     value,
     suffix,
     options,
+    min = 1,
+    max,
     onChange,
 }: {
     label: string;
@@ -60,6 +64,8 @@ export function SuggestedPositiveIntegerField({
     value: number;
     suffix: string;
     options: readonly { value: number; label: string }[];
+    min?: number;
+    max?: number;
     onChange: (value: number) => void;
 }) {
     const customSelected = !options.some((option) => option.value === value);
@@ -74,12 +80,13 @@ export function SuggestedPositiveIntegerField({
                     <InputNumber
                         aria-label={ariaLabel}
                         controls={false}
-                        min={1}
+                        min={min}
+                        max={max}
                         value={customSelected ? value : null}
                         placeholder="自定义"
                         onChange={(next) => {
                             const normalized = normalizePositiveInteger(next);
-                            if (normalized) onChange(normalized);
+                            if (normalized && normalized >= min && (max === undefined || normalized <= max)) onChange(normalized);
                         }}
                         className="min-w-0 flex-1"
                     />
@@ -141,7 +148,7 @@ function OptionButton({ selected, label, ariaLabel, onClick }: { selected: boole
             className={cn(
                 "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
                 selected
-                    ? "bg-[#eaf1f5] font-medium text-[#315d78] dark:bg-[#2a3b46] dark:text-[#a8c8dc]"
+                    ? "octaflow-selection-surface font-semibold"
                     : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
             )}
             onClick={onClick}

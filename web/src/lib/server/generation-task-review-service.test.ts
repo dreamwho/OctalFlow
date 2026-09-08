@@ -29,7 +29,7 @@ vi.mock("@/lib/server/audio-task-runtime", () => ({ markAudioTaskFailed: mocks.m
 vi.mock("@/lib/server/video-task-store", () => ({ getVideoTask: mocks.getVideo, updateVideoTask: mocks.updateVideo }));
 vi.mock("@/lib/server/video-task-runtime", () => ({ failVideoTaskFromWorker: mocks.markVideoFailed }));
 
-import { reviewGenerationTask } from "./generation-task-review-service";
+import { resumeImageGenerationReview, reviewGenerationTask } from "./generation-task-review-service";
 
 describe("generation task manual review", () => {
     beforeEach(() => {
@@ -62,6 +62,24 @@ describe("generation task manual review", () => {
             },
         });
         expect(mocks.schedule).toHaveBeenCalledWith("image", "image-one", expect.objectContaining({ executionPhase: "submitted", upstreamTaskId: "upstream-existing", nextPollAt: expect.any(Number) }));
+    });
+
+    it("resumes an existing reviewed image task without replacing its upstream ID", async () => {
+        const task = {
+            id: "image-one",
+            status: "running",
+            upstream: { id: "upstream-existing", mediaBaseUrl: "dreamina-cli", pollBaseUrl: "dreamina-cli" },
+            config: { channelId: "dreamina-cli", apiFormat: "openai", advancedConfig: { protocol: "dreamina-cli" } },
+        } as Parameters<typeof resumeImageGenerationReview>[0];
+
+        await resumeImageGenerationReview(task, "needs_review");
+
+        expect(mocks.updateImage).not.toHaveBeenCalled();
+        expect(mocks.schedule).toHaveBeenCalledWith(
+            "image",
+            "image-one",
+            expect.objectContaining({ executionPhase: "submitted", upstreamTaskId: "upstream-existing", lastUpstreamStatus: "manual_review_resumed" }),
+        );
     });
 
     it("queues a supplied media URL for persistence and rejects unsafe schemes", async () => {

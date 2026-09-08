@@ -3,15 +3,15 @@ import { withCreativeFoundation, type CreativeReview } from "@/lib/creative-agen
 import type { CreativeAsset, CreativeGenerationPreferences, CreativeSurface } from "@/lib/creative-runtime-contract";
 import { creativeAssetReferenceAliases } from "@/lib/creative-asset-references";
 import { fetchInternalApi } from "@/lib/server/internal-origin";
-import { resolveLogicalModel } from "@/lib/server/logical-model-router";
+import { resolveLogicalModel, resolveLogicalModelCandidates } from "@/lib/server/logical-model-router";
 import { reviewCreativeOutputs } from "@/lib/server/creative-review-service";
 import { requestStructuredText, type TextPlanningCandidate, type TextPlanningMessage } from "@/lib/server/text-planning-runtime";
 import { registerAgentTaskAssets } from "@/lib/server/agent-run-assets";
 import { buildAgentProjectHandoff } from "@/lib/server/agent-run-project-handoff";
-import { getAgentRun, updateAgentRunById, updateAgentRunTaskById, type AgentRun, type AgentRunChildTask, type AgentRunReference, type AgentRunTask } from "@/lib/server/agent-run-store";
+import { agentRunTasksCompleted, agentRunTasksTerminal, agentTaskHasPendingChildren, getAgentRun, updateAgentRunById, updateAgentRunTaskById, type AgentRun, type AgentRunChildTask, type AgentRunReference, type AgentRunTask } from "@/lib/server/agent-run-store";
 import { assetAccessUrl, creativeAssetContext, resolveTaskReferences } from "@/lib/server/agent-run-surface-policy";
 import { selectedCanvasNodeIds } from "@/lib/server/agent-run-canvas-snapshot";
-import { agentChildTaskTerminal, agentTaskCopies, resolveAgentTaskCount, resolveAgentVideoSeconds, validateAgentTaskResult, type AgentPlan } from "@/lib/server/agent-run-validation";
+import { agentChildTaskTerminal, agentTaskCopies, resolveAgentTaskCount, resolveAgentVideoSeconds, segmentSkillStoryboardVideoTasks, stageStoryboardAgentTasks, validateAgentTaskResult, type AgentPlan } from "@/lib/server/agent-run-validation";
 import { agentRunCompletionReply, agentRunFailureMessage, resultSummary } from "@/lib/server/agent-run-messages";
 import { getCreativeAssetsByIds } from "@/lib/server/creative-runtime-store";
 import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
@@ -25,12 +25,37 @@ import { hasSystemAiCharge, readSystemAiBilling, systemAiBillingHeaders } from "
 import { acceptsMediaReference, mergeTaskReferences, taskImageUrls, taskReferences, textConstraintInstruction } from "./agent-run-execution-helpers";
 import { isVideoRemakeComposeTask } from "./video-remake-orchestration";
 import { composeVideoRemakeTask } from "./video-remake-compose";
+import { inlineAgentReferenceImage } from "./agent-run-reference-image";
+import { analyzeVideoRemakeSource } from "./video-remake-source-analysis";
+import { dreaminaCliVideoCapabilities, normalizeDreaminaCliVideoParameters } from "./dreamina-cli-catalog";
+import { resolveModelAdvancedConfig } from "./generation-channel";
+import { normalizeVideoAspectRatioForCapability, normalizeVideoQualityForCapability, resolveUpstreamVideoDuration, resolveVideoDurationCapability } from "./video-task-config";
+import { isMinimaxH3Protocol } from "./minimax-h3-prompt-compiler";
 
 export { planToOps, taskResultOps } from "./agent-run-canvas-ops";
 export { acceptsMediaReference, mergeTaskReferences, requestedTextLimit, reviewCorrection, taskImageUrls, taskReferences, taskResultItems, textConstraintInstruction } from "./agent-run-execution-helpers";
 
 class AgentChildTaskTerminalError extends Error {}
 class AgentChildTaskDeferredError extends Error {}
+class AgentChildTaskCreateRetryError extends AgentChildTaskDeferredError {
+    constructor(
+        message: string,
+        readonly retryAfterAt: number,
+    ) {
+        super(message);
+    }
+}
+
+async function generationResponseMessage(response: Response, fallback: string) {
+    const body = await response.text();
+    if (!body.trim()) return fallback;
+    try {
+        const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
+        if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error;
+        if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message;
+    } catch {}
+    return body;
+}
 
 export async function canContinue(id: string, executionId: string) {
     const run = await getAgentRun(id);
@@ -158,7 +183,7 @@ export function normalizeTasks(
 ): AgentRunTask[] {
     const defaults = Object.assign({}, ...skills.map((skill) => skill.defaultConfig || {})) as Record<string, unknown>;
     const skillExecutionContext = skills.length
-        ? `\n\n本任务已选择 Skill：${skills.map((skill) => skill.name).join("、")}。完整 Skill 规则已经在规划阶段落实到当前产物的提示词、依赖顺序和参数；这里只执行当前标题对应的单个产物。除非当前产物明确要求，不得把整套流程、多个分镜、角色板、场景板或说明文字合并进一个媒体结果。`
+        ? `\n\n本任务已选择 Skill：${skills.map((skill) => skill.name).join("、")}。完整 Skill 规则已经在规划阶段落实到当前产物的提示词、依赖顺序和参数；这里只执行当前标题对应的单个产物。除非当前产物明确要求，不得把整套流程、多个分镜、角色板、场景板或说明文字合并进一个媒体结果；但服务端标注“导演分段”的视频任务必须作为一条连续成片覆盖所列分镜，不能再机械地按每张分镜图拆成多个视频。`
         : "";
     const globalDefaults = settings.generationDefaults;
     const mediaDeliverableCount = plan.deliverables.filter((item) => item.type !== "text").length;
@@ -171,13 +196,14 @@ export function normalizeTasks(
         referencedAssets.map((asset) => asset.id),
     );
     const configuredImageSize = agentSurfaceImageSize(surface, snapshot);
-    return plan.deliverables.map((item, index) => {
+    const tasks = plan.deliverables.map((item, index) => {
         const optimizedPrompt = item.prompt.trim();
         const preferredSize = item.type === "image" ? generationPreferences?.image?.size : item.type === "video" ? generationPreferences?.video?.size : undefined;
         const preferredQuality = item.type === "image" ? generationPreferences?.image?.quality : item.type === "video" ? generationPreferences?.video?.quality : undefined;
         const targetNodeId = surface === "canvas" ? resolveCanvasTaskTargetNodeId(item.targetNodeId, item.type, selectedNodeIds, nodes, plan.deliverables.length === 1) : undefined;
         const target = targetNodeId ? nodes.get(targetNodeId) : undefined;
         const canvasReferences = selectedCanvasReferences.filter((reference) => canvasReferenceSupportsTask(reference.type, item.type));
+        const canvasAliases = new Map(canvasReferences.map((reference) => [reference.nodeId, reference.alias]));
         const frameIds = item.type === "video" ? videoFrameAssetIds(generationPreferences?.video) : [];
         const frameIdSet = new Set(frameIds);
         const explicitFrameAssets = resolveTaskReferences(frameIds, assets, item.type);
@@ -189,14 +215,14 @@ export function normalizeTasks(
         ]);
         const references = [
             ...(canvasReferences.length
-                ? canvasReferences.map((reference) => ({ nodeId: reference.nodeId, url: reference.url, type: reference.type }))
+                ? canvasReferences.map((reference) => ({ nodeId: reference.nodeId, url: reference.url, type: reference.type, alias: reference.alias }))
                 : target?.url && isMediaReferenceType(target.type)
-                  ? [{ nodeId: targetNodeId, url: target.url, type: target.type }]
+                  ? [{ nodeId: targetNodeId, url: target.url, type: target.type, ...(targetNodeId && canvasAliases.get(targetNodeId) ? { alias: canvasAliases.get(targetNodeId) } : {}) }]
                   : []),
             ...selectedAssets.flatMap((asset) => {
                 const url = assetAccessUrl(asset);
                 const role = frameRoles.get(asset.id);
-                return url && asset.type !== "text" ? [{ assetId: asset.id, url, type: asset.type, ...(role ? { role } : {}) }] : [];
+                return url && asset.type !== "text" ? [{ assetId: asset.id, url, type: asset.type, ...(role ? { role } : {}), ...(referenceAliases.get(asset.id) ? { alias: referenceAliases.get(asset.id) } : {}) }] : [];
             }),
         ] satisfies AgentRunReference[];
         const primaryReference = references[0];
@@ -236,17 +262,25 @@ export function normalizeTasks(
                 item.quality?.trim() ||
                 textDefault(item.type === "video" ? defaults.vquality : defaults.quality) ||
                 (item.type === "video" ? globalDefaults.videoQuality : item.type === "image" ? globalDefaults.imageQuality : undefined),
-            seconds: item.type === "video" && generationPreferences?.video?.seconds ? generationPreferences.video.seconds : resolveAgentVideoSeconds(item.type, item.seconds, defaults.videoSeconds, globalDefaults.videoSeconds),
+            seconds: item.type === "video" && !skills.length && generationPreferences?.video?.seconds ? generationPreferences.video.seconds : resolveAgentVideoSeconds(item.type, item.seconds, defaults.videoSeconds, globalDefaults.videoSeconds),
             voice: item.type === "audio" ? generationPreferences?.audio?.voice || item.voice?.trim() || textDefault(defaults.voice) || globalDefaults.audioVoice : item.voice?.trim() || textDefault(defaults.voice),
             format: item.type === "audio" ? generationPreferences?.audio?.format || item.format?.trim() || textDefault(defaults.format) || globalDefaults.audioFormat : item.format?.trim() || textDefault(defaults.format),
             generateAudio: item.type === "video" ? (generationPreferences?.video?.generateAudio ?? item.generateAudio) : undefined,
             watermark: item.type === "video" ? (generationPreferences?.video?.watermark ?? item.watermark) : undefined,
             speed: item.type === "audio" ? (generationPreferences?.audio?.speed ?? item.speed) : undefined,
             dependencies: (item.dependencies || []).map((dependency) => dependency.trim()),
-            status: "ready",
+            status: "ready" as const,
             attempts: 0,
         };
     });
+    const storyboardTasks =
+        skills.length && generationPreferences?.mode === "video"
+            ? segmentSkillStoryboardVideoTasks(tasks, {
+                  totalSeconds: generationPreferences.video?.seconds,
+                  resolveCapability: (task) => agentVideoDurationCapability(settings, task),
+              })
+            : tasks;
+    return stageStoryboardAgentTasks(storyboardTasks);
 }
 
 export function agentModelOptions(settings: Awaited<ReturnType<typeof getAuthSettings>>) {
@@ -292,6 +326,108 @@ function resolvePlannedModel(settings: Awaited<ReturnType<typeof getAuthSettings
     const model = typeof planned === "string" ? planned.trim() : "";
     if (model && resolveLogicalModel(settings, capability, model)) return model;
     return defaultModel(settings, capability) || undefined;
+}
+
+export function assertAgentSkillModelConstraints(
+    skills: Awaited<ReturnType<typeof getAuthSettings>>["agentSkills"],
+    selectedSkillIds: readonly string[] | undefined,
+    capability: LogicalModelCapability,
+    protocol: unknown,
+) {
+    const required = skills.filter(
+        (skill) =>
+            (selectedSkillIds || []).includes(skill.id) &&
+            skill.modelConstraints?.capability === capability &&
+            skill.modelConstraints.requiredModelFamilies?.includes("minimax-h3"),
+    );
+    if (!required.length || isMinimaxH3Protocol(protocol)) return;
+    throw new Error(`所选 Skill“${required.map((skill) => skill.name).join("、")}”只能使用 MiniMax H3 视频模型；请在可用模型中选择已配置的 MiniMax H3 渠道后重试`);
+}
+
+function agentTaskConcurrencyConstraint(settings: Awaited<ReturnType<typeof getAuthSettings>>, task: AgentRunTask) {
+    const model = resolvePlannedModel(settings, task.type, task.model);
+    const resolved = model ? resolveLogicalModel(settings, task.type, model) : null;
+    if (!resolved) return null;
+    const protocol = resolveModelAdvancedConfig(resolved.channel.advancedConfig, resolved.upstreamModel)?.protocol;
+    const limit = protocol === "dreamina-cli" ? 1 : Number(resolved.capabilityProfile?.concurrencyLimit);
+    if (!Number.isSafeInteger(limit) || limit <= 0) return null;
+    return { key: `${task.type}:${resolved.channelId}:${resolved.upstreamModel}`, limit };
+}
+
+function readyAgentTasks(run: AgentRun, settings: Awaited<ReturnType<typeof getAuthSettings>>, now = Date.now()) {
+    const completed = new Set(run.tasks.filter((task) => task.status === "completed" && !agentTaskHasPendingChildren(task)).map((task) => task.id));
+    const selected: AgentRunTask[] = [];
+    const usedByConstraint = new Map<string, number>();
+    for (const task of run.tasks) {
+        if (selected.length >= settings.generationConcurrency.agent) break;
+        const resumableChild = task.status === "completed" && agentTaskHasPendingChildren(task);
+        if ((task.status !== "ready" && task.status !== "running" && !resumableChild) || ![...task.dependencies, ...(task.stageDependencies || [])].every((id) => completed.has(id)) || isAgentTaskRetryDeferred(task, now)) continue;
+        const constraint = agentTaskConcurrencyConstraint(settings, task);
+        const used = constraint ? usedByConstraint.get(constraint.key) || 0 : 0;
+        if (constraint && used >= constraint.limit) continue;
+        selected.push(task);
+        if (constraint) usedByConstraint.set(constraint.key, used + 1);
+    }
+    return selected;
+}
+
+function isAgentTaskRetryDeferred(task: AgentRunTask, now = Date.now()) {
+    return typeof task.retryAfterAt === "number" && task.retryAfterAt > now;
+}
+
+function agentTaskCopyConcurrency(settings: Awaited<ReturnType<typeof getAuthSettings>>, task: AgentRunTask, resolved: ReturnType<typeof resolveLogicalModel>) {
+    const configured = settings.generationConcurrency[task.type === "image" ? "image" : task.type === "video" ? "video" : task.type === "audio" ? "audio" : "text"];
+    const limit = Number(resolved?.capabilityProfile?.concurrencyLimit);
+    return Number.isSafeInteger(limit) && limit > 0 ? Math.min(configured, limit) : configured;
+}
+
+function normalizeResolvedAgentTask(task: AgentRunTask, resolved: NonNullable<ReturnType<typeof resolveLogicalModel>>) {
+    if (task.type !== "video") return task;
+    const advanced = resolveModelAdvancedConfig(resolved.channel.advancedConfig, resolved.upstreamModel);
+    const profile = resolved.capabilityProfile;
+    const quality = normalizeVideoQualityForCapability(task.quality, profile?.qualityOptions);
+    const ratio = normalizeVideoAspectRatioForCapability(task.ratio, profile?.aspectRatios);
+    const durationCapability = agentVideoDurationCapabilityForResolved(resolved);
+    const seconds = resolveUpstreamVideoDuration(task.seconds, task.seconds || 5, {
+        durationRange: durationCapability?.durationOptions?.join("、") || (durationCapability ? undefined : profile?.durationRange || advanced?.durationRange),
+        minDurationSeconds: durationCapability?.minSeconds || profile?.minDurationSeconds,
+        maxDurationSeconds: durationCapability?.maxSeconds || profile?.maxDurationSeconds,
+    });
+    const normalizedTask = {
+        ...task,
+        ...(quality ? { quality } : {}),
+        ...(ratio ? { ratio } : {}),
+        ...(seconds > 0 ? { seconds } : {}),
+    };
+    if (advanced?.protocol !== "dreamina-cli") return normalizedTask;
+    const video = normalizeDreaminaCliVideoParameters(resolved.upstreamModel, { videoResolution: normalizedTask.quality, duration: normalizedTask.seconds });
+    return video.videoResolution === normalizedTask.quality && video.duration === normalizedTask.seconds ? normalizedTask : { ...normalizedTask, quality: video.videoResolution, seconds: video.duration };
+}
+
+function agentVideoDurationCapability(settings: Awaited<ReturnType<typeof getAuthSettings>>, task: AgentRunTask) {
+    const model = resolvePlannedModel(settings, "video", task.model);
+    const resolved = model ? resolveLogicalModel(settings, "video", model) : null;
+    return resolved ? agentVideoDurationCapabilityForResolved(resolved) : null;
+}
+
+function agentVideoDurationCapabilityForResolved(resolved: NonNullable<ReturnType<typeof resolveLogicalModel>>) {
+    const advanced = resolveModelAdvancedConfig(resolved.channel.advancedConfig, resolved.upstreamModel);
+    const dreamina = advanced?.protocol === "dreamina-cli" ? dreaminaCliVideoCapabilities(resolved.upstreamModel) : null;
+    if (dreamina) return { minSeconds: dreamina.minDurationSeconds, maxSeconds: dreamina.maxDurationSeconds, maxReferenceImages: dreamina.maxReferenceImages };
+    const profile = resolved.capabilityProfile;
+    const capability = resolveVideoDurationCapability({
+        durationRange: profile?.durationRange || advanced?.durationRange,
+        minDurationSeconds: profile?.minDurationSeconds,
+        maxDurationSeconds: profile?.maxDurationSeconds,
+    });
+    if (!capability.known) return null;
+    const durationOptions = capability.options.length ? capability.options : undefined;
+    return {
+        minSeconds: durationOptions?.[0] || capability.minSeconds,
+        maxSeconds: durationOptions?.at(-1) || capability.maxSeconds,
+        ...(durationOptions ? { durationOptions } : {}),
+        maxReferenceImages: profile?.maxReferenceImages,
+    };
 }
 
 export function agentPlanFallbackExample(models: ReturnType<typeof agentModelOptions>) {
@@ -354,10 +490,10 @@ export async function executeTasks(runId: string, origin: string, cookie: string
     while (await canContinue(runId, executionId)) {
         const run = await getAgentRun(runId);
         if (!run) return;
-        const completed = new Set(run.tasks.filter((task) => task.status === "completed").map((task) => task.id));
-        const ready = run.tasks.filter((task) => (task.status === "ready" || task.status === "running") && task.dependencies.every((id) => completed.has(id))).slice(0, settings.generationConcurrency.agent);
+        const ready = readyAgentTasks(run, settings);
         if (!ready.length) {
-            if (run.tasks.every((task) => task.status === "completed")) {
+            if (run.tasks.some((task) => (task.status === "ready" || task.status === "running") && isAgentTaskRetryDeferred(task))) return;
+            if (agentRunTasksCompleted(run.tasks)) {
                 if (!run.reviewed && shouldBlockOnReview(run)) {
                     const review = await reviewCompletedTasks(run, origin, cookie);
                     await updateAgentRunById(
@@ -394,7 +530,11 @@ export async function executeTasks(runId: string, origin: string, cookie: string
             }
             const blocked = run.tasks.filter((task) => task.status === "ready");
             const terminalTasks = blocked.length ? run.tasks.map((task) => (task.status === "ready" ? { ...task, status: "failed" as const, error: "前置任务未完成" } : task)) : run.tasks;
-            const partialSuccess = Boolean(run.assetIds.length) && terminalTasks.some((task) => task.status === "failed") && terminalTasks.every((task) => task.status === "completed" || task.status === "failed");
+            // A parent task is never terminal while one of its provider tasks is
+            // still pending.  This protects both the Run completion message and
+            // restart recovery from treating a loading Canvas node as complete.
+            if (!agentRunTasksTerminal(terminalTasks)) return;
+            const partialSuccess = Boolean(run.assetIds.length) && terminalTasks.some((task) => task.status === "failed") && agentRunTasksTerminal(terminalTasks);
             if (partialSuccess) {
                 await updateAgentRunById(
                     runId,
@@ -410,7 +550,9 @@ export async function executeTasks(runId: string, origin: string, cookie: string
                 );
                 return;
             }
-            await updateAgentRunById(runId, { status: "failed", executionId: undefined, tasks: terminalTasks }, { type: "run.failed", data: { message: agentRunFailureMessage(terminalTasks) } }, ["running"], executionId);
+            const message = agentRunFailureMessage(terminalTasks);
+            console.error("Agent Run 子任务执行失败", { runId, phase: "execution", error: message });
+            await updateAgentRunById(runId, { status: "failed", error: message, failurePhase: "execution", executionId: undefined, tasks: terminalTasks }, { type: "run.failed", data: { message } }, ["running"], executionId);
             return;
         }
         const results = await Promise.all(ready.map((task) => runTaskWithRetry(runId, task, origin, cookie, executionId, settings)));
@@ -530,9 +672,15 @@ export async function refundTextResponse(userId: string, model: string, headers:
 
 export async function runTaskWithRetry(runId: string, task: AgentRunTask, origin: string, cookie: string, executionId: string, settings?: Awaited<ReturnType<typeof getAuthSettings>>) {
     const resumeExisting = task.childTasks?.some((child) => child.status === "pending") || (task.status === "running" && task.taskId && !task.childTasks?.length);
-    const attempt = resumeExisting ? Math.max(1, task.attempts) : task.attempts + 1;
+    const retryingUnsubmitted = task.status === "ready" && task.retryAfterAt !== undefined;
+    const attempt = resumeExisting || retryingUnsubmitted ? Math.max(1, task.attempts) : task.attempts + 1;
     if (!(await canContinue(runId, executionId))) return;
-    if ((!resumeExisting || !task.startedAt) && !(await patchTask(runId, task.id, { status: "running", attempts: attempt, startedAt: task.startedAt || Date.now(), completedAt: undefined, error: undefined }, "task.running", executionId))) return;
+    if (retryingUnsubmitted && !(await patchTask(runId, task.id, { retryAfterAt: undefined, error: undefined }, "task.retrying", executionId))) return;
+    if (
+        (task.status !== "running" || !task.startedAt) &&
+        !(await patchTask(runId, task.id, { status: "running", attempts: attempt, startedAt: task.startedAt || Date.now(), completedAt: undefined, error: undefined, retryAfterAt: undefined }, "task.running", executionId))
+    )
+        return;
     try {
         const activeRun = await getAgentRun(runId);
         if (!activeRun || activeRun.executionId !== executionId) return;
@@ -564,6 +712,12 @@ export async function runTaskWithRetry(runId: string, task: AgentRunTask, origin
         );
         return "completed" as const;
     } catch (error) {
+        if (error instanceof AgentChildTaskCreateRetryError) {
+            if (await canContinue(runId, executionId)) {
+                await patchTask(runId, task.id, { status: "ready", error: error.message, retryAfterAt: error.retryAfterAt }, "task.retry.scheduled", executionId);
+            }
+            return "deferred" as const;
+        }
         if (error instanceof AgentChildTaskDeferredError) {
             const latest = await getAgentRun(runId);
             const latestTask = latest?.tasks.find((item) => item.id === task.id);
@@ -597,7 +751,8 @@ export async function withDependencyContext(runId: string, task: AgentRunTask): 
         if (!url || !acceptsMediaReference(task.type, asset.type)) return [];
         return [{ assetId: asset.id, sourceTaskId: asset.sourceTaskId, url, type: asset.type }] satisfies AgentRunReference[];
     });
-    const references = mergeTaskReferences(taskReferences(task), dependencyReferences);
+    const directReferences = taskReferences(task);
+    const references = mergeTaskReferences(directReferences, dependencyReferences);
     const taskContext = dependencies
         .map((item) => `【${item.title}】${resultSummary(item.result)}`)
         .filter((item) => item.length > 4)
@@ -627,9 +782,16 @@ export async function dispatchTask(task: AgentRunTask, origin: string, cookie: s
         return { result, sourceTaskIds: [`compose-${run.id}-${task.id}`] };
     }
     const model = resolvePlannedModel(settings, task.type, task.model);
-    const resolved = resolveLogicalModel(settings, task.type, model || "");
+    const references = taskReferences(task);
+    const needsTextVision = task.type === "text" && references.some((reference) => reference.type === "image" || reference.type === "video");
+    const resolved = needsTextVision ? resolveLogicalModelCandidates(settings, "text", model || "").find((candidate) => candidate.capabilityProfile?.supportsReferenceImage) : resolveLogicalModel(settings, task.type, model || "");
     const channel = resolved?.channel;
-    if (!model || !channel || !resolved) throw new Error(`后台尚未配置可用的默认${task.type === "image" ? "图片" : task.type === "video" ? "视频" : task.type === "audio" ? "音频" : "文本"}模型`);
+    if (!model || !channel || !resolved)
+        throw new Error(needsTextVision ? "后台默认文本模型没有可用的视觉理解渠道" : `后台尚未配置可用的默认${task.type === "image" ? "图片" : task.type === "video" ? "视频" : task.type === "audio" ? "音频" : "文本"}模型`);
+    assertAgentSkillModelConstraints(settings.agentSkills || [], run.selectedSkillIds, task.type, resolveModelAdvancedConfig(resolved.channel.advancedConfig, resolved.upstreamModel)?.protocol);
+    const resolvedTask = normalizeResolvedAgentTask(task, resolved);
+    if (resolvedTask !== task && !(await patchTask(run.id, task.id, { ratio: resolvedTask.ratio, quality: resolvedTask.quality, seconds: resolvedTask.seconds }, "task.parameters.normalized", executionId))) throw new Error("Agent Run 已由新执行器接管");
+    task = resolvedTask;
     const config = {
         apiSource: "system",
         baseUrl: `/api/ai/system/${encodeURIComponent(channel.id)}`,
@@ -648,8 +810,19 @@ export async function dispatchTask(task: AgentRunTask, origin: string, cookie: s
             : {}),
         ...(task.type === "audio" ? { ...(task.voice ? { voice: task.voice } : {}), ...(task.format ? { format: task.format } : {}), ...(task.speed ? { speed: String(task.speed) } : {}) } : {}),
     };
+    const submittedParameters =
+        task.type === "video"
+            ? {
+                  model: model,
+                  ...(task.ratio ? { ratio: task.ratio } : {}),
+                  ...(task.quality ? { quality: task.quality } : {}),
+                  ...(task.seconds ? { duration: task.seconds } : {}),
+                  referenceMode: videoReferenceMode(references),
+              }
+            : undefined;
+    if (submittedParameters && !(await patchTask(run.id, task.id, { submittedParameters }, "task.parameters.submitted", executionId))) throw new Error("Agent Run 已由新执行器接管");
     const path = task.type === "image" ? "/api/image-tasks" : task.type === "video" ? "/api/video-generation-tasks" : task.type === "audio" ? "/api/audio-tasks" : "/api/text-tasks";
-    const references = taskReferences(task);
+    const textReferenceImages = needsTextVision ? await textTaskReferenceImages(references, run, origin, cookie) : [];
     const source = run.surface === "canvas" ? "canvas" : run.surface === "drama" ? "drama" : "agent";
     const context = { conversationId: run.conversationId, runId: run.id, surface: run.surface, projectId: run.projectId, parentTaskId: task.id, attemptNo: attempt, clientRequestId: `${run.clientRequestId}:${task.id}:${attempt}` };
     const body =
@@ -664,13 +837,40 @@ export async function dispatchTask(task: AgentRunTask, origin: string, cookie: s
                   context,
               }
             : task.type === "video"
-              ? { config, prompt: task.prompt, references: references.map((item) => ({ type: item.type, url: item.url, ...(item.role ? { role: item.role } : {}) })), source, context }
+              ? {
+                    config,
+                    prompt: task.prompt,
+                    references: references.map((item) => ({
+                        type: item.type,
+                        url: item.url,
+                        ...(item.role ? { role: item.role } : {}),
+                        ...(item.assetId ? { assetId: item.assetId } : {}),
+                        ...(item.nodeId ? { nodeId: item.nodeId } : {}),
+                        ...(item.sourceTaskId ? { sourceTaskId: item.sourceTaskId } : {}),
+                        ...(item.alias ? { alias: item.alias } : {}),
+                    })),
+                    source,
+                    context,
+                }
               : task.type === "audio"
                 ? { config, prompt: task.prompt, source, context }
-                : { config, messages: [{ role: "user", content: task.prompt }] };
+                : {
+                      config,
+                      messages: [
+                          {
+                              role: "user",
+                              content: textReferenceImages.length
+                                  ? [
+                                        { type: "text" as const, text: `${task.prompt}\n\n请基于随本条消息一同发送的真实参考图或视频抽帧完成任务；不得声称没有附件，不得改用示例素材。` },
+                                        ...textReferenceImages.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+                                    ]
+                                  : task.prompt,
+                          },
+                      ],
+                  };
     const copies = agentTaskCopies(task.type, task.count);
     const initialChildren = normalizeChildTasks(task);
-    const outcomes = await mapWithConcurrency(copies, settings.generationConcurrency[task.type === "image" ? "image" : task.type === "video" ? "video" : task.type === "audio" ? "audio" : "text"], async (index) => {
+    const outcomes = await mapWithConcurrency(copies, agentTaskCopyConcurrency(settings, task, resolved), async (index) => {
         if (!(await canContinue(run.id, executionId))) throw new Error("Agent Run 已暂停、取消或已由新执行器接管");
         let child = initialChildren[index];
         let taskId = child?.id;
@@ -680,8 +880,15 @@ export async function dispatchTask(task: AgentRunTask, origin: string, cookie: s
                 context: { ...context, clientRequestId: `${run.clientRequestId}:${task.id}:${attempt}:${index + 1}` },
             };
             const response = await fetchInternalApi(`${origin}${path}`, { method: "POST", headers: runtimeRequestHeaders(cookie, { "Content-Type": "application/json" }), body: JSON.stringify(bodyForCopy), cache: "no-store" });
-            if (!response.ok) throw new Error((await response.text()) || "生成任务创建失败");
-            const payload = (await response.json()) as { task?: { id?: string } };
+            if (response.status === 429) {
+                const message = toSafeGenerationErrorMessage(new Error(await generationResponseMessage(response, "生成服务暂时繁忙")), "生成服务暂时繁忙");
+                const retryAt = retryAfterAt(response.headers);
+                if (!retryAt) throw new AgentChildTaskTerminalError(`${message}；上游未提供可安全重试时间，请单独重试此任务`);
+                throw new AgentChildTaskCreateRetryError(message, retryAt);
+            }
+            if (!response.ok) throw new Error(await generationResponseMessage(response, "生成任务创建失败"));
+            const payload = (await response.json()) as { task?: { id?: string; needsReview?: boolean } };
+            if (payload.task?.needsReview) throw new AgentChildTaskTerminalError("上游提交结果无法确认，系统已停止自动重提以避免重复生成和扣费，请单独重试此任务");
             const createdTaskId = payload.task?.id;
             if (!createdTaskId) throw new Error("生成任务未返回任务 ID");
             taskId = createdTaskId;
@@ -720,6 +927,48 @@ export async function dispatchTask(task: AgentRunTask, origin: string, cookie: s
     };
 }
 
+function videoReferenceMode(references: AgentRunReference[]) {
+    if (references.some((reference) => reference.role === "first_frame") && references.some((reference) => reference.role === "last_frame")) return "首尾帧";
+    const images = references.filter((reference) => reference.type === "image").length;
+    if (images > 1) return `多帧参考（${images} 张）`;
+    if (images === 1) return "单分镜图";
+    return references.length ? "多模态参考" : "文生视频";
+}
+
+async function textTaskReferenceImages(references: AgentRunReference[], run: AgentRun, origin: string, cookie: string) {
+    const images: string[] = [];
+    for (const reference of references) {
+        if (reference.type === "image") {
+            images.push(await inlineAgentReferenceImage(reference.url, origin, cookie));
+            continue;
+        }
+        if (reference.type !== "video") continue;
+        const now = Date.now();
+        const analysis = await analyzeVideoRemakeSource(
+            {
+                id: reference.assetId || reference.nodeId || `video-reference-${images.length + 1}`,
+                userId: run.userId,
+                conversationId: run.conversationId,
+                ordinal: images.length,
+                type: "video",
+                status: "ready",
+                title: "Agent 参考视频",
+                serverUrl: reference.url.startsWith("/") ? reference.url : undefined,
+                remoteUrl: reference.url.startsWith("https://") ? reference.url : undefined,
+                metadata: { source: "canvas-video-reference" },
+                createdAt: now,
+                updatedAt: now,
+            },
+            origin,
+            cookie,
+        );
+        if (!analysis.storyboardFrames?.length) throw new Error("参考视频没有可用于理解的画面");
+        images.push(...analysis.storyboardFrames);
+    }
+    if (!images.length && references.length) throw new Error("参考素材没有可用于视觉理解的画面");
+    return images;
+}
+
 async function mapWithConcurrency<R>(count: number, concurrency: number, worker: (index: number) => Promise<R>): Promise<Array<PromiseSettledResult<R> & { index: number }>> {
     const results: Array<PromiseSettledResult<R> & { index: number }> = [];
     let cursor = 0;
@@ -736,6 +985,15 @@ async function mapWithConcurrency<R>(count: number, concurrency: number, worker:
         }),
     );
     return results;
+}
+
+function retryAfterAt(headers: Headers, now = Date.now()) {
+    const value = headers.get("retry-after")?.trim();
+    if (!value) return undefined;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds > 0) return now + Math.ceil(seconds * 1_000);
+    const date = Date.parse(value);
+    return Number.isFinite(date) && date > now ? date : undefined;
 }
 
 function normalizeChildTasks(task: AgentRunTask): AgentRunChildTask[] {

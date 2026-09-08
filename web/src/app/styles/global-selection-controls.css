@@ -1,4 +1,203 @@
+:root {
+    --octa-selection-surface: linear-gradient(118deg, rgba(79, 104, 255, 0.1), rgba(42, 193, 215, 0.12));
+    --octa-selection-surface-hover: linear-gradient(118deg, rgba(79, 104, 255, 0.14), rgba(42, 193, 215, 0.16));
+    --octa-selection-border: rgba(49, 163, 190, 0.42);
+    --octa-selection-text: #194d67;
+    --octa-selection-accent: #1c9fba;
+    --octa-selection-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74), 0 0 0 1px rgba(72, 188, 214, 0.06), 0 8px 22px rgba(55, 114, 170, 0.1);
+    --octa-selection-glow: rgba(42, 193, 215, 0.18);
+    --octa-control-track: rgba(91, 111, 139, 0.1);
+}
+
+.dark {
+    --octa-selection-surface: linear-gradient(118deg, rgba(42, 67, 119, 0.72), rgba(19, 78, 93, 0.58));
+    --octa-selection-surface-hover: linear-gradient(118deg, rgba(49, 76, 133, 0.82), rgba(20, 91, 107, 0.68));
+    --octa-selection-border: rgba(91, 211, 234, 0.36);
+    --octa-selection-text: #f2fbff;
+    --octa-selection-accent: #67e2f2;
+    --octa-selection-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(103, 226, 242, 0.035), 0 0 22px rgba(53, 196, 222, 0.1);
+    --octa-selection-glow: rgba(53, 196, 222, 0.24);
+    --octa-control-track: rgba(255, 255, 255, 0.045);
+}
+
 @layer components {
+    .octaflow-selection-surface {
+        background: var(--octa-selection-surface) !important;
+        border-color: var(--octa-selection-border) !important;
+        box-shadow: var(--octa-selection-shadow) !important;
+        color: var(--octa-selection-text) !important;
+    }
+
+    .octaflow-selection-surface:hover {
+        background: var(--octa-selection-surface-hover) !important;
+    }
+
+    :where(button, a)[role="tab"][aria-selected="true"],
+    [role="option"][aria-selected="true"] {
+        background: var(--octa-selection-surface) !important;
+        box-shadow: var(--octa-selection-shadow) !important;
+        color: var(--octa-selection-text) !important;
+    }
+
+    :where(button, a)[role="tab"][aria-selected="true"]:hover,
+    [role="option"][aria-selected="true"]:hover {
+        background: var(--octa-selection-surface-hover) !important;
+    }
+
+    .ant-segmented {
+        background: var(--octa-control-track) !important;
+    }
+
+    .ant-segmented .ant-segmented-thumb,
+    .ant-segmented .ant-segmented-item-selected {
+        background: var(--octa-selection-surface) !important;
+        border: 1px solid var(--octa-selection-border) !important;
+        box-shadow: var(--octa-selection-shadow) !important;
+        color: var(--octa-selection-text) !important;
+    }
+
+    .ant-segmented .ant-segmented-item-selected:hover {
+        background: var(--octa-selection-surface-hover) !important;
+    }
+
+    .ant-switch.ant-switch-checked {
+        background: linear-gradient(112deg, #4f68ff, #32c7dc) !important;
+        box-shadow: 0 0 0 1px rgba(100, 221, 239, 0.24), 0 0 18px var(--octa-selection-glow) !important;
+    }
+
+    .ant-switch.ant-switch-checked:hover:not(.ant-switch-disabled) {
+        background: linear-gradient(112deg, #6076ff, #46d5e7) !important;
+    }
+
+    .ant-switch .ant-switch-handle::before {
+        background: #fff !important;
+        box-shadow: 0 1px 4px rgba(5, 18, 38, 0.28) !important;
+    }
+
+    .octaflow-smart-switch.is-checked {
+        background: linear-gradient(112deg, #4f68ff, #32c7dc);
+        box-shadow: 0 0 0 1px rgba(100, 221, 239, 0.2), 0 0 14px var(--octa-selection-glow);
+    }
+
+    .ant-slider .ant-slider-track,
+    .ant-slider:hover .ant-slider-track {
+        background: linear-gradient(90deg, #536dff, #39ccdf) !important;
+        box-shadow: 0 0 12px var(--octa-selection-glow);
+    }
+
+    .ant-slider .ant-slider-handle::after,
+    .ant-slider:hover .ant-slider-handle::after,
+    .ant-slider .ant-slider-handle:focus::after {
+        box-shadow: 0 0 0 2px var(--octa-selection-accent), 0 0 14px var(--octa-selection-glow) !important;
+    }
+
+    .octaflow-native-range,
+    .octaflow-media-range,
+    .octaflow-preview-range {
+        --octa-range-progress: 50%;
+        appearance: none;
+        background: linear-gradient(90deg, #536dff 0%, #39ccdf var(--octa-range-progress), var(--octa-control-track) var(--octa-range-progress), var(--octa-control-track) 100%);
+        border-radius: 999px;
+        cursor: pointer;
+    }
+
+    .octaflow-native-range::-webkit-slider-runnable-track,
+    .octaflow-media-range::-webkit-slider-runnable-track,
+    .octaflow-preview-range::-webkit-slider-runnable-track {
+        background: transparent;
+        border-radius: 999px;
+        height: 5px;
+    }
+
+    .octaflow-native-range::-webkit-slider-thumb,
+    .octaflow-media-range::-webkit-slider-thumb {
+        appearance: none;
+        background: #fff;
+        border: 2px solid var(--octa-selection-accent);
+        border-radius: 999px;
+        box-shadow: 0 0 0 3px rgba(57, 204, 223, 0.1), 0 0 12px var(--octa-selection-glow);
+        height: 14px;
+        margin-top: -4.5px;
+        width: 14px;
+    }
+
+    .octaflow-native-range::-moz-range-track,
+    .octaflow-media-range::-moz-range-track,
+    .octaflow-preview-range::-moz-range-track {
+        background: transparent;
+        border-radius: 999px;
+        height: 5px;
+    }
+
+    .octaflow-native-range::-moz-range-thumb,
+    .octaflow-media-range::-moz-range-thumb {
+        background: #fff;
+        border: 2px solid var(--octa-selection-accent);
+        border-radius: 999px;
+        box-shadow: 0 0 0 3px rgba(57, 204, 223, 0.1), 0 0 12px var(--octa-selection-glow);
+        height: 10px;
+        width: 10px;
+    }
+
+    .octaflow-preview-range {
+        --octa-range-progress: 100%;
+        height: 10px;
+    }
+
+    .octaflow-preview-range::-webkit-slider-runnable-track,
+    .octaflow-preview-range::-moz-range-track {
+        height: 10px;
+    }
+
+    .octaflow-preview-range::-webkit-slider-thumb {
+        appearance: none;
+        background: linear-gradient(90deg, #536dff, #39ccdf);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 999px;
+        box-shadow: 0 0 12px var(--octa-selection-glow);
+        height: 10px;
+        width: var(--preview-scrollbar-thumb-width);
+    }
+
+    .octaflow-preview-range::-moz-range-thumb {
+        background: linear-gradient(90deg, #536dff, #39ccdf);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 999px;
+        box-shadow: 0 0 12px var(--octa-selection-glow);
+        height: 8px;
+        width: var(--preview-scrollbar-thumb-width);
+    }
+
+    .ant-checkbox-checked .ant-checkbox-inner,
+    .ant-checkbox-indeterminate .ant-checkbox-inner,
+    .ant-radio-checked .ant-radio-inner {
+        background: linear-gradient(135deg, #536dff, #39ccdf) !important;
+        border-color: var(--octa-selection-accent) !important;
+        box-shadow: 0 0 12px var(--octa-selection-glow);
+    }
+
+    .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled),
+    .ant-pagination .ant-pagination-item-active {
+        background: var(--octa-selection-surface) !important;
+        border-color: var(--octa-selection-border) !important;
+        box-shadow: var(--octa-selection-shadow) !important;
+        color: var(--octa-selection-text) !important;
+    }
+
+    .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+        color: var(--octa-selection-accent) !important;
+        text-shadow: 0 0 16px var(--octa-selection-glow);
+    }
+
+    .ant-tabs .ant-tabs-ink-bar {
+        background: linear-gradient(90deg, #536dff, #39ccdf) !important;
+        box-shadow: 0 0 12px var(--octa-selection-glow);
+    }
+
+    .ant-table-wrapper .ant-table-row-selected > .ant-table-cell {
+        background: var(--octa-selection-surface) !important;
+    }
+
     .ant-select-dropdown {
         border: 1px solid var(--border) !important;
         border-radius: 8px !important;
@@ -12,7 +211,9 @@
 
     .ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled),
     .ant-select-dropdown .ant-select-item-option-selected.ant-select-item-option-active:not(.ant-select-item-option-disabled):not(:hover) {
-        background: transparent !important;
+        background: var(--octa-selection-surface) !important;
+        box-shadow: inset 0 0 0 1px var(--octa-selection-border) !important;
+        color: var(--octa-selection-text) !important;
         font-weight: 400;
     }
 

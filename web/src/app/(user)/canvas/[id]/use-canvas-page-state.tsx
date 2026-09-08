@@ -1,7 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
+import { stampCanvasGenerationStarts } from "../utils/canvas-generation-progress";
 
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useAssetStore } from "@/stores/use-asset-store";
@@ -51,8 +52,13 @@ export function useCanvasPageState() {
     const renameProject = useCanvasStore((state) => state.renameProject);
     const deleteProjects = useCanvasStore((state) => state.deleteProjects);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
+    const projectSummaries = useCanvasStore((state) => state.summaries);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
+    const [nodes, setRawNodes] = useState<CanvasNodeData[]>([]);
+    const setNodes = useCallback((action: SetStateAction<CanvasNodeData[]>) => {
+        const now = Date.now();
+        setRawNodes((previous) => stampCanvasGenerationStarts(previous, typeof action === "function" ? action(previous) : action, now));
+    }, []);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -65,7 +71,7 @@ export function useCanvasPageState() {
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [runningNodeId, setRunningNodeId] = useState<string | null>(null);
     const [isMiniMapOpen, setIsMiniMapOpen] = useState(false);
-    const [backgroundMode, setBackgroundMode] = useState<CanvasBackgroundMode>("lines");
+    const [backgroundMode, setBackgroundMode] = useState<CanvasBackgroundMode>("dots");
     const [showImageInfo, setShowImageInfo] = useState(false);
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
@@ -81,6 +87,7 @@ export function useCanvasPageState() {
     const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
     const [upscaleNodeId, setUpscaleNodeId] = useState<string | null>(null);
     const [angleNodeId, setAngleNodeId] = useState<string | null>(null);
+    const [storyboardNodeId, setStoryboardNodeId] = useState<string | null>(null);
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
     const [assistantCollapsed, setAssistantCollapsed] = useState(true);
     const [assistantMounted, setAssistantMounted] = useState(false);
@@ -140,6 +147,7 @@ export function useCanvasPageState() {
         renameProject,
         deleteProjects,
         currentProject,
+        projectSummaries,
         theme,
         nodes,
         setNodes,
@@ -199,6 +207,8 @@ export function useCanvasPageState() {
         setUpscaleNodeId,
         angleNodeId,
         setAngleNodeId,
+        storyboardNodeId,
+        setStoryboardNodeId,
         previewNodeId,
         setPreviewNodeId,
         assistantCollapsed,

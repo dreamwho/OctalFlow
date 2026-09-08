@@ -5,6 +5,7 @@ import { createClientSessionEpoch, type ClientSessionStamp } from "@/lib/client-
 import type { CreateDramaProjectInput, DramaCharacter, DramaClue, DramaContentAnalysis, DramaEpisode, DramaProject, DramaProjectSummary, DramaProp, DramaScene, DramaShot, DramaVisualAnalysis } from "@/lib/drama-project-contract";
 import { summarizeDramaProject } from "@/lib/drama-project-summary";
 import type { DramaSourceEpisodeDraft } from "@/lib/drama-source-splitter";
+import { dramaVisualStylePrompt } from "@/lib/drama-visual-style-presets";
 import { createDramaProject, createDramaProjectVersion, deleteDramaProject, getDramaProject, listDramaProjectSummaries, listDramaProjectVersions, restoreDramaProjectVersion, saveDramaProject } from "@/services/api/drama-projects";
 import { useUserStore } from "@/stores/use-user-store";
 
@@ -24,7 +25,7 @@ type DramaStore = {
     loadProject: (id: string, force?: boolean) => Promise<DramaProject>;
     createProject: (input: CreateDramaProjectInput) => Promise<string>;
     deleteProject: (id: string) => Promise<void>;
-    updateProject: (id: string, patch: Partial<Pick<DramaProject, "title" | "summary" | "style" | "ratio" | "status" | "creativeConversationId" | "defaultVideoMode">>) => void;
+    updateProject: (id: string, patch: Partial<Pick<DramaProject, "title" | "summary" | "style" | "stylePresetId" | "ratio" | "status" | "creativeConversationId" | "defaultVideoMode">>) => void;
     addCharacter: (projectId: string, input: Omit<DramaCharacter, "id">) => void;
     addScene: (projectId: string, input: Omit<DramaScene, "id">) => void;
     addProp: (projectId: string, input: Omit<DramaProp, "id">) => void;
@@ -577,7 +578,7 @@ function scriptToShots(script: string, project: DramaProject): DramaShot[] {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((text, index) => {
-            const context = [project.style, project.summary, text].filter(Boolean).join("，");
+            const context = [dramaVisualStylePrompt(project.style, project.stylePresetId), project.summary, text].filter(Boolean).join("，");
             return {
                 id: `shot-${nanoid()}`,
                 order: index + 1,

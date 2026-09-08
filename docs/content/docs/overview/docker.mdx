@@ -36,9 +36,12 @@ docker compose ps
 ## Compose 服务
 
 ```text
+magic-proxy -> 一份 Mihomo v1.19.30 镜像，静态声明 GeminiAIStudio/GeminiTools 双 mixed 监听与 file provider
 postgres -> PostgreSQL 16，数据卷 octalaicanvas-postgres
-app      -> OctalFlow standalone，数据卷 octalaicanvas-data
+app      -> OctalFlow standalone，数据卷 octalaicanvas-data 和共享 provider runtime 卷
 ```
+
+`magic-proxy` 不发布 Controller 或代理端口，也不把 secret 写入 bootstrap。七套拓扑共用一份 Mihomo 镜像和两个静态 listener；订阅节点通过 `OctalFlow-Subscription` file provider 在私有 Docker volume 中动态刷新，两个监听器仍通过独立端口和代理组隔离。订阅地址、节点和绑定的规范数据由管理员后台加密保存；runtime provider 文件是可重建的运行副本，但包含 Mihomo 建连必需的明文节点字段，必须作为敏感数据保护，不得对外挂载、写入日志或进入公开备份。
 
 应用通过容器网络连接：
 
@@ -78,10 +81,40 @@ docker compose -f docker-compose.local.yml up -d --build
 
 构建阶段需要安装依赖并执行 Next.js 生产构建，建议至少 2GB 内存。低内存服务器使用发布镜像。
 
+## 离线一键部署
+
+不能从 GHCR 拉取镜像，或不希望在服务器现场构建时，在有 Docker 的构建机执行：
+
+```bash
+./scripts/build-docker-offline-package.sh
+```
+
+脚本默认按 external 模式构建并导出三个完整镜像，复用服务器已有的 Docker PostgreSQL：
+
+- OctalFlow 主应用：Node.js、Next.js standalone、Sharp/libvips、FFmpeg 和 PostgreSQL 客户端。
+- GeminiAI sidecar：Python、Playwright/Camoufox、浏览器运行库和服务代码。
+- Mihomo v1.19.30：一份镜像同时承载两个静态 mixed 监听和 file provider；构建脚本只拉取并保存该镜像，不重新构建。入口脚本会初始化私有 runtime provider 文件并设置安全权限。
+
+输出目录为 `本次修改需上传文件_YYYYMMDD`。把整个目录上传到 Linux 服务器后执行：
+
+```bash
+chmod +x 一键部署.sh
+./一键部署.sh
+```
+
+一键脚本会自动检查 Docker/Compose、校验服务器架构、加载三个镜像归档、创建 `.env` 和应用/魔法代理 runtime 持久化卷、启动服务并等待 Mihomo、GeminiAI、Web 与 Worker 健康。执行前需要在 `.env` 配置已有 PostgreSQL 的 `DATABASE_URL`；现有 PostgreSQL 容器必须已映射到宿主机可访问端口（默认 `5432`），因为 external 模式使用 host 网络访问宿主机数据库。默认访问 `http://服务器IP:3000/install`，脚本会显示首次创建管理员所需的一次性安装令牌。
+
+没有已有 PostgreSQL 时，使用 `OCTALAICANVAS_DATABASE_MODE=embedded ./scripts/build-docker-offline-package.sh` 构建包含 PostgreSQL 16.6 镜像的自包含包。
+
+脚本默认拒绝跨架构部署；本机使用 Docker Desktop 做临时仿真验证时可显式设置 `OCTALAICANVAS_ALLOW_PLATFORM_EMULATION=1`，正式服务器仍应构建并上传与服务器架构一致的包。
+
+离线包不会固化外部模型、支付或 OAuth 密钥。PostgreSQL、应用媒体和 GeminiAI 账号分别使用独立数据卷；升级或停止服务时不要执行 `docker compose down -v`。
+
 ## 日志与检查
 
 ```bash
 docker compose logs -f app
+docker compose logs -f magic-proxy
 docker compose logs -f postgres
 docker compose exec postgres pg_isready -U octalaicanvas -d octalaicanvas
 ```

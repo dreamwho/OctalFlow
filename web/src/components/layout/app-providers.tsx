@@ -6,11 +6,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App, ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import dayjs from "dayjs";
+import { usePathname } from "next/navigation";
 import "dayjs/locale/zh-cn";
 
 import { ClientRootInit } from "@/components/layout/client-root-init";
 import { getAntThemeConfig } from "@/lib/app-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { themeScopeForPathname } from "@/lib/theme-scope";
+import { startThemeStoreSync, useAdminThemeStore, useThemeStore } from "@/stores/use-theme-store";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -26,8 +28,13 @@ const queryClient = new QueryClient({
 dayjs.locale("zh-cn");
 
 export function AppProviders({ children }: { children: ReactNode }) {
-    const theme = useThemeStore((state) => state.theme);
+    const pathname = usePathname();
+    const frontendTheme = useThemeStore((state) => state.theme);
+    const adminTheme = useAdminThemeStore((state) => state.theme);
+    const theme = themeScopeForPathname(pathname) === "admin" ? adminTheme : frontendTheme;
     const dark = theme === "dark";
+
+    useEffect(() => startThemeStoreSync(), []);
 
     useEffect(() => {
         const reloadOnceForChunkError = (reason: unknown) => {
@@ -56,7 +63,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     }, [dark, theme]);
 
     return (
-        <ConfigProvider locale={zhCN} theme={getAntThemeConfig(dark)}>
+        <ConfigProvider locale={zhCN} theme={getAntThemeConfig(dark)} popupOverflow="viewport" getPopupContainer={() => document.body}>
             <App message={{ top: 84, duration: 2.4, maxCount: 3 }}>
                 <QueryClientProvider client={queryClient}>
                     <ClientRootInit>{children}</ClientRootInit>

@@ -13,7 +13,7 @@ import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
 import { generationModelId, toSystemGenerationChannel } from "@/lib/server/generation-channel";
 import { finishGenerationAttempt, startGenerationAttempt } from "@/lib/server/generation-attempt";
 import { resolveLogicalModelCandidates } from "@/lib/server/logical-model-router";
-import { resolveChannelModelConfig } from "@/lib/channel-protocol-registry";
+import { resolveChannelModelAdvancedConfig, resolveChannelModelConfig } from "@/lib/channel-protocol-registry";
 import { assertReferenceCapabilities } from "@/lib/server/provider-task-config";
 import { countActiveImageTasksForUser, createImageTask, getImageTask, touchImageTask, transitionImageTask, type ImageTask, type ImageTaskConfig, type ImageTaskReference, updateImageTask } from "@/lib/server/image-task-store";
 import { isGenerationSource, recordGenerationLog } from "@/lib/server/generation-log-store";
@@ -28,6 +28,7 @@ import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
 import { maintenanceWorkerContextHeaders } from "@/lib/server/maintenance-auth";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 import { GenerationSubmissionSafeFailure, GenerationSubmissionUncertainError, generationSubmissionResponseError, generationSubmissionUncertainError } from "@/lib/server/generation-submission-error";
+import { geminiAiImageRequestFields } from "./image-task-geminiai-options";
 
 import {
     type CreateImageTaskBody,
@@ -101,6 +102,10 @@ export function sanitizeAdvancedConfig(config?: ImageTaskConfig["advancedConfig"
         supportsReferenceVideo: Boolean(config.supportsReferenceVideo),
         supportsReferenceAudio: Boolean(config.supportsReferenceAudio),
     };
+}
+
+export function sanitizeModelAdvancedConfig(config: ImageTaskConfig["advancedConfig"] | undefined, model: string) {
+    return sanitizeAdvancedConfig(resolveChannelModelAdvancedConfig(config, model));
 }
 
 export function textOrEmpty(value: unknown) {
@@ -553,14 +558,20 @@ export async function inlineRemoteImageResult(value: string, origin: string, coo
         const workerHeaders = maintenanceWorkerContextHeaders(cookie);
         const headers = new Headers(workerHeaders || (cookie ? { cookie } : undefined));
         new Headers(internalHeaders).forEach((headerValue, key) => headers.set(key, headerValue));
-        const response = await (url.startsWith("/") ? fetchInternalApi(fetchUrl, {
-            headers,
-            cache: "no-store",
-            signal: controller.signal,
-        }) : fetchSafeOutbound(fetchUrl, {
-            cache: "no-store",
-            signal: controller.signal,
-        }, { allowProxyFakeIpSpace: true }));
+        const response = await (url.startsWith("/")
+            ? fetchInternalApi(fetchUrl, {
+                  headers,
+                  cache: "no-store",
+                  signal: controller.signal,
+              })
+            : fetchSafeOutbound(
+                  fetchUrl,
+                  {
+                      cache: "no-store",
+                      signal: controller.signal,
+                  },
+                  { allowProxyFakeIpSpace: true },
+              ));
         if (!response.ok || !response.body) return { dataUrl: url, remoteUrl: fallbackUrl };
         const contentLength = Number(response.headers.get("content-length") || 0);
         if (contentLength > MAX_INLINE_IMAGE_BYTES) return { dataUrl: url, remoteUrl: fallbackUrl };
@@ -685,6 +696,7 @@ export async function buildImageEditFormData(task: ImageTask, quality: string | 
     }
     if (quality) formData.set("quality", quality);
     if (requestSize) formData.set("size", requestSize);
+    Object.entries(geminiAiImageRequestFields(task.config)).forEach(([key, value]) => formData.set(key, String(value)));
     const referenceFiles = await Promise.all(task.references.map((reference, index) => imageReferenceToFile(reference, reference.name || `reference-${index + 1}.png`, origin, cookie)));
     referenceFiles.forEach((file) => formData.append("image", file));
     if (task.mask) formData.set("mask", await imageReferenceToFile(task.mask, task.mask.name || "mask.png", origin, cookie));
@@ -701,14 +713,20 @@ export async function imageReferenceToFile(reference: ImageTaskReference, name: 
             const fetchUrl = uploadUrl.startsWith("/") ? `${origin}${uploadUrl}` : uploadUrl;
             if (!isRemoteMediaUrl(fetchUrl)) throw new Error("参考图地址无效，请重新上传参考图");
             const workerHeaders = maintenanceWorkerContextHeaders(cookie);
-            const response = await (uploadUrl.startsWith("/") ? fetchInternalApi(fetchUrl, {
-                headers: workerHeaders || (cookie ? { cookie } : undefined),
-                cache: "no-store",
-                signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),
-            }) : fetchSafeOutbound(fetchUrl, {
-                cache: "no-store",
-                signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),
-            }, { allowProxyFakeIpSpace: true }));
+            const response = await (uploadUrl.startsWith("/")
+                ? fetchInternalApi(fetchUrl, {
+                      headers: workerHeaders || (cookie ? { cookie } : undefined),
+                      cache: "no-store",
+                      signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),
+                  })
+                : fetchSafeOutbound(
+                      fetchUrl,
+                      {
+                          cache: "no-store",
+                          signal: AbortSignal.timeout(INLINE_IMAGE_TIMEOUT_MS),
+                      },
+                      { allowProxyFakeIpSpace: true },
+                  ));
             if (!response.ok || !response.body) throw new Error("参考图读取失败");
             const contentLength = Number(response.headers.get("content-length") || 0);
             if (contentLength > MAX_INLINE_IMAGE_BYTES) throw new Error("参考图过大，请压缩后重试");

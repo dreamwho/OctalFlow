@@ -43,6 +43,11 @@ const loadPaymentsSection = () => import("./admin-billing-sections").then((modul
 const loadCdkSection = () => import("./admin-cdk-section").then((module) => module.AdminCdkSection);
 const loadReferralsSection = () => import("./admin-marketing-sections").then((module) => module.AdminReferralsSection);
 const loadChannelsSection = () => import("./admin-upstream-sections").then((module) => module.AdminChannelsSection);
+const loadMagicProxySection = () => import("./admin-magic-proxy-section").then((module) => module.AdminMagicProxySection);
+const loadRunningHubSection = () => import("@/app/admin/runninghub/components/admin-runninghub-section").then((module) => module.AdminRunningHubSection);
+const loadGeminiAiSection = () => import("./admin-geminiai-section").then((module) => module.AdminGeminiAiSection);
+const loadGeminiToolsSection = () => import("./admin-gemini-tools-section").then((module) => module.AdminGeminiToolsSection);
+const loadDreaminaSection = () => import("./admin-dreamina-section").then((module) => module.AdminDreaminaSection);
 const loadSkillsSection = () => import("./admin-upstream-sections").then((module) => module.AdminSkillsSection);
 const loadAnnouncementsSection = () => import("./admin-content-sections").then((module) => module.AdminAnnouncementsSection);
 const loadPromptsSection = () => import("./admin-content-sections").then((module) => module.AdminPromptsSection);
@@ -70,6 +75,11 @@ const sectionLoaders: Partial<Record<AdminSectionKey, () => Promise<unknown>>> =
     coupons: loadCouponsSection,
     referrals: loadReferralsSection,
     channels: loadChannelsSection,
+    magicProxy: loadMagicProxySection,
+    runninghub: loadRunningHubSection,
+    geminiai: loadGeminiAiSection,
+    geminiTools: loadGeminiToolsSection,
+    dreamina: loadDreaminaSection,
     skills: loadSkillsSection,
     announcements: loadAnnouncementsSection,
     prompts: loadPromptsSection,
@@ -97,6 +107,11 @@ const AdminReferralsSection = dynamic(loadReferralsSection, { loading: AdminSect
 const AdminPaymentsSection = dynamic(loadPaymentsSection, { loading: AdminSectionLoading });
 const AdminCdkSection = dynamic(loadCdkSection, { loading: AdminSectionLoading });
 const AdminChannelsSection = dynamic(loadChannelsSection, { loading: AdminSectionLoading });
+const AdminMagicProxySection = dynamic(loadMagicProxySection, { loading: AdminSectionLoading });
+const AdminRunningHubSection = dynamic(loadRunningHubSection, { loading: AdminSectionLoading });
+const AdminGeminiAiSection = dynamic(loadGeminiAiSection, { loading: AdminSectionLoading });
+const AdminGeminiToolsSection = dynamic(loadGeminiToolsSection, { loading: AdminSectionLoading });
+const AdminDreaminaSection = dynamic(loadDreaminaSection, { loading: AdminSectionLoading });
 const AdminSkillsSection = dynamic(loadSkillsSection, { loading: AdminSectionLoading });
 const AdminAnnouncementsSection = dynamic(loadAnnouncementsSection, { loading: AdminSectionLoading });
 const AdminPromptsSection = dynamic(loadPromptsSection, { loading: AdminSectionLoading });
@@ -249,6 +264,11 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "payments" ? <AdminPaymentsSection controller={controller} /> : null}
                     {activeSection === "updates" ? <AdminUpdatesSection controller={controller} /> : null}
                     {activeSection === "channels" ? <AdminChannelsSection controller={controller} /> : null}
+                    {activeSection === "magicProxy" ? <AdminMagicProxySection /> : null}
+                    {activeSection === "runninghub" ? <AdminRunningHubSection /> : null}
+                    {activeSection === "geminiai" ? <AdminGeminiAiSection /> : null}
+                    {activeSection === "geminiTools" ? <AdminGeminiToolsSection controller={controller} /> : null}
+                    {activeSection === "dreamina" ? <AdminDreaminaSection /> : null}
                     {activeSection === "skills" ? <AdminSkillsSection controller={controller} /> : null}
                     {activeSection === "cdk" ? <AdminCdkSection controller={controller} /> : null}
                     {activeSection === "announcements" ? <AdminAnnouncementsSection controller={controller} /> : null}

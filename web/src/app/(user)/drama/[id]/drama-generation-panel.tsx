@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { App, Button, Progress, Tag } from "antd";
-import { ArrowRight, Captions, CircleAlert, CircleCheck, CircleDashed, Download, Film, LoaderCircle, Pause, Play, RefreshCw, ScanSearch, Send, Volume2 } from "lucide-react";
+import { ArrowRight, Captions, CircleAlert, CircleCheck, CircleDashed, Download, Film, LoaderCircle, Pause, RefreshCw, ScanSearch, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { createAgentPromptHref } from "@/lib/create-agent-prompt";
+import { GenerationActionButton } from "@/components/generation-action-button";
 import { compileDramaShotPrompts } from "@/lib/drama-prompt-compiler";
 import { mediaDownloadFileName } from "@/lib/media-file";
 import { originalMediaDownloadUrl } from "@/lib/media-image-url";
@@ -298,15 +299,15 @@ export function DramaGenerationPanel({ project, episode, onStageChange, onOpenAs
                             </Button>
                         </ToolGroup>
                         <ToolGroup title="后期处理" description={audioReady ? "配音与字幕按镜头结果继续处理。" : "AI 配音需后台先配置音频模型。"}>
-                            <Button
+                            <GenerationActionButton
+                                appearance="soft"
                                 className={actionButtonClass}
-                                icon={<Volume2 className="size-4" />}
                                 disabled={!audioReady || !audioCandidateShotIds.length}
                                 title={audioReady ? undefined : "请管理员先在后台设置默认音频模型"}
                                 onClick={() => queueAudio(project.id, episode.id, audioCandidateShotIds)}
                             >
                                 批量配音
-                            </Button>
+                            </GenerationActionButton>
                             <Button className={actionButtonClass} icon={<Captions className="size-4" />} disabled={!episode.shots.some((shot) => (shot.subtitle || shot.dialogue).trim())} onClick={() => setSubtitleOpen(true)}>
                                 字幕时间轴
                             </Button>
@@ -414,9 +415,9 @@ function VisualReview({ project, episode }: { project: DramaProject; episode: Dr
                     <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{review.summary}</p>
                 </div>
                 {review.retryTaskIds.length ? (
-                    <Button className="!h-9 shrink-0" icon={<RefreshCw className="size-4" />} onClick={() => queueShots(project.id, episode.id, review.retryTaskIds)}>
+                    <GenerationActionButton appearance="soft" className="!h-9 shrink-0" icon={<RefreshCw className="size-4" />} onClick={() => queueShots(project.id, episode.id, review.retryTaskIds)}>
                         重试 {review.retryTaskIds.length} 个问题镜头
-                    </Button>
+                    </GenerationActionButton>
                 ) : null}
             </div>
             {review.issues.length ? (
@@ -540,23 +541,24 @@ function ShotTaskRow({
                         取消配音
                     </Button>
                 ) : dialogue ? (
-                    <Button className={actionButtonClass} disabled={!audioReady} title={audioReady ? undefined : "请管理员先在后台设置默认音频模型"} icon={<Volume2 className="size-4" />} onClick={() => queueAudio(project.id, episode.id, [shot.id])}>
+                    <GenerationActionButton appearance="soft" className={actionButtonClass} disabled={!audioReady} title={audioReady ? undefined : "请管理员先在后台设置默认音频模型"} onClick={() => queueAudio(project.id, episode.id, [shot.id])}>
                         {shot.audioStatus === "error" ? "重试配音" : shot.audioMode === "voiceover" ? "生成配音" : "改用 AI 配音"}
-                    </Button>
+                    </GenerationActionButton>
                 ) : null}
                 {generating ? (
-                    <Button className={`${dialogue ? "" : "col-span-2 lg:col-span-1"} ${actionButtonClass}`} icon={<Pause className="size-4" />} onClick={onCancel}>
+                    <GenerationActionButton appearance="soft" running cancellable className={`${dialogue ? "" : "col-span-2 lg:col-span-1"} ${actionButtonClass}`} onClick={onCancel}>
                         取消生成
-                    </Button>
+                    </GenerationActionButton>
                 ) : (
-                    <Button
+                    <GenerationActionButton
+                        appearance="soft"
                         className={`${dialogue ? "" : "col-span-2 lg:col-span-1"} ${actionButtonClass}`}
                         disabled={episode.reviewStatus !== "visual_ready"}
-                        icon={failed ? <RefreshCw className="size-4" /> : <Play className="size-4" />}
+                        icon={failed ? <RefreshCw className="size-4" /> : undefined}
                         onClick={() => queueShots(project.id, episode.id, [shot.id])}
                     >
                         {failed ? "重试镜头" : shot.videoUrl ? "重新生成" : "生成镜头"}
-                    </Button>
+                    </GenerationActionButton>
                 )}
                 <Button type="text" disabled={!shot.videoPrompt} className={`col-span-2 !bg-muted/60 hover:!bg-muted lg:col-span-1 ${actionButtonClass}`} icon={<Send className="size-4" />} onClick={onSendToAgent}>
                     交给创作 Agent
@@ -628,15 +630,15 @@ function buildPrimaryAction({
         );
     if (readiness.activeShotIds.length)
         return (
-            <Button type="primary" className={primaryClass} loading disabled>
+            <GenerationActionButton className={primaryClass} running loading disabled>
                 正在处理 {readiness.activeShotIds.length} 个镜头
-            </Button>
+            </GenerationActionButton>
         );
     if (readiness.queueableShotIds.length)
         return (
-            <Button type="primary" className={primaryClass} icon={<Play className="size-4" />} onClick={() => onQueueShots(readiness.queueableShotIds)}>
+            <GenerationActionButton className={primaryClass} onClick={() => onQueueShots(readiness.queueableShotIds)}>
                 {readiness.failedShotIds.length ? "重试" : "生成"} {readiness.queueableShotIds.length} 个就绪镜头
-            </Button>
+            </GenerationActionButton>
         );
     if (readiness.missingPromptShotIds.length || readiness.missingReferenceShotIds.length)
         return (
@@ -646,15 +648,15 @@ function buildPrimaryAction({
         );
     if (readiness.missingAudioShotIds.length)
         return (
-            <Button type="primary" className={primaryClass} icon={<Volume2 className="size-4" />} disabled={!audioReady} title={audioReady ? undefined : "请管理员先在后台设置默认音频模型"} onClick={() => onQueueAudio(readiness.missingAudioShotIds)}>
+            <GenerationActionButton className={primaryClass} disabled={!audioReady} title={audioReady ? undefined : "请管理员先在后台设置默认音频模型"} onClick={() => onQueueAudio(readiness.missingAudioShotIds)}>
                 {audioReady ? `生成 ${readiness.missingAudioShotIds.length} 条配音` : "等待音频模型配置"}
-            </Button>
+            </GenerationActionButton>
         );
     if (renderTask && ["pending", "running"].includes(renderTask.status))
         return (
-            <Button type="primary" className={primaryClass} loading disabled>
+            <GenerationActionButton className={primaryClass} running loading disabled>
                 正在合成整集
-            </Button>
+            </GenerationActionButton>
         );
     if (renderTask?.result?.url)
         return (
@@ -675,8 +677,8 @@ function buildPrimaryAction({
             </Button>
         );
     return (
-        <Button type="primary" className={primaryClass} icon={<Film className="size-4" />} onClick={onCreateRender}>
+        <GenerationActionButton className={primaryClass} onClick={onCreateRender}>
             {renderTask?.status === "error" || renderTask?.status === "cancelled" ? "重新合成整集" : "合成整集"}
-        </Button>
+        </GenerationActionButton>
     );
 }

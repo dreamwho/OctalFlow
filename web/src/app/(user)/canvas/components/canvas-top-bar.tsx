@@ -2,22 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Dropdown, Modal } from "antd";
-import { BookOpen, Bot, LibraryBig, Menu, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronDown, LibraryBig, Menu, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
-import { SiteLogo } from "@/components/layout/site-logo";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { CanvasProjectSaveState } from "../stores/use-canvas-store";
+import type { CanvasProjectSaveState, CanvasProjectSummary } from "../stores/use-canvas-store";
 
 export function CanvasTopBar({
     title,
+    projectId,
+    projectSummaries,
     titleDraft,
     isTitleEditing,
     onTitleDraftChange,
     onStartTitleEditing,
     onFinishTitleEditing,
     onCancelTitleEditing,
+    onSwitchProject,
     saveState,
     canUndo,
     canRedo,
@@ -33,12 +35,15 @@ export function CanvasTopBar({
     onToggleAgent,
 }: {
     title: string;
+    projectId: string;
+    projectSummaries: CanvasProjectSummary[];
     titleDraft: string;
     isTitleEditing: boolean;
     onTitleDraftChange: (value: string) => void;
     onStartTitleEditing: () => void;
     onFinishTitleEditing: () => void;
     onCancelTitleEditing: () => void;
+    onSwitchProject: (id: string) => void;
     saveState?: CanvasProjectSaveState;
     canUndo: boolean;
     canRedo: boolean;
@@ -59,6 +64,7 @@ export function CanvasTopBar({
     const menuTriggerRef = useRef<HTMLButtonElement>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [projectMenuOpen, setProjectMenuOpen] = useState(false);
 
     useEffect(() => {
         if (!isTitleEditing) return;
@@ -84,11 +90,7 @@ export function CanvasTopBar({
 
     return (
         <>
-            <div
-                className="canvas-topbar pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-16 items-center justify-between gap-2 border-b px-3 backdrop-blur-xl sm:px-5"
-                data-save-status={saveState?.status || "saved"}
-                style={{ background: colorTheme === "light" ? "rgba(255,255,255,.9)" : "rgba(9,11,16,.88)", borderColor: theme.toolbar.border }}
-            >
+            <div className="canvas-topbar pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between gap-2 px-3 pt-3 sm:px-5 sm:pt-4" data-save-status={saveState?.status || "saved"} style={{ color: theme.node.text }}>
                 <div className="canvas-topbar-left pointer-events-auto flex min-w-0 items-center gap-2 sm:gap-3">
                     <Dropdown
                         open={menuOpen}
@@ -109,18 +111,12 @@ export function CanvasTopBar({
                             ],
                         }}
                     >
-                        <button ref={menuTriggerRef} type="button" className="grid size-9 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} aria-label="打开画布菜单">
-                            <Menu className="size-5" />
+                        <button ref={menuTriggerRef} type="button" className="grid size-8 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} aria-label="打开画布菜单">
+                            <Menu className="size-4.5" />
                         </button>
                     </Dropdown>
 
-                    <div className="hidden shrink-0 items-center gap-2 sm:flex" aria-label="OctalFlow">
-                        <SiteLogo logoUrl="/brand/octaflow-mark.png" className="size-7" />
-                        <span className="text-sm font-semibold tracking-[-0.02em]">OctalFlow</span>
-                    </div>
-                    <span className="hidden h-4 w-px shrink-0 sm:block" style={{ background: theme.toolbar.border }} aria-hidden="true" />
-
-                    <div ref={titleRef} className="canvas-topbar-title flex min-w-0 items-center gap-2">
+                    <div ref={titleRef} className="canvas-topbar-title flex min-w-0 items-center gap-1">
                         {isTitleEditing ? (
                             <input
                                 autoFocus
@@ -135,27 +131,63 @@ export function CanvasTopBar({
                                 style={{ color: theme.node.text }}
                             />
                         ) : (
-                            <button
-                                type="button"
-                                className="canvas-topbar-title-button max-w-[min(34vw,280px)] truncate border-b border-dashed border-transparent text-left text-sm font-semibold tracking-normal transition hover:border-current sm:text-base"
-                                onDoubleClick={onStartTitleEditing}
-                                title="双击修改画布名称"
-                            >
-                                {title}
-                            </button>
+                            <>
+                                <button
+                                    type="button"
+                                    className="canvas-topbar-title-button inline-flex h-8 max-w-[min(42vw,280px)] items-center rounded-lg border border-transparent px-2 text-left text-sm font-semibold tracking-normal transition hover:border-current hover:bg-black/[.035] focus-visible:outline-none focus-visible:ring-2 dark:hover:bg-white/[.06]"
+                                    onClick={onStartTitleEditing}
+                                    title="修改画布名称"
+                                    aria-label={`修改画布名称：${title}`}
+                                >
+                                    <span className="truncate">{title}</span>
+                                </button>
+                                <Dropdown
+                                    open={projectMenuOpen}
+                                    onOpenChange={setProjectMenuOpen}
+                                    trigger={["click"]}
+                                    menu={{
+                                        selectable: false,
+                                        items: projectSummaries.map((project) => ({
+                                            key: project.id,
+                                            label: (
+                                                <span className="flex min-w-44 items-center gap-2">
+                                                    <span className="min-w-0 flex-1 truncate">{project.title}</span>
+                                                    {project.id === projectId ? <Check className="size-4 shrink-0 text-indigo-500" aria-hidden="true" /> : null}
+                                                </span>
+                                            ),
+                                        })),
+                                        onClick: ({ key }) => {
+                                            setProjectMenuOpen(false);
+                                            if (key !== projectId) onSwitchProject(String(key));
+                                        },
+                                    }}
+                                >
+                                    <button
+                                        type="button"
+                                        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-transparent transition hover:border-current hover:bg-black/[.05] focus-visible:outline-none focus-visible:ring-2 dark:hover:bg-white/[.08]"
+                                        style={{ color: theme.node.text }}
+                                        title="切换画布"
+                                        aria-label="切换画布"
+                                        aria-expanded={projectMenuOpen}
+                                    >
+                                        <ChevronDown className="size-5 opacity-75" aria-hidden="true" />
+                                    </button>
+                                </Dropdown>
+                            </>
                         )}
                     </div>
-                    <span className="h-4 w-px shrink-0" style={{ background: theme.toolbar.border }} aria-hidden="true" />
+                    <span className="canvas-topbar-divider h-4 w-px shrink-0" style={{ background: theme.toolbar.border }} aria-hidden="true" />
                     <button
                         type="button"
-                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-sm font-medium transition hover:opacity-70 focus-visible:outline-none focus-visible:ring-2"
+                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition hover:opacity-70 focus-visible:outline-none focus-visible:ring-2"
                         style={{ background: assetsOpen ? theme.toolbar.itemHover : "transparent", color: theme.node.text }}
                         onClick={onToggleAssets}
                         aria-label={assetsOpen ? "关闭资产面板" : "打开资产面板"}
                         aria-expanded={assetsOpen}
+                        aria-pressed={assetsOpen}
+                        title={assetsOpen ? "关闭资产面板" : "打开资产面板"}
                     >
                         <LibraryBig className="size-4" aria-hidden="true" />
-                        <span className="hidden sm:inline">资产</span>
                     </button>
                 </div>
 
@@ -165,7 +197,7 @@ export function CanvasTopBar({
                     {!agentOpen ? (
                         <button
                             type="button"
-                            className="canvas-agent-button inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border px-2.5 text-sm font-medium shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/35 [&_svg]:size-4"
+                            className="canvas-agent-button inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/35 [&_svg]:size-4"
                             style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 10px 30px rgba(0,0,0,.28)" : "0 10px 24px rgba(28,25,23,.08)" }}
                             onClick={onToggleAgent}
                             aria-label="打开 Agent"

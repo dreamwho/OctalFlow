@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { ProxyAgent, setGlobalDispatcher } from "undici";
 import { parseChangelog } from "@/lib/release";
 
 const webDir = dirname(fileURLToPath(import.meta.url));
+const turbopackRoot = commonAncestor(webDir, dirname(realpathSync(resolve(webDir, "node_modules/next/package.json"))));
 const localVersion = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() || "dev";
 const localChangelog = readFileSync(resolve(webDir, "../CHANGELOG.md"), "utf8");
 const configuredBuildCpus = Number.parseInt(process.env.NEXT_BUILD_CPUS || "", 10);
@@ -23,9 +24,10 @@ export default function nextConfig(phase: string): NextConfig {
     return {
         distDir,
         output: "standalone",
+        outputFileTracingExcludes: { "*": ["**/.data/geminiai/accounts/**"] },
         serverExternalPackages: ["node-unrar-js"],
-        outputFileTracingRoot: webDir,
-        turbopack: { root: webDir },
+        outputFileTracingRoot: turbopackRoot,
+        turbopack: { root: turbopackRoot },
         typescript: { ignoreBuildErrors: skipBuildTypeCheck },
         allowedDevOrigins: isDev ? ["*.*.*.*"] : [],
         env: {
@@ -62,4 +64,10 @@ export default function nextConfig(phase: string): NextConfig {
             ];
         },
     };
+}
+
+function commonAncestor(first: string, second: string) {
+    let current = first;
+    while (current !== dirname(current) && relative(current, second).startsWith("..")) current = dirname(current);
+    return current;
 }

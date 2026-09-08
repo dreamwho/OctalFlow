@@ -118,6 +118,259 @@ CREATE TABLE IF NOT EXISTS system_model_channels (
 );
 ALTER TABLE system_model_channels ADD COLUMN IF NOT EXISTS webhook_secret_ciphertext text NOT NULL DEFAULT '';
 
+CREATE TABLE IF NOT EXISTS runninghub_settings (
+    id text PRIMARY KEY DEFAULT 'default',
+    enabled boolean NOT NULL DEFAULT false,
+    api_base_url text NOT NULL DEFAULT 'https://www.runninghub.ai',
+    api_key_ciphertext text NOT NULL DEFAULT '',
+    instance_type text NOT NULL DEFAULT 'standard',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT runninghub_settings_singleton CHECK (id = 'default'),
+    CONSTRAINT runninghub_settings_instance_type_check CHECK (instance_type IN ('standard', 'plus'))
+);
+INSERT INTO runninghub_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS runninghub_apps (
+    id text PRIMARY KEY,
+    remote_id text NOT NULL,
+    kind text NOT NULL,
+    name text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    thumbnail_url text NOT NULL DEFAULT '',
+    enabled boolean NOT NULL DEFAULT true,
+    feature_bindings jsonb NOT NULL DEFAULT '[]'::jsonb,
+    fields jsonb NOT NULL DEFAULT '[]'::jsonb,
+    sort_order integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT runninghub_apps_kind_check CHECK (kind IN ('ai-app', 'workflow'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS runninghub_apps_remote_kind_idx ON runninghub_apps (kind, remote_id);
+CREATE INDEX IF NOT EXISTS runninghub_apps_binding_idx ON runninghub_apps USING gin (feature_bindings);
+CREATE INDEX IF NOT EXISTS runninghub_apps_enabled_sort_idx ON runninghub_apps (enabled, sort_order, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS runninghub_tasks (
+    id text PRIMARY KEY,
+    image_task_id text,
+    user_id text,
+    app_id text REFERENCES runninghub_apps(id) ON DELETE SET NULL,
+    remote_task_id text,
+    status text NOT NULL,
+    error text,
+    result_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    CONSTRAINT runninghub_tasks_status_check CHECK (status IN ('queued', 'running', 'success', 'failed', 'cancelled'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS runninghub_tasks_image_task_idx ON runninghub_tasks (image_task_id) WHERE image_task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS runninghub_tasks_status_created_idx ON runninghub_tasks (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS runninghub_tasks_app_created_idx ON runninghub_tasks (app_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS runninghub_request_logs (
+    id text PRIMARY KEY,
+    task_id text,
+    app_id text,
+    phase text NOT NULL,
+    path text NOT NULL,
+    status_code integer NOT NULL DEFAULT 0,
+    duration_ms integer NOT NULL DEFAULT 0,
+    error text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT runninghub_request_logs_phase_check CHECK (phase IN ('account', 'sync', 'upload', 'submit', 'query', 'cancel'))
+);
+CREATE INDEX IF NOT EXISTS runninghub_request_logs_created_idx ON runninghub_request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS runninghub_request_logs_task_idx ON runninghub_request_logs (task_id, created_at DESC) WHERE task_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS magic_proxy_settings (
+    id text PRIMARY KEY DEFAULT 'default',
+    subscription_url_ciphertext text NOT NULL DEFAULT '',
+    nodes_ciphertext text NOT NULL DEFAULT '',
+    geminiai_enabled boolean NOT NULL DEFAULT false,
+    geminiai_node text,
+    gemini_tools_enabled boolean NOT NULL DEFAULT false,
+    gemini_tools_node text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT magic_proxy_settings_singleton CHECK (id = 'default')
+);
+INSERT INTO magic_proxy_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS gemini_tools_accounts (
+    id text PRIMARY KEY,
+    email text NOT NULL,
+    name text NOT NULL,
+    picture text,
+    status text NOT NULL DEFAULT 'active',
+    proxy_enabled boolean NOT NULL DEFAULT true,
+    priority integer NOT NULL DEFAULT 0,
+    plan_type text,
+    quotas jsonb NOT NULL DEFAULT '[]'::jsonb,
+    request_count bigint NOT NULL DEFAULT 0,
+    total_tokens bigint NOT NULL DEFAULT 0,
+    error_count bigint NOT NULL DEFAULT 0,
+    note text,
+    last_used_at timestamptz,
+    access_token_ciphertext text NOT NULL,
+    refresh_token_ciphertext text NOT NULL DEFAULT '',
+    expires_at timestamptz NOT NULL,
+    project_id text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT gemini_tools_accounts_status_check CHECK (status IN ('active', 'disabled', 'invalid'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS gemini_tools_accounts_email_lower_idx ON gemini_tools_accounts (lower(email));
+CREATE INDEX IF NOT EXISTS gemini_tools_accounts_route_idx ON gemini_tools_accounts (status, proxy_enabled, priority DESC, last_used_at ASC);
+
+CREATE TABLE IF NOT EXISTS gemini_tools_oauth_sessions (
+    state text PRIMARY KEY,
+    redirect_uri text NOT NULL,
+    opener_origin text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS gemini_tools_oauth_sessions_created_idx ON gemini_tools_oauth_sessions (created_at);
+
+CREATE TABLE IF NOT EXISTS gemini_tools_api_keys (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    prefix text NOT NULL,
+    key_hash text NOT NULL UNIQUE,
+    status text NOT NULL DEFAULT 'active',
+    expires_at timestamptz,
+    allowed_ips jsonb NOT NULL DEFAULT '[]'::jsonb,
+    request_count bigint NOT NULL DEFAULT 0,
+    total_tokens bigint NOT NULL DEFAULT 0,
+    last_used_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT gemini_tools_api_keys_status_check CHECK (status IN ('active', 'disabled'))
+);
+CREATE INDEX IF NOT EXISTS gemini_tools_api_keys_status_idx ON gemini_tools_api_keys (status, expires_at);
+
+CREATE TABLE IF NOT EXISTS gemini_tools_gateway_settings (
+    id text PRIMARY KEY DEFAULT 'default',
+    enabled boolean NOT NULL DEFAULT true,
+    strategy text NOT NULL DEFAULT 'round_robin',
+    session_stickiness boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT gemini_tools_gateway_singleton CHECK (id = 'default'),
+    CONSTRAINT gemini_tools_gateway_strategy_check CHECK (strategy IN ('round_robin', 'priority'))
+);
+INSERT INTO gemini_tools_gateway_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS gemini_tools_request_logs (
+    id text PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    protocol text NOT NULL,
+    path text NOT NULL,
+    model text NOT NULL,
+    account_id text,
+    account_email text,
+    status_code integer NOT NULL,
+    duration_ms integer NOT NULL,
+    prompt_tokens integer NOT NULL DEFAULT 0,
+    completion_tokens integer NOT NULL DEFAULT 0,
+    total_tokens integer NOT NULL DEFAULT 0,
+    error text,
+    key_prefix text,
+    request_preview text,
+    response_preview text,
+    CONSTRAINT gemini_tools_request_logs_protocol_check CHECK (protocol IN ('openai', 'gemini', 'anthropic', 'admin-test'))
+);
+CREATE INDEX IF NOT EXISTS gemini_tools_request_logs_created_idx ON gemini_tools_request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS gemini_tools_request_logs_status_idx ON gemini_tools_request_logs (status_code, created_at DESC);
+CREATE INDEX IF NOT EXISTS gemini_tools_request_logs_model_idx ON gemini_tools_request_logs (model, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS geminiai_request_logs (
+    id text PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    source text NOT NULL,
+    capability text NOT NULL,
+    method text NOT NULL,
+    path text NOT NULL,
+    model text NOT NULL,
+    account_id text,
+    account_email text,
+    status_code integer NOT NULL,
+    duration_ms integer NOT NULL,
+    error text,
+    request_preview text,
+    response_preview text,
+    CONSTRAINT geminiai_request_logs_source_check CHECK (source IN ('runtime', 'admin-test')),
+    CONSTRAINT geminiai_request_logs_capability_check CHECK (capability IN ('text', 'image', 'search'))
+);
+CREATE INDEX IF NOT EXISTS geminiai_request_logs_created_idx ON geminiai_request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS geminiai_request_logs_status_idx ON geminiai_request_logs (status_code, created_at DESC);
+CREATE INDEX IF NOT EXISTS geminiai_request_logs_model_idx ON geminiai_request_logs (model, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS dreamina_cli_account_state (
+    id text PRIMARY KEY DEFAULT 'default',
+    status text NOT NULL DEFAULT 'unverified',
+    user_id text,
+    user_name text,
+    vip_level text,
+    total_credit bigint,
+    cli_version text,
+    cli_commit text,
+    cli_build_time text,
+    executable_fingerprint text,
+    last_credit_checked_at timestamptz,
+    last_success_at timestamptz,
+    last_error_code text,
+    last_error_message text,
+    submit_lease_owner text,
+    submit_lease_task_id text,
+    submit_lease_until timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT dreamina_cli_account_state_singleton CHECK (id = 'default'),
+    CONSTRAINT dreamina_cli_account_state_status_check CHECK (status IN ('unconfigured', 'unverified', 'authorized', 'not_logged_in', 'permission_denied', 'compliance_required', 'error'))
+);
+INSERT INTO dreamina_cli_account_state (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
+CREATE INDEX IF NOT EXISTS dreamina_cli_account_state_lease_idx ON dreamina_cli_account_state (submit_lease_until);
+
+CREATE TABLE IF NOT EXISTS dreamina_cli_request_logs (
+    id text PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    generation_task_id text,
+    attempt_no integer,
+    command text NOT NULL,
+    phase text NOT NULL,
+    capability text,
+    model text,
+    upstream_model text,
+    status text NOT NULL,
+    duration_ms integer,
+    submit_id text,
+    before_credit bigint,
+    after_credit bigint,
+    observed_credit_delta bigint,
+    credit_observation text NOT NULL DEFAULT 'unavailable',
+    error_code text,
+    error_message text,
+    succeeded_at timestamptz,
+    failed_at timestamptz,
+    request_summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+    submission_summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+    result_summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+    CONSTRAINT dreamina_cli_request_logs_command_check CHECK (command IN ('version', 'user_credit', 'text2image', 'image2image', 'image_upscale', 'text2video', 'image2video', 'frames2video', 'multiframe2video', 'multimodal2video', 'query_result', 'download')),
+    CONSTRAINT dreamina_cli_request_logs_phase_check CHECK (phase IN ('preflight', 'submit', 'query', 'download', 'account_refresh')),
+    CONSTRAINT dreamina_cli_request_logs_capability_check CHECK (capability IS NULL OR capability IN ('image', 'video')),
+    CONSTRAINT dreamina_cli_request_logs_status_check CHECK (status IN ('started', 'success', 'failed', 'needs_review', 'deferred')),
+    CONSTRAINT dreamina_cli_request_logs_credit_observation_check CHECK (credit_observation IN ('official', 'unavailable', 'observed', 'ambiguous', 'inconsistent'))
+);
+CREATE INDEX IF NOT EXISTS dreamina_cli_request_logs_created_idx ON dreamina_cli_request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS dreamina_cli_request_logs_task_idx ON dreamina_cli_request_logs (generation_task_id, attempt_no, created_at DESC) WHERE generation_task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS dreamina_cli_request_logs_status_idx ON dreamina_cli_request_logs (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS dreamina_cli_request_logs_model_idx ON dreamina_cli_request_logs (capability, model, created_at DESC);
+CREATE INDEX IF NOT EXISTS dreamina_cli_request_logs_submit_lifecycle_idx ON dreamina_cli_request_logs (submit_id) WHERE submit_id IS NOT NULL AND phase = 'submit';
+ALTER TABLE dreamina_cli_request_logs ADD COLUMN IF NOT EXISTS succeeded_at timestamptz;
+ALTER TABLE dreamina_cli_request_logs ADD COLUMN IF NOT EXISTS failed_at timestamptz;
+ALTER TABLE dreamina_cli_request_logs ADD COLUMN IF NOT EXISTS submission_summary jsonb NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE SEQUENCE IF NOT EXISTS user_account_id_seq START WITH 1;
 
 CREATE TABLE IF NOT EXISTS users (

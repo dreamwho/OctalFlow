@@ -60,7 +60,7 @@ export default async function AdminSetupPage() {
                             </span>
                             <span className="truncate">初始化配置</span>
                         </Link>
-                        <UserStatusActions initialUser={currentUser} />
+                        <UserStatusActions initialUser={currentUser} themeScope="admin" />
                     </div>
                 </header>
 

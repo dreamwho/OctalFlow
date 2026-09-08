@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CanvasAgentChatAttachment } from "./canvas-agent-chat-ui";
+import { isCanvasAgentAttachmentFile, isCanvasAgentTextFile } from "./canvas-agent-attachment-files";
 
 type CanvasAgentUpload = CanvasAgentChatAttachment & {
     file: File;
@@ -19,7 +20,7 @@ export function useCanvasAgentAttachments(onUpload: (file: File) => Promise<stri
     }, [uploads]);
 
     const releaseUpload = useCallback((upload: CanvasAgentUpload) => {
-        URL.revokeObjectURL(upload.url);
+        if (upload.url) URL.revokeObjectURL(upload.url);
     }, []);
 
     useEffect(() => {
@@ -45,10 +46,16 @@ export function useCanvasAgentAttachments(onUpload: (file: File) => Promise<stri
         async (id: string, file: File) => {
             setUploads((current) => current.map((upload) => (upload.id === id ? { ...upload, status: "uploading", error: undefined } : upload)));
             try {
+                if (isCanvasAgentTextFile(file)) {
+                    const text = await file.text();
+                    if (!text.trim()) throw new Error("文本附件内容为空");
+                    setUploads((current) => current.map((upload) => (upload.id === id ? { ...upload, status: "ready", text, error: undefined } : upload)));
+                    return;
+                }
                 const nodeId = await onUpload(file);
                 setUploads((current) => current.map((upload) => (upload.id === id ? { ...upload, status: "ready", nodeId, error: undefined } : upload)));
             } catch (error) {
-                const message = error instanceof Error ? error.message : "图片上传失败";
+                const message = error instanceof Error ? error.message : "参考素材上传失败";
                 setUploads((current) => current.map((upload) => (upload.id === id ? { ...upload, status: "failed", error: message } : upload)));
             }
         },
@@ -58,8 +65,11 @@ export function useCanvasAgentAttachments(onUpload: (file: File) => Promise<stri
     const addFiles = useCallback(
         async (files: FileList | File[] | null) => {
             const pending = Array.from(files || [])
-                .filter((file) => file.type.startsWith("image/"))
-                .map((file) => ({ id: nanoid(), name: file.name || "粘贴图片", url: URL.createObjectURL(file), status: "uploading" as const, file }));
+                .filter(isCanvasAgentAttachmentFile)
+                .map((file) => {
+                    const type = isCanvasAgentTextFile(file) ? ("text" as const) : file.type.startsWith("video/") ? ("video" as const) : ("image" as const);
+                    return { id: nanoid(), name: file.name || "粘贴素材", url: type === "text" ? "" : URL.createObjectURL(file), type, status: "uploading" as const, file };
+                });
             if (!pending.length) return;
             setUploads((current) => [...current, ...pending]);
             await Promise.all(pending.map((upload) => uploadOne(upload.id, upload.file)));

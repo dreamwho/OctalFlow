@@ -1,7 +1,7 @@
 import { runCustomImageTask, pollCustomImageTask } from "@/app/api/image-tasks/image-task-custom";
 import { runGeminiImageTask } from "@/app/api/image-tasks/image-task-gemini";
 import { runOpenAiImageTask } from "@/app/api/image-tasks/image-task-openai";
-import { directRemoteImageResult, imageUnits, ImageQueryContractError, ImageUpstreamTerminalError, inlineRemoteImageResult, pollOpenAiImageTask, resolveProxiedMediaSource } from "@/app/api/image-tasks/image-task-support";
+import { directRemoteImageResult, imageReferenceToFile, imageUnits, ImageQueryContractError, ImageUpstreamTerminalError, inlineRemoteImageResult, pollOpenAiImageTask, resolveProxiedMediaSource } from "@/app/api/image-tasks/image-task-support";
 import type { ImageTaskMediaResult, ImageTaskResult, ImageTaskRunResult } from "@/app/api/image-tasks/image-task-types";
 import { stableMediaUrl, writeImageGenerationLog } from "@/app/api/image-tasks/image-task-runner";
 import { getAuthSettings, refundUserPoints } from "@/lib/auth/store";
@@ -15,6 +15,9 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { GenerationSubmissionSafeFailure, generationSubmissionUncertainError } from "@/lib/server/generation-submission-error";
 import { getImageTask, transitionImageTask, updateImageTask, type ImageTask } from "@/lib/server/image-task-store";
 import { maintenanceWorkerContext } from "@/lib/server/maintenance-auth";
+import { isDreaminaCliImageTask, isDreaminaCliImageUpscaleTask, isDreaminaCliSeedreamImageTask, queryDreaminaCliImageTask, runDreaminaCliImageUpscaleTask, runDreaminaCliSeedreamImageTask } from "@/lib/server/dreamina-cli-image-runtime";
+import { isDreaminaCliConfig } from "@/lib/server/dreamina-cli-service";
+import { cancelRunningHubTask, queryRunningHubImageTask, RunningHubError, submitRunningHubImageTask } from "@/lib/server/runninghub-service";
 
 export type ImageUpstreamStep =
     | { state: "pending"; upstream: NonNullable<ImageTask["upstream"]>; status: string }
@@ -31,8 +34,32 @@ export async function createImageTaskUpstreamStep(task: ImageTask, origin: strin
     const running = current.status === "pending" ? await transitionImageTask(current, ["pending"], { status: "running" }) : current;
     if (!running) return { state: "failed", error: "图片任务状态已变化", status: "conflict" };
     if (running.upstream?.id) return queryImageTaskUpstreamStep(running, origin, cookie, workerUserId);
-
     const authContext = cookie || maintenanceWorkerContext(workerUserId || task.userId);
+
+    const runningHub = running.runningHub;
+    if (runningHub) {
+        const started = startGenerationAttempt(running.attempts || [], { channelId: "runninghub", model: generationModelId(running.config), capability: "image" });
+        const candidate = { ...running, attempts: started.attempts, attemptNo: started.attempt.attemptNo };
+        await updateImageTask(running.id, { attempts: candidate.attempts, attemptNo: candidate.attemptNo });
+        try {
+            const files = await Promise.all(candidate.references.map((reference, index) => imageReferenceToFile(reference, reference.name || `reference-${index + 1}.png`, origin, authContext)));
+            const submitted = await submitRunningHubImageTask({
+                imageTaskId: candidate.id,
+                userId: candidate.userId,
+                appId: runningHub.appId,
+                prompt: candidate.prompt,
+                files,
+                size: candidate.config.size,
+                quality: candidate.config.quality,
+            });
+            const withProvider: ImageTask = { ...candidate, runningHub: { ...runningHub, localTaskId: submitted.id } };
+            await updateImageTask(candidate.id, { runningHub: withProvider.runningHub });
+            return handleImageProviderResult(withProvider, { dataUrl: "", pending: { id: submitted.id, mediaBaseUrl: "runninghub://outputs", pollBaseUrl: "runninghub://outputs" } }, origin, authContext);
+        } catch (error) {
+            return { state: "failed", error: error instanceof Error ? error.message : "RunningHub 任务提交失败", status: "failed" };
+        }
+    }
+
     const candidates = [running.config, ...(running.candidateConfigs || [])];
     let attempts = running.attempts || [];
     let latestError = "没有可用的图片渠道";
@@ -49,11 +76,16 @@ export async function createImageTaskUpstreamStep(task: ImageTask, origin: strin
             lastUpstreamStatus: "submitting",
         });
         try {
-            const result = usesDeclarativeImageProtocol(config.advancedConfig?.protocol)
-                ? await runCustomImageTask(candidate, origin, publicOrigin, authContext, true)
-                : config.apiFormat === "gemini"
-                  ? await runGeminiImageTask(candidate, origin, authContext)
-                  : await runOpenAiImageTask(candidate, origin, publicOrigin, authContext, true);
+            if (isDreaminaCliConfig(candidate.config) && !isDreaminaCliImageTask(candidate)) throw new GenerationSubmissionSafeFailure("即梦 CLI 图片任务必须使用受支持的 Seedream 模型或图片超清 operation");
+            const result = isDreaminaCliImageUpscaleTask(candidate)
+                ? await runDreaminaCliImageUpscaleTask(candidate, origin, authContext)
+                : isDreaminaCliSeedreamImageTask(candidate)
+                  ? await runDreaminaCliSeedreamImageTask(candidate, origin, authContext)
+                  : usesDeclarativeImageProtocol(config.advancedConfig?.protocol)
+                    ? await runCustomImageTask(candidate, origin, publicOrigin, authContext, true)
+                    : config.apiFormat === "gemini"
+                      ? await runGeminiImageTask(candidate, origin, authContext)
+                      : await runOpenAiImageTask(candidate, origin, publicOrigin, authContext, true);
             return await handleImageProviderResult(candidate, result, origin, authContext);
         } catch (error) {
             if (!(error instanceof GenerationSubmissionSafeFailure)) throw generationSubmissionUncertainError(error, "图片任务创建结果未知");
@@ -61,6 +93,7 @@ export async function createImageTaskUpstreamStep(task: ImageTask, origin: strin
             attempts = finishGenerationAttempt(attempts, candidate.attemptNo, { status: "failed", error: latestError });
             await refundImageCandidate(candidate);
             await updateImageTask(task.id, { attempts, attemptNo: candidate.attemptNo, upstream: undefined, billing: undefined });
+            if (isDreaminaCliConfig(candidate.config)) return { state: "failed", error: latestError, status: "failed" };
         }
     }
     return { state: "failed", error: latestError, status: "failed" };
@@ -71,9 +104,20 @@ export async function queryImageTaskUpstreamStep(task: ImageTask, origin: string
     if (!upstream?.id) return { state: "failed", error: "图片任务缺少上游任务 ID", status: "missing_upstream_id" };
     const authContext = cookie || maintenanceWorkerContext(workerUserId || task.userId);
     try {
-        const result = usesDeclarativeImageProtocol(task.config.advancedConfig?.protocol)
-            ? await pollCustomImageTask(task, upstream.id, upstream.pollBaseUrl, authContext, true)
-            : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true);
+        if (task.runningHub?.localTaskId) {
+            const runningHubTask = await queryRunningHubImageTask(task.runningHub.localTaskId);
+            if (runningHubTask.status === "failed") return { state: "failed", error: runningHubTask.error || "RunningHub 任务失败", status: "failed" };
+            if (runningHubTask.status === "success") {
+                return handleImageProviderResult(task, { dataUrl: runningHubTask.resultUrls[0], remoteUrl: runningHubTask.resultUrls[0], results: runningHubTask.resultUrls.map((url) => ({ dataUrl: url, remoteUrl: url })) }, origin, authContext);
+            }
+            return { state: "pending", upstream, status: runningHubTask.status };
+        }
+        if (isDreaminaCliConfig(task.config) && !isDreaminaCliImageTask(task)) return { state: "failed", error: "即梦 CLI 图片任务模型无效", status: "failed" };
+        const result = isDreaminaCliImageTask(task)
+            ? await queryDreaminaCliImageTask(task)
+            : usesDeclarativeImageProtocol(task.config.advancedConfig?.protocol)
+              ? await pollCustomImageTask(task, upstream.id, upstream.pollBaseUrl, authContext, true)
+              : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true);
         return await handleImageProviderResult(task, { ...result, pointsCost: task.billing?.pointsCost, pointsRecordId: task.billing?.pointsRecordId }, origin, authContext);
     } catch (error) {
         if (error instanceof ImageQueryContractError) return { state: "needs_review", reason: error.message, status: "query_contract_invalid" };
@@ -88,9 +132,18 @@ export async function queryCancelledImageTaskUpstreamStep(task: ImageTask, origi
     if (!upstream?.id) return { state: "terminal" as const, status: "missing_upstream_id" };
     const authContext = cookie || maintenanceWorkerContext(workerUserId || task.userId);
     try {
-        const result = usesDeclarativeImageProtocol(task.config.advancedConfig?.protocol)
-            ? await pollCustomImageTask(task, upstream.id, upstream.pollBaseUrl, authContext, true)
-            : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true);
+        if (task.runningHub?.localTaskId) {
+            await cancelRunningHubTask(task.runningHub.localTaskId).catch((error) => {
+                if (!(error instanceof RunningHubError)) throw error;
+            });
+            return { state: "terminal" as const, status: "cancelled" };
+        }
+        if (isDreaminaCliConfig(task.config) && !isDreaminaCliImageTask(task)) return { state: "terminal" as const, status: "failed" };
+        const result = isDreaminaCliImageTask(task)
+            ? await queryDreaminaCliImageTask(task)
+            : usesDeclarativeImageProtocol(task.config.advancedConfig?.protocol)
+              ? await pollCustomImageTask(task, upstream.id, upstream.pollBaseUrl, authContext, true)
+              : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true);
         return result.pending ? { state: "pending" as const, status: "processing" } : { state: "terminal" as const, status: "completed" };
     } catch (error) {
         if (error instanceof ImageUpstreamTerminalError || error instanceof GenerationSubmissionSafeFailure) return { state: "terminal" as const, status: "failed" };

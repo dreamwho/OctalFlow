@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { App, Button, Input, InputNumber, Modal, Segmented } from "antd";
-import { Clapperboard, Plus } from "lucide-react";
+import { Check, Clapperboard, Film, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useUserStore } from "@/stores/use-user-store";
 import { CompactEmptyState } from "@/components/compact-empty-state";
 import { normalizeDramaImageSize } from "@/lib/drama-image-size";
+import { DEFAULT_DRAMA_VISUAL_STYLE_ID, DRAMA_VISUAL_STYLE_PRESETS, getDramaVisualStylePreset } from "@/lib/drama-visual-style-presets";
 
 import { DramaProjectCard } from "./components/drama-project-card";
 import { useDramaStore } from "./stores/use-drama-store";
@@ -26,7 +27,7 @@ export default function DramaPage() {
     const [open, setOpen] = useState(false);
     const [title, setTitle] = useState("");
     const [summary, setSummary] = useState("");
-    const [style, setStyle] = useState("电影感国漫");
+    const [stylePresetId, setStylePresetId] = useState(DEFAULT_DRAMA_VISUAL_STYLE_ID);
     const [ratio, setRatio] = useState("9:16");
     const [customWidth, setCustomWidth] = useState(1080);
     const [customHeight, setCustomHeight] = useState(1920);
@@ -42,7 +43,8 @@ export default function DramaPage() {
         if (!normalizedSize) return message.warning("请输入有效的短剧尺寸");
         setCreating(true);
         try {
-            const id = await createProject({ title: title.trim(), summary: summary.trim(), style: style.trim(), ratio: normalizedSize });
+            const stylePreset = getDramaVisualStylePreset(stylePresetId);
+            const id = await createProject({ title: title.trim(), summary: summary.trim(), style: stylePreset.label, stylePresetId: stylePreset.id, ratio: normalizedSize });
             setOpen(false);
             setTitle("");
             setSummary("");
@@ -106,7 +108,7 @@ export default function DramaPage() {
             <Modal
                 title="新建短剧项目"
                 open={open}
-                width={520}
+                width={760}
                 destroyOnHidden
                 style={{ maxWidth: "calc(100vw - 24px)" }}
                 styles={{ body: { paddingTop: 4 } }}
@@ -123,19 +125,45 @@ export default function DramaPage() {
                         <label htmlFor="drama-project-title" className="text-sm font-medium leading-5">
                             项目名称
                         </label>
-                        <Input id="drama-project-title" className="!h-9" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：月影长安" />
+                        <Input id="drama-project-title" className="!h-9" value={title} onChange={(event: ChangeEvent<HTMLInputElement>) => setTitle(event.target.value)} placeholder="例如：月影长安" />
                     </div>
                     <div className="grid gap-1.5">
                         <label htmlFor="drama-project-summary" className="text-sm font-medium leading-5">
                             故事简介
                         </label>
-                        <Input.TextArea id="drama-project-summary" value={summary} onChange={(event) => setSummary(event.target.value)} autoSize={{ minRows: 2, maxRows: 3 }} placeholder="一句话说明人物、冲突和目标" />
+                        <Input.TextArea id="drama-project-summary" value={summary} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setSummary(event.target.value)} autoSize={{ minRows: 2, maxRows: 3 }} placeholder="一句话说明人物、冲突和目标" />
                     </div>
-                    <div className="grid gap-1.5">
-                        <label htmlFor="drama-project-style" className="text-sm font-medium leading-5">
-                            视觉风格
-                        </label>
-                        <Input id="drama-project-style" className="!h-9" value={style} onChange={(event) => setStyle(event.target.value)} />
+                    <div className="grid gap-2">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-medium leading-5">镜头风格</span>
+                            <span className="text-[11px] text-muted-foreground">会写入分镜图与视频提示词</span>
+                        </div>
+                        <div className="hide-scrollbar grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                            {DRAMA_VISUAL_STYLE_PRESETS.map((preset) => {
+                                const active = preset.id === stylePresetId;
+                                return (
+                                    <button
+                                        key={preset.id}
+                                        type="button"
+                                        className={`relative rounded-xl border p-3 text-left transition ${active ? "border-primary bg-primary/8 shadow-[0_8px_24px_rgba(91,92,226,.12)]" : "border-border bg-card hover:border-primary/45 hover:bg-muted/35"}`}
+                                        onClick={() => setStylePresetId(preset.id)}
+                                        aria-pressed={active}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className={`grid size-7 place-items-center rounded-lg ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                                                {active ? <Check className="size-3.5" /> : <Film className="size-3.5" />}
+                                            </span>
+                                            <span className="text-sm font-semibold text-foreground">{preset.label}</span>
+                                        </div>
+                                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{preset.shortDescription}</p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+                            <span className="font-semibold text-foreground">{getDramaVisualStylePreset(stylePresetId).label}</span>
+                            <span> · {getDramaVisualStylePreset(stylePresetId).shotLanguage}</span>
+                        </div>
                     </div>
                     <div className="grid min-w-0 gap-1.5">
                         <span className="text-sm font-medium leading-5">生成尺寸</span>
@@ -149,7 +177,7 @@ export default function DramaPage() {
                                     { label: "16:9", value: "16:9" },
                                     { label: "自定义", value: "custom" },
                                 ]}
-                                onChange={(value) => setRatio(value === "custom" ? `${customWidth}x${customHeight}` : String(value))}
+                                onChange={(value: string | number) => setRatio(value === "custom" ? `${customWidth}x${customHeight}` : String(value))}
                             />
                         </div>
                         {ratio.includes("x") ? (
@@ -159,7 +187,7 @@ export default function DramaPage() {
                                     min={256}
                                     value={customWidth}
                                     prefix="W"
-                                    onChange={(value) => {
+                                    onChange={(value: number | null) => {
                                         const width = Number(value) || 256;
                                         setCustomWidth(width);
                                         setRatio(`${width}x${customHeight}`);
@@ -171,7 +199,7 @@ export default function DramaPage() {
                                     min={256}
                                     value={customHeight}
                                     prefix="H"
-                                    onChange={(value) => {
+                                    onChange={(value: number | null) => {
                                         const height = Number(value) || 256;
                                         setCustomHeight(height);
                                         setRatio(`${customWidth}x${height}`);

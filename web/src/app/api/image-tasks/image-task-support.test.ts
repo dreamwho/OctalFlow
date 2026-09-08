@@ -5,6 +5,7 @@ vi.mock("@/lib/server/safe-outbound-fetch", () => ({ fetchSafeOutbound: (url: st
 import { GenerationSubmissionSafeFailure } from "@/lib/server/generation-submission-error";
 import { maintenanceWorkerContext } from "@/lib/server/maintenance-auth";
 import { providerUploadReferenceRequestUrl } from "./image-task-reference-urls";
+import { geminiAiImageRequestFields, geminiAiImageSize } from "./image-task-geminiai-options";
 import {
     allowsImageProtocolFallback,
     ImageQueryContractError,
@@ -18,6 +19,7 @@ import {
     parseImageQueryJson,
     resolveRequestSize,
     resolveResultSize,
+    sanitizeModelAdvancedConfig,
     sanitizeConfigs,
     shouldFallbackToJsonImageEdit,
     shouldRetryJsonImageEditPayload,
@@ -100,6 +102,18 @@ describe("GlobalAiOpc image task paths", () => {
         expect(imageRequestAspectRatio("9:16")).toBe("9:16");
     });
 
+    it("maps GeminiAI Canvas quality and ratio to AI Studio output fields", () => {
+        expect(geminiAiImageSize("high")).toBe("4K");
+        expect(geminiAiImageSize("medium")).toBe("2K");
+        expect(geminiAiImageSize("low")).toBe("1K");
+        for (const ratio of ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9"]) {
+            expect(geminiAiImageRequestFields({ size: ratio, quality: "high", advancedConfig: { protocol: "geminiai" } })).toEqual({ aspect_ratio: ratio, image_size: "4K", google_search: false, image_search: false });
+        }
+        expect(geminiAiImageRequestFields({ size: "auto", quality: "medium", advancedConfig: { protocol: "geminiai" } })).toEqual({ image_size: "2K", google_search: false, image_search: false });
+        expect(geminiAiImageRequestFields({ size: "9:16", quality: "high", advancedConfig: { protocol: "openai" } })).toEqual({});
+        expect(geminiAiImageRequestFields({ size: "9:16", quality: "high", advancedConfig: { protocol: "gemini-tools" } })).toEqual({});
+    });
+
     it("uses the configured create and result endpoints instead of OpenAI defaults", async () => {
         await expect(openAiImageTaskPath(config, "generation")).resolves.toBe("/image2/images");
         expect(imageTaskPollUrls(config, "http://localhost:3000/api/ai/system/global-image/image2/images", "task 1")[0]).toBe("http://localhost:3000/api/ai/system/global-image/result/task%201");
@@ -143,12 +157,8 @@ describe("GlobalAiOpc image task paths", () => {
     });
 
     it("uses the established WebP media variant for local provider reference uploads", () => {
-        expect(providerUploadReferenceRequestUrl("/api/generation-log-assets/permanent/scene.png")).toBe(
-            "/api/generation-log-assets/permanent/scene.png?format=webp&width=1600",
-        );
-        expect(providerUploadReferenceRequestUrl("/api/reference-assets/permanent/character.png?token=test")).toBe(
-            "/api/reference-assets/permanent/character.png?token=test&format=webp&width=1600",
-        );
+        expect(providerUploadReferenceRequestUrl("/api/generation-log-assets/permanent/scene.png")).toBe("/api/generation-log-assets/permanent/scene.png?format=webp&width=1600");
+        expect(providerUploadReferenceRequestUrl("/api/reference-assets/permanent/character.png?token=test")).toBe("/api/reference-assets/permanent/character.png?token=test&format=webp&width=1600");
         expect(providerUploadReferenceRequestUrl("https://cdn.example.com/original.png")).toBe("https://cdn.example.com/original.png");
     });
 
@@ -246,6 +256,21 @@ describe("GlobalAiOpc image task paths", () => {
         );
 
         expect(resolved?.advancedConfig).toMatchObject({ protocol: "openai", editPath: "/images/edits", supportsReferenceImage: true });
+    });
+
+    it("uses the Dreamina upscale model reference capability instead of the channel default", () => {
+        expect(
+            sanitizeModelAdvancedConfig(
+                {
+                    protocol: "dreamina-cli",
+                    supportsReferenceImage: false,
+                    modelConfigs: {
+                        "dreamina-image-upscale": { capability: "image", apiFormat: "openai", protocol: "dreamina-cli", supportsReferenceImage: true },
+                    },
+                } as never,
+                "dreamina-image-upscale",
+            ),
+        ).toMatchObject({ protocol: "dreamina-cli", supportsReferenceImage: true });
     });
 
     it("recognizes Pydantic dictionary errors as an incompatible edit payload", () => {

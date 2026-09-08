@@ -40,7 +40,7 @@ describe("创作项目交接转换", () => {
 
         expect(nodes).toHaveLength(3);
         expect(nodes[0]).toMatchObject({ type: CanvasNodeType.Brief, title: "城市夜行", metadata: { agentRunId: "run-one" } });
-        expect(nodes[1]).toMatchObject({ type: CanvasNodeType.Image, width: 360, height: 180, metadata: { content: "/api/assets/image-one", status: "success" } });
+        expect(nodes[1]).toMatchObject({ type: CanvasNodeType.Image, width: 340, height: 170, metadata: { content: "/api/assets/image-one", status: "success" } });
         expect(nodes[2]).toMatchObject({ type: CanvasNodeType.Text, metadata: { content: "雨夜里，女主收到一封来自未来的信。", status: "success" } });
     });
 

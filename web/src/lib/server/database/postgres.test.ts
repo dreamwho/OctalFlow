@@ -126,11 +126,24 @@ describe("PostgreSQL schema lifecycle", () => {
         expect(ddl).toContain("conflict_count integer NOT NULL DEFAULT 0");
         expect(ddl).toContain("user_id text NOT NULL REFERENCES octalaicanvas_users(id) ON DELETE CASCADE");
         expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_account_deletion_requests");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_gemini_tools_accounts");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_gemini_tools_oauth_sessions");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_gemini_tools_api_keys");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_gemini_tools_gateway_settings");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_gemini_tools_request_logs");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_magic_proxy_settings");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_dreamina_cli_account_state");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_dreamina_cli_request_logs");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_runninghub_settings");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_runninghub_apps");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_runninghub_tasks");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS octalaicanvas_runninghub_request_logs");
+        expect(ddl).toContain("CREATE UNIQUE INDEX IF NOT EXISTS octalaicanvas_gemini_tools_accounts_email_lower_idx");
         expect(ddl).toContain("'review_pending', 'reviewing', 'review_unavailable'");
         expect(ddl).toContain("task_type = 'agent' AND status = 'success' AND execution_phase IN ('review_pending', 'reviewing')");
 
         const tableNames = [...ddl.matchAll(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z][a-z0-9_]*)/gi)].map((match) => match[1]).sort();
-        expect(tableNames).toHaveLength(59);
+        expect(tableNames).toHaveLength(72);
         expect(tableNames.every((name) => name.startsWith("octalaicanvas_"))).toBe(true);
         expect(tableNames).not.toContain("octalaicanvas_check_ins");
         expect(ddl).toContain("DROP TABLE IF EXISTS octalaicanvas_check_ins");

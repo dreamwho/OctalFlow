@@ -9,6 +9,7 @@
 @import "./styles/global-admin-controls.css";
 @import "./styles/global-selection-controls.css";
 @import "./styles/global-scroll-utilities.css";
+@import "./styles/global-generation-actions.css";
 @import "./styles/global-canvas-controls.css";
 @import "./styles/global-responsive-controls.css";
 @import "./styles/global-canvas-overrides.css";

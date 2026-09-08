@@ -1,8 +1,116 @@
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
+
+test("estimated generation progress advances and survives reload without claiming completion", async ({ page, request }) => {
+    const startedAt = Date.now() - 180_000;
+    const project = await createCanvasProject(request, { title: "预计进度回归", viewport: { x: 0, y: 0, k: 1 }, nodes: [node("estimated-progress", "image", 20, 140, 340, 191, { status: "loading", generationStartedAt: startedAt }), node("fresh-progress", "text", 420, 140, 340, 191, { status: "loading" })], connections: [] });
+    try {
+        await page.goto(`/canvas/${project.id}`);
+        const loading = page.locator('[data-node-id="estimated-progress"] [data-canvas-node-loading]');
+        await expect(loading).toHaveAttribute("aria-label", /生成中 预计 8\d%/);
+        await expect(loading).toContainText("已等待 3:");
+        await expect(loading).toContainText("等待结果");
+        const fresh = page.locator('[data-node-id="fresh-progress"] [data-canvas-node-loading]');
+        const initial = await fresh.getAttribute("aria-label");
+        await expect(fresh).not.toHaveAttribute("aria-label", initial!);
+        const before = Number((await loading.getAttribute("aria-label"))!.match(/\d+/)![0]);
+        await page.reload();
+        await expect(loading).toHaveAttribute("aria-label", /生成中 预计 8\d%/);
+        expect(Number((await loading.getAttribute("aria-label"))!.match(/\d+/)![0])).toBeGreaterThanOrEqual(before);
+        for (const width of [1440, 390, 430]) {
+            await page.setViewportSize({ width, height: 900 });
+            const parent = (await loading.boundingBox())!;
+            const status = (await loading.locator(":scope > span").boundingBox())!;
+            expect(status.y + status.height).toBeLessThan(parent.y + parent.height);
+            expect(status.x + status.width).toBeLessThanOrEqual(parent.x + parent.width);
+            await page.screenshot({ path: `.e2e-artifacts/estimated-progress-${width}.png` });
+        }
+    } finally {
+        await deleteCanvasProject(request, project.id);
+    }
+});
+
+test("local depth extraction streams real frame progress and appears in generation operations", async ({ page, request }) => {
+    test.skip(!existsSync("../services/video-depth/models/depth-anything-v2-small-hf/config.json"), "local depth model is not installed");
+    const directory = await mkdtemp(join(tmpdir(), "canvas-depth-e2e-"));
+    let projectId: string | undefined;
+    try {
+        const source = join(directory, "source.mp4");
+        execFileSync(process.env.FFMPEG_PATH || "ffmpeg", ["-y", "-f", "lavfi", "-i", "testsrc2=size=160x96:rate=2", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", source], { stdio: "ignore" });
+        const upload = await request.post("/api/reference-assets", { data: { dataUrl: `data:video/mp4;base64,${(await readFile(source)).toString("base64")}`, type: "video", persistent: true, originalName: "depth-e2e.mp4" } });
+        expect(upload.ok(), await upload.text()).toBe(true);
+        const asset = await upload.json();
+        const project = await createCanvasProject(request, {
+            title: "深度提取端到端回归",
+            viewport: { x: 0, y: 0, k: 1 },
+            nodes: [node("depth-source", "video", 100, 180, 340, 204, { storageKey: asset.key, serverUrl: asset.url, content: asset.url, status: "success" })],
+            connections: [],
+        });
+        projectId = project.id;
+        await page.goto(`/canvas/${project.id}`);
+        const started = Date.now();
+        const sourceNode = page.locator('[data-node-id="depth-source"]');
+        await sourceNode.click({ button: "right", position: { x: 100, y: 80 } });
+        const completed = page.waitForResponse((response) => response.url().endsWith("/api/canvas/video-depth") && response.request().method() === "POST");
+        await page.getByRole("menuitem", { name: "深度提取", exact: true }).click();
+        const response = await completed;
+        expect(response.ok()).toBe(true);
+        const events = (await response.text())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+        expect(events.filter((event) => event.progress?.stage.startsWith("深度推理")).map((event) => event.progress.percent)).toEqual([25, 50, 75, 100]);
+        expect(events.at(-1).data.video).toMatchObject({ width: 160, height: 96 });
+        await expect(page.locator('[data-node-id^="video-depth-"] video')).toHaveAttribute("src", events.at(-1).data.video.serverUrl);
+        const operations = await request.get("/api/admin/generation-operations?type=render&surface=canvas");
+        expect(operations.ok()).toBe(true);
+        const task = (await operations.json()).data.items.find((item: { createdAt: number }) => item.createdAt >= started);
+        expect(task).toMatchObject({ prompt: "深度提取", status: "success", provider: "local-depth", lastUpstreamStatus: "完成 100%" });
+        await page.goto("/admin/generation-operations");
+        await expect(page.getByText("深度提取", { exact: true }).first()).toBeVisible();
+        await expect(page.getByText("执行进度：完成 100%", { exact: true }).first()).toBeVisible();
+    } finally {
+        if (projectId) await deleteCanvasProject(request, projectId);
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test("canvas generation progress stays in the top-left on desktop and mobile", async ({ page, request }) => {
+    const project = await createCanvasProject(request, {
+        title: `生成进度回归 ${randomUUID().slice(0, 8)}`,
+        viewport: { x: 0, y: 0, k: 1 },
+        nodes: [node("depth-progress", "video", 20, 140, 340, 191, { status: "loading", generationProgress: 6, generationStage: "深度推理" })],
+        connections: [],
+    });
+    try {
+        for (const width of [1440, 390, 430]) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.goto(`/canvas/${project.id}`, { waitUntil: "domcontentloaded" });
+            const loading = page.locator('[data-node-id="depth-progress"] [data-canvas-node-loading]');
+            await expect(loading).toBeVisible();
+            await expect(loading).toHaveAttribute("aria-label", "生成中 6%");
+            const label = loading.locator("span");
+            const containerBox = (await loading.boundingBox())!;
+            const labelBox = (await label.boundingBox())!;
+            expect(labelBox.x).toBeGreaterThan(containerBox.x);
+            expect(labelBox.y).toBeGreaterThan(containerBox.y);
+            expect(labelBox.y - containerBox.y).toBeLessThan(containerBox.height / 3);
+            expect(labelBox.x + labelBox.width).toBeLessThanOrEqual(containerBox.x + containerBox.width);
+            await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+            await page.screenshot({ path: `.e2e-artifacts/generation-progress-${width}.png` });
+        }
+    } finally {
+        await deleteCanvasProject(request, project.id);
+    }
+});
 
 test("canvas keeps editing, selection, linking and persistence fluid", async ({ page, request }) => {
     test.setTimeout(180_000);
@@ -173,6 +281,180 @@ test("canvas keeps editing, selection, linking and persistence fluid", async ({ 
         await expect.poll(() => readCanvasNodeCount(request, projectPath)).toBe(6);
     } finally {
         await deleteCanvasProject(request, project.id);
+    }
+});
+
+test("canvas arranges a right-clicked selection, closes prompts on blank space, and creates an interior design node", async ({ page, request }, testInfo) => {
+    test.setTimeout(120_000);
+    page.setDefaultTimeout(10_000);
+    const project = await createCanvasProject(request, {
+        title: `Canvas 室内设计 ${randomUUID().slice(0, 8)}`,
+        viewport: { x: 60, y: 100, k: 1 },
+        nodes: [
+            node("text-filled", "text", 40, 90, 240, 160, { content: "空间改造说明" }),
+            node("config-empty", "config", 360, 120, 280, 180, { composerContent: "" }),
+            node("image-source", "image", 190, 360, 260, 180, {
+                content: "https://cdn.example.com/canvas-interior-source.webp",
+                remoteUrl: "https://cdn.example.com/canvas-interior-source.webp",
+            }),
+        ],
+        connections: [],
+    });
+    const projectPath = `/api/canvas/projects/${project.id}`;
+
+    try {
+        await page.addInitScript(() => {
+            if (!localStorage.getItem("octalaicanvas:theme_store")) localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+        });
+        await page.goto(`/canvas/${project.id}`, { waitUntil: "domcontentloaded" });
+        const surface = page.locator("[data-canvas-surface]");
+        const imageNode = page.locator('[data-node-id="image-source"]');
+        await expect(surface).toBeVisible({ timeout: 20_000 });
+        await expect(imageNode).toBeVisible();
+        await page.getByRole("button", { name: "切换到框选模式" }).click();
+        await expect(surface).toHaveAttribute("data-canvas-interaction-mode", "select");
+
+        await imageNode.click({ position: { x: 32, y: 32 } });
+        await expect(page.getByRole("textbox", { name: "节点提示词" })).toBeVisible();
+        await page.getByRole("button", { name: /^Skill(?: · \d+)?$/ }).click();
+        const skillDialog = page.locator("[data-canvas-skill-dialog]");
+        await expect(skillDialog).toBeVisible();
+        await expect(skillDialog.getByRole("searchbox", { name: "搜索 Skill" })).toBeVisible();
+        await expect(skillDialog.getByRole("tab", { name: "全部技能" })).toBeVisible();
+        const skillToolbar = await skillDialog.locator("[data-canvas-skill-toolbar]").boundingBox();
+        expect(skillToolbar?.height).toBeLessThanOrEqual(72);
+        const skillDialogBounds = await skillDialog.boundingBox();
+        expect(skillDialogBounds?.height).toBeLessThan(620);
+        await expect(page.locator(".ant-modal").last()).not.toHaveClass(/ant-zoom-appear/);
+        await page.mouse.move(20, 20);
+        await expect(page.locator(".agent-skill-preview-popover:visible")).toHaveCount(0);
+        await page.screenshot({ path: testInfo.outputPath("skill-selector.png"), animations: "disabled" });
+        await page.getByRole("button", { name: "Close" }).click();
+        await expect(skillDialog).toBeHidden();
+        const surfaceBox = await surface.boundingBox();
+        expect(surfaceBox).not.toBeNull();
+        await page.mouse.click(surfaceBox!.x + surfaceBox!.width - 80, surfaceBox!.y + 300);
+        await expect(page.getByRole("textbox", { name: "节点提示词" })).toBeHidden();
+        await page.getByRole("button", { name: "重置视图" }).click();
+        await expect(page.locator('[data-node-id="text-filled"]')).toBeInViewport();
+
+        await page.locator('[data-node-id="text-filled"]').click({ position: { x: 24, y: 24 } });
+        await page.keyboard.down("Control");
+        await page.locator('[data-node-id="config-empty"]').click({ position: { x: 24, y: 24 } });
+        await imageNode.click({ position: { x: 24, y: 24 } });
+        await page.keyboard.up("Control");
+        await expectSelectedNodeCount(page, 3);
+
+        await imageNode.click({ button: "right", position: { x: 40, y: 40 } });
+        await expectSelectedNodeCount(page, 3);
+        const menu = page.getByRole("menu");
+        await expect(menu.getByRole("menuitem", { name: "一键整理" })).toBeVisible();
+        await expect(menu.getByRole("menuitem", { name: "室内设计" })).toBeVisible();
+        await menu.getByRole("menuitem", { name: "一键整理" }).click();
+        await expectCanvasSaved(page);
+        await expect
+            .poll(async () => {
+                const stored = await readCanvasProject(request, projectPath);
+                const image = stored.nodes.find((item) => item.id === "image-source")!;
+                const text = stored.nodes.find((item) => item.id === "text-filled")!;
+                const config = stored.nodes.find((item) => item.id === "config-empty")!;
+                return {
+                    x: [image.position.x, text.position.x, config.position.x],
+                    top: image.position.y,
+                    imageToTextGap: text.position.y - image.position.y - image.height,
+                    textToConfigGap: config.position.y - text.position.y - text.height,
+                };
+            })
+            .toEqual({ x: [40, 40, 40], top: 90, imageToTextGap: 66, textToConfigGap: 66 });
+
+        await page.locator('[data-node-id="image-source"]').click({ button: "right", position: { x: 40, y: 40 } });
+        await page.getByRole("menuitem", { name: "室内设计" }).click();
+        const dialog = page.getByRole("dialog", { name: "室内设计" });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByRole("tab", { name: "功能广场" })).toBeVisible();
+        await expect(dialog.getByRole("searchbox", { name: "搜索室内设计功能" })).toBeVisible();
+        const catalogToolbar = await dialog.locator("[data-canvas-interior-catalog-toolbar]").boundingBox();
+        expect(catalogToolbar?.height).toBeLessThanOrEqual(72);
+        await expect(dialog.getByRole("button", { name: /SU直出摄影级照片/ })).toBeVisible();
+        await expect(dialog).not.toHaveClass(/ant-zoom-appear/);
+        await page.screenshot({ path: testInfo.outputPath("interior-catalog.png"), animations: "disabled" });
+        await dialog.getByRole("button", { name: /SU直出摄影级照片/ }).click();
+        await expect(page.getByRole("dialog", { name: "SU直出摄影级照片" })).toBeVisible();
+        for (const tab of ["生图模式", "场景", "光影氛围", "摄影设备", "AI约束"]) await expect(page.getByRole("tab", { name: tab })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "出图比例" })).toHaveCount(0);
+        await expect(page.getByRole("combobox", { name: "画面比例" })).toBeVisible();
+        await expect(page.getByRole("combobox", { name: "目标精度" })).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath("interior-config.png"), animations: "disabled" });
+
+        for (const width of [390, 430]) {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 932 });
+            await expect
+                .poll(async () => {
+                    const bounds = await page.getByRole("dialog", { name: "SU直出摄影级照片" }).boundingBox();
+                    return Boolean(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width + 1);
+                })
+                .toBe(true);
+            await expectNoHorizontalOverflow(page, `Canvas 室内设计 ${width}px`);
+        }
+
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.getByRole("button", { name: /^确\s*认$/ }).click();
+        const interiorNode = page.locator("[data-canvas-interior-design-node]");
+        await expect(interiorNode).toBeVisible();
+        const interiorNodeElement = interiorNode.locator("xpath=ancestor::*[@data-node-id][1]");
+        const interiorNodeBox = await interiorNodeElement.boundingBox();
+        expect(interiorNodeBox?.width).toBeCloseTo(interiorNodeBox?.height || 0, 0);
+        const modelControl = interiorNode.getByRole("combobox");
+        const photographyControl = interiorNode.getByRole("button", { name: "摄影参数" });
+        const generateControl = interiorNode.getByRole("button", { name: "生成" });
+        await expect(modelControl).toBeVisible();
+        await expect(photographyControl).toBeVisible();
+        await expect(generateControl).toBeVisible();
+        const modelControlBox = await modelControl.boundingBox();
+        const photographyControlBox = await photographyControl.boundingBox();
+        const actionGroupBox = await interiorNode.locator("[data-canvas-interior-actions]").boundingBox();
+        const generateControlBox = await generateControl.boundingBox();
+        expect(photographyControlBox?.y).toBeGreaterThan((modelControlBox?.y || 0) + (modelControlBox?.height || 0));
+        expect((actionGroupBox?.y || 0) - ((photographyControlBox?.y || 0) + (photographyControlBox?.height || 0))).toBeGreaterThanOrEqual(10);
+        expect((generateControlBox?.y || 0) - ((photographyControlBox?.y || 0) + (photographyControlBox?.height || 0))).toBeGreaterThanOrEqual(10);
+        await expect(interiorNode.getByText("原图比例")).toHaveCount(0);
+        await expect(generateControl).toBeDisabled();
+        await expect(interiorNode.getByText("请先配置 Gemini Nano Banana 生图模型")).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath("interior-node.png"), animations: "disabled" });
+        await expectCanvasSaved(page);
+
+        const stored = await readCanvasProject(request, projectPath);
+        const source = stored.nodes.find((item) => item.id === "image-source");
+        const config = stored.nodes.find((item) => item.metadata?.configKind === "interior-design");
+        expect(source).toBeDefined();
+        expect(config).toMatchObject({ type: "config", width: 240, height: 240, metadata: { sourcePrompt: "SU直出摄影级照片", status: "idle" } });
+        expect(config!.position.x).toBeGreaterThanOrEqual(source!.position.x + source!.width + 66);
+        expect(stored.connections).toContainEqual(expect.objectContaining({ fromNodeId: "image-source", toNodeId: config!.id }));
+
+        await page.getByRole("button", { name: "切换到深色主题" }).click();
+        await expect(page.locator("html")).toHaveClass(/dark/);
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await expect(page.locator("html")).toHaveClass(/dark/);
+        const restoredInteriorNode = page.locator("[data-canvas-interior-design-node]");
+        await expect(restoredInteriorNode).toBeVisible();
+        await restoredInteriorNode.getByRole("button", { name: "摄影参数" }).click();
+        const darkConfigDialog = page.getByRole("dialog", { name: "SU直出摄影级照片" });
+        await expect(darkConfigDialog).toBeVisible();
+        await expect(darkConfigDialog.locator(".ant-modal-container")).toHaveCSS("background-color", "rgb(15, 17, 21)");
+        await expect(darkConfigDialog).not.toHaveClass(/ant-zoom-appear/);
+        await page.screenshot({ path: testInfo.outputPath("interior-config-dark.png"), animations: "disabled" });
+        await darkConfigDialog.getByRole("button", { name: "关闭摄影参数" }).click();
+        await expect(darkConfigDialog).toBeHidden();
+
+        await imageNode.click({ button: "right", position: { x: 40, y: 40 } });
+        await page.getByRole("menuitem", { name: "室内设计" }).click();
+        const darkCatalogDialog = page.getByRole("dialog", { name: "室内设计" });
+        await expect(darkCatalogDialog).toBeVisible();
+        await expect(darkCatalogDialog).not.toHaveClass(/ant-zoom-appear/);
+        await page.screenshot({ path: testInfo.outputPath("interior-catalog-dark.png"), animations: "disabled" });
+        await darkCatalogDialog.getByRole("button", { name: "关闭室内设计" }).click();
+    } finally {
+        await deleteCanvasProject(request, project.id).catch(() => undefined);
     }
 });
 
@@ -940,13 +1222,20 @@ async function readCanvasProject(request: APIRequestContext, path: string) {
                     nodes: Array<{
                         id: string;
                         type: string;
+                        position: { x: number; y: number };
+                        width: number;
+                        height: number;
                         metadata?: {
+                            configKind?: string;
+                            sourcePrompt?: string;
+                            status?: string;
                             videoReferenceMode?: string;
                             videoFirstFrame?: { nodeId?: string };
                             videoLastFrame?: { nodeId?: string };
                             videoReferences?: Array<{ role: string }>;
                         };
                     }>;
+                    connections: Array<{ id: string; fromNodeId: string; toNodeId: string }>;
                 };
             };
         }
@@ -993,7 +1282,7 @@ async function dragSelectionBox(page: Page, nodes: Locator) {
 }
 
 async function expectSelectedNodeCount(page: Page, count: number) {
-    await expect.poll(() => page.locator("[data-node-id] > div").evaluateAll((elements) => elements.filter((element) => getComputedStyle(element).borderColor === "rgb(47, 128, 255)").length)).toBe(count);
+    await expect(page.locator("[data-canvas-node-selection-flow]")).toHaveCount(count);
 }
 
 async function expectCanvasSaved(page: Page, timeout = 5_000) {

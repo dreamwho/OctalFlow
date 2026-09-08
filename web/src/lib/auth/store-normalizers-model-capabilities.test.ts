@@ -1,10 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeSystemChannelAdvancedConfig } from "./store-normalizers";
+import { normalizeSystemChannel, normalizeSystemChannelAdvancedConfig } from "./store-normalizers";
 
 describe("system channel model capabilities", () => {
     it("keeps the Yumeng protocol identity", () => {
         expect(normalizeSystemChannelAdvancedConfig({ protocol: "yumeng" } as never)?.protocol).toBe("yumeng");
+    });
+
+    it("upgrades an existing GeminiTools channel to the current visual text contract", () => {
+        const normalized = normalizeSystemChannel({
+            id: "gemini-antigravity-tools",
+            name: "旧名称",
+            baseUrl: "",
+            apiKey: "",
+            apiFormat: "openai",
+            models: ["gemini-3.7-flash-high"],
+            enabled: true,
+            advancedConfig: {
+                protocol: "gemini-tools",
+                supportsReferenceImage: false,
+                modelConfigs: { "gemini-3.7-flash-high": { capability: "text", supportsReferenceImage: false } },
+            },
+        } as never);
+
+        expect(normalized.name).toBe("Gemini Antigravity Tools");
+        expect(normalized.advancedConfig).toMatchObject({
+            protocol: "gemini-tools",
+            supportsReferenceImage: true,
+            modelConfigs: { "gemini-3.7-flash-high": { capability: "text", supportsReferenceImage: true } },
+        });
     });
 
     it("normalizes supported capabilities and removes invalid entries", () => {

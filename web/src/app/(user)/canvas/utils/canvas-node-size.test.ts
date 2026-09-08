@@ -21,10 +21,10 @@ describe("Canvas image node sizing", () => {
     it("keeps Agent ratio-specified nodes inside their configured bounds", () => {
         expect(fitCanvasImageNodeSize(1024, 1024)).toEqual({ width: 240, height: 240 });
         expect(fitCanvasImageNodeSize(8192, 6144)).toEqual({ width: 320, height: 240 });
-        expect(fitCanvasImageNodeSize(1600, 900)).toMatchObject({ height: 240 });
-        expect(fitCanvasImageNodeSize(1600, 900).width).toBeCloseTo(426.6667, 3);
-        expect(fitCanvasImageNodeSize(900, 1600)).toMatchObject({ width: 240 });
-        expect(fitCanvasImageNodeSize(900, 1600).height).toBeCloseTo(426.6667, 3);
+        expect(fitCanvasImageNodeSize(1600, 900).width).toBeCloseTo(340, 3);
+        expect(fitCanvasImageNodeSize(1600, 900).height).toBeCloseTo(191.25, 3);
+        expect(fitCanvasImageNodeSize(900, 1600).width).toBeCloseTo(135, 3);
+        expect(fitCanvasImageNodeSize(900, 1600).height).toBeCloseTo(240, 3);
         const landscape = nodeSizeFromRatio("16:9", 340, 240);
         const portrait = nodeSizeFromRatio("9:16", 340, 240);
         expect(landscape?.width).toBeCloseTo(340, 3);
@@ -37,6 +37,18 @@ describe("Canvas image node sizing", () => {
         const resized = resizeImageNodeToNaturalRatio(imageNode, 1024, 1024);
 
         expect(resized).toMatchObject({ width: 240, height: 240, position: { x: 150, y: 200 }, metadata: { naturalWidth: 1024, naturalHeight: 1024 } });
+    });
+
+    it("keeps natural-ratio correction inside the default image node frame", () => {
+        const resized = resizeImageNodeToNaturalRatio(imageNode, 1600, 900);
+
+        expect(resized).toMatchObject({ width: 340, height: 191.25, position: { x: 100, y: 224.375 }, metadata: { naturalWidth: 1600, naturalHeight: 900 } });
+    });
+
+    it("normalizes legacy generated nodes that already match the natural ratio", () => {
+        const resized = resizeImageNodeToNaturalRatio({ ...imageNode, width: 426.6667, metadata: { ...imageNode.metadata, generationType: "generation" } }, 1600, 900);
+
+        expect(resized).toMatchObject({ width: 340, height: 191.25, position: { x: 143.33335, y: 224.375 } });
     });
 
     it("preserves an intentional free-resize frame", () => {

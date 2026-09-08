@@ -387,6 +387,8 @@ description: OctalFlow 当前版本需要人工或真实环境确认的事项
 
 - README 与文档站已补齐项目目录职责、标准请求、Agent/Skill/模型、媒体存储、积分、宝塔/Compose 部署和排障流程图，并加入用户端、公开页和管理后台 40 张脱敏 WebP 功能截图；仍需在 GitHub 首发页面复核 Mermaid、图片链接和移动端文档布局。
 - GitHub Actions 需要完成应用与文档镜像的 amd64、arm64 构建、GHCR 推送和多架构 manifest 合并。
+- 离线 Docker 包默认复用服务器已有 Docker PostgreSQL，现包含 App、GeminiAI 与 Mihomo 三个镜像归档、只读 Mihomo 入口脚本及一键部署脚本；现有 Docker Desktop 证据只覆盖先前的 App/Worker/GeminiAI 与数据库检查，本次仅完成 Mihomo Compose/入口权限/脚本/虚拟环境静态门禁，仍需在匹配架构的干净 Linux 服务器验证首次安装、共享 runtime 卷权限、魔法代理健康、域名 HTTPS 反向代理和数据卷重启恢复。
+- Mihomo v1.19.30 已接入七套 Compose，提供两个静态、无公网 mixed listener，并按桥接/host 网络分别绑定内网或回环地址；动态订阅只通过共享私有 Docker volume 的 file provider 刷新，Controller secret 在进程启动参数中设置且不进入 bootstrap。本次未导入真实订阅、未调用真实 GeminiAI/GeminiTools Provider，也未宣称订阅或 Provider 运行验证完成。
 - 在干净 Linux 服务器执行 `docker compose config/pull/up`，验证 PostgreSQL 健康检查、`/install` 初始化、管理员创建、静态资源和数据卷重启恢复。
 - 已在 CentOS Stream 9 / Docker 29 环境从当前源码完成 amd64 镜像构建，确认 Next.js standalone、FFmpeg、`/install` 和 PostgreSQL schema 初始化可用；同时修复 HTTP 直连时 CSP 将 CSS/JS 错误升级为 HTTPS的问题。宝塔 PostgreSQL 接入、正式域名 HTTPS 反向代理、管理员创建和数据卷重启恢复仍需继续验收。
 - 使用 Render Blueprint 验证 PostgreSQL 注入、`OCTALAICANVAS_ENCRYPTION_KEY` 生成和首次部署。

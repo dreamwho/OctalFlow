@@ -97,6 +97,14 @@ describe("generation log asset access", () => {
         expect(mocks.stream).toHaveBeenCalled();
     });
 
+    it("passes the internal read request to session resolution for Worker-owned staging", async () => {
+        const request = new Request("http://localhost/api/generation-log-assets/permanent/2026/07/20/images/file.png", { headers: { authorization: "Bearer worker-token", "x-octalaicanvas-worker-user-id": "owner" } });
+
+        await GET(request, context);
+
+        expect(mocks.getCurrentUser).toHaveBeenCalledWith(request);
+    });
+
     it("marks object-backed original HEAD downloads as attachments", async () => {
         mocks.registration.mockResolvedValue({ originalName: "generated-video", mimeType: "video/webm", bytes: 5, storageProvider: "object", externalObjectKey: "bucket/file.webm" });
         await HEAD(new Request("http://localhost/api/generation-log-assets/permanent/2026/07/20/images/file.png?download=original", { method: "HEAD" }), context);

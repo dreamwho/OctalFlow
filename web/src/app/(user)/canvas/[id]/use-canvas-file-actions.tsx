@@ -7,7 +7,7 @@ import { clipboardImageFiles } from "@/lib/clipboard-image-files";
 import { uploadMediaFile } from "@/services/file-storage";
 import { NODE_DEFAULT_SIZE } from "../constants";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "../types";
-import { fitNodeSize } from "../utils/canvas-node-size";
+import { fitCanvasImageNodeSize, fitNodeSize } from "../utils/canvas-node-size";
 
 import { CANVAS_DROP_NODE_OFFSET, NODE_STATUS_SUCCESS, VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, createCanvasNode } from "./canvas-page-elements";
 import { audioMetadata, imageMetadata, uploadCanvasImage, videoMetadata } from "./canvas-page-utils";
@@ -39,7 +39,7 @@ export function useCanvasFileActions({ state, interactions }: { state: CanvasPag
 
     const createImageFileNode = useCallback(async (file: File, position: Position, preserveSelection = false, openDialog = true) => {
         const image = await uploadCanvasImage(file);
-        const size = fitNodeSize(image.width, image.height);
+        const size = fitCanvasImageNodeSize(image.width, image.height);
         const id = `image-${nanoid()}`;
         const newNode: CanvasNodeData = {
             id,

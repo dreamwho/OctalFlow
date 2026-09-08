@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     completeReconciledVideoTask: vi.fn(),
     failReconciledVideoTask: vi.fn(),
     getAuthSettings: vi.fn(),
+    consumeUserPoints: vi.fn(),
     getVideoTask: vi.fn(),
     linkStoredGenerationTask: vi.fn(),
     getStoredGenerationTaskByRequest: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     writeVideoGenerationLog: vi.fn(),
     scheduleGenerationTask: vi.fn(),
     withGenerationConcurrencyLimit: vi.fn(async (_userId, _type, _staleMs, _limit, handler) => handler()),
+    createDreaminaCliVideoUpstream: vi.fn(),
 }));
 
 vi.mock("next/server", async (importOriginal) => {
@@ -28,7 +30,7 @@ vi.mock("@/lib/auth/store", () => {
     class AuthInputError extends Error {
         status = 400;
     }
-    return { AuthInputError, getAuthSettings: mocks.getAuthSettings, isAuthInputError: (error: unknown) => error instanceof AuthInputError, refundUserPoints: vi.fn() };
+    return { AuthInputError, consumeUserPoints: mocks.consumeUserPoints, getAuthSettings: mocks.getAuthSettings, isAuthInputError: (error: unknown) => error instanceof AuthInputError, refundUserPoints: vi.fn() };
 });
 vi.mock("@/lib/server/internal-origin", () => ({ fetchInternalApi: mocks.fetchInternalApi, resolveInternalOrigin: vi.fn(() => "http://localhost") }));
 vi.mock("@/lib/server/generation-task-store", () => ({
@@ -53,6 +55,24 @@ vi.mock("@/lib/server/video-task-store", () => ({
     touchVideoTask: mocks.touchVideoTask,
     transitionVideoTask: mocks.transitionVideoTask,
     updateVideoTask: mocks.updateVideoTask,
+}));
+vi.mock("@/lib/server/dreamina-cli-service", () => ({
+    DreaminaCliServiceError: class DreaminaCliServiceError extends Error {
+        status: number;
+        retryAfterAt?: number;
+        constructor(message: string, status = 502, retryAfterAt?: number) {
+            super(message);
+            this.status = status;
+            this.retryAfterAt = retryAfterAt;
+        }
+    },
+    dreaminaCliOperationEnabled: vi.fn(() => true),
+    isDreaminaCliConfig: (config: { advancedConfig?: { protocol?: string }; channelId?: string }) => config.advancedConfig?.protocol === "dreamina-cli" || config.channelId === "dreamina-cli",
+}));
+vi.mock("@/lib/server/dreamina-cli-video-task", () => ({
+    DreaminaCliVideoTaskError: class DreaminaCliVideoTaskError extends Error {},
+    createDreaminaCliVideoUpstream: mocks.createDreaminaCliVideoUpstream,
+    dreaminaCliVideoCommand: vi.fn(() => "text2video"),
 }));
 
 import { POST } from "./route";
@@ -191,6 +211,46 @@ describe("video generation candidate failover", () => {
         expect((await response.json()).task.model).toBe("video");
     });
 
+    it("submits a Dreamina CLI text-to-video task without proxying through HTTP", async () => {
+        mocks.getAuthSettings.mockResolvedValue({ ...dreaminaSettings(), modelPointCosts: { "dreamina-video": 3 } });
+        mocks.consumeUserPoints.mockResolvedValue({ model: "dreamina-video", cost: 3, units: 1, usageKind: "video", recordId: "points-dreamina" });
+        mocks.createDreaminaCliVideoUpstream.mockResolvedValue({ id: "dreamina-submit", provider: "dreamina-cli", model: "dreamina-seedance-2-0", command: "text2video", pollPath: "query_result", queryPath: "query_result" });
+
+        const response = await POST(request({ model: "dreamina-video" }));
+
+        expect(response.status).toBe(200);
+        expect((await response.json()).task).toMatchObject({ id: "local-task", upstreamId: "dreamina-submit", model: "dreamina-video" });
+        expect(mocks.fetchInternalApi).not.toHaveBeenCalled();
+        expect(mocks.consumeUserPoints).toHaveBeenCalledWith("user", "dreamina-video", 1, "video", expect.any(String));
+        expect(mocks.createDreaminaCliVideoUpstream).toHaveBeenCalledWith(expect.objectContaining({ taskId: "local-task", prompt: "A test video" }));
+        expect(mocks.scheduleGenerationTask).toHaveBeenLastCalledWith("video", "local-task", expect.objectContaining({ executionPhase: "submitted", provider: "dreamina-cli", queryPath: "query_result" }));
+    });
+
+    it("returns a provider retry contract instead of a terminal error when the Dreamina submit lease is busy", async () => {
+        mocks.getAuthSettings.mockResolvedValue(dreaminaSettings());
+        const { DreaminaCliServiceError } = await import("@/lib/server/dreamina-cli-service");
+        mocks.createDreaminaCliVideoUpstream.mockRejectedValue(new DreaminaCliServiceError("即梦 CLI 正在处理其他提交，系统会自动继续", 409, Date.now() + 2_000));
+
+        const response = await POST(request({ model: "dreamina-video" }));
+
+        expect(response.status).toBe(429);
+        expect(response.headers.get("retry-after")).toBe("2");
+        expect(await response.json()).toMatchObject({ deferred: true });
+        expect(mocks.transitionVideoTask).toHaveBeenCalledWith(expect.objectContaining({ id: "local-task" }), expect.objectContaining({ status: "error", retryable: true }));
+        expect(mocks.scheduleGenerationTask).toHaveBeenLastCalledWith("video", "local-task", expect.objectContaining({ executionPhase: "completed", lastUpstreamStatus: "submission_deferred" }));
+    });
+
+    it("does not create a second platform charge when the Dreamina logical model has no configured price", async () => {
+        mocks.getAuthSettings.mockResolvedValue(dreaminaSettings());
+        mocks.createDreaminaCliVideoUpstream.mockResolvedValue({ id: "dreamina-submit", provider: "dreamina-cli", model: "dreamina-seedance-2-0", command: "text2video", pollPath: "query_result", queryPath: "query_result" });
+
+        const response = await POST(request({ model: "dreamina-video" }));
+
+        expect(response.status).toBe(200);
+        expect(mocks.consumeUserPoints).not.toHaveBeenCalled();
+        expect(mocks.createDreaminaCliVideoUpstream).toHaveBeenCalledOnce();
+    });
+
     it("creates a Gemini Veo long-running operation with the native request contract", async () => {
         mocks.getAuthSettings.mockResolvedValue(geminiSettings());
         mocks.fetchInternalApi.mockResolvedValue(json({ name: "models/veo-3.1-generate-preview/operations/gemini-operation-one", done: false }));
@@ -276,6 +336,52 @@ describe("video generation candidate failover", () => {
 
         expect(response.status).toBe(200);
         expect(mocks.fetchInternalApi.mock.calls[0][0]).toContain("/api/ai/system/one/sd2/videos");
+    });
+
+    it("compiles an H3 prompt only after the resolved channel protocol is MiniMax H3", async () => {
+        const model = "minimax-h3-mini";
+        mocks.getAuthSettings.mockResolvedValue({
+            ...settings,
+            systemChannels: [{ ...channels[0], id: "h3", models: [model], advancedConfig: { protocol: "minimax-h3", supportsReferenceImage: true } }],
+            logicalModels: [{ id: "h3-video", name: "MiniMax H3", capability: "video", enabled: true, bindings: [{ id: "h3-binding", channelId: "h3", upstreamModel: model, enabled: true, priority: 1 }] }],
+            defaultModels: { ...settings.defaultModels, videoModel: "h3-video" },
+        });
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: "h3-upstream", status: "queued" }));
+        const response = await POST(
+            new Request("http://localhost/api/video-generation-tasks", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    config: { model: "h3-video", videoSeconds: 7 },
+                    prompt: "@图片1 保持人物，@图片2 改为夜景。",
+                    references: [
+                        { type: "image", url: "https://cdn.example.com/person.png", assetId: "asset-person", alias: "图片1" },
+                        { type: "image", url: "https://cdn.example.com/scene.png", nodeId: "canvas-scene", alias: "图片2" },
+                    ],
+                }),
+            }),
+        );
+        const payload = await response.clone().json();
+
+        expect(response.status, JSON.stringify(payload)).toBe(200);
+        const [, init] = mocks.fetchInternalApi.mock.calls[0] as [string, RequestInit];
+        const upstream = JSON.parse(String(init.body));
+        expect(upstream).toMatchObject({ model, mode: "ref2va", images: ["https://cdn.example.com/person.png", "https://cdn.example.com/scene.png"] });
+        expect(upstream.prompt).toContain("subject_definitions:");
+        expect(upstream.prompt).toContain("@图片1");
+        expect(upstream.prompt).toContain("@图片2");
+        expect(upstream.prompt).toContain("7.00 seconds");
+    });
+
+    it("keeps a non-H3 provider prompt unchanged by the H3 compiler", async () => {
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: "upstream-openai", status: "queued" }));
+
+        const response = await POST(request({ model: "video" }));
+        const [, init] = mocks.fetchInternalApi.mock.calls[0] as [string, RequestInit];
+        const upstream = JSON.parse(String(init.body));
+
+        expect(response.status).toBe(200);
+        expect(upstream.prompt).toBe("A test video");
     });
 
     it("uses separate text-to-video and image-to-video paths with trusted billing headers", async () => {
@@ -863,6 +969,44 @@ function geminiSettings() {
             },
         ],
         defaultModels: { ...settings.defaultModels, videoModel: "gemini-video" },
+    };
+}
+
+function dreaminaSettings() {
+    const model = "dreamina-seedance-2-0";
+    const operation = {
+        capability: "video" as const,
+        source: "official" as const,
+        protocol: "dreamina-cli" as const,
+        apiFormat: "openai" as const,
+        supportsReferenceImage: true,
+        supportsReferenceVideo: true,
+        supportsReferenceAudio: true,
+    };
+    return {
+        ...settings,
+        systemChannels: [
+            {
+                id: "dreamina-cli",
+                name: "即梦 CLI",
+                baseUrl: "",
+                apiKey: "",
+                apiFormat: "openai" as const,
+                models: [model],
+                enabled: true,
+                advancedConfig: { protocol: "dreamina-cli" as const, modelCapabilities: { [model]: "video" as const }, modelConfigs: { [model]: operation } },
+            },
+        ],
+        logicalModels: [
+            {
+                id: "dreamina-video",
+                name: "即梦视频",
+                capability: "video" as const,
+                enabled: true,
+                bindings: [{ id: "dreamina-binding", channelId: "dreamina-cli", upstreamModel: model, enabled: true, priority: 1 }],
+            },
+        ],
+        defaultModels: { ...settings.defaultModels, videoModel: "dreamina-video" },
     };
 }
 

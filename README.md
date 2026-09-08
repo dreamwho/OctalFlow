@@ -426,6 +426,24 @@ docker compose ps
 
 打开 `https://你的域名/install`，依次检查数据库、初始化表结构并创建首个管理员。
 
+### 离线 Docker 部署包
+
+如果服务器不能访问 GHCR，或者不希望在服务器现场构建镜像，可在有 Docker 的构建机执行：
+
+```bash
+./scripts/build-docker-offline-package.sh
+```
+
+脚本默认生成复用服务器已有 Docker PostgreSQL 的 `本次修改需上传文件_YYYYMMDD`，其中包含主应用、GeminiAI sidecar 镜像归档和 `一键部署.sh`。上传整个目录到 Linux 服务器后执行 `./一键部署.sh` 即可自动加载镜像、创建应用持久化卷、生成内部密钥并启动服务；首次部署时需要在 `.env` 提供已有 PostgreSQL 的 `DATABASE_URL`。该包默认面向 `linux/amd64`；其他架构可通过 `OCTALAICANVAS_DOCKER_PLATFORM=linux/arm64` 重新构建。
+
+没有已有 PostgreSQL 时，可构建自包含数据库包：
+
+```bash
+OCTALAICANVAS_DATABASE_MODE=embedded ./scripts/build-docker-offline-package.sh
+```
+
+离线包不会包含外部模型、支付或 OAuth 密钥；首次启动后访问 `/install` 创建首个管理员，再在后台配置实际渠道。
+
 ### 宝塔 PostgreSQL
 
 宝塔已安装 PostgreSQL 时使用：

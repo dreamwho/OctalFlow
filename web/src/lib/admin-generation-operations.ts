@@ -21,6 +21,7 @@ export type AdminGenerationTask = {
     provider?: string;
     queryPath?: string;
     executionPhase?: GenerationTaskExecutionPhase;
+    failurePhase?: "planning" | "execution";
     workerId?: string;
     leaseUntil?: number;
     lastHeartbeatAt?: number;

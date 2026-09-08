@@ -16,6 +16,9 @@ type SystemChannelProtocol =
     | "openai"
     | "yumeng"
     | "gemini"
+    | "geminiai"
+    | "gemini-tools"
+    | "dreamina-cli"
     | "sub2api"
     | "newapi"
     | "lingkeai"
@@ -32,7 +35,7 @@ type SystemChannelProtocol =
 
 type SystemChannelAdvancedConfig = {
     protocol: SystemChannelProtocol;
-    authMode?: "none" | "bearer" | "x-api-key" | "custom-header";
+    authMode?: "none" | "bearer" | "x-api-key" | "custom-header" | "provider-managed";
     authHeader?: string;
     authPrefix?: string;
     documentationUrl?: string;
@@ -396,10 +399,6 @@ function createModelChannel(channel?: Partial<ModelChannel>): ModelChannel {
     };
 }
 
-function encodeChannelModel(channelId: string, model: string) {
-    return `${channelId}${CHANNEL_MODEL_SEPARATOR}${model.trim()}`;
-}
-
 function isChannelModelValue(value: string) {
     return value.includes(CHANNEL_MODEL_SEPARATOR);
 }
@@ -429,17 +428,10 @@ function expandPublicCapabilityModels(logicalModels: LogicalModel[], channels: M
     const channelIds = new Set(channels.map((channel) => channel.id));
     return Object.fromEntries(
         (Object.keys(fallback) as ModelCapability[]).map((capability) => {
-            const options = logicalModels.filter((model) => model.capability === capability).flatMap((model) => publicModelOptionValues(model, channelIds));
+            const options = logicalModels.filter((model) => model.capability === capability && model.bindings.some((binding) => binding.enabled && channelIds.has(binding.channelId))).map((model) => model.id);
             return [capability, options.length ? options : fallback[capability]];
         }),
     ) as Record<ModelCapability, string[]>;
-}
-
-function publicModelOptionValues(model: LogicalModel, channelIds: Set<string>): string[] {
-    const bindings = model.bindings.filter((binding) => binding.enabled && channelIds.has(binding.channelId)).sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));
-    const displayNames = Array.from(new Set(bindings.map((binding) => (binding.displayName || "").trim()).filter(Boolean)));
-    if (displayNames.length < 2) return [model.id];
-    return bindings.map((binding) => encodeChannelModel(binding.channelId, binding.upstreamModel));
 }
 
 function modelOptionsFromChannels(channels: ModelChannel[]) {
@@ -464,7 +456,7 @@ function resolveLogicalDefaultModel(value: string | undefined, options: string[]
     const requested = modelOptionName(value || "").trim();
     const direct = findEquivalentModelOption(requested, options);
     if (direct) return direct;
-    const logical = logicalModels.find((model) => model.enabled && (normalizedModelName(model.id) === normalizedModelName(requested) || model.bindings.some((binding) => normalizedModelName(binding.upstreamModel) === normalizedModelName(requested))));
+    const logical = logicalModels.find((model) => model.enabled && normalizedModelName(model.id) === normalizedModelName(requested));
     return logical ? findEquivalentModelOption(logical.id, options) : "";
 }
 
@@ -501,12 +493,14 @@ export function resolveModelChannel(config: AiConfig, value: string) {
 
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
-    const model = modelOptionName(value || config.model);
+    const requested = modelOptionName(value || config.model);
+    const logical = config.logicalModels.find((item) => item.enabled && normalizedModelName(item.id) === normalizedModelName(requested));
+    const model = logical?.bindings.filter((binding) => binding.enabled && binding.channelId === channel.id).sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))[0]?.upstreamModel || requested;
     const advancedConfig = channel.advancedConfig ? resolveChannelModelAdvancedConfig(channel.advancedConfig, model) : undefined;
     return {
         ...config,
         model,
-        modelId: value || config.model,
+        modelId: logical?.id || value || config.model,
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.advancedConfig?.modelConfigs?.[normalizeModelId(model)]?.apiFormat || channel.apiFormat,

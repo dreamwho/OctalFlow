@@ -49,11 +49,12 @@ describe("Agent 返回文案", () => {
         expect(agentRunCompletionReply(run)).toBe("科技连接无限");
     });
 
-    it("never cuts an emoji surrogate pair while shortening generated text", () => {
+    it("returns the complete generated text without cutting Unicode content", () => {
         const content = `${"字".repeat(1599)}😊后续`;
         const message = agentTaskCompletionMessage(task({ title: "长文", result: { content } }));
 
-        expect(message).toContain(`${"字".repeat(1599)}😊`);
+        expect(message).toContain(content);
+        expect(message).toContain("😊后续");
         expect(message).not.toMatch(/[\uD800-\uDFFF]/u);
     });
 

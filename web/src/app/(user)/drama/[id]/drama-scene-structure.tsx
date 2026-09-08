@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "antd";
-import { Sparkles } from "lucide-react";
-
+import { GenerationActionButton } from "@/components/generation-action-button";
 import type { DramaEpisode, DramaProject, DramaShot } from "../types";
 
 export function DramaSceneStructure({
@@ -58,9 +56,9 @@ export function DramaSceneStructure({
                         <div className="text-xs font-medium text-foreground">暂无场景结构</div>
                         <p className="mt-1 text-[11px] leading-4 text-muted-foreground">完成剧本后整理为可定位场景</p>
                         {onAnalyze ? (
-                            <Button className="!mt-2.5 !h-7 !px-2.5 !text-xs" size="small" icon={<Sparkles className="size-3" />} loading={analyzing} disabled={!episode.script.trim()} onClick={onAnalyze}>
+                            <GenerationActionButton appearance="soft" className="!mt-2.5 !h-7 !px-2.5 !text-xs" size="small" loading={analyzing} disabled={!episode.script.trim()} onClick={onAnalyze}>
                                 AI 整理
-                            </Button>
+                            </GenerationActionButton>
                         ) : null}
                     </div>
                 )}

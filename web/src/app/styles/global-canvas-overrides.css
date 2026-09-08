@@ -155,15 +155,45 @@ html.dark .canvas-agent-confirm-switch.ant-switch.ant-switch-checked:hover:not(.
     min-width: 0;
 }
 
-.canvas-edge-generating {
-    stroke-dasharray: 2 15;
-    animation: canvas-edge-flow 0.72s linear infinite;
-    filter: drop-shadow(0 0 2px rgba(70, 154, 255, 0.74));
-    will-change: stroke-dashoffset;
+.canvas-edge-generating,
+.canvas-edge-flowing {
+    animation: canvas-edge-flow-glow 2.4s ease-in-out infinite alternate;
+    filter: drop-shadow(0 0 2px rgba(103, 232, 249, 0.82)) drop-shadow(0 0 5px rgba(129, 140, 248, 0.64));
+    will-change: filter, opacity;
+}
+
+[data-canvas-node-loading] .canvas-node-generation-smoke,
+[data-canvas-node-loading] .canvas-node-generation-video {
+    height: 144%;
+    left: -22%;
+    max-width: none;
+    pointer-events: none;
+    position: absolute;
+    top: -22%;
+    width: 144%;
+    will-change: opacity, transform;
+}
+
+[data-canvas-node-loading] .canvas-node-generation-video {
+    object-fit: cover;
+    opacity: 0.92;
+}
+
+[data-canvas-node-loading] .canvas-node-generation-smoke-fallback {
+    opacity: 0;
+}
+
+[data-canvas-node-loading] .canvas-node-generation-smoke-fallback.is-visible {
+    animation: canvas-node-generation-smoke-primary 5.6s ease-in-out infinite alternate;
+    opacity: 0.82;
 }
 
 .canvas-panel-bridge-pulse {
     animation: canvas-panel-bridge-pulse 1.6s ease-in-out infinite;
+}
+
+[data-canvas-interior-design-node] .canvas-interior-design-icon.is-running {
+    animation: canvas-interior-design-icon-pulse 1.4s ease-in-out infinite;
 }
 
 .canvas-composer-tether-path {
@@ -177,7 +207,9 @@ html.dark .canvas-agent-confirm-switch.ant-switch.ant-switch-checked:hover:not(.
 }
 
 html:not(.dark) .canvas-scene-composer {
-    box-shadow: 0 22px 70px rgba(37, 43, 74, 0.16), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+    box-shadow:
+        0 22px 70px rgba(37, 43, 74, 0.16),
+        0 1px 0 rgba(255, 255, 255, 0.9) inset;
 }
 
 html:not(.dark) .canvas-toolbar-dock.is-composer-open,
@@ -185,23 +217,212 @@ html:not(.dark) .canvas-zoom-dock {
     box-shadow: 0 12px 34px rgba(45, 49, 88, 0.1);
 }
 
-@keyframes canvas-edge-flow {
+@keyframes canvas-edge-flow-glow {
+    from {
+        opacity: 0.8;
+    }
     to {
-        stroke-dashoffset: -34;
+        opacity: 1;
+    }
+}
+
+@keyframes canvas-node-generation-smoke-primary {
+    from {
+        transform: translate3d(-7%, 5%, 0) scale(1.04) rotate(-3deg);
+    }
+    to {
+        transform: translate3d(8%, -5%, 0) scale(1.16) rotate(4deg);
     }
 }
 
 @keyframes canvas-panel-bridge-pulse {
-    0%, 100% { filter: drop-shadow(0 0 0 rgba(91, 92, 226, 0.2)); }
-    50% { filter: drop-shadow(0 0 6px rgba(91, 92, 226, 0.72)); }
+    0%,
+    100% {
+        filter: drop-shadow(0 0 0 rgba(91, 92, 226, 0.2));
+    }
+    50% {
+        filter: drop-shadow(0 0 6px rgba(91, 92, 226, 0.72));
+    }
+}
+
+@keyframes canvas-interior-design-icon-pulse {
+    0%,
+    100% {
+        transform: rotate(0deg) scale(1);
+    }
+    50% {
+        transform: rotate(10deg) scale(1.08);
+    }
 }
 
 @keyframes canvas-composer-tether-flow {
-    to { stroke-dashoffset: -40; }
+    to {
+        stroke-dashoffset: -40;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .canvas-edge-generating,
+    .canvas-edge-flowing,
     .canvas-panel-bridge-pulse,
-    .canvas-composer-tether-flow { animation: none; }
+    [data-canvas-interior-design-node] .canvas-interior-design-icon.is-running,
+    .canvas-composer-tether-flow,
+    [data-canvas-node-loading] .canvas-node-generation-smoke,
+    [data-canvas-node-loading] .canvas-node-generation-video {
+        animation: none;
+    }
+
+    [data-canvas-node-loading] .canvas-node-generation-video {
+        display: none;
+    }
+
+    [data-canvas-node-loading] .canvas-node-generation-smoke-fallback {
+        opacity: 0.62;
+        transform: scale(1.12);
+    }
+}
+@keyframes canvas-camera-dolly-in {
+    from {
+        transform: scale(1.01);
+    }
+    to {
+        transform: scale(1.62);
+    }
+}
+
+@keyframes canvas-camera-locked {
+    from {
+        transform: scale(1.04);
+        opacity: 0.94;
+    }
+    to {
+        transform: scale(1.04);
+        opacity: 1;
+    }
+}
+
+@keyframes canvas-camera-dolly-out {
+    from {
+        transform: scale(1.65);
+    }
+    to {
+        transform: scale(1.01);
+    }
+}
+
+@keyframes canvas-camera-pan-left {
+    from {
+        transform: scale(1.38) translateX(18%);
+    }
+    to {
+        transform: scale(1.38) translateX(-18%);
+    }
+}
+
+@keyframes canvas-camera-pan-right {
+    from {
+        transform: scale(1.38) translateX(-18%);
+    }
+    to {
+        transform: scale(1.38) translateX(18%);
+    }
+}
+
+@keyframes canvas-camera-tilt-up {
+    from {
+        transform: scale(1.46) translateY(24%);
+    }
+    to {
+        transform: scale(1.46) translateY(-24%);
+    }
+}
+
+@keyframes canvas-camera-tilt-down {
+    from {
+        transform: scale(1.46) translateY(-24%);
+    }
+    to {
+        transform: scale(1.46) translateY(24%);
+    }
+}
+
+@keyframes canvas-camera-track {
+    0% {
+        transform: scale(1.55) translate(-15%, 3%);
+    }
+    50% {
+        transform: scale(1.46) translate(0, -2%);
+    }
+    100% {
+        transform: scale(1.55) translate(15%, 3%);
+    }
+}
+
+@keyframes canvas-camera-orbit {
+    0% {
+        transform: scale(1.42) translate(-12%, 4%) skewX(-3deg);
+    }
+    50% {
+        transform: scale(1.18) translate(0, -3%) skewX(0);
+    }
+    100% {
+        transform: scale(1.42) translate(12%, 4%) skewX(3deg);
+    }
+}
+
+@keyframes canvas-camera-handheld {
+    0%,
+    100% {
+        transform: scale(1.62) translate(0, 0) rotate(0);
+    }
+    18% {
+        transform: scale(1.62) translate(1.8%, -1.2%) rotate(-0.75deg);
+    }
+    43% {
+        transform: scale(1.58) translate(-1.5%, 1.7%) rotate(0.65deg);
+    }
+    72% {
+        transform: scale(1.64) translate(1%, 0.7%) rotate(-0.35deg);
+    }
+}
+
+[data-canvas-camera-motion-picker] .canvas-motion-preview-image {
+    will-change: transform, object-position;
+    transform-origin: center;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-locked {
+    animation: canvas-camera-locked 1.8s ease-in-out infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-dolly-in {
+    animation: canvas-camera-dolly-in 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-dolly-out {
+    animation: canvas-camera-dolly-out 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-pan-left {
+    animation: canvas-camera-pan-left 3.2s ease-in-out infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-pan-right {
+    animation: canvas-camera-pan-right 3.2s ease-in-out infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-tilt-up {
+    animation: canvas-camera-tilt-up 3.2s ease-in-out infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-tilt-down {
+    animation: canvas-camera-tilt-down 3.2s ease-in-out infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-tracking {
+    animation: canvas-camera-track 2.8s ease-in-out infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-orbit-left {
+    animation: canvas-camera-orbit 3s ease-in-out infinite alternate;
+}
+[data-canvas-camera-motion-picker] .canvas-motion-handheld {
+    animation: canvas-camera-handheld 1.05s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-canvas-camera-motion-picker] img {
+        animation: none !important;
+    }
 }

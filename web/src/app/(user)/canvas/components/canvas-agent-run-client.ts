@@ -11,10 +11,12 @@ type RunHandlers = {
     onPaused: (paused: boolean) => void;
     onOps: (ops: CanvasAgentOp[]) => void;
     onRunProgress?: (progress: CanvasAgentRunProgress) => void;
+    onTerminal?: (status: Extract<CreativeAgentRun["status"], "completed" | "failed" | "cancelled">) => void;
 };
 
 export type CanvasAgentPlanSummary = { taskCount: number; label: string };
 export type CanvasAgentRunProgress = { tasks: CreativeAgentRun["tasks"]; startedAt?: number };
+type CanvasAgentRunWithRecovery = CreativeAgentRun & { recoveryOps?: CanvasAgentOp[] };
 
 export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, options: { signal?: AbortSignal } = {}) {
     if (options.signal?.aborted) return Promise.resolve();
@@ -31,6 +33,7 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
         const taskStates = new Map<string, CreativeAgentRun["tasks"][number]>();
         const completedOutputNodeIds = new Set<string>();
         let latestFailedTask: { taskId: string; title?: string } | undefined;
+        let terminalReconciliation: Promise<void> | null = null;
         const finish = (error?: Error) => {
             if (settled) return;
             settled = true;
@@ -38,6 +41,10 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
             options.signal?.removeEventListener("abort", abort);
             if (error) reject(error);
             else resolve();
+        };
+        const finishTerminal = (status: Extract<CreativeAgentRun["status"], "completed" | "failed" | "cancelled">) => {
+            handlers.onTerminal?.(status);
+            finish();
         };
         const abort = () => finish();
         options.signal?.addEventListener("abort", abort, { once: true });
@@ -62,6 +69,11 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
             runStartedAt = startedAt || runStartedAt;
             emitRunProgress();
         };
+        const applyRecoveredRun = (run?: CanvasAgentRunWithRecovery) => {
+            if (!run) return;
+            replaceRunProgress(run.tasks, run.timings?.requestAcceptedAt || run.createdAt);
+            if (run.recoveryOps?.length) handlers.onOps(run.recoveryOps);
+        };
         const patchTaskProgress = (data?: Partial<CreativeAgentRun["tasks"][number]> & { taskId?: string }) => {
             const id = data?.taskId || data?.id;
             if (!id) return;
@@ -74,6 +86,7 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
                 ...(data?.startedAt !== undefined ? { startedAt: data.startedAt } : {}),
                 ...(data?.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
                 ...(data?.error !== undefined ? { error: data.error } : {}),
+                ...(data?.childTasks !== undefined ? { childTasks: data.childTasks } : {}),
             });
             emitRunProgress();
         };
@@ -84,24 +97,24 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
                 return;
             }
             try {
-                const run = await getCreativeAgentRun(runId);
+                const run = (await getCreativeAgentRun(runId)) as CanvasAgentRunWithRecovery;
                 if (settled) return;
-                replaceRunProgress(run.tasks, run.timings?.requestAcceptedAt || run.createdAt);
+                applyRecoveredRun(run);
                 if (run.status === "completed") {
                     handlers.onAssistant("Agent 任务已完成，结果已经返回。", latestOutput);
-                    finish();
+                    finishTerminal("completed");
                     return;
                 }
                 if (run.status === "cancelled") {
                     handlers.onAssistant("Agent 任务已取消。");
-                    finish();
+                    finishTerminal("cancelled");
                     return;
                 }
                 if (run.status === "failed") {
                     const failed = run.tasks.find((task) => task.status === "failed");
                     if (!latestFailedTask && failed) handlers.onAssistant(`「${failed.title || "创作任务"}」执行失败：${failed.error || "生成服务暂时不可用"}`, { runId, taskId: failed.id, title: failed.title || "创作任务失败" });
-                    else if (!latestFailedTask) handlers.onAssistant("Agent 执行失败", { runId, title: "Agent 执行失败" });
-                    finish();
+                    else if (!latestFailedTask) handlers.onAssistant(run.error || "Agent 执行失败", { runId, title: "Agent 执行失败" });
+                    finishTerminal("failed");
                     return;
                 }
                 setPaused(run.status === "paused");
@@ -115,6 +128,29 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
                 }
                 reportStage({ key: "reconnecting", resumeKey: latestStageKey, text: "暂时无法确认实时状态，任务仍会在后台继续运行" });
             }
+        };
+        const settleTerminal = (fallbackStatus: Extract<CreativeAgentRun["status"], "completed" | "failed" | "cancelled">, onSettled: (status: Extract<CreativeAgentRun["status"], "completed" | "failed" | "cancelled">, run?: CanvasAgentRunWithRecovery) => void) => {
+            if (terminalReconciliation || settled) return;
+            terminalReconciliation = (async () => {
+                let run: CanvasAgentRunWithRecovery | undefined;
+                try {
+                    run = (await getCreativeAgentRun(runId)) as CanvasAgentRunWithRecovery;
+                    if (settled) return;
+                    applyRecoveredRun(run);
+                } catch {
+                    // The terminal SSE event is authoritative.  Keep its result
+                    // visible even when the immediate read races a restart.
+                }
+                if (run && !isTerminalRunStatus(run.status)) {
+                    setPaused(run.status === "paused");
+                    reportStage({ key: "reconnecting", resumeKey: latestStageKey, text: run.status === "paused" ? "任务仍在后台保存，当前处于暂停状态" : "任务仍在后台运行，正在恢复连接" });
+                    terminalReconciliation = null;
+                    return;
+                }
+                const status = run && isTerminalRunStatus(run.status) ? run.status : fallbackStatus;
+                onSettled(status, run);
+                finishTerminal(status);
+            })();
         };
 
         listen("run.planning", () => reportStage({ key: "planning", text: "正在理解需求并分析当前画布" }));
@@ -188,20 +224,25 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
         listen("run.review.passed", () => reportStage({ key: "finalizing", text: "检查完成，正在整理结果" }));
         listen("run.review.unavailable", () => reportStage({ key: "finalizing", text: "正在整理已完成结果" }));
         listen("run.completed", (event) => {
-            const payload = read<{ data?: { reply?: string } }>(event);
-            handlers.onAssistant(payload.data?.reply || "创作计划与后台生成任务已全部完成。", latestOutput);
-            finish();
+            const payload = read<{ data?: { reply?: string; recoveryOps?: CanvasAgentOp[] } }>(event);
+            if (payload.data?.recoveryOps?.length) handlers.onOps(payload.data.recoveryOps);
+            settleTerminal("completed", (status) => handlers.onAssistant(status === "completed" ? payload.data?.reply || "创作计划与后台生成任务已全部完成。" : "Agent 任务未能全部完成，已同步当前结果。", latestOutput));
         });
         listen("run.failed", (event) => {
-            const payload = read<{ data?: { message?: string } }>(event);
-            if (!latestFailedTask) handlers.onAssistant(payload.data?.message || "Agent 执行失败", { runId, title: "Agent 执行失败" });
-            finish();
+            const payload = read<{ data?: { message?: string; recoveryOps?: CanvasAgentOp[] } }>(event);
+            if (payload.data?.recoveryOps?.length) handlers.onOps(payload.data.recoveryOps);
+            settleTerminal("failed", (status, run) => {
+                if (status === "failed" && !latestFailedTask) {
+                    const failed = run?.tasks.find((task) => task.status === "failed");
+                    handlers.onAssistant(failed ? `「${failed.title || "创作任务"}」执行失败：${failed.error || "生成服务暂时不可用"}` : run?.error || payload.data?.message || "Agent 执行失败", { runId, title: failed?.title || "Agent 执行失败", ...(failed?.id ? { taskId: failed.id } : {}) });
+                }
+            });
         });
         listen("run.cancelled", (event) => {
-            const payload = read<{ data?: { ops?: CanvasAgentOp[] } }>(event);
+            const payload = read<{ data?: { ops?: CanvasAgentOp[]; recoveryOps?: CanvasAgentOp[] } }>(event);
             if (payload.data?.ops?.length) handlers.onOps(payload.data.ops);
-            handlers.onAssistant("Agent 任务已取消。");
-            finish();
+            if (payload.data?.recoveryOps?.length) handlers.onOps(payload.data.recoveryOps);
+            settleTerminal("cancelled", () => handlers.onAssistant("Agent 任务已取消。"));
         });
         listen("run.paused", () => {
             setPaused(true);
@@ -212,21 +253,21 @@ export function watchCanvasAgentRun(runId: string, handlers: RunHandlers, option
             reportStage({ key: "executing", text: "任务已恢复，正在继续执行" });
         });
         listen("run.snapshot", (event) => {
-            const payload = read<{ status?: string; tasks?: CreativeAgentRun["tasks"]; timings?: CreativeAgentRun["timings"] }>(event);
-            replaceRunProgress(payload.tasks, payload.timings?.requestAcceptedAt);
+            const payload = read<CanvasAgentRunWithRecovery>(event);
+            applyRecoveredRun(payload);
             if (payload.status === "cancelled") {
                 handlers.onAssistant("Agent 任务已取消。");
-                finish();
+                finishTerminal("cancelled");
             }
             if (payload.status === "completed") {
                 handlers.onAssistant("Agent 任务已完成，结果已经返回。");
-                finish();
+                finishTerminal("completed");
             }
             if (payload.status === "failed") {
                 const failed = payload.tasks?.find((task) => task.status === "failed" && task.id);
                 if (!latestFailedTask && failed?.id) handlers.onAssistant(`「${failed.title || "创作任务"}」执行失败：${failed.error || "生成服务暂时不可用"}`, { runId, taskId: failed.id, title: failed.title || "创作任务失败" });
-                else if (!latestFailedTask) handlers.onAssistant("Agent 执行失败", { runId, title: "Agent 执行失败" });
-                finish();
+                else if (!latestFailedTask) handlers.onAssistant(payload.error || "Agent 执行失败", { runId, title: "Agent 执行失败" });
+                finishTerminal("failed");
             }
             if (payload.status === "paused") setPaused(true);
             if (payload.status === "planning" || payload.status === "running") setPaused(false);
@@ -280,4 +321,8 @@ function childProgressText(data?: ChildTaskEventData) {
 function nonNegativeCount(value: unknown) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+function isTerminalRunStatus(status: unknown): status is Extract<CreativeAgentRun["status"], "completed" | "failed" | "cancelled"> {
+    return status === "completed" || status === "failed" || status === "cancelled";
 }

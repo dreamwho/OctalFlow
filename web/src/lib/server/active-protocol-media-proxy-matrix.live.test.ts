@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     consumeUserPoints: vi.fn(),
     fetchInternalApi: vi.fn(),
     getCurrentUser: vi.fn(),
+    geminiToolsRuntimeRequest: vi.fn(),
     mediaAccess: vi.fn(),
     refundUserPoints: vi.fn(),
     safeRecordAuditLog: vi.fn(),
@@ -29,6 +30,12 @@ vi.mock("@/lib/server/internal-origin", () => ({
 }));
 vi.mock("@/lib/server/media-concurrency", () => ({ acquireMediaConcurrency: () => ({ release: vi.fn() }), withMediaConcurrency: (response: Response) => response }));
 vi.mock("@/lib/server/proxy-dispatcher", () => ({ configureServerProxyDispatcher: vi.fn() }));
+vi.mock("@/lib/server/gemini-tools-service", () => ({
+    GEMINI_TOOLS_PROTOCOL: "gemini-tools",
+    geminiToolsOAuthConfigured: () => true,
+    isGeminiToolsRuntimePath: (path: string) => ["/chat/completions", "/v1/chat/completions", "/messages", "/v1/messages", "/models", "/v1/models"].includes(path.split("?")[0]),
+    geminiToolsRuntimeRequest: mocks.geminiToolsRuntimeRequest,
+}));
 
 import { runCustomImageTask, pollCustomImageTask } from "@/app/api/image-tasks/image-task-custom";
 import { runOpenAiImageTask } from "@/app/api/image-tasks/image-task-openai";
@@ -68,12 +75,18 @@ describe("active protocols through persisted admin settings and the system proxy
         const address = fixture.server.address();
         if (!address || typeof address === "string") throw new Error("Protocol fixture did not bind a TCP port");
         fixtureOrigin = `http://127.0.0.1:${address.port}`;
+        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", fixtureOrigin);
+        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "fixture-key");
         mocks.getCurrentUser.mockReset().mockResolvedValue({ id: "proxy-user", role: "admin", status: "active", adminPermissions: ["upstream.manage"], pointsBalance: 100 });
         mocks.consumeUserPoints.mockReset().mockResolvedValue({ cost: 1, remaining: 99, permanentRemaining: 99, dailyRemaining: 0, dailyExpiresAt: "", recordId: "points-record" });
         mocks.refundUserPoints.mockReset();
         mocks.mediaAccess.mockReset().mockResolvedValue(true);
         mocks.taskAccess.mockReset().mockResolvedValue(true);
         mocks.fetchInternalApi.mockReset().mockImplementation(dispatchInternalRequest);
+        mocks.geminiToolsRuntimeRequest.mockReset().mockImplementation((path: string, init: RequestInit) => {
+            const normalized = path.startsWith("/v1/") ? path : `/v1${path}`;
+            return fetch(`${fixtureOrigin}${normalized}`, init);
+        });
     });
 
     afterEach(async () => {
@@ -186,7 +199,7 @@ describe("active protocols through persisted admin settings and the system proxy
 });
 
 function protocolCases(capability: LogicalModelCapability) {
-    const strict = registeredChannelProtocolDefinitions.filter((definition) => definition.strict && definition.operations[capability]);
+    const strict = registeredChannelProtocolDefinitions.filter((definition) => definition.strict && definition.transport !== "local-cli" && definition.operations[capability]);
     const advanced = channelProtocolDefinitions.filter((definition) => !definition.strict && definition.capabilities.includes(capability));
     return [...strict, ...advanced];
 }

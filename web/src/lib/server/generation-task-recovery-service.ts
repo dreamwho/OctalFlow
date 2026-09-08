@@ -279,7 +279,7 @@ async function processAgentLease(lease: GenerationTaskLease, workerId: string, o
         }
         await releaseGenerationTaskLease("agent", run.id, workerId, {
             executionPhase: "polling",
-            nextPollAt: generationTaskNextPollAt({ submittedAt: lease.submittedAt || run.createdAt }),
+            nextPollAt: nextAgentRetryAt(latest) || generationTaskNextPollAt({ submittedAt: lease.submittedAt || run.createdAt }),
             lastPollAt: Date.now(),
             lastUpstreamStatus: latest.status,
         });
@@ -312,6 +312,13 @@ export function pendingAgentChildTaskIds(run: Pick<AgentRun, "tasks">) {
             }),
         ),
     );
+}
+
+export function nextAgentRetryAt(run: Pick<AgentRun, "tasks">, now = Date.now()) {
+    const due = run.tasks
+        .filter((task) => (task.status === "ready" || task.status === "running") && typeof task.retryAfterAt === "number" && task.retryAfterAt > now)
+        .map((task) => task.retryAfterAt!);
+    return due.length ? Math.min(...due) : undefined;
 }
 
 async function processTextLease(lease: GenerationTaskLease, workerId: string, origin: string, cookie: string): Promise<RecoveryResult> {
@@ -633,6 +640,16 @@ async function processVideoLease(lease: GenerationTaskLease, workerId: string, o
     try {
         const step = await queryVideoTaskUpstream(task, origin, cookie, cookie ? "" : task.userId);
         const now = Date.now();
+        if (step.state === "needs_review") {
+            await releaseGenerationTaskLease("video", task.id, workerId, {
+                executionPhase: "needs_review",
+                nextPollAt: undefined,
+                lastPollAt: now,
+                lastUpstreamStatus: step.status,
+                resultPayload: { reviewReason: step.error.slice(0, 500) },
+            });
+            return "needs_review";
+        }
         if (step.state === "failed") {
             await failVideoTaskFromWorker(task, step.error, true);
             await releaseGenerationTaskLease("video", task.id, workerId, { executionPhase: "completed", nextPollAt: undefined, lastPollAt: now, lastUpstreamStatus: step.status });

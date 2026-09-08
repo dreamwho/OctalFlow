@@ -31,6 +31,41 @@ export function isCanvasImageNodeType(type: CanvasNodeType | null | undefined) {
 type CanvasNodeStatus = "idle" | "success" | "loading" | "error" | "needs_review" | "cancelled";
 export type CanvasGenerationMode = "text" | "image" | "video" | "audio";
 export type CanvasImageGenerationType = "generation" | "edit";
+export type CanvasImageTaskKind = CanvasImageGenerationType | "upscale";
+
+export type CanvasInteriorDesignScene = "interior" | "interior-light" | "exterior" | "enclosed";
+
+export type CanvasInteriorDesignSettings = {
+    scene: CanvasInteriorDesignScene;
+    task: string;
+    conversion: string;
+    spaceType: string;
+    style: string;
+    exteriorView: string;
+    location: string;
+    season: string;
+    weather: string;
+    time: string;
+    curtain: string;
+    mainLight: boolean;
+    artificialLight: boolean;
+    sunlight: string;
+    indoorLight: string;
+    colorTemperature: string;
+    postTone: string;
+    lightingQuality: string;
+    camera: string;
+    aperture: string;
+    shutter: string;
+    iso: string;
+    focalLength: string;
+    techniques: string[];
+    geometry: string;
+    objectIntegrity: string;
+    materialIntegrity: string;
+    aspectRatio: string;
+    resolution: string;
+};
 
 export type CameraControlOptions = {
     enabled: boolean;
@@ -53,6 +88,17 @@ export type CanvasVideoFrameSelection = {
     height?: number;
 };
 
+/**
+ * Persisted frame assets derived from the media owned by a video node. These
+ * are deliberately separate from videoFirstFrame/videoLastFrame, which belong
+ * to a target generation request and describe its requested roles.
+ */
+export type CanvasVideoFrameExtraction = {
+    sourceStorageKey: string;
+    firstFrame: CanvasVideoFrameSelection;
+    lastFrame: CanvasVideoFrameSelection;
+};
+
 export type CanvasVideoReferenceSnapshot = {
     type: "image" | "video" | "audio";
     role: VideoReferenceRole;
@@ -71,6 +117,10 @@ export type CanvasVideoReferenceSnapshot = {
 };
 
 export type CanvasNodeMetadata = {
+    configKind?: "interior-design";
+    interiorDesign?: CanvasInteriorDesignSettings;
+    runningHubAppId?: string;
+    runningHubAppName?: string;
     agentRunId?: string;
     agentTaskId?: string;
     agentGenerationTaskIds?: string[];
@@ -111,6 +161,9 @@ export type CanvasNodeMetadata = {
     selectedSkillIds?: string[];
     remakeMode?: "universal" | "vlog" | "drama" | "talking-head" | "product" | "tutorial";
     status?: CanvasNodeStatus;
+    generationProgress?: number;
+    generationStartedAt?: number;
+    generationStage?: string;
     errorDetails?: string;
     fontSize?: number;
     configDetailsOpen?: boolean;
@@ -118,6 +171,7 @@ export type CanvasNodeMetadata = {
     generationType?: CanvasImageGenerationType;
     model?: string;
     size?: string;
+    sizeUserSelected?: boolean;
     quality?: string;
     count?: number;
     seconds?: string;
@@ -128,11 +182,21 @@ export type CanvasNodeMetadata = {
     videoFirstFrame?: CanvasVideoFrameSelection;
     videoLastFrame?: CanvasVideoFrameSelection;
     videoReferences?: CanvasVideoReferenceSnapshot[];
+    videoFrameExtraction?: CanvasVideoFrameExtraction;
+    videoFrameExtractionError?: string;
     audioVoice?: string;
     audioFormat?: string;
     audioSpeed?: string;
     audioInstructions?: string;
     cameraControl?: CameraControlOptions;
+    cameraMotions?: Record<
+        string,
+        {
+            label: string;
+            prompt: string;
+            previewClass?: string;
+        }
+    >;
     panoramaProjection?: "equirectangular";
     panoramaSourcePrompt?: string;
     references?: string[];
@@ -151,17 +215,26 @@ export type CanvasNodeMetadata = {
     mimeType?: string;
     bytes?: number;
     durationMs?: number;
+    derivedVideoOperation?: "depth";
+    derivedFromNodeId?: string;
     videoTask?: {
         id: string;
-        provider: "openai" | "seedance" | "generation";
+        provider: "openai" | "seedance" | "dreamina-cli" | "generation";
         model: string;
         pollPath?: string;
         serverTaskId?: string;
     };
     imageTask?: {
         id: string;
-        kind: CanvasImageGenerationType;
+        kind: CanvasImageTaskKind;
         model: string;
+    };
+    upscaleTask?: {
+        id: string;
+        provider: "dreamina-cli";
+        model: string;
+        resolutionType: "2k" | "4k" | "8k";
+        sourceNodeId: string;
     };
     textTask?: {
         id: string;

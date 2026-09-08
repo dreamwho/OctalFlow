@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/services/api/points", () => ({ refreshUserPointsIfSystem: vi.fn(), syncUserPointsFromHeaders: vi.fn() }));
 vi.mock("@/stores/use-config-store", () => ({ resolveModelRequestConfig: vi.fn((config: Record<string, unknown>, model: string) => ({ ...config, model })) }));
 
-import { ImageGenerationTaskTerminalError, createImageGenerationTask, waitForImageGenerationTask } from "./image";
+import { ImageGenerationTaskTerminalError, createImageGenerationTask, getDreaminaStatus, waitForImageGenerationTask } from "./image";
 import type { AiConfig } from "@/stores/use-config-store";
 
 describe("图片任务轮询", () => {
@@ -38,6 +38,75 @@ describe("图片任务轮询", () => {
         expect(headers.get("x-octalaicanvas-client-request-id")).toBe("image-workbench:conversation:slot");
         expect(headers.get("x-octalaicanvas-attempt-no")).toBe("3");
         expect(body.context).toMatchObject({ clientRequestId: "image-workbench:conversation:slot", attemptNo: 3 });
+    });
+
+    it("submits a public prompt separately from the provider execution prompt", async () => {
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ task: { id: "image-task", kind: "edit", model: "gemini-image" } }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        await createImageGenerationTask({ apiSource: "system", model: "gemini-image", imageModel: "gemini-image" } as AiConfig, '{"摄影参数":{"相机":"Hasselblad"}}', [], undefined, {
+            logSource: "canvas",
+            logTitle: "SU直出摄影级照片",
+            publicPrompt: "SU直出摄影级照片",
+        });
+
+        const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { prompt: string; publicPrompt?: string; title?: string };
+        expect(body).toMatchObject({
+            prompt: '{"摄影参数":{"相机":"Hasselblad"}}',
+            publicPrompt: "SU直出摄影级照片",
+            title: "SU直出摄影级照片",
+        });
+    });
+
+    it("submits Dreamina CLI upscale options without changing the normal image task shape", async () => {
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ task: { id: "upscale-task", kind: "upscale", model: "dreamina-image-upscale" } }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        await createImageGenerationTask(
+            { apiSource: "system", model: "image-model", imageModel: "image-model" } as AiConfig,
+            "",
+            [
+                {
+                    id: "source-node",
+                    name: "source.png",
+                    type: "image/png",
+                    dataUrl: "/api/reference-assets/source.png",
+                    serverUrl: "/api/reference-assets/source.png",
+                    width: 1024,
+                    height: 768,
+                },
+            ],
+            undefined,
+            {
+                kind: "upscale",
+                model: "dreamina-image-upscale",
+                channelId: "dreamina-cli",
+                upscale: { resolutionType: "4k", sourceNodeId: "source-node" },
+            },
+        );
+
+        const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+            kind: string;
+            config: { apiSource?: string; model?: string; channelId?: string };
+            prompt: string;
+            references: Array<{ id?: string; serverUrl?: string }>;
+            upscale?: { resolutionType: string; sourceNodeId?: string };
+        };
+        expect(body).toMatchObject({
+            kind: "upscale",
+            config: { apiSource: "system", model: "dreamina-image-upscale", channelId: "dreamina-cli" },
+            prompt: "",
+            upscale: { resolutionType: "4k", sourceNodeId: "source-node" },
+        });
+        expect(body.references).toEqual([expect.objectContaining({ id: "source-node", serverUrl: "/api/reference-assets/source.png" })]);
+    });
+
+    it("reads the persisted Dreamina CLI status without applying VIP assumptions", async () => {
+        const fetchMock = vi.fn(async () => Response.json({ enabled: true, authorized: true, vipLevel: "", checkedAt: "2026-08-31T10:00:00.000Z" }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        await expect(getDreaminaStatus()).resolves.toEqual({ enabled: true, authorized: true, vipLevel: "", checkedAt: "2026-08-31T10:00:00.000Z" });
+        expect(fetchMock).toHaveBeenCalledWith("/api/dreamina/status", { cache: "no-store", signal: undefined });
     });
 
     it("reuses a permanent server reference without downloading it before task creation", async () => {

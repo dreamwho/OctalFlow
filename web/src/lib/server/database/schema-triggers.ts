@@ -8,6 +8,30 @@ CREATE TRIGGER app_settings_set_updated_at BEFORE UPDATE ON app_settings FOR EAC
 DROP TRIGGER IF EXISTS system_model_channels_set_updated_at ON system_model_channels;
 CREATE TRIGGER system_model_channels_set_updated_at BEFORE UPDATE ON system_model_channels FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
 
+DROP TRIGGER IF EXISTS runninghub_settings_set_updated_at ON runninghub_settings;
+CREATE TRIGGER runninghub_settings_set_updated_at BEFORE UPDATE ON runninghub_settings FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
+DROP TRIGGER IF EXISTS runninghub_apps_set_updated_at ON runninghub_apps;
+CREATE TRIGGER runninghub_apps_set_updated_at BEFORE UPDATE ON runninghub_apps FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
+DROP TRIGGER IF EXISTS runninghub_tasks_set_updated_at ON runninghub_tasks;
+CREATE TRIGGER runninghub_tasks_set_updated_at BEFORE UPDATE ON runninghub_tasks FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
+DROP TRIGGER IF EXISTS gemini_tools_accounts_set_updated_at ON gemini_tools_accounts;
+CREATE TRIGGER gemini_tools_accounts_set_updated_at BEFORE UPDATE ON gemini_tools_accounts FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
+DROP TRIGGER IF EXISTS gemini_tools_api_keys_set_updated_at ON gemini_tools_api_keys;
+CREATE TRIGGER gemini_tools_api_keys_set_updated_at BEFORE UPDATE ON gemini_tools_api_keys FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
+DROP TRIGGER IF EXISTS gemini_tools_gateway_settings_set_updated_at ON gemini_tools_gateway_settings;
+CREATE TRIGGER gemini_tools_gateway_settings_set_updated_at BEFORE UPDATE ON gemini_tools_gateway_settings FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
+DROP TRIGGER IF EXISTS dreamina_cli_account_state_set_updated_at ON dreamina_cli_account_state;
+CREATE TRIGGER dreamina_cli_account_state_set_updated_at BEFORE UPDATE ON dreamina_cli_account_state FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
+DROP TRIGGER IF EXISTS dreamina_cli_request_logs_set_updated_at ON dreamina_cli_request_logs;
+CREATE TRIGGER dreamina_cli_request_logs_set_updated_at BEFORE UPDATE ON dreamina_cli_request_logs FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
+
 DROP TRIGGER IF EXISTS users_set_updated_at ON users;
 CREATE TRIGGER users_set_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION octalaicanvas_set_updated_at();
 

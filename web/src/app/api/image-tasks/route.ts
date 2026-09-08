@@ -22,6 +22,10 @@ import { registerGenerationTaskAssetsForUser } from "@/lib/server/creative-runti
 import { createSignedReferenceAssetUrl, signReferenceAssetInputUrl } from "@/lib/server/reference-asset-access";
 import { assertCapabilityConstraints } from "@/lib/server/capability-constraints";
 import { checkGenerationRateLimit, rateLimitHeaders } from "@/lib/server/security";
+import { DREAMINA_CLI_CHANNEL_ID, DREAMINA_UPSCALE_RESOLUTIONS } from "@/lib/server/dreamina-cli-catalog";
+import { dreaminaCliOperationEnabled } from "@/lib/server/dreamina-cli-service";
+import { rawModelName } from "@/lib/server/generation-channel";
+import { getRunningHubApp } from "@/lib/server/runninghub-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,7 +66,7 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import {
     publicTask,
     sanitizeConfigs,
-    sanitizeAdvancedConfig,
+    sanitizeModelAdvancedConfig,
     textOrEmpty,
     preferredImageResponseFormat,
     openAiImageTaskPath,
@@ -153,11 +157,25 @@ export async function POST(request: Request) {
     if (requestId) resolvedBody.context = { ...(resolvedBody.context || {}), clientRequestId: requestId, ...(headerAttemptNo ? { attemptNo: headerAttemptNo } : {}) };
     const settings = await getAuthSettings();
     const response = await withGenerationConcurrencyLimit(currentUser.id, "image", 10 * 60 * 1000, effectiveGenerationConcurrencyLimit(currentUser.role, settings.generationConcurrency.image), async () => {
-        const configs = sanitizeConfigs(resolvedBody.config, settings);
         const prompt = (resolvedBody.prompt || "").trim();
-        const kind = resolvedBody.kind === "edit" ? "edit" : "generation";
-        if (!configs.length || !prompt) return NextResponse.json({ error: "任务参数不完整" }, { status: 400 });
+        const publicPrompt = typeof resolvedBody.publicPrompt === "string" ? resolvedBody.publicPrompt.trim().slice(0, 5000) : "";
+        const kind = resolvedBody.kind === "upscale" ? "upscale" : resolvedBody.kind === "edit" ? "edit" : "generation";
+        const requestedModel = rawModelName(resolvedBody.config?.model || "");
+        const requestedChannelId = (resolvedBody.config?.channelId || "").trim();
+        const runningHubAppId = typeof resolvedBody.runningHubAppId === "string" ? resolvedBody.runningHubAppId.trim() : "";
+        const runningHubApp = runningHubAppId ? await getRunningHubApp(runningHubAppId) : null;
+        if (runningHubAppId && (!runningHubApp || !runningHubApp.enabled || !runningHubApp.featureBindings.includes("interior-design"))) return NextResponse.json({ error: "该 RunningHub 应用未启用或未绑定室内设计" }, { status: 422 });
+        const isDreaminaUpscale = kind === "upscale" && requestedModel === "dreamina-image-upscale" && requestedChannelId === DREAMINA_CLI_CHANNEL_ID;
+        if (kind === "upscale" && !isDreaminaUpscale) return NextResponse.json({ error: "图片超清当前仅支持即梦 CLI 图片超清模型" }, { status: 400 });
+        if (isDreaminaUpscale && !dreaminaCliOperationEnabled(settings, "dreamina-image-upscale")) return NextResponse.json({ error: "即梦 CLI 图片超清模型尚未在管理后台启用" }, { status: 422 });
+        const configs = runningHubApp ? [runningHubImageConfig(resolvedBody.config, runningHubApp.id, runningHubApp.name)] : isDreaminaUpscale ? [dreaminaUpscaleConfig(resolvedBody.config, settings)] : sanitizeConfigs(resolvedBody.config, settings);
+        if (!configs.length || (kind !== "upscale" && !prompt)) return NextResponse.json({ error: "任务参数不完整" }, { status: 400 });
         const references = Array.isArray(resolvedBody.references) ? resolvedBody.references.filter((item) => Boolean(item?.dataUrl || item?.url || item?.remoteUrl || item?.serverUrl)) : [];
+        if (runningHubApp && (kind !== "edit" || references.length < 1)) return NextResponse.json({ error: "RunningHub 室内设计需要至少一张参考图" }, { status: 400 });
+        const resolutionType = resolvedBody.upscale?.resolutionType;
+        if (kind === "upscale" && (!DREAMINA_UPSCALE_RESOLUTIONS.includes(resolutionType as (typeof DREAMINA_UPSCALE_RESOLUTIONS)[number]) || references.length !== 1 || resolvedBody.mask)) {
+            return NextResponse.json({ error: "即梦图片超清需要一张参考图，且分辨率仅支持 2K、4K 或 8K" }, { status: 400 });
+        }
         const constrainedConfigs = configs.filter((config) => {
             try {
                 assertCapabilityConstraints(config.capabilityProfile, { capability: "image", referenceCount: references.length });
@@ -187,8 +205,13 @@ export async function POST(request: Request) {
             config,
             candidateConfigs: compatibleConfigs.slice(1),
             prompt,
+            publicPrompt: publicPrompt || undefined,
             references,
             mask: resolvedBody.mask?.dataUrl || resolvedBody.mask?.url || resolvedBody.mask?.remoteUrl || resolvedBody.mask?.serverUrl ? resolvedBody.mask : undefined,
+            ...(runningHubApp ? { runningHub: { appId: runningHubApp.id } } : {}),
+            ...(kind === "upscale"
+                ? { upscale: { resolutionType: resolutionType!, ...(typeof resolvedBody.upscale?.sourceNodeId === "string" && resolvedBody.upscale.sourceNodeId.trim() ? { sourceNodeId: resolvedBody.upscale.sourceNodeId.trim().slice(0, 200) } : {}) } }
+                : {}),
         });
         await linkStoredGenerationTask("image", task.id, resolvedBody.context || {});
         const cookie = request.headers.get("cookie") || "";
@@ -200,6 +223,38 @@ export async function POST(request: Request) {
         return NextResponse.json({ task: publicTask(task) });
     });
     return response || NextResponse.json({ error: "当前用户生图任务已达到并发上限，请稍后再试" }, { status: 429 });
+}
+
+function runningHubImageConfig(config: ImageTaskConfig | undefined, appId: string, appName: string): ImageTaskConfig {
+    return {
+        apiSource: "system",
+        baseUrl: "runninghub://image-task",
+        apiKey: "system",
+        apiFormat: "openai",
+        model: `runninghub:${appId}`,
+        logicalModel: appName,
+        channelId: "runninghub",
+        quality: typeof config?.quality === "string" ? config.quality.trim() : undefined,
+        size: typeof config?.size === "string" ? config.size.trim() : undefined,
+        systemPrompt: "",
+    };
+}
+
+function dreaminaUpscaleConfig(config: ImageTaskConfig | undefined, settings: Awaited<ReturnType<typeof getAuthSettings>>): ImageTaskConfig {
+    const channel = settings.systemChannels.find((item) => item.id === DREAMINA_CLI_CHANNEL_ID);
+    if (!channel) throw new Error("即梦 CLI 渠道未配置");
+    return {
+        apiSource: "system",
+        baseUrl: `/api/ai/system/${DREAMINA_CLI_CHANNEL_ID}`,
+        apiKey: "system",
+        apiFormat: "openai",
+        model: "dreamina-image-upscale",
+        channelId: DREAMINA_CLI_CHANNEL_ID,
+        quality: typeof config?.quality === "string" ? config.quality.trim() : undefined,
+        size: typeof config?.size === "string" ? config.size.trim() : undefined,
+        systemPrompt: "",
+        advancedConfig: sanitizeModelAdvancedConfig(channel.advancedConfig, "dreamina-image-upscale"),
+    };
 }
 
 function positiveAttemptNo(value: string | null) {

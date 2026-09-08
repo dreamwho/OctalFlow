@@ -11,10 +11,17 @@ import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-st
 import type { ReferenceImage } from "@/types/image";
 
 type GenerationLogSource = "agent" | "image-workbench" | "video-workbench" | "canvas" | "drama" | "unknown";
-type RequestOptions = {
+export type ImageTaskKind = "generation" | "edit" | "upscale";
+export type ImageUpscaleResolution = "2k" | "4k" | "8k";
+export type ImageUpscaleTaskInput = {
+    resolutionType: ImageUpscaleResolution;
+    sourceNodeId?: string;
+};
+export type RequestOptions = {
     signal?: AbortSignal;
     logSource?: GenerationLogSource;
     logTitle?: string;
+    publicPrompt?: string;
     conversationId?: string;
     runId?: string;
     surface?: "chat" | "canvas" | "drama";
@@ -27,11 +34,16 @@ type RequestOptions = {
     clientRequestId?: string;
     generationLogId?: string;
     generationSlotId?: string;
+    kind?: ImageTaskKind;
+    upscale?: ImageUpscaleTaskInput;
+    model?: string;
+    channelId?: string;
+    runningHubAppId?: string;
 };
 
 export type ImageGenerationTask = {
     id: string;
-    kind: "generation" | "edit";
+    kind: ImageTaskKind;
     model: string;
     status?: "pending" | "running" | "success" | "error" | "cancelled";
 };
@@ -81,7 +93,8 @@ export function isImageGenerationTaskDeferredError(error: unknown) {
 }
 
 export async function createImageGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], mask?: ReferenceImage, options?: RequestOptions): Promise<ImageGenerationTask> {
-    const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
+    const kind = options?.kind || (references.length || mask ? "edit" : "generation");
+    const requestConfig = resolveModelRequestConfig(config, options?.model || config.model || config.imageModel);
     const taskReferences = await Promise.all(references.map(referenceToTaskInput));
     const taskMask = mask ? await referenceToTaskInput(mask) : undefined;
     const response = await fetch("/api/image-tasks", {
@@ -92,18 +105,23 @@ export async function createImageGenerationTask(config: AiConfig, prompt: string
             ...(options?.attemptNo ? { "X-OCTALAICANVAS-Attempt-No": String(options.attemptNo) } : {}),
         },
         body: JSON.stringify({
-            kind: references.length || mask ? "edit" : "generation",
+            kind,
             config: {
-                model: requestConfig.modelId || requestConfig.model,
+                ...(kind === "upscale" ? { apiSource: "system" } : {}),
+                model: options?.model || requestConfig.modelId || requestConfig.model,
+                ...(options?.channelId ? { channelId: options.channelId } : {}),
                 quality: requestConfig.quality,
                 size: requestConfig.size,
             },
             prompt,
+            publicPrompt: options?.publicPrompt,
             references: taskReferences,
             mask: taskMask,
+            ...(options?.upscale ? { upscale: options.upscale } : {}),
             source: options?.logSource || "image-workbench",
             title: options?.logTitle || "",
             context: taskContext(options),
+            ...(options?.runningHubAppId ? { runningHubAppId: options.runningHubAppId } : {}),
         }),
         signal: options?.signal,
     });
@@ -113,6 +131,39 @@ export async function createImageGenerationTask(config: AiConfig, prompt: string
     const payload = (await response.json()) as ImageTaskPayload;
     if (!payload.task?.id) throw new Error(payload.error || "创建图片任务失败");
     return payload.task;
+}
+
+export type DreaminaStatus = {
+    enabled: boolean;
+    authorized: boolean;
+    vipLevel: string;
+    checkedAt: string;
+};
+
+export async function getDreaminaStatus(signal?: AbortSignal): Promise<DreaminaStatus> {
+    const response = await fetch("/api/dreamina/status", { cache: "no-store", signal });
+    throwIfClientSessionExpired(response);
+    if (!response.ok) throw new GenerationTaskRequestError(await readFetchError(response, "读取即梦 CLI 状态失败"), response.status);
+    const payload = (await response.json().catch(() => null)) as unknown;
+    const value = payload && typeof payload === "object" && "data" in payload && payload.data && typeof payload.data === "object" ? payload.data : payload;
+    const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+    return {
+        enabled: record.enabled === true,
+        authorized: record.authorized === true,
+        vipLevel: typeof (record.vipLevel ?? record.vip_level) === "string" ? String(record.vipLevel ?? record.vip_level) : "",
+        checkedAt: typeof record.checkedAt === "string" ? record.checkedAt : typeof record.checked_at === "string" ? record.checked_at : "",
+    };
+}
+
+export async function resumeImageGenerationTask(taskId: string, signal?: AbortSignal) {
+    const response = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "resume" }),
+        signal,
+    });
+    throwIfClientSessionExpired(response);
+    if (!response.ok) throw new GenerationTaskRequestError(await readFetchError(response, "检查图片任务失败"), response.status);
 }
 
 function taskContext(options?: RequestOptions) {

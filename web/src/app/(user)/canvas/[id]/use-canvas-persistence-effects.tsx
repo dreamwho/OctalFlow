@@ -173,7 +173,8 @@ export function useCanvasPersistenceEffects({ state, tasks }: { state: CanvasPag
                 setConnections(project.connections);
                 setChatSessions(restoredSessions);
                 setActiveChatId(project.activeChatId || null);
-                setBackgroundMode(project.backgroundMode);
+                const restoredBackgroundMode = project.backgroundMode === "blank" ? "blank" : "dots";
+                setBackgroundMode(restoredBackgroundMode);
                 setShowImageInfo(project.showImageInfo || false);
                 setViewport(project.viewport);
                 didInitialCenterRef.current = Boolean(restoredNodes.length || project.connections.length || project.viewport.x || project.viewport.y || project.viewport.k !== 1 || project.createdAt !== project.updatedAt);
@@ -187,7 +188,7 @@ export function useCanvasPersistenceEffects({ state, tasks }: { state: CanvasPag
                     connections: project.connections,
                     chatSessions: restoredSessions,
                     activeChatId: project.activeChatId || null,
-                    backgroundMode: project.backgroundMode,
+                    backgroundMode: restoredBackgroundMode,
                     showImageInfo: project.showImageInfo || false,
                 };
                 setHistoryState({ canUndo: false, canRedo: false });

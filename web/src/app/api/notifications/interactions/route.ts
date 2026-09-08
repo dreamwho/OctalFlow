@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { unauthorized, workPublicationError, workPublicationOk } from "@/app/api/_shared/work-publication-response";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getDatabaseProvider } from "@/lib/server/database";
 import { listUserNotifications } from "@/lib/server/work-community-service";
 
 export const runtime = "nodejs";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return unauthorized();
+    if (getDatabaseProvider() !== "postgres") return workPublicationOk({ items: [], unreadCount: 0 }, "互动通知未启用");
     try {
         return workPublicationOk(
             await listUserNotifications(user.id, {

@@ -59,7 +59,7 @@ export function AgentMediaPreview({
         const thumbnailUrl = imagePreviewUrl(url, 960);
         const largePreviewUrl = imagePreviewUrl(url, 1920);
         return (
-            <div ref={mediaRootRef} className={cn("group/media relative overflow-hidden", className)}>
+            <div ref={mediaRootRef} className={cn("group/media relative overflow-hidden bg-transparent [&_.ant-image]:!block [&_.ant-image]:!size-full [&_.ant-image-img]:!block [&_.ant-image-img]:!size-full [&_.ant-image-img]:!border-0 [&_.ant-image-img]:!bg-transparent", className)}>
                 <Image
                     src={thumbnailUrl}
                     alt={title}
@@ -67,9 +67,9 @@ export function AgentMediaPreview({
                         const image = event.currentTarget;
                         onDimensions?.(image.naturalWidth, image.naturalHeight);
                     }}
-                    className={cn("!block", fit === "intrinsic" ? "!h-auto !w-auto max-h-[280px] max-w-full object-contain" : fit === "contain" ? "!size-full object-contain" : "!h-full !w-full object-cover")}
+                    className={cn("!block !border-0 !bg-transparent", fit === "intrinsic" ? "!h-auto !w-auto max-h-[280px] max-w-full object-contain" : fit === "contain" ? "!size-full object-contain" : "!h-full !w-full object-cover")}
                     classNames={{
-                        root: cn("cursor-zoom-in overflow-hidden", fit === "intrinsic" ? "!block max-w-full" : fit === "contain" ? "!block !size-full" : "!block !h-full !w-full"),
+                        root: cn("cursor-zoom-in overflow-hidden !border-0 !bg-transparent", fit === "intrinsic" ? "!block max-w-full" : fit === "contain" ? "!block !size-full" : "!block !h-full !w-full"),
                         popup: { root: "agent-media-image-preview" },
                     }}
                     styles={agentMediaPreviewPopupStyles}

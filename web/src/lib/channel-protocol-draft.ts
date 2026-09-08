@@ -24,7 +24,7 @@ export type ChannelProtocolDraft = {
 };
 
 const capabilities = new Set<LogicalModelCapability>(["text", "image", "video", "audio"]);
-const authModes = new Set<SystemChannelAuthMode>(["none", "bearer", "x-api-key", "custom-header"]);
+const authModes = new Set<SystemChannelAuthMode>(["none", "bearer", "x-api-key", "custom-header", "provider-managed"]);
 const templateVariables = new Set([
     "model",
     "prompt",

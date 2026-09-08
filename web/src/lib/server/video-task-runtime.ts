@@ -14,8 +14,10 @@ import { maintenanceWorkerHeaders } from "@/lib/server/maintenance-auth";
 import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
 import { refundVideoTask } from "@/lib/server/video-task-refund";
 import { geminiVideoQueryPath, parseGeminiVideoOperation } from "@/lib/server/gemini-video-provider";
+import { isDreaminaCliVideoTask, isDreaminaCliPersistedResultUrl, queryDreaminaCliVideoTask } from "@/lib/server/dreamina-cli-video-task";
+import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 
-export type VideoUpstreamStep = { state: "pending"; status: string } | { state: "result_ready"; status: string; resultUrl: string } | { state: "failed"; status: string; error: string };
+export type VideoUpstreamStep = { state: "pending"; status: string } | { state: "result_ready"; status: string; resultUrl: string } | { state: "needs_review"; status: string; error: string } | { state: "failed"; status: string; error: string };
 
 export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: string, cookie: string) {
     const polling = taskPollingPolicy(task);
@@ -23,6 +25,15 @@ export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: stri
     if (!claimed) return getVideoTask(task.id);
 
     const step = await queryVideoTaskUpstream(claimed, origin, cookie);
+    if (step.state === "needs_review") {
+        await scheduleGenerationTask("video", claimed.id, {
+            executionPhase: "needs_review",
+            nextPollAt: undefined,
+            lastUpstreamStatus: step.status,
+            resultPayload: { reviewReason: step.error.slice(0, 500) },
+        });
+        return getVideoTask(claimed.id);
+    }
     if (step.state === "failed") return failVideoTask(claimed, step.error);
     if (step.state === "result_ready") return persistVideoTaskResult(claimed, step.resultUrl, origin, cookie);
     return getVideoTask(claimed.id);
@@ -30,6 +41,7 @@ export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: stri
 
 export async function queryVideoTaskUpstream(task: VideoTask, origin: string, cookie = "", workerUserId = ""): Promise<VideoUpstreamStep> {
     if (task.upstream.resultUrl) return { state: "result_ready", status: "completed", resultUrl: task.upstream.resultUrl };
+    if (isDreaminaCliVideoTask(task.config)) return queryDreaminaCliVideoTask(task);
     if (isGeminiVideoTask(task)) return queryGeminiVideoUpstream(task, origin, cookie, workerUserId);
     const data = await queryVideoUpstream(task, origin, cookie, workerUserId);
     const status = readVideoProviderStatus(data, task.config.advancedConfig?.statusField);
@@ -95,20 +107,22 @@ async function completeVideoTask(task: VideoTask, resultUrl: string, origin: str
     }
     const result = task.result?.url
         ? task.result
-        : await normalizeVideoResult({
-              url: videoProviderMediaUrl(task.config.baseUrl, resultUrl),
-              origin,
-              cookie,
-              internalHeaders: workerHeaders,
-              requestedDurationSeconds: task.requestedDurationSeconds,
-              mimeType: "video/mp4",
-              ownerUserId: task.userId,
-              source: task.source,
-              conversationId: task.conversationId,
-              runId: task.runId,
-              taskId: task.id,
-              projectId: task.projectId,
-          });
+        : isDreaminaCliVideoTask(task.config) && isDreaminaCliPersistedResultUrl(resultUrl)
+          ? { url: resultUrl, mimeType: dreaminaCliResultMimeType(resultUrl), ...(task.requestedDurationSeconds ? { durationMs: task.requestedDurationSeconds * 1000 } : {}) }
+          : await normalizeVideoResult({
+                url: videoProviderMediaUrl(task.config.baseUrl, resultUrl),
+                origin,
+                cookie,
+                internalHeaders: workerHeaders,
+                requestedDurationSeconds: task.requestedDurationSeconds,
+                mimeType: "video/mp4",
+                ownerUserId: task.userId,
+                source: task.source,
+                conversationId: task.conversationId,
+                runId: task.runId,
+                taskId: task.id,
+                projectId: task.projectId,
+            });
     const completed = await completeReconciledVideoTask(task.id, result);
     if (!completed) {
         const latest = await getVideoTask(task.id);
@@ -229,4 +243,9 @@ function contentEndpointResultUrl(task: VideoTask, status: string) {
 
 function isGeminiVideoTask(task: VideoTask) {
     return task.config.apiFormat === "gemini" && task.config.advancedConfig?.protocol !== "globalaiopc";
+}
+
+function dreaminaCliResultMimeType(value: string) {
+    const path = value.split("?", 1)[0].toLowerCase();
+    return path.endsWith(".webm") ? "video/webm" : path.endsWith(".mov") ? "video/quicktime" : "video/mp4";
 }

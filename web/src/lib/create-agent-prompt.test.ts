@@ -29,4 +29,15 @@ describe("Agent prompt handoff", () => {
         expect(createAgentDraftFromHash(href.slice(href.indexOf("#")))).toEqual({ source: "home", prompt: "复刻这条 VLOG", mode: "agent", skillIds: ["video-remake-vlog"] });
         expect(createAgentPromptHref("", { source: "home", skillIds: ["video-remake-universal"] })).toBe("/create#source=home&skills=video-remake-universal");
     });
+
+    it("carries an explicit homepage model selection into the create page", () => {
+        const href = createAgentPromptHref("生成室内效果图", { source: "home", mode: "image", modelIds: ["gemini-3-pro-image", "gemini-3-pro-image", "bad model"] });
+
+        expect(createAgentDraftFromHash(href.slice(href.indexOf("#")))).toEqual({
+            source: "home",
+            prompt: "生成室内效果图",
+            mode: "image",
+            modelIds: ["gemini-3-pro-image"],
+        });
+    });
 });

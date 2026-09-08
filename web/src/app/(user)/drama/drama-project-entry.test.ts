@@ -6,7 +6,7 @@ describe("drama project entry", () => {
     it("keeps the create modal compact and separates labels from Ant Design controls", async () => {
         const source = await readFile(resolve(process.cwd(), "src/app/(user)/drama/page.tsx"), "utf8");
 
-        expect(source).toContain("width={520}");
+        expect(source).toContain("width={760}");
         expect(source).toContain('maxWidth: "calc(100vw - 24px)"');
         expect(source).toContain('htmlFor="drama-project-title"');
         expect(source).toContain('<div className="min-w-0">');

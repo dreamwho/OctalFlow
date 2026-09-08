@@ -68,7 +68,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         10 * 60 * 1000,
         limit,
         async () => ({
-            updated: await updateAgentRunById(run.id, { status: "running", tasks }, { type: "task.retry.requested", data: { taskId: retriedTaskIds[0], taskIds: retriedTaskIds, ops: retryOps } }, [run.status]),
+            updated: await updateAgentRunById(run.id, { status: "running", error: undefined, failurePhase: undefined, tasks }, { type: "task.retry.requested", data: { taskId: retriedTaskIds[0], taskIds: retriedTaskIds, ops: retryOps } }, [run.status]),
         }),
         run.id,
     );

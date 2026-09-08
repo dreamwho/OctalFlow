@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { composeProfiles, docsComposeProfiles, validateComposeContract, validateComposeContracts, validateDocsComposeContract, validateDocsComposeContracts } from "./compose-contract.mjs";
+import { composeProfiles, docsComposeProfiles, validateComposeContract, validateComposeContracts, validateDocsComposeContract, validateDocsComposeContracts, validateMihomoBootstrapContracts } from "./compose-contract.mjs";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "..");
@@ -14,7 +14,7 @@ describe("Docker Compose contracts", () => {
         expect(validateComposeContracts({ repoRoot })).toEqual(
             composeProfiles.map((profile) => ({
                 file: profile.file,
-                services: profile.embeddedPostgres ? ["postgres", "app", "generation-worker"] : ["app", "generation-worker"],
+                services: profile.expectedServices,
             })),
         );
         expect(validateDocsComposeContracts({ repoRoot })).toEqual(docsComposeProfiles.map(({ file }) => ({ file, services: ["docs"] })));
@@ -32,6 +32,59 @@ describe("Docker Compose contracts", () => {
         const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replaceAll("ghcr.io/dreamwho/octalaicanvas:v0.0.6", "ghcr.io/dreamwho/octalaicanvas:latest");
 
         expect(() => validateComposeContract(source, profile)).toThrow("app 必须使用当前发布版本的明确镜像");
+    });
+
+    it("rejects a public magic-proxy listener", () => {
+        const profile = composeProfiles.find(({ file }) => file === "docker-compose.yml");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace('    expose:\n      - "9090"', '    ports:\n      - "17890:17890"\n    expose:\n      - "9090"');
+
+        expect(() => validateComposeContract(source, profile)).toThrow("magic-proxy 不得发布 Controller 或代理端口");
+    });
+
+    it("requires an authenticated magic-proxy healthcheck", () => {
+        const profile = composeProfiles.find(({ file }) => file === "docker-compose.yml");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("Authorization: Bearer $$OCTALAICANVAS_MAGIC_PROXY_SECRET", "Authorization: Bearer missing");
+
+        expect(() => validateComposeContract(source, profile)).toThrow("magic-proxy 健康检查必须使用 Controller Bearer 密钥");
+    });
+
+    it("keeps database and provider secrets out of magic-proxy", () => {
+        const profile = composeProfiles.find(({ file }) => file === "docker-compose.external-db.yml");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace(
+            "      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}",
+            "      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}\n      DATABASE_URL: leaked",
+        );
+
+        expect(() => validateComposeContract(source, profile)).toThrow("magic-proxy 只能接收 Controller 密钥和监听地址环境变量");
+    });
+
+    it("keeps static providers and listeners in secret-free bootstraps", () => {
+        expect(validateMihomoBootstrapContracts({ repoRoot })).toEqual([
+            { file: "docker/mihomo/bootstrap.yaml", listenHost: "0.0.0.0", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891] },
+            { file: "docker/mihomo/bootstrap-host.yaml", listenHost: "127.0.0.1", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891] },
+        ]);
+    });
+
+    it("requires a private uid-1000 runtime provider setup", () => {
+        const scriptPath = path.join(repoRoot, "docker/mihomo/entrypoint.sh");
+        const script = readFileSync(scriptPath, "utf8");
+        expect(statSync(scriptPath).mode & 0o111).not.toBe(0);
+        expect(script).toContain("umask 077");
+        expect(script).toContain('mkdir -p "$runtime_dir"');
+        expect(script).toContain('chmod 700 "$runtime_dir"');
+        expect(script).toContain('chmod 600 "$provider_file"');
+        expect(script).toContain('chown 1000:1000 "$runtime_dir" "$provider_file"');
+        expect(script).toContain("proxies: []");
+        expect(script).toContain('exec /mihomo -secret "$OCTALAICANVAS_MAGIC_PROXY_SECRET" -ext-ctl "$OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST:9090"');
+        expect(script).not.toMatch(/(?:printf|echo)[^\n]*\$secret/);
+        expect(script).not.toMatch(/chmod\s+(?:0?777|a\+rw)/);
+    });
+
+    it("keeps host-network provider routes on loopback", () => {
+        const profile = composeProfiles.find(({ file }) => file === "docker-compose.baota.yml");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL: http://127.0.0.1:17890", "OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL: http://magic-proxy:17890");
+
+        expect(() => validateComposeContract(source, profile)).toThrow("app 的 GeminiAIStudio 代理地址不正确");
     });
 
     it("rejects a Worker that imports the application secret environment", () => {

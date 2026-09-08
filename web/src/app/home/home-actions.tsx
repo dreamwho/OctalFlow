@@ -20,7 +20,7 @@ type HomeActions = {
     openLogin: (nextPath?: string) => void;
     openBillingPlans: () => void;
     openProtectedPath: (path: string) => void;
-    startCreating: (prompt?: string, mode?: CreateAgentMode, options?: { skillIds?: string[] }) => void;
+    startCreating: (prompt?: string, mode?: CreateAgentMode, options?: { skillIds?: string[]; modelIds?: string[] }) => void;
 };
 
 const HomeActionsContext = createContext<HomeActions | null>(null);
@@ -55,7 +55,8 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
         if (authenticated) router.push(path);
         else openLogin(path);
     };
-    const startCreating = (prompt = "", mode: CreateAgentMode = "agent", options: { skillIds?: string[] } = {}) => openProtectedPath(createAgentPromptHref(prompt, { source: "home", mode, skillIds: options.skillIds }));
+    const startCreating = (prompt = "", mode: CreateAgentMode = "agent", options: { skillIds?: string[]; modelIds?: string[] } = {}) =>
+        openProtectedPath(createAgentPromptHref(prompt, { source: "home", mode, skillIds: options.skillIds, modelIds: options.modelIds }));
 
     return (
         <HomeActionsContext.Provider value={{ authenticated, sessionReady, site, openLogin, openBillingPlans: () => setBillingPlansOpen(true), openProtectedPath, startCreating }}>

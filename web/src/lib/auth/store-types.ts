@@ -12,6 +12,9 @@ export type SystemChannelProtocol =
     | "openai"
     | "yumeng"
     | "gemini"
+    | "geminiai"
+    | "gemini-tools"
+    | "dreamina-cli"
     | "sub2api"
     | "newapi"
     | "lingkeai"
@@ -25,7 +28,7 @@ export type SystemChannelProtocol =
     | "seedance-special"
     | "custom"
     | "compatible";
-export type SystemChannelAuthMode = "none" | "bearer" | "x-api-key" | "custom-header";
+export type SystemChannelAuthMode = "none" | "bearer" | "x-api-key" | "custom-header" | "provider-managed";
 
 export type SystemChannelModelConfig = {
     capability: LogicalModelCapability;
@@ -42,6 +45,8 @@ export type SystemChannelModelConfig = {
     resultField?: string;
     statusField?: string;
     durationRange?: string;
+    aspectRatios?: string[];
+    qualityOptions?: string[];
     referenceRule?: string;
     supportsReferenceImage?: boolean;
     supportsReferenceVideo?: boolean;
@@ -113,6 +118,8 @@ export type LogicalModelCapabilityProfile = {
     supportsReferenceAudio?: boolean;
     maxReferenceImages?: number;
     aspectRatios?: string[];
+    durationRange?: string;
+    qualityOptions?: string[];
     minDurationSeconds?: number;
     maxDurationSeconds?: number;
     maxBatchSize?: number;
@@ -152,6 +159,29 @@ export type SystemDefaultModels = {
 };
 
 export type AgentSkillWorkspace = "image" | "video" | "canvas" | "drama";
+export type AgentSkillNodeMode = "image" | "video";
+export type AgentSkillModelFamily = "minimax-h3";
+export type AgentSkillAssetType = "image" | "video" | "audio" | "text";
+
+export type AgentSkillModelConstraints = {
+    capability: LogicalModelCapability;
+    requiredModelFamilies?: AgentSkillModelFamily[];
+    preferredModelFamilies?: AgentSkillModelFamily[];
+};
+
+export type AgentSkillRequiredAssetRole = {
+    id: string;
+    label: string;
+    required: boolean;
+    acceptedAssetTypes: AgentSkillAssetType[];
+};
+
+export type AgentSkillStage = {
+    id: string;
+    label: string;
+    description: string;
+    requiresUserConfirmation?: boolean;
+};
 
 export type AgentSkill = {
     id: string;
@@ -162,8 +192,13 @@ export type AgentSkill = {
     enabled: boolean;
     keywords: string[];
     workspaces?: AgentSkillWorkspace[];
+    nodeModes?: readonly AgentSkillNodeMode[];
     action?: "generate" | "edit";
     requiresReference?: boolean;
+    modelConstraints?: AgentSkillModelConstraints;
+    requiredAssetRoles?: AgentSkillRequiredAssetRole[];
+    stages?: AgentSkillStage[];
+    previewImageUrl?: string;
     defaultConfig?: Record<string, string | number | boolean>;
     sourceUrl?: string;
     sourceRepository?: string;
@@ -190,6 +225,7 @@ export type GenerationDefaultSettings = {
     imageCount: number;
     videoQuality: string;
     videoSeconds: number;
+    videoAnalysisModel?: string;
     audioVoice: string;
     audioFormat: string;
 };

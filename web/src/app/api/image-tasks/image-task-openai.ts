@@ -21,6 +21,7 @@ import { registerGenerationTaskAssetsForUser } from "@/lib/server/creative-runti
 import { createSignedReferenceAssetUrl, signReferenceAssetInputUrl } from "@/lib/server/reference-asset-access";
 import { assertCapabilityConstraints } from "@/lib/server/capability-constraints";
 import { GenerationSubmissionSafeFailure } from "@/lib/server/generation-submission-error";
+import { geminiAiImageRequestFields } from "./image-task-geminiai-options";
 
 import {
     type CreateImageTaskBody,
@@ -165,6 +166,7 @@ export async function runOpenAiImageTask(task: ImageTask, origin: string, public
                 n: 1,
                 ...(quality ? { quality } : {}),
                 ...(requestSize ? { size: requestSize } : {}),
+                ...geminiAiImageRequestFields(config),
                 ...(allowProtocolFallback ? { response_format: responseFormat, output_format: IMAGE_OUTPUT_FORMAT } : {}),
             }),
             cache: "no-store",
@@ -309,6 +311,7 @@ export async function runOpenAiImageTaskWithBase64Response(task: ImageTask, orig
             n: 1,
             ...(quality ? { quality } : {}),
             ...(requestSize ? { size: requestSize } : {}),
+            ...geminiAiImageRequestFields(config),
             response_format: "b64_json",
             output_format: IMAGE_OUTPUT_FORMAT,
         }),
@@ -396,6 +399,7 @@ export async function buildJsonImageEditBodies(
         n: 1,
         ...(quality ? { quality } : {}),
         ...(requestSize ? { size: requestSize } : {}),
+        ...geminiAiImageRequestFields(task.config),
         ...(includeCompatibilityFields ? { response_format: responseFormat, output_format: IMAGE_OUTPUT_FORMAT } : {}),
         ...(mask ? { mask } : {}),
     };
@@ -411,6 +415,7 @@ export async function buildJsonImageEditBodies(
                 n: 1,
                 ...(quality ? { quality } : {}),
                 ...(requestSize ? { size: requestSize } : {}),
+                ...geminiAiImageRequestFields(task.config),
                 ...(mask ? { mask } : {}),
                 image_urls: images,
             },

@@ -125,6 +125,17 @@
         @apply bg-background text-foreground;
     }
 
+    /* Keep pointer feedback consistent for semantic controls across every surface.
+       Explicit cursor utilities such as cursor-text, cursor-grab and cursor-default
+       remain more specific and continue to describe their specialised interactions. */
+    :where(a[href]:not([aria-disabled="true"]), button:not(:disabled), label[for], summary, [role="button"]:not([aria-disabled="true"]), [role="checkbox"]:not([aria-disabled="true"]), [role="menuitem"]:not([aria-disabled="true"]), [role="option"]:not([aria-disabled="true"]), [role="radio"]:not([aria-disabled="true"]), [role="switch"]:not([aria-disabled="true"]), [role="tab"]:not([aria-disabled="true"]), input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled), select:not(:disabled)) {
+        cursor: pointer;
+    }
+
+    :where(a[aria-disabled="true"], button:disabled, [aria-disabled="true"], [data-disabled], input:disabled, select:disabled) {
+        cursor: not-allowed;
+    }
+
     .app-scroll-page {
         height: 100dvh;
         max-width: 100vw;

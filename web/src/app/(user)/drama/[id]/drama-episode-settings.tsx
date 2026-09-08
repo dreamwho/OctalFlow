@@ -3,6 +3,7 @@
 import { Input, Select } from "antd";
 
 import type { DramaEpisode, DramaProject } from "../types";
+import { DRAMA_VISUAL_STYLE_PRESETS, getDramaVisualStylePreset } from "@/lib/drama-visual-style-presets";
 import { useDramaStore } from "../stores/use-drama-store";
 
 export function DramaEpisodeSettings({ project, episode, embedded = false }: { project: DramaProject; episode: DramaEpisode; embedded?: boolean }) {
@@ -28,10 +29,19 @@ export function DramaEpisodeSettings({ project, episode, embedded = false }: { p
                     <span className="text-xs font-medium text-foreground">故事简介</span>
                     <Input.TextArea value={project.summary} onChange={(event) => updateProject(project.id, { summary: event.target.value })} autoSize={{ minRows: 3, maxRows: 6 }} />
                 </label>
-                <label className="block space-y-1.5">
+                <div className="block space-y-1.5">
                     <span className="text-xs font-medium text-foreground">视觉风格</span>
-                    <Input className="!h-8" value={project.style} placeholder="例如：电影感国漫" onChange={(event) => updateProject(project.id, { style: event.target.value })} />
-                </label>
+                    <Select
+                        className="w-full"
+                        value={getDramaVisualStylePreset(project.stylePresetId, project.style).id}
+                        options={DRAMA_VISUAL_STYLE_PRESETS.map((preset) => ({ label: preset.label, value: preset.id }))}
+                        onChange={(stylePresetId: string) => {
+                            const preset = getDramaVisualStylePreset(stylePresetId);
+                            updateProject(project.id, { stylePresetId, style: preset.label });
+                        }}
+                    />
+                    <p className="text-[11px] leading-5 text-muted-foreground">{getDramaVisualStylePreset(project.stylePresetId, project.style).shortDescription}</p>
+                </div>
                 <div className="space-y-1.5">
                     <span className="text-xs font-medium text-foreground">视频生产模式</span>
                     <div className="min-w-0">

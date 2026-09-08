@@ -8,12 +8,30 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNode, type CanvasNodeProps } from "./canvas-node";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type Position, type ViewportTransform } from "../types";
 import { NODE_STATUS_LOADING } from "../[id]/canvas-page-elements";
-import { edgePath, expandCanvasDragNodeIds, findConnectionTarget, isBlockedConnectionDrop, nodeAnchor, previewPath, PROMPT_COMPOSER_BOTTOM_INSET, PROMPT_COMPOSER_SAFE_TOP, resolvePromptComposerHeight, resolvePromptComposerTether, resolveSnapGuides, samePosition, selectNodesInBounds, worldFromScreen, type SnapGuide } from "../utils/canvas-surface-geometry";
+import {
+    edgePath,
+    expandCanvasDragNodeIds,
+    findConnectionTarget,
+    isBlockedConnectionDrop,
+    nodeAnchor,
+    previewPath,
+    PROMPT_COMPOSER_GAP,
+    PROMPT_COMPOSER_HEIGHT,
+    resolveCanvasNodePointerSelection,
+    resolvePromptComposerOverlay,
+    resolveSnapGuides,
+    samePosition,
+    selectNodesInBounds,
+    worldFromScreen,
+    CANVAS_GRID_SIZE,
+    type SnapGuide,
+} from "../utils/canvas-surface-geometry";
 
 type CanvasPointerEvent = ReactMouseEvent | ReactPointerEvent;
 type CanvasNodeUpdate = { id: string; position?: Position; width?: number; height?: number };
 type CanvasNodeTransform = { position: Position; width: number; height: number };
 export type CanvasInteractionMode = "pan" | "select";
+export const CANVAS_AGENT_REFERENCE_LIMIT = 5;
 type ConnectionDraft = { nodeId: string; handleType: "source" | "target"; world: Position; targetNodeId: string | null; pointerId: number | null };
 type BoxSelection = { start: Position; current: Position; nodeIds: Set<string> };
 type Interaction =
@@ -33,7 +51,12 @@ type CanvasSurfaceProps = {
     interactionMode: CanvasInteractionMode;
     minimapOpen: boolean;
     focusNodeId?: string;
-    promptComposerHeight?: number | null;
+    promptComposer?: ReactNode;
+    agentReferencePicker?: boolean;
+    agentReferenceSelectionCount?: number;
+    isAgentReferenceCandidate?: (node: CanvasNodeData) => boolean;
+    onPickAgentReference?: (node: CanvasNodeData) => void;
+    onCancelAgentReferencePicker?: () => void;
     selectedNodeIds: Set<string>;
     selectedConnectionId: string | null;
     relatedNodeIds: Set<string>;
@@ -49,9 +72,12 @@ type CanvasSurfaceProps = {
         | "isFocusRelated"
         | "isConnectionTarget"
         | "isConnecting"
+        | "isAgentReferencePicker"
+        | "isAgentReferenceCandidate"
         | "editRequestNonce"
         | "showPanel"
         | "showImageInfo"
+        | "upscaleSourceUrl"
         | "resourceLabel"
         | "mentionReferences"
         | "batchCount"
@@ -69,7 +95,7 @@ type CanvasSurfaceProps = {
     >;
     getNodeViewProps: (
         node: CanvasNodeData,
-    ) => Pick<CanvasNodeProps, "editRequestNonce" | "showPanel" | "showImageInfo" | "resourceLabel" | "mentionReferences" | "batchCount" | "batchExpanded" | "batchClosing" | "batchOpening" | "batchRecovering" | "batchMotion">;
+    ) => Pick<CanvasNodeProps, "editRequestNonce" | "showPanel" | "showImageInfo" | "upscaleSourceUrl" | "resourceLabel" | "mentionReferences" | "batchCount" | "batchExpanded" | "batchClosing" | "batchOpening" | "batchRecovering" | "batchMotion">;
     onNodesCommit: (updates: CanvasNodeUpdate[]) => void;
     onSelectionChange: (nodeIds: Set<string>, connectionId: string | null) => void;
     onViewportCommit: (viewport: ViewportTransform) => void;
@@ -86,7 +112,12 @@ type CanvasSurfaceProps = {
 };
 
 function isInteractiveTarget(target: EventTarget | null) {
-    return target instanceof Element && Boolean(target.closest("button,input,textarea,select,video,audio,[data-canvas-no-drag],[data-canvas-no-zoom],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu]"));
+    return (
+        target instanceof Element &&
+        Boolean(
+            target.closest("button,input,textarea,select,video,audio,[data-canvas-agent-composer],[data-canvas-agent-scroll],[data-canvas-no-drag],[data-canvas-no-zoom],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel]"),
+        )
+    );
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null) {
@@ -107,7 +138,12 @@ export function CanvasSurface({
     interactionMode,
     minimapOpen,
     focusNodeId,
-    promptComposerHeight,
+    promptComposer,
+    agentReferencePicker = false,
+    agentReferenceSelectionCount = 0,
+    isAgentReferenceCandidate,
+    onPickAgentReference,
+    onCancelAgentReferencePicker,
     selectedNodeIds,
     selectedConnectionId,
     relatedNodeIds,
@@ -290,11 +326,8 @@ export function CanvasSurface({
         const focusKey = `${node.id}:${surfaceSize.width}x${surfaceSize.height}`;
         if (focusViewportKeyRef.current === focusKey) return;
         const current = displayViewportRef.current;
-        const panelHeight = resolvePromptComposerHeight(surfaceSize.height, promptComposerHeight);
-        const panelTop = surfaceSize.height - panelHeight - PROMPT_COMPOSER_BOTTOM_INSET;
-        const safeTop = PROMPT_COMPOSER_SAFE_TOP;
-        const safeBottom = Math.max(safeTop + 80, panelTop - 48);
-        const desiredTop = Math.max(safeTop, safeBottom - node.height * current.k);
+        const clusterHeight = node.height * current.k + PROMPT_COMPOSER_GAP + PROMPT_COMPOSER_HEIGHT;
+        const desiredTop = Math.max(72, (surfaceSize.height - clusterHeight) / 2);
         const next = {
             x: surfaceSize.width / 2 - (node.position.x + node.width / 2) * current.k,
             y: desiredTop - node.position.y * current.k,
@@ -305,7 +338,7 @@ export function CanvasSurface({
         previousViewportPropRef.current = next;
         setDisplayViewport(next);
         onViewportCommit(next);
-    }, [focusNodeId, nodes, onViewportCommit, promptComposerHeight, surfaceSize.height, surfaceSize.width]);
+    }, [focusNodeId, nodes, onViewportCommit, surfaceSize.height, surfaceSize.width]);
 
     const screenToWorld = useCallback((clientX: number, clientY: number) => {
         const rect = surfaceRef.current?.getBoundingClientRect();
@@ -385,17 +418,17 @@ export function CanvasSurface({
 
     const handleNodeMouseDown = useCallback(
         (event: CanvasPointerEvent, nodeId: string) => {
-            if (isInteractiveTarget(event.target)) return;
-            if (displayNodesRef.current.find((node) => node.id === nodeId)?.type !== CanvasNodeType.Text) event.preventDefault();
-            const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-            const nextSelection = new Set(selectedNodeIdsRef.current);
-            if (additive) {
-                if (nextSelection.has(nodeId)) nextSelection.delete(nodeId);
-                else nextSelection.add(nodeId);
-            } else if (!nextSelection.has(nodeId)) {
-                nextSelection.clear();
-                nextSelection.add(nodeId);
+            const nextSelection = resolveCanvasNodePointerSelection(selectedNodeIdsRef.current, nodeId, event.button, event.shiftKey || event.ctrlKey || event.metaKey);
+            if (!nextSelection) return;
+            const node = displayNodesRef.current.find((item) => item.id === nodeId);
+            if (agentReferencePicker) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (node && isAgentReferenceCandidate?.(node)) onPickAgentReference?.(node);
+                return;
             }
+            if (isInteractiveTarget(event.target)) return;
+            if (node?.type !== CanvasNodeType.Text) event.preventDefault();
             setSelection(nextSelection, null);
             const dragIds = nextSelection.has(nodeId) ? expandCanvasDragNodeIds(displayNodesRef.current, nextSelection) : [];
             if (!dragIds.length) return;
@@ -403,13 +436,17 @@ export function CanvasSurface({
             interactionRef.current = { kind: "drag", pointerId: "pointerId" in event ? event.pointerId : null, start: { x: event.clientX, y: event.clientY }, nodeIds: dragIds, positions, moved: false };
             onDragStateChange?.(true);
         },
-        [onDragStateChange, setSelection],
+        [agentReferencePicker, isAgentReferenceCandidate, onDragStateChange, onPickAgentReference, setSelection],
     );
 
     const handlePointerDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
             const target = event.target instanceof Element ? event.target : null;
-            if (target?.closest("[data-node-id],[data-connection-id],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu]")) return;
+            if (agentReferencePicker) {
+                if (event.button === 0 && !target?.closest("[data-node-id],[data-connection-id],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel],[data-canvas-agent-reference-picker]")) onPaneClick();
+                return;
+            }
+            if (target?.closest("[data-node-id],[data-connection-id],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel],[data-canvas-agent-reference-picker]")) return;
             if (event.pointerType === "touch") {
                 event.currentTarget.setPointerCapture?.(event.pointerId);
                 touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -441,7 +478,7 @@ export function CanvasSurface({
                 event.currentTarget.setPointerCapture?.(event.pointerId);
             }
         },
-        [interactionMode, screenToWorld],
+        [agentReferencePicker, interactionMode, screenToWorld],
     );
 
     const handlePointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -452,6 +489,34 @@ export function CanvasSurface({
         interactionRef.current = { kind: "pan", pointerId: event.pointerId, start: { x: event.clientX, y: event.clientY }, viewport: displayViewportRef.current, moved: false };
         event.currentTarget.setPointerCapture?.(event.pointerId);
     }, []);
+
+    const finishTransientInteraction = useCallback(
+        (clientX: number, clientY: number, pointerId?: number) => {
+            flushFrame();
+            const draft = connectionRef.current;
+            if (draft && (pointerId === undefined || draft.pointerId === null || draft.pointerId === pointerId)) {
+                endConnection(clientX, clientY);
+                return;
+            }
+            const interaction = interactionRef.current;
+            if (!interaction || (pointerId !== undefined && interaction.pointerId !== null && interaction.pointerId !== pointerId)) return;
+            if (interaction.kind === "drag") commitDrag();
+            else if (interaction.kind === "box") {
+                const clickedPane = !interaction.moved;
+                interactionRef.current = null;
+                setSelection(boxSelectionRef.current?.nodeIds || new Set(), null);
+                boxSelectionRef.current = null;
+                setBoxSelection(null);
+                if (clickedPane) onPaneClick();
+            } else {
+                if (!interaction.moved) onPaneClick();
+                else commitViewport();
+                interactionRef.current = null;
+            }
+            if (pointerId !== undefined && surfaceRef.current?.hasPointerCapture(pointerId)) surfaceRef.current.releasePointerCapture(pointerId);
+        },
+        [commitDrag, commitViewport, endConnection, flushFrame, onPaneClick, setSelection],
+    );
 
     useEffect(() => {
         const handlePointerMove = (event: PointerEvent) => {
@@ -545,7 +610,6 @@ export function CanvasSurface({
             });
         };
         const handlePointerUp = (event: PointerEvent) => {
-            flushFrame();
             let finishedPinch = false;
             if (event.pointerType === "touch") {
                 touchPointersRef.current.delete(event.pointerId);
@@ -562,32 +626,32 @@ export function CanvasSurface({
                 commitViewport();
                 return;
             }
-            const interaction = interactionRef.current;
-            if (!interaction || (interaction.pointerId !== null && interaction.pointerId !== event.pointerId)) return;
-            if (interaction.kind === "drag") commitDrag();
-            else if (interaction.kind === "box") {
-                interactionRef.current = null;
-                setSelection(boxSelectionRef.current?.nodeIds || new Set(), null);
-                boxSelectionRef.current = null;
-                setBoxSelection(null);
-            } else {
-                if (!interaction.moved) onPaneClick();
-                else commitViewport();
-                interactionRef.current = null;
-            }
+            finishTransientInteraction(event.clientX, event.clientY, event.pointerId);
+        };
+        const handleMouseUpFallback = (event: MouseEvent) => finishTransientInteraction(event.clientX, event.clientY);
+        const handleVisibilityChange = () => {
+            if (document.hidden) cancelTransientInteraction();
         };
         window.addEventListener("pointermove", handlePointerMove);
         window.addEventListener("pointerup", handlePointerUp);
         window.addEventListener("pointercancel", cancelTransientInteraction);
+        window.addEventListener("mouseup", handleMouseUpFallback);
+        window.addEventListener("blur", cancelTransientInteraction);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        surfaceRef.current?.addEventListener("lostpointercapture", cancelTransientInteraction);
         return () => {
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerup", handlePointerUp);
             window.removeEventListener("pointercancel", cancelTransientInteraction);
+            window.removeEventListener("mouseup", handleMouseUpFallback);
+            window.removeEventListener("blur", cancelTransientInteraction);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            surfaceRef.current?.removeEventListener("lostpointercapture", cancelTransientInteraction);
         };
-    }, [cancelTransientInteraction, commitDrag, commitViewport, endConnection, flushFrame, onPaneClick, previewViewport, scheduleFrame, screenToWorld, setSelection]);
+    }, [cancelTransientInteraction, commitViewport, endConnection, finishTransientInteraction, previewViewport, scheduleFrame, screenToWorld]);
 
     const handleWheel = useCallback(
-        (event: React.WheelEvent<HTMLDivElement>) => {
+        (event: WheelEvent) => {
             if (isInteractiveTarget(event.target)) return;
             event.preventDefault();
             const pending = wheelFrameRef.current;
@@ -618,10 +682,18 @@ export function CanvasSurface({
         [commitViewport, flushFrame, previewViewport, scheduleFrame],
     );
 
+    useEffect(() => {
+        const surface = surfaceRef.current;
+        if (!surface) return;
+        const onWheel = (event: WheelEvent) => handleWheel(event);
+        surface.addEventListener("wheel", onWheel, { passive: false });
+        return () => surface.removeEventListener("wheel", onWheel);
+    }, [handleWheel]);
+
     const handlePaneDoubleClick = useCallback(
         (event: ReactMouseEvent<HTMLDivElement>) => {
             const target = event.target instanceof Element ? event.target : null;
-            if (target?.closest("[data-node-id],[data-connection-id],[data-connection-create-menu],[data-canvas-node-create-menu]")) return;
+            if (target?.closest("[data-node-id],[data-connection-id],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-prompt-panel]")) return;
             onPaneDoubleClick(screenToWorld(event.clientX, event.clientY));
         },
         [onPaneDoubleClick, screenToWorld],
@@ -652,6 +724,11 @@ export function CanvasSurface({
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape" && agentReferencePicker) {
+                event.preventDefault();
+                onCancelAgentReferencePicker?.();
+                return;
+            }
             if (event.key === "Escape") cancelTransientInteraction();
             if (event.code !== "Space" || isEditableKeyboardTarget(event.target)) return;
             event.preventDefault();
@@ -677,7 +754,7 @@ export function CanvasSurface({
             window.removeEventListener("keyup", handleKeyUp);
             window.removeEventListener("blur", handleBlur);
         };
-    }, [cancelTransientInteraction]);
+    }, [agentReferencePicker, cancelTransientInteraction, onCancelAgentReferencePicker]);
 
     const activeSelectedNodeIds = boxSelection?.nodeIds || selectedNodeIds;
     const connectionStartNode = connection ? nodesById.get(connection.nodeId) : null;
@@ -687,9 +764,10 @@ export function CanvasSurface({
         commitViewport();
     }, [commitViewport, flushFrame]);
     const worldStyle: CSSProperties = { transform: `translate(${displayViewport.x}px, ${displayViewport.y}px) scale(${displayViewport.k})`, transformOrigin: "0 0" };
-    const promptComposerTether = focusNodeId && nodesById.get(focusNodeId) ? resolvePromptComposerTether(nodesById.get(focusNodeId)!, displayViewport, surfaceSize, promptComposerHeight) : null;
-    const canvasStyle: CSSProperties = { background: theme.canvas.backdrop, color: theme.node.text, touchAction: "none", cursor: temporaryPan || interactionMode === "pan" ? "grab" : "default" };
-    const gridSize = Math.max(4, (backgroundMode === "dots" ? 22 : 32) * displayViewport.k);
+    const promptComposerOverlay = focusNodeId && promptComposer && nodesById.get(focusNodeId) ? resolvePromptComposerOverlay(nodesById.get(focusNodeId)!, displayViewport, surfaceSize) : null;
+    const canvasStyle: CSSProperties = { background: theme.canvas.backdrop, color: theme.node.text, touchAction: "none", cursor: agentReferencePicker ? "crosshair" : temporaryPan || interactionMode === "pan" ? "grab" : "default" };
+    const gridSize = Math.max(7, CANVAS_GRID_SIZE * displayViewport.k);
+    const dotRadius = Math.max(0.55, Math.min(1.45, 0.82 * Math.sqrt(displayViewport.k)));
     const selectionStyle = boxSelection
         ? {
               left: Math.min(boxSelection.start.x, boxSelection.current.x),
@@ -711,17 +789,16 @@ export function CanvasSurface({
             onPointerDownCapture={handlePointerDownCapture}
             onPointerDown={handlePointerDown}
             onDoubleClick={handlePaneDoubleClick}
-            onWheel={handleWheel}
             onDrop={onDrop}
             onDragOver={(event) => event.preventDefault()}
             onContextMenu={(event) => onPaneContextMenu(event)}
         >
+            <div className="pointer-events-none absolute inset-0" style={{ background: theme.canvas.glow }} aria-hidden="true" />
             {backgroundMode !== "blank" ? (
                 <div
-                    className="pointer-events-none absolute inset-0 opacity-70"
+                    className="pointer-events-none absolute inset-0 opacity-80"
                     style={{
-                        backgroundImage:
-                            backgroundMode === "dots" ? `radial-gradient(circle, ${theme.canvas.dot} 1px, transparent 1px)` : `linear-gradient(${theme.canvas.line} 1px, transparent 1px), linear-gradient(90deg, ${theme.canvas.line} 1px, transparent 1px)`,
+                        backgroundImage: `radial-gradient(circle, ${theme.canvas.dot} ${dotRadius}px, transparent ${dotRadius + 0.25}px)`,
                         backgroundSize: `${gridSize}px ${gridSize}px`,
                         backgroundPosition: `${displayViewport.x}px ${displayViewport.y}px`,
                     }}
@@ -729,12 +806,22 @@ export function CanvasSurface({
             ) : null}
             <div className="pointer-events-none absolute inset-0 overflow-visible" style={worldStyle}>
                 <svg className="absolute left-0 top-0 h-full w-full overflow-visible" shapeRendering="geometricPrecision" style={{ pointerEvents: "none" }} aria-hidden="true">
+                    <defs>
+                        <linearGradient id="canvas-edge-flow-gradient" x1="0%" y1="0%" x2="100%" y2="0%" spreadMethod="repeat">
+                            <stop offset="0%" stopColor="#67e8f9" />
+                            <stop offset="35%" stopColor="#818cf8" />
+                            <stop offset="70%" stopColor="#c084fc" />
+                            <stop offset="100%" stopColor="#67e8f9" />
+                            <animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="2.4s" repeatCount="indefinite" />
+                        </linearGradient>
+                    </defs>
                     {flowConnections.map((item) => {
                         const from = nodesById.get(item.fromNodeId);
                         const to = nodesById.get(item.toNodeId);
                         if (!from || !to) return null;
                         const active = selectedConnectionId === item.id || relatedConnectionIds.has(item.id);
                         const generating = from.metadata?.status === NODE_STATUS_LOADING || to.metadata?.status === NODE_STATUS_LOADING;
+                        const flowing = generating || active;
                         const path = edgePath(from, to);
                         return (
                             <g key={item.id} data-connection-id={item.id}>
@@ -755,21 +842,11 @@ export function CanvasSurface({
                                         onEdgeContextMenu(event, item.id);
                                     }}
                                 />
+                                <path d={path} fill="none" stroke={theme.canvas.background} strokeWidth={4.5} strokeOpacity={0.7} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ pointerEvents: "none" }} />
                                 <path
                                     d={path}
                                     fill="none"
-                                    stroke={theme.canvas.background}
-                                    strokeWidth={4.5}
-                                    strokeOpacity={0.7}
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    vectorEffect="non-scaling-stroke"
-                                    style={{ pointerEvents: "none" }}
-                                />
-                                <path
-                                    d={path}
-                                    fill="none"
-                                    stroke={generating ? "#5b5ce2" : active ? theme.node.activeStroke : theme.node.muted}
+                                    stroke={flowing ? "#818cf8" : theme.node.muted}
                                     strokeWidth={generating ? 2.35 : active ? 2.15 : 1.75}
                                     strokeOpacity={generating || active ? 1 : 0.75}
                                     strokeLinecap="round"
@@ -777,18 +854,8 @@ export function CanvasSurface({
                                     vectorEffect="non-scaling-stroke"
                                     style={{ pointerEvents: "none" }}
                                 />
-                                {generating ? (
-                                    <path
-                                        d={path}
-                                        fill="none"
-                                        stroke="#bfe1ff"
-                                        strokeWidth={2.75}
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        vectorEffect="non-scaling-stroke"
-                                        className="canvas-edge-generating"
-                                        style={{ pointerEvents: "none" }}
-                                    />
+                                {flowing ? (
+                                    <path data-canvas-edge-flowing d={path} fill="none" stroke="url(#canvas-edge-flow-gradient)" strokeWidth={generating ? 2.75 : 2.35} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className={generating ? "canvas-edge-generating canvas-edge-flowing" : "canvas-edge-flowing"} style={{ pointerEvents: "none" }} />
                                 ) : null}
                             </g>
                         );
@@ -842,6 +909,8 @@ export function CanvasSurface({
                                 isFocusRelated={activeSelectedNodeIds.has(node.id) || relatedNodeIds.has(node.id)}
                                 isConnectionTarget={connection?.targetNodeId === node.id}
                                 isConnecting={connection?.nodeId === node.id}
+                                isAgentReferencePicker={agentReferencePicker}
+                                isAgentReferenceCandidate={Boolean(isAgentReferenceCandidate?.(node))}
                                 renderPanel={renderPanel}
                                 renderNodeContent={renderNode}
                                 onMouseDown={handleNodeMouseDown}
@@ -853,24 +922,39 @@ export function CanvasSurface({
                         );
                     })}
                     {selectionStyle ? <div className="pointer-events-none absolute border" style={{ ...selectionStyle, borderColor: theme.canvas.selectionStroke, background: theme.canvas.selectionFill }} /> : null}
-                    {overlay}
                 </div>
             </div>
-            {promptComposerTether ? (
-                <svg
-                    data-canvas-focus-tether
-                    data-source-x={promptComposerTether.source.x}
-                    data-source-y={promptComposerTether.source.y}
-                    className="pointer-events-none absolute inset-0 z-30 size-full"
-                    viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`}
-                    preserveAspectRatio="none"
-                    aria-hidden="true"
+            {promptComposerOverlay ? (
+                <div
+                    data-canvas-prompt-composer-overlay
+                    className="pointer-events-none absolute z-[85]"
+                    style={{ left: promptComposerOverlay.left, top: promptComposerOverlay.top, width: promptComposerOverlay.width, height: promptComposerOverlay.height }}
                 >
-                    <path d={promptComposerTether.path} fill="none" stroke={theme.canvas.background} strokeWidth={5} strokeOpacity={0.78} strokeLinecap="round" />
-                    <path d={promptComposerTether.path} fill="none" stroke={theme.node.activeStroke} strokeWidth={2} strokeOpacity={0.72} strokeLinecap="round" className="canvas-composer-tether-path" />
-                    <path d={promptComposerTether.path} fill="none" stroke="#c4c5ff" strokeWidth={2.5} strokeLinecap="round" className="canvas-composer-tether-flow" />
-                    <circle cx={promptComposerTether.source.x} cy={promptComposerTether.source.y} r={5} fill={theme.canvas.backdrop} stroke={theme.node.activeStroke} strokeWidth={2} className="canvas-panel-bridge-pulse" />
-                </svg>
+                    <div className="pointer-events-auto size-full">{promptComposer}</div>
+                </div>
+            ) : null}
+            {agentReferencePicker ? (
+                <div
+                    data-canvas-agent-reference-picker
+                    className="absolute left-6 top-6 z-[95] flex max-w-[min(390px,calc(100vw-3rem))] items-center gap-3 rounded-xl border px-3 py-2.5 shadow-lg"
+                    style={{ borderColor: "rgba(163,230,53,.55)", background: theme.toolbar.panel, color: theme.node.text }}
+                >
+                    <span className="grid size-2 shrink-0 rounded-full bg-lime-400 shadow-[0_0_10px_rgba(163,230,53,.9)]" aria-hidden="true" />
+                    <span className="min-w-0">
+                        <span className="block text-xs font-semibold">正在从画布选择素材</span>
+                        <span className="mt-0.5 block text-[11px]" style={{ color: theme.node.muted }}>
+                            点击图片或视频添加 · 已选 {agentReferenceSelectionCount}/{CANVAS_AGENT_REFERENCE_LIMIT} · Esc 退出
+                        </span>
+                    </span>
+                    <button type="button" className="shrink-0 rounded-md px-2 py-1 text-xs transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.muted }} onClick={onCancelAgentReferencePicker}>
+                        取消
+                    </button>
+                </div>
+            ) : null}
+            {overlay ? (
+                <div data-canvas-create-overlay className="pointer-events-none absolute inset-0 z-[90] overflow-visible" style={worldStyle}>
+                    {overlay}
+                </div>
             ) : null}
             {minimapOpen ? <CanvasMiniMap nodes={visibleDisplayNodes} viewport={displayViewport} viewportSize={surfaceSize} theme={theme} onViewportPreview={previewMinimapViewport} onViewportCommit={commitMinimapViewport} /> : null}
         </div>

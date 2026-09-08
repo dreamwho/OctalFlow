@@ -17,6 +17,8 @@ export type CreativeAgentRun = {
     inputMessageId: string;
     assistantMessageId: string;
     status: "planning" | "running" | "paused" | "completed" | "failed" | "cancelled";
+    error?: string;
+    failurePhase?: "planning" | "execution";
     surface?: CreativeRunRequest["surface"];
     projectId?: string;
     prompt?: string;
@@ -55,7 +57,21 @@ export type CreativeAgentRun = {
         status: "ready" | "running" | "completed" | "failed" | "cancelled";
         startedAt?: number;
         completedAt?: number;
+        retryAfterAt?: number;
         error?: string;
+        submittedParameters?: {
+            model?: string;
+            ratio?: string;
+            quality?: string;
+            duration?: number;
+            referenceMode?: string;
+        };
+        childTasks?: Array<{
+            id: string;
+            status: "pending" | "completed" | "failed" | "cancelled";
+            attempt: number;
+            error?: string;
+        }>;
     }>;
     cancellation?: { pendingCount: number };
 };

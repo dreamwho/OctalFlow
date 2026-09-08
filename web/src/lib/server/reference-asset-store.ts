@@ -60,11 +60,11 @@ async function writeMediaDataUrl(dataUrl: string, expectedType: "image" | "video
     return { token, bytes: parsed.bytes.length, mimeType: parsed.mimeType, storage: "local" };
 }
 
-export async function writeReferenceMediaFile(sourcePath: string, expectedType: "video" | "audio", mimeType: string, persistent: boolean, context: ReferenceMediaWriteContext): Promise<StoredReferenceAsset> {
+export async function writeReferenceMediaFile(sourcePath: string, expectedType: "image" | "video" | "audio", mimeType: string, persistent: boolean, context: ReferenceMediaWriteContext): Promise<StoredReferenceAsset> {
     if (!mimeType.startsWith(`${expectedType}/`)) throw new Error("媒体文件格式不正确");
     const sourceStat = await stat(sourcePath);
     if (!sourceStat.isFile() || sourceStat.size <= 0 || sourceStat.size > Math.min(context.maxBytes || MAX_REFERENCE_BYTES[expectedType], MAX_REFERENCE_BYTES[expectedType]))
-        throw new Error(`生成${expectedType === "video" ? "视频" : "音频"}文件为空或过大`);
+        throw new Error(`生成${expectedType === "image" ? "图片" : expectedType === "video" ? "视频" : "音频"}文件为空或过大`);
     const token = createDatedMediaPath(persistent ? "permanent" : "temporary", expectedType, extensionFromMime(mimeType));
     const registration = referenceRegistration(token, persistent, expectedType, mimeType, sourceStat.size, context);
     const external = await persistExternalMediaIfEnabled({ registration, filePath: sourcePath });

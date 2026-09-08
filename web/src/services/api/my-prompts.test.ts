@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createMyPrompt, deleteMyPrompt, listMyPrompts } from "./my-prompts";
+import { createMyPrompt, deleteMyPrompt, listMyPrompts, updateMyPrompt } from "./my-prompts";
 
 describe("my prompts api", () => {
     afterEach(() => vi.unstubAllGlobals());
@@ -29,17 +29,24 @@ describe("my prompts api", () => {
         expect(fetchMock).toHaveBeenCalledWith("/api/my-prompts?page=2&keyword=%E4%BA%A7%E5%93%81+%E6%B5%B7%E6%8A%A5&includeFacets=0", { cache: "no-store" });
     });
 
-    it("creates and deletes through the user prompt routes", async () => {
+    it("creates, updates and deletes through the user prompt routes", async () => {
         const prompt = { id: "prompt-one", title: "标题", prompt: "内容" };
+        const cover = new File(["cover"], "cover.png", { type: "image/png" });
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(Response.json({ prompt }))
+            .mockResolvedValueOnce(Response.json({ prompt: { ...prompt, title: "新标题" } }))
             .mockResolvedValueOnce(Response.json({ ok: true }));
         vi.stubGlobal("fetch", fetchMock);
 
-        await expect(createMyPrompt({ title: "标题", prompt: "内容", tags: ["海报"] })).resolves.toMatchObject({ id: "prompt-one" });
+        await expect(createMyPrompt({ title: "标题", prompt: "内容", tags: ["海报"] }, cover)).resolves.toMatchObject({ id: "prompt-one" });
+        await expect(updateMyPrompt("prompt/one", { title: "新标题", prompt: "内容" })).resolves.toMatchObject({ title: "新标题" });
         await expect(deleteMyPrompt("prompt/one")).resolves.toEqual({ ok: true });
-        expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/my-prompts/prompt%2Fone", { method: "DELETE" });
+        const createBody = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+        expect(JSON.parse(String(createBody.get("payload")))).toMatchObject({ title: "标题", tags: ["海报"] });
+        expect(createBody.get("cover")).toBe(cover);
+        expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/my-prompts/prompt%2Fone", expect.objectContaining({ method: "PATCH", body: expect.any(FormData) }));
+        expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/my-prompts/prompt%2Fone", { method: "DELETE" });
     });
 
     it("surfaces the server error message", async () => {

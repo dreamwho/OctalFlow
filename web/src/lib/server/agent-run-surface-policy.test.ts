@@ -125,6 +125,36 @@ describe("agentPlannerInput", () => {
         expect(input).not.toHaveProperty("planningBudget");
     });
 
+    it("exposes selected H3 Skill model, asset-role, and stage constraints to the planner", () => {
+        const skill = {
+            id: "minimax-h3-handdrawn-live-action",
+            name: "手绘实拍融合",
+            description: "测试 H3 约束",
+            instructions: "按阶段执行",
+            enabled: true,
+            keywords: [],
+            workspaces: ["video" as const],
+            modelConstraints: { capability: "video" as const, requiredModelFamilies: ["minimax-h3" as const] },
+            requiredAssetRoles: [{ id: "subject", label: "主体参考", required: true, acceptedAssetTypes: ["image" as const] }],
+            stages: [{ id: "preview", label: "视觉预览", description: "先确认画面", requiresUserConfirmation: true }],
+        };
+        const input = agentPlannerInput(
+            { surface: "chat", prompt: "制作手绘实拍融合视频", selectedSkillIds: [skill.id] } as never,
+            { summary: "", summaryThroughSequence: 0, recentMessages: [] } as never,
+            [],
+            "none",
+            [skill] as never,
+            [{ id: "video", name: "视频", capability: "video" }],
+            { ...DEFAULT_SETTINGS, agentSkills: [skill] } as never,
+        ) as { availableSkills: Array<Record<string, unknown>> };
+
+        expect(input.availableSkills[0]).toMatchObject({
+            modelConstraints: skill.modelConstraints,
+            requiredAssetRoles: skill.requiredAssetRoles,
+            stages: skill.stages,
+        });
+    });
+
     it("keeps the complete capability-filtered model catalog without fixed truncation", () => {
         const tailModelId = `tail-${"x".repeat(60)}`;
         const models = Array.from({ length: 300 }, (_, index) => ({ id: index === 299 ? tailModelId : `model-${index}-${"x".repeat(60)}`, name: `模型 ${index} ${"名称".repeat(120)}`, capability: "image" }));
@@ -260,6 +290,10 @@ describe("agentPlannerInput", () => {
         const prompt = agentPlannerSystemPrompt("canvas", "{}");
 
         expect(prompt).toContain("instructions 是必须落实到 deliverables 数量、结构、顺序、提示词和参数的硬约束");
-        expect(prompt).toContain("defaultConfig 仅在用户没有明确参数时作为默认值");
+        expect(prompt).toContain("defaultConfig 仅在用户没有更明确判断时作为默认值");
+
+        const skillVideoPrompt = agentPlannerSystemPrompt("canvas", "{}", { hasSelectedSkills: true });
+        expect(skillVideoPrompt).toContain("整条脚本的时长目标而不是逐条视频的强制时长");
+        expect(skillVideoPrompt).toContain("不得把同一个总时长复制给每个分镜视频");
     });
 });

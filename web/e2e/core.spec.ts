@@ -146,6 +146,49 @@ test("admin data lifecycle settings persist without password re-verification", a
     }
 });
 
+test("GeminiAI authorization opens a fresh session after the previous account completes", async ({ page }) => {
+    let startedSessions = 0;
+    await page.route("**/api/admin/geminiai", async (route) => {
+        await route.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({
+                code: 0,
+                data: {
+                    configured: true,
+                    healthy: true,
+                    accounts: [{ id: "account-one", name: "测试账号", status: "active" }],
+                    activeAccountId: "account-one",
+                    rotation: { enabled: true, mode: "round_robin", cooldownSeconds: 0 },
+                    models: [],
+                    channels: [],
+                },
+                msg: "OK",
+            }),
+        });
+    });
+    await page.route("**/api/admin/geminiai/accounts/login/start", async (route) => {
+        startedSessions += 1;
+        await route.fulfill({ contentType: "application/json", body: JSON.stringify({ code: 0, data: { sessionId: `session-${startedSessions}`, status: "pending" }, msg: "OK" }) });
+    });
+    await page.route("**/api/admin/geminiai/accounts/login/status/*", async (route) => {
+        const sessionId = route.request().url().split("/").pop();
+        await route.fulfill({ contentType: "application/json", body: JSON.stringify({ code: 0, data: { sessionId, status: "completed", accountId: "account-one" }, msg: "OK" }) });
+    });
+
+    await page.goto("/admin?section=geminiai", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".admin-dashboard-shell")).toHaveAttribute("data-hydrated", "true");
+    await page.getByRole("button", { name: "添加授权" }).click();
+    await page.getByRole("button", { name: "打开隔离授权窗口" }).click();
+    await expect(page.getByText("授权状态：授权中", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "检查授权状态" }).click();
+    await expect(page.getByRole("dialog", { name: "添加 Google 授权" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "添加授权" }).click();
+    await expect(page.getByText("授权状态：授权完成", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "打开隔离授权窗口" }).click();
+    await expect.poll(() => startedSessions).toBe(2);
+});
+
 test("text tasks return content, fail over automatically, and surface terminal failures", async ({ request }) => {
     const fallback = await request.post("/api/text-tasks", { data: { config: { model: "e2e-text-fallback" }, messages: [{ role: "user", content: "protocol fallback" }] } });
     expect(fallback.ok(), await fallback.text()).toBe(true);

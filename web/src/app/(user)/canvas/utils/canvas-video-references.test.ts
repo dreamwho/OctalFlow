@@ -74,6 +74,31 @@ describe("Canvas video references", () => {
         expect(restored?.snapshots).toEqual(metadata.videoReferences);
     });
 
+    it("promotes an unambiguous upstream video tail into a persisted first-frame request", () => {
+        const tail = image("previous-video-tail", "https://cdn.example.com/previous-tail.jpg");
+        const selection = frameSelection("previous-video", tail.url!);
+        const resolved = resolveCanvasVideoGenerationReferences({
+            metadata: {},
+            context: { ...emptyContext(), referenceImages: [tail], continuityFirstFrame: selection },
+            availableInputs: [{ image: tail }],
+        });
+
+        expect(resolved.mode).toBe("first_frame");
+        expect(resolved.videos).toEqual([]);
+        expect(resolved.firstFrame).toMatchObject({ nodeId: "previous-video", source: tail.url });
+        expect(resolved.snapshots).toMatchObject([{ type: "image", role: "first_frame", source: tail.url }]);
+    });
+
+    it("blocks direct video continuation while its tail frame is unavailable", () => {
+        expect(() =>
+            resolveCanvasVideoGenerationReferences({
+                metadata: {},
+                context: { ...emptyContext(), continuityPending: true },
+                availableInputs: [],
+            }),
+        ).toThrow("上一段视频尾帧正在提取，请稍候再生成");
+    });
+
     it("rejects an incomplete persisted first-last-frame snapshot", () => {
         expect(() =>
             restoreCanvasVideoGenerationReferences({

@@ -1,17 +1,17 @@
 .page {
-    background: #f5f6fa;
+    background: #edf5ff;
 }
 
 :global(.dark) .page {
-    background: #07090f;
+    background: #020711;
 }
 
 .landingScroll {
-    background: #f5f6fa;
+    background: #edf5ff;
 }
 
 :global(.dark) .landingScroll {
-    background: #07090f;
+    background: #020711;
 }
 
 .landing {
@@ -22,65 +22,76 @@
 
 .landingBackdrop {
     inset: 0 0 auto;
-    height: min(900px, 100svh);
+    height: min(860px, 100svh);
     overflow: hidden;
     pointer-events: none;
     position: absolute;
 }
 
-.landingBackdrop::before,
-.landingBackdrop span {
-    background-image: url("/brand/octaflow-flow-light.png");
-    background-position: center 18%;
-    background-repeat: no-repeat;
-    background-size: cover;
-    content: "";
-    inset: -10%;
+.landingBackdrop video {
+    animation: studio-pan 18s ease-in-out infinite alternate;
+    filter: hue-rotate(58deg) saturate(.9) contrast(1.1) brightness(.78) blur(1px);
+    height: 112%;
+    left: -6%;
+    object-fit: cover;
+    opacity: .5;
     position: absolute;
+    top: -6%;
+    width: 112%;
 }
 
 .landingBackdrop::before {
-    animation: studio-pan 18s ease-in-out infinite alternate;
-    opacity: 0.98;
-    transform: scale(1.08);
-}
-
-.landingBackdrop span {
-    animation: studio-drift 13s ease-in-out infinite alternate;
-    mix-blend-mode: multiply;
-    opacity: 0.22;
-    transform: scale(1.18) scaleX(-1);
-}
-
-.landingBackdrop::after {
-    background: linear-gradient(180deg, rgba(247, 248, 253, 0.04) 0%, rgba(247, 248, 253, 0.38) 56%, #f5f6fa 96%);
+    background:
+        radial-gradient(ellipse 48% 38% at 50% 42%, rgba(237, 245, 255, .94) 0%, rgba(237, 245, 255, .68) 58%, transparent 100%),
+        linear-gradient(180deg, rgba(237, 245, 255, .7) 0%, transparent 32%, transparent 67%, #edf5ff 98%);
     content: "";
     inset: 0;
     position: absolute;
+    z-index: 1;
 }
 
-:global(.dark) .landingBackdrop::before,
-:global(.dark) .landingBackdrop span {
-    background-image: url("/brand/octaflow-flow-dark.png");
-}
-
-:global(.dark) .landingBackdrop span {
+.landingBackdrop span {
+    animation: studio-drift 9s ease-in-out infinite alternate;
+    background:
+        radial-gradient(circle at 20% 48%, rgba(79, 104, 255, .22), transparent 28%),
+        radial-gradient(circle at 80% 48%, rgba(103, 242, 209, .19), transparent 28%);
+    inset: 0;
     mix-blend-mode: screen;
-    opacity: 0.34;
+    position: absolute;
+    z-index: 2;
+}
+
+.landingBackdrop::after {
+    background: radial-gradient(ellipse 42% 20% at 50% 58%, rgba(83, 217, 255, .17), transparent 72%);
+    content: "";
+    inset: 0;
+    position: absolute;
+    z-index: 3;
+}
+
+:global(.dark) .landingBackdrop video {
+    filter: hue-rotate(58deg) saturate(.9) contrast(1.14) brightness(.7) blur(1px);
+    opacity: .66;
+}
+
+:global(.dark) .landingBackdrop::before {
+    background:
+        radial-gradient(ellipse 48% 38% at 50% 42%, rgba(2, 7, 17, .9) 0%, rgba(2, 7, 17, .64) 58%, transparent 100%),
+        linear-gradient(180deg, rgba(2, 7, 17, .74) 0%, transparent 32%, transparent 66%, #020711 98%);
 }
 
 :global(.dark) .landingBackdrop::after {
-    background: linear-gradient(180deg, rgba(4, 7, 14, 0.1) 0%, rgba(5, 8, 16, 0.38) 58%, #07090f 98%);
+    background: radial-gradient(ellipse 42% 20% at 50% 58%, rgba(83, 217, 255, .19), transparent 72%);
 }
 
 .landingHero {
     align-items: center;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     margin: 0 auto;
-    min-height: min(860px, calc(100svh - 16px));
-    padding: 54px 28px 48px;
+    min-height: min(820px, calc(100svh - 16px));
+    padding: 28px 28px 52px;
     position: relative;
     width: min(1180px, 100%);
     z-index: 1;
@@ -88,7 +99,9 @@
 
 .landingEyebrow {
     align-items: center;
-    color: #596279;
+    background: linear-gradient(90deg, #7e86ff, #3ecfe4, #53e4c2);
+    background-clip: text;
+    color: transparent;
     display: flex;
     font-size: 11px;
     font-weight: 720;
@@ -97,9 +110,9 @@
 }
 
 .landingEyebrow span {
-    background: #6266ee;
+    background: #53d9ff;
     border-radius: 999px;
-    box-shadow: 0 0 0 5px rgba(98, 102, 238, 0.12);
+    box-shadow: 0 0 0 5px rgba(83, 217, 255, 0.12), 0 0 16px rgba(83, 217, 255, .55);
     height: 6px;
     width: 6px;
 }
@@ -109,11 +122,13 @@
 }
 
 .landingTitle {
-    color: #121523;
-    font-size: clamp(46px, 6vw, 88px);
-    font-weight: 760;
-    letter-spacing: -0.068em;
-    line-height: 0.98;
+    background: linear-gradient(92deg, #13213d 10%, #3857b9 46%, #1b9ba9 76%, #238a78 100%);
+    background-clip: text;
+    color: transparent;
+    font-size: clamp(48px, 5.6vw, 78px);
+    font-weight: 780;
+    letter-spacing: -0.06em;
+    line-height: 1.02;
     margin: 22px auto 0;
     max-width: 1000px;
     text-align: center;
@@ -121,20 +136,18 @@
 }
 
 .landingTitle span {
-    color: #5a5ed9;
-    display: block;
+    color: inherit;
+    display: inline;
 }
 
 :global(.dark) .landingTitle {
-    color: #f6f7fb;
-}
-
-:global(.dark) .landingTitle span {
-    color: #9c9fff;
+    background: linear-gradient(92deg, #f6f9ff 12%, #dfe8ff 42%, #78e6f3 74%, #a9f4de 100%);
+    background-clip: text;
+    color: transparent;
 }
 
 .landingSubtitle {
-    color: #5f687d;
+    color: #566580;
     font-size: clamp(14px, 1.2vw, 18px);
     line-height: 1.7;
     margin: 19px auto 0;
@@ -143,12 +156,24 @@
 }
 
 :global(.dark) .landingSubtitle {
-    color: #aab2c4;
+    color: #9aa9c2;
 }
 
 .landingComposer {
     margin-top: clamp(30px, 4.6vh, 48px);
-    width: min(840px, 100%);
+    position: relative;
+    width: min(1080px, 100%);
+}
+
+.landingComposer::before {
+    animation: composer-pulse 5.5s ease-in-out infinite;
+    background: linear-gradient(96deg, rgba(79, 104, 255, .62), rgba(83, 217, 255, .56), rgba(103, 242, 209, .52), rgba(184, 167, 255, .58));
+    border-radius: 32px;
+    content: "";
+    filter: blur(24px);
+    inset: 18px 44px -14px;
+    opacity: .27;
+    position: absolute;
 }
 
 .landingComposer :global(.creative-composer-input)::placeholder {
@@ -161,16 +186,51 @@
 }
 
 .landingComposer :global(.creative-composer) {
-    background: rgba(255, 255, 255, 0.76);
-    border-color: rgba(96, 103, 160, 0.2);
-    box-shadow: 0 28px 82px rgba(31, 38, 92, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    background: rgba(3, 11, 27, .91) !important;
+    border: 1px solid transparent !important;
+    box-shadow: 0 30px 90px rgba(1, 10, 28, .42), inset 0 1px 0 rgba(255, 255, 255, .07) !important;
+    color: #f8fbff;
+    position: relative;
     backdrop-filter: blur(28px) saturate(1.24);
 }
 
+.landingComposer :global(.creative-composer)::before {
+    background: linear-gradient(112deg, rgba(79, 104, 255, .94), rgba(83, 217, 255, .82) 34%, rgba(103, 242, 209, .8) 66%, rgba(184, 167, 255, .88));
+    border-radius: inherit;
+    content: "";
+    inset: -1px;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    padding: 1px;
+    pointer-events: none;
+    position: absolute;
+}
+
 :global(.dark) .landingComposer :global(.creative-composer) {
-    background: rgba(10, 14, 25, 0.76);
-    border-color: rgba(158, 164, 255, 0.22);
+    background: rgba(2, 9, 23, .9) !important;
+    border-color: transparent !important;
     box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.landingComposer :global(.creative-composer-input),
+.landingComposer :global(.creative-composer-input:focus),
+.landingComposer :global(.creative-composer-input:focus-visible) {
+    border: 0 !important;
+    box-shadow: none !important;
+    color: #f8fbff !important;
+    outline: none !important;
+}
+
+.landingComposer :global(.creative-composer .ant-btn:not(.generation-action)) {
+    background: rgba(7, 18, 38, .78) !important;
+    border-color: rgba(139, 173, 222, .18) !important;
+    color: #c6d1e2 !important;
+}
+
+.landingComposer :global(.creative-composer .ant-btn:not(.generation-action):hover) {
+    background: rgba(83, 217, 255, .08) !important;
+    border-color: rgba(83, 217, 255, .42) !important;
+    color: #eefeff !important;
 }
 
 .skillRail {
@@ -192,10 +252,10 @@
 .skillLoading {
     align-items: center;
     backdrop-filter: blur(18px);
-    background: rgba(255, 255, 255, 0.62);
-    border: 1px solid rgba(95, 102, 145, 0.18);
+    background: rgba(3, 11, 27, .72);
+    border: 1px solid rgba(132, 182, 229, .18);
     border-radius: 999px;
-    color: #3d4557;
+    color: #d9e4f4;
     display: inline-flex;
     flex: 0 0 auto;
     font-size: 12px;
@@ -207,15 +267,15 @@
 }
 
 .skillRail button:hover {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: rgba(90, 94, 217, 0.46);
+    background: rgba(83, 217, 255, .075);
+    border-color: rgba(83, 217, 255, .42);
     transform: translateY(-1px);
 }
 
 :global(.dark) .skillRail button,
 :global(.dark) .skillLoading {
-    background: rgba(13, 18, 31, 0.62);
-    border-color: rgba(157, 164, 224, 0.2);
+    background: rgba(3, 11, 27, .72);
+    border-color: rgba(132, 182, 229, .18);
     color: #e0e3ec;
 }
 
@@ -264,13 +324,18 @@
 }
 
 @keyframes studio-pan {
-    from { transform: scale(1.08) translate3d(-1.5%, -1%, 0); }
-    to { transform: scale(1.16) translate3d(2%, 1.5%, 0); }
+    from { transform: scale(1.04) translate3d(-1.5%, -1%, 0); }
+    to { transform: scale(1.11) translate3d(2%, 1.5%, 0); }
 }
 
 @keyframes studio-drift {
-    from { transform: scale(1.18) scaleX(-1) translate3d(2%, -1%, 0); }
-    to { transform: scale(1.28) scaleX(-1) translate3d(-2%, 2%, 0); }
+    from { opacity: .58; transform: translate3d(-1.5%, 0, 0) scale(.98); }
+    to { opacity: .94; transform: translate3d(1.5%, -1%, 0) scale(1.04); }
+}
+
+@keyframes composer-pulse {
+    0%, 100% { opacity: .2; transform: scale(.985); }
+    50% { opacity: .38; transform: scale(1.01); }
 }
 
 @keyframes scroll-pulse {
@@ -290,7 +355,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .landingBackdrop::before,
+    .landingBackdrop video { display: none; }
     .landingBackdrop span,
+    .landingComposer::before,
     .scrollCue span { animation: none; }
 }

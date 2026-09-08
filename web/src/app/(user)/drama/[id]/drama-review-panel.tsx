@@ -1,9 +1,10 @@
 "use client";
 
 import { Button, Input, InputNumber, Modal } from "antd";
-import { ArrowLeft, Check, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { GenerationActionButton } from "@/components/generation-action-button";
 import type { DramaEpisode, DramaProject } from "@/lib/drama-project-contract";
 import { useDramaStore } from "../stores/use-drama-store";
 import { DramaStageHeader } from "./drama-editor-elements";
@@ -55,15 +56,15 @@ export function DramaReviewPanel({ project, episode, onDesignVisuals, designing,
                     </Button>
                 }
                 action={
-                    <Button
-                        type="primary"
-                        className="!h-9 !w-full sm:!w-auto"
-                        icon={episode.shots.length ? <Check className="size-4" /> : <ArrowLeft className="size-4" />}
-                        loading={designing}
-                        onClick={episode.shots.length ? onDesignVisuals : () => onStageChange("script")}
-                    >
-                        {!episode.shots.length ? "返回剧本并提取结构" : episode.reviewStatus === "visual_ready" ? "更新视觉方案" : "确认内容并生成视觉方案"}
-                    </Button>
+                    episode.shots.length ? (
+                        <GenerationActionButton className="!h-9 !w-full sm:!w-auto" loading={designing} onClick={onDesignVisuals}>
+                            {episode.reviewStatus === "visual_ready" ? "更新视觉方案" : "确认内容并生成视觉方案"}
+                        </GenerationActionButton>
+                    ) : (
+                        <Button type="primary" className="!h-9 !w-full sm:!w-auto" icon={<ArrowLeft className="size-4" />} onClick={() => onStageChange("script")}>
+                            返回剧本并提取结构
+                        </Button>
+                    )
                 }
             />
             {episode.shots.length ? (

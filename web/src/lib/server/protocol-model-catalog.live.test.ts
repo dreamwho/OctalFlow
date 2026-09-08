@@ -38,7 +38,7 @@ describe("registered protocol model catalogs over a local TCP interface", () => 
         );
         const request = fixture.requests.at(-1);
         expect(request?.path ? new URL(request.path, origin).pathname : request?.path).toBe(path);
-        if (definition.authMode === "none") expect(request?.headers.authorization).toBeUndefined();
+        if (definition.authMode === "none" || definition.authMode === "provider-managed") expect(request?.headers.authorization).toBeUndefined();
         else if (definition.id === "gemini") expect(request?.headers["x-goog-api-key"]).toBe("fixture-key");
         else expect(request?.headers.authorization).toBe("Bearer fixture-key");
     });

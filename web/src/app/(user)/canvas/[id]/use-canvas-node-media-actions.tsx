@@ -4,8 +4,6 @@ import { saveAs } from "file-saver";
 import { useCallback } from "react";
 
 import { getDataUrlByteSize } from "@/lib/image-utils";
-import { mediaDownloadFileName } from "@/lib/media-file";
-import { originalImageDownloadUrl, originalMediaDownloadUrl } from "@/lib/media-image-url";
 import { isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
 import { type UploadedImage } from "@/services/image-storage";
 import { defaultConfig } from "@/stores/use-config-store";
@@ -18,15 +16,26 @@ import { type CanvasImageUpscaleParams } from "../components/canvas-node-upscale
 import { NODE_DEFAULT_SIZE } from "../constants";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasNodeData } from "../types";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "../utils/canvas-image-data";
-import { fitNodeSize } from "../utils/canvas-node-size";
+import { fitCanvasImageNodeSize } from "../utils/canvas-node-size";
+import { CANVAS_NODE_GAP, resolveCanvasNodePlacement } from "../utils/canvas-surface-geometry";
+import { CHARACTER_THREE_VIEW_PROMPT, buildCharacterThreeViewGenerationConfig, createCharacterThreeViewNode, type CanvasCharacterThreeViewParams } from "../utils/canvas-storyboard";
 
 import { IMAGE_PROMPT_REVERSE_PRESET, NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS, createCanvasNode } from "./canvas-page-elements";
+import { prepareCanvasNodeDownload } from "./canvas-node-download";
 import { pauseCanvasGenerationReview } from "./canvas-generation-review";
 import { applyNodeConfigPatch, buildAngleLabel, buildAnglePrompt, buildGenerationConfig, buildImageGenerationMetadata, canvasNodeReferenceImage, imageMetadata, isGenerationCanceled, uploadCanvasImage } from "./canvas-page-utils";
 
 import type { CanvasInteractions } from "./use-canvas-interactions";
 import type { CanvasPageState } from "./use-canvas-page-state";
 import type { CanvasTaskRuntime } from "./use-canvas-task-runtime";
+
+const DREAMINA_UPSCALE_MODEL = "dreamina-image-upscale";
+
+function dreaminaUpscaleNodeSize(node: CanvasNodeData) {
+    const sourceWidth = Math.max(1, node.metadata?.naturalWidth || node.width);
+    const sourceHeight = Math.max(1, node.metadata?.naturalHeight || node.height);
+    return fitCanvasImageNodeSize(sourceWidth, sourceHeight);
+}
 
 export function useCanvasNodeMediaActions({ state, tasks, interactions }: { state: CanvasPageState; tasks: CanvasTaskRuntime; interactions: CanvasInteractions }) {
     const {
@@ -51,11 +60,12 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         setSplitNodeId,
         setUpscaleNodeId,
         setAngleNodeId,
+        setStoryboardNodeId,
         setCollapsingBatchIds,
         setOpeningBatchIds,
         nodesRef,
     } = state;
-    const { startGenerationRequest, finishGenerationRequest, startAndCompleteImageTask } = tasks;
+    const { startGenerationRequest, finishGenerationRequest, startAndCompleteImageTask, startAndCompleteUpscaleTask } = tasks;
 
     const toggleNodeFreeResize = useCallback((nodeId: string) => {
         setNodes((prev) =>
@@ -144,12 +154,15 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? applyNodeConfigPatch(node, patch) : node)));
     }, []);
 
-    const downloadNodeImage = useCallback((node: CanvasNodeData) => {
+    const downloadNodeImage = useCallback(async (node: CanvasNodeData) => {
         if ((!isCanvasImageNodeType(node.type) && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) || !node.metadata?.content) return;
-        const image = isCanvasImageNodeType(node.type);
-        const url = image ? originalImageDownloadUrl(node.metadata.content) : originalMediaDownloadUrl(node.metadata.content);
-        saveAs(url, mediaDownloadFileName(node.id, node.metadata.mimeType, node.metadata.storageKey || node.metadata.serverUrl || node.metadata.content));
-    }, []);
+        try {
+            const download = await prepareCanvasNodeDownload(node);
+            saveAs(download.blob, download.fileName);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "媒体文件下载失败");
+        }
+    }, [message]);
 
     const saveNodeAsset = useCallback(
         async (node: CanvasNodeData) => {
@@ -237,7 +250,7 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
                 return;
             }
 
-            const gap = 96;
+            const gap = CANVAS_NODE_GAP;
             const textSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Text];
             const configSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Config];
             const centerY = node.position.y + node.height / 2;
@@ -269,20 +282,21 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         [effectiveConfig.model, effectiveConfig.textModel, message],
     );
 
-    const appendDerivedImageNode = useCallback((sourceNode: CanvasNodeData, image: UploadedImage, title: string, size: { width: number; height: number }) => {
+    const appendDerivedImageNode = useCallback((sourceNode: CanvasNodeData, image: UploadedImage, title: string, size: { width: number; height: number }, options: { connect?: boolean; openEditor?: boolean; inheritPrompt?: boolean } = {}) => {
         const childId = nanoid();
+        const preferredPosition = { x: sourceNode.position.x + sourceNode.width + CANVAS_NODE_GAP, y: sourceNode.position.y };
         const child: CanvasNodeData = {
             id: childId,
             type: CanvasNodeType.Image,
             title,
-            position: { x: sourceNode.position.x + sourceNode.width + 96, y: sourceNode.position.y },
+            position: resolveCanvasNodePlacement(nodesRef.current, size, { x: sourceNode.position.x + sourceNode.width / 2, y: sourceNode.position.y + sourceNode.height / 2 }, preferredPosition),
             ...size,
-            metadata: { ...imageMetadata(image), prompt: sourceNode.metadata?.prompt },
+            metadata: { ...imageMetadata(image), ...(options.inheritPrompt === false ? {} : { prompt: sourceNode.metadata?.prompt }) },
         };
         setNodes((prev) => [...prev, child]);
-        setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: sourceNode.id, toNodeId: childId }]);
+        if (options.connect !== false) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: sourceNode.id, toNodeId: childId }]);
         setSelectedNodeIds(new Set([childId]));
-        setDialogNodeId(childId);
+        if (options.openEditor !== false) setDialogNodeId(childId);
     }, []);
 
     const cropImageNode = useCallback(
@@ -290,8 +304,7 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
             if (!node.metadata?.content) return;
             const cropped = await cropDataUrl(node.metadata.content, crop);
             const image = await uploadCanvasImage(cropped);
-            const width = Math.min(node.width, Math.max(220, image.width));
-            appendDerivedImageNode(node, image, "Cropped Image", { width, height: width * (image.height / image.width) });
+            appendDerivedImageNode(node, image, "Cropped Image", fitCanvasImageNodeSize(image.width, image.height));
             setCropNodeId(null);
         },
         [appendDerivedImageNode],
@@ -301,10 +314,10 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         async (node: CanvasNodeData, params: CanvasImageSplitParams) => {
             if (!node.metadata?.content) return;
             const pieces = await splitDataUrl(node.metadata.content, params);
-            const gap = 16;
+            const gap = CANVAS_NODE_GAP;
             const cellWidth = node.width / params.columns;
             const cellHeight = node.height / params.rows;
-            const startX = node.position.x + node.width + 96;
+            const startX = node.position.x + node.width + CANVAS_NODE_GAP;
             const startY = node.position.y;
             const uploads = await Promise.allSettled(
                 pieces.map(async (piece) => {
@@ -360,7 +373,7 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
                     id: childId,
                     type: CanvasNodeType.Image,
                     title: userPrompt.slice(0, 32) || "局部编辑结果",
-                    position: { x: node.position.x + node.width + 96, y: node.position.y },
+                    position: { x: node.position.x + node.width + CANVAS_NODE_GAP, y: node.position.y },
                     width: node.width,
                     height: node.height,
                     metadata: { prompt, status: NODE_STATUS_LOADING, ...generationMetadata },
@@ -403,13 +416,71 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
     const upscaleImageNode = useCallback(
         async (node: CanvasNodeData, params: CanvasImageUpscaleParams) => {
             if (!node.metadata?.content) return;
+            if (params.engine === "dreamina-cli") {
+                const resolutionType = params.resolutionType;
+                const childId = nanoid();
+                const source = canvasNodeReferenceImage(node);
+                const generationConfig = { ...effectiveConfig, apiSource: "system" as const, model: DREAMINA_UPSCALE_MODEL, imageModel: DREAMINA_UPSCALE_MODEL };
+                setUpscaleNodeId(null);
+                setRunningNodeId(childId);
+                setNodes((prev) => [
+                    ...prev,
+                    {
+                        id: childId,
+                        type: CanvasNodeType.Image,
+                        title: "即梦 CLI 图片超清",
+                        position: { x: node.position.x + node.width + CANVAS_NODE_GAP, y: node.position.y },
+                        ...dreaminaUpscaleNodeSize(node),
+                        metadata: {
+                            status: NODE_STATUS_LOADING,
+                            model: DREAMINA_UPSCALE_MODEL,
+                            upscaleTask: { id: "", provider: "dreamina-cli", model: DREAMINA_UPSCALE_MODEL, resolutionType, sourceNodeId: node.id },
+                        },
+                    },
+                ]);
+                setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
+                setSelectedNodeIds(new Set([childId]));
+                setSelectedConnectionId(null);
+                setDialogNodeId(childId);
+                const controller = startGenerationRequest(childId, node.id, childId);
+                try {
+                    await startAndCompleteUpscaleTask(childId, generationConfig, source, node.id, resolutionType, controller);
+                } catch (error) {
+                    if (isGenerationCanceled(error)) return;
+                    const errorDetails = error instanceof Error ? error.message : "即梦 CLI 图片超清失败";
+                    message.error(errorDetails);
+                    if (isGenerationTaskNeedsReviewError(error)) {
+                        setNodes((prev) => pauseCanvasGenerationReview(prev, [childId], errorDetails));
+                        return;
+                    }
+                    setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, imageTask: undefined } } : item)));
+                } finally {
+                    finishGenerationRequest(childId, controller);
+                    setRunningNodeId(null);
+                }
+                return;
+            }
             const upscaled = await upscaleDataUrl(node.metadata.content, params);
             const image = await uploadCanvasImage(upscaled);
-            const size = fitNodeSize(image.width, image.height);
+            const size = fitCanvasImageNodeSize(image.width, image.height);
             appendDerivedImageNode(node, image, "Upscaled Image", size);
             setUpscaleNodeId(null);
         },
-        [appendDerivedImageNode],
+        [
+            appendDerivedImageNode,
+            effectiveConfig,
+            finishGenerationRequest,
+            message,
+            setConnections,
+            setDialogNodeId,
+            setNodes,
+            setRunningNodeId,
+            setSelectedConnectionId,
+            setSelectedNodeIds,
+            setUpscaleNodeId,
+            startAndCompleteUpscaleTask,
+            startGenerationRequest,
+        ],
     );
 
     const generateAngleNode = useCallback(
@@ -433,7 +504,7 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
                     id: childId,
                     type: CanvasNodeType.Image,
                     title,
-                    position: { x: node.position.x + node.width + 96, y: node.position.y },
+                    position: { x: node.position.x + node.width + CANVAS_NODE_GAP, y: node.position.y },
                     width: imageConfig.width,
                     height: imageConfig.height,
                     metadata: { prompt, status: NODE_STATUS_LOADING, ...generationMetadata },
@@ -472,6 +543,58 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startAndCompleteImageTask, startGenerationRequest],
     );
 
+    const generateCharacterThreeViewNode = useCallback(
+        async (node: CanvasNodeData, params: CanvasCharacterThreeViewParams) => {
+            if (!isCanvasImageNodeType(node.type) || !node.metadata?.content?.trim()) return;
+            const baseConfig = buildGenerationConfig(effectiveConfig, node, "image");
+            const generationConfig = buildCharacterThreeViewGenerationConfig(baseConfig, params.model || baseConfig.model);
+            if (!isAiConfigReady(generationConfig, generationConfig.model)) {
+                openConfigDialog(true);
+                return;
+            }
+            const childId = nanoid();
+            const source = canvasNodeReferenceImage(node);
+            const created = createCharacterThreeViewNode({
+                source: node,
+                nodes: nodesRef.current,
+                nodeId: childId,
+                connectionId: nanoid(),
+                metadata: {
+                    prompt: CHARACTER_THREE_VIEW_PROMPT,
+                    sourcePrompt: CHARACTER_THREE_VIEW_PROMPT,
+                    executionPrompt: CHARACTER_THREE_VIEW_PROMPT,
+                    status: NODE_STATUS_LOADING,
+                    ...buildImageGenerationMetadata("edit", generationConfig, 1, [source]),
+                },
+            });
+            setStoryboardNodeId(null);
+            setRunningNodeId(childId);
+            setNodes((prev) => [...prev, created.node]);
+            setConnections((prev) => [...prev, created.connection]);
+            setSelectedNodeIds(new Set([childId]));
+            setSelectedConnectionId(null);
+            setDialogNodeId(childId);
+            const controller = startGenerationRequest(childId, node.id, childId);
+            try {
+                await startAndCompleteImageTask(childId, generationConfig, CHARACTER_THREE_VIEW_PROMPT, [source], undefined, controller, CHARACTER_THREE_VIEW_PROMPT);
+            } catch (error) {
+                if (isGenerationCanceled(error)) return;
+                const errorDetails = error instanceof Error ? error.message : "人物三视图生成失败";
+                const needsReview = isGenerationTaskNeedsReviewError(error);
+                if (needsReview) {
+                    setNodes((prev) => pauseCanvasGenerationReview(prev, [childId], errorDetails));
+                    return;
+                }
+                message.error(errorDetails);
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, imageTask: undefined } } : item)));
+            } finally {
+                finishGenerationRequest(childId, controller);
+                setRunningNodeId(null);
+            }
+        },
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startAndCompleteImageTask, startGenerationRequest],
+    );
+
     const handleFontSizeChange = useCallback((nodeId: string, fontSize: number) => {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, fontSize } } : node)));
     }, []);
@@ -492,6 +615,7 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         maskEditImageNode,
         upscaleImageNode,
         generateAngleNode,
+        generateCharacterThreeViewNode,
         handleFontSizeChange,
     };
 }

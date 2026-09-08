@@ -105,6 +105,33 @@ describe("text planning runtime protocol matrix", () => {
         expect(requestBody()).toMatchObject({ contents: [{ role: "user", parts: [{ text: "test" }] }], systemInstruction: { parts: [{ text: expect.stringContaining("严格 JSON") }] } });
     });
 
+    it("Gemini 原生规划把视频与音频证据作为 inlineData 传递", async () => {
+        mockedFetch.mockResolvedValue(Response.json({ candidates: [{ content: { parts: [{ text: "{}" }] } }] }));
+
+        await requestStructuredText({
+            ...requestInput(candidate("compatible", { apiFormat: "gemini", createPath: "/models/:model:generateContent" })),
+            messages: [
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "分析视频" },
+                        { type: "video_url", video_url: { url: "data:video/mp4;base64,VIDEO" } },
+                        { type: "audio_url", audio_url: { url: "data:audio/mp4;base64,AUDIO" } },
+                    ],
+                },
+            ],
+        });
+
+        expect(requestBody()).toMatchObject({
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: "分析视频" }, { inlineData: { mimeType: "video/mp4", data: "VIDEO" } }, { inlineData: { mimeType: "audio/mp4", data: "AUDIO" } }],
+                },
+            ],
+        });
+    });
+
     it("修复兼容渠道工具参数中的轻微 JSON 语法错误", async () => {
         mockedFetch.mockResolvedValue(Response.json({ choices: [{ message: { tool_calls: [{ function: { name: "make_plan", arguments: '{"result":"完成",}' } }] } }] }));
 

@@ -10,7 +10,7 @@ import type { CanvasAgentMentionAsset, CanvasAgentMentionSegment } from "./canva
 
 export function CanvasAgentMentionPicker({ assets, selectedNodeIds, theme, onSelect }: { assets: CanvasAgentMentionAsset[]; selectedNodeIds: string[]; theme: CanvasTheme; onSelect: (asset: CanvasAgentMentionAsset) => void }) {
     const [activeType, setActiveType] = useState<"image" | "video">("image");
-    const gridRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
     const [scrollEdges, setScrollEdges] = useState({ previous: false, next: false });
     const { images, videos } = useMemo(() => {
         const grouped = { images: [] as CanvasAgentMentionAsset[], videos: [] as CanvasAgentMentionAsset[] };
@@ -22,22 +22,22 @@ export function CanvasAgentMentionPicker({ assets, selectedNodeIds, theme, onSel
     const selected = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
 
     useEffect(() => {
-        const grid = gridRef.current;
-        if (!grid || !visibleType) return;
+        const list = listRef.current;
+        if (!list || !visibleType) return;
         const update = () => {
-            const maximum = Math.max(0, grid.scrollHeight - grid.clientHeight);
-            const previous = grid.scrollTop > 1;
-            const next = grid.scrollTop < maximum - 1;
+            const maximum = Math.max(0, list.scrollHeight - list.clientHeight);
+            const previous = list.scrollTop > 1;
+            const next = list.scrollTop < maximum - 1;
             setScrollEdges((current) => (current.previous === previous && current.next === next ? current : { previous, next }));
         };
         const frame = window.requestAnimationFrame(update);
         const observer = new ResizeObserver(update);
-        observer.observe(grid);
-        grid.addEventListener("scroll", update, { passive: true });
+        observer.observe(list);
+        list.addEventListener("scroll", update, { passive: true });
         return () => {
             window.cancelAnimationFrame(frame);
             observer.disconnect();
-            grid.removeEventListener("scroll", update);
+            list.removeEventListener("scroll", update);
         };
     }, [visibleAssets.length, visibleType]);
 
@@ -50,7 +50,8 @@ export function CanvasAgentMentionPicker({ assets, selectedNodeIds, theme, onSel
     }
 
     return (
-        <div className="flex w-[min(14rem,calc(100vw-2rem))] min-w-0 flex-col overflow-hidden p-1" data-testid="canvas-agent-mention-picker">
+        <div className="flex w-[min(20rem,calc(100vw-2rem))] min-w-0 flex-col overflow-hidden p-2" data-testid="canvas-agent-mention-picker">
+            <p className="px-1 pb-2 text-xs font-medium" style={{ color: theme.node.muted }}>可能的内容</p>
             {images.length && videos.length ? (
                 <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg border p-1" style={{ borderColor: theme.toolbar.border, background: theme.node.fill }} role="tablist" aria-label="引用素材类型">
                     <MentionTypeTab type="image" count={images.length} active={visibleType === "image"} theme={theme} onClick={() => setActiveType("image")} />
@@ -58,16 +59,16 @@ export function CanvasAgentMentionPicker({ assets, selectedNodeIds, theme, onSel
                 </div>
             ) : null}
             <div className="relative min-h-0 overflow-hidden">
-                <div ref={gridRef} className="hide-scrollbar grid max-h-[min(12rem,calc(100dvh-10rem))] grid-cols-4 gap-1 overflow-y-auto overscroll-contain p-0.5" data-testid={`canvas-agent-mention-${visibleType}-grid`}>
+                <div ref={listRef} className="hide-scrollbar max-h-[min(15rem,calc(100dvh-10rem))] space-y-1 overflow-y-auto overscroll-contain" data-testid={`canvas-agent-mention-${visibleType}-list`}>
                     {visibleAssets.map((asset) => (
                         <button
                             key={asset.id}
                             type="button"
                             data-node-id={asset.id}
-                            className="group relative aspect-square min-w-0 overflow-hidden rounded-md border-2 transition focus-visible:outline-none focus-visible:ring-2"
+                            className="group flex w-full min-w-0 items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2"
                             style={{
                                 borderColor: selected.has(asset.id) ? theme.node.activeStroke : "transparent",
-                                background: theme.node.fill,
+                                background: selected.has(asset.id) ? theme.node.infoSurface : theme.node.fill,
                                 outlineColor: theme.node.activeStroke,
                             }}
                             onMouseDown={(event) => event.preventDefault()}
@@ -75,7 +76,11 @@ export function CanvasAgentMentionPicker({ assets, selectedNodeIds, theme, onSel
                             aria-label={`引用${asset.title}`}
                             title={asset.title}
                         >
-                            <MentionAssetPreview asset={asset} />
+                            <span className="relative size-10 shrink-0 overflow-hidden rounded-md" style={{ background: theme.toolbar.itemHover }}>
+                                <MentionAssetPreview asset={asset} />
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: theme.node.text }}>{asset.title}</span>
+                            {asset.type === "video" ? <FileVideo className="size-3.5 shrink-0" style={{ color: theme.node.muted }} aria-hidden="true" /> : null}
                         </button>
                     ))}
                 </div>
@@ -104,7 +109,7 @@ export function CanvasAgentMentionPreview({ segments, assetsById, previewRef, th
                             {segment.text}
                         </span>
                         <span className="absolute inset-0 inline-flex min-w-0 items-center gap-0.5 overflow-hidden" style={{ color: theme.node.text }}>
-                            {asset.type === "image" ? <img src={imagePreviewUrl(asset.url, 80)} alt="" className="size-3 shrink-0 rounded-sm object-cover" /> : <FileVideo className="size-3 shrink-0" />}
+                            {asset.type === "image" ? <img src={imagePreviewUrl(asset.url, 80)} alt="" className="block size-3 shrink-0 rounded-sm object-cover" /> : <FileVideo className="size-3 shrink-0" />}
                             <span className="min-w-0 truncate text-xs font-medium">{segment.text.slice(1)}</span>
                         </span>
                     </span>
@@ -134,7 +139,7 @@ function MentionTypeTab({ type, count, active, theme, onClick }: { type: "image"
 }
 
 function MentionAssetPreview({ asset }: { asset: CanvasAgentMentionAsset }) {
-    if (asset.type === "image") return <img src={imagePreviewUrl(asset.url, 192)} alt="" className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" loading="lazy" />;
+    if (asset.type === "image") return <img src={imagePreviewUrl(asset.url, 192)} alt="" className="block size-full bg-transparent object-cover transition-transform duration-200 group-hover:scale-[1.03]" loading="lazy" />;
     return (
         <>
             <video src={asset.url} muted playsInline preload="metadata" aria-hidden="true" className="pointer-events-none size-full object-cover" />

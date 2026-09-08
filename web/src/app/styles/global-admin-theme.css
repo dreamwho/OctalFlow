@@ -26,10 +26,10 @@
     --admin-chart-track: #f0f0f1;
     --admin-chart-area: rgb(24 24 27 / 0.08);
     --admin-nav-item-bg: transparent;
-    --admin-nav-item-active-bg: #f4f4f5;
+    --admin-nav-item-active-bg: var(--octa-selection-surface);
     --admin-nav-item-border: transparent;
-    --admin-nav-item-active-border: transparent;
-    --admin-nav-item-active-shadow: inset 2px 0 0 #18181b;
+    --admin-nav-item-active-border: var(--octa-selection-border);
+    --admin-nav-item-active-shadow: var(--octa-selection-shadow);
     --admin-nav-hover-bg: #fafafa;
     background: var(--admin-home-bg) !important;
     isolation: isolate;
@@ -64,10 +64,10 @@
     --admin-chart-track: #27272a;
     --admin-chart-area: rgb(250 250 250 / 0.08);
     --admin-nav-item-bg: transparent;
-    --admin-nav-item-active-bg: #18181b;
+    --admin-nav-item-active-bg: var(--octa-selection-surface);
     --admin-nav-item-border: transparent;
-    --admin-nav-item-active-border: transparent;
-    --admin-nav-item-active-shadow: inset 2px 0 0 #fafafa;
+    --admin-nav-item-active-border: var(--octa-selection-border);
+    --admin-nav-item-active-shadow: var(--octa-selection-shadow);
     --admin-nav-hover-bg: #18181b;
     background: var(--admin-home-bg) !important;
 }
@@ -159,13 +159,13 @@
 
 .admin-section-nav-item.is-active {
     background: var(--admin-nav-item-active-bg) !important;
-    border-color: transparent !important;
+    border-color: var(--admin-nav-item-active-border) !important;
     box-shadow: var(--admin-nav-item-active-shadow) !important;
 }
 
 .dark .admin-section-nav-item.is-active {
     background: var(--admin-nav-item-active-bg) !important;
-    border-color: transparent !important;
+    border-color: var(--admin-nav-item-active-border) !important;
     color: #f8fafc !important;
     box-shadow: var(--admin-nav-item-active-shadow) !important;
 }

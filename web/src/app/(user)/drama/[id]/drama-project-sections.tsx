@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { App, Button, Drawer, Input, Popover, Tooltip } from "antd";
-import { ArrowLeft, Bot, Boxes, ChevronDown, ChevronRight, History, PanelLeft, Plus, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Bot, Boxes, ChevronDown, ChevronRight, History, PanelLeft, Plus, Settings2, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { GenerationActionButton } from "@/components/generation-action-button";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import type { DramaEpisode, DramaProject } from "../types";
 import { useDramaStore } from "../stores/use-drama-store";
@@ -357,18 +358,9 @@ export function DramaScriptPanel({
                     action={
                         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                             <DramaSourceImport project={project} onImported={() => onStageChange("script")} />
-                            <Button
-                                type="primary"
-                                className="!h-8 !px-2.5 enabled:!border-violet-600 enabled:!bg-violet-600 enabled:!text-white enabled:hover:!border-violet-500 enabled:hover:!bg-violet-500 dark:enabled:!border-violet-400 dark:enabled:!bg-violet-400 dark:enabled:!text-violet-950"
-                                size="small"
-                                icon={<Sparkles className="size-3.5" />}
-                                loading={analyzing}
-                                disabled={!scriptText}
-                                title={scriptText ? undefined : "请先填写或导入本集剧本"}
-                                onClick={onAnalyze}
-                            >
+                            <GenerationActionButton className="!h-8 !px-2.5" size="small" loading={analyzing} disabled={!scriptText} title={scriptText ? undefined : "请先填写或导入本集剧本"} onClick={onAnalyze}>
                                 AI 整理
-                            </Button>
+                            </GenerationActionButton>
                             <Popover trigger="click" placement="bottomRight" styles={{ container: { padding: 12, width: 320 } }} content={<DramaEpisodeSettings project={project} episode={episode} embedded />}>
                                 <Button className="!h-8 !px-2.5" size="small" icon={<Settings2 className="size-3.5" />} aria-label="打开本集设置">
                                     本集设置

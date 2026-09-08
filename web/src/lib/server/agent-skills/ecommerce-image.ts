@@ -7,6 +7,7 @@ export const ECOMMERCE_IMAGE_SKILL = {
     license: "MIT",
     enabled: true,
     workspaces: ["image", "canvas"],
+    nodeModes: ["image"],
     action: "generate",
     requiresReference: false,
     defaultConfig: { quality: "high", count: 1 },

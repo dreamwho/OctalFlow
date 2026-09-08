@@ -9,6 +9,9 @@ type VideoGenerationContext = {
     referenceImages: ReferenceImage[];
     referenceVideos: ReferenceVideo[];
     referenceAudios: ReferenceAudio[];
+    continuityFirstFrame?: CanvasVideoFrameSelection;
+    continuityPending?: boolean;
+    continuityError?: string;
 };
 
 export type ResolvedCanvasVideoReferences = {
@@ -83,16 +86,21 @@ export function resolveCanvasVideoGenerationReferences({
     context: VideoGenerationContext;
     availableInputs: Array<{ image?: ReferenceImage }>;
 }): ResolvedCanvasVideoReferences {
-    const mode = normalizeCanvasVideoReferenceMode(metadata?.videoReferenceMode);
+    if (context.continuityPending) {
+        throw new Error(context.continuityError ? `上一段视频尾帧提取失败：${context.continuityError}` : "上一段视频尾帧正在提取，请稍候再生成");
+    }
+    const configuredMode = normalizeCanvasVideoReferenceMode(metadata?.videoReferenceMode);
+    const automaticFirstFrame = !metadata?.videoFirstFrame && !metadata?.videoLastFrame ? context.continuityFirstFrame : undefined;
+    const mode = automaticFirstFrame ? "first_frame" : configuredMode;
     const availableImages = availableInputs.flatMap((input) => (input.image ? [input.image] : []));
     if (mode === "reference") {
         const images = context.referenceImages.map((image) => ({ ...image, videoRole: "reference" as const }));
         return resolvedVideoReferences(mode, images, context.referenceVideos, context.referenceAudios);
     }
 
-    const firstImage = resolveFrameImage(metadata?.videoFirstFrame, availableImages);
+    const firstImage = resolveFrameImage(metadata?.videoFirstFrame || automaticFirstFrame, availableImages);
     if (!firstImage) throw new Error("请先选择视频首帧图片");
-    const firstFrame = frameSelectionFromImage(firstImage, metadata?.videoFirstFrame);
+    const firstFrame = frameSelectionFromImage(firstImage, metadata?.videoFirstFrame || automaticFirstFrame);
     if (!firstFrame) throw new Error("视频首帧尚未保存到服务器，请重新连接图片后再试");
 
     let lastImage: ReferenceImage | undefined;
@@ -258,7 +266,7 @@ function frameSelectionFromImage(image: ReferenceImage, fallback?: CanvasVideoFr
     const source = stableImageSource(image) || fallback?.source || "";
     if (!source) return undefined;
     return {
-        nodeId: image.id || fallback?.nodeId,
+        nodeId: fallback?.nodeId || image.id,
         title: fallback?.title || image.name.replace(/\.[^.]+$/, "") || "视频帧",
         source,
         previewUrl: persistedSource(image.serverUrl, image.remoteUrl, image.url, image.dataUrl, fallback?.previewUrl) || undefined,

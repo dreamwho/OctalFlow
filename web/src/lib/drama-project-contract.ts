@@ -167,6 +167,7 @@ export type DramaProject = {
     title: string;
     summary: string;
     style: string;
+    stylePresetId?: string;
     ratio: string;
     status: "active" | "archived";
     creativeConversationId?: string;
@@ -182,7 +183,7 @@ export type DramaProject = {
     updatedAt: string;
 };
 
-export type DramaProjectSummary = Pick<DramaProject, "id" | "title" | "summary" | "style" | "ratio" | "status" | "createdAt" | "updatedAt"> & {
+export type DramaProjectSummary = Pick<DramaProject, "id" | "title" | "summary" | "style" | "stylePresetId" | "ratio" | "status" | "createdAt" | "updatedAt"> & {
     episodeCount: number;
     characterCount: number;
     sceneCount: number;
@@ -198,7 +199,7 @@ export type DramaProjectSummaryPage = {
     pageSize: number;
 };
 
-export type CreateDramaProjectInput = Pick<DramaProject, "title" | "summary" | "style" | "ratio"> & {
+export type CreateDramaProjectInput = Pick<DramaProject, "title" | "summary" | "style" | "stylePresetId" | "ratio"> & {
     sourceHandoffId?: string;
     initialScript?: string;
     sourceAssets?: DramaSourceAsset[];

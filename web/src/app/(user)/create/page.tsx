@@ -77,6 +77,7 @@ export default function CreatePage() {
     const hasConversation = agent.messages.length > 0;
     const showConversation = hasConversation || agent.conversationLoading;
     const selectedSkills = skills.filter((skill) => selectedSkillIds.includes(skill.id));
+    const optionalSkill = selectedSkills.length && selectedSkills.every((skill) => skill.promptMode === "optional") ? selectedSkills[0] : undefined;
     const modelOptions = useCreativeAgentModels();
     const selectedModels = modelOptions.filter((model) => selectedModelIds.includes(model.id));
     const updatePrompt = useCallback((value: string) => {
@@ -117,16 +118,20 @@ export default function CreatePage() {
         if (initialPromptRestoredRef.current) return;
         initialPromptRestoredRef.current = true;
         const incomingDraft = createAgentDraftFromHash(window.location.hash);
-        if (!incomingDraft || (!incomingDraft.prompt && !incomingDraft.mode && !incomingDraft.skillIds?.length)) return;
+        if (!incomingDraft || (!incomingDraft.prompt && !incomingDraft.mode && !incomingDraft.skillIds?.length && !incomingDraft.modelIds?.length)) return;
         if (incomingDraft.prompt) updatePrompt(incomingDraft.prompt);
         if (incomingDraft.mode) {
             setCreationMode(incomingDraft.mode);
             setGenerationPreferences(incomingDraft.mode === "agent" ? {} : { mode: incomingDraft.mode });
         }
         if (incomingDraft.skillIds?.length) setSelectedSkillIds(incomingDraft.skillIds);
+        if (incomingDraft.modelIds?.length) {
+            setSelectedModelIds(incomingDraft.modelIds);
+            setSmartPlanning(false);
+        }
         router.replace("/create");
         window.requestAnimationFrame(() => inputRef.current?.focus());
-        message.success(incomingDraft.skillIds?.length ? "已载入视频复刻 Skill" : incomingDraft.prompt ? "已填入创作需求" : "已选择创作类型");
+        message.success(incomingDraft.skillIds?.length ? "已载入创作 Skill" : incomingDraft.modelIds?.length ? "已载入指定模型" : incomingDraft.prompt ? "已填入创作需求" : "已选择创作类型");
     }, [message, router, updatePrompt]);
 
     useEffect(() => {
@@ -182,7 +187,8 @@ export default function CreatePage() {
     };
 
     const submit = async () => {
-        if (!prompt.trim()) {
+        const requestedPrompt = prompt.trim();
+        if (!requestedPrompt && !optionalSkill) {
             message.warning("请先描述你的创作需求");
             inputRef.current?.focus();
             return;
@@ -203,10 +209,11 @@ export default function CreatePage() {
         }
         promptRevisionRef.current += 1;
         try {
+            const executionPrompt = requestedPrompt || optionalSkill?.promptHint || `按「${optionalSkill?.name || "所选 Skill"}」默认流程生成`;
             const preferences = { ...generationPreferences, ...(creationMode !== "agent" ? { mode: creationMode } : {}) };
             if (
-                await agent.submit(prompt, {
-                    publicPrompt: publicCreativeAssetPrompt(prompt),
+                await agent.submit(executionPrompt, {
+                    publicPrompt: requestedPrompt ? publicCreativeAssetPrompt(prompt) : executionPrompt,
                     skillIds: selectedSkillIds,
                     ...(!smartPlanning && selectedModelIds.length ? { modelIds: selectedModelIds } : {}),
                     ...(Object.keys(preferences).length ? { preferences } : {}),
@@ -654,11 +661,14 @@ export default function CreatePage() {
                             />
                         ) : (
                             <div className={studioStyles.landing}>
-                                <div className={studioStyles.landingBackdrop} aria-hidden="true"><span /></div>
+                                <div className={studioStyles.landingBackdrop} aria-hidden="true">
+                                    <video src="/brand/octaflow-particle-infinity.mp4" autoPlay muted loop playsInline preload="auto" />
+                                    <span />
+                                </div>
                                 <div className={studioStyles.landingHero}>
                                     <div className={studioStyles.landingEyebrow}><span /> OCTAFLOW CREATIVE OS</div>
-                                    <h1 className={studioStyles.landingTitle}>让一个想法，<span>长成完整作品。</span></h1>
-                                    <p className={studioStyles.landingSubtitle}>{siteTitle} 将策划、资产、镜头与生成编排在同一个创作现场。</p>
+                                    <h1 className={studioStyles.landingTitle}>从灵感，<span>到完整作品</span></h1>
+                                    <p className={studioStyles.landingSubtitle}>在 {siteTitle} 描述你的想法，Agent 会完成规划、选模与生成。</p>
                                     <div className={studioStyles.landingComposer}>{composer}</div>
                                     <div className={studioStyles.skillRail} aria-label="快捷 Skill">
                                         {skillsLoading ? <span className={studioStyles.skillLoading}>正在加载创作 Skill...</span> : null}

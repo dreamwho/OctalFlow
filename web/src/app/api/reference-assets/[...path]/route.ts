@@ -35,7 +35,7 @@ async function serveReferenceAsset(request: Request, context: RouteContext) {
     let rateIdentity = `signature:${signature}`;
     let currentUser: Awaited<ReturnType<typeof getCurrentUser>> = null;
     if (!signed) {
-        currentUser = await getCurrentUser();
+        currentUser = await getCurrentUser(request);
         if (!currentUser) return NextResponse.json({ code: 401, data: null, msg: "请先登录" }, { status: 401 });
         rateIdentity = `user:${currentUser.id}`;
     }

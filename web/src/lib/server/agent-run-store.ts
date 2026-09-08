@@ -5,18 +5,21 @@ import { extractImageSizeFromPrompt } from "@/lib/image-size";
 import { videoFrameAssetIds, type VideoReferenceRole } from "@/lib/video-reference-contract";
 import { createCreativeRunBundle, getCreativeAssetsByIds, getCreativeRunByClientRequestId, mutateCreativeRun } from "./creative-runtime-store";
 import { getStoredGenerationTask, queryStoredGenerationTasks } from "./generation-task-store";
-import { cancelledRunCanvasOps, taskCanvasEventOps } from "./agent-run-canvas-ops";
+import { scheduleGenerationTask } from "./generation-task-scheduler";
+import { agentRunRecoveryOps, cancelledRunCanvasOps, taskCanvasEventOps } from "./agent-run-canvas-ops";
 import { agentRequirementAcknowledgement } from "@/lib/agent-requirement-acknowledgement";
 import { agentTaskCompletionMessage } from "./agent-run-messages";
 import type { AgentRunPlannerAudit } from "./agent-run-audit";
 import { normalizeAgentRunCanvasSnapshot, selectedCanvasNodeIds } from "./agent-run-canvas-snapshot";
 
 export type AgentRunStatus = "planning" | "running" | "paused" | "completed" | "failed" | "cancelled";
+export type AgentRunFailurePhase = "planning" | "execution";
 export type AgentRunReviewStatus = "review_pending" | "reviewing" | "review_completed" | "review_unavailable";
 export type AgentRunReference = {
     assetId?: string;
     nodeId?: string;
     sourceTaskId?: string;
+    alias?: string;
     url: string;
     type: "image" | "video" | "audio";
     role?: VideoReferenceRole;
@@ -27,6 +30,13 @@ export type AgentRunChildTask = {
     attempt: number;
     result?: unknown;
     error?: string;
+};
+export type AgentRunSubmittedParameters = {
+    model?: string;
+    ratio?: string;
+    quality?: string;
+    duration?: number;
+    referenceMode?: string;
 };
 export type AgentRunTask = {
     id: string;
@@ -49,17 +59,32 @@ export type AgentRunTask = {
     generateAudio?: boolean;
     watermark?: boolean;
     speed?: number;
+    canvasLayout?: {
+        baseX: number;
+        baseY: number;
+        lane: "source" | "media";
+        row: number;
+        sourceColumnWidth?: number;
+        /** Explicit output positions are used for compact portrait storyboard rows. */
+        outputPositions?: Array<{ x: number; y: number }>;
+    };
+    /** Stage barriers control scheduling only; direct dependencies remain media references. */
+    stageDependencies?: string[];
     dependencies: string[];
     status: "ready" | "running" | "completed" | "failed" | "cancelled";
     attempts: number;
     startedAt?: number;
     completedAt?: number;
+    /** A provider-supplied or scheduler-derived moment to resume a known-safe, unsubmitted create request. */
+    retryAfterAt?: number;
     taskId?: string;
     taskIds?: string[];
     childTasks?: AgentRunChildTask[];
     assetIds?: string[];
     result?: unknown;
     error?: string;
+    /** Public, prompt-free record of the values actually handed to the provider. */
+    submittedParameters?: AgentRunSubmittedParameters;
 };
 export type AgentRun = {
     id: string;
@@ -80,6 +105,8 @@ export type AgentRun = {
     generationPreferences?: CreativeGenerationPreferences;
     assetIds: string[];
     status: AgentRunStatus;
+    error?: string;
+    failurePhase?: AgentRunFailurePhase;
     executionId?: string;
     tasks: AgentRunTask[];
     foundation?: CreativeFoundation;
@@ -173,8 +200,45 @@ async function assertVideoFrameAssets(userId: string, input: CreativeRunRequest)
     }
 }
 
-export const getAgentRun = (id: string) => getStoredGenerationTask<AgentRun>("agent", id);
-export const listAgentRuns = (options: { userId: string; conversationId?: string; projectId?: string; surface?: CreativeSurface; statuses?: AgentRunStatus[]; limit?: number }) => queryStoredGenerationTasks<AgentRun>("agent", options);
+export async function getAgentRun(id: string) {
+    const stored = await getStoredGenerationTask<AgentRun>("agent", id);
+    return stored ? recoverAgentRunChildren(stored) : stored;
+}
+
+export async function listAgentRuns(options: { userId: string; conversationId?: string; projectId?: string; surface?: CreativeSurface; statuses?: AgentRunStatus[]; limit?: number }) {
+    const runs = await queryStoredGenerationTasks<AgentRun>("agent", options);
+    return Promise.all(runs.map(recoverAgentRunChildren));
+}
+
+async function recoverAgentRunChildren(stored: AgentRun) {
+    if (!agentRunNeedsChildRecovery(stored)) return stored;
+    const recovered = await mutateCreativeRun<AgentRun>(
+            stored.id,
+            TTL,
+            (current) => {
+                if (!agentRunNeedsChildRecovery(current)) return null;
+                const tasks = current.tasks.map((task) =>
+                    agentTaskHasPendingChildren(task) && task.status !== "running"
+                        ? { ...task, status: "running" as const, completedAt: undefined, ...(task.status === "completed" ? { error: undefined } : {}) }
+                        : task,
+                );
+                return {
+                    run: { ...current, status: "running", executionId: undefined, tasks },
+                    // This is intentionally not an assistant message: it only
+                    // resumes persisted provider task ids after a process loss.
+                    event: { type: "run.recovered", data: { pendingChildCount: pendingAgentRunChildCount(tasks) } },
+                };
+            },
+            ["completed", "failed"],
+        );
+    if (!recovered) return stored;
+    await scheduleGenerationTask("agent", recovered.id, {
+        executionPhase: "polling",
+        nextPollAt: Date.now(),
+        lastUpstreamStatus: "recovered_pending_children",
+    });
+    return recovered;
+}
 export async function getAgentRunByClientRequestId(userId: string, clientRequestId: string) {
     return getCreativeRunByClientRequestId<AgentRun>(userId, clientRequestId);
 }
@@ -215,7 +279,7 @@ export async function updateAgentRunById(
     patch: Partial<
         Pick<
             AgentRun,
-            "status" | "executionId" | "tasks" | "foundation" | "projectHandoff" | "projectHandoffEmitted" | "review" | "reviewed" | "reviewStatus" | "reviewAttempts" | "plannerContext" | "plannerAudit" | "cancellation" | "assetIds" | "timings"
+            "status" | "error" | "failurePhase" | "executionId" | "tasks" | "foundation" | "projectHandoff" | "projectHandoffEmitted" | "review" | "reviewed" | "reviewStatus" | "reviewAttempts" | "plannerContext" | "plannerAudit" | "cancellation" | "assetIds" | "timings"
         >
     >,
     event?: { type: string; data?: unknown },
@@ -227,11 +291,33 @@ export async function updateAgentRunById(
         TTL,
         (current) => {
             const next = { ...current, ...patch, status: patch.status || current.status };
-            return { run: next, event, assistant: assistantUpdate(next, event) };
+            if (["completed", "failed", "cancelled"].includes(next.status) && !agentRunTasksTerminal(next.tasks)) return null;
+            const terminalCanvasEvent = current.surface === "canvas" && event && ["run.completed", "run.failed", "run.cancelled"].includes(event.type) ? { ...event, data: { ...(event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : {}), recoveryOps: agentRunRecoveryOps(next) } } : event;
+            return { run: next, event: terminalCanvasEvent, assistant: assistantUpdate(next, terminalCanvasEvent) };
         },
         allowedStatuses,
         expectedExecutionId,
     );
+}
+
+export function agentTaskHasPendingChildren(task: Pick<AgentRunTask, "childTasks">) {
+    return Boolean(task.childTasks?.some((child) => child.status === "pending"));
+}
+
+export function agentRunTasksCompleted(tasks: AgentRunTask[]) {
+    return tasks.every((task) => task.status === "completed" && (!task.childTasks?.length || task.childTasks.every((child) => child.status === "completed")));
+}
+
+export function agentRunTasksTerminal(tasks: AgentRunTask[]) {
+    return tasks.every((task) => ["completed", "failed", "cancelled"].includes(task.status) && !agentTaskHasPendingChildren(task));
+}
+
+function agentRunNeedsChildRecovery(run: AgentRun) {
+    return ["completed", "failed"].includes(run.status) && run.tasks.some((task) => agentTaskHasPendingChildren(task));
+}
+
+function pendingAgentRunChildCount(tasks: AgentRunTask[]) {
+    return tasks.reduce((count, task) => count + (task.childTasks?.filter((child) => child.status === "pending").length || 0), 0);
 }
 
 export async function updateAgentRunTaskById(id: string, taskId: string, patch: Partial<AgentRunTask>, eventType: string, expectedExecutionId: string) {
@@ -276,6 +362,7 @@ export async function updateAgentRunTaskById(id: string, taskId: string, patch: 
                         completedCount: completedChildren,
                         failedCount: failedChildren,
                         totalCount: totalChildren,
+                        childTasks: task.childTasks?.map((child) => ({ id: child.id, status: child.status, attempt: child.attempt, ...(child.error ? { error: child.error } : {}) })),
                         message: eventType === "task.completed" ? agentTaskCompletionMessage(task, current.surface) : undefined,
                     },
                 },

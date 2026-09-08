@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeVideoAspectRatio, normalizeVideoSize, resolveUpstreamVideoDuration, resolveVideoGenerationParameters, withVideoReferenceFidelity } from "./video-task-config";
+import {
+    normalizeVideoAspectRatio,
+    normalizeVideoAspectRatioForCapability,
+    normalizeVideoQualityForCapability,
+    normalizeVideoSize,
+    resolveUpstreamVideoDuration,
+    resolveVideoDurationCapability,
+    resolveVideoGenerationParameters,
+    withVideoReferenceFidelity,
+} from "./video-task-config";
 
 describe("resolveVideoGenerationParameters", () => {
     const defaults = { imageSize: "9:16", videoQuality: "1080", videoSeconds: 10 };
@@ -36,6 +45,13 @@ describe("resolveVideoGenerationParameters", () => {
         expect(resolveUpstreamVideoDuration(12, 5, { durationRange: "5、8、10 秒" })).toBe(10);
     });
 
+    it("distinguishes an explicit model duration contract from an unconfigured fallback", () => {
+        expect(resolveVideoDurationCapability({ durationRange: "4-15 秒" })).toMatchObject({ known: true, minSeconds: 4, maxSeconds: 15 });
+        expect(resolveVideoDurationCapability({ durationRange: "4、6、8 秒" })).toMatchObject({ known: true, options: [4, 6, 8] });
+        expect(resolveVideoDurationCapability({ minDurationSeconds: 5, maxDurationSeconds: 12 })).toMatchObject({ known: true, minSeconds: 5, maxSeconds: 12 });
+        expect(resolveVideoDurationCapability()).toMatchObject({ known: false, minSeconds: 1, maxSeconds: 3600 });
+    });
+
     it("clamps continuous provider ranges and uses five seconds by default", () => {
         expect(resolveUpstreamVideoDuration(undefined, 0, { durationRange: "4-15 秒" })).toBe(5);
         expect(resolveUpstreamVideoDuration(3, 5, { durationRange: "4-15 秒" })).toBe(4);
@@ -54,6 +70,13 @@ describe("resolveVideoGenerationParameters", () => {
         expect(normalizeVideoSize("720 × 1280")).toBe("720x1280");
         expect(resolveVideoGenerationParameters({ size: "1024x1024" }, defaults).size).toBe("1024x1024");
         expect(resolveVideoGenerationParameters({ size: "1280x720" }, defaults).size).toBe("1280x720");
+    });
+
+    it("normalizes quality and ratio against the selected model capability profile", () => {
+        expect(normalizeVideoQualityForCapability("1080", ["480p", "720p"])).toBe("480p");
+        expect(normalizeVideoQualityForCapability("768P", ["768P", "2K"])).toBe("768P");
+        expect(normalizeVideoAspectRatioForCapability("720x1280", ["16:9", "9:16"])).toBe("9:16");
+        expect(normalizeVideoAspectRatioForCapability("21:9", ["16:9", "9:16"])).toBe("16:9");
     });
 
     it("adds a server-side subject fidelity constraint for visual references", () => {

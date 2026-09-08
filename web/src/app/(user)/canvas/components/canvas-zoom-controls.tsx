@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Compass, Focus, HelpCircle } from "lucide-react";
 import { useState } from "react";
 import { Button, Modal, Tooltip } from "antd";
@@ -11,24 +11,19 @@ type CanvasZoomControlsProps = {
     onScaleChange: (scale: number) => void;
     onReset: () => void;
     isMiniMapOpen: boolean;
-    composerOpen?: boolean;
     onToggleMiniMap: () => void;
 };
 
-export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, composerOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
+export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
+    const zoomProgress = Math.min(100, Math.max(0, ((Math.round(scale * 100) - 5) / 495) * 100));
 
     return (
-        <div
-            className="canvas-zoom-controls pointer-events-none absolute left-5 z-50 transition-[bottom] duration-200"
-            style={{ bottom: composerOpen ? "calc(min(58vh, 410px) + 28px)" : 20 }}
-            onMouseDown={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-        >
+        <div className="canvas-zoom-controls pointer-events-none absolute bottom-5 left-5 z-50" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
             <div className="canvas-zoom-dock pointer-events-auto flex h-12 items-center gap-1 rounded-xl border px-2 shadow-lg backdrop-blur-xl" style={dockStyle}>
                 <Tooltip title={isMiniMapOpen ? "关闭小地图" : "打开小地图"}>
                     <Button
@@ -50,8 +45,8 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
                         max="500"
                         step="1"
                         value={Math.round(scale * 100)}
-                        className="w-24"
-                        style={{ accentColor: theme.node.activeStroke }}
+                        className="octaflow-native-range h-[5px] w-24"
+                        style={{ "--octa-range-progress": `${zoomProgress}%` } as CSSProperties}
                         onChange={(event) => onScaleChange(Number(event.target.value) / 100)}
                         aria-label="放大/缩小画布"
                     />

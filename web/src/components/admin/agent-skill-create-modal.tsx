@@ -6,6 +6,7 @@ import { Download, FileArchive, GitBranch, PencilLine, UploadCloud } from "lucid
 import { nanoid } from "nanoid";
 
 import { AGENT_SKILL_ARCHIVE_MAX_BYTES } from "@/lib/agent-skill-import-types";
+import { inferAgentSkillNodeModes } from "@/lib/agent-skill-node-policy";
 import type { AgentSkill } from "@/lib/auth/store-types";
 import {
     importAgentSkillFromGithub,
@@ -154,6 +155,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                     .map((item) => item.trim())
                     .filter(Boolean),
                 workspaces: values.workspaces?.length ? values.workspaces : ["image"],
+                nodeModes: inferAgentSkillNodeModes(values.workspaces),
                 action: values.action || "generate",
                 requiresReference: Boolean(values.requiresReference),
                 defaultConfig,

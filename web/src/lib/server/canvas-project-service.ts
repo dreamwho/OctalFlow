@@ -53,7 +53,7 @@ export async function createCanvasProjectForUser(userId: string, value: unknown)
         connections: [],
         chatSessions: [],
         activeChatId: null,
-        backgroundMode: "lines",
+        backgroundMode: "dots",
         showImageInfo: false,
         viewport: { x: 0, y: 0, k: 1 },
     });
@@ -119,7 +119,7 @@ function normalizeProject(value: Record<string, unknown>, current: CanvasProject
         connections: connections as CanvasProject["connections"],
         chatSessions: chatSessions as CanvasProject["chatSessions"],
         activeChatId: typeof sanitized.activeChatId === "string" ? sanitized.activeChatId.slice(0, 160) : sanitized.activeChatId === null ? null : current.activeChatId,
-        backgroundMode: sanitized.backgroundMode === "dots" || sanitized.backgroundMode === "blank" ? sanitized.backgroundMode : "lines",
+        backgroundMode: sanitized.backgroundMode === "blank" ? "blank" : "dots",
         showImageInfo: sanitized.showImageInfo === true,
         viewport: normalizeViewport(sanitized.viewport, current.viewport),
         createdAt: current.createdAt,

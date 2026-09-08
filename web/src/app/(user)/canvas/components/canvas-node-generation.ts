@@ -3,10 +3,10 @@ import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { seedanceReferenceLabel } from "@/lib/seedance-video";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
-import { CanvasNodeType, isCanvasImageNodeType, type CanvasConnection, type CanvasNodeData } from "../types";
+import { CanvasNodeType, isCanvasImageNodeType, type CanvasConnection, type CanvasNodeData, type CanvasVideoFrameSelection } from "../types";
 import { getGenerationResourceNodes } from "../utils/canvas-resource-references";
 
-type NodeGenerationContext = {
+export type NodeGenerationContext = {
     prompt: string;
     referenceImages: ReferenceImage[];
     referenceVideos: ReferenceVideo[];
@@ -15,6 +15,13 @@ type NodeGenerationContext = {
     imageCount: number;
     videoCount: number;
     audioCount: number;
+    /** A direct, unambiguous video-to-video handoff. The source video itself is
+     * intentionally not sent as a regular video reference. */
+    continuityFirstFrame?: CanvasVideoFrameSelection;
+    /** The direct source is valid, but its server-side tail frame is not ready.
+     * Callers must wait rather than silently downgrade it into a video reference. */
+    continuityPending?: boolean;
+    continuityError?: string;
 };
 
 export type NodeGenerationInput = {
@@ -25,6 +32,9 @@ export type NodeGenerationInput = {
     image?: ReferenceImage;
     video?: ReferenceVideo;
     audio?: ReferenceAudio;
+    continuityFirstFrame?: CanvasVideoFrameSelection;
+    continuityPending?: boolean;
+    continuityError?: string;
 };
 
 export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
@@ -41,6 +51,8 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
     const referenceImages = inputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
     const referenceVideos = inputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
     const referenceAudios = inputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
+    const continuityFirstFrame = inputs.find((input) => input.continuityFirstFrame)?.continuityFirstFrame;
+    const pendingContinuity = inputs.find((input) => input.continuityPending);
 
     return {
         prompt: upstreamText ? `${prompt}\n\n${upstreamText}` : prompt,
@@ -51,11 +63,17 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
         imageCount: referenceImages.length,
         videoCount: referenceVideos.length,
         audioCount: referenceAudios.length,
+        continuityFirstFrame,
+        continuityPending: Boolean(pendingContinuity),
+        continuityError: pendingContinuity?.continuityError,
     };
 }
 
 function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: string): NodeGenerationContext {
     const inputByNodeId = new Map(inputs.map((input) => [input.nodeId, input]));
+    const inputByMention = new Map<string, NodeGenerationInput>();
+    const mentionCounts = { image: 0, video: 0, audio: 0, text: 0 };
+    inputs.forEach((input) => inputByMention.set(`@${generationLabel(input.type, mentionCounts[input.type]++)}`, input));
     const selectedInputs: NodeGenerationInput[] = [];
     const labelByNodeId = new Map<string, string>();
     const textBlocks: string[] = [];
@@ -64,11 +82,11 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
     let lastIndex = 0;
     let nextPrompt = "";
 
-    for (const match of prompt.matchAll(/@\[node:([^\]]+)\]/g)) {
+    for (const match of prompt.matchAll(/@\[node:([^\]]+)\]|@(图片|视频|音频|文本)(\d+)/g)) {
         if (match.index === undefined) continue;
         hasToken = true;
         nextPrompt += prompt.slice(lastIndex, match.index);
-        const input = inputByNodeId.get(match[1]);
+        const input = match[1] ? inputByNodeId.get(match[1]) : inputByMention.get(match[0]);
         if (input) {
             let label = labelByNodeId.get(input.nodeId);
             if (!label) {
@@ -78,7 +96,7 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
                 else selectedInputs.push(input);
             }
             nextPrompt += input.type === "text" ? `【${label}】` : label;
-        }
+        } else nextPrompt += match[0];
         lastIndex = match.index + match[0].length;
     }
 
@@ -114,9 +132,30 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
 }
 
 export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
-    return getGenerationResourceNodes(nodeId, nodes, connections).flatMap((node): NodeGenerationInput[] => {
+    const resources = getGenerationResourceNodes(nodeId, nodes, connections);
+    const target = nodes.find((node) => node.id === nodeId);
+    const directInputs = connections
+        .filter((connection) => connection.toNodeId === nodeId)
+        .map((connection) => nodes.find((node) => node.id === connection.fromNodeId))
+        .filter((node): node is CanvasNodeData => Boolean(node));
+    const directVideoContinuation =
+        target?.type === CanvasNodeType.Video &&
+        !target.metadata?.videoFirstFrame &&
+        !target.metadata?.videoLastFrame &&
+        directInputs.length === 1 &&
+        directInputs[0]?.type === CanvasNodeType.Video &&
+        resources.some((node) => node.id === directInputs[0]?.id)
+            ? directInputs[0]
+            : undefined;
+
+    return resources.flatMap((node): NodeGenerationInput[] => {
         const image = readReferenceImage(node);
         if (image) return [{ nodeId: node.id, type: "image" as const, title: node.title, image }];
+        const continuation = node.id === directVideoContinuation?.id ? readVideoTailFrame(node) : null;
+        if (continuation) return [{ nodeId: node.id, type: "image" as const, title: node.title, image: continuation.image, continuityFirstFrame: continuation.selection }];
+        if (node.id === directVideoContinuation?.id) {
+            return [{ nodeId: node.id, type: "video" as const, title: node.title, continuityPending: true, continuityError: node.metadata?.videoFrameExtractionError }];
+        }
         const video = readReferenceVideo(node);
         if (video) return [{ nodeId: node.id, type: "video" as const, title: node.title, video }];
         const audio = readReferenceAudio(node);
@@ -194,6 +233,27 @@ function readReferenceVideo(node: CanvasNodeData): ReferenceVideo | null {
         width: node.metadata.naturalWidth,
         height: node.metadata.naturalHeight,
         durationMs: node.metadata.durationMs,
+    };
+}
+
+function readVideoTailFrame(node: CanvasNodeData): { image: ReferenceImage; selection: CanvasVideoFrameSelection } | null {
+    const selection = node.metadata?.videoFrameExtraction?.lastFrame;
+    const source = selection?.serverUrl || selection?.remoteUrl || selection?.previewUrl || selection?.source || "";
+    if (!selection || !source) return null;
+    return {
+        selection,
+        image: {
+            id: `${node.id}:tail-frame`,
+            name: `${node.title || node.id} 尾帧.jpg`,
+            type: selection.mimeType || "image/jpeg",
+            dataUrl: source,
+            url: selection.serverUrl || selection.remoteUrl || undefined,
+            storageKey: selection.storageKey,
+            remoteUrl: selection.remoteUrl,
+            serverUrl: selection.serverUrl,
+            width: selection.width,
+            height: selection.height,
+        },
     };
 }
 

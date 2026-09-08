@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Button } from "antd";
 import { Settings2 } from "lucide-react";
 
+import { readVisualViewportBounds, resolveCreativeComposerPopoverViewportLayout } from "@/components/creative-composer-popover";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -88,22 +89,21 @@ export function CanvasSettingsPopoverShell({ label, children, buttonClassName, d
 function SettingsPanel({ buttonRect, panelRef, placement, theme, children }: { buttonRect: DOMRect; panelRef: React.RefObject<HTMLDivElement | null>; placement: CanvasSettingsPopoverPlacement; theme: CanvasTheme; children: ReactNode }) {
     const gap = 8;
     const margin = 12;
-    const width = Math.min(340, window.innerWidth - margin * 2);
+    const viewport = readVisualViewportBounds();
+    const width = Math.min(340, viewport.right - viewport.left - margin * 2);
     const alignRight = placement.endsWith("Right");
     const alignCenter = placement === "top" || placement === "bottom";
     const left = alignCenter ? buttonRect.left + buttonRect.width / 2 - width / 2 : alignRight ? buttonRect.right - width : buttonRect.left;
-    const topSpace = buttonRect.top - gap - margin;
-    const bottomSpace = window.innerHeight - buttonRect.bottom - gap - margin;
-    const prefersTop = placement.startsWith("top");
-    const topPlacement = prefersTop ? topSpace >= 240 || topSpace >= bottomSpace : !(bottomSpace >= 240 || bottomSpace >= topSpace);
-    const maxHeight = Math.max(180, topPlacement ? topSpace : bottomSpace);
+    const desiredHeight = Math.min(420, panelRef.current?.scrollHeight || 420);
+    const layout = resolveCreativeComposerPopoverViewportLayout(placement, buttonRect, viewport, desiredHeight, desiredHeight, margin + gap);
+    const topPlacement = layout.placement.startsWith("top");
     const style = {
         position: "fixed",
         zIndex: 1200,
         width,
-        left: Math.max(margin, Math.min(window.innerWidth - width - margin, left)),
+        left: Math.max(viewport.left + margin, Math.min(viewport.right - width - margin, left)),
         ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap } : { top: buttonRect.bottom + gap }),
-        maxHeight,
+        maxHeight: layout.maxHeight,
         background: theme.toolbar.panel,
         borderRadius: 16,
         boxShadow: "0 18px 54px rgba(28, 25, 23, 0.16)",

@@ -2,7 +2,9 @@ import sharp, { type Metadata } from "sharp";
 
 import { parseImageDimensions } from "@/lib/image-size";
 
-const MAX_INPUT_PIXELS = 40_000_000;
+// Keep the decode guard aligned with the existing local/object-media boundary.
+// This covers official 8K outputs without turning the limit into a model-size rule.
+export const MAX_GENERATED_IMAGE_INPUT_PIXELS = 100_000_000;
 
 type NormalizedGeneratedImage = {
     bytes: Buffer;
@@ -12,14 +14,14 @@ type NormalizedGeneratedImage = {
 };
 
 export async function normalizeGeneratedImageBytes(bytes: Buffer, mimeType: string, targetSize?: string): Promise<NormalizedGeneratedImage> {
-    const metadata = await sharp(bytes, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS }).metadata();
+    const metadata = await sharp(bytes, { failOn: "error", limitInputPixels: MAX_GENERATED_IMAGE_INPUT_PIXELS }).metadata();
     const dimensions = orientedDimensions(metadata);
     const target = targetSize ? parseImageDimensions(targetSize) : null;
     if (!target) return { bytes, mimeType: imageMimeType(metadata.format, mimeType), ...dimensions };
     assertTargetDimensions(target.width, target.height);
     if (dimensions.width === target.width && dimensions.height === target.height) return { bytes, mimeType: imageMimeType(metadata.format, mimeType), ...dimensions };
 
-    const result = await sharp(bytes, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS }).rotate().resize(target.width, target.height, { fit: "cover", position: "centre" }).toBuffer({ resolveWithObject: true });
+    const result = await sharp(bytes, { failOn: "error", limitInputPixels: MAX_GENERATED_IMAGE_INPUT_PIXELS }).rotate().resize(target.width, target.height, { fit: "cover", position: "centre" }).toBuffer({ resolveWithObject: true });
     return {
         bytes: result.data,
         mimeType: imageMimeType(result.info.format, mimeType),

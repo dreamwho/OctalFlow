@@ -48,6 +48,11 @@ export function canvasAgentMentionAtCursor(value: string, cursor: number): Canva
     return { start, end, query: match[1] || "" };
 }
 
+export function canvasAgentMentionDraftAtCursor(value: string, cursor: number, aliases: ReadonlyMap<string, string>): CanvasAgentMention | undefined {
+    const mention = canvasAgentMentionAtCursor(value, cursor);
+    return mention && !Array.from(aliases.values()).includes(mention.query) ? mention : undefined;
+}
+
 export function replaceCanvasAgentMention(value: string, cursor: number, alias: string) {
     const range = canvasAgentMentionAtCursor(value, cursor) || { start: cursor, end: cursor, query: "" };
     const before = value.slice(0, range.start);
@@ -75,10 +80,10 @@ export function remapCanvasAgentReferences(value: string, assets: readonly Canva
         .replace(/^[ \t]+|[ \t]+$/gu, "");
 }
 
-export function canvasAgentMentionCandidates(assets: readonly CanvasAgentMentionAsset[], query: string) {
+export function canvasAgentMentionCandidates(assets: readonly CanvasAgentMentionAsset[], query: string, aliases: ReadonlyMap<string, string> = new Map()) {
     const keyword = query.trim().toLocaleLowerCase();
     if (!keyword) return [...assets];
-    return assets.filter((asset) => [asset.title, asset.id, asset.type === "image" ? "图片" : "视频"].some((value) => value.toLocaleLowerCase().includes(keyword)));
+    return assets.filter((asset) => [asset.title, asset.id, aliases.get(asset.id), asset.type === "image" ? "图片" : "视频"].some((value) => value?.toLocaleLowerCase().includes(keyword)));
 }
 
 export function canvasAgentMentionSegments(value: string, aliases: ReadonlyMap<string, string>): CanvasAgentMentionSegment[] {

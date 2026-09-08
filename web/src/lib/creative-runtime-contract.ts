@@ -162,7 +162,8 @@ export class CreativeRuntimeInputError extends Error {
 
 const MAX_CLIENT_REQUEST_ID = 120;
 const MAX_ID = 160;
-const MAX_PROMPT = 4000;
+export const CREATIVE_RUN_EXECUTION_PROMPT_LIMIT = 512 * 1024;
+const MAX_PUBLIC_PROMPT = 4000;
 export const CREATIVE_RUN_SKILL_LIMIT = 6;
 export const CREATIVE_RUN_MODEL_LIMIT = 6;
 const MAX_SNAPSHOT_BYTES = 512 * 1024;
@@ -173,8 +174,8 @@ export function normalizeCreativeRunRequest(value: unknown): CreativeRunRequest 
     const surface = normalizeCreativeSurface(input.surface);
     const conversationId = optionalText(input.conversationId, MAX_ID);
     const projectId = optionalText(input.projectId, MAX_ID);
-    const prompt = text(input.prompt, MAX_PROMPT);
-    const publicPrompt = optionalText(input.publicPrompt, MAX_PROMPT);
+    const prompt = text(input.prompt, CREATIVE_RUN_EXECUTION_PROMPT_LIMIT);
+    const publicPrompt = optionalText(input.publicPrompt, MAX_PUBLIC_PROMPT);
     const snapshot = input.snapshot;
     const assetIds = Array.from(new Set((Array.isArray(input.assetIds) ? input.assetIds : []).map((item) => optionalText(item, MAX_ID)).filter((item): item is string => Boolean(item))));
     const skillIds = Array.from(new Set((Array.isArray(input.skillIds) ? input.skillIds : []).map((item) => optionalText(item, MAX_ID)).filter((item): item is string => Boolean(item))));

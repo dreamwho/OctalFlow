@@ -1,0 +1,159 @@
+services:
+  magic-proxy:
+    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
+    image: ${OCTALAICANVAS_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}
+    container_name: octalaicanvas-magic-proxy
+    entrypoint: ["/usr/local/bin/octalaicanvas-mihomo-entrypoint.sh"]
+    environment:
+      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
+      OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST: 0.0.0.0
+    volumes:
+      - ./docker/mihomo/bootstrap.yaml:/root/.config/mihomo/config.yaml:ro
+      - ./docker/mihomo/entrypoint.sh:/usr/local/bin/octalaicanvas-mihomo-entrypoint.sh:ro
+      - octalaicanvas-magic-proxy-runtime:/root/.config/mihomo/runtime
+    expose:
+      - "9090"
+      - "17890"
+      - "17891"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'wget -q -O /dev/null -T 5 --header="Authorization: Bearer $$OCTALAICANVAS_MAGIC_PROXY_SECRET" http://127.0.0.1:9090/version',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  geminiai:
+    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
+    image: ${OCTALAICANVAS_GEMINIAI_IMAGE:-octalaicanvas-geminiai:offline}
+    container_name: octalaicanvas-geminiai
+    environment:
+      AISTUDIO_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
+      AISTUDIO_ACCOUNTS_DIR: /data/accounts
+      AISTUDIO_CONFIG_FILE: /app/config.yaml
+      AISTUDIO_DUMP_RAW_RESPONSE: "0"
+      AISTUDIO_HOST: 0.0.0.0
+      AISTUDIO_PORT: "8080"
+      AISTUDIO_PROXY: http://magic-proxy:17890
+      AISTUDIO_STUDIO_URL: ${OCTALAICANVAS_GEMINIAI_STUDIO_URL:-https://aistudio.google.com/prompts/new_chat}
+    volumes:
+      - octalaicanvas-geminiai-accounts:/data/accounts
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    depends_on:
+      magic-proxy:
+        condition: service_healthy
+
+  postgres:
+    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
+    image: ${OCTALAICANVAS_POSTGRES_IMAGE:-postgres:16.6-alpine}
+    container_name: octalaicanvas-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-octalaicanvas}
+      POSTGRES_USER: ${POSTGRES_USER:-octalaicanvas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中配置 POSTGRES_PASSWORD}
+    volumes:
+      - octalaicanvas-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-octalaicanvas} -d ${POSTGRES_DB:-octalaicanvas}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
+    image: ${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}
+    container_name: octalaicanvas
+    env_file:
+      - .env
+    ports:
+      - "${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}:3000:3000"
+    volumes:
+      - octalaicanvas-data:/app/web/.data
+      - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      OCTALAICANVAS_DATA_DIR: /app/web/.data
+      OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:3000
+      OCTALAICANVAS_DATABASE_PROVIDER: postgres
+      DATABASE_URL: postgres://${POSTGRES_USER:-octalaicanvas}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-octalaicanvas}
+      OCTALAICANVAS_DATABASE_POOL_MAX: ${OCTALAICANVAS_DATABASE_POOL_MAX:-10}
+      OCTALAICANVAS_DATABASE_SSL: "0"
+      OCTALAICANVAS_ENCRYPTION_KEY: ${OCTALAICANVAS_ENCRYPTION_KEY:?请在 .env 中配置 OCTALAICANVAS_ENCRYPTION_KEY}
+      OCTALAICANVAS_INSTALL_TOKEN: ${OCTALAICANVAS_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}
+      OCTALAICANVAS_MAINTENANCE_TOKEN: ${OCTALAICANVAS_MAINTENANCE_TOKEN:?请在 .env 中配置至少 32 位维护令牌}
+      OCTALAICANVAS_WORKER_TOKEN: ${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
+      OCTALAICANVAS_MAGIC_PROXY_CONTROLLER_URL: http://magic-proxy:9090
+      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
+      OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE: /app/web/.magic-proxy-runtime/subscription.yaml
+      OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL: http://magic-proxy:17890
+      OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_URL: http://magic-proxy:17891
+      OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST: 0.0.0.0
+      OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_PORT: "17890"
+      OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_PORT: "17891"
+      OCTALAICANVAS_GEMINIAI_URL: http://geminiai:8080
+      OCTALAICANVAS_GEMINIAI_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
+      GEMINI_TOOLS_OAUTH_CLIENT_ID: ${GEMINI_TOOLS_OAUTH_CLIENT_ID:-}
+      GEMINI_TOOLS_OAUTH_CLIENT_SECRET: ${GEMINI_TOOLS_OAUTH_CLIENT_SECRET:-}
+      GEMINI_TOOLS_OAUTH_REDIRECT_URI: ${GEMINI_TOOLS_OAUTH_REDIRECT_URI:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      geminiai:
+        condition: service_healthy
+      magic-proxy:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  generation-worker:
+    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
+    image: ${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}
+    container_name: octalaicanvas-generation-worker
+    command: ["node", "/app/web/scripts/generation-worker.mjs"]
+    environment:
+      OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000
+      OCTALAICANVAS_WORKER_TOKEN: ${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  octalaicanvas-data:
+  octalaicanvas-geminiai-accounts:
+  octalaicanvas-postgres:
+  octalaicanvas-magic-proxy-runtime:

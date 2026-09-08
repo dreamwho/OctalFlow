@@ -21,14 +21,17 @@ import { createSignedReferenceAssetUrl, signReferenceAssetInputUrl } from "@/lib
 import { assertCapabilityConstraints } from "@/lib/server/capability-constraints";
 
 export type CreateImageTaskBody = {
-    kind?: "generation" | "edit";
+    kind?: "generation" | "edit" | "upscale";
     config?: ImageTaskConfig;
     prompt?: string;
+    publicPrompt?: string;
     references?: ImageTaskReference[];
     mask?: ImageTaskReference;
+    upscale?: { resolutionType?: "2k" | "4k" | "8k"; sourceNodeId?: string };
     source?: string;
     title?: string;
     context?: GenerationTaskContext;
+    runningHubAppId?: string;
 };
 
 export type ImageApiResponse = {

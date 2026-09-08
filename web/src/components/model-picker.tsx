@@ -16,12 +16,18 @@ type ModelPickerProps = {
     fullWidth?: boolean;
     placeholder?: string;
     onMissingConfig?: () => void;
+    options?: readonly string[];
 };
 
-export function ModelPicker({ config, value, onChange, capability, className, fullWidth = false, placeholder = "选择模型", onMissingConfig }: ModelPickerProps) {
+export function ModelPicker({ config, value, onChange, capability, className, fullWidth = false, placeholder = "选择模型", onMissingConfig, options: allowedOptions }: ModelPickerProps) {
     const pickerId = useId();
     const [open, setOpen] = useState(false);
-    const configuredOptions = useMemo(() => selectableModelsByCapability(config, capability), [capability, config]);
+    const configuredOptions = useMemo(() => {
+        const configured = selectableModelsByCapability(config, capability);
+        if (!allowedOptions) return configured;
+        const allowed = new Set(allowedOptions);
+        return configured.filter((model) => allowed.has(model));
+    }, [allowedOptions, capability, config]);
     const current = !capability || !value || configuredOptions.includes(value) ? value || "" : "";
     const options = useMemo(() => {
         const currentOption = !capability || !value || configuredOptions.includes(value) ? value : "";
@@ -109,11 +115,13 @@ function ModelLabel({ config, model }: { config: AiConfig; model: string }) {
 
 export function ModelIcon({ model }: { model: string }) {
     const icon = resolveModelIcon(modelOptionName(model));
-    return icon ? <img src={icon} alt="" className="size-4 shrink-0 dark:invert" /> : <Cpu className="size-4 shrink-0 opacity-70" />;
+    return icon ? <img src={icon} alt="" className={cn("size-4 shrink-0", icon === "/icons/jimeng.svg" ? "" : "dark:invert")} /> : <Cpu className="size-4 shrink-0 opacity-70" />;
 }
 
-function resolveModelIcon(model: string) {
+export function resolveModelIcon(model: string) {
     const name = model.toLowerCase();
+    if (name.includes("minimax") || name.includes("hailuo") || name.includes("海螺")) return "/icons/minimax.svg";
+    if (name.includes("seedance") || name.includes("seedream") || name.includes("dreamina") || name.includes("jimeng") || name.includes("即梦")) return "/icons/jimeng.svg";
     if (name.includes("claude") || name.includes("anthropic")) return "/icons/claude.svg";
     if (name.includes("gemini") || name.includes("google")) return "/icons/gemini.svg";
     if (name.includes("gpt") || name.includes("openai")) return "/icons/openai.svg";

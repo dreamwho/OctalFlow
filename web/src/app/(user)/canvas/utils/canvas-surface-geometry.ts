@@ -8,6 +8,120 @@ export function nodeAnchor(node: CanvasNodeData, handleType: "source" | "target"
     return { x: handleType === "source" ? node.position.x + node.width : node.position.x, y: node.position.y + node.height / 2 };
 }
 
+/** World-space distance represented by one background dot-grid cell. */
+export const CANVAS_GRID_SIZE = 22;
+/** Keep newly created nodes two grid cells apart across every creation path. */
+export const CANVAS_NODE_GAP = CANVAS_GRID_SIZE * 2;
+
+export type CanvasNodeLayoutUpdate = { id: string; position: Position };
+
+export function resolveCanvasNodePointerSelection(selectedNodeIds: ReadonlySet<string>, nodeId: string, button: number, additive: boolean) {
+    if (button !== 0) return null;
+    const nextSelection = new Set(selectedNodeIds);
+    if (additive) {
+        if (nextSelection.has(nodeId)) nextSelection.delete(nodeId);
+        else nextSelection.add(nodeId);
+    } else if (!nextSelection.has(nodeId)) {
+        nextSelection.clear();
+        nextSelection.add(nodeId);
+    }
+    return nextSelection;
+}
+
+/**
+ * Arranges only top-level selected nodes. Batch children remain attached to
+ * their own batch behavior and must not be independently rearranged.
+ */
+export function resolveCanvasSelectionLayout(nodes: CanvasNodeData[], selectedNodeIds: Iterable<string>): CanvasNodeLayoutUpdate[] {
+    const selected = new Set(selectedNodeIds);
+    const roots = nodes
+        .map((node, index) => ({ node, index }))
+        .filter(({ node }) => selected.has(node.id) && !node.metadata?.batchRootId);
+    if (roots.length < 2) return [];
+
+    const left = Math.min(...roots.map(({ node }) => node.position.x));
+    let top = Math.min(...roots.map(({ node }) => node.position.y));
+    const groups = new Map<string, Array<{ node: CanvasNodeData; index: number }>>();
+    roots.forEach((item) => {
+        const key = `${canvasNodeLayoutTypeOrder(item.node.type)}:${canvasNodeContentGroup(item.node)}`;
+        const group = groups.get(key);
+        if (group) group.push(item);
+        else groups.set(key, [item]);
+    });
+
+    const updates: CanvasNodeLayoutUpdate[] = [];
+    [...groups.entries()]
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+        .forEach(([, group]) => {
+            const columns = Math.max(1, Math.ceil(Math.sqrt(group.length)));
+            const ordered = group.slice().sort((leftItem, rightItem) => compareCanvasLayoutNodes(leftItem, rightItem));
+            let x = left;
+            let rowBottom = top;
+            ordered.forEach((item, index) => {
+                if (index && index % columns === 0) {
+                    x = left;
+                    top = rowBottom + CANVAS_NODE_GAP;
+                }
+                updates.push({ id: item.node.id, position: { x, y: top } });
+                x += item.node.width + CANVAS_NODE_GAP;
+                rowBottom = Math.max(rowBottom, top + item.node.height);
+            });
+            top = rowBottom + CANVAS_NODE_GAP;
+        });
+    return updates;
+}
+
+function canvasNodeLayoutTypeOrder(type: CanvasNodeType) {
+    const order = [CanvasNodeType.Image, CanvasNodeType.Panorama, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text, CanvasNodeType.Config, CanvasNodeType.Brief, CanvasNodeType.BrandKit, CanvasNodeType.Task, CanvasNodeType.VideoRemake];
+    const index = order.indexOf(type);
+    return String(index < 0 ? order.length : index).padStart(2, "0");
+}
+
+function canvasNodeContentGroup(node: CanvasNodeData) {
+    return node.metadata?.content?.trim() || node.metadata?.composerContent?.trim() || node.metadata?.prompt?.trim() ? "content" : "empty";
+}
+
+function compareCanvasLayoutNodes(left: { node: CanvasNodeData; index: number }, right: { node: CanvasNodeData; index: number }) {
+    const leftValue = (left.node.metadata?.content || left.node.metadata?.composerContent || left.node.metadata?.prompt || left.node.title || "").trim().toLowerCase();
+    const rightValue = (right.node.metadata?.content || right.node.metadata?.composerContent || right.node.metadata?.prompt || right.node.title || "").trim().toLowerCase();
+    return leftValue === rightValue ? left.index - right.index : leftValue < rightValue ? -1 : 1;
+}
+
+export function resolveCanvasNodePlacement(
+    nodes: CanvasNodeData[],
+    size: { width: number; height: number },
+    canvasCenter: Position,
+    preferredPosition?: Position,
+) {
+    const available = (position: Position) =>
+        nodes.every(
+            (node) =>
+                position.x + size.width + CANVAS_NODE_GAP <= node.position.x ||
+                position.x >= node.position.x + node.width + CANVAS_NODE_GAP ||
+                position.y + size.height + CANVAS_NODE_GAP <= node.position.y ||
+                position.y >= node.position.y + node.height + CANVAS_NODE_GAP,
+        );
+    if (preferredPosition && available(preferredPosition)) return preferredPosition;
+    if (!nodes.length) return preferredPosition || { x: canvasCenter.x - size.width / 2, y: canvasCenter.y - size.height / 2 };
+
+    const centerDistance = (node: CanvasNodeData) => Math.hypot(node.position.x + node.width / 2 - canvasCenter.x, node.position.y + node.height / 2 - canvasCenter.y);
+    const centerNode = nodes.reduce((closest, node) => (centerDistance(node) < centerDistance(closest) ? node : closest));
+    const anchors = [centerNode, ...nodes.slice().reverse().filter((node) => node.id !== centerNode.id)];
+    for (const anchor of anchors) {
+        const candidates = [
+            { x: anchor.position.x + anchor.width + CANVAS_NODE_GAP, y: anchor.position.y },
+            { x: anchor.position.x, y: anchor.position.y + anchor.height + CANVAS_NODE_GAP },
+            { x: anchor.position.x - size.width - CANVAS_NODE_GAP, y: anchor.position.y },
+            { x: anchor.position.x, y: anchor.position.y - size.height - CANVAS_NODE_GAP },
+        ];
+        const match = candidates.find(available);
+        if (match) return match;
+    }
+
+    const rightEdge = Math.max(...nodes.map((node) => node.position.x + node.width));
+    return { x: rightEdge + CANVAS_NODE_GAP, y: centerNode.position.y };
+}
+
 export function edgePath(from: CanvasNodeData, to: CanvasNodeData) {
     return smoothCurve(nodeAnchor(from, "source"), nodeAnchor(to, "target"), 1);
 }
@@ -16,35 +130,23 @@ export function previewPath(start: Position, end: Position, handleType: "source"
     return smoothCurve(start, end, handleType === "source" ? 1 : -1);
 }
 
-export type PromptComposerTetherGeometry = {
-    path: string;
-    source: Position;
-    target: Position;
-};
+export const PROMPT_COMPOSER_WIDTH = 660;
+export const PROMPT_COMPOSER_HEIGHT = 232;
+export const PROMPT_COMPOSER_GAP = 16;
+export const PROMPT_COMPOSER_VIEWPORT_MARGIN = 12;
 
-export const PROMPT_COMPOSER_MIN_HEIGHT = 330;
-export const PROMPT_COMPOSER_DEFAULT_MAX_HEIGHT = 410;
-export const PROMPT_COMPOSER_BOTTOM_INSET = 16;
-export const PROMPT_COMPOSER_SAFE_TOP = 136;
-
-export function resolvePromptComposerHeight(surfaceHeight: number, requestedHeight?: number | null) {
-    const defaultHeight = Math.min(PROMPT_COMPOSER_DEFAULT_MAX_HEIGHT, Math.max(PROMPT_COMPOSER_MIN_HEIGHT, surfaceHeight * 0.58));
-    const maxHeight = Math.max(PROMPT_COMPOSER_MIN_HEIGHT, surfaceHeight - PROMPT_COMPOSER_SAFE_TOP - PROMPT_COMPOSER_BOTTOM_INSET);
-    return Math.min(maxHeight, Math.max(PROMPT_COMPOSER_MIN_HEIGHT, requestedHeight ?? defaultHeight));
-}
-
-export function resolvePromptComposerTether(node: CanvasNodeData, viewport: ViewportTransform, surface: { width: number; height: number }, requestedHeight?: number | null): PromptComposerTetherGeometry | null {
-    if (surface.width < 768) return null;
-    const panelHeight = resolvePromptComposerHeight(surface.height, requestedHeight);
-    const source = {
-        x: viewport.x + (node.position.x + node.width / 2) * viewport.k,
-        y: viewport.y + (node.position.y + node.height) * viewport.k,
+export function resolvePromptComposerOverlay(node: CanvasNodeData, viewport: ViewportTransform, surface: { width: number; height: number }) {
+    const margin = PROMPT_COMPOSER_VIEWPORT_MARGIN;
+    const width = Math.max(0, Math.min(PROMPT_COMPOSER_WIDTH, surface.width - margin * 2));
+    const height = Math.max(0, Math.min(PROMPT_COMPOSER_HEIGHT, surface.height - margin * 2));
+    const nodeCenterX = viewport.x + (node.position.x + node.width / 2) * viewport.k;
+    const nodeBottom = viewport.y + (node.position.y + node.height) * viewport.k;
+    return {
+        left: clamp(nodeCenterX - width / 2, margin, Math.max(margin, surface.width - width - margin)),
+        top: clamp(nodeBottom + PROMPT_COMPOSER_GAP, margin, Math.max(margin, surface.height - height - margin)),
+        width,
+        height,
     };
-    const target = { x: surface.width / 2, y: surface.height - panelHeight - PROMPT_COMPOSER_BOTTOM_INSET };
-    const gap = target.y - source.y;
-    if (gap < 8) return null;
-    const bend = Math.min(120, Math.max(4, gap * 0.42));
-    return { source, target, path: `M ${source.x} ${source.y} C ${source.x} ${source.y + bend}, ${target.x} ${target.y - bend}, ${target.x} ${target.y}` };
 }
 
 export function samePosition(a: Position, b: Position) {
@@ -153,4 +255,8 @@ function smoothCurve(start: Position, end: Position, direction: 1 | -1) {
 
 function format(value: number) {
     return Number(value.toFixed(2));
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+    return Math.min(maximum, Math.max(minimum, value));
 }

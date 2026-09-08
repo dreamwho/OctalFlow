@@ -19,4 +19,10 @@ describe("Next response headers", () => {
 
         expect(packageJson.scripts?.["start:standalone"]).toContain("--env-file-if-exists=.env.local");
     });
+
+    it("never copies GeminiAI browser authorization data into standalone output", () => {
+        const config = createNextConfig("phase-production-build");
+
+        expect(config.outputFileTracingExcludes).toEqual({ "*": ["**/.data/geminiai/accounts/**"] });
+    });
 });

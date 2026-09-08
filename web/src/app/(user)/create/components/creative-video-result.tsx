@@ -271,8 +271,8 @@ function VideoControls({ resolution, playback }: { resolution?: string; playback
                 value={Math.min(playback.currentTime, Math.max(playback.safeDuration, 0.01))}
                 onChange={(event) => playback.seekTo(Number(event.currentTarget.value))}
                 aria-label="视频播放进度"
-                className="h-1 min-w-8 flex-1 cursor-pointer appearance-none rounded-full bg-white/30 [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-                style={{ background: `linear-gradient(90deg, #ffffff 0%, #ffffff ${playback.progress}%, rgba(255,255,255,.3) ${playback.progress}%, rgba(255,255,255,.3) 100%)` }}
+                className="octaflow-media-range h-[5px] min-w-8 flex-1"
+                style={{ "--octa-range-progress": `${playback.progress}%` } as CSSProperties}
             />
             {resolution ? <span className="hidden shrink-0 text-[11px] font-semibold @min-[280px]:inline">{resolution}</span> : null}
             <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md hover:bg-white/10" onClick={() => playback.setMuted((value) => !value)} aria-label={playback.muted ? "打开声音" : "静音"}>

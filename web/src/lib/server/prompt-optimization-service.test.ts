@@ -61,19 +61,21 @@ describe("prompt optimization service", () => {
         vi.mocked(getAuthSettings).mockResolvedValue({
             defaultModels: { textModel: "planner" },
             agentSkills: [
-                { id: "cinema", name: "电影光影", description: "", plannerSummary: "", instructions: "先建立构图关系，再设计叙事光线。", enabled: true, keywords: [], workspaces: ["image"] },
-                { id: "h3", name: "视频提示词", description: "", plannerSummary: "", instructions: "按视频时间轴组织镜头。", enabled: true, keywords: [], workspaces: ["video"] },
-                { id: "hidden", name: "未选择能力", description: "", plannerSummary: "", instructions: "不应进入请求。", enabled: true, keywords: [], workspaces: ["image"] },
+                { id: "cinema", name: "电影光影", description: "", plannerSummary: "", instructions: "先建立构图关系，再设计叙事光线。", enabled: true, keywords: [], workspaces: ["image"], nodeModes: ["image"] },
+                { id: "h3", name: "视频提示词", description: "", plannerSummary: "", instructions: "按视频时间轴组织镜头。", enabled: true, keywords: [], workspaces: ["video"], nodeModes: ["video"] },
+                { id: "combo", name: "组合导演", description: "", plannerSummary: "", instructions: "同时编排图片和视频。", enabled: true, keywords: [], workspaces: ["image", "video", "canvas"], nodeModes: [] },
+                { id: "hidden", name: "未选择能力", description: "", plannerSummary: "", instructions: "不应进入请求。", enabled: true, keywords: [], workspaces: ["image"], nodeModes: ["image"] },
             ],
         } as unknown as Awaited<ReturnType<typeof getAuthSettings>>);
         vi.mocked(requestStructuredText).mockResolvedValue({ arguments: JSON.stringify({ optimizedPrompt: "优化结果" }), headers: new Headers(), protocol: "chat", elapsedMs: 10 });
 
-        await optimizeCreativePrompt({ origin: "http://localhost:3000", cookie: "session=1", userId: "user-one", requestId: "request-skill", prompt: "做一张剧照", mode: "image", skillIds: ["cinema", "h3"] });
+        await optimizeCreativePrompt({ origin: "http://localhost:3000", cookie: "session=1", userId: "user-one", requestId: "request-skill", prompt: "做一张剧照", mode: "image", skillIds: ["cinema", "h3", "combo"] });
 
         const systemMessage = vi.mocked(requestStructuredText).mock.calls[0]![0].messages[0]?.content || "";
         expect(systemMessage).toContain("电影光影");
         expect(systemMessage).toContain("先建立构图关系");
         expect(systemMessage).not.toContain("视频提示词");
+        expect(systemMessage).not.toContain("组合导演");
         expect(systemMessage).not.toContain("未选择能力");
     });
 

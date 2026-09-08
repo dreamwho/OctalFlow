@@ -21,6 +21,8 @@ describe("publicAgentRun", () => {
             requestedModelIds: ["video-pro"],
             assetIds: ["result-one"],
             status: "failed",
+            error: "默认文本模型没有可用的规划渠道",
+            failurePhase: "planning",
             executionId: "execution-secret",
             tasks: [
                 {
@@ -82,6 +84,8 @@ describe("publicAgentRun", () => {
 
         expect(publicRun).toMatchObject({
             prompt: "图片1 用户原始需求",
+            error: "默认文本模型没有可用的规划渠道",
+            failurePhase: "planning",
             cancellation: { pendingCount: 1 },
             tasks: [{ id: "video", model: "video-pro", optimizedPrompt: "电影感海边日落运镜，人物动作自然流畅", seconds: 60, generateAudio: false, watermark: true, status: "failed", startedAt: 100, completedAt: 250 }],
         });
@@ -117,5 +121,51 @@ describe("publicAgentRun", () => {
         });
 
         expect(event.data).toEqual({ reply: "开始生成", ops: [{ type: "add_node", id: "task-run-0", nodeType: "task", metadata: { model: "image-pro" } }] });
+    });
+
+    it("returns idempotent Canvas recovery operations while keeping child task ids out of task cards", () => {
+        const run = publicAgentRun({
+            id: "canvas-run",
+            userId: "user",
+            conversationId: "conversation",
+            clientRequestId: "request",
+            surface: "canvas",
+            projectId: "project",
+            inputMessageId: "input",
+            assistantMessageId: "assistant",
+            prompt: "生成分镜",
+            referencedAssetIds: [],
+            assetIds: [],
+            status: "completed",
+            tasks: [
+                {
+                    id: "video",
+                    title: "视频",
+                    type: "video",
+                    prompt: "internal prompt",
+                    count: 1,
+                    ratio: "9:16",
+                    dependencies: [],
+                    status: "completed",
+                    attempts: 1,
+                    taskIds: ["provider-child-secret"],
+                    childTasks: [{ id: "provider-child-secret", status: "completed", attempt: 1, result: { serverUrl: "/video.mp4" } }],
+                    result: { serverUrl: "/video.mp4" },
+                },
+            ],
+            reviewed: false,
+            snapshot: { nodes: [] },
+            createdAt: 1,
+            updatedAt: 2,
+        });
+
+        expect(run.tasks[0]?.childTasks?.[0]?.id).toBe("child-1");
+        expect(run.recoveryOps).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: "add_node", id: "output-canvas-run-0-0" }),
+                expect.objectContaining({ type: "update_node", id: "output-canvas-run-0-0", metadata: expect.objectContaining({ status: "success", agentGenerationTaskIds: ["provider-child-secret"] }) }),
+            ]),
+        );
+        expect(JSON.stringify(run.recoveryOps)).not.toContain("internal prompt");
     });
 });

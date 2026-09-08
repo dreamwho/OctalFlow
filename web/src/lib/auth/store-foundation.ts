@@ -2,6 +2,8 @@ import { ECOMMERCE_IMAGE_SKILL } from "@/lib/server/agent-skills/ecommerce-image
 import { YANAI_BEAUTY_SKILL } from "@/lib/server/agent-skills/yanai-beauty";
 import { DEFAULT_CREATIVE_SHORTCUT_SKILLS } from "@/lib/server/agent-skills/creative-shortcuts";
 import { VIDEO_REMAKE_SKILLS } from "@/lib/server/agent-skills/video-remake";
+import { PORTRAIT_IMAGE_SKILLS } from "@/lib/server/agent-skills/portrait-image";
+import { MINIMAX_H3_OFFICIAL_STYLE_SKILLS, cloneMinimaxH3OfficialStyleSkill } from "@/lib/server/agent-skills/minimax-h3-official";
 import {
     type UserRole,
     type UserStatus,
@@ -168,6 +170,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
         imageCount: 1,
         videoQuality: "720",
         videoSeconds: 5,
+        videoAnalysisModel: "",
         audioVoice: "alloy",
         audioFormat: "mp3",
     },
@@ -179,6 +182,8 @@ export const DEFAULT_SETTINGS: AuthSettings = {
         { ...YANAI_BEAUTY_SKILL, keywords: [...YANAI_BEAUTY_SKILL.keywords], workspaces: [...YANAI_BEAUTY_SKILL.workspaces] },
         ...DEFAULT_CREATIVE_SHORTCUT_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...skill.workspaces] })),
         ...VIDEO_REMAKE_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...(skill.workspaces || [])] })),
+        ...PORTRAIT_IMAGE_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...skill.workspaces], defaultConfig: { ...skill.defaultConfig } })),
+        ...MINIMAX_H3_OFFICIAL_STYLE_SKILLS.map(cloneMinimaxH3OfficialStyleSkill),
     ],
 };
 export const AUTH_DATA_FILE = "auth.json";

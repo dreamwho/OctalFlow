@@ -6,8 +6,13 @@ import type { GenerationLogSource } from "@/lib/server/generation-log-store";
 import { countActiveStoredGenerationTasks, createStoredGenerationTask, getStoredGenerationTask, mutateStoredGenerationTask, touchStoredGenerationTask, transitionStoredGenerationTask, type GenerationTaskContext } from "@/lib/server/generation-task-store";
 import { GENERATION_TASK_RETENTION_MS } from "@/lib/server/generation-task-retention";
 
-type ImageTaskKind = "generation" | "edit";
+export type ImageTaskKind = "generation" | "edit" | "upscale";
 type ImageTaskStatus = "pending" | "running" | "success" | "error" | "cancelled";
+
+export type ImageTaskUpscaleSnapshot = {
+    resolutionType: "2k" | "4k" | "8k";
+    sourceNodeId?: string;
+};
 
 export type ImageTaskConfig = {
     apiSource?: "system" | "custom";
@@ -57,8 +62,11 @@ export type ImageTask = GenerationTaskContext & {
     updatedAt: number;
     config: ImageTaskConfig;
     prompt: string;
+    publicPrompt?: string;
     references: ImageTaskReference[];
     mask?: ImageTaskReference;
+    upscale?: ImageTaskUpscaleSnapshot;
+    runningHub?: { appId: string; localTaskId?: string };
     result?: StoredImageTaskMediaResult & { results?: StoredImageTaskMediaResult[] };
     upstream?: { id: string; mediaBaseUrl: string; pollBaseUrl: string; explicitPollUrl?: string };
     billing?: { pointsCost: number; pointsRecordId?: string; refunded: boolean };
@@ -104,6 +112,6 @@ export function touchImageTask(id: string) {
     return touchStoredGenerationTask("image", id, Date.now(), GENERATION_TASK_RETENTION_MS);
 }
 
-export async function updateImageTask(id: string, patch: Partial<Pick<ImageTask, "config" | "candidateConfigs" | "attempts" | "attemptNo" | "upstream" | "billing" | "result" | "retryable">>) {
+export async function updateImageTask(id: string, patch: Partial<Pick<ImageTask, "config" | "candidateConfigs" | "attempts" | "attemptNo" | "upstream" | "billing" | "result" | "retryable" | "runningHub">>) {
     return mutateStoredGenerationTask<ImageTask>("image", id, GENERATION_TASK_RETENTION_MS, (task) => ({ ...task, ...patch }));
 }

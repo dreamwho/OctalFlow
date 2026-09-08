@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyCameraPrompt, cameraControlSummary, DEFAULT_CAMERA_CONTROL } from "./canvas-camera";
+import { applyCameraPrompt, CAMERA_OPTIONS, cameraControlSummary, DEFAULT_CAMERA_CONTROL } from "./canvas-camera";
 
 describe("canvas camera prompt", () => {
     it("keeps the prompt unchanged while camera control is disabled", () => {
@@ -16,5 +16,9 @@ describe("canvas camera prompt", () => {
         expect(first).toContain("85mm portrait perspective");
         expect(first).toContain("do not add a physical camera");
         expect(cameraControlSummary(control)).toContain("85mm · f/2");
+    });
+
+    it("offers iPhone 17 Pro handheld capture", () => {
+        expect(CAMERA_OPTIONS.find((item) => item.value === "iphone_17_pro_handheld")?.label).toContain("iPhone 17 Pro");
     });
 });

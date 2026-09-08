@@ -36,10 +36,10 @@ describe("model routing config", () => {
         expect(normalizeLogicalModelsConfig(models, channels)[0].bindings).toEqual([{ id: "one", channelId: "one", upstreamModel: "models/GPT-TEST", enabled: true, priority: 2 }]);
     });
 
-    it("rebuilds an explicitly empty logical model catalog from channel models", () => {
+    it("preserves an explicitly empty catalog and only derives one when the field is absent", () => {
         const channels = [channel("one", ["writer"])];
 
-        expect(normalizeLogicalModelsConfig([], channels)).toHaveLength(1);
+        expect(normalizeLogicalModelsConfig([], channels)).toHaveLength(0);
         expect(normalizeLogicalModelsConfig(undefined, channels)).toHaveLength(1);
     });
 
@@ -129,14 +129,15 @@ describe("model routing config", () => {
         expect(normalizeDefaultModelsConfig({ textModel: "gpt-4.1", imageModel: "", videoModel: "", audioModel: "gcp-speech-to-text" }, models, [source]).audioModel).toBe("tts-1");
     });
 
-    it("merges the same upstream model from multiple channels into one logical model", () => {
+    it("keeps the same upstream model from different channels independently selectable", () => {
         const channels = [channel("one", ["models/GPT-IMAGE-2"]), channel("two", ["gpt-image-2"])];
         const existing: LogicalModel[] = [{ id: "gpt-image-2", name: "GPT Image 2", capability: "image", enabled: true, bindings: [{ id: "one:gpt-image-2", channelId: "one", upstreamModel: "gpt-image-2", enabled: true, priority: 1 }] }];
 
         const models = mergeChannelModelsIntoLogicalModels(existing, channels);
 
-        expect(models).toHaveLength(1);
-        expect(models[0].bindings).toEqual([{ ...existing[0].bindings[0], upstreamModel: "models/GPT-IMAGE-2" }, expect.objectContaining({ channelId: "two", upstreamModel: "gpt-image-2" })]);
+        expect(models).toHaveLength(2);
+        expect(models[0]).toMatchObject({ id: "gpt-image-2", bindings: [{ channelId: "one", upstreamModel: "models/GPT-IMAGE-2" }] });
+        expect(models[1]).toMatchObject({ id: "gpt-image-2-2", bindings: [{ channelId: "two", upstreamModel: "gpt-image-2" }] });
     });
 
     it("removes stale bindings and creates separate logical models for different upstream names", () => {
@@ -156,13 +157,11 @@ describe("model routing config", () => {
 
         const models = synchronizeLogicalModelsWithChannels(existing, channels);
 
-        expect(models).toHaveLength(2);
+        expect(models).toHaveLength(3);
         expect(models[0]).toMatchObject({ id: "custom-writer", name: "旧名称", enabled: false });
-        expect(models[0].bindings).toEqual([
-            expect.objectContaining({ channelId: "two", upstreamModel: "models/WRITER", priority: 2 }),
-            expect.objectContaining({ id: "keep", channelId: "one", upstreamModel: "writer", enabled: false, priority: 9, weight: 25 }),
-        ]);
+        expect(models[0].bindings).toEqual([expect.objectContaining({ id: "keep", channelId: "one", upstreamModel: "writer", enabled: false, priority: 9, weight: 25 })]);
         expect(models[1]).toMatchObject({ id: "writer-mini", name: "writer-mini", bindings: [{ channelId: "one", upstreamModel: "writer-mini" }] });
+        expect(models[2]).toMatchObject({ id: "WRITER", bindings: [{ channelId: "two", upstreamModel: "models/WRITER" }] });
         expect(models.flatMap((model) => model.bindings).some((binding) => binding.channelId === "gone")).toBe(false);
     });
 
@@ -265,6 +264,8 @@ describe("model routing config", () => {
                                 supportsReferenceImage: true,
                                 maxReferenceImages: 4,
                                 aspectRatios: ["16:9", "16:9", "9:16"],
+                                durationRange: "5-15 秒",
+                                qualityOptions: ["720p", "1080p", "720p"],
                                 maxDurationSeconds: 10,
                                 maxBatchSize: 2,
                                 timeoutMs: 600000,
@@ -281,7 +282,7 @@ describe("model routing config", () => {
 
         expect(models[0].bindings[0]).toMatchObject({
             weight: 250,
-            capabilityProfile: { supportsReferenceImage: true, maxReferenceImages: 4, aspectRatios: ["16:9", "9:16"], maxDurationSeconds: 10, maxBatchSize: 2, timeoutMs: 600000, concurrencyLimit: 3, unitCost: 0.25, unitCostCurrency: "USD" },
+            capabilityProfile: { supportsReferenceImage: true, maxReferenceImages: 4, aspectRatios: ["16:9", "9:16"], durationRange: "5-15 秒", qualityOptions: ["720p", "1080p"], maxDurationSeconds: 10, maxBatchSize: 2, timeoutMs: 600000, concurrencyLimit: 3, unitCost: 0.25, unitCostCurrency: "USD" },
         });
     });
 

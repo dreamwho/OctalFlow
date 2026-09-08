@@ -19,8 +19,9 @@ import { ModelIcon } from "@/components/model-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { watchCanvasAgentRun } from "./canvas-agent-run-client";
 import type { CanvasAgentRunStage } from "./canvas-agent-progress";
+import type { CreativeMessage } from "@/lib/creative-runtime-contract";
 import { formatAgentMessageText, friendlyAgentError } from "@/components/agent/agent-message-format";
-import { AgentChatComposer, AgentChatMessage, AgentPanelTabs, AgentWorkingMessage, type CanvasAgentChatMessage } from "./canvas-agent-chat-ui";
+import { AgentChatComposer, AgentChatMessage, AgentPanelTabs, AgentWorkingMessage, type CanvasAgentChatAttachment, type CanvasAgentChatMessage } from "./canvas-agent-chat-ui";
 import { CANVAS_AGENT_PANEL_MOTION_MS } from "./canvas-agent-panel-motion";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasAssistantMessage, type CanvasAssistantReference, type CanvasAssistantSession, type CanvasNodeData } from "../types";
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "../utils/canvas-agent-ops";
@@ -176,6 +177,16 @@ export function AssistantHistory({
                                     {session.title}
                                 </button>
                             )}
+                            <div className="-mt-0.5 text-[11px] leading-5" style={{ color: theme.node.muted }}>
+                                {new Intl.DateTimeFormat("zh-CN", {
+                                    year: "numeric",
+                                    month: "2-digit",
+                                    day: "2-digit",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    hour12: false,
+                                }).format(new Date(session.updatedAt || session.createdAt))}
+                            </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-0.5">
                             <Tooltip title="修改标题">
@@ -237,7 +248,13 @@ export function assistantImageReferenceLabel(references: CanvasAssistantReferenc
 }
 
 export function assistantMessageToChatMessage(message: CanvasAssistantMessage, fallbackCreatedAt?: string): CanvasAgentChatMessage {
-    const attachments = message.references?.flatMap((item) => (item.dataUrl ? [{ id: item.id, name: item.title, url: item.dataUrl, type: item.type === CanvasNodeType.Video ? ("video" as const) : ("image" as const) }] : []));
+    const attachments: CanvasAgentChatAttachment[] | undefined = message.references?.flatMap<CanvasAgentChatAttachment>((item) =>
+        item.dataUrl
+            ? [{ id: item.id, name: item.title, url: item.dataUrl, type: item.type === CanvasNodeType.Video ? ("video" as const) : ("image" as const) }]
+            : item.type === CanvasNodeType.Text
+              ? [{ id: item.id, name: item.title, type: "text" as const }]
+              : [],
+    );
     return {
         id: message.id,
         role: message.role,
@@ -290,6 +307,7 @@ export function compactSnapshot(snapshot: CanvasAgentSnapshot) {
                 id: node.id,
                 type: node.type,
                 title: node.title,
+                position: node.position,
                 width: node.width,
                 height: node.height,
                 metadata: compactMetadata(node.type, node.metadata || {}),
@@ -341,6 +359,31 @@ function isStableCanvasMediaUrl(value: string) {
 export function createSession(): CanvasAssistantSession {
     const now = new Date().toISOString();
     return { id: nanoid(), title: "新对话", messages: [], createdAt: now, updatedAt: now };
+}
+
+export function restoreCanvasAssistantConversationMessages(
+    conversationId: string,
+    messages: CreativeMessage[],
+    skillNames: ReadonlyMap<string, string>,
+): CanvasAssistantMessage[] {
+    return messages.flatMap((message) => {
+        if ((message.role !== "user" && message.role !== "assistant") || !message.content.trim()) return [];
+        const selectedSkillIds = message.role === "user" && Array.isArray(message.metadata?.selectedSkillIds) ? message.metadata.selectedSkillIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim())) : [];
+        return [
+            {
+                id: message.id,
+                ...(message.runId ? { runId: message.runId } : {}),
+                role: message.role,
+                text: message.content,
+                ...(selectedSkillIds.length
+                    ? {
+                          skills: selectedSkillIds.map((id) => ({ id, name: skillNames.get(id) || id })),
+                      }
+                    : {}),
+                createdAt: new Date(message.createdAt).toISOString(),
+            },
+        ];
+    });
 }
 
 export function removeCanvasAssistantSessions(sessions: CanvasAssistantSession[], activeSessionId: string | null, removedIds: Iterable<string>) {

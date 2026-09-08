@@ -56,6 +56,14 @@ describe("normalizeCreativeRunRequest", () => {
         expect(normalizeCreativeRunRequest({ clientRequestId: "req-many-assets", surface: "chat", prompt: "继续使用这些素材", assetIds, skillIds: [], modelIds: [] }).assetIds).toEqual(assetIds);
     });
 
+    it("keeps long private document context while limiting the public prompt", () => {
+        const privatePrompt = "剧本".repeat(3000);
+        const request = normalizeCreativeRunRequest({ clientRequestId: "req-doc", surface: "canvas", projectId: "canvas-one", prompt: privatePrompt, publicPrompt: "公开".repeat(3000), assetIds: [], skillIds: [], modelIds: [] });
+
+        expect(request.prompt).toBe(privatePrompt);
+        expect(request.publicPrompt).toHaveLength(4000);
+    });
+
     it("normalizes explicit video first and last frame preferences", () => {
         expect(
             normalizeCreativeRunRequest({

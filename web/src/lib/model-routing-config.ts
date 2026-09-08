@@ -11,7 +11,7 @@ const CAPABILITY_DEFAULT_KEYS = {
 } as const satisfies Record<LogicalModelCapability, keyof SystemDefaultModels>;
 
 export function normalizeLogicalModelsConfig(models: LogicalModel[] | undefined, channels: SystemModelChannel[]) {
-    return synchronizeLogicalModelsWithChannels(Array.isArray(models) ? models : [], channels);
+    return Array.isArray(models) ? sanitizeLogicalModels(models, channels) : deriveLogicalModelsConfig(channels);
 }
 
 export function deriveLogicalModelsConfig(channels: SystemModelChannel[]): LogicalModel[] {
@@ -19,64 +19,28 @@ export function deriveLogicalModelsConfig(channels: SystemModelChannel[]): Logic
 }
 
 export function synchronizeLogicalModelsWithChannels(existingModels: LogicalModel[], channels: SystemModelChannel[]): LogicalModel[] {
-    const catalog = new Map<
-        string,
-        {
-            upstreamModel: string;
-            capability: LogicalModelCapability;
-            authoritative: boolean;
-            bindings: Array<{ channel: SystemModelChannel; channelIndex: number; upstreamModel: string }>;
-        }
-    >();
+    const models = sanitizeLogicalModels(existingModels, channels);
+    const usedIds = new Set(models.map((model) => model.id.toLowerCase()));
+    const assigned = new Set(models.flatMap((model) => model.bindings.map(bindingKey)));
     channels.forEach((channel, channelIndex) => {
         channel.models.forEach((upstreamModel) => {
-            const id = rawModelName(upstreamModel);
-            if (!id || !isCreativeGenerationModel(id)) return;
-            const key = normalizeModelName(id);
+            const upstream = rawModelName(upstreamModel);
+            if (!upstream || !isCreativeGenerationModel(upstream)) return;
+            const key = bindingKey({ channelId: channel.id, upstreamModel });
+            if (assigned.has(key)) return;
             const detected = resolveChannelModelCapability(channel, upstreamModel);
-            const model = catalog.get(key) || { upstreamModel: id, capability: detected.capability, authoritative: detected.authoritative, bindings: [] };
-            if ((!model.authoritative && detected.authoritative) || (model.capability === "text" && detected.capability !== "text")) {
-                model.capability = detected.capability;
-                model.authoritative = detected.authoritative;
-            }
-            if (!model.bindings.some((binding) => binding.channel.id === channel.id)) model.bindings.push({ channel, channelIndex, upstreamModel });
-            catalog.set(key, model);
+            const id = uniqueLogicalModelId(upstream, usedIds);
+            models.push({
+                id,
+                name: upstream,
+                capability: detected.capability,
+                enabled: true,
+                bindings: [{ id: `${channel.id}:${upstream}`, channelId: channel.id, upstreamModel, enabled: true, priority: channelIndex + 1 }],
+            });
+            assigned.add(key);
         });
     });
-
-    const usedExistingIds = new Set<string>();
-    const usedModelIds = new Set<string>();
-    return Array.from(catalog.entries()).map(([modelKey, catalogModel]) => {
-        const matchingModels = existingModels.filter((model) => model.bindings?.some((binding) => normalizeModelName(binding.upstreamModel) === modelKey));
-        const existing = matchingModels.find((model) => normalizeModelName(model.id) === modelKey && !usedExistingIds.has(model.id.toLowerCase())) || matchingModels.find((model) => !usedExistingIds.has(model.id.toLowerCase()));
-        if (existing) usedExistingIds.add(existing.id.toLowerCase());
-        const id = uniqueLogicalModelId(existing?.id || catalogModel.upstreamModel, usedModelIds);
-        const bindings = catalogModel.bindings
-            .map(({ channel, channelIndex, upstreamModel }) => {
-                const stored = findStoredBinding(existingModels, channel.id, upstreamModel);
-                const capabilityProfile = normalizeStoredCapabilityProfile(stored?.capabilityProfile);
-                const weight = clampWeight(stored?.weight);
-                const displayName = text(stored?.displayName, 120);
-                return {
-                    id: text(stored?.id, 120) || `${channel.id}:${rawModelName(upstreamModel)}`,
-                    channelId: channel.id,
-                    upstreamModel,
-                    enabled: stored?.enabled !== false,
-                    priority: clampPriority(stored?.priority, channelIndex + 1),
-                    ...(weight !== undefined ? { weight } : {}),
-                    ...(capabilityProfile ? { capabilityProfile } : {}),
-                    ...(displayName ? { displayName } : {}),
-                };
-            })
-            .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));
-        return {
-            id,
-            name: text(existing?.name, 120) || catalogModel.upstreamModel,
-            capability: catalogModel.authoritative || !existing ? catalogModel.capability : normalizeCapability(existing.capability),
-            enabled: existing?.enabled !== false,
-            bindings,
-        };
-    });
+    return models;
 }
 
 export function mergeChannelModelsIntoLogicalModels(logicalModels: LogicalModel[], channels: SystemModelChannel[]) {
@@ -171,7 +135,9 @@ export function resolveLogicalModelCapabilityProfile(binding: Pick<LogicalModelB
         supportsReferenceVideo: booleanValue(stored.supportsReferenceVideo, globalPreset?.supportsReferenceVideo ?? modelConfig?.supportsReferenceVideo ?? advanced?.supportsReferenceVideo),
         supportsReferenceAudio: booleanValue(stored.supportsReferenceAudio, globalPreset?.supportsReferenceAudio ?? modelConfig?.supportsReferenceAudio ?? advanced?.supportsReferenceAudio),
         maxReferenceImages: positiveInteger(stored.maxReferenceImages),
-        aspectRatios: normalizeAspectRatios(stored.aspectRatios),
+        aspectRatios: normalizeAspectRatios(stored.aspectRatios || modelConfig?.aspectRatios),
+        durationRange: text(stored.durationRange, 120) || modelConfig?.durationRange || advanced?.durationRange || undefined,
+        qualityOptions: normalizeQualityOptions(stored.qualityOptions || modelConfig?.qualityOptions),
         minDurationSeconds: positiveNumber(stored.minDurationSeconds),
         maxDurationSeconds: positiveNumber(stored.maxDurationSeconds),
         maxBatchSize: positiveInteger(stored.maxBatchSize),
@@ -190,9 +156,44 @@ function channelSupportsModel(channel: Pick<SystemModelChannel, "models">, model
     return Boolean(target && channel.models.some((item) => normalizeModelName(item) === target));
 }
 
-function findStoredBinding(models: LogicalModel[], channelId: string, upstreamModel: string) {
-    const modelKey = normalizeModelName(upstreamModel);
-    return models.flatMap((model) => model.bindings || []).find((binding) => binding.channelId === channelId && normalizeModelName(binding.upstreamModel) === modelKey);
+function sanitizeLogicalModels(models: LogicalModel[], channels: SystemModelChannel[]) {
+    return models.flatMap((model) => {
+        const id = text(model?.id, 120);
+        if (!id) return [];
+        const bindings: LogicalModelBinding[] = [];
+        const seen = new Set<string>();
+        for (const stored of Array.isArray(model.bindings) ? model.bindings : []) {
+            const channel = channels.find((item) => item.id === stored?.channelId);
+            if (!channel) continue;
+            const upstreamModel = channel.models.find((item) => normalizeModelName(item) === normalizeModelName(stored?.upstreamModel || ""));
+            if (!upstreamModel) continue;
+            const key = bindingKey({ channelId: channel.id, upstreamModel });
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const capabilityProfile = normalizeStoredCapabilityProfile(stored.capabilityProfile);
+            const weight = clampWeight(stored.weight);
+            const displayName = text(stored.displayName, 120);
+            bindings.push({
+                id: text(stored.id, 120) || `${channel.id}:${rawModelName(upstreamModel)}`,
+                channelId: channel.id,
+                upstreamModel,
+                enabled: stored.enabled !== false,
+                priority: clampPriority(stored.priority, bindings.length + 1),
+                ...(weight !== undefined ? { weight } : {}),
+                ...(capabilityProfile ? { capabilityProfile } : {}),
+                ...(displayName ? { displayName } : {}),
+            });
+        }
+        if (!bindings.length) return [];
+        const first = bindings[0];
+        const channel = channels.find((item) => item.id === first.channelId);
+        const detected = channel ? resolveChannelModelCapability(channel, first.upstreamModel) : null;
+        return [{ id, name: text(model.name, 120) || id, capability: detected?.authoritative ? detected.capability : normalizeCapability(model.capability), enabled: model.enabled !== false, bindings }];
+    });
+}
+
+function bindingKey(binding: Pick<LogicalModelBinding, "channelId" | "upstreamModel">) {
+    return `${binding.channelId}:${normalizeModelName(binding.upstreamModel)}`;
 }
 
 function uniqueLogicalModelId(value: string, usedIds: Set<string>) {
@@ -216,6 +217,8 @@ function normalizeStoredCapabilityProfile(value: unknown): LogicalModelCapabilit
         supportsReferenceAudio: optionalBoolean(input.supportsReferenceAudio),
         maxReferenceImages: positiveInteger(input.maxReferenceImages),
         aspectRatios: normalizeAspectRatios(input.aspectRatios),
+        durationRange: text(input.durationRange, 120) || undefined,
+        qualityOptions: normalizeQualityOptions(input.qualityOptions),
         minDurationSeconds: positiveNumber(input.minDurationSeconds),
         maxDurationSeconds: positiveNumber(input.maxDurationSeconds),
         maxBatchSize: positiveInteger(input.maxBatchSize),
@@ -228,6 +231,12 @@ function normalizeStoredCapabilityProfile(value: unknown): LogicalModelCapabilit
         unitCostCurrency: text(input.unitCostCurrency, 12) || undefined,
     };
     return Object.values(profile).some((item) => item !== undefined && (!Array.isArray(item) || item.length > 0)) ? profile : undefined;
+}
+
+function normalizeQualityOptions(value: unknown) {
+    if (!Array.isArray(value)) return undefined;
+    const options = Array.from(new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean))).slice(0, 32);
+    return options.length ? options : undefined;
 }
 
 function optionalBoolean(value: unknown) {

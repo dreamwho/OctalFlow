@@ -2,11 +2,13 @@
 
 import { Globe2, ImageIcon, List, Music2, Settings2, Sparkles, Video } from "lucide-react";
 import { nanoid } from "nanoid";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { getNodeSpec } from "../constants";
 import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type ConnectionHandle, type Position } from "../types";
+import { CANVAS_GRID_SIZE, CANVAS_NODE_GAP } from "../utils/canvas-surface-geometry";
 
 export type CanvasClipboard = {
     nodes: CanvasNodeData[];
@@ -41,7 +43,7 @@ export type CanvasGenerationRequest = {
 
 export const VIDEO_NODE_MAX_WIDTH = 420;
 export const VIDEO_NODE_MAX_HEIGHT = 420;
-export const CANVAS_DROP_NODE_OFFSET = 48;
+export const CANVAS_DROP_NODE_OFFSET = CANVAS_NODE_GAP;
 export const CONNECTION_HANDLE_HIT_RADIUS = 40;
 export const CONNECTION_NODE_HIT_PADDING = 32;
 export const NODE_STATUS_IDLE = "idle" as const;
@@ -82,7 +84,7 @@ export function CanvasRefreshShell() {
                 className="absolute inset-0 opacity-60"
                 style={{
                     backgroundImage: `radial-gradient(circle, ${theme.canvas.dot} 1px, transparent 1px)`,
-                    backgroundSize: "28px 28px",
+                    backgroundSize: `${CANVAS_GRID_SIZE}px ${CANVAS_GRID_SIZE}px`,
                 }}
             />
 
@@ -110,24 +112,105 @@ export function CanvasRefreshShell() {
     );
 }
 
-export function NodeCreateMenu({ position, onCreate, onClose }: { position: Position; onCreate: (type: CanvasCreatableNodeType) => void; onClose: () => void }) {
+export function canvasFloatingMenuTransform(scale: number) {
+    return `scale(${1 / Math.max(scale, 0.01)})`;
+}
+
+export function resolveCreateMenuOffset(rect: Pick<DOMRect, "left" | "right" | "top" | "bottom">, viewportWidth: number, viewportHeight: number) {
+    const margin = 16;
+    const safeTop = 72;
+    const safeBottom = viewportHeight - 92;
+    return {
+        x: rect.left < margin ? margin - rect.left : rect.right > viewportWidth - margin ? viewportWidth - margin - rect.right : 0,
+        y: rect.top < safeTop ? safeTop - rect.top : rect.bottom > safeBottom ? safeBottom - rect.bottom : 0,
+    };
+}
+
+export function NodeCreateMenu({ position, scale, onCreate, onClose }: { position: Position; scale: number; onCreate: (type: CanvasCreatableNodeType) => void; onClose: () => void }) {
+    return (
+        <CanvasCreateMenu position={position} scale={scale} label="新建节点" dataAttribute="data-canvas-node-create-menu" onClose={onClose}>
+            <ConnectionCreateOption icon={<List className="size-4" />} title="文本" onClick={() => onCreate(CanvasNodeType.Text)} />
+            <ConnectionCreateOption icon={<ImageIcon className="size-4" />} title="图片" onClick={() => onCreate(CanvasNodeType.Image)} />
+            <ConnectionCreateOption icon={<Globe2 className="size-4" />} title="全景图" onClick={() => onCreate(CanvasNodeType.Panorama)} />
+            <ConnectionCreateOption icon={<Video className="size-4" />} title="视频" onClick={() => onCreate(CanvasNodeType.Video)} />
+            <ConnectionCreateOption icon={<Sparkles className="size-4" />} title="一键视频复刻" onClick={() => onCreate(CanvasNodeType.VideoRemake)} />
+            <ConnectionCreateOption icon={<Music2 className="size-4" />} title="音频" onClick={() => onCreate(CanvasNodeType.Audio)} />
+            <ConnectionCreateOption icon={<Settings2 className="size-4" />} title="生成配置" onClick={() => onCreate(CanvasNodeType.Config)} />
+        </CanvasCreateMenu>
+    );
+}
+
+export function ConnectionCreateMenu({ pending, scale, onCreate, onClose }: { pending: PendingConnectionCreate; scale: number; onCreate: (type: CanvasCreatableNodeType) => void; onClose: () => void }) {
+    return (
+        <CanvasCreateMenu position={pending.position} scale={scale} label="引用该节点生成" dataAttribute="data-connection-create-menu" onClose={onClose}>
+            <ConnectionCreateOption icon={<List className="size-4" />} title="文本生成" onClick={() => onCreate(CanvasNodeType.Text)} />
+            <ConnectionCreateOption icon={<ImageIcon className="size-4" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
+            <ConnectionCreateOption icon={<Globe2 className="size-4" />} title="全景生成" onClick={() => onCreate(CanvasNodeType.Panorama)} />
+            <ConnectionCreateOption icon={<Video className="size-4" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
+            <ConnectionCreateOption icon={<Sparkles className="size-4" />} title="一键视频复刻" onClick={() => onCreate(CanvasNodeType.VideoRemake)} />
+            <ConnectionCreateOption icon={<Music2 className="size-4" />} title="音频参考" onClick={() => onCreate(CanvasNodeType.Audio)} />
+            <ConnectionCreateOption icon={<Settings2 className="size-4" />} title="配置节点" onClick={() => onCreate(CanvasNodeType.Config)} />
+        </CanvasCreateMenu>
+    );
+}
+
+function CanvasCreateMenu({
+    position,
+    scale,
+    label,
+    dataAttribute,
+    onClose,
+    children,
+}: {
+    position: Position;
+    scale: number;
+    label: string;
+    dataAttribute: "data-canvas-node-create-menu" | "data-connection-create-menu";
+    onClose: () => void;
+    children: React.ReactNode;
+}) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const menuRef = useRef<HTMLDivElement>(null);
+    const [offset, setOffset] = useState({ x: 0, y: 0 });
+    const safeScale = Math.max(scale, 0.01);
+
+    useLayoutEffect(() => {
+        const placeInsideViewport = () => {
+            const rect = menuRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const { x, y } = resolveCreateMenuOffset(rect, window.innerWidth, window.innerHeight);
+            if (x || y) setOffset((current) => ({ x: current.x + x, y: current.y + y }));
+        };
+
+        placeInsideViewport();
+        window.addEventListener("resize", placeInsideViewport);
+        return () => window.removeEventListener("resize", placeInsideViewport);
+    }, [position.x, position.y, safeScale]);
 
     return (
         <div
-            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl backdrop-blur"
-            data-canvas-node-create-menu
-            style={{ left: position.x, top: position.y, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            ref={menuRef}
+            className="pointer-events-auto absolute z-[120] w-[224px] rounded-2xl border p-2.5 shadow-2xl backdrop-blur"
+            {...{ [dataAttribute]: true }}
+            style={{
+                left: position.x,
+                top: position.y,
+                background: theme.node.panel,
+                borderColor: theme.node.stroke,
+                color: theme.node.text,
+                transform: `translate(${offset.x / safeScale}px, ${offset.y / safeScale}px) ${canvasFloatingMenuTransform(safeScale)}`,
+                transformOrigin: "top left",
+            }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
-            <div className="mb-2 flex items-center justify-between px-1">
-                <span className="text-sm font-medium" style={{ color: theme.node.muted }}>
-                    新建节点
+            <div className="mb-1 flex items-center justify-between px-1">
+                <span className="text-xs font-medium" style={{ color: theme.node.muted }}>
+                    {label}
                 </span>
                 <button
                     type="button"
-                    className="grid size-7 place-items-center rounded-lg text-base opacity-55 transition hover:opacity-100"
+                    className="grid size-6 place-items-center rounded-md text-sm opacity-55 transition hover:opacity-100"
                     onClick={onClose}
                     onMouseEnter={(event) => (event.currentTarget.style.background = theme.node.fill)}
                     onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}
@@ -136,78 +219,26 @@ export function NodeCreateMenu({ position, onCreate, onClose }: { position: Posi
                     ×
                 </button>
             </div>
-            <div className="grid gap-1">
-                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
-                <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片" onClick={() => onCreate(CanvasNodeType.Image)} />
-                <ConnectionCreateOption theme={theme} icon={<Globe2 className="size-5" />} title="全景图" description="生成 2:1 环境全景" onClick={() => onCreate(CanvasNodeType.Panorama)} />
-                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频" onClick={() => onCreate(CanvasNodeType.Video)} />
-                <ConnectionCreateOption theme={theme} icon={<Sparkles className="size-5" />} title="一键视频复刻" description="解析参考视频并批量重建" onClick={() => onCreate(CanvasNodeType.VideoRemake)} />
-                <ConnectionCreateOption theme={theme} icon={<Music2 className="size-5" />} title="音频" onClick={() => onCreate(CanvasNodeType.Audio)} />
-                <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="生成配置" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
-            </div>
+            <div className="grid gap-0.5">{children}</div>
         </div>
     );
 }
 
-export function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: PendingConnectionCreate; onCreate: (type: CanvasCreatableNodeType) => void; onClose: () => void }) {
+export function ConnectionCreateOption({ icon, title, onClick }: { icon: React.ReactNode; title: string; onClick?: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    return (
-        <div
-            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl backdrop-blur"
-            data-connection-create-menu
-            style={{ left: pending.position.x, top: pending.position.y, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
-            onMouseDown={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-        >
-            <div className="mb-2 flex items-center justify-between px-1">
-                <span className="text-sm font-medium" style={{ color: theme.node.muted }}>
-                    引用该节点生成
-                </span>
-                <button
-                    type="button"
-                    className="grid size-7 place-items-center rounded-lg text-base opacity-55 transition hover:opacity-100"
-                    onClick={onClose}
-                    onMouseEnter={(event) => (event.currentTarget.style.background = theme.node.fill)}
-                    onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}
-                    aria-label="关闭"
-                >
-                    ×
-                </button>
-            </div>
-            <div className="grid gap-1">
-                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
-                <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
-                <ConnectionCreateOption theme={theme} icon={<Globe2 className="size-5" />} title="全景生成" description="生成 2:1 环境全景" onClick={() => onCreate(CanvasNodeType.Panorama)} />
-                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
-                <ConnectionCreateOption theme={theme} icon={<Sparkles className="size-5" />} title="一键视频复刻" description="继承当前视频的结构与节奏" onClick={() => onCreate(CanvasNodeType.VideoRemake)} />
-                <ConnectionCreateOption theme={theme} icon={<Music2 className="size-5" />} title="音频参考" onClick={() => onCreate(CanvasNodeType.Audio)} />
-                <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
-            </div>
-        </div>
-    );
-}
-
-export function ConnectionCreateOption({ theme, icon, title, description, onClick }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; icon: React.ReactNode; title: string; description?: string; onClick?: () => void }) {
     return (
         <button
             type="button"
-            className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left transition"
+            className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-left transition"
             style={{ color: theme.node.text }}
             onClick={onClick}
             onMouseEnter={(event) => (event.currentTarget.style.background = theme.node.fill)}
             onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}
         >
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl" style={{ background: theme.node.fill, color: theme.node.muted }}>
+            <span className="grid size-7 shrink-0 place-items-center rounded-md" style={{ background: theme.node.fill, color: theme.node.muted }}>
                 {icon}
             </span>
-            <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-base font-semibold leading-5">{title}</span>
-                {description ? (
-                    <span className="mt-1 block truncate text-sm" style={{ color: theme.node.muted }}>
-                        {description}
-                    </span>
-                ) : null}
-            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5">{title}</span>
         </button>
     );
 }

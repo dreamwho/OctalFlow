@@ -15,7 +15,11 @@ export type CanvasTaskReferenceNode = {
     content?: string;
     width?: number;
     height?: number;
+    /** Rendered canvas box; width/height retain intrinsic media dimensions for planning. */
+    displayWidth?: number;
+    displayHeight?: number;
     size?: string;
+    position?: { x: number; y: number };
 };
 
 export type CanvasSelectedReferenceNode = CanvasTaskReferenceNode & {
@@ -43,10 +47,21 @@ export function canvasSnapshotNodes(snapshot: unknown) {
             content: typeof content === "string" ? content : undefined,
             width: positiveNumber(metadata.naturalWidth) || positiveNumber(node.width),
             height: positiveNumber(metadata.naturalHeight) || positiveNumber(node.height),
+            displayWidth: positiveNumber(node.width),
+            displayHeight: positiveNumber(node.height),
             size: typeof metadata.size === "string" ? metadata.size : undefined,
+            position: positionValue(node.position),
         });
     }
     return map;
+}
+
+function positionValue(value: unknown) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const position = value as Record<string, unknown>;
+    const x = Number(position.x);
+    const y = Number(position.y);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
 }
 
 export function selectedCanvasReferenceNodes(snapshot: unknown): CanvasSelectedReferenceNode[] {
@@ -69,6 +84,7 @@ export function canvasReferenceContext(references: readonly CanvasSelectedRefere
 }
 
 export function canvasReferenceSupportsTask(referenceType: AgentRunReference["type"], taskType: AgentRunTask["type"]) {
+    if (taskType === "text") return referenceType === "image" || referenceType === "video";
     if (taskType === "image") return referenceType === "image";
     if (taskType === "video") return referenceType === "image" || referenceType === "video" || referenceType === "audio";
     if (taskType === "audio") return referenceType === "audio";
@@ -212,7 +228,7 @@ export function prepareFailedAgentTaskRetry(run: AgentRun, task: AgentRunTask, s
     const target = targetNodeId ? nodes.get(targetNodeId) : undefined;
     const selectedReferences = selectedCanvasReferenceNodes(run.snapshot).filter((reference) => canvasReferenceSupportsTask(reference.type, task.type));
     const references = selectedReferences.length
-        ? (selectedReferences.map((reference) => ({ nodeId: reference.nodeId, url: reference.url, type: reference.type })) satisfies AgentRunReference[])
+        ? (selectedReferences.map((reference) => ({ nodeId: reference.nodeId, url: reference.url, type: reference.type, alias: reference.alias })) satisfies AgentRunReference[])
         : target?.url && isMediaReferenceType(target.type)
           ? ([{ nodeId: targetNodeId, url: target.url, type: target.type }] satisfies AgentRunReference[])
           : task.references;

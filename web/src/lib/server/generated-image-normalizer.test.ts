@@ -43,4 +43,14 @@ describe("generated image normalization", () => {
         expect(result).toMatchObject({ width: 4096, height: 2304 });
         await expect(sharp(result.bytes).metadata()).resolves.toMatchObject({ format: "webp", width: 4096, height: 2304 });
     });
+
+    it("accepts an official 8K upscale result without resizing it", async () => {
+        const source = await sharp({ create: { width: 8192, height: 6178, channels: 3, background: "#27384c" } })
+            .png({ compressionLevel: 9 })
+            .toBuffer();
+        const result = await normalizeGeneratedImageBytes(source, "image/png");
+
+        expect(result).toMatchObject({ mimeType: "image/png", width: 8192, height: 6178 });
+        expect(result.bytes).toEqual(source);
+    });
 });

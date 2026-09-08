@@ -1,4 +1,128 @@
 @layer utilities {
+    .workspace-header {
+        border: 0;
+        box-shadow: none;
+        isolation: isolate;
+    }
+
+    .workspace-header-left {
+        color: #223049;
+    }
+
+    .workspace-main-column.is-create-route {
+        background: #edf5ff;
+    }
+
+    .dark .workspace-main-column.is-create-route {
+        background: #020711;
+    }
+
+    .workspace-header-button {
+        background: rgba(255, 255, 255, 0.58);
+        border-color: rgba(80, 141, 173, 0.18);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.72),
+            0 8px 24px rgba(39, 91, 140, 0.08);
+        backdrop-filter: blur(18px) saturate(1.25);
+        -webkit-backdrop-filter: blur(18px) saturate(1.25);
+    }
+
+    .workspace-header-button:hover {
+        background: rgba(230, 248, 252, 0.78);
+        border-color: var(--octa-selection-border);
+        color: #174e67;
+    }
+
+    .dark .workspace-header-left {
+        color: #edf9ff;
+    }
+
+    .dark .workspace-header-button {
+        background: rgba(8, 21, 39, 0.64);
+        border-color: rgba(99, 195, 221, 0.18);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.06),
+            0 12px 32px rgba(0, 0, 0, 0.24);
+    }
+
+    .dark .workspace-header-button:hover {
+        background: rgba(24, 65, 82, 0.58);
+        border-color: var(--octa-selection-border);
+        color: #f4fdff;
+    }
+
+    .app-sidebar {
+        background: radial-gradient(circle at 20% 7%, rgba(66, 205, 224, 0.09), transparent 28%), radial-gradient(circle at 86% 44%, rgba(93, 104, 255, 0.07), transparent 34%), rgba(247, 251, 255, 0.88);
+        border-color: rgba(80, 141, 173, 0.16);
+        box-shadow:
+            inset -1px 0 0 rgba(255, 255, 255, 0.5),
+            12px 0 34px rgba(36, 82, 126, 0.04);
+        backdrop-filter: blur(28px) saturate(1.2);
+        -webkit-backdrop-filter: blur(28px) saturate(1.2);
+    }
+
+    .dark .app-sidebar {
+        background: radial-gradient(circle at 18% 8%, rgba(61, 210, 231, 0.08), transparent 29%), radial-gradient(circle at 90% 42%, rgba(91, 104, 255, 0.08), transparent 36%), rgba(5, 13, 25, 0.91);
+        border-color: rgba(99, 195, 221, 0.15);
+        box-shadow:
+            inset -1px 0 0 rgba(255, 255, 255, 0.025),
+            16px 0 44px rgba(0, 0, 0, 0.18);
+    }
+
+    .app-sidebar-brand {
+        border-bottom: 1px solid rgba(80, 141, 173, 0.12);
+    }
+
+    .dark .app-sidebar-brand {
+        border-bottom-color: rgba(99, 195, 221, 0.1);
+    }
+
+    .app-sidebar-brand img,
+    .app-sidebar-brand svg {
+        filter: drop-shadow(0 0 10px rgba(73, 205, 230, 0.22));
+    }
+
+    .app-sidebar-item.is-active {
+        transform: translateX(1px);
+    }
+
+    /* Keep secondary navigation on the same cool blue-gray scale as the shell.
+       Ant Design's global link token otherwise wins over the utility classes here. */
+    .app-sidebar-item:not(.is-active) {
+        color: #526077 !important;
+    }
+
+    .app-sidebar-item:not(.is-active):hover,
+    .app-sidebar-item:not(.is-active):focus-visible {
+        color: #174e67 !important;
+    }
+
+    .dark .app-sidebar-item:not(.is-active) {
+        color: #9bb7c7 !important;
+    }
+
+    .dark .app-sidebar-item:not(.is-active):hover,
+    .dark .app-sidebar-item:not(.is-active):focus-visible {
+        color: #e8fbff !important;
+    }
+
+    .app-sidebar-item.is-active svg {
+        filter: drop-shadow(0 0 7px var(--octa-selection-glow));
+    }
+
+    .app-sidebar-active-mark {
+        background: linear-gradient(180deg, #7b8cff, #5ee5f1);
+        box-shadow: 0 0 9px rgba(94, 229, 241, 0.4);
+    }
+
+    .app-sidebar-footer {
+        border-top: 1px solid rgba(80, 141, 173, 0.1);
+    }
+
+    .dark .app-sidebar-footer {
+        border-top-color: rgba(99, 195, 221, 0.09);
+    }
+
     .landing-site-header {
         background: rgba(255, 255, 255, 0.96);
         border-bottom: 1px solid rgba(15, 23, 42, 0.08);

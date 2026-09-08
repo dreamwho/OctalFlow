@@ -12,13 +12,8 @@ import { SiteLogo } from "@/components/layout/site-logo";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { navigationToolForPathname } from "@/constant/navigation-tools";
 import { DEFAULT_SITE_TITLE, resolveSiteTitle } from "@/lib/site-brand";
+import { cn } from "@/lib/utils";
 import { usePublicSessionStore } from "@/stores/use-public-session-store";
-
-const PAGE_TITLES: Record<string, string> = {
-    billing: "充值中心",
-    help: "帮助中心",
-    profile: "个人中心",
-};
 
 export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const pathname = usePathname();
@@ -29,16 +24,15 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const tool = navigationToolForPathname(pathname);
     const fullscreen = isFullscreenWorkspacePath(pathname);
     const rootSlug = pathname.split("/").filter(Boolean)[0] || "";
-    const pageTitle = tool?.label || PAGE_TITLES[rootSlug] || "工作空间";
 
     if (fullscreen) return <div className="h-dvh min-h-0 overflow-hidden">{children}</div>;
 
     return (
         <div className="workspace-shell flex h-dvh min-h-0 overflow-hidden bg-white text-foreground dark:bg-[#111316]">
             <AppSidebar activeToolSlug={tool?.slug} expanded={sidebarExpanded} />
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#eaecf0] bg-white/96 px-3 backdrop-blur-xl sm:px-4 lg:px-7 dark:border-[#292d33] dark:bg-[#111316]/95">
-                    <div className="flex min-w-0 items-center gap-2.5">
+            <div className={cn("workspace-main-column flex min-w-0 flex-1 flex-col overflow-hidden", rootSlug === "create" && "is-create-route")}>
+                <header className="workspace-header relative z-30 flex h-14 shrink-0 items-center justify-between gap-3 bg-transparent px-3 sm:px-4 lg:px-5">
+                    <div className="workspace-header-left flex min-w-0 items-center gap-2">
                         <button
                             type="button"
                             className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-stone-600 transition hover:bg-stone-100 hover:text-stone-950 lg:hidden dark:text-stone-300 dark:hover:bg-stone-900 dark:hover:text-white"
@@ -53,7 +47,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                         </Link>
                         <button
                             type="button"
-                            className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-[#68717c] transition hover:bg-[#f1f3f5] hover:text-[#20242a] lg:inline-flex dark:text-[#a5adb8] dark:hover:bg-[#22262c] dark:hover:text-white"
+                            className="workspace-header-button hidden size-8 shrink-0 items-center justify-center rounded-lg border text-[#68717c] transition lg:inline-flex dark:text-[#a5adb8]"
                             onClick={() => setSidebarExpanded((value) => !value)}
                             aria-label={sidebarExpanded ? "收起侧边栏" : "展开侧边栏"}
                             title={sidebarExpanded ? "收起侧边栏" : "展开侧边栏"}
@@ -61,11 +55,8 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                         >
                             {sidebarExpanded ? <PanelLeftClose className="size-[17px]" /> : <PanelLeftOpen className="size-[17px]" />}
                         </button>
-                        <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-[#20242a] dark:text-[#f3f5f7]">{pageTitle}</div>
-                        </div>
                     </div>
-                    <div className="min-w-0 max-w-[calc(100vw-6.5rem)] shrink-0 overflow-visible sm:max-w-[calc(100vw-8rem)] lg:max-w-none">
+                    <div className="workspace-header-actions min-w-0 max-w-[calc(100vw-6.5rem)] shrink-0 overflow-visible sm:max-w-[calc(100vw-8rem)] lg:max-w-none">
                         <UserStatusActions />
                     </div>
                 </header>

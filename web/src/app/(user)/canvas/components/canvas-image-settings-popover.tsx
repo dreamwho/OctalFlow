@@ -1,11 +1,13 @@
 "use client";
 
 import { SlidersHorizontal } from "lucide-react";
+import { useEffect } from "react";
 
-import { CreativeGenerationPreferences, generationPreferenceSummary, type CreativeGenerationPreferencePatch } from "@/components/creative-generation-preferences";
+import { CreativeGenerationPreferences, generationPreferenceSummary, type CreativeGenerationPreferencePatch, type GenerationQualityOption } from "@/components/creative-generation-preferences";
 import type { CreativeGenerationPreferences as GenerationPreferences } from "@/lib/creative-runtime-contract";
-import type { AiConfig } from "@/stores/use-config-store";
+import { resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
 import { useCreativeComposerPopoverPlacement, type CreativeComposerPopoverPlacement } from "@/components/creative-composer-popover";
+import { canvasDreaminaImageProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -14,10 +16,16 @@ type CanvasImageSettingsPopoverProps = {
     buttonClassName?: string;
     placement?: CreativeComposerPopoverPlacement;
     fixedSizeLabel?: string;
+    compactTriggerLabel?: string;
+    showTriggerChevron?: boolean;
 };
 
-export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChange, buttonClassName, placement = "topLeft", fixedSizeLabel }: CanvasImageSettingsPopoverProps) {
+export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChange, buttonClassName, placement = "topLeft", fixedSizeLabel, compactTriggerLabel, showTriggerChevron = true }: CanvasImageSettingsPopoverProps) {
     const responsivePlacement = useCreativeComposerPopoverPlacement(placement);
+    const geminiAi = isGeminiAiImageConfig(config);
+    const dreaminaModelId = resolveCanvasDreaminaModelId(config);
+    const dreamina = canvasDreaminaImageProfile(dreaminaModelId);
+    const allowCustomSize = !(dreaminaModelId === "dreamina-seedream-3-0" || dreaminaModelId === "dreamina-seedream-3-1") || config.quality !== "low";
     const preferences: GenerationPreferences = {
         mode: "image",
         image: {
@@ -26,33 +34,56 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             count: positiveInteger(config.count),
         },
     };
-    const summary = canvasImagePreferenceSummary(preferences, fixedSizeLabel);
-    const fullSummary = fixedSizeLabel ? `${fixedSizeLabel} · ${imageQualityLabel(preferences.image?.quality)} · ${preferences.image?.count || 1}张` : generationPreferenceSummary("image", preferences);
+    const summary = canvasImagePreferenceSummary(preferences, fixedSizeLabel, geminiAi, dreamina?.qualities);
+    const fullSummary = fixedSizeLabel
+        ? `${fixedSizeLabel} · ${imageQualityLabel(preferences.image?.quality, geminiAi, dreamina?.qualities)} · ${preferences.image?.count || 1}张`
+        : geminiAi
+          ? `${compactSizeLabel(preferences.image?.size, true)} · ${imageQualityLabel(preferences.image?.quality, true)} · ${preferences.image?.count || 1}张`
+          : dreamina
+            ? `${compactSizeLabel(preferences.image?.size)} · ${imageQualityLabel(preferences.image?.quality, false, dreamina.qualities)} · ${preferences.image?.count || 1}张`
+            : generationPreferenceSummary("image", preferences);
+
+    useEffect(() => {
+        if (!dreamina) return;
+        if (!dreamina.qualities.some((option) => option.value === config.quality)) onConfigChange("quality", dreamina.defaultQuality);
+        const size = config.size || "auto";
+        if (!/^\d+x\d+$/i.test(size) && !dreamina.ratios.some((option) => option.value === size)) onConfigChange("size", "auto");
+        if (!allowCustomSize && /^\d+x\d+$/i.test(size)) onConfigChange("size", "auto");
+    }, [allowCustomSize, config.quality, config.size, dreamina, onConfigChange]);
 
     return (
         <CreativeGenerationPreferences
             capability="image"
             preferences={preferences}
-            triggerLabel={summary}
+            triggerLabel={compactTriggerLabel || summary}
             triggerAriaLabel={`图片设置：${fullSummary}`}
             triggerIcon={<SlidersHorizontal className="size-4" />}
             triggerClassName={buttonClassName}
-            triggerLabelClassName="whitespace-nowrap text-left !overflow-visible !text-clip"
+            triggerLabelClassName="min-w-0 truncate whitespace-nowrap text-left"
+            showTriggerChevron={showTriggerChevron}
             placement={responsivePlacement}
             autoAdjustOverflow
             tabless
             fixedSizeLabel={fixedSizeLabel}
+            imageQualityProfile={geminiAi ? "geminiai" : "default"}
+            ratioOptions={dreamina?.ratios}
+            imageQualityOptions={dreamina?.qualities}
+            allowCustomSize={allowCustomSize}
             onOpenChange={onOpenChange}
             onChange={(patch) => applyImagePreferencePatch(patch, onConfigChange)}
         />
     );
 }
 
-export function canvasImagePreferenceSummary(preferences: GenerationPreferences, fixedSizeLabel?: string) {
+export function canvasImagePreferenceSummary(preferences: GenerationPreferences, fixedSizeLabel?: string, geminiAi = false, qualityOptions?: readonly GenerationQualityOption[]) {
     const image = preferences.image;
-    const size = fixedSizeLabel || compactSizeLabel(image?.size);
+    const size = fixedSizeLabel || compactSizeLabel(image?.size, geminiAi);
     if (!fixedSizeLabel && /^\d+x\d+$/i.test(image?.size || "")) return size;
-    const quality = ({ auto: "智能", high: "高", medium: "中", low: "低" } as Record<string, string>)[image?.quality || "auto"] || image?.quality || "智能";
+    const quality =
+        qualityOptions?.find((option) => option.value === (image?.quality || "auto"))?.shortLabel ||
+        (geminiAi
+            ? ({ auto: "智能", high: "高·4K", medium: "中·2K", low: "低·1K" } as Record<string, string>)[image?.quality || "auto"] || image?.quality || "智能"
+            : ({ auto: "智能", high: "高", medium: "中", low: "低" } as Record<string, string>)[image?.quality || "auto"] || image?.quality || "智能");
     const count = image?.count || 1;
     return `${size} · ${quality}${count > 1 ? ` · ${count}张` : ""}`;
 }
@@ -67,8 +98,17 @@ function imageQuality(value?: string): NonNullable<GenerationPreferences["image"
     return value === "high" || value === "medium" || value === "low" ? value : "auto";
 }
 
-function imageQualityLabel(value?: string) {
-    return ({ auto: "智能画质", high: "高画质", medium: "中画质", low: "低画质" } as Record<string, string>)[value || "auto"] || value;
+function imageQualityLabel(value?: string, geminiAi = false, options?: readonly GenerationQualityOption[]) {
+    const configured = options?.find((option) => option.value === (value || "auto"));
+    if (configured) return configured.label;
+    const labels = geminiAi
+        ? ({ auto: "智能画质（默认 1K）", high: "高画质（4K）", medium: "中画质（2K）", low: "低画质（1K）" } as Record<string, string>)
+        : ({ auto: "智能画质", high: "高画质", medium: "中画质", low: "低画质" } as Record<string, string>);
+    return labels[value || "auto"] || value;
+}
+
+export function isGeminiAiImageConfig(config: AiConfig) {
+    return resolveModelChannel(config, config.model).id === "geminiai";
 }
 
 function positiveInteger(value: unknown) {
@@ -76,6 +116,6 @@ function positiveInteger(value: unknown) {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
-function compactSizeLabel(value?: string) {
-    return !value || value === "auto" ? "智能" : value.replace("x", "×");
+function compactSizeLabel(value?: string, geminiAi = false) {
+    return !value || value === "auto" ? (geminiAi ? "Auto" : "智能") : value.replace("x", "×");
 }

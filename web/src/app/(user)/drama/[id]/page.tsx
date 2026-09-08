@@ -12,6 +12,7 @@ import { compileDramaShotPrompts } from "@/lib/drama-prompt-compiler";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { useDramaStore } from "../stores/use-drama-store";
+import { dramaVisualStylePrompt } from "@/lib/drama-visual-style-presets";
 import type { DramaContentAnalysis, DramaProject, DramaProjectVersion, DramaVisualAnalysis } from "../types";
 import { useDramaAudioQueue } from "./use-drama-audio-queue";
 import { DramaAgentPanel } from "./drama-agent-panel";
@@ -106,7 +107,7 @@ function DramaProjectEditor({ project }: { project: DramaProject }) {
         if (!episode.script.trim()) return message.warning("请先填写剧本内容");
         setAnalyzing(true);
         try {
-            const response = await fetch("/api/drama/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "content", script: episode.script, summary: project.summary, style: project.style }) });
+            const response = await fetch("/api/drama/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "content", script: episode.script, summary: project.summary, style: dramaVisualStylePrompt(project.style, project.stylePresetId) }) });
             syncUserPointsFromHeaders(response.headers, "system");
             const payload = (await response.json().catch(() => ({}))) as { data?: DramaContentAnalysis; msg?: string };
             if (!response.ok || !payload.data) throw new Error(payload.msg || "AI 剧本解析失败");
@@ -128,7 +129,7 @@ function DramaProjectEditor({ project }: { project: DramaProject }) {
             const response = await fetch("/api/drama/analyze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phase: "visual", summary: project.summary, style: project.style, episode, characters: project.characters, scenes: project.scenes, props: project.props, clues: project.clues, shots: episode.shots }),
+                body: JSON.stringify({ phase: "visual", summary: project.summary, style: dramaVisualStylePrompt(project.style, project.stylePresetId), episode, characters: project.characters, scenes: project.scenes, props: project.props, clues: project.clues, shots: episode.shots }),
             });
             syncUserPointsFromHeaders(response.headers, "system");
             const payload = (await response.json().catch(() => ({}))) as { data?: DramaVisualAnalysis; msg?: string };

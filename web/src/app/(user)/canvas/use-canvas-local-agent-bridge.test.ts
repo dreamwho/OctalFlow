@@ -15,7 +15,7 @@ const snapshot: CanvasAgentSnapshot = {
 describe("Canvas local agent bridge", () => {
     it("accepts only loopback HTTP endpoints with a bounded token", () => {
         expect(resolveCanvasAgentConnection("?agentUrl=http%3A%2F%2F127.0.0.1%3A17371&agentToken=1234567890abcdef")).toEqual({ endpoint: "http://127.0.0.1:17371", token: "1234567890abcdef" });
-        expect(resolveCanvasAgentConnection("?agentUrl=http%3A%2F%2F%5B%3A%3A1%5D%3A17371&agentToken=1234567890abcdef")).toEqual({ endpoint: "http://[::1]:17371", token: "1234567890abcdef" });
+        expect(resolveCanvasAgentConnection("?agentUrl=http%3A%2F%2F%5B%3A%3A1%5D%3A17371&agentToken=1234567890abcdef")).toBeNull();
         expect(resolveCanvasAgentConnection("?agentUrl=https%3A%2F%2Fevil.example.com&agentToken=1234567890abcdef")).toBeNull();
         expect(resolveCanvasAgentConnection("?agentUrl=http%3A%2F%2Flocalhost%3A17371&agentToken=short")).toBeNull();
     });

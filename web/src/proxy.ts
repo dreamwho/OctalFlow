@@ -3,7 +3,7 @@ import { getTrustedProxyHops } from "@/lib/server/trusted-proxy";
 
 export function proxy(request: NextRequest) {
     const nonce = crypto.randomUUID().replaceAll("-", "");
-    const contentSecurityPolicy = buildContentSecurityPolicy(nonce);
+    const contentSecurityPolicy = buildContentSecurityPolicy(nonce, request.headers.get("host") || request.nextUrl.hostname);
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-nonce", nonce);
     requestHeaders.set("content-security-policy", contentSecurityPolicy);
@@ -44,8 +44,10 @@ function securedJsonResponse(body: unknown, status: number, contentSecurityPolic
     return response;
 }
 
-function buildContentSecurityPolicy(nonce: string) {
+function buildContentSecurityPolicy(nonce: string, host: string) {
     const isDev = process.env.NODE_ENV !== "production";
+    const hostname = host.toLowerCase().replace(/^\[([^\]]+)\](?::\d+)?$/, "$1").replace(/:\d+$/, "");
+    const localCanvasHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
     return [
         "default-src 'self'",
         `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -53,14 +55,14 @@ function buildContentSecurityPolicy(nonce: string) {
         "img-src 'self' data: blob: https:",
         "media-src 'self' data: blob: https:",
         "font-src 'self' data: https:",
-        `connect-src 'self' https:${isDev ? " http: ws: wss:" : ""}`,
+        `connect-src 'self' https:${isDev ? " http: ws: wss:" : localCanvasHost ? " http://localhost:* http://127.0.0.1:*" : ""}`,
         "worker-src 'self' blob:",
         "frame-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'none'",
-        ...(isDev ? [] : ["upgrade-insecure-requests"]),
+        ...(isDev || localCanvasHost ? [] : ["upgrade-insecure-requests"]),
     ].join("; ");
 }
 

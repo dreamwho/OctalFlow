@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 
 import type { CanvasNodeData } from "@/app/(user)/canvas/types";
 import { CanvasNodeType } from "@/app/(user)/canvas/types";
-import { nodeSizeFromRatio } from "@/app/(user)/canvas/utils/canvas-node-size";
+import { fitCanvasImageNodeSize } from "@/app/(user)/canvas/utils/canvas-node-size";
 import type { DramaSourceAsset } from "@/app/(user)/drama/types";
 import type { CreativeAsset, CreativeProjectHandoff } from "@/lib/creative-runtime-contract";
 
@@ -134,8 +134,8 @@ function mediaDimensions(asset: CreativeAsset) {
     if (asset.type === "video") return { width: 400, height: 260 };
     if (asset.type === "audio") return { width: 360, height: 180 };
     if (asset.type === "text") return { width: 360, height: 260 };
-    if (asset.width && asset.height) return nodeSizeFromRatio(`${asset.width}:${asset.height}`, 360, 360) || { width: 360, height: 360 };
-    return { width: 360, height: 360 };
+    if (asset.width && asset.height) return fitCanvasImageNodeSize(asset.width, asset.height);
+    return fitCanvasImageNodeSize(1, 1);
 }
 
 function materializedProject(handoff: CreativeProjectHandoff, projectId: string): MaterializedCreativeProject {

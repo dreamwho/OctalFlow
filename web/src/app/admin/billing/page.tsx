@@ -58,7 +58,7 @@ export default async function AdminBillingPage({ searchParams }: AdminBillingPag
                             </span>
                             <span className="truncate">财务钱包</span>
                         </Link>
-                        <UserStatusActions initialUser={currentUser} />
+                        <UserStatusActions initialUser={currentUser} themeScope="admin" />
                     </div>
                 </header>
 

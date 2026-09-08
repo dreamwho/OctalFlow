@@ -6,6 +6,7 @@ import { selectAgentSkills } from "@/lib/server/agent-run-surface-policy";
 import { resolveLogicalModelCandidates } from "@/lib/server/logical-model-router";
 import { hasSystemAiCharge, readSystemAiBilling, systemAiBillingHeaders, systemAiIdempotencyKey } from "@/lib/server/system-ai-billing";
 import { rankTextPlanningCandidates, requestStructuredText } from "@/lib/server/text-planning-runtime";
+import { agentSkillSupportsNodeMode } from "@/lib/agent-skill-node-policy";
 
 type PromptOptimizationMode = "agent" | CreativeGenerationMode;
 
@@ -71,7 +72,7 @@ function promptOptimizationInstruction(mode: PromptOptimizationMode, skills: Awa
 function promptOptimizationSkills(settings: Awaited<ReturnType<typeof getAuthSettings>>, mode: PromptOptimizationMode, skillIds: string[]) {
     const selected = selectAgentSkills(settings, "chat", skillIds);
     if (mode === "agent") return selected;
-    if (mode === "image" || mode === "video") return selected.filter((skill) => (skill.workspaces || ["image"]).includes(mode));
+    if (mode === "image" || mode === "video") return selected.filter((skill) => agentSkillSupportsNodeMode(skill, mode));
     return [];
 }
 

@@ -11,6 +11,13 @@ describe("resolvePublicRequestOrigin", () => {
         expect(resolvePublicRequestOrigin(new Request("http://192.168.1.20:3000/api/referrals"))).toBe("http://192.168.1.20:3000");
     });
 
+    it("never emits a bind-all address as a public callback origin", () => {
+        vi.stubEnv("NEXT_PUBLIC_SITE_URL", "http://0.0.0.0:3333");
+        const request = new Request("http://0.0.0.0:3333/api/admin/gemini-tools/oauth/start", { headers: { host: "localhost:3333" } });
+
+        expect(resolvePublicRequestOrigin(request)).toBe("http://localhost:3333");
+    });
+
     it("keeps a configured public domain as the canonical origin", () => {
         vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://create.example.com");
 

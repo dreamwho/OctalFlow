@@ -2,17 +2,21 @@
 
 import { Button, Popover, Select } from "antd";
 import { AudioLines, ChevronDown, ImageIcon, Lightbulb, Maximize2, Sparkles, Video } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { audioFormatLabel, audioFormatOptions, audioVoiceLabel, audioVoiceOptions } from "@/lib/audio-generation";
 import type { CreativeGenerationPreferences } from "@/lib/creative-runtime-contract";
 import { cn } from "@/lib/utils";
 
-import { creativeComposerPopoverOverflow, creativeComposerPopoverPanelMaxHeight, type CreativeComposerPopoverPlacement } from "./creative-composer-popover";
+import { creativeComposerPopoverOverflow, readVisualViewportBounds, resolveCreativeComposerPopoverViewportLayout, type CreativeComposerPopoverPlacement } from "./creative-composer-popover";
 import { creativeComposerToolButtonClass } from "./creative-composer-styles";
 import { PositiveNumberField, SuggestedPositiveIntegerField, SwitchPreference, VideoQualityField } from "./creative-generation-preference-fields";
 
 export type MediaCapability = "image" | "video" | "audio";
+export type ImageQualityProfile = "default" | "geminiai";
+export type GenerationRatioOption = { value: string; label: string; width: number; height: number };
+export type GenerationQualityOption = { value: string; label: string; shortLabel?: string };
+export type GenerationDurationOption = { value: number; label: string };
 
 export type CreativeGenerationPreferencePatch = {
     size?: string;
@@ -32,12 +36,15 @@ export type CreativeGenerationPreferencePatch = {
 const imageRatios = [
     { value: "auto", label: "智能", width: 18, height: 18 },
     { value: "1:1", label: "1:1", width: 18, height: 18 },
+    { value: "9:16", label: "9:16", width: 14, height: 24 },
     { value: "16:9", label: "16:9", width: 24, height: 14 },
+    { value: "3:4", label: "3:4", width: 16, height: 21 },
     { value: "4:3", label: "4:3", width: 21, height: 16 },
     { value: "3:2", label: "3:2", width: 23, height: 15 },
     { value: "2:3", label: "2:3", width: 15, height: 23 },
-    { value: "3:4", label: "3:4", width: 16, height: 21 },
-    { value: "9:16", label: "9:16", width: 14, height: 24 },
+    { value: "5:4", label: "5:4", width: 21, height: 17 },
+    { value: "4:5", label: "4:5", width: 17, height: 21 },
+    { value: "21:9", label: "21:9", width: 26, height: 11 },
 ] as const;
 
 const videoRatios = [
@@ -55,6 +62,15 @@ const imageQualityOptions = [
     { value: "high", label: "高画质", shortLabel: "高" },
     { value: "medium", label: "中画质", shortLabel: "中" },
     { value: "low", label: "低画质", shortLabel: "低" },
+] as const;
+
+const geminiAiImageRatios = imageRatios.map((ratio) => (ratio.value === "auto" ? { ...ratio, label: "Auto" } : ratio));
+
+const geminiAiImageQualityOptions = [
+    { value: "auto", label: "智能画质（默认 1K）", shortLabel: "智能" },
+    { value: "high", label: "高画质（4K）", shortLabel: "高 · 4K" },
+    { value: "medium", label: "中画质（2K）", shortLabel: "中 · 2K" },
+    { value: "low", label: "低画质（1K）", shortLabel: "低 · 1K" },
 ] as const;
 
 const videoQualityOptions = [
@@ -100,6 +116,24 @@ export function CreativeGenerationPreferences({
     showCount = true,
     tabless = false,
     videoReferenceContent,
+    imageQualityProfile = "default",
+    ratioOptions,
+    imageQualityOptions: configuredImageQualityOptions,
+    videoQualityOptions: configuredVideoQualityOptions,
+    videoDurationOptions: configuredVideoDurationOptions,
+    allowCustomSize = true,
+    allowCustomVideoQuality = true,
+    videoDurationRange,
+    capabilityNotice,
+    panelHeader,
+    panelFooter,
+    iconOnly = false,
+    showTriggerChevron = true,
+    ratioGridClassName,
+    ratioTileLayout = false,
+    showPreferenceFields = true,
+    emptyPreferenceState,
+    showCapabilityIcons = true,
     onOpenChange,
     onCapabilityChange,
     onChange,
@@ -120,53 +154,87 @@ export function CreativeGenerationPreferences({
     showCount?: boolean;
     tabless?: boolean;
     videoReferenceContent?: ReactNode;
+    imageQualityProfile?: ImageQualityProfile;
+    ratioOptions?: readonly GenerationRatioOption[];
+    imageQualityOptions?: readonly GenerationQualityOption[];
+    videoQualityOptions?: readonly GenerationQualityOption[];
+    videoDurationOptions?: readonly GenerationDurationOption[];
+    allowCustomSize?: boolean;
+    allowCustomVideoQuality?: boolean;
+    videoDurationRange?: { min: number; max: number };
+    capabilityNotice?: string;
+    panelHeader?: ReactNode;
+    panelFooter?: ReactNode;
+    iconOnly?: boolean;
+    showTriggerChevron?: boolean;
+    ratioGridClassName?: string;
+    ratioTileLayout?: boolean;
+    showPreferenceFields?: boolean;
+    emptyPreferenceState?: ReactNode;
+    showCapabilityIcons?: boolean;
     onOpenChange?: (open: boolean) => void;
     onCapabilityChange?: (capability: MediaCapability) => void;
     onChange: (patch: CreativeGenerationPreferencePatch) => void;
 }) {
     const [open, setOpen] = useState(false);
     const [panelMaxHeight, setPanelMaxHeight] = useState<number>();
+    const [adaptivePlacement, setAdaptivePlacement] = useState(placement);
     const triggerRef = useRef<HTMLButtonElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
     const availableCapabilities = capabilities.length ? capabilities : [capability];
     const activeCapability = availableCapabilities.includes(capability) ? capability : availableCapabilities[0];
     const summary = triggerLabel || generationPreferenceSummary(activeCapability, preferences);
-    const maximumPanelHeight = compact ? 440 : 520;
+    const maximumPanelHeight = compact ? 620 : 520;
 
-    const measurePanelHeight = useCallback(() => {
+    const measurePanelLayout = useCallback(() => {
         const trigger = triggerRef.current;
         if (!trigger) return;
-        const visualViewport = window.visualViewport;
-        const viewportTop = visualViewport?.offsetTop || 0;
-        const viewportBottom = viewportTop + (visualViewport?.height || window.innerHeight);
-        setPanelMaxHeight(creativeComposerPopoverPanelMaxHeight(placement, trigger.getBoundingClientRect(), { top: viewportTop, bottom: viewportBottom }, maximumPanelHeight));
+        const desiredHeight = Math.min(maximumPanelHeight, panelRef.current?.scrollHeight || maximumPanelHeight);
+        const layout = resolveCreativeComposerPopoverViewportLayout(placement, trigger.getBoundingClientRect(), readVisualViewportBounds(), desiredHeight, maximumPanelHeight);
+        setAdaptivePlacement((current) => (current === layout.placement ? current : layout.placement));
+        setPanelMaxHeight((current) => (current === layout.maxHeight ? current : layout.maxHeight));
     }, [maximumPanelHeight, placement]);
+
+    useLayoutEffect(() => {
+        if (open) measurePanelLayout();
+    }, [measurePanelLayout, open]);
 
     useEffect(() => {
         if (!open) return;
         const visualViewport = window.visualViewport;
-        window.addEventListener("resize", measurePanelHeight);
-        visualViewport?.addEventListener("resize", measurePanelHeight);
+        const observer = new ResizeObserver(measurePanelLayout);
+        if (triggerRef.current) observer.observe(triggerRef.current);
+        if (panelRef.current) observer.observe(panelRef.current);
+        window.addEventListener("resize", measurePanelLayout);
+        window.addEventListener("scroll", measurePanelLayout, true);
+        visualViewport?.addEventListener("resize", measurePanelLayout);
+        visualViewport?.addEventListener("scroll", measurePanelLayout);
         return () => {
-            window.removeEventListener("resize", measurePanelHeight);
-            visualViewport?.removeEventListener("resize", measurePanelHeight);
+            observer.disconnect();
+            window.removeEventListener("resize", measurePanelLayout);
+            window.removeEventListener("scroll", measurePanelLayout, true);
+            visualViewport?.removeEventListener("resize", measurePanelLayout);
+            visualViewport?.removeEventListener("scroll", measurePanelLayout);
         };
-    }, [measurePanelHeight, open]);
+    }, [measurePanelLayout, open]);
 
     return (
         <Popover
             trigger="click"
-            placement={placement}
+            placement={adaptivePlacement}
             autoAdjustOverflow={autoAdjustOverflow ?? creativeComposerPopoverOverflow(placement)}
             arrow={false}
             open={open}
-            onOpenChange={(nextOpen) => {
-                if (nextOpen) measurePanelHeight();
+            onOpenChange={(nextOpen: boolean) => {
+                if (nextOpen) measurePanelLayout();
                 setOpen(nextOpen);
                 onOpenChange?.(nextOpen);
             }}
+            classNames={{ container: "border border-[#d9e4ee] dark:border-[#4d6478]" }}
             styles={{ container: { padding: compact ? 6 : 8, borderRadius: compact ? 14 : 16 } }}
             content={
                 <div
+                    ref={panelRef}
                     data-canvas-no-drag
                     data-creative-generation-preferences
                     className={cn("hide-scrollbar min-w-0 max-w-[calc(100vw-32px)] overflow-x-hidden overflow-y-auto overscroll-contain", compact ? "w-[316px]" : "w-[360px]", panelClassName)}
@@ -177,6 +245,7 @@ export function CreativeGenerationPreferences({
                     onWheel={(event) => event.stopPropagation()}
                     onContextMenu={(event) => event.stopPropagation()}
                 >
+                    {panelHeader}
                     {availableCapabilities.length > 1 ? (
                         <div
                             className={cn(
@@ -192,19 +261,44 @@ export function CreativeGenerationPreferences({
                                         "inline-flex items-center justify-center gap-1.5 rounded-[7px] text-[11px] font-medium transition",
                                         compact ? "h-7" : "h-8",
                                         activeCapability === item
-                                            ? "bg-white text-[#20242a] shadow-sm dark:bg-[#343b44] dark:text-white"
+                                            ? "octaflow-selection-surface"
                                             : "text-[#7b8591] hover:bg-white/60 hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:bg-[#30363e] dark:hover:text-white",
                                     )}
                                     onClick={() => onCapabilityChange?.(item)}
                                     aria-pressed={activeCapability === item}
                                 >
-                                    <CreativeModeIcon mode={item} />
+                                    {showCapabilityIcons ? <CreativeModeIcon mode={item} /> : null}
                                     {mediaCapabilityLabel(item)}
                                 </button>
                             ))}
                         </div>
                     ) : null}
-                    <PreferencePanel capability={activeCapability} preferences={preferences} fixedSizeLabel={fixedSizeLabel} compact={compact} showCount={showCount} tabless={tabless} videoReferenceContent={videoReferenceContent} onChange={onChange} />
+                    {capabilityNotice ? <p className="mb-1.5 rounded-md bg-[#f2f8fb] px-2 py-1 text-[10px] leading-4 text-[#527086] dark:bg-[#20313b] dark:text-[#a8c8dc]">{capabilityNotice}</p> : null}
+                    {showPreferenceFields ? (
+                        <PreferencePanel
+                            capability={activeCapability}
+                            preferences={preferences}
+                            fixedSizeLabel={fixedSizeLabel}
+                            compact={compact}
+                            showCount={showCount}
+                            tabless={tabless}
+                            videoReferenceContent={videoReferenceContent}
+                            imageQualityProfile={imageQualityProfile}
+                            ratioOptions={ratioOptions}
+                            imageQualityOptions={configuredImageQualityOptions}
+                            videoQualityOptions={configuredVideoQualityOptions}
+                            videoDurationOptions={configuredVideoDurationOptions}
+                            allowCustomSize={allowCustomSize}
+                            allowCustomVideoQuality={allowCustomVideoQuality}
+                            videoDurationRange={videoDurationRange}
+                            ratioGridClassName={ratioGridClassName}
+                            ratioTileLayout={ratioTileLayout}
+                            onChange={onChange}
+                        />
+                    ) : (
+                        emptyPreferenceState || <p className="px-2 py-4 text-center text-xs text-[#7b8591] dark:text-[#98a2ae]">先选定模型后设置生成参数。</p>
+                    )}
+                    {panelFooter}
                 </div>
             }
         >
@@ -217,8 +311,12 @@ export function CreativeGenerationPreferences({
                 aria-haspopup="menu"
                 aria-expanded={open}
             >
-                <span className={cn("max-w-[132px] truncate text-xs font-medium sm:max-w-[176px]", triggerLabelClassName)}>{summary}</span>
-                <ChevronDown className="size-3.5 shrink-0" />
+                {iconOnly ? null : (
+                    <>
+                        <span className={cn("max-w-[132px] truncate text-xs font-medium sm:max-w-[176px]", triggerLabelClassName)}>{summary}</span>
+                        {showTriggerChevron ? <ChevronDown className="size-3.5 shrink-0" /> : null}
+                    </>
+                )}
             </Button>
         </Popover>
     );
@@ -232,6 +330,16 @@ function PreferencePanel({
     showCount,
     tabless = false,
     videoReferenceContent,
+    imageQualityProfile,
+    ratioOptions,
+    imageQualityOptions: configuredImageQualityOptions,
+    videoQualityOptions: configuredVideoQualityOptions,
+    videoDurationOptions: configuredVideoDurationOptions,
+    allowCustomSize,
+    allowCustomVideoQuality,
+    videoDurationRange,
+    ratioGridClassName,
+    ratioTileLayout,
     onChange,
 }: {
     capability: MediaCapability;
@@ -241,9 +349,22 @@ function PreferencePanel({
     showCount: boolean;
     tabless?: boolean;
     videoReferenceContent?: ReactNode;
+    imageQualityProfile: ImageQualityProfile;
+    ratioOptions?: readonly GenerationRatioOption[];
+    imageQualityOptions?: readonly GenerationQualityOption[];
+    videoQualityOptions?: readonly GenerationQualityOption[];
+    videoDurationOptions?: readonly GenerationDurationOption[];
+    allowCustomSize: boolean;
+    allowCustomVideoQuality: boolean;
+    videoDurationRange?: { min: number; max: number };
+    ratioGridClassName?: string;
+    ratioTileLayout: boolean;
     onChange: (patch: CreativeGenerationPreferencePatch) => void;
 }) {
-    const ratios = capability === "image" ? imageRatios : videoRatios;
+    const ratios = ratioOptions || (capability === "image" ? (imageQualityProfile === "geminiai" ? geminiAiImageRatios : imageRatios) : videoRatios);
+    const qualityOptions = configuredImageQualityOptions || (capability === "image" && imageQualityProfile === "geminiai" ? geminiAiImageQualityOptions : imageQualityOptions);
+    const effectiveVideoQualityOptions = configuredVideoQualityOptions || videoQualityOptions;
+    const effectiveVideoDurationOptions = configuredVideoDurationOptions || videoDurationOptions;
     const selectedSize = capability === "image" ? preferences.image?.size || "auto" : preferences.video?.size || "auto";
     const selectedQuality = capability === "image" ? preferences.image?.quality || "auto" : preferences.video?.quality || "auto";
     const selectedCount = capability === "image" ? preferences.image?.count || 1 : preferences.video?.count || 1;
@@ -284,19 +405,20 @@ function PreferencePanel({
                 <div className="grid min-w-0 gap-1.5">
                     <div className="flex items-center justify-between gap-3">
                         <p className="text-[11px] font-medium text-[#7b8591] dark:text-[#98a2ae]">比例</p>
-                        <span className="text-[10px] text-[#a0a8b2] dark:text-[#707b88]">{selectedSize === "auto" ? "智能" : formatSizeLabel(selectedSize)}</span>
+                        <span className="text-[10px] text-[#a0a8b2] dark:text-[#707b88]">{selectedSize === "auto" ? (capability === "image" && imageQualityProfile === "geminiai" ? "Auto" : "智能") : formatSizeLabel(selectedSize)}</span>
                     </div>
-                    <div className="grid min-w-0 grid-cols-4 gap-1">
+                    <div className={cn("grid min-w-0 gap-1", ratioGridClassName || (capability === "image" && imageQualityProfile === "geminiai" ? "grid-cols-3" : "grid-cols-4"))}>
                         {ratios.map((ratio) => (
                             <button
                                 key={ratio.value}
                                 type="button"
                                 className={cn(
-                                    "inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1 text-[11px] transition",
-                                    compact ? "h-8" : "h-9",
+                                    "inline-flex min-w-0 items-center justify-center rounded-lg px-1 text-[11px] transition",
+                                    ratioTileLayout ? "h-[52px] flex-col gap-1 border" : "gap-1 border border-transparent",
+                                    !ratioTileLayout && (compact ? "h-8" : "h-9"),
                                     selectedSize === ratio.value
-                                        ? "bg-[#eaf1f5] font-medium text-[#315d78] dark:bg-[#2a3b46] dark:text-[#a8c8dc]"
-                                        : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
+                                        ? "octaflow-selection-surface font-semibold"
+                                        : "border-transparent bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                                 )}
                                 onClick={() => onChange({ size: ratio.value })}
                                 aria-label={`选择${capability === "image" ? "图片" : "视频"}比例 ${ratio.label}`}
@@ -305,26 +427,30 @@ function PreferencePanel({
                                 <span className="grid h-4 w-5 shrink-0 place-items-center">
                                     {ratio.value === "auto" ? <Sparkles className="size-3.5" /> : <span className="rounded-[2px] border-[1.5px] border-current" style={{ width: ratio.width * 0.64, height: ratio.height * 0.64 }} />}
                                 </span>
-                                <span>{ratio.label}</span>
+                                <span className="max-w-full text-center leading-3">{ratio.label}</span>
                             </button>
                         ))}
                     </div>
-                    <button
-                        type="button"
-                        className={cn(
-                            "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-dashed px-2 text-[11px] transition",
-                            customEditorOpen || parseCustomDimensions(selectedSize)
-                                ? "border-[#9bbdce] bg-[#f2f8fb] font-medium text-[#315d78] dark:border-[#557f96] dark:bg-[#20333d] dark:text-[#a8c8dc]"
-                                : "border-[#d8dde2] text-[#687481] hover:border-[#b8c3cc] hover:bg-[#f7f8f9] hover:text-[#20242a] dark:border-[#414953] dark:text-[#a6afb9] dark:hover:bg-[#24282e] dark:hover:text-white",
-                        )}
-                        onClick={() => setCustomEditorOpen(true)}
-                        aria-label={`打开${capability === "image" ? "图片" : "视频"}自定义像素尺寸`}
-                        aria-pressed={customEditorOpen || Boolean(parseCustomDimensions(selectedSize))}
-                    >
-                        <Maximize2 className="size-3.5" />
-                        自定义像素尺寸
-                    </button>
-                    {customEditorOpen ? <CustomMediaSizeEditor capability={capability} size={selectedSize} onChange={onChange} /> : null}
+                    {allowCustomSize ? (
+                        <>
+                            <button
+                                type="button"
+                                className={cn(
+                                    "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-dashed px-2 text-[11px] transition",
+                                    customEditorOpen || parseCustomDimensions(selectedSize)
+                                        ? "octaflow-selection-surface font-medium"
+                                        : "border-[#d8dde2] text-[#687481] hover:border-[#b8c3cc] hover:bg-[#f7f8f9] hover:text-[#20242a] dark:border-[#414953] dark:text-[#a6afb9] dark:hover:bg-[#24282e] dark:hover:text-white",
+                                )}
+                                onClick={() => setCustomEditorOpen(true)}
+                                aria-label={`打开${capability === "image" ? "图片" : "视频"}自定义像素尺寸`}
+                                aria-pressed={customEditorOpen || Boolean(parseCustomDimensions(selectedSize))}
+                            >
+                                <Maximize2 className="size-3.5" />
+                                自定义像素尺寸
+                            </button>
+                            {customEditorOpen ? <CustomMediaSizeEditor capability={capability} size={selectedSize} onChange={onChange} /> : null}
+                        </>
+                    ) : null}
                 </div>
             )}
         </div>
@@ -333,14 +459,23 @@ function PreferencePanel({
     const outputSection = (
         <div className="grid gap-2.5">
             {capability === "video" ? (
-                <VideoQualityField value={selectedQuality} options={videoQualityOptions} onChange={(quality) => onChange({ quality })} />
+                <VideoQualityField value={selectedQuality} options={effectiveVideoQualityOptions} allowCustom={allowCustomVideoQuality} onChange={(quality) => onChange({ quality })} />
             ) : (
-                <CompactOptionGroup label="画质" ariaLabel="选择图片画质" value={selectedQuality} options={imageQualityOptions} onChange={(quality) => onChange({ quality })} />
+                <CompactOptionGroup label="画质" ariaLabel="选择图片画质" value={selectedQuality} options={qualityOptions} onChange={(quality) => onChange({ quality })} />
             )}
             {showCount ? <GenerationCountGroup key={capability} capability={capability} value={selectedCount} onChange={(count) => onChange({ count })} /> : null}
             {capability === "video" ? (
                 <>
-                    <SuggestedPositiveIntegerField label="时长" ariaLabel="输入视频时长" value={preferences.video?.seconds || 5} suffix="秒" options={videoDurationOptions} onChange={(seconds) => onChange({ seconds })} />
+                    <SuggestedPositiveIntegerField
+                        label="时长"
+                        ariaLabel="输入视频时长"
+                        value={preferences.video?.seconds || 5}
+                        suffix="秒"
+                        options={effectiveVideoDurationOptions}
+                        min={videoDurationRange?.min}
+                        max={videoDurationRange?.max}
+                        onChange={(seconds) => onChange({ seconds })}
+                    />
                     <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-[#e3e8ec] bg-[#fafbfc] p-2 dark:border-[#343b44] dark:bg-[#1f242a]">
                         <SwitchPreference label="生成声音" checked={preferences.video?.generateAudio ?? true} onChange={(generateAudio) => onChange({ generateAudio })} />
                         <SwitchPreference label="添加水印" checked={preferences.video?.watermark ?? false} onChange={(watermark) => onChange({ watermark })} />
@@ -368,7 +503,7 @@ function PreferencePanel({
                     aria-selected={section === "canvas"}
                     className={cn(
                         compact ? "h-7 rounded-[7px] text-[11px] font-medium transition" : "h-8 rounded-lg text-[11px] font-medium transition",
-                        section === "canvas" ? "bg-white text-[#20242a] shadow-sm dark:bg-[#343b44] dark:text-white" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
+                        section === "canvas" ? "octaflow-selection-surface" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
                     )}
                     onClick={() => setSection("canvas")}
                 >
@@ -380,7 +515,7 @@ function PreferencePanel({
                     aria-selected={section === "output"}
                     className={cn(
                         compact ? "h-7 rounded-[7px] text-[11px] font-medium transition" : "h-8 rounded-lg text-[11px] font-medium transition",
-                        section === "output" ? "bg-white text-[#20242a] shadow-sm dark:bg-[#343b44] dark:text-white" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
+                        section === "output" ? "octaflow-selection-surface" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
                     )}
                     onClick={() => setSection("output")}
                 >
@@ -465,7 +600,7 @@ function GenerationCountGroup({ capability, value, onChange }: { capability: Ext
                         className={cn(
                             "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
                             value === option.value
-                                ? "bg-[#eaf1f5] font-medium text-[#315d78] dark:bg-[#2a3b46] dark:text-[#a8c8dc]"
+                                ? "octaflow-selection-surface font-semibold"
                                 : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                         )}
                         onClick={() => {
@@ -484,7 +619,7 @@ function GenerationCountGroup({ capability, value, onChange }: { capability: Ext
                     className={cn(
                         "relative h-8 min-w-0 rounded-lg text-[11px] transition",
                         customSelected
-                            ? "bg-[#eaf1f5] font-medium text-[#315d78] dark:bg-[#2a3b46] dark:text-[#a8c8dc]"
+                            ? "octaflow-selection-surface font-medium"
                             : "bg-[#f5f6f7] text-[#687481] focus-within:bg-[#f5f8fa] focus-within:text-[#315d78] focus-within:ring-1 focus-within:ring-[#9bbdce] focus-within:ring-inset hover:bg-[#edf0f2] dark:bg-[#24282e] dark:text-[#a6afb9] dark:focus-within:bg-[#222d34] dark:focus-within:text-[#a8c8dc] dark:focus-within:ring-[#557f96] dark:hover:bg-[#30363e]",
                     )}
                     title="输入正整数，修改后立即生效"
@@ -553,7 +688,7 @@ function CompactOptionGroup<T extends string | number>({
                         className={cn(
                             "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
                             value === option.value
-                                ? "bg-[#eaf1f5] font-medium text-[#315d78] dark:bg-[#2a3b46] dark:text-[#a8c8dc]"
+                                ? "octaflow-selection-surface font-semibold"
                                 : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                         )}
                         onClick={() => onChange(option.value)}

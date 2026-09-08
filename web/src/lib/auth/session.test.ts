@@ -114,6 +114,45 @@ describe("serializePublicSettings", () => {
         expect(result.site).not.toHaveProperty("homeShowcaseItems");
         expect(result.site.socials).toEqual(settings.site.socials);
     });
+
+    it("publishes provider-managed channels as ready without exposing a server credential", () => {
+        const settings: AuthSettings = structuredClone(DEFAULT_SETTINGS);
+        settings.systemChannels = [
+            {
+                id: "geminiai",
+                name: "GeminiAI",
+                baseUrl: "http://127.0.0.1:18080/v1",
+                apiKey: "",
+                apiFormat: "openai",
+                models: ["gemini-3.1-flash-image-preview"],
+                enabled: true,
+                advancedConfig: {
+                    protocol: "geminiai",
+                    authMode: "provider-managed",
+                    textModel: "",
+                    imageModel: "gemini-3.1-flash-image-preview",
+                    videoModel: "",
+                    createPath: "/images/generations",
+                    editPath: "/images/edits",
+                    queryPath: "",
+                    requestTemplate: '{"model":"{{model}}"}',
+                    resultField: "data[0].b64_json",
+                    statusField: "",
+                    durationRange: "",
+                    referenceRule: "",
+                    supportsReferenceImage: true,
+                    supportsReferenceVideo: false,
+                    supportsReferenceAudio: false,
+                },
+            },
+        ];
+
+        const result = serializePublicSettings(settings);
+
+        expect(result.systemChannels[0]).toMatchObject({ id: "geminiai", apiKey: "system", hasApiKey: true });
+        expect(JSON.stringify(result)).not.toContain("127.0.0.1:18080");
+        expect(JSON.stringify(result)).not.toContain("provider-managed");
+    });
 });
 
 describe("session cookie security", () => {

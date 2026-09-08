@@ -31,7 +31,9 @@ export function resolveAgentPlanningProfile(run: PlanningRun): AgentPlanningProf
     const prompt = run.prompt.trim();
     const canvasFacts = run.surface === "canvas" ? canvasSnapshotPlanningFacts(run.snapshot) : undefined;
     const selectedTypes = new Set(canvasFacts?.selectedNodeTypes || []);
-    const capabilities = run.generationPreferences?.mode ? new Set(["text", run.generationPreferences.mode]) : inferCapabilities(run.surface, prompt, selectedTypes);
+    const capabilities = run.generationPreferences?.mode
+        ? new Set(["text", run.generationPreferences.mode, ...(run.generationPreferences.mode === "video" ? ["image"] : [])])
+        : inferCapabilities(run.surface, prompt, selectedTypes);
     const complex = run.surface === "drama" || COMPLEX_RE.test(prompt) || (run.surface === "canvas" && (canvasFacts?.nodeCount || 0) > 10);
     const multi = complex || MULTI_RE.test(prompt);
     const complexity = complex ? "complex" : multi ? "multi" : "ordinary";

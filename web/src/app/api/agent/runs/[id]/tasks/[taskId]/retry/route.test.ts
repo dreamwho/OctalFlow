@@ -95,6 +95,7 @@ describe("Agent child task retry concurrency", () => {
 
         expect(response.status).toBe(200);
         expect(mocks.updateAgentRunById).toHaveBeenCalledTimes(1);
+        expect(mocks.updateAgentRunById.mock.calls[0]?.[1]).toMatchObject({ status: "running", error: undefined, failurePhase: undefined });
         const tasks = mocks.updateAgentRunById.mock.calls[0]?.[1]?.tasks;
         expect(tasks).toEqual([
             expect.objectContaining({ id: "task-one", status: "ready", error: undefined }),

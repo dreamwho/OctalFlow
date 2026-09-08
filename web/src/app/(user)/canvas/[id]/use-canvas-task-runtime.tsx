@@ -4,7 +4,7 @@ import { useCallback } from "react";
 
 import { createFreshGenerationTaskContext } from "@/lib/generation-request-context";
 import { storeGeneratedAudio, waitForAudioGenerationTask } from "@/services/api/audio";
-import { createImageGenerationTask, waitForImageGenerationTask, type ImageGenerationTask } from "@/services/api/image";
+import { createImageGenerationTask, waitForImageGenerationTask, type ImageGenerationTask, type ImageUpscaleResolution } from "@/services/api/image";
 import { waitForTextGenerationTask, type TextGenerationTask } from "@/services/api/text";
 import { storeGeneratedVideo, waitForVideoGenerationTask, cancelServerVideoGenerationTask } from "@/services/api/video";
 import type { AiConfig } from "@/stores/use-config-store";
@@ -17,6 +17,9 @@ import { audioMetadata, imageMetadata, uploadGeneratedCanvasImage, videoMetadata
 import { applyCanvasImageTaskResults } from "./canvas-image-task-results";
 
 import type { CanvasPageState } from "./use-canvas-page-state";
+
+const DREAMINA_UPSCALE_MODEL = "dreamina-image-upscale";
+const DREAMINA_UPSCALE_CHANNEL = "dreamina-cli";
 
 export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
     const {
@@ -239,27 +242,30 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
         const result = await waitForImageGenerationTask(generationConfig, task, { signal: controller.signal });
         const outputs = result.results?.length ? result.results : [result];
         const uploaded = await Promise.all(outputs.map((image) => uploadGeneratedCanvasImage(image.dataUrl, image.remoteUrl, image.serverUrl)));
+        const isUpscale = task.kind === "upscale";
         setNodes((prev) =>
             applyCanvasImageTaskResults(prev, {
                 nodeId,
                 taskId: task.id,
                 images: uploaded.map((image) => ({ width: image.width, height: image.height, metadata: imageMetadata(image) })),
                 prompt,
-                model: generationConfig.model,
-                size: generationConfig.size,
+                model: task.model || generationConfig.model,
+                ...(isUpscale ? {} : { size: generationConfig.size }),
             }),
         );
     }, []);
 
     const startAndCompleteImageTask = useCallback(
-        async (nodeId: string, generationConfig: AiConfig, prompt: string, references: ReferenceImage[] = [], mask: ReferenceImage | undefined, controller: AbortController, publicPrompt = prompt) => {
+        async (nodeId: string, generationConfig: AiConfig, prompt: string, references: ReferenceImage[] = [], mask: ReferenceImage | undefined, controller: AbortController, publicPrompt = prompt, provider?: { runningHubAppId?: string }) => {
             const task = await createImageGenerationTask(generationConfig, prompt, references, mask, {
                 signal: controller.signal,
                 logSource: "canvas",
                 logTitle: publicPrompt.slice(0, 36) || "画布生图",
+                publicPrompt,
                 conversationId: currentProject?.creativeConversationId,
                 surface: "canvas",
                 projectId,
+                runningHubAppId: provider?.runningHubAppId,
                 ...createFreshGenerationTaskContext("canvas-image", [projectId, nodeId]),
             });
             setNodes((prev) =>
@@ -276,9 +282,44 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
                         : node,
                 ),
             );
-            await completeImageTask(nodeId, generationConfig, task, controller, prompt);
+            await completeImageTask(nodeId, generationConfig, task, controller, publicPrompt);
         },
-        [completeImageTask],
+        [completeImageTask, currentProject?.creativeConversationId, projectId],
+    );
+
+    const startAndCompleteUpscaleTask = useCallback(
+        async (nodeId: string, generationConfig: AiConfig, source: ReferenceImage, sourceNodeId: string, resolutionType: ImageUpscaleResolution, controller: AbortController) => {
+            const task = await createImageGenerationTask(generationConfig, "", [source], undefined, {
+                signal: controller.signal,
+                kind: "upscale",
+                model: DREAMINA_UPSCALE_MODEL,
+                channelId: DREAMINA_UPSCALE_CHANNEL,
+                upscale: { resolutionType, sourceNodeId },
+                logSource: "canvas",
+                logTitle: "即梦 CLI 图片超清",
+                conversationId: currentProject?.creativeConversationId,
+                surface: "canvas",
+                projectId,
+                ...createFreshGenerationTaskContext("canvas-image-upscale", [projectId, nodeId, sourceNodeId]),
+            });
+            setNodes((prev) =>
+                prev.map((node) =>
+                    node.id === nodeId
+                        ? {
+                              ...node,
+                              metadata: {
+                                  ...node.metadata,
+                                  imageTask: { id: task.id, kind: task.kind, model: task.model || DREAMINA_UPSCALE_MODEL },
+                                  upscaleTask: { id: task.id, provider: "dreamina-cli", model: task.model || DREAMINA_UPSCALE_MODEL, resolutionType, sourceNodeId },
+                                  errorDetails: undefined,
+                              },
+                          }
+                        : node,
+                ),
+            );
+            await completeImageTask(nodeId, generationConfig, task, controller);
+        },
+        [completeImageTask, currentProject?.creativeConversationId, projectId],
     );
 
     const completeTextTask = useCallback(async (nodeId: string, generationConfig: AiConfig, task: TextGenerationTask, controller: AbortController, prompt?: string) => {
@@ -332,6 +373,7 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
         completeVideoTask,
         completeImageTask,
         startAndCompleteImageTask,
+        startAndCompleteUpscaleTask,
         completeTextTask,
         completeAudioTask,
     };

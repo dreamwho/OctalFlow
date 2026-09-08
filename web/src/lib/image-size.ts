@@ -29,20 +29,24 @@ export function closestImageAspectRatio(width: number | undefined, height: numbe
     const ratio = width / height;
     const candidates = [
         ["1:1", 1],
-        ["3:2", 3 / 2],
-        ["2:3", 2 / 3],
-        ["4:3", 4 / 3],
-        ["3:4", 3 / 4],
+        ["21:9", 21 / 9],
         ["16:9", 16 / 9],
+        ["3:2", 3 / 2],
+        ["4:3", 4 / 3],
+        ["5:4", 5 / 4],
+        ["4:5", 4 / 5],
+        ["3:4", 3 / 4],
+        ["2:3", 2 / 3],
         ["9:16", 9 / 16],
     ] as const;
     return candidates.reduce((best, candidate) => (Math.abs(Math.log(ratio / candidate[1])) < Math.abs(Math.log(ratio / best[1])) ? candidate : best))[0];
 }
 
-export function resolveImageRequestSize(input: { prompt: string; configuredSize?: unknown; referenceWidth?: number; referenceHeight?: number; plannedSize?: unknown; defaultSize?: unknown }) {
+export function resolveImageRequestSize(input: { prompt: string; selectedSize?: unknown; configuredSize?: unknown; referenceWidth?: number; referenceHeight?: number; plannedSize?: unknown; defaultSize?: unknown }) {
     const requested = extractImageSizeFromPrompt(input.prompt);
+    const selected = normalizeImageSizeValue(input.selectedSize);
     const configured = normalizeImageSizeValue(input.configuredSize);
     const custom = parseImageDimensions(configured) ? configured : "";
     const reference = closestImageAspectRatio(input.referenceWidth, input.referenceHeight);
-    return requested || custom || reference || normalizeImageSizeValue(input.plannedSize) || configured || normalizeImageSizeValue(input.defaultSize) || "auto";
+    return requested || (selected === "auto" ? "" : selected) || custom || reference || normalizeImageSizeValue(input.plannedSize) || configured || normalizeImageSizeValue(input.defaultSize) || "auto";
 }

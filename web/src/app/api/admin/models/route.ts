@@ -29,6 +29,8 @@ import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 import { isSafeOutboundUrl } from "@/lib/server/security";
 import { channelProtocolDefinition, protocolAuthHeaders, protocolModelConfig, resolveChannelAuthMode } from "@/lib/channel-protocol-registry";
 import type { SystemChannelAdvancedConfig, SystemChannelProtocol } from "@/lib/auth/store";
+import { GEMINIAI_PROTOCOL } from "@/lib/server/geminiai-provider";
+import { listGeminiAiCatalog } from "@/lib/server/geminiai-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +73,32 @@ export async function POST(request: Request) {
     if (!hasAdminPermission(currentUser, "upstream.manage")) return NextResponse.json({ error: "需要管理员权限" }, { status: 403 });
 
     const [body, settings] = await Promise.all([readJsonBody<ModelsPayload>(request), getAuthSettings()]);
+    const selectedChannelId = typeof body.channelId === "string" ? body.channelId.trim() : "";
+    const selectedChannel = selectedChannelId ? settings.systemChannels.find((channel) => channel.id === selectedChannelId) : undefined;
+    const selectedProtocol = typeof body.protocol === "string" ? body.protocol : selectedChannel?.advancedConfig?.protocol;
+    if (selectedProtocol === GEMINIAI_PROTOCOL) {
+        try {
+            const catalog = await listGeminiAiCatalog();
+            const modelConfigs = Object.fromEntries(
+                catalog.flatMap((model) => {
+                    const capability = model.capabilities.includes("image") ? ("image" as const) : ("text" as const);
+                    const config = protocolModelConfig(GEMINIAI_PROTOCOL, capability, model.id);
+                    return config ? [[normalizeModelId(model.id), config] as const] : [];
+                }),
+            );
+            return NextResponse.json({
+                models: catalog.map((model) => model.id),
+                modelCapabilities: Object.fromEntries(catalog.map((model) => [normalizeModelId(model.id), model.capabilities.includes("image") ? "image" : "text"])),
+                modelConfigs,
+                discoveredCount: catalog.length,
+                totalCount: catalog.length,
+                catalogSupported: true,
+                provider: GEMINIAI_PROTOCOL,
+            });
+        } catch (error) {
+            return NextResponse.json({ error: "拉取 GeminiAI 模型目录失败，请检查服务器端 GeminiAI 服务配置" }, { status: 502 });
+        }
+    }
     const { baseUrl, apiKey, apiFormat, savedChannel } = resolveAdminChannelCredentials(settings, body);
     if (!baseUrl) return NextResponse.json({ error: "请先填写 Base URL 和 API Key" }, { status: 400 });
 

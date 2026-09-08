@@ -1,10 +1,11 @@
 "use client";
 
 import { App, Button, Drawer, Image, Input, InputNumber, Modal, Popconfirm, Popover, Space, Tooltip } from "antd";
-import { Check, FolderInput, ImagePlus, Sparkles, Trash2, Upload } from "lucide-react";
+import { Check, FolderInput, ImagePlus, Trash2, Upload } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useEffect, useRef, useState } from "react";
 
+import { GenerationActionButton } from "@/components/generation-action-button";
 import { compileDramaAssetReferencePrompt } from "@/lib/drama-prompt-compiler";
 import type { DramaAssetProfile, DramaAssetReference, DramaCharacter, DramaNamedAsset, DramaProject, DramaVoiceProfile } from "@/lib/drama-project-contract";
 import { imagePreviewUrl } from "@/lib/media-image-url";
@@ -295,9 +296,9 @@ export function DramaAssetEditorDrawer({ project, kind, assetId, open, onClose }
                                     上传候选
                                 </Button>
                                 {kind !== "clues" ? (
-                                    <Button icon={<Sparkles className="size-3.5" />} loading={generating} onClick={() => void generateReference()}>
+                                    <GenerationActionButton appearance="soft" loading={generating} onClick={() => void generateReference()}>
                                         生成候选
-                                    </Button>
+                                    </GenerationActionButton>
                                 ) : null}
                             </div>
                         ) : null}

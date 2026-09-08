@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { BriefcaseBusiness, ChevronRight, CircleCheck, CircleX, Clock3, Film, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, ShieldCheck, Sparkles, Star, Video } from "lucide-react";
 
@@ -10,6 +10,8 @@ import { imagePreviewUrl } from "@/lib/media-image-url";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasPanoramaViewer } from "./canvas-panorama-viewer";
+import { useCanvasGenerationProgress } from "./use-canvas-generation-progress";
+import { CanvasImageComparison } from "./canvas-image-comparison";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 
@@ -17,6 +19,7 @@ export type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-ri
 export type NodeContentRendererProps = {
     node: CanvasNodeData;
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+    scale?: number;
     isEditingContent: boolean;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     isBatchRoot: boolean;
@@ -33,13 +36,14 @@ export type NodeContentRendererProps = {
     onToggleBatch?: () => void;
     onSetBatchPrimary?: () => void;
     onImageDimensions?: (nodeId: string, naturalWidth: number, naturalHeight: number) => void;
+    upscaleSourceUrl?: string;
 };
 
 export function NodeContent(props: NodeContentRendererProps) {
     if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
     if (props.isBatchRoot) return <ImageNodeContent {...props} />;
-    if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} />;
-    if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
+    if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} scale={props.scale} node={props.node} />;
+    if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} scale={props.scale} onRetry={props.onRetry} />;
     if (props.node.metadata?.status === "needs_review") return <ReviewContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
     if (props.node.metadata?.status === "cancelled") return <CancelledContent theme={props.theme} />;
 
@@ -75,8 +79,14 @@ export function VideoRemakeNodeContent({ node, theme }: NodeContentRendererProps
                 {node.metadata?.content}
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]" style={{ color: theme.node.placeholder }}>
-                <span className="inline-flex items-center gap-1.5"><Film className="size-3.5" />最长 15 秒/片段</span>
-                <span className="inline-flex items-center justify-end gap-1.5"><ShieldCheck className="size-3.5" />原创资产替换</span>
+                <span className="inline-flex items-center gap-1.5">
+                    <Film className="size-3.5" />
+                    最长 15 秒/片段
+                </span>
+                <span className="inline-flex items-center justify-end gap-1.5">
+                    <ShieldCheck className="size-3.5" />
+                    原创资产替换
+                </span>
             </div>
         </div>
     );
@@ -186,25 +196,48 @@ export function BrandKitNodeContent({ node, theme }: NodeContentRendererProps) {
     );
 }
 
-export function LoadingContent({ theme }: Pick<NodeContentRendererProps, "theme">) {
+export function LoadingContent({ theme, scale = 1, node }: Pick<NodeContentRendererProps, "theme" | "scale"> & { node?: NodeContentRendererProps["node"] }) {
+    const [videoFailed, setVideoFailed] = useState(false);
+    const { status, detail, title } = useCanvasGenerationProgress(node);
+    const statusFontSize = Math.min(34, Math.max(12, 12 / Math.max(scale, 0.35)));
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.activeStroke }}>
-            <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
-            <span className="text-[10px] tracking-[0.2em]">生成中</span>
+        <div data-canvas-node-loading role="status" aria-live="polite" aria-label={status} className="relative isolate h-full w-full overflow-hidden" style={{ background: theme.node.fill, color: theme.node.text }}>
+            <img src="/generation-smoke.webp" alt="" aria-hidden="true" className={`canvas-node-generation-smoke canvas-node-generation-smoke-fallback${videoFailed ? " is-visible" : ""}`} />
+            {!videoFailed ? <video src="/animations/generation-loading-animation.mp4" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" className="canvas-node-generation-video" onError={() => setVideoFailed(true)} /> : null}
+            <span
+                className="pointer-events-none absolute left-4 right-4 top-4 z-10 text-left font-medium"
+                style={{ fontSize: statusFontSize, lineHeight: 1.2, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                title={title}
+            >
+                {status}
+                {node?.metadata?.generationStage ? ` · ${node.metadata.generationStage}` : ""}
+                {detail ? <span className="mt-1 block text-[0.85em] font-normal opacity-80">{detail}</span> : null}
+            </span>
         </div>
     );
 }
 
-export function ErrorContent({ node, theme, onRetry }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry">) {
+export function ErrorContent({ node, theme, onRetry, scale = 1 }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry" | "scale">) {
+    const readableScale = Math.max(0.25, scale);
+    const fontSize = Math.max(12, 12 / readableScale);
+    const lineHeight = Math.max(20, 20 / readableScale);
+    const controlHeight = Math.max(32, 32 / readableScale);
+    const errorDetails = node.metadata?.errorDetails || "生成失败";
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden px-5 py-4 text-center">
-            <div className="max-h-[60%] max-w-[260px] overflow-y-auto text-xs leading-5" style={{ color: theme.node.danger }}>
-                {node.metadata?.errorDetails || "生成失败"}
+            <div
+                data-canvas-node-error-details
+                role="alert"
+                title={errorDetails}
+                className="thin-scrollbar max-h-[60%] w-[86%] overflow-y-auto rounded-lg border px-3 py-2 text-left font-medium whitespace-pre-wrap break-words"
+                style={{ color: theme.node.danger, background: theme.node.dangerSurface, borderColor: theme.node.dangerBorder, fontSize, lineHeight }}
+            >
+                {errorDetails}
             </div>
             <button
                 type="button"
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ background: theme.node.dangerSurface, borderColor: theme.node.dangerBorder, color: theme.node.danger }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border font-medium transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ background: theme.node.dangerSurface, borderColor: theme.node.dangerBorder, color: theme.node.danger, height: controlHeight, paddingInline: Math.max(12, 12 / readableScale), fontSize }}
                 onClick={(event) => {
                     event.stopPropagation();
                     onRetry?.(node);
@@ -319,7 +352,7 @@ export function ImageNodeContent(props: NodeContentRendererProps) {
     if (!props.node.metadata?.content && props.isBatchRoot) {
         const content =
             props.node.metadata?.status === "loading" ? (
-                <LoadingContent theme={props.theme} />
+                <LoadingContent theme={props.theme} scale={props.scale} node={props.node} />
             ) : props.node.metadata?.status === "error" ? (
                 <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />
             ) : props.node.metadata?.status === "cancelled" ? (
@@ -346,6 +379,7 @@ export function ImageNodeContent(props: NodeContentRendererProps) {
             onToggleBatch={props.onToggleBatch}
             onSetBatchPrimary={props.onSetBatchPrimary}
             onImageDimensions={props.onImageDimensions}
+            upscaleSourceUrl={props.upscaleSourceUrl}
         />
     );
 }
@@ -423,6 +457,7 @@ export function ImageContent({
     onToggleBatch,
     onSetBatchPrimary,
     onImageDimensions,
+    upscaleSourceUrl,
 }: {
     node: CanvasNodeData;
     isBatchRoot: boolean;
@@ -433,6 +468,7 @@ export function ImageContent({
     onToggleBatch?: () => void;
     onSetBatchPrimary?: () => void;
     onImageDimensions?: (nodeId: string, naturalWidth: number, naturalHeight: number) => void;
+    upscaleSourceUrl?: string;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const isBatchChild = Boolean(node.metadata?.batchRootId);
@@ -452,15 +488,19 @@ export function ImageContent({
     return (
         <BatchFrame batchCount={isBatchRoot ? batchCount : 0} batchExpanded={batchExpanded} batchOpening={batchOpening} batchRecovering={batchRecovering} onToggleBatch={onToggleBatch}>
             <div className="h-full w-full overflow-hidden rounded-[inherit]">
-                <img
-                    ref={imageRef}
-                    src={imagePreviewUrl(node.metadata!.content!, 1920)}
-                    alt={node.title}
-                    draggable={false}
-                    onLoad={(event) => reportDimensions(event.currentTarget)}
-                    onDragStart={(event) => event.preventDefault()}
-                    className={`pointer-events-none block h-full w-full select-none ${node.metadata?.freeResize ? "object-fill" : "object-contain"}`}
-                />
+                {upscaleSourceUrl ? (
+                    <CanvasImageComparison sourceUrl={upscaleSourceUrl} resultUrl={node.metadata!.content!} alt={node.title || "高清图片"} fill />
+                ) : (
+                    <img
+                        ref={imageRef}
+                        src={imagePreviewUrl(node.metadata!.content!, 1920)}
+                        alt={node.title}
+                        draggable={false}
+                        onLoad={(event) => reportDimensions(event.currentTarget)}
+                        onDragStart={(event) => event.preventDefault()}
+                        className={`pointer-events-none block h-full w-full select-none ${node.metadata?.freeResize ? "object-fill" : "object-contain"}`}
+                    />
+                )}
             </div>
             {isBatchRoot ? (
                 <button
@@ -565,17 +605,7 @@ export function BatchFrame({
         </div>
     );
 }
-export function ResizeHandle({
-    corner,
-    onPointerDown,
-    onPointerMove,
-    onPointerUp,
-}: {
-    corner: ResizeCorner;
-    onPointerDown: (event: React.PointerEvent<HTMLDivElement>, corner: ResizeCorner) => void;
-    onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
-    onPointerUp: () => void;
-}) {
+export function ResizeHandle({ corner, onPointerDown, onPointerUp }: { corner: ResizeCorner; onPointerDown: (event: React.PointerEvent<HTMLDivElement>, corner: ResizeCorner) => void; onPointerUp: () => void }) {
     const positionClass = {
         "top-left": "-left-[14px] -top-[14px] cursor-nwse-resize",
         "top-right": "-right-[14px] -top-[14px] cursor-nesw-resize",
@@ -589,9 +619,10 @@ export function ResizeHandle({
             className={`absolute z-50 size-7 ${positionClass}`}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => onPointerDown(event, corner)}
-            onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onLostPointerCapture={onPointerUp}
+            style={{ touchAction: "none", userSelect: "none" }}
         />
     );
 }

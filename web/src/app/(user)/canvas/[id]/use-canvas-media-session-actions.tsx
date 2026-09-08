@@ -8,7 +8,7 @@ import { readImageMeta } from "@/lib/image-utils";
 import { uploadMediaFile } from "@/services/file-storage";
 import { NODE_DEFAULT_SIZE } from "../constants";
 import { CanvasNodeType, type CanvasAssistantSession, type Position } from "../types";
-import { fitNodeSize } from "../utils/canvas-node-size";
+import { fitCanvasImageNodeSize, fitNodeSize } from "../utils/canvas-node-size";
 import { PANORAMA_IMAGE_SIZE, isPanoramaRatio } from "../utils/canvas-panorama";
 
 import { CANVAS_DROP_NODE_OFFSET, VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH } from "./canvas-page-elements";
@@ -119,7 +119,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
                         }
                     }
                     const image = await uploadCanvasImage(file);
-                    const imageSize = isPanorama ? NODE_DEFAULT_SIZE[CanvasNodeType.Panorama] : fitNodeSize(image.width, image.height);
+                    const imageSize = isPanorama ? NODE_DEFAULT_SIZE[CanvasNodeType.Panorama] : fitCanvasImageNodeSize(image.width, image.height);
                     setNodes((prev) =>
                         prev.map((node) =>
                             node.id === target.nodeId
@@ -173,14 +173,16 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
         [createAudioFileNode, createImageFileNode, createVideoFileNode, message, screenToCanvas, setSelectedConnectionId, setSelectedNodeIds],
     );
 
-    const pasteAssistantImage = useCallback(
+    const pasteAssistantMedia = useCallback(
         async (file: File) => {
             const position = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
-            const nodeId = await createImageFileNode(file, position, true);
-            message.success("图片已添加到本轮引用");
+            const isVideo = file.type.startsWith("video/");
+            if (!isVideo && !file.type.startsWith("image/")) throw new Error("请选择图片或视频素材");
+            const nodeId = await (isVideo ? createVideoFileNode(file, position, true, false) : createImageFileNode(file, position, true, false));
+            message.success(`${isVideo ? "视频" : "图片"}已添加到本轮引用`);
             return nodeId;
         },
-        [createImageFileNode, message, screenToCanvas, size.height, size.width],
+        [createImageFileNode, createVideoFileNode, message, screenToCanvas, size.height, size.width],
     );
 
     const handleAssistantSessionsChange = useCallback((sessions: CanvasAssistantSession[], activeId: string | null) => {
@@ -208,7 +210,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
         handleUploadRequest,
         handleImageInputChange,
         handleDrop,
-        pasteAssistantImage,
+        pasteAssistantMedia,
         handleAssistantSessionsChange,
         startTitleEditing,
         finishTitleEditing,

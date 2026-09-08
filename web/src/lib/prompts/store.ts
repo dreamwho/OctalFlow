@@ -150,6 +150,20 @@ export async function createPrompt(scope: PromptScope, input: PromptInput, owner
     });
 }
 
+export async function getPrompt(id: string, options: { scope: PromptScope; ownerUserId?: string }) {
+    if (isPostgresDatabaseEnabled()) {
+        await ensurePostgresSchema();
+        const item = await createPostgresRepositories().prompts.getById(id);
+        if (!item || !matchesPromptScope(item, options)) throw new AuthInputError("提示词不存在");
+        return toStoredPrompt(item);
+    }
+
+    const db = await readPromptDb({ includeSeeds: false });
+    const item = db.prompts.find((prompt) => prompt.id === id && matchesPromptScope(prompt, options));
+    if (!item) throw new AuthInputError("提示词不存在");
+    return item;
+}
+
 export async function updatePrompt(id: string, input: PromptInput, options: { scope: PromptScope; ownerUserId?: string }) {
     if (isPostgresDatabaseEnabled()) {
         await ensurePostgresSchema();

@@ -34,14 +34,11 @@ export function resolveGenerationWorkerOrigin({ environment = process.env, fallb
     return url.origin;
 }
 
-export function superviseGenerationRuntime({ app, workerScript, environment }) {
-    const definitions = [
-        { name: "web", command: app.command, args: app.args, cwd: app.cwd },
-        { name: "generation-worker", command: process.execPath, args: [workerScript], cwd: app.cwd },
-    ];
+export function superviseGenerationRuntime({ app, workerScript, environment, services = [] }) {
+    const definitions = [...services, { name: "web", command: app.command, args: app.args, cwd: app.cwd }, { name: "generation-worker", command: process.execPath, args: [workerScript], cwd: app.cwd }];
     const children = definitions.map((definition) => ({
         ...definition,
-        process: spawn(definition.command, definition.args, { cwd: definition.cwd, env: environment, stdio: "inherit" }),
+        process: spawn(definition.command, definition.args, { cwd: definition.cwd, env: definition.environment || environment, stdio: "inherit" }),
     }));
 
     return new Promise((resolve) => {

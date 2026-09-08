@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { directAgentPlan, normalizeTasks, planToOps, readFunctionCallResult, taskResultOps } from "./agent-run-execution";
+import { assertAgentSkillModelConstraints, directAgentPlan, normalizeTasks, planToOps, readFunctionCallResult, taskResultOps } from "./agent-run-execution";
 import { agentSurfaceImageSize, normalizeCanvasPlanForSelection, resolveAgentTaskRatio } from "./agent-run-task-input";
 
 describe("directAgentPlan", () => {
@@ -51,8 +51,8 @@ describe("directAgentPlan", () => {
         expect(task.prompt).toContain("本轮上传人物");
         expect(task.prompt).not.toContain("上一轮泰迪犬");
         const ops = planToOps(plan as never, [task], "run", snapshot);
-        expect(ops).toContainEqual({ type: "connect_nodes", fromNodeId: "current-person", toNodeId: "task-run-0" });
-        expect(ops).not.toContainEqual({ type: "connect_nodes", fromNodeId: "old-dog", toNodeId: "task-run-0" });
+        expect(ops).toContainEqual({ type: "connect_nodes", fromNodeId: "current-person", toNodeId: "output-run-0-0" });
+        expect(ops).not.toContainEqual({ type: "connect_nodes", fromNodeId: "old-dog", toNodeId: "output-run-0-0" });
         expect(ops).toContainEqual(
             expect.objectContaining({
                 type: "add_node",
@@ -61,7 +61,7 @@ describe("directAgentPlan", () => {
                 metadata: expect.objectContaining({ agentRunId: "run", agentTaskId: "edit", agentTaskType: "image", size: "9:16", status: "loading" }),
             }),
         );
-        expect(ops).toContainEqual({ type: "connect_nodes", fromNodeId: "task-run-0", toNodeId: "output-run-0-0" });
+        expect(ops).not.toContainEqual({ type: "connect_nodes", fromNodeId: "task-run-0", toNodeId: "output-run-0-0" });
     });
 
     it("多分镜任务把选中图片作为身份参考而不是共同的原位编辑目标", () => {
@@ -99,7 +99,7 @@ describe("directAgentPlan", () => {
         expect(tasks[1].prompt).not.toContain("清晨、午后与夜晚三种光线同时出现");
         expect(tasks[1].prompt).toContain("不得复制参考图的背景、动作或构图");
         const ops = planToOps(plan as never, tasks, "run", snapshot);
-        expect(ops).toContainEqual({ type: "connect_nodes", fromNodeId: "person-reference", toNodeId: "task-run-1" });
+        expect(ops).toContainEqual({ type: "connect_nodes", fromNodeId: "person-reference", toNodeId: "output-run-1-0" });
     });
 
     it("媒体执行任务只携带当前产物约束，不把完整 Skill 流程塞进单张图片", () => {
@@ -238,6 +238,75 @@ describe("directAgentPlan", () => {
         expect(audio).toMatchObject({ type: "audio", voice: "nova", format: "wav", speed: 1.25 });
     });
 
+    it("Skill 的视频分段保留导演规划时长，不把总时长覆盖给每个分镜", () => {
+        const plan = {
+            intent: "generation",
+            objective: "15 秒 Vlog",
+            reply: "开始生成",
+            decisions: [],
+            foundation: { complexity: "complex", brief: { objective: "15 秒 Vlog" }, direction: { summary: "真人纪实" } },
+            deliverables: [
+                { id: "video-one", title: "开场镜头", type: "video", model: "video-pro", prompt: "晨间开场", count: 1, seconds: 7, dependencies: [] },
+                { id: "video-two", title: "收束镜头", type: "video", model: "video-pro", prompt: "傍晚收束", count: 1, seconds: 8, dependencies: ["video-one"] },
+            ],
+        };
+
+        const tasks = normalizeTasks(plan as never, [{ id: "vlog", name: "Vlog 导演", instructions: "按镜头拆解", defaultConfig: {} }] as never, generationSettings() as never, undefined, "生成 15 秒 Vlog", "chat", [], undefined, {
+            mode: "video",
+            video: { seconds: 15 },
+        });
+
+        expect(tasks.map((task) => task.seconds)).toEqual([7, 8]);
+    });
+
+    it("Skill 分镜图会按已解析视频模型能力合并为连续视频任务", () => {
+        const plan = {
+            intent: "generation",
+            objective: "15 秒 Vlog",
+            reply: "开始生成",
+            decisions: [],
+            foundation: { complexity: "complex", brief: { objective: "15 秒 Vlog" }, direction: { summary: "真人纪实" } },
+            deliverables: [
+                ...[1, 2, 3, 4].map((index) => ({ id: `image-${index}`, title: `分镜图 ${index}`, type: "image" as const, model: "image-pro", prompt: `分镜 ${index}`, count: 1, dependencies: [] })),
+                ...[4, 4, 4, 3].map((seconds, index) => ({ id: `video-${index + 1}`, title: `分镜视频 ${index + 1}`, type: "video" as const, model: "video-pro", prompt: `连续镜头 ${index + 1}`, count: 1, seconds, dependencies: [`image-${index + 1}`] })),
+            ],
+        };
+        const settings = generationSettings();
+        const video = settings.logicalModels.find((model) => model.id === "video-pro")!;
+        (video.bindings[0] as { capabilityProfile?: unknown }).capabilityProfile = { durationRange: "4-15 秒", minDurationSeconds: 4, maxDurationSeconds: 15, maxReferenceImages: 9 };
+
+        const tasks = normalizeTasks(plan as never, [{ id: "vlog", name: "Vlog 导演", instructions: "按镜头拆解", defaultConfig: {} }] as never, settings as never, undefined, "生成 15 秒 Vlog", "chat", [], undefined, {
+            mode: "video",
+            video: { seconds: 15 },
+        });
+
+        expect(tasks.filter((task) => task.type === "video")).toEqual([expect.objectContaining({ seconds: 15, dependencies: ["image-1", "image-2", "image-3", "image-4"], stageDependencies: ["image-1", "image-2", "image-3", "image-4"] })]);
+    });
+
+    it("Skill 分镜图使用所选模型的离散时长能力，而不是提交未支持秒数", () => {
+        const plan = {
+            intent: "generation",
+            objective: "15 秒 Vlog",
+            reply: "开始生成",
+            decisions: [],
+            foundation: { complexity: "complex", brief: { objective: "15 秒 Vlog" }, direction: { summary: "真人纪实" } },
+            deliverables: [
+                ...[1, 2, 3, 4].map((index) => ({ id: `image-${index}`, title: `分镜图 ${index}`, type: "image" as const, model: "image-pro", prompt: `分镜 ${index}`, count: 1, dependencies: [] })),
+                ...[4, 4, 4, 3].map((seconds, index) => ({ id: `video-${index + 1}`, title: `分镜视频 ${index + 1}`, type: "video" as const, model: "video-pro", prompt: `连续镜头 ${index + 1}`, count: 1, seconds, dependencies: [`image-${index + 1}`] })),
+            ],
+        };
+        const settings = generationSettings();
+        const video = settings.logicalModels.find((model) => model.id === "video-pro")!;
+        (video.bindings[0] as { capabilityProfile?: unknown }).capabilityProfile = { durationRange: "4、6、8 秒", maxReferenceImages: 9 };
+
+        const tasks = normalizeTasks(plan as never, [{ id: "vlog", name: "Vlog 导演", instructions: "按镜头拆解", defaultConfig: {} }] as never, settings as never, undefined, "生成 15 秒 Vlog", "chat", [], undefined, {
+            mode: "video",
+            video: { seconds: 15 },
+        });
+
+        expect(tasks.filter((task) => task.type === "video").map((task) => task.seconds)).toEqual([8, 8]);
+    });
+
     it("即使 Planner 漏掉资产也会把用户明确选择的首尾帧注入视频任务", () => {
         const plan = {
             intent: "generation",
@@ -366,6 +435,23 @@ describe("directAgentPlan", () => {
                 { type: "select_nodes", ids: ["prompt-one"] },
             ],
         });
+    });
+});
+
+describe("MiniMax H3 Skill execution constraint", () => {
+    const skills = [
+        {
+            id: "minimax-h3-handdrawn-live-action",
+            name: "手绘实拍融合",
+            modelConstraints: { capability: "video", requiredModelFamilies: ["minimax-h3"] },
+        },
+    ] as never;
+
+    it("only accepts the resolved H3 protocols, never a model-name substring", () => {
+        expect(() => assertAgentSkillModelConstraints(skills, ["minimax-h3-handdrawn-live-action"], "video", "seedance")).toThrow("只能使用 MiniMax H3");
+        expect(() => assertAgentSkillModelConstraints(skills, ["minimax-h3-handdrawn-live-action"], "video", "minimax-h3")).not.toThrow();
+        expect(() => assertAgentSkillModelConstraints(skills, ["minimax-h3-handdrawn-live-action"], "video", "minimax-h3-official")).not.toThrow();
+        expect(() => assertAgentSkillModelConstraints(skills, ["minimax-h3-handdrawn-live-action"], "image", "seedance")).not.toThrow();
     });
 });
 

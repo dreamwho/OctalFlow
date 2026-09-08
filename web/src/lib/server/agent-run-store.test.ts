@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentRun } from "./agent-run-store";
 
-const mocks = vi.hoisted(() => ({ createCreativeRunBundle: vi.fn(), getCreativeAssetsByIds: vi.fn(), mutateCreativeRun: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createCreativeRunBundle: vi.fn(), getCreativeAssetsByIds: vi.fn(), getStoredGenerationTask: vi.fn(), mutateCreativeRun: vi.fn(), queryStoredGenerationTasks: vi.fn(), scheduleGenerationTask: vi.fn() }));
 
 vi.mock("./creative-runtime-store", () => ({
     createCreativeRunBundle: mocks.createCreativeRunBundle,
@@ -10,9 +10,10 @@ vi.mock("./creative-runtime-store", () => ({
     getCreativeRunByClientRequestId: vi.fn(),
     mutateCreativeRun: mocks.mutateCreativeRun,
 }));
-vi.mock("./generation-task-store", () => ({ getStoredGenerationTask: vi.fn(), listStoredGenerationTasks: vi.fn() }));
+vi.mock("./generation-task-store", () => ({ getStoredGenerationTask: mocks.getStoredGenerationTask, queryStoredGenerationTasks: mocks.queryStoredGenerationTasks }));
+vi.mock("./generation-task-scheduler", () => ({ scheduleGenerationTask: mocks.scheduleGenerationTask }));
 
-import { createAgentRun, setAgentRunStatus, updateAgentRunById, updateAgentRunTaskById } from "./agent-run-store";
+import { createAgentRun, getAgentRun, setAgentRunStatus, updateAgentRunById, updateAgentRunTaskById } from "./agent-run-store";
 
 describe("createAgentRun video frames", () => {
     beforeEach(() => {
@@ -158,7 +159,6 @@ describe("setAgentRunStatus", () => {
                 type: "run.cancelled",
                 data: {
                     ops: [
-                        { type: "update_node", id: "task-run-0", metadata: { agentTaskStatus: "cancelled", agentTaskError: "任务已取消" } },
                         { type: "update_node", id: "output-run-0-0", metadata: { status: "cancelled", agentTaskStatus: "cancelled", errorDetails: "任务已取消" } },
                     ],
                 },
@@ -223,15 +223,59 @@ describe("setAgentRunStatus", () => {
                 outputNodeIds: ["output-run-0-1"],
                 ops: [
                     { type: "update_node", id: "output-run-0-1", metadata: { status: "error", errorDetails: "上游拒绝" } },
-                    { type: "update_node", id: "task-run-0", metadata: { agentTaskStatus: "running", agentTaskCompletedCount: 1, agentTaskFailedCount: 1 } },
                 ],
             },
         });
     });
 
+    it("round-trips a persisted safe-create retry schedule on the parent task", async () => {
+        let current = canvasRun();
+        mocks.mutateCreativeRun.mockImplementation(async (_id, _ttl, mutate) => {
+            const mutation = mutate(current);
+            if (!mutation) return null;
+            current = JSON.parse(JSON.stringify(mutation.run)) as AgentRun;
+            return current;
+        });
+
+        await updateAgentRunTaskById("run", "image", { status: "ready", retryAfterAt: 123_456, error: "生成服务暂时繁忙" }, "task.retry.scheduled", "execution");
+
+        expect(current.tasks[0]).toMatchObject({ status: "ready", retryAfterAt: 123_456, error: "生成服务暂时繁忙" });
+    });
+
+    it("does not complete a Run while a persisted child provider task is still pending", async () => {
+        const run = canvasRun();
+        mocks.mutateCreativeRun.mockImplementation(async (_id, _ttl, mutate) => {
+            const mutation = mutate(run);
+            return mutation ? mutation.run : null;
+        });
+
+        const updated = await updateAgentRunById("run", { status: "completed", executionId: undefined }, { type: "run.completed", data: { reply: "不应提前完成" } }, ["running"], "execution");
+
+        expect(updated).toBeNull();
+    });
+
+    it("revives an old terminal parent with a pending child into resumable running state", async () => {
+        const stored = { ...canvasRun(), status: "completed" as const, executionId: undefined, tasks: [{ ...canvasRun().tasks[0], status: "completed" as const }, canvasRun().tasks[1]] };
+        mocks.getStoredGenerationTask.mockResolvedValue(stored);
+        mocks.mutateCreativeRun.mockImplementation(async (_id, _ttl, mutate) => {
+            const mutation = mutate(stored);
+            return mutation ? mutation.run : null;
+        });
+
+        const recovered = await getAgentRun("run");
+
+        expect(recovered).toMatchObject({
+            status: "running",
+            executionId: undefined,
+            tasks: expect.arrayContaining([expect.objectContaining({ id: "image", status: "running", childTasks: [expect.objectContaining({ id: "child", status: "pending" })] })]),
+        });
+        expect(mocks.scheduleGenerationTask).toHaveBeenCalledWith("agent", "run", expect.objectContaining({ executionPhase: "polling", lastUpstreamStatus: "recovered_pending_children" }));
+    });
+
     it("keeps internal foundation and review out of the completed conversation message", async () => {
         const run = {
             ...canvasRun(),
+            tasks: [{ ...canvasRun().tasks[0], status: "completed" as const, childTasks: [{ id: "child", status: "completed" as const, attempt: 1 }] }, canvasRun().tasks[1]],
             foundation: { complexity: "simple" as const, brief: { objective: "内部简报" }, direction: { summary: "内部方向" } },
             review: { mode: "text" as const, status: "passed" as const, summary: "内部复盘", issues: [], retryTaskIds: [] },
         };
@@ -255,7 +299,7 @@ describe("setAgentRunStatus", () => {
     });
 
     it("persists background review without rewriting the completed assistant message", async () => {
-        const run = { ...canvasRun(), status: "completed" as const };
+        const run = { ...canvasRun(), status: "completed" as const, tasks: [{ ...canvasRun().tasks[0], status: "completed" as const, childTasks: [{ id: "child", status: "completed" as const, attempt: 1 }] }, canvasRun().tasks[1]] };
         let mutation: Record<string, unknown> | null = null;
         mocks.mutateCreativeRun.mockImplementation(async (_id, _ttl, mutate) => {
             mutation = mutate(run);

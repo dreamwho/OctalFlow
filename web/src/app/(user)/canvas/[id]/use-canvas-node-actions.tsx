@@ -5,6 +5,7 @@ import { useCallback } from "react";
 
 import { CanvasNodeType, type CanvasNodeData, type Position } from "../types";
 import { resizeImageNodeToNaturalRatio } from "../utils/canvas-node-size";
+import { CANVAS_NODE_GAP, resolveCanvasNodePlacement } from "../utils/canvas-surface-geometry";
 
 import { createCanvasNode } from "./canvas-page-elements";
 import { getGenerationCount } from "./canvas-page-utils";
@@ -47,7 +48,7 @@ export function useCanvasNodeActions({ state, core }: { state: CanvasPageState; 
 
     const createNode = useCallback(
         (type: CanvasNodeType, position?: Position) => {
-            const targetPosition = position || getCanvasCenter();
+            const canvasCenter = getCanvasCenter();
             const configMetadata =
                 type === CanvasNodeType.Config
                     ? {
@@ -56,7 +57,11 @@ export function useCanvasNodeActions({ state, core }: { state: CanvasPageState; 
                           count: getGenerationCount(effectiveConfig.canvasImageCount || effectiveConfig.count),
                       }
                     : undefined;
-            const newNode = createCanvasNode(type, targetPosition, configMetadata);
+            const draftNode = createCanvasNode(type, position || canvasCenter, configMetadata);
+            const newNode = {
+                ...draftNode,
+                position: resolveCanvasNodePlacement(nodesRef.current, draftNode, canvasCenter, position),
+            };
 
             setNodes((prev) => [...prev, newNode]);
             setSelectedNodeIds(new Set([newNode.id]));
@@ -162,7 +167,7 @@ export function useCanvasNodeActions({ state, core }: { state: CanvasPageState; 
             ...source,
             id,
             title: `${source.title} Copy`,
-            position: { x: source.position.x + 36, y: source.position.y + 36 },
+            position: { x: source.position.x + CANVAS_NODE_GAP, y: source.position.y + CANVAS_NODE_GAP },
         };
 
         setNodes((prev) => [...prev, next]);

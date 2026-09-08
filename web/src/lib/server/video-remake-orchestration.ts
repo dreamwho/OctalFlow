@@ -3,6 +3,7 @@ import type { CreativeAsset } from "@/lib/creative-runtime-contract";
 import type { AgentRunTask } from "@/lib/server/agent-run-store";
 import type { AgentPlan } from "@/lib/server/agent-run-validation";
 import { isVideoRemakeSkillId, VIDEO_REMAKE_COMPOSE_TASK_ID, VIDEO_REMAKE_MAX_SEGMENT_SECONDS } from "@/lib/server/agent-skills/video-remake";
+import { isMinimaxH3StructuredPrompt } from "@/lib/server/minimax-h3-prompt-compiler";
 
 export type VideoRemakeBoundaryKind = "hard_cut" | "transition" | "action_end" | "beat" | "dialogue" | "continuous_action";
 export type VideoRemakeBoundary = { atSeconds: number; kind: VideoRemakeBoundaryKind };
@@ -181,7 +182,7 @@ function fallbackAssetTasks(requestPrompt: string): AgentPlan["deliverables"] {
 }
 
 function compileH3RefPrompt(prompt: string, index: number, seconds: number) {
-    if (/^subject_definitions:\s/m.test(prompt) && /\bdetailed_description:\s/m.test(prompt)) return prompt;
+    if (isMinimaxH3StructuredPrompt(prompt)) return prompt;
     return `subject_definitions:\n<Video 1> is the source video used only as a weak reference for cut timing, pacing, camera grammar, and transition structure.\n<Subject 1> is the newly generated replacement cast, environment, wardrobe, props, and brand-safe visual identity supplied by the dependency assets.\n\nsummary:\n[reference generation] The target is original segment ${index} of an OctalFlow remake. It follows <Video 1>'s general structural rhythm while depicting only <Subject 1> and newly created content.\n\nretention_analysis:\n<Video 1> (cut timing, pacing, and camera grammar): weak_reference - preserve only transferable structural relationships; do not preserve faces, voices, brands, watermarks, music, dialogue wording, or uniquely expressive imagery.\n<Subject 1> (throughout the segment): fully_preserved - maintain the replacement identity, wardrobe, props, spatial layout, lighting direction, and screen direction across the full ${seconds.toFixed(2)} seconds.\n\nDetailed director brief: ${prompt}\n\ndetailed_description:\n[Shot 1] Live-action, cinematic. Execute the director brief as a continuous ${seconds.toFixed(2)}-second audiovisual segment. Establish the replacement subject, environment, composition, action state, camera position, lens behavior, and lighting immediately. Use only motivated cuts or camera movement. Continue naturally from the previous segment when dependency media is present, and finish on an action, gaze, composition, screen direction, and sound state that can connect directly into the next segment.\n\noverall_soundscape: Use newly recorded or generated ambience and synchronized physical sounds that match the replacement scene. Do not copy the source video's voiceprint, dialogue signal, music, watermark audio, or branded sonic identity.\n\nnon_diegetic_music: Use an original instrumental bed only when required by the director brief; otherwise N/A.`;
 }
 

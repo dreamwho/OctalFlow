@@ -1,7 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getAuthSettings, isAuthInputError, refundUserPoints } from "@/lib/auth/store";
+import { consumeUserPoints, getAuthSettings, isAuthInputError, refundUserPoints } from "@/lib/auth/store";
 import { generationModelId, toSystemGenerationChannel } from "@/lib/server/generation-channel";
 import { finishGenerationAttempt, startGenerationAttempt, type GenerationAttempt } from "@/lib/server/generation-attempt";
 import { fetchInternalApi, resolveInternalOrigin } from "@/lib/server/internal-origin";
@@ -11,7 +11,7 @@ import { buildGlobalAiOpcVideoRequest, resolveGlobalAiOpcPreset } from "@/lib/gl
 import { createVideoTask, transitionVideoTask, updateVideoTask, type VideoTask } from "@/lib/server/video-task-store";
 import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
 import { effectiveGenerationConcurrencyLimit, getStoredGenerationTaskByRequest, linkStoredGenerationTask, withGenerationConcurrencyLimit, type GenerationTaskContext } from "@/lib/server/generation-task-store";
-import { normalizeVideoAspectRatio, resolveUpstreamVideoDuration, resolveVideoDuration, resolveVideoGenerationParameters, withVideoReferenceFidelity } from "@/lib/server/video-task-config";
+import { normalizeVideoAspectRatio, normalizeVideoQualityForCapability, resolveUpstreamVideoDuration, resolveVideoDuration, resolveVideoGenerationParameters, withVideoReferenceFidelity } from "@/lib/server/video-task-config";
 import { parseImageDimensions } from "@/lib/image-size";
 import { signReferenceAssetInputUrl } from "@/lib/server/reference-asset-access";
 import { assertCapabilityConstraints } from "@/lib/server/capability-constraints";
@@ -26,7 +26,7 @@ import { assertMinimaxH3VideoReferences, buildMinimaxH3VideoRequest } from "@/li
 import { assertMinimaxH3OfficialVideoReferences, buildMinimaxH3OfficialVideoRequest, minimaxH3OfficialResolution } from "@/lib/minimax-h3-official";
 import { assertOctalaicanvasRecommendedVideoReferences, buildOctalaicanvasRecommendedVideoRequest } from "@/lib/octalaicanvas-recommended-video";
 import { assertGeminiVideoReferences, buildGeminiVideoRequest, geminiVideoCreatePath, normalizeGeminiVideoDuration, parseGeminiVideoCreateResponse } from "@/lib/server/gemini-video-provider";
-import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
+import { systemAiBillingHeaders, systemAiIdempotencyKey } from "@/lib/server/system-ai-billing";
 import { maintenanceWorkerContextHeaders, requestRuntimeCredential } from "@/lib/server/maintenance-auth";
 import { resolvePublicRequestOrigin } from "@/lib/server/public-request-origin";
 import { writeVideoGenerationLog } from "@/lib/server/video-task-log";
@@ -34,9 +34,15 @@ import { buildOpenAiVideoFormData } from "./video-task-openai";
 import { buildMinimaxH3VideoFormData } from "./video-task-minimax-h3";
 import { normalizeVideoGenerationReferences, regularVideoReferences, videoFrameReferences, type VideoGenerationReference } from "@/lib/video-reference-contract";
 import { assertYumengVideoReferences, buildYumengVideoRequest } from "@/lib/yumeng-model-center";
+import { DreaminaCliProviderError } from "@/lib/server/dreamina-cli-provider";
+import { DreaminaCliServiceError, dreaminaCliOperationEnabled, isDreaminaCliConfig } from "@/lib/server/dreamina-cli-service";
+import { createDreaminaCliVideoUpstream, dreaminaCliVideoCommand, DreaminaCliVideoTaskError } from "@/lib/server/dreamina-cli-video-task";
+import { dreaminaCliModel } from "@/lib/server/dreamina-cli-catalog";
+import { compileMinimaxH3Prompt, createMinimaxH3ReferenceBindings, isMinimaxH3Protocol, rebindMinimaxH3ReferenceUrls } from "@/lib/server/minimax-h3-prompt-compiler";
 
 const CREATE_PATHS = ["/video/generations", "/videos/generations", "/videos/videos", "/videos"];
-type CreateVideoTaskBody = { config?: Record<string, unknown>; prompt?: string; references?: VideoGenerationReference[]; source?: string; context?: GenerationTaskContext };
+type CreateVideoReferenceInput = VideoGenerationReference & { assetId?: string; nodeId?: string; sourceTaskId?: string; alias?: string };
+type CreateVideoTaskBody = { config?: Record<string, unknown>; prompt?: string; references?: CreateVideoReferenceInput[]; source?: string; context?: GenerationTaskContext };
 
 export async function POST(request: Request) {
     const user = await getCurrentUser(request);
@@ -69,12 +75,13 @@ export async function POST(request: Request) {
         if (!channels.length || !prompt) return NextResponse.json({ error: "视频任务参数不完整或渠道不支持" }, { status: 400 });
         const publicOrigin = requestPublicOrigin(request);
         let references: VideoGenerationReference[];
+        let unsignedReferences: VideoGenerationReference[];
         try {
-            references = normalizeVideoGenerationReferences(body.references).map((reference) => ({ ...reference, url: signReferenceAssetInputUrl(reference.url, publicOrigin) }));
+            unsignedReferences = normalizeVideoGenerationReferences(body.references);
+            references = unsignedReferences.map((reference) => ({ ...reference, url: signReferenceAssetInputUrl(reference.url, publicOrigin) }));
         } catch (error) {
             return NextResponse.json({ error: error instanceof Error ? error.message : "视频参考素材不正确" }, { status: 400 });
         }
-        const providerPrompt = withVideoReferenceFidelity(prompt, references);
         const origin = resolveInternalOrigin(new URL(request.url).origin);
         const cookie = requestRuntimeCredential(request, user.id);
         const requestedParameters = resolveVideoGenerationParameters(body.config || {}, settings.generationDefaults);
@@ -86,15 +93,17 @@ export async function POST(request: Request) {
         for (let index = 0; index < channels.length; index += 1) {
             const channel = channels[index];
             const geminiVideo = isGeminiVideoChannel(channel);
+            let providerPrompt = withVideoReferenceFidelity(prompt, references);
             const parameters = {
                 ...requestedParameters,
                 videoSeconds: geminiVideo
                     ? normalizeGeminiVideoDuration(requestedParameters.videoSeconds)
                     : resolveUpstreamVideoDuration(requestedParameters.videoSeconds, settings.generationDefaults.videoSeconds, {
-                          durationRange: channel.advancedConfig?.durationRange,
+                          durationRange: channel.capabilityProfile?.durationRange || channel.advancedConfig?.durationRange,
                           minDurationSeconds: channel.capabilityProfile?.minDurationSeconds,
                           maxDurationSeconds: channel.capabilityProfile?.maxDurationSeconds,
                       }),
+                vquality: normalizeVideoQualityForCapability(requestedParameters.vquality, channel.capabilityProfile?.qualityOptions),
             };
             try {
                 assertCapabilityConstraints(channel.capabilityProfile, {
@@ -102,6 +111,7 @@ export async function POST(request: Request) {
                     referenceCount: references.filter((reference) => reference.type === "image").length,
                     durationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds,
                     aspectRatio: normalizeVideoAspectRatio(parameters.size),
+                    quality: parameters.vquality,
                 });
                 const globalPreset = globalAiOpcVideoPreset(channel.advancedConfig, channel.model);
                 if (geminiVideo) {
@@ -125,17 +135,29 @@ export async function POST(request: Request) {
                     if (channel.advancedConfig?.protocol === "minimax-h3-official") assertMinimaxH3OfficialVideoReferences(references);
                     assertReferenceUrls(channel.advancedConfig, references, Boolean(globalPreset), ["minimax-h3"]);
                 }
+                if (isMinimaxH3Protocol(channel.advancedConfig?.protocol)) {
+                    const bindings = rebindMinimaxH3ReferenceUrls(createMinimaxH3ReferenceBindings(unsignedReferences, body.references), references);
+                    providerPrompt = compileMinimaxH3Prompt({
+                        protocol: channel.advancedConfig?.protocol,
+                        prompt: providerPrompt,
+                        durationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds,
+                        references,
+                        referenceBindings: bindings,
+                    }).prompt;
+                }
             } catch (error) {
                 capabilityError = error;
                 continue;
             }
             const started = startGenerationAttempt(attempts, { channelId: channel.channelId, model: generationModelId(channel), capability: "video" });
             attempts = started.attempts;
+            const dreaminaCli = isDreaminaCliConfig(channel);
             const pendingUpstream = {
                 id: "",
-                provider: "generation" as const,
+                provider: dreaminaCli ? ("dreamina-cli" as const) : ("generation" as const),
                 model: channel.model,
-                pollPath: geminiVideo ? geminiVideoCreatePath(channel.model) : channel.advancedConfig?.createPath || CREATE_PATHS[0],
+                pollPath: dreaminaCli ? "query_result" : geminiVideo ? geminiVideoCreatePath(channel.model) : channel.advancedConfig?.createPath || CREATE_PATHS[0],
+                ...(dreaminaCli ? { queryPath: "query_result" } : {}),
             };
             if (!localTask) {
                 localTask = await createVideoTask({
@@ -171,7 +193,21 @@ export async function POST(request: Request) {
                 lastUpstreamStatus: "submitting",
             });
             try {
-                const upstream = await createUpstream(user.id, origin, cookie, channel, providerPrompt, parameters, references, settings.generationPointMultipliers, billingRequestId, publicOrigin);
+                const upstream = await createUpstream(
+                    user.id,
+                    origin,
+                    cookie,
+                    channel,
+                    providerPrompt,
+                    parameters,
+                    references,
+                    settings.generationPointMultipliers,
+                    billingRequestId,
+                    publicOrigin,
+                    user.role === "admin",
+                    localTask.id,
+                    started.attempt.attemptNo,
+                );
                 await updateVideoTask(localTask.id, { config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts });
                 const task = { ...localTask, config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts };
                 const submittedAt = Date.now();
@@ -191,6 +227,11 @@ export async function POST(request: Request) {
                 lastError = error;
                 attempts = finishGenerationAttempt(attempts, started.attempt.attemptNo, { status: "failed", error: toSafeGenerationErrorMessage(error, "视频任务创建失败") });
                 await updateVideoTask(localTask.id, { attempts });
+                if (error instanceof DeferredSubmissionFailure) {
+                    await transitionVideoTask(localTask, { status: "error", error: error.message, retryable: true });
+                    await scheduleGenerationTask("video", localTask.id, { executionPhase: "completed", nextPollAt: undefined, lastUpstreamStatus: "submission_deferred" });
+                    return NextResponse.json({ error: error.message, deferred: true }, { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } });
+                }
                 if (error instanceof SafeCandidateFailure && index < channels.length - 1) continue;
                 const message = toSafeGenerationErrorMessage(error, "视频任务创建失败");
                 if (!(error instanceof SafeCandidateFailure)) {
@@ -223,6 +264,9 @@ export async function createUpstream(
     multipliers: Awaited<ReturnType<typeof getAuthSettings>>["generationPointMultipliers"],
     billingRequestId: string,
     publicOrigin = "",
+    isAdmin = false,
+    taskId = "",
+    attemptNo?: number,
 ) {
     let lastError = "";
     const regularReferences = regularVideoReferences(references);
@@ -236,6 +280,9 @@ export async function createUpstream(
     const lastFrameUrl = lastFrame?.url || "";
     const dimensions = videoDimensions(raw.size, raw.vquality);
     const generateAudio = raw.videoGenerateAudio !== false && raw.videoGenerateAudio !== "false";
+    if (isDreaminaCliConfig(channel)) {
+        return createDreaminaCliVideo({ userId, origin, cookie, channel, prompt, raw, references, multipliers, billingRequestId, isAdmin, taskId, attemptNo });
+    }
     if (isGeminiVideoChannel(channel)) {
         return createGeminiVideoUpstream({ userId, origin, cookie, channel, prompt, raw, references, generateAudio, multipliers, billingRequestId });
     }
@@ -437,6 +484,81 @@ export async function createUpstream(
     throw new SafeCandidateFailure(lastError || "没有可用的视频创建接口");
 }
 
+async function createDreaminaCliVideo(input: {
+    userId: string;
+    origin: string;
+    cookie: string;
+    channel: NonNullable<ReturnType<typeof toSystemGenerationChannel>>;
+    prompt: string;
+    raw: Record<string, unknown>;
+    references: VideoGenerationReference[];
+    multipliers: Awaited<ReturnType<typeof getAuthSettings>>["generationPointMultipliers"];
+    billingRequestId: string;
+    isAdmin: boolean;
+    taskId?: string;
+    attemptNo?: number;
+}) {
+    const settings = await getAuthSettings();
+    const logicalModel = generationModelId(input.channel);
+    const units = videoUnits(input.raw, input.multipliers);
+    const pointsIdempotencyKey = systemAiIdempotencyKey("dreamina-video", input.userId, input.billingRequestId, input.channel.channelId || "", input.channel.model);
+    let points: Awaited<ReturnType<typeof consumeUserPoints>> | undefined;
+    const configuredModel = dreaminaCliModel(input.channel.model);
+    const command = dreaminaCliVideoCommand(input.references, {
+        explicitRatio: typeof input.raw.size === "string" && Boolean(input.raw.size.trim()) && input.raw.size.trim().toLowerCase() !== "auto",
+        supportsMultimodal: Boolean(configuredModel?.commands.includes("multimodal2video")),
+    });
+    if (command === "multiframe2video" && !dreaminaCliOperationEnabled(settings, "dreamina-multiframe-video")) {
+        throw new SafeCandidateFailure("即梦 CLI 智能多帧视频尚未在管理后台启用");
+    }
+    try {
+        const upstreamModel = dreaminaCliModel(input.channel.model)?.upstreamModel || "";
+        if (!input.isAdmin && hasConfiguredPlatformPrice(settings.modelPointCosts, [logicalModel, input.channel.model, upstreamModel])) {
+            points = await consumeUserPoints(input.userId, logicalModel, units, "video", pointsIdempotencyKey);
+        }
+    } catch (error) {
+        throw new SafeCandidateFailure(error instanceof Error ? error.message : "视频积分不足");
+    }
+    try {
+        const upstream = await createDreaminaCliVideoUpstream({
+            userId: input.userId,
+            origin: input.origin,
+            cookie: input.cookie,
+            channel: input.channel,
+            prompt: input.prompt,
+            raw: input.raw,
+            references: input.references,
+            taskId: input.taskId || input.billingRequestId,
+            attemptNo: input.attemptNo,
+        });
+        return {
+            ...upstream,
+            ...(points
+                ? {
+                      pointsCost: points.cost,
+                      pointsUnits: points.units,
+                      pointsRecordId: points.recordId,
+                  }
+                : {}),
+        };
+    } catch (error) {
+        if (points && dreaminaCliFailureBeforeSubmission(error)) await refundUserPoints(input.userId, points.model, points.cost, points.usageKind, points.units, undefined, points.recordId);
+        if (error instanceof DreaminaCliVideoTaskError) throw new SafeCandidateFailure(error.message);
+        if (error instanceof DreaminaCliServiceError && error.status === 409 && error.retryAfterAt) throw new DeferredSubmissionFailure(error.message, error.retryAfterAt);
+        if ((error instanceof DreaminaCliProviderError && error.submissionState === "not_started") || (error instanceof DreaminaCliServiceError && error.status === 409)) throw new SafeCandidateFailure(error.message);
+        throw error;
+    }
+}
+
+function hasConfiguredPlatformPrice(costs: Record<string, number>, candidates: string[]) {
+    const keys = Object.keys(costs || {}).map((item) => item.trim().toLowerCase());
+    return keys.includes("__default__") || candidates.some((candidate) => keys.includes(candidate.trim().toLowerCase()));
+}
+
+function dreaminaCliFailureBeforeSubmission(error: unknown) {
+    return error instanceof DreaminaCliVideoTaskError || (error instanceof DreaminaCliProviderError && error.submissionState === "not_started") || (error instanceof DreaminaCliServiceError && error.status === 409);
+}
+
 async function createGeminiVideoUpstream(input: {
     userId: string;
     origin: string;
@@ -598,3 +720,12 @@ const MEDIA_KEYS = VIDEO_PROVIDER_MEDIA_KEYS;
 const SAFE_CREATE_FAILURE_STATUSES = new Set([400, 401, 403, 404, 405, 413, 415, 422, 429]);
 
 class SafeCandidateFailure extends Error {}
+
+class DeferredSubmissionFailure extends Error {
+    readonly retryAfterSeconds: number;
+
+    constructor(message: string, retryAfterAt: number) {
+        super(message);
+        this.retryAfterSeconds = Math.max(1, Math.ceil((retryAfterAt - Date.now()) / 1_000));
+    }
+}

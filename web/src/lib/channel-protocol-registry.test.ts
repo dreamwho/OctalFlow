@@ -29,7 +29,25 @@ const channel = {
 describe("channel protocol registry", () => {
     it("exposes only active protocols and keeps SD2 separate from Stable Diffusion", () => {
         const protocols = channelProtocolOptions().map((item) => item.value);
-        expect(protocols).toEqual(["openai", "yumeng", "gemini", "seedance", "stable-diffusion", "volcengine-video", "sub2api", "newapi", "lingkeai", "minimax-h3", "minimax-h3-official", "custom", "compatible", "auto"]);
+        expect(protocols).toEqual([
+            "openai",
+            "yumeng",
+            "gemini",
+            "geminiai",
+            "gemini-tools",
+            "dreamina-cli",
+            "seedance",
+            "stable-diffusion",
+            "volcengine-video",
+            "sub2api",
+            "newapi",
+            "lingkeai",
+            "minimax-h3",
+            "minimax-h3-official",
+            "custom",
+            "compatible",
+            "auto",
+        ]);
         expect(protocols).not.toEqual(expect.arrayContaining(["octalaicanvas-recommended", "seedance-special", "globalaiopc"]));
         expect(channelProtocolDefinition("openai").modelCatalogPaths).toEqual(["/v1/models"]);
         expect(channelProtocolDefinition("sub2api").modelCatalogPaths).toEqual(["/v1/models"]);
@@ -38,6 +56,29 @@ describe("channel protocol registry", () => {
         expect(channelProtocolDefinition("volcengine-video").modelCatalogPaths).toEqual(["/api/v3/models"]);
         expect(channelProtocolDefinition("stable-diffusion").modelCatalogPaths).toEqual(["/sdapi/v1/sd-models"]);
         expect(channelProtocolDefinition("gemini").modelCatalogPaths).toEqual(["/v1beta/models"]);
+        expect(channelProtocolDefinition("geminiai")).toMatchObject({
+            label: "Gemini AI Studio",
+            apiFormat: "openai",
+            authMode: "provider-managed",
+            modelCatalogPaths: ["/v1/models"],
+            capabilities: ["text", "image"],
+        });
+        expect(channelProtocolDefinition("gemini-tools")).toMatchObject({
+            label: "Gemini Antigravity Tools",
+            apiFormat: "openai",
+            authMode: "provider-managed",
+            modelCatalogPaths: ["/v1/models"],
+            capabilities: ["text"],
+            operations: { text: { supportsReferenceImage: true, referenceRule: expect.stringContaining("inlineData") } },
+        });
+        expect(channelProtocolDefinition("dreamina-cli")).toMatchObject({
+            label: "即梦 CLI",
+            apiFormat: "openai",
+            authMode: "provider-managed",
+            transport: "local-cli",
+            modelCatalogPaths: [],
+            capabilities: ["image", "video"],
+        });
         expect(channelProtocolDefinition("yumeng")).toMatchObject({
             label: "昱梦",
             defaultBaseUrl: "https://zcbservice.aizfw.cn/kyyReactApiServer",
@@ -159,6 +200,15 @@ describe("channel protocol registry", () => {
 
         for (const definition of strict) {
             expect(Object.keys(definition.operations).sort(), definition.id).toEqual([...definition.capabilities].sort());
+            if (definition.transport === "local-cli") {
+                for (const capability of definition.capabilities) {
+                    const operation = definition.operations[capability];
+                    expect(operation?.createPath, `${definition.id}:${capability}`).toBeUndefined();
+                    expect(operation?.queryPath, `${definition.id}:${capability}`).toBeUndefined();
+                    expect(operation?.resultField, `${definition.id}:${capability}`).toBeUndefined();
+                }
+                continue;
+            }
             for (const capability of definition.capabilities) {
                 const operation = definition.operations[capability];
                 expect(operation?.createPath, `${definition.id}:${capability}`).toMatch(/^\//);
@@ -208,6 +258,17 @@ describe("channel protocol registry", () => {
         expect(configured.apiFormat).toBe("gemini");
         expect(configured.advancedConfig?.modelConfigs?.["veo-3.1-generate-preview"]).toMatchObject({ protocol: "gemini", apiFormat: "gemini", capability: "video" });
         expect(protocolAuthHeaders("secret", configured.advancedConfig, "gemini")).toEqual({ "x-goog-api-key": "secret" });
+    });
+
+    it("keeps GeminiAI credentials provider-managed and allows a keyless saved channel", () => {
+        const configured = applyChannelProtocol({ ...channel, baseUrl: "", apiKey: "", hasApiKey: false, models: ["gemini-3.1-pro-preview", "gemini-3.1-flash-image-preview"] }, "geminiai");
+
+        expect(configured.advancedConfig?.authMode).toBe("provider-managed");
+        expect(channelCredentialsReady(configured)).toBe(true);
+        expect(protocolAuthHeaders("", configured.advancedConfig)).toEqual({});
+        expect(configured.advancedConfig?.modelConfigs?.["gemini-3.1-pro-preview"]).toMatchObject({ protocol: "geminiai", capability: "text", createPath: "/chat/completions" });
+        expect(configured.advancedConfig?.modelConfigs?.["gemini-3.1-flash-image-preview"]).toMatchObject({ protocol: "geminiai", capability: "image", createPath: "/images/generations", editPath: "/images/edits" });
+        expect(channelProtocolValidationErrors(configured)).toEqual([]);
     });
 
     it("preserves an administrator-configured Base URL when selecting a protocol", () => {

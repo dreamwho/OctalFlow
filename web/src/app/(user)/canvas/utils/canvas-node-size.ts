@@ -20,10 +20,6 @@ export function nodeSizeFromRatio(size: string, baseWidth: number, baseHeight: n
     return ratio >= 1 ? fitNodeAspectRatio(ratio, 1, baseWidth, baseHeight) : fitNodeAspectRatio(1, 1 / ratio, baseWidth, baseHeight);
 }
 
-function sizeFromRatio(ratio: number, shortEdge: number) {
-    return ratio >= 1 ? { width: shortEdge * ratio, height: shortEdge } : { width: shortEdge, height: shortEdge / ratio };
-}
-
 export function fitNodeAspectRatio(width: number, height: number, maxWidth: number, maxHeight: number) {
     const w = Math.max(1, width);
     const h = Math.max(1, height);
@@ -32,7 +28,7 @@ export function fitNodeAspectRatio(width: number, height: number, maxWidth: numb
 }
 
 export function fitCanvasImageNodeSize(width: number, height: number) {
-    return sizeFromRatio(Math.max(1, width) / Math.max(1, height), IMAGE_NODE_DEFAULT_SIZE.height);
+    return fitNodeAspectRatio(width, height, IMAGE_NODE_DEFAULT_SIZE.width, IMAGE_NODE_DEFAULT_SIZE.height);
 }
 
 export type ResizeBoxInput = {
@@ -90,9 +86,13 @@ export function resizeImageNodeToNaturalRatio(node: CanvasNodeData, naturalWidth
 
     const currentRatio = node.width / Math.max(1, node.height);
     const naturalRatio = naturalWidth / naturalHeight;
-    if (Math.abs(currentRatio - naturalRatio) / naturalRatio < 0.01) return dimensionsChanged ? { ...node, metadata } : node;
+    const isGeneratedNode = Boolean(node.metadata?.generationType || node.metadata?.agentRunId || node.metadata?.imageTask);
+    const exceedsDefaultFrame = node.width > IMAGE_NODE_DEFAULT_SIZE.width || node.height > IMAGE_NODE_DEFAULT_SIZE.height;
+    if (!isGeneratedNode || !exceedsDefaultFrame) {
+        if (Math.abs(currentRatio - naturalRatio) / naturalRatio < 0.01) return dimensionsChanged ? { ...node, metadata } : node;
+    }
 
-    const size = sizeFromRatio(naturalWidth / naturalHeight, Math.min(node.width, node.height));
+    const size = fitNodeAspectRatio(naturalWidth, naturalHeight, IMAGE_NODE_DEFAULT_SIZE.width, IMAGE_NODE_DEFAULT_SIZE.height);
     const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
     return {
         ...node,

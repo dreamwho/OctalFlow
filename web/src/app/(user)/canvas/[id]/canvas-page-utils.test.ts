@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CanvasNodeType, type CanvasAssistantSession, type CanvasNodeData } from "../types";
 import { CANVAS_CONFIG_NODE_HEIGHT } from "../constants";
+import { INTERIOR_DESIGN_NODE_SIZE } from "../utils/canvas-interior-design";
 
 const mocks = vi.hoisted(() => ({
     readImageMeta: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock("@/services/image-storage", async (importOriginal) => ({
     uploadImage: mocks.uploadImage,
 }));
 
-import { applyNodeConfigPatch, getGenerationCount, hydrateAssistantImages, hydrateCanvasImages, normalizeCanvasConfigNodeLayout, replaceCanvasNodeMediaMetadata } from "./canvas-page-utils";
+import { applyNodeConfigPatch, getGenerationCount, hydrateAssistantImages, hydrateCanvasImages, isDreaminaUpscaleImageNode, normalizeCanvasConfigNodeLayout, normalizeConnection, normalizeCreatedNodeConnection, replaceCanvasNodeMediaMetadata, resolveDreaminaUpscaleSourceNode } from "./canvas-page-utils";
 
 describe("Canvas project hydration", () => {
     beforeEach(() => {
@@ -70,6 +71,23 @@ describe("Canvas project hydration", () => {
     });
 });
 
+describe("Canvas connection direction", () => {
+    const left = { ...textNode(), id: "left" };
+    const right = { ...textNode(), id: "right", position: { x: 500, y: 0 } };
+
+    it("keeps a right-handle connection flowing out of the clicked node", () => {
+        expect(normalizeConnection(left.id, right.id, [left, right], "source")).toEqual({ fromNodeId: left.id, toNodeId: right.id });
+    });
+
+    it("makes a node created from the left handle flow into the clicked node", () => {
+        expect(normalizeConnection(right.id, left.id, [left, right], "target")).toEqual({ fromNodeId: left.id, toNodeId: right.id });
+    });
+
+    it("keeps the dragged-from node as the reference when creating from its left handle", () => {
+        expect(normalizeCreatedNodeConnection(right.id, left.id, [left, right])).toEqual({ fromNodeId: right.id, toNodeId: left.id });
+    });
+});
+
 describe("Canvas config node layout", () => {
     it("keeps the persisted details state and node hit box in sync", () => {
         const collapsed = normalizeCanvasConfigNodeLayout(configNode(320));
@@ -77,6 +95,16 @@ describe("Canvas config node layout", () => {
 
         expect(collapsed).toMatchObject({ height: CANVAS_CONFIG_NODE_HEIGHT.collapsed, metadata: { configDetailsOpen: false } });
         expect(expanded).toMatchObject({ height: CANVAS_CONFIG_NODE_HEIGHT.expanded, metadata: { configDetailsOpen: true } });
+    });
+
+    it("restores interior design nodes to the regular image 1:1 size", () => {
+        const node: CanvasNodeData = {
+            ...configNode(180),
+            width: 340,
+            metadata: { configKind: "interior-design" },
+        };
+
+        expect(normalizeCanvasConfigNodeLayout(node)).toMatchObject({ width: INTERIOR_DESIGN_NODE_SIZE.width, height: INTERIOR_DESIGN_NODE_SIZE.height });
     });
 
     it("keeps administrator and upstream generation counts above the former platform ceiling", () => {
@@ -108,6 +136,27 @@ describe("Canvas media replacement", () => {
         expect(metadata.videoTask).toBeUndefined();
         expect(metadata.isBatchRoot).toBeUndefined();
         expect(metadata.batchChildIds).toBeUndefined();
+    });
+});
+
+describe("Dreamina upscale node relationships", () => {
+    it("recognizes a persisted CLI upscale result and resolves only its recorded source image", () => {
+        const source = imageNode("source", "source-image");
+        const result: CanvasNodeData = {
+            ...imageNode("upscaled", "upscaled-image"),
+            metadata: {
+                content: "/legacy/upscaled.png",
+                upscaleTask: { id: "task-1", provider: "dreamina-cli", model: "dreamina-image-upscale", resolutionType: "4k", sourceNodeId: source.id },
+            },
+        };
+        const missingSource: CanvasNodeData = {
+            ...result,
+            metadata: { ...result.metadata!, upscaleTask: { ...result.metadata!.upscaleTask!, sourceNodeId: "missing" } },
+        };
+
+        expect(isDreaminaUpscaleImageNode(result)).toBe(true);
+        expect(resolveDreaminaUpscaleSourceNode(result, [result, source])).toBe(source);
+        expect(resolveDreaminaUpscaleSourceNode(missingSource, [result, source])).toBeNull();
     });
 });
 

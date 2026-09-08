@@ -7,6 +7,7 @@ export function summarizeDramaProject(project: DramaProject): DramaProjectSummar
         title: project.title,
         summary: project.summary,
         style: project.style,
+        stylePresetId: project.stylePresetId,
         ratio: project.ratio,
         status: project.status,
         episodeCount: project.episodes.length,

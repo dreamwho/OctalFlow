@@ -27,6 +27,34 @@ vi.mock("@/lib/server/channel-runtime-health", () => ({
 import { listAdminGenerationOperations } from "./generation-operations-service";
 
 describe("generation operations aggregation", () => {
+    it("reads the latest user text from multimodal reverse-prompt tasks without exposing system or image data", async () => {
+        mocks.listStoredGenerationTaskRecords.mockResolvedValue({
+            items: [
+                {
+                    ...task(),
+                    type: "text",
+                    payload: {
+                        messages: [
+                            { role: "system", content: "private system instructions" },
+                            {
+                                role: "user",
+                                content: [
+                                    { type: "image_url", image_url: { url: "data:image/png;base64,private" } },
+                                    { type: "text", text: "请根据参考图片反推一段适合用于 AI 生图的提示词。" },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            summary: {},
+        });
+        const result = await listAdminGenerationOperations({});
+        expect(result.items[0].prompt).toBe("请根据参考图片反推一段适合用于 AI 生图的提示词。");
+    });
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.generationTaskPointsCost.mockReturnValue(3);
@@ -63,6 +91,8 @@ describe("generation operations aggregation", () => {
             retryTaskId: "child-failed",
             leaseExpired: false,
             pointsBreakdown: { planner: 3, childTasks: 0, total: 3 },
+            failurePhase: "execution",
+            error: "上游失败",
         });
         expect(result.summary).toMatchObject({ total: 1, failed: 1, totalPointsCost: 3 });
         expect(result.agentPerformance).toEqual(expect.objectContaining({ sampleSize: 0 }));
@@ -170,6 +200,21 @@ describe("generation operations aggregation", () => {
 
         expect(result.items[0]).toMatchObject({ canReview: true, error: expect.stringContaining("避免重复生成和扣费") });
     });
+
+    it("explains when a legacy Agent failure has no persisted reason", async () => {
+        mocks.listStoredGenerationTaskRecords.mockResolvedValue({
+            items: [{ ...task(), payload: { prompt: "生成商品图", logicalModelId: "image-model", tasks: [] } }],
+            all: [],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            summary: { total: 1, active: 0, success: 0, failed: 1, averageDurationMs: 0, totalPointsCost: 0, byType: { agent: 1 }, byStatus: { error: 1 } },
+        });
+
+        const result = await listAdminGenerationOperations({ page: 1 });
+
+        expect(result.items[0]?.error).toContain("未保存具体错误原因");
+    });
 });
 
 function task() {
@@ -183,6 +228,7 @@ function task() {
             logicalModelId: "image-model",
             pointsCost: 3,
             tasks: [{ id: "child-failed", status: "failed", error: "上游失败" }],
+            failurePhase: "execution",
         },
         createdAt: 1000,
         updatedAt: 4000,

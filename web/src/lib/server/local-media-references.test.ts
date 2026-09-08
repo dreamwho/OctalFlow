@@ -39,7 +39,7 @@ describe("countLocalMediaReferences", () => {
         expect(mocks.postgresQuery).toHaveBeenCalledTimes(1);
         expect(mocks.postgresQuery).toHaveBeenCalledWith(expect.stringContaining("unnest($1::text[])"), [["permanent/one.png", "permanent/two.png"]]);
         const sql = String(mocks.postgresQuery.mock.calls[0]?.[0]);
-        for (const table of ["creative_assets", "library_assets", "canvas_projects", "drama_projects", "generation_log_assets", "generation_tasks", "published_work_assets"]) expect(sql).toContain(table);
+        for (const table of ["creative_assets", "library_assets", "canvas_projects", "drama_projects", "generation_log_assets", "generation_tasks", "prompts", "published_work_assets"]) expect(sql).toContain(table);
     });
 
     it("keeps media referenced by another file-provider generation task", async () => {
@@ -54,5 +54,14 @@ describe("countLocalMediaReferences", () => {
                 ["permanent/unreferenced.png", 0],
             ]),
         );
+    });
+
+    it("keeps media referenced by a file-provider prompt cover", async () => {
+        mocks.getDatabaseProvider.mockReturnValue("file");
+        mocks.readJsonDataFile.mockImplementation(async (name: string, fallback: unknown) => (name === "prompts.json" ? { prompts: [{ id: "prompt-one", coverUrl: "/api/reference-assets/permanent/prompt-cover.webp" }] } : fallback));
+
+        const result = await countLocalMediaReferences(["permanent/prompt-cover.webp"]);
+
+        expect(result.get("permanent/prompt-cover.webp")).toBe(1);
     });
 });

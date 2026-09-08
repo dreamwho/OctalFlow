@@ -81,6 +81,15 @@ describe("reference asset access", () => {
         expect((await GET(new Request("http://localhost/api/reference-assets/permanent/2026/07/20/images/file.png"), context)).status).toBe(200);
     });
 
+    it("passes an unsigned internal staging request to session resolution", async () => {
+        mocks.getCurrentUser.mockResolvedValue({ id: "owner", role: "user" });
+        const request = new Request("http://localhost/api/reference-assets/permanent/2026/07/20/images/file.png", { headers: { authorization: "Bearer worker-token", "x-octalaicanvas-worker-user-id": "owner" } });
+
+        await GET(request, context);
+
+        expect(mocks.getCurrentUser).toHaveBeenCalledWith(request);
+    });
+
     it("allows a valid short-lived signature without a login", async () => {
         mocks.verify.mockReturnValue(true);
         mocks.getCurrentUser.mockResolvedValue(null);

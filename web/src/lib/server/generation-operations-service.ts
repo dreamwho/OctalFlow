@@ -58,6 +58,8 @@ function taskSummary(record: StoredGenerationTaskRecord, user?: { accountId: str
               }
             : undefined;
     const pointsCost = pointsBreakdown?.total ?? roundedPoints(ownPointsCost);
+    const persistedError = firstText(payload.error, tasks.find((task) => text(task.error))?.error, resolveGenerationReviewReason(record)).slice(0, 1000) || undefined;
+    const error = persistedError || (record.type === "agent" && record.status === "error" ? "该 Agent 失败记录未保存具体错误原因，无法从历史任务数据还原；请查看对应时间点的服务端日志。" : undefined);
     return {
         id: record.id,
         userId: record.userId,
@@ -77,6 +79,7 @@ function taskSummary(record: StoredGenerationTaskRecord, user?: { accountId: str
         provider: record.provider,
         queryPath: record.queryPath,
         executionPhase: record.executionPhase,
+        failurePhase: record.type === "agent" ? agentFailurePhase(payload.failurePhase) : undefined,
         workerId: record.workerId,
         leaseUntil: record.leaseUntil,
         lastHeartbeatAt: record.lastHeartbeatAt,
@@ -86,18 +89,33 @@ function taskSummary(record: StoredGenerationTaskRecord, user?: { accountId: str
         upstreamTaskId: record.upstreamTaskId || firstText(upstream.id) || undefined,
         lastUpstreamStatus: record.lastUpstreamStatus,
         attempts: generationAttempts(payload.attempts),
-        prompt: firstText(payload.prompt, config.prompt, tasks.find((task) => text(task.prompt))?.prompt).slice(0, 500),
-        error: firstText(payload.error, tasks.find((task) => text(task.error))?.error, resolveGenerationReviewReason(record)).slice(0, 1000) || undefined,
+        prompt: firstText(payload.prompt, config.prompt, tasks.find((task) => text(task.prompt))?.prompt, textTaskRequest(payload.messages)).slice(0, 500),
+        error,
         durationMs: Math.max(0, record.updatedAt - record.createdAt),
         pointsCost,
         pointsBreakdown,
         plannerAudit,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
-        canCancel: record.status === "pending" || record.status === "running" || record.status === "paused",
+        canCancel: record.provider !== "local-depth" && (record.status === "pending" || record.status === "running" || record.status === "paused"),
         retryTaskId: record.type === "agent" ? text(failedTask?.id) || undefined : undefined,
         canReview: record.executionPhase === "needs_review" && (record.type === "text" || record.type === "image" || record.type === "video" || record.type === "audio"),
     };
+}
+
+function textTaskRequest(messages: unknown) {
+    if (!Array.isArray(messages)) return "";
+    const message = messages.map(object).findLast((item) => item.role === "user");
+    if (!message) return "";
+    return typeof message.content === "string"
+        ? message.content
+        : Array.isArray(message.content)
+          ? message.content
+                .map(object)
+                .filter((part) => part.type === "text")
+                .map((part) => text(part.text))
+                .join("\n")
+          : "";
 }
 
 export function isGenerationLeaseExpired(record: Pick<StoredGenerationTaskRecord, "status" | "leaseUntil">, now = Date.now()) {
@@ -209,4 +227,8 @@ function roundedPoints(value: number) {
 
 function object(value: unknown) {
     return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function agentFailurePhase(value: unknown): AdminGenerationTask["failurePhase"] {
+    return value === "planning" || value === "execution" ? value : undefined;
 }

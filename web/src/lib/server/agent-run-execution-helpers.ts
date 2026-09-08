@@ -38,6 +38,7 @@ function explicitVideoRole(role: AgentRunReference["role"]) {
 }
 
 export function acceptsMediaReference(taskType: AgentRunTask["type"], assetType: CreativeAsset["type"]): assetType is "image" | "video" | "audio" {
+    if (taskType === "text") return assetType === "image" || assetType === "video";
     if (taskType === "image") return assetType === "image";
     if (taskType === "video") return assetType === "image" || assetType === "video" || assetType === "audio";
     return false;

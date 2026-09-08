@@ -33,6 +33,10 @@ services:
         value: "1"
       - key: OCTALAICANVAS_ENCRYPTION_KEY
         generateValue: true
+      - key: GEMINI_TOOLS_OAUTH_CLIENT_ID
+        sync: false
+      - key: GEMINI_TOOLS_OAUTH_CLIENT_SECRET
+        sync: false
       - key: OCTALAICANVAS_INSTALL_TOKEN
         generateValue: true
       - key: OCTALAICANVAS_MAINTENANCE_TOKEN

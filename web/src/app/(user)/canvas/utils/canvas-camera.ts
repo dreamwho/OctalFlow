@@ -3,6 +3,7 @@ import type { CameraControlOptions } from "../types";
 type CameraOption = { value: string; label: string; prompt: string };
 
 export const CAMERA_OPTIONS: CameraOption[] = [
+    { value: "iphone_17_pro_handheld", label: "iPhone 17 Pro · 手持写实", prompt: "iPhone 17 Pro handheld computational video, natural HDR, authentic skin texture, restrained sharpening, subtle hand-held micro movement" },
     { value: "arri_alexa_mini_lf", label: "ARRI Alexa Mini LF", prompt: "ARRI Alexa Mini LF large-format color science, soft highlight rolloff, natural skin tones" },
     { value: "sony_venice_2", label: "Sony Venice 2", prompt: "Sony Venice 2 full-frame color science, clean shadow detail, restrained cinematic contrast" },
     { value: "red_v_raptor", label: "RED V-Raptor", prompt: "RED V-Raptor large-format rendering, crisp micro-contrast, vivid but controlled color" },
@@ -23,7 +24,7 @@ export const APERTURE_OPTIONS = [1.2, 1.4, 1.8, 2, 2.8, 4, 5.6, 8, 11, 16] as co
 
 export const DEFAULT_CAMERA_CONTROL: CameraControlOptions = {
     enabled: false,
-    camera: CAMERA_OPTIONS[0].value,
+    camera: "arri_alexa_mini_lf",
     lens: LENS_OPTIONS[0].value,
     focalLength: 50,
     aperture: 2.8,

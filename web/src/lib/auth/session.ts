@@ -167,7 +167,7 @@ export function serializePublicSettings(settings: AuthSettings) {
                 apiFormat: channel.apiFormat,
                 models: channel.models,
                 enabled: channel.enabled,
-                hasApiKey: Boolean(channel.apiKey),
+                hasApiKey: Boolean(channel.apiKey) || channel.advancedConfig?.authMode === "provider-managed",
             })),
     };
 }

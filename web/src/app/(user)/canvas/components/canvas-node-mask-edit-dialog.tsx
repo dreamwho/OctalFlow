@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, Input, Modal, Slider } from "antd";
-import { Brush, Eraser, RotateCcw, WandSparkles, X } from "lucide-react";
+import { Brush, Eraser, RotateCcw, X } from "lucide-react";
 
+import { GenerationActionButton } from "@/components/generation-action-button";
 import { readImageMeta } from "@/lib/image-utils";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 
@@ -171,9 +172,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
                             <Button icon={<X className="size-4" />} onClick={onClose}>
                                 取消
                             </Button>
-                            <Button type="primary" icon={<WandSparkles className="size-4" />} onClick={submit}>
-                                AI 修改
-                            </Button>
+                            <GenerationActionButton onClick={submit}>AI 修改</GenerationActionButton>
                         </div>
                     </div>
                 </div>

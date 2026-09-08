@@ -24,12 +24,56 @@ export function resolveUpstreamVideoDuration(value: unknown, fallback: number, p
     if (requested === -1 && /(?:^|\D)-1(?:\D|$)|智能|auto|adaptive/i.test(durationRange)) return -1;
 
     const seconds = requested === -1 ? fallbackSeconds : requested;
-    const bounds = parseDurationBounds(durationRange);
-    const min = Math.max(1, positiveInteger(policy.minDurationSeconds) || bounds?.min || 1);
-    const max = Math.max(min, Math.min(3600, positiveInteger(policy.maxDurationSeconds) || bounds?.max || 3600));
-    const options = parseDurationOptions(durationRange).filter((item) => item >= min && item <= max);
+    const { minSeconds: min, maxSeconds: max, options } = resolveVideoDurationCapability(policy);
     if (options.length) return options.find((item) => item >= seconds) || options.at(-1)!;
     return Math.max(min, Math.min(max, seconds));
+}
+
+export type VideoDurationCapability = {
+    /** True only when the current model/profile supplied a concrete duration contract. */
+    known: boolean;
+    minSeconds: number;
+    maxSeconds: number;
+    /** Discrete provider durations when the profile declares options instead of a range. */
+    options: number[];
+};
+
+/**
+ * Resolve the duration contract once from the model capability profile or
+ * channel protocol.  Callers that need to plan multiple tasks can use
+ * `known` to avoid inventing a provider limit when configuration is absent.
+ */
+export function resolveVideoDurationCapability(policy: { durationRange?: string; minDurationSeconds?: number; maxDurationSeconds?: number } = {}): VideoDurationCapability {
+    const durationRange = policy.durationRange?.trim() || "";
+    const bounds = parseDurationBounds(durationRange);
+    const configuredMin = positiveInteger(policy.minDurationSeconds);
+    const configuredMax = positiveInteger(policy.maxDurationSeconds);
+    const known = Boolean(bounds || configuredMin || configuredMax || parseDurationOptions(durationRange).length);
+    const minSeconds = Math.max(1, configuredMin || bounds?.min || 1);
+    const maxSeconds = Math.max(minSeconds, Math.min(3600, configuredMax || bounds?.max || 3600));
+    return {
+        known,
+        minSeconds,
+        maxSeconds,
+        options: parseDurationOptions(durationRange).filter((item) => item >= minSeconds && item <= maxSeconds),
+    };
+}
+
+/**
+ * Selects a provider-supported quality without guessing when no model profile
+ * was configured.  Providers keep their native spelling (for example 768P).
+ */
+export function normalizeVideoQualityForCapability(value: unknown, options?: readonly string[]) {
+    const requested = typeof value === "string" ? value.trim() : "";
+    if (!options?.length) return requested;
+    const key = qualityKey(requested);
+    return options.find((option) => qualityKey(option) === key) || options[0];
+}
+
+export function normalizeVideoAspectRatioForCapability(value: unknown, options?: readonly string[]) {
+    if (!options?.length) return typeof value === "string" ? value.trim() : "";
+    const requested = normalizeVideoAspectRatio(value);
+    return options.find((option) => normalizeVideoAspectRatio(option) === requested) || options[0];
 }
 
 export function normalizeVideoAspectRatio(value: unknown, fallback = "16:9") {
@@ -93,6 +137,14 @@ function parseAspectRatio(value: unknown) {
     if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) return "";
     const divisor = greatestCommonDivisor(width, height);
     return `${width / divisor}:${height / divisor}`;
+}
+
+function qualityKey(value: unknown) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "")
+        .replace(/p$/, "");
 }
 
 function greatestCommonDivisor(left: number, right: number): number {

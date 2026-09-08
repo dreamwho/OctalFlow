@@ -5,6 +5,7 @@
   "pages": [
     "quick-start",
     "configuration",
+    "dreamina-cli",
     "production-readiness",
     "features",
     "project-structure",

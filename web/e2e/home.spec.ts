@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const galleryResponse = {
     code: 0,
@@ -28,7 +28,7 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
     await page.route("**/api/billing/products", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [], paymentProviders: [] }) }));
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { level: 1, name: "一个入口 完成所有 AI 创作" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "把灵感，变成作品" })).toBeVisible();
     await expect(page.locator("h1")).toHaveCount(1);
     await expect(page.getByText("核心能力", { exact: true })).toHaveCount(0);
     await expect(page.getByTestId("home-agent-card")).toHaveCount(1);
@@ -62,15 +62,19 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
     await expect(page).toHaveURL(/\/$/);
     await expect(page.locator("header").getByRole("button", { name: "登录", exact: true })).toHaveCount(0);
     await expect(page.getByText("登录后使用 AI 创作", { exact: true })).toHaveCount(0);
-    const headerNavigation = page.getByRole("navigation", { name: "官网主导航" });
+    const menuButton = page.getByRole("button", { name: "打开导航菜单" });
+    await expect(menuButton).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "首页导航菜单" })).toHaveCount(0);
+    await menuButton.click();
+    const headerNavigation = page.getByRole("navigation", { name: "首页导航菜单" });
+    await expect(headerNavigation).toBeVisible();
+    await expect(headerNavigation.getByRole("link", { name: "发现" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("button", { name: "创作" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("button", { name: "资产" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("button", { name: "Skill" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("button", { name: "价格" })).toHaveCount(1);
     if (testInfo.project.name === "chromium") {
-        await expect(headerNavigation).toBeVisible();
-        await expect(headerNavigation.getByRole("button", { name: "创作 Agent" })).toHaveCount(1);
-        await expect(headerNavigation.getByRole("button", { name: "短剧制作" })).toHaveCount(1);
-        await expect(headerNavigation.getByRole("link", { name: "作品广场" })).toHaveCount(1);
-        await expect(headerNavigation.getByRole("button", { name: "价格方案" })).toHaveCount(1);
-        await expect(headerNavigation.getByText("图片工作台", { exact: true })).toHaveCount(0);
-        await expect(headerNavigation.getByText("视频工作台", { exact: true })).toHaveCount(0);
+        await page.getByRole("button", { name: "关闭导航菜单" }).click();
         await page
             .locator("header")
             .getByRole("button", { name: /立即体验/ })
@@ -78,32 +82,16 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
         await expect(page.getByRole("dialog")).toBeVisible();
         await page.getByRole("button", { name: "Close" }).click();
 
-        const navGlass = page.getByTestId("home-nav-glass");
-        const firstNavItem = headerNavigation.getByRole("button", { name: "创作 Agent" });
-        const lastNavItem = headerNavigation.getByRole("button", { name: "价格方案" });
-        await firstNavItem.hover();
-        await expect(navGlass).toHaveCSS("opacity", "1");
-        await expect.poll(() => centerOffset(navGlass, firstNavItem)).toBeLessThanOrEqual(1);
-        await lastNavItem.hover();
-        await expect.poll(() => centerOffset(navGlass, lastNavItem)).toBeLessThanOrEqual(1);
-        await lastNavItem.click();
+        await menuButton.click();
+        await headerNavigation.getByRole("button", { name: "价格" }).click();
         const plansDialog = page.getByRole("dialog");
         await expect(plansDialog.getByText("升级创作套餐", { exact: true })).toBeVisible();
         await expect(plansDialog.getByText("暂无已上架套餐", { exact: true })).toBeVisible();
         await plansDialog.getByRole("button", { name: "关闭套餐选择" }).click();
         await expect(plansDialog).toBeHidden();
     } else {
-        await expect(headerNavigation).toHaveCount(0);
-        const menuButton = page.getByRole("button", { name: "打开导航菜单" });
-        await menuButton.click();
-        const mobileNavigation = page.getByRole("navigation", { name: "移动端导航" });
-        await expect(mobileNavigation).toBeVisible();
-        await expect(mobileNavigation.getByRole("button", { name: "创作 Agent" })).toHaveCount(1);
-        await expect(mobileNavigation.getByRole("button", { name: "短剧制作" })).toHaveCount(1);
-        await expect(mobileNavigation.getByRole("link", { name: "作品广场" })).toHaveCount(1);
-        await expect(mobileNavigation.getByRole("button", { name: "价格方案" })).toHaveCount(1);
         await page.getByRole("button", { name: "关闭导航菜单" }).click();
-        await expect(mobileNavigation).toHaveCount(0);
+        await expect(headerNavigation).toHaveCount(0);
     }
     expect(new URL(galleryRequest).pathname).toBe("/api/public/gallery");
     expect(new URL(galleryRequest).searchParams.get("limit")).toBe("18");
@@ -142,11 +130,11 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
             color: getComputedStyle(element).color,
         }));
         expect(sendStyle.backgroundImage).toContain("linear-gradient");
-        expect(sendStyle.borderRadius).toBe("50%");
-        expect(sendStyle.boxShadow).toBe("none");
+        expect(sendStyle.borderRadius).toBe("14px");
+        expect(sendStyle.boxShadow).not.toBe("none");
         expect(sendStyle.color).toBe("rgb(255, 255, 255)");
     }
-    for (const action of ["开始创作", "进入创作页添加参考素材"]) {
+    for (const action of ["开始创作"]) {
         await page.getByRole("button", { name: action }).click();
         const dialog = page.getByRole("dialog");
         const closeButton = dialog.getByRole("button", { name: "Close" });
@@ -157,6 +145,7 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
         await closeButton.click();
         await expect(dialog).toBeHidden();
     }
+    await expect(page.locator('input[type="file"][accept*="image"]')).toHaveCount(1);
 
     await expect(page.getByRole("heading", { name: "简单四步，创意即刻落地" })).toBeVisible();
     for (const title of ["选择场景", "输入需求", "生成内容", "发布与分享"]) await expect(page.getByRole("heading", { name: title })).toBeVisible();
@@ -194,7 +183,8 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
     const brandTab = page.getByRole("tab", { name: "品牌内容", exact: true });
     await brandTab.click();
     if (testInfo.project.name === "chromium") await brandTab.hover();
-    await expect(brandTab).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect.poll(() => brandTab.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain("linear-gradient");
+    await expect(brandTab).not.toHaveCSS("color", "rgb(255, 255, 255)");
 
     const beforeTheme = await homepageDomState(page);
     await page.getByRole("button", { name: "切换到深色主题" }).click();
@@ -328,44 +318,70 @@ test("homepage hero stays centered and responsive", async ({ page }, testInfo) =
     if (testInfo.project.name === "chromium") {
         expect(geometry.cardWidth).toBeGreaterThanOrEqual(1080);
         expect(geometry.cardWidth).toBeLessThanOrEqual(1120);
-        expect(geometry.cardHeight).toBeGreaterThanOrEqual(286);
-        expect(geometry.cardHeight).toBeLessThanOrEqual(304);
+        expect(geometry.cardHeight).toBeGreaterThanOrEqual(258);
+        expect(geometry.cardHeight).toBeLessThanOrEqual(266);
         expect(geometry.cardRadius).toBeGreaterThanOrEqual(28);
         expect(geometry.cardRadius).toBeLessThanOrEqual(32);
         expect(geometry.haloCenterOffset).toBeLessThanOrEqual(1);
-        expect(geometry.haloWidthRatio).toBeGreaterThan(1.16);
-        expect(geometry.haloWidthRatio).toBeLessThan(1.2);
+        expect(geometry.haloWidthRatio).toBeGreaterThan(1.65);
+        expect(geometry.haloWidthRatio).toBeLessThan(2);
         expect(geometry.haloTop).toBeLessThan(geometry.cardBottom);
         expect(geometry.textareaHeight).toBeGreaterThanOrEqual(68);
         expect(geometry.presetOffset).toBe(0);
-        expect(geometry.toolbarOffset).toBeGreaterThanOrEqual(18);
-        expect(geometry.toolbarOffset).toBeLessThanOrEqual(26);
-        expect(geometry.sendInset).toBeGreaterThanOrEqual(34);
+        expect(geometry.toolbarOffset).toBeGreaterThanOrEqual(12);
+        expect(geometry.toolbarOffset).toBeLessThanOrEqual(16);
+        expect(geometry.sendInset).toBeGreaterThanOrEqual(27);
         expect(geometry.filledRingCount).toBe(4);
         expect(geometry.borderOnlyRingCount).toBe(0);
-        expect(geometry.decorationCount).toBe(4);
-        expect(geometry.decorationSizeCount).toBe(4);
+        expect(geometry.decorationCount).toBe(0);
+        expect(geometry.decorationSizeCount).toBe(0);
         expect(geometry.polygonDecorationCount).toBe(0);
-        expect(geometry.animatedDecorationCount).toBe(4);
-        expect(geometry.sequencedDecorationCount).toBe(4);
+        expect(geometry.animatedDecorationCount).toBe(0);
+        expect(geometry.sequencedDecorationCount).toBe(0);
         expect(geometry.shadowedDecorationCount).toBe(0);
         expect(geometry.castShadowDecorationCount).toBe(0);
     }
     if (testInfo.project.name.startsWith("mobile-")) {
-        expect(geometry.visiblePresetCount).toBe(4);
+        expect(geometry.visiblePresetCount).toBe(0);
         expect(geometry.presetButtonsInsideCard).toBe(true);
-        expect(geometry.presetColumnCount).toBe(2);
-        expect(geometry.presetRowCount).toBe(2);
+        expect(geometry.presetColumnCount).toBe(1);
+        expect(geometry.presetRowCount).toBe(1);
         expect(geometry.presetsFitWithoutScroll).toBe(true);
-        expect(geometry.visibleDecorationCount).toBe(4);
+        expect(geometry.visibleDecorationCount).toBe(0);
         expect(geometry.decorationSubtitleOverlapCount).toBe(0);
-        expect(geometry.mobileToolbarButtonCount).toBe(6);
+        expect(geometry.mobileToolbarButtonCount).toBe(5);
         expect(geometry.mobileToolbarButtonsInsideCard).toBe(true);
         expect(geometry.mobileToolbarRowSpread).toBeLessThanOrEqual(3);
         expect(geometry.visibleModeLabelCount).toBe(0);
     }
     expect(geometry.sendVisible).toBe(true);
     await expectNoHorizontalOverflow(page);
+});
+
+test("front-end and administrator theme choices remain independent", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => {
+        localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+        localStorage.setItem("octalaicanvas:admin_theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+
+    await page.getByRole("button", { name: "切换到深色主题" }).click();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect.poll(() => storedThemes(page)).toEqual({ frontend: "dark", admin: "light" });
+
+    await page.goto("/admin", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+    await page.getByRole("button", { name: "切换到深色主题" }).click();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await page.getByRole("button", { name: "切换到浅色主题" }).click();
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+    await expect.poll(() => storedThemes(page)).toEqual({ frontend: "dark", admin: "light" });
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
 function galleryItem(index: number, mediaType: "image" | "video", sourceType: "media" | "canvas" | "drama", category: string) {
@@ -389,6 +405,16 @@ function galleryItem(index: number, mediaType: "image" | "video", sourceType: "m
             url: mediaType === "video" ? "data:video/mp4;base64," : `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="hsl(${index * 48} 58% 62%)"/></svg>`)}`,
         },
     };
+}
+
+async function storedThemes(page: Page) {
+    return page.evaluate(() => {
+        const readTheme = (key: string) => JSON.parse(localStorage.getItem(key) || "{}")?.state?.theme;
+        return {
+            frontend: readTheme("octalaicanvas:theme_store"),
+            admin: readTheme("octalaicanvas:admin_theme_store"),
+        };
+    });
 }
 
 function collectBrowserErrors(page: Page) {
@@ -460,10 +486,4 @@ async function expectNoHorizontalOverflow(page: Page) {
         const [clientWidth, scrollWidth] = widths as number[];
         expect(scrollWidth, `${label} horizontal overflow: ${JSON.stringify(overflow.offenders)}`).toBeLessThanOrEqual(clientWidth + 1);
     }
-}
-
-async function centerOffset(left: Locator, right: Locator) {
-    const [leftBox, rightBox] = await Promise.all([left.boundingBox(), right.boundingBox()]);
-    if (!leftBox || !rightBox) return Number.POSITIVE_INFINITY;
-    return Math.abs(leftBox.x + leftBox.width / 2 - (rightBox.x + rightBox.width / 2));
 }

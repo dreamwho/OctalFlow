@@ -13,17 +13,44 @@ export type CreativeAgentModelOption = { id: string; name: string; capability: "
 export type CreativeAgentControlTheme = { panel: string; border: string; text: string; muted: string; activeBackground: string; activeText: string };
 export const creativeAgentModelCapabilities = ["image", "video", "audio"] as const;
 
-export function CreativeAgentSkillCard({ skill, onRemove, theme, className }: { skill: AgentSkillSummary; onRemove: () => void; theme?: CreativeAgentControlTheme; className?: string }) {
+export function CreativeAgentSkillCard({ skill, onRemove, theme, className, variant = "card" }: { skill: AgentSkillSummary; onRemove: () => void; theme?: CreativeAgentControlTheme; className?: string; variant?: "card" | "inline" }) {
+    if (variant === "inline") {
+        return (
+            <div className={cn("flex min-w-0", className)}>
+                <span
+                    className={cn("flex h-6 min-w-0 max-w-full items-center gap-1 rounded-md border px-1.5 text-[11px] font-medium", !theme && "border-stone-200 bg-stone-50 text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100")}
+                    style={theme ? { background: theme.panel, borderColor: theme.border, color: theme.text } : undefined}
+                >
+                    <Sparkles className="size-3 shrink-0" />
+                    <span className="min-w-0 truncate" title={skill.name}>
+                        {skill.name}
+                    </span>
+                    <button
+                        type="button"
+                        className="grid size-4 shrink-0 place-items-center rounded transition hover:bg-black/5 dark:hover:bg-white/10"
+                        style={theme ? { color: theme.muted } : undefined}
+                        onClick={onRemove}
+                        aria-label={`移除 Skill ${skill.name}`}
+                    >
+                        <X className="size-3" />
+                    </button>
+                </span>
+            </div>
+        );
+    }
     return (
-        <div className={cn("flex px-1 pt-0.5", className)}>
+        <div className={cn("flex min-w-0 px-1 pt-0.5", className)}>
             <span
-                className={cn("flex h-8 max-w-full items-center gap-2 rounded-lg border px-2.5 text-xs font-medium", !theme && "border-amber-200/80 bg-amber-50/70 text-stone-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-stone-100")}
+                className={cn(
+                    "flex min-h-8 min-w-0 max-w-full items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-medium",
+                    !theme && "border-amber-200/80 bg-amber-50/70 text-stone-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-stone-100",
+                )}
                 style={theme ? { background: theme.activeBackground, borderColor: theme.border, color: theme.text } : undefined}
             >
                 <span className="grid size-5 shrink-0 place-items-center rounded-md bg-amber-200/45 text-amber-800 dark:bg-amber-300/10 dark:text-amber-300">
                     <Sparkles className="size-3" />
                 </span>
-                <span className="truncate">Skill · {skill.name}</span>
+                <span className="min-w-0 flex-1 break-words leading-4">Skill · {skill.name}</span>
                 <button
                     type="button"
                     className="grid size-5 shrink-0 place-items-center rounded text-stone-500 transition hover:bg-black/5 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-white/10 dark:hover:text-white"
@@ -56,6 +83,9 @@ export function CreativeAgentControls({
     modelPickerRequest = 0,
     defaultModelCapability = "image",
     modelCapabilities,
+    showPlanningControl = true,
+    showModelPicker = true,
+    emphasizedCompactControls = false,
 }: {
     skills: AgentSkillSummary[];
     skillsLoading?: boolean;
@@ -74,6 +104,9 @@ export function CreativeAgentControls({
     modelPickerRequest?: number;
     defaultModelCapability?: CreativeAgentModelOption["capability"];
     modelCapabilities?: readonly CreativeAgentModelOption["capability"][];
+    showPlanningControl?: boolean;
+    showModelPicker?: boolean;
+    emphasizedCompactControls?: boolean;
 }) {
     const [skillOpen, setSkillOpen] = useState(false);
     const [modelOpen, setModelOpen] = useState(false);
@@ -90,13 +123,43 @@ export function CreativeAgentControls({
         setModelOpen(true);
     }, [modelPickerRequest, preferredCapability]);
 
+    const [previewSkillId, setPreviewSkillId] = useState<string>();
+    const previewSkill = skills.find((skill) => skill.id === previewSkillId) || selectedSkill || skills[0];
+    const compactControlClassName = emphasizedCompactControls ? "!size-9 !min-w-9 !rounded-lg" : "!size-7 !min-w-7 !rounded-md";
+    const compactControlIconClassName = emphasizedCompactControls ? "size-4" : "size-3.5";
+
     const skillContent = (
-        <div className="w-[calc(100vw-48px)] max-w-[320px] p-1 sm:w-80">
-            <div className="px-2 pb-2 pt-1">
-                <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">选择创作 Skill</p>
-                <p className="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">Skill 作为执行能力提交，不会改写输入内容。</p>
-            </div>
-            <div className="thin-scrollbar max-h-60 space-y-1 overflow-y-auto">
+        <div className="w-[min(34rem,calc(100vw-32px))] overflow-hidden rounded-xl border border-stone-200/80 bg-white p-1 shadow-2xl dark:border-white/10 dark:bg-[#12161c]" data-creative-agent-skill-picker>
+            <div className="flex min-w-0 max-sm:flex-col">
+                <div className="min-w-0 border-r border-stone-200/80 p-2 dark:border-white/10 sm:w-[15rem]">
+                    <p className="px-1 pb-2 text-sm font-semibold text-stone-900 dark:text-stone-100">Skill</p>
+                    {previewSkill ? (
+                        <div className="overflow-hidden rounded-lg border border-stone-200 bg-stone-50 dark:border-white/10 dark:bg-[#0d1116]" data-creative-agent-skill-preview>
+                            <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-cyan-400/25 via-sky-500/10 to-violet-500/25">
+                                {previewSkill.previewImageUrl ? (
+                                    <img src={previewSkill.previewImageUrl} alt={`${previewSkill.name}效果预览`} className="block size-full object-cover" loading="lazy" />
+                                ) : (
+                                    <Sparkles className="absolute inset-0 m-auto size-8 text-cyan-600/70 dark:text-cyan-300/80" strokeWidth={1.5} aria-hidden="true" />
+                                )}
+                            </div>
+                            <div className="p-2.5">
+                                <p className="truncate text-xs font-semibold text-stone-900 dark:text-stone-100">{previewSkill.name}</p>
+                                <p className="mt-1 line-clamp-3 text-[11px] leading-4 text-stone-500 dark:text-stone-400">{previewSkill.description || "选择此 Skill 后，会依据当前素材和需求执行创作。"}</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid aspect-[16/10] place-items-center rounded-lg border border-dashed border-stone-300 text-xs text-stone-500 dark:border-stone-700 dark:text-stone-400">暂无预览</div>
+                    )}
+                </div>
+                <div className="min-w-0 p-2 sm:w-[18rem]">
+                    <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                        <div>
+                            <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">选择创作 Skill</p>
+                            <p className="mt-0.5 text-[11px] text-stone-500 dark:text-stone-400">悬停可预览效果</p>
+                        </div>
+                        <span className="text-[11px] tabular-nums text-stone-400 dark:text-stone-500">{skills.length}</span>
+                    </div>
+                    <div className="thin-scrollbar max-h-[min(19rem,calc(100dvh-13rem))] space-y-1 overflow-y-auto" data-creative-agent-skill-list>
                 {skills.map((skill) => {
                     const active = selectedSkill?.id === skill.id;
                     return (
@@ -107,6 +170,8 @@ export function CreativeAgentControls({
                                 "flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition",
                                 active ? "bg-stone-100 text-stone-950 dark:bg-stone-800 dark:text-white" : "text-stone-600 hover:bg-stone-50 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800/70 dark:hover:text-white",
                             )}
+                            onMouseEnter={() => setPreviewSkillId(skill.id)}
+                            onFocus={() => setPreviewSkillId(skill.id)}
                             onClick={() => {
                                 onSelectSkill(skill);
                                 setSkillOpen(false);
@@ -125,6 +190,8 @@ export function CreativeAgentControls({
                 })}
                 {skillsLoading ? <p className="px-2 py-5 text-center text-xs text-stone-500 dark:text-stone-400">正在加载 Skill...</p> : null}
                 {!skillsLoading && !skills.length ? <p className="px-2 py-5 text-center text-xs text-stone-500 dark:text-stone-400">暂无可用 Skill</p> : null}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -236,51 +303,61 @@ export function CreativeAgentControls({
             <Popover trigger="click" placement="topLeft" open={skillOpen} onOpenChange={setSkillOpen} content={skillContent}>
                 <Button
                     type="text"
-                    className={cn("!shrink-0 !gap-1.5", compact ? "!h-9 !w-9 !min-w-9 !rounded-lg !p-0" : "!h-8 !min-w-8 !px-2", selectedSkill && !theme && "!bg-amber-50 !text-amber-800 dark:!bg-amber-400/10 dark:!text-amber-300")}
-                    style={selectedSkill ? activeStyle : mutedStyle}
-                    icon={<Boxes className="size-4" />}
+                    className={cn(
+                        "!shrink-0 !gap-1.5 !shadow-none",
+                        compact ? `${compactControlClassName} !border-0 !bg-transparent !p-0 hover:!bg-black/5 dark:hover:!bg-white/5` : "!h-8 !min-w-8 !px-2",
+                        skillOpen && !theme && "!bg-amber-50 !text-amber-800 dark:!bg-amber-400/10 dark:!text-amber-300",
+                    )}
+                    style={skillOpen ? activeStyle : mutedStyle}
+                    icon={<Boxes className={compact ? compactControlIconClassName : "size-3.5"} strokeWidth={1.7} />}
                     aria-label={selectedSkill ? `当前 Skill：${selectedSkill.name}` : "选择创作 Skill"}
                 >
                     {compact ? null : <span className="text-xs">Skill</span>}
                 </Button>
             </Popover>
-            <Tooltip title={smartPlanning ? "智能规划：已开启" : "智能规划：已关闭"}>
-                <Button
-                    type="text"
-                    className={cn(
-                        "!shrink-0 !gap-1.5",
-                        compact ? "!h-9 !w-9 !min-w-9 !rounded-lg !p-0" : "!h-8 !min-w-8 !px-2",
-                        smartPlanning && !theme ? "!bg-sky-50 !text-sky-700 dark:!bg-sky-400/10 dark:!text-sky-300" : !theme ? "!text-stone-500 dark:!text-stone-400" : undefined,
-                    )}
-                    style={smartPlanning ? activeStyle : mutedStyle}
-                    icon={<Lightbulb className={cn("size-4", smartPlanning && "fill-current")} />}
-                    onClick={() => {
-                        onSmartPlanningChange(!smartPlanning);
-                        if (smartPlanning) setModelOpen(true);
-                    }}
-                    aria-label={smartPlanning ? "智能规划已开启，点击关闭" : "智能规划已关闭，点击开启"}
-                    aria-pressed={smartPlanning}
-                >
-                    {compact ? null : <span className="text-xs">智能</span>}
-                </Button>
-            </Tooltip>
-            <Popover trigger="click" placement="top" open={modelOpen} onOpenChange={setModelOpen} content={modelContent} styles={compact ? { container: { padding: 8, borderRadius: 12 } } : undefined}>
-                <Tooltip title={selectedModels.length ? `已选择 ${selectedModels.length} 个模型` : "选择生成模型"}>
+            {showPlanningControl ? (
+                <Tooltip title={smartPlanning ? "智能规划：已开启" : "智能规划：已关闭"}>
                     <Button
                         type="text"
-                        shape="circle"
-                        className={cn("relative !shrink-0 !p-0", compact ? "!h-9 !w-9 !min-w-9 !rounded-lg" : "!h-8 !w-8 !min-w-8", selectedModels.length && !theme && "!bg-stone-100 !text-stone-950 dark:!bg-stone-800 dark:!text-white")}
-                        style={selectedModels.length ? activeStyle : mutedStyle}
-                        icon={<Orbit className="size-4" />}
-                        aria-label={selectedModels.length ? `已选择 ${selectedModels.length} 个模型` : "选择生成模型"}
+                        className={cn(
+                            "!shrink-0 !gap-1.5 !shadow-none",
+                            compact ? `${compactControlClassName} !border-0 !bg-transparent !p-0 hover:!bg-black/5 dark:hover:!bg-white/5` : "!h-8 !min-w-8 !px-2",
+                            smartPlanning && !theme ? "!text-sky-700 dark:!text-sky-300" : !theme ? "!text-stone-500 dark:!text-stone-400" : undefined,
+                        )}
+                        style={mutedStyle}
+                        icon={<Lightbulb className={cn(compact ? compactControlIconClassName : "size-3.5", smartPlanning && "fill-current")} strokeWidth={1.7} />}
+                        onClick={() => {
+                            onSmartPlanningChange(!smartPlanning);
+                            if (smartPlanning) setModelOpen(true);
+                        }}
+                        aria-label={smartPlanning ? "智能规划已开启，点击关闭" : "智能规划已关闭，点击开启"}
+                        aria-pressed={smartPlanning}
                     >
-                        {selectedModels.length ? (
-                            <span className="absolute right-0 top-0 grid size-3.5 place-items-center rounded-full bg-stone-900 text-[8px] font-semibold text-white dark:bg-white dark:text-stone-950">{selectedModels.length}</span>
-                        ) : null}
+                        {compact ? null : <span className="text-xs">智能</span>}
                     </Button>
                 </Tooltip>
-            </Popover>
-            {middle ? <div className={cn("min-w-0", compact && "pl-1")}>{middle}</div> : null}
+            ) : null}
+            {showModelPicker ? (
+                <Popover trigger="click" placement="top" open={modelOpen} onOpenChange={setModelOpen} content={modelContent} styles={compact ? { container: { padding: 8, borderRadius: 12 } } : undefined}>
+                    <Tooltip title={selectedModels.length ? `已选择 ${selectedModels.length} 个模型` : "选择生成模型"}>
+                        <Button
+                            type="text"
+                            shape="circle"
+                            className={cn(
+                                "relative !shrink-0 !border-0 !bg-transparent !p-0 !shadow-none hover:!bg-black/5 dark:hover:!bg-white/5",
+                                compact ? compactControlClassName : "!h-8 !w-8 !min-w-8",
+                                modelOpen && !theme && "!bg-stone-100 !text-stone-950 dark:!bg-stone-800 dark:!text-white",
+                            )}
+                            style={modelOpen ? activeStyle : mutedStyle}
+                            icon={<Orbit className={compact ? compactControlIconClassName : "size-3.5"} strokeWidth={1.7} />}
+                            aria-label={selectedModels.length ? `已选择 ${selectedModels.length} 个模型` : "选择生成模型"}
+                        >
+                            {selectedModels.length ? <span className="absolute right-0 top-0 size-1.5 rounded-full bg-cyan-500" aria-hidden="true" /> : null}
+                        </Button>
+                    </Tooltip>
+                </Popover>
+            ) : null}
+            {middle ? <div className={cn("min-w-0", compact && "ml-auto pl-1")}>{middle}</div> : null}
         </div>
     );
 }

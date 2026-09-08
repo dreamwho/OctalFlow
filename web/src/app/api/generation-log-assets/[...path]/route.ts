@@ -26,7 +26,7 @@ export async function HEAD(request: Request, context: RouteContext) {
 }
 
 async function serveGenerationAsset(request: Request, context: RouteContext) {
-    const currentUser = await getCurrentUser();
+    const currentUser = await getCurrentUser(request);
     if (!currentUser) return NextResponse.json({ error: "请先登录" }, { status: 401 });
 
     const { path } = await context.params;

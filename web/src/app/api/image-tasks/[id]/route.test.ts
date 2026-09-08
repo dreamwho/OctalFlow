@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     getImageTask: vi.fn(),
     getSchedule: vi.fn(),
     recover: vi.fn(),
+    resumeReview: vi.fn(),
 }));
 
 vi.mock("next/server", async (importOriginal) => {
@@ -16,12 +17,16 @@ vi.mock("@/app/api/image-tasks/image-task-reference-urls", () => ({ requestPubli
 vi.mock("@/lib/server/image-task-store", () => ({ getImageTask: mocks.getImageTask, transitionImageTask: vi.fn() }));
 vi.mock("@/lib/server/generation-task-recovery-service", () => ({ runGenerationTaskRecoveryBatch: mocks.recover }));
 vi.mock("@/lib/server/generation-task-store", () => ({ getStoredGenerationTaskRecord: mocks.getSchedule }));
+vi.mock("@/lib/server/generation-task-review-service", () => ({
+    GenerationTaskReviewResumeError: class GenerationTaskReviewResumeError extends Error {},
+    resumeImageGenerationReview: mocks.resumeReview,
+}));
 vi.mock("@/lib/server/internal-origin", () => ({ resolveInternalOrigin: vi.fn(() => "http://localhost") }));
 vi.mock("@/lib/server/points-response", () => ({ pointsResponseHeaders: vi.fn(() => new Headers()) }));
 vi.mock("@/lib/server/generation-channel", () => ({ generationModelId: vi.fn(() => "image-model") }));
 
 import { after } from "next/server";
-import { GET } from "./route";
+import { GET, PATCH } from "./route";
 
 const context = { params: Promise.resolve({ id: "image-one" }) };
 
@@ -62,6 +67,27 @@ describe("GET /api/image-tasks/[id]", () => {
 
         expect(after).not.toHaveBeenCalled();
         expect((await response.json()).task).toMatchObject({ needsReview: true, reviewReason: "图片提交结果无法确认" });
+    });
+
+    it("resumes the same reviewed task only after the user explicitly checks it", async () => {
+        const task = imageTask({ upstream: { id: "upstream-one" } });
+        mocks.getImageTask.mockResolvedValue(task);
+        mocks.getSchedule.mockResolvedValue({ executionPhase: "needs_review" });
+
+        const response = await PATCH(
+            new Request("http://localhost/api/image-tasks/image-one", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", cookie: "session=test" },
+                body: JSON.stringify({ status: "resume" }),
+            }),
+            context,
+        );
+
+        expect(response.status).toBe(200);
+        expect(mocks.resumeReview).toHaveBeenCalledWith(task, "needs_review");
+        const recovery = vi.mocked(after).mock.calls[0]?.[0] as () => Promise<unknown>;
+        await recovery();
+        expect(mocks.recover).toHaveBeenCalledWith(expect.objectContaining({ taskIds: ["image-one"] }));
     });
 });
 

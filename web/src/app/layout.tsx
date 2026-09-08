@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
 import { AppProviders } from "@/components/layout/app-providers";
-import { appStorageKey } from "@/lib/storage-keys";
+import { themeStorageKey } from "@/lib/theme-scope";
 import { absoluteSiteUrl, browserIconHref, getPublicSiteSettings, siteMetadataBase } from "@/lib/server/site-metadata";
 import { buildWebsiteStructuredData, serializeStructuredData } from "@/lib/structured-data";
 import "antd/dist/reset.css";
 import "./globals.css";
 import React from "react";
 
-const themeBootstrapScript = `try{const value=JSON.parse(localStorage.getItem(${JSON.stringify(appStorageKey("theme_store"))})||"{}");const theme=value?.state?.theme==="dark"?"dark":"light";document.documentElement.classList.toggle("dark",theme==="dark");document.documentElement.style.colorScheme=theme}catch{}`;
+const themeBootstrapScript = `try{const key=location.pathname.startsWith("/admin")?${JSON.stringify(themeStorageKey("admin"))}:${JSON.stringify(themeStorageKey("frontend"))};const value=JSON.parse(localStorage.getItem(key)||"{}");const theme=value?.state?.theme==="dark"?"dark":"light";document.documentElement.classList.toggle("dark",theme==="dark");document.documentElement.style.colorScheme=theme}catch{}`;
 
 export const viewport: Viewport = {
     width: "device-width",

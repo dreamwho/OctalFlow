@@ -12,8 +12,8 @@ import { queryVideoTaskUpstream } from "@/lib/server/video-task-runtime";
 import { createProtocolFixtureServer } from "../../../scripts/protocol-fixture-server.mjs";
 
 const MULTIPLIERS = { imageQuality: { auto: 1, high: 1 }, videoQuality: { "720": 1, "1080": 1 }, videoSeconds: { "5": 1, "8": 1 } };
-const STRICT_IMAGE_PROTOCOLS = registeredChannelProtocolDefinitions.filter((definition) => definition.strict && definition.operations.image);
-const STRICT_VIDEO_PROTOCOLS = registeredChannelProtocolDefinitions.filter((definition) => definition.strict && definition.operations.video);
+const STRICT_IMAGE_PROTOCOLS = registeredChannelProtocolDefinitions.filter((definition) => definition.strict && definition.transport !== "local-cli" && definition.operations.image);
+const STRICT_VIDEO_PROTOCOLS = registeredChannelProtocolDefinitions.filter((definition) => definition.strict && definition.transport !== "local-cli" && definition.operations.video);
 const ADVANCED_IMAGE_PROTOCOLS = channelProtocolDefinitions.filter((definition) => !definition.strict && definition.capabilities.includes("image"));
 const ADVANCED_VIDEO_PROTOCOLS = channelProtocolDefinitions.filter((definition) => !definition.strict && definition.capabilities.includes("video"));
 const PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR4nGPQq/3/H4QZYAwAWewKpRUlAtEAAAAASUVORK5CYII=";

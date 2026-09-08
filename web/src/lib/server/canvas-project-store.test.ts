@@ -136,6 +136,11 @@ describe("canvas project file provider", () => {
                             { type: "image", role: "first_frame", id: "first-image", name: "first.webp", mimeType: "image/webp", source: firstSource, storageKey: firstSource },
                             { type: "image", role: "last_frame", id: "last-image", name: "last.webp", mimeType: "image/webp", source: lastSource, storageKey: lastSource },
                         ],
+                        videoFrameExtraction: {
+                            sourceStorageKey: "permanent/canvas/source.mp4",
+                            firstFrame: { nodeId: "video-output", title: "来源首帧", source: "permanent/canvas/source-first.jpg", storageKey: "permanent/canvas/source-first.jpg" },
+                            lastFrame: { nodeId: "video-output", title: "来源尾帧", source: "permanent/canvas/source-last.jpg", storageKey: "permanent/canvas/source-last.jpg" },
+                        },
                     },
                 } as CanvasProject["nodes"][number],
             ],
@@ -153,6 +158,10 @@ describe("canvas project file provider", () => {
                             { role: "first_frame", source: firstSource },
                             { role: "last_frame", source: lastSource },
                         ],
+                        videoFrameExtraction: {
+                            sourceStorageKey: "permanent/canvas/source.mp4",
+                            lastFrame: { storageKey: "permanent/canvas/source-last.jpg" },
+                        },
                     },
                 },
             ],

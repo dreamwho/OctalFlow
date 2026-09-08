@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { App, Button, Empty, Form, Input, Modal, Popconfirm, Space, Table, Tag } from "antd";
 import type { TableColumnsType } from "antd";
-import { Copy, FolderPlus, Plus, Trash2 } from "lucide-react";
+import { Copy, FolderPlus, Pencil, Plus, Trash2 } from "lucide-react";
 
+import { clipboardImageFiles } from "@/lib/clipboard-image-files";
+import { imagePreviewUrl } from "@/lib/media-image-url";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useCopyText } from "@/hooks/use-copy-text";
-import { createMyPrompt, deleteMyPrompt, listMyPrompts } from "@/services/api/my-prompts";
+import { createMyPrompt, deleteMyPrompt, listMyPrompts, updateMyPrompt } from "@/services/api/my-prompts";
 import type { Prompt } from "@/services/api/prompts";
+import { PromptImageInput, promptCoverFileError } from "./prompt-image-input";
 
 const PAGE_SIZE = 8;
 
@@ -30,9 +33,12 @@ export function MyPromptsPage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [deletingId, setDeletingId] = useState("");
-    const [createOpen, setCreateOpen] = useState(false);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
+    const [coverFile, setCoverFile] = useState<File | null>(null);
     const copyText = useCopyText();
     const addAsset = useAssetStore((state) => state.addAsset);
+    const coverUrl = Form.useWatch("coverUrl", form) || "";
 
     const loadPrompts = useCallback(
         async (targetPage: number) => {
@@ -54,20 +60,52 @@ export function MyPromptsPage() {
         void loadPrompts(page);
     }, [loadPrompts, page]);
 
-    const createPrompt = async (value: PromptFormValue) => {
+    const savePrompt = async (value: PromptFormValue) => {
         setSubmitting(true);
         try {
-            await createMyPrompt({ ...value, tags: splitTags(value.tags) });
-            form.resetFields();
-            setCreateOpen(false);
-            message.success("提示词已保存");
-            if (page === 1) await loadPrompts(1);
-            else setPage(1);
+            const input = { ...value, tags: splitTags(value.tags) };
+            if (editingPrompt) {
+                await updateMyPrompt(editingPrompt.id, input, coverFile);
+                message.success("提示词已更新");
+                await loadPrompts(page);
+            } else {
+                await createMyPrompt(input, coverFile);
+                message.success("提示词已保存");
+                if (page === 1) await loadPrompts(1);
+                else setPage(1);
+            }
+            setModalOpen(false);
         } catch (error) {
-            message.error(error instanceof Error ? error.message : "新增提示词失败");
+            message.error(error instanceof Error ? error.message : editingPrompt ? "更新提示词失败" : "新增提示词失败");
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const openCreate = () => {
+        setEditingPrompt(null);
+        setCoverFile(null);
+        form.resetFields();
+        setModalOpen(true);
+    };
+
+    const openEdit = (item: Prompt) => {
+        setEditingPrompt(item);
+        setCoverFile(null);
+        form.setFieldsValue({ ...item, tags: item.tags.join(", ") });
+        setModalOpen(true);
+    };
+
+    const closeModal = () => {
+        if (submitting) return;
+        setModalOpen(false);
+    };
+
+    const selectCover = (file: File) => {
+        const error = promptCoverFileError(file);
+        if (error) return void message.warning(error);
+        setCoverFile(file);
+        form.setFieldValue("coverUrl", "");
     };
 
     const deletePrompt = async (id: string) => {
@@ -99,15 +137,18 @@ export function MyPromptsPage() {
             title: "标题",
             dataIndex: "title",
             render: (_, record) => (
-                <div className="min-w-0">
-                    <div className="font-medium text-stone-950 dark:text-stone-100">{record.title}</div>
-                    <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500 dark:text-stone-400">{record.prompt}</div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                        {record.tags.map((tag) => (
-                            <Tag key={tag} className="m-0 text-[11px]">
-                                {tag}
-                            </Tag>
-                        ))}
+                <div className="flex min-w-0 gap-3">
+                    {record.coverUrl ? <img src={imagePreviewUrl(record.coverUrl, 320)} alt={record.title} className="h-14 w-20 shrink-0 rounded-md border border-border object-cover" loading="lazy" /> : null}
+                    <div className="min-w-0">
+                        <div className="font-medium text-stone-950 dark:text-stone-100">{record.title}</div>
+                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500 dark:text-stone-400">{record.prompt}</div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                            {record.tags.map((tag) => (
+                                <Tag key={tag} className="m-0 text-[11px]">
+                                    {tag}
+                                </Tag>
+                            ))}
+                        </div>
                     </div>
                 </div>
             ),
@@ -120,9 +161,12 @@ export function MyPromptsPage() {
         },
         {
             title: "操作",
-            width: 180,
+            width: 230,
             render: (_, record) => (
                 <Space wrap size="small">
+                    <Button size="small" aria-label={`编辑提示词 ${record.title}`} icon={<Pencil className="size-3.5" />} onClick={() => openEdit(record)}>
+                        编辑
+                    </Button>
                     <Button size="small" aria-label="复制提示词" icon={<Copy className="size-3.5" />} onClick={() => copyText(record.prompt, "提示词已复制")}>
                         <span className="hidden sm:inline">复制</span>
                     </Button>
@@ -146,7 +190,7 @@ export function MyPromptsPage() {
                             <h1 className="text-xl font-semibold text-stone-950 sm:text-2xl dark:text-stone-100">我的提示词</h1>
                             <p className="mt-1.5 text-xs leading-5 text-stone-500 sm:mt-2 sm:text-sm dark:text-stone-400">保存自己的提示词记录，复制使用或沉淀到我的素材。</p>
                         </div>
-                        <Button type="primary" size="small" className="shrink-0 sm:!h-9" icon={<Plus className="size-3.5 sm:size-4" />} onClick={() => setCreateOpen(true)}>
+                        <Button type="primary" size="small" className="shrink-0 sm:!h-9" icon={<Plus className="size-3.5 sm:size-4" />} onClick={openCreate}>
                             添加提示词
                         </Button>
                     </div>
@@ -168,8 +212,46 @@ export function MyPromptsPage() {
                     </section>
                 </div>
             </main>
-            <Modal title="添加提示词" open={createOpen} footer={null} centered width={720} destroyOnHidden onCancel={() => setCreateOpen(false)} afterClose={() => form.resetFields()}>
-                <Form form={form} layout="vertical" onFinish={createPrompt} requiredMark={false} className="pt-3">
+            <Modal
+                title={editingPrompt ? "编辑提示词" : "添加提示词"}
+                open={modalOpen}
+                footer={null}
+                centered
+                width={720}
+                destroyOnHidden
+                mask={{ closable: !submitting }}
+                keyboard={!submitting}
+                onCancel={closeModal}
+                afterClose={() => {
+                    form.resetFields();
+                    setEditingPrompt(null);
+                    setCoverFile(null);
+                }}
+            >
+                <Form
+                    form={form}
+                    layout="vertical"
+                    onFinish={savePrompt}
+                    requiredMark={false}
+                    className="pt-3"
+                    onPaste={(event) => {
+                        const files = clipboardImageFiles(event.clipboardData);
+                        if (!files.length) return;
+                        event.preventDefault();
+                        selectCover(files[0]);
+                    }}
+                >
+                    <Form.Item label="封面图片">
+                        <PromptImageInput
+                            file={coverFile}
+                            currentUrl={coverUrl}
+                            onChange={selectCover}
+                            onRemove={() => {
+                                setCoverFile(null);
+                                form.setFieldValue("coverUrl", "");
+                            }}
+                        />
+                    </Form.Item>
                     <div className="grid gap-x-4 sm:grid-cols-2">
                         <Form.Item label="标题" name="title" rules={[{ required: true, message: "请输入标题" }]}>
                             <Input placeholder="例如：产品摄影主视觉" />
@@ -180,8 +262,8 @@ export function MyPromptsPage() {
                         <Form.Item label="标签" name="tags">
                             <Input placeholder="用逗号分隔，例如：摄影, 电商, 写实" />
                         </Form.Item>
-                        <Form.Item label="封面 URL" name="coverUrl">
-                            <Input placeholder="可选，用于展示卡片封面" />
+                        <Form.Item label="图片 URL（可选）" name="coverUrl" extra="也可以粘贴已有图片地址；本地图片优先。">
+                            <Input placeholder="https://example.com/image.png" onChange={() => coverFile && setCoverFile(null)} />
                         </Form.Item>
                     </div>
                     <Form.Item label="提示词内容" name="prompt" rules={[{ required: true, message: "请输入提示词内容" }]}>
@@ -191,9 +273,11 @@ export function MyPromptsPage() {
                         <Input.TextArea rows={2} placeholder="可选，记录使用场景、参考图说明或效果备注" />
                     </Form.Item>
                     <div className="flex justify-end gap-3">
-                        <Button onClick={() => setCreateOpen(false)}>取消</Button>
-                        <Button type="primary" htmlType="submit" loading={submitting} icon={<Plus className="size-4" />}>
-                            保存提示词
+                        <Button disabled={submitting} onClick={closeModal}>
+                            取消
+                        </Button>
+                        <Button type="primary" htmlType="submit" loading={submitting} icon={editingPrompt ? <Pencil className="size-4" /> : <Plus className="size-4" />}>
+                            {editingPrompt ? "保存修改" : "保存提示词"}
                         </Button>
                     </div>
                 </Form>

@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Popover, Tooltip } from "antd";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Modal, Tooltip } from "antd";
 import { Check, Sparkles, Clapperboard, Film, User, Smile, Palette, Video, Search } from "lucide-react";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AgentSkillSummary } from "@/services/api/agent-skills";
+import { AgentSkillPreview } from "@/components/agent-skill-preview";
 
 type Props = {
     skills: AgentSkillSummary[];
     loading?: boolean;
     selectedSkillIds?: string[];
     onSelect: (skill: AgentSkillSummary) => void;
+    trigger?: ReactNode;
 };
 
-const CATEGORIES = [
+export const CANVAS_SKILL_CATEGORIES = [
     { key: "all", label: "全部技能", icon: Sparkles },
     { key: "drama", label: "短剧导演", icon: Clapperboard },
     { key: "vlog", label: "真人Vlog", icon: Video },
@@ -25,82 +27,34 @@ const CATEGORIES = [
     { key: "poster", label: "视觉海报", icon: Palette },
 ];
 
-export function CanvasSkillSelector({ skills, loading = false, selectedSkillIds = [], onSelect }: Props) {
+export function canvasSkillMatchesCategory(skill: AgentSkillSummary, category: string) {
+    if (category === "all") return true;
+    const combined = `${skill.id} ${skill.name} ${skill.description || ""} ${(skill.keywords || []).join(" ")}`.toLowerCase();
+    if (category === "drama") return combined.includes("drama") || combined.includes("短剧") || combined.includes("导演") || combined.includes("分镜");
+    if (category === "vlog") return combined.includes("vlog") || combined.includes("自拍") || combined.includes("生活记录");
+    if (category === "casting") return combined.includes("casting") || combined.includes("选角") || combined.includes("角色") || combined.includes("人物") || combined.includes("肖像");
+    if (category === "cinema") return combined.includes("cinema") || combined.includes("电影") || combined.includes("21:9");
+    if (category === "expression") return combined.includes("expression") || combined.includes("表情") || combined.includes("情绪");
+    if (category === "video") return combined.includes("seedance") || combined.includes("minimax") || combined.includes("h3") || combined.includes("视频") || combined.includes("动效");
+    if (category === "poster") return combined.includes("fantasy") || combined.includes("海报") || combined.includes("社交");
+    return false;
+}
+
+export function CanvasSkillSelector({ skills, loading = false, selectedSkillIds = [], onSelect, trigger }: Props) {
     const [open, setOpen] = useState(false);
     const [activeTab, setActiveTab] = useState("all");
     const [searchQuery, setSearchQuery] = useState("");
-    const [popoverPlacement, setPopoverPlacement] = useState<"topLeft" | "bottomLeft">("topLeft");
-    const [popoverMaxHeight, setPopoverMaxHeight] = useState(420);
-    const [popoverOffsetX, setPopoverOffsetX] = useState(0);
-    const triggerRef = useRef<HTMLButtonElement>(null);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
 
+    const visibleCategories = useMemo(() => CANVAS_SKILL_CATEGORIES.filter((category) => category.key === "all" || skills.some((skill) => canvasSkillMatchesCategory(skill, category.key))), [skills]);
+
     useEffect(() => {
-        if (!open) return;
-        let frame = 0;
-        const clampOverlay = () => {
-            const overlay = document.querySelector<HTMLElement>(".canvas-skill-popover");
-            if (!overlay) return;
-            const viewport = window.visualViewport;
-            const viewportLeft = viewport?.offsetLeft ?? 0;
-            const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth);
-            const rect = overlay.getBoundingClientRect();
-            const correction = rect.left < viewportLeft + 12 ? viewportLeft + 12 - rect.left : rect.right > viewportRight - 12 ? viewportRight - 12 - rect.right : 0;
-            if (Math.abs(correction) > 0.5) setPopoverOffsetX((value) => value + correction);
-        };
-        const scheduleClamp = () => {
-            window.cancelAnimationFrame(frame);
-            frame = window.requestAnimationFrame(() => {
-                frame = window.requestAnimationFrame(clampOverlay);
-            });
-        };
-        const updateGeometry = () => {
-            const rect = triggerRef.current?.getBoundingClientRect();
-            if (!rect) return;
-            const viewport = window.visualViewport;
-            const viewportTop = viewport?.offsetTop ?? 0;
-            const viewportLeft = viewport?.offsetLeft ?? 0;
-            const viewportWidth = viewport?.width ?? window.innerWidth;
-            const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
-            const spaceAbove = Math.max(0, rect.top - viewportTop - 12);
-            const spaceBelow = Math.max(0, viewportBottom - rect.bottom - 12);
-            const placement = spaceAbove >= 220 || spaceAbove >= spaceBelow ? "topLeft" : "bottomLeft";
-            const available = placement === "topLeft" ? spaceAbove : spaceBelow;
-            const overlayWidth = Math.max(0, Math.min(704, viewportWidth - 24));
-            const desiredLeft = Math.min(Math.max(rect.left, viewportLeft + 12), viewportLeft + viewportWidth - overlayWidth - 12);
-            setPopoverPlacement(placement);
-            setPopoverMaxHeight(Math.max(120, Math.min(520, available - 44)));
-            setPopoverOffsetX(desiredLeft - rect.left);
-            scheduleClamp();
-        };
-        updateGeometry();
-        const viewport = window.visualViewport;
-        viewport?.addEventListener("resize", updateGeometry);
-        viewport?.addEventListener("scroll", updateGeometry);
-        window.addEventListener("resize", updateGeometry);
-        return () => {
-            window.cancelAnimationFrame(frame);
-            viewport?.removeEventListener("resize", updateGeometry);
-            viewport?.removeEventListener("scroll", updateGeometry);
-            window.removeEventListener("resize", updateGeometry);
-        };
-    }, [open]);
+        if (!visibleCategories.some((category) => category.key === activeTab)) setActiveTab("all");
+    }, [activeTab, visibleCategories]);
 
     const filteredSkills = useMemo(() => {
         let list = skills;
-        if (activeTab !== "all") {
-            list = list.filter((s) => {
-                const combined = `${s.id} ${s.name} ${s.description || ""} ${(s.keywords || []).join(" ")}`.toLowerCase();
-                if (activeTab === "drama") return combined.includes("drama") || combined.includes("短剧") || combined.includes("导演");
-                if (activeTab === "vlog") return combined.includes("vlog") || combined.includes("真人感") || combined.includes("自拍") || combined.includes("生活记录");
-                if (activeTab === "casting") return combined.includes("casting") || combined.includes("选角") || combined.includes("角色");
-                if (activeTab === "cinema") return combined.includes("cinema") || combined.includes("电影") || combined.includes("21:9");
-                if (activeTab === "expression") return combined.includes("expression") || combined.includes("表情") || combined.includes("情绪");
-                if (activeTab === "video") return combined.includes("seedance") || combined.includes("minimax") || combined.includes("h3") || combined.includes("视频");
-                if (activeTab === "poster") return combined.includes("fantasy") || combined.includes("海报") || combined.includes("社交");
-                return true;
-            });
-        }
+        if (activeTab !== "all") list = list.filter((skill) => canvasSkillMatchesCategory(skill, activeTab));
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
             list = list.filter((s) => `${s.name} ${s.description || ""} ${(s.keywords || []).join(" ")}`.toLowerCase().includes(q));
@@ -113,56 +67,53 @@ export function CanvasSkillSelector({ skills, loading = false, selectedSkillIds 
         setOpen(false);
     };
 
-    const popoverContent = (
-        <div className="flex w-[min(680px,calc(100vw-48px))] select-none flex-col overflow-hidden p-2" style={{ maxHeight: popoverMaxHeight }} onClick={(e) => e.stopPropagation()}>
-            <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                <div>
-                    <p className="text-sm font-semibold">使用 Skill</p>
-                    <p className="text-[11px] opacity-55">选择后由默认文本模型融合到本次生成提示词</p>
+    const dialogContent = (
+        <div className="flex max-h-[min(640px,calc(100dvh-48px))] min-h-0 select-none flex-col overflow-hidden" onClick={(e) => e.stopPropagation()} data-canvas-skill-dialog>
+            <div
+                data-canvas-skill-toolbar
+                className="flex shrink-0 items-center gap-3 border-b px-4 py-3 pr-14 max-[720px]:flex-col max-[720px]:items-stretch max-[720px]:gap-2"
+                style={{ borderColor: theme.toolbar.border }}
+            >
+                <div className="hide-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Skill 分类">
+                    {visibleCategories.map((cat) => {
+                        const Icon = cat.icon;
+                        const isActive = activeTab === cat.key;
+                        return (
+                            <button
+                                key={cat.key}
+                                type="button"
+                                role="tab"
+                                aria-selected={isActive}
+                                onClick={() => setActiveTab(cat.key)}
+                                className="flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                                style={{ background: isActive ? theme.toolbar.activeBg : "transparent", color: isActive ? theme.toolbar.activeText : theme.node.muted }}
+                            >
+                                <Icon className="size-3" />
+                                <span>{cat.label}</span>
+                            </button>
+                        );
+                    })}
                 </div>
-                {selectedSkillIds.length ? <span className="rounded-full bg-black/5 px-2 py-1 text-[11px] opacity-65 dark:bg-white/10">已选 {selectedSkillIds.length}</span> : null}
-            </div>
-            <div className="mb-2 flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs" style={{ borderColor: theme.toolbar.border, background: theme.node.fill }}>
-                <Search className="size-3.5 opacity-50" />
-                <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="搜索技能名称或描述..."
-                    className="w-full bg-transparent outline-none placeholder:text-gray-400"
-                    style={{ color: theme.node.text }}
-                />
-            </div>
-
-            {/* 分类快捷筛选 */}
-            <div className="thin-scrollbar mb-2 flex items-center gap-1 overflow-x-auto pb-1">
-                {CATEGORIES.map((cat) => {
-                    const Icon = cat.icon;
-                    const isActive = activeTab === cat.key;
-                    return (
-                        <button
-                            key={cat.key}
-                            type="button"
-                            onClick={() => setActiveTab(cat.key)}
-                            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs transition"
-                            style={{
-                                background: isActive ? "#5b5ce2" : "rgba(128,128,128,0.1)",
-                                color: isActive ? "#fff" : theme.node.text,
-                            }}
-                        >
-                            <Icon className="size-3" />
-                            <span>{cat.label}</span>
-                        </button>
-                    );
-                })}
+                <label className="flex h-9 w-[min(340px,38vw)] shrink-0 items-center gap-2 rounded-lg border px-3 text-sm max-[720px]:w-full" style={{ borderColor: theme.toolbar.border, background: theme.node.fill }}>
+                    <Search className="size-4 shrink-0 opacity-50" />
+                    <input
+                        type="search"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="搜索 Skill"
+                        aria-label="搜索 Skill"
+                        className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-gray-400"
+                        style={{ color: theme.node.text }}
+                    />
+                    {selectedSkillIds.length ? <span className="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-[10px] opacity-65 dark:bg-white/10">已选 {selectedSkillIds.length}</span> : null}
+                </label>
             </div>
 
-            {/* 技能列表 */}
-            <div className="thin-scrollbar grid min-h-0 flex-1 grid-cols-1 gap-1.5 overflow-y-auto pr-0.5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="thin-scrollbar grid min-h-0 flex-1 grid-cols-1 content-start items-start gap-3 overflow-y-auto p-4 sm:grid-cols-2 lg:grid-cols-3">
                 {loading ? (
-                    <div className="py-6 text-center text-xs opacity-50">加载技能库中...</div>
+                    <div className="col-span-full py-12 text-center text-xs opacity-50">加载技能库中...</div>
                 ) : filteredSkills.length === 0 ? (
-                    <div className="py-6 text-center text-xs opacity-50">未找到匹配的 Skill 技能</div>
+                    <div className="col-span-full py-12 text-center text-xs opacity-50">未找到匹配的 Skill 技能</div>
                 ) : (
                     filteredSkills.map((skill) => {
                         const selected = selectedSkillIds.includes(skill.id);
@@ -170,17 +121,26 @@ export function CanvasSkillSelector({ skills, loading = false, selectedSkillIds 
                         <div
                             key={skill.id}
                             onClick={() => handleSelectSkill(skill)}
-                            className="group min-h-[74px] cursor-pointer rounded-lg border p-2 text-left transition hover:border-[#5b5ce2] hover:bg-[#5b5ce2]/5"
-                            style={{ borderColor: selected ? "#5b5ce2" : theme.toolbar.border, background: selected ? "rgba(91,92,226,0.08)" : theme.toolbar.panel }}
+                            className="group cursor-pointer rounded-xl border p-2.5 text-left transition hover:border-cyan-500 hover:bg-cyan-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                            style={{ borderColor: selected ? "#22d3ee" : theme.toolbar.border, background: selected ? "rgba(34,211,238,0.09)" : theme.toolbar.panel }}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    handleSelectSkill(skill);
+                                }
+                            }}
                         >
-                            <div className="flex items-center justify-between gap-1 mb-1">
-                                <div className="flex items-center gap-1.5 font-medium text-xs text-[#5b5ce2] group-hover:underline">
-                                    <Sparkles className="size-3" />
+                            <AgentSkillPreview skill={skill} className="mb-2 aspect-[16/9] h-auto" />
+                            <div className="mb-1 flex items-center justify-between gap-1">
+                                <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-cyan-600 group-hover:underline dark:text-cyan-300">
+                                    <Sparkles className="size-3.5 shrink-0" />
                                     <span className="line-clamp-1">{skill.name}</span>
                                 </div>
-                                {selected ? <Check className="size-3.5 text-[#5b5ce2]" /> : <span className="text-[10px] opacity-40">{skill.workspaces?.join("/") || "all"}</span>}
+                                {selected ? <Check className="size-4 shrink-0 text-cyan-600 dark:text-cyan-300" /> : <span className="shrink-0 rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] opacity-55 dark:bg-white/10">{skill.promptMode === "optional" ? "提示词可选" : "需补充提示词"}</span>}
                             </div>
-                            {skill.description && <p className="line-clamp-2 text-[11px] leading-relaxed opacity-70 mb-1">{skill.description}</p>}
+                            {skill.description && <p className="line-clamp-2 text-xs leading-relaxed opacity-70">{skill.description}</p>}
                         </div>
                         );
                     })
@@ -190,22 +150,47 @@ export function CanvasSkillSelector({ skills, loading = false, selectedSkillIds 
     );
 
     return (
-        <Popover content={popoverContent} trigger="click" open={open} onOpenChange={setOpen} placement={popoverPlacement} align={{ offset: [popoverOffsetX, 0] }} overlayClassName="canvas-skill-popover">
-            <Tooltip title="Skill 技能参考库">
-                <button
-                    ref={triggerRef}
-                    type="button"
-                    className="flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition hover:border-[#5b5ce2] hover:text-[#5b5ce2]"
-                    style={{ borderColor: theme.toolbar.border, background: theme.toolbar.panel, color: theme.node.text }}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setOpen(!open);
-                    }}
-                >
-                    <Sparkles className="size-3.5 text-[#5b5ce2]" />
-                    <span>Skill{selectedSkillIds.length ? ` · ${selectedSkillIds.length}` : ""}</span>
-                </button>
-            </Tooltip>
-        </Popover>
+        <>
+            <span
+                className="inline-flex"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    setOpen(true);
+                }}
+            >
+                {trigger || (
+                    <Tooltip title="Skill 技能参考库">
+                        <button
+                            type="button"
+                            className="flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition hover:border-[#5b5ce2] hover:text-[#5b5ce2]"
+                            style={{ borderColor: theme.toolbar.border, background: theme.toolbar.panel, color: theme.node.text }}
+                        >
+                            <Sparkles className="size-3.5 text-[#5b5ce2]" />
+                            <span>Skill{selectedSkillIds.length ? ` · ${selectedSkillIds.length}` : ""}</span>
+                        </button>
+                    </Tooltip>
+                )}
+            </span>
+            <Modal
+                open={open}
+                onCancel={() => setOpen(false)}
+                footer={null}
+                centered
+                width="min(1000px, calc(100vw - 24px))"
+                className="canvas-skill-modal"
+                classNames={{ container: "border border-[#d9e4ee] dark:border-[#4d6478]" }}
+                styles={{
+                    container: {
+                        padding: 0,
+                        overflow: "hidden",
+                        background: theme.toolbar.panel,
+                        boxShadow: "0 0 0 1px rgba(8,145,178,.08), 0 24px 72px rgba(8,145,178,.16), 0 18px 54px rgba(15,23,42,.22)",
+                    },
+                    body: { padding: 0 },
+                }}
+            >
+                {dialogContent}
+            </Modal>
+        </>
     );
 }

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
-import { CanvasNode, resolvePromptPanelLayout } from "./canvas-node";
+import { CanvasNode, resolveNodeMetaScale, resolveNodeResolutionOpacity, resolvePromptPanelLayout } from "./canvas-node";
 import { NodeContent } from "./canvas-node-content";
 
 const imageNode: CanvasNodeData = {
@@ -37,6 +37,7 @@ function renderImageNode(overrides: Partial<React.ComponentProps<typeof CanvasNo
             onConnectStart={noop}
             onResize={noop}
             onContentChange={noop}
+            onTitleChange={noop}
             onContextMenu={noop}
             {...overrides}
         />,
@@ -74,16 +75,69 @@ describe("CanvasNode image border", () => {
         expect(markup).toContain("/api/reference-assets/permanent/generated-image.png?format=webp&amp;width=1920");
     });
 
-    it("keeps the blue active border when the image is selected", () => {
-        expect(renderImageNode({ isSelected: true })).toContain("border-color:#5b5ce2");
+    it("uses the cyan-to-violet flow border when the image is selected", () => {
+        const markup = renderImageNode({ isSelected: true });
+
+        expect(markup).toContain("data-canvas-node-selection-flow");
+        expect(markup).toContain("border-color:transparent");
+        expect(markup).not.toContain("0 0 0 1px rgba(103,232,249,.45)");
+        expect(markup).toContain("#67e8f9");
+        expect(markup).toContain("#818cf8");
+        expect(markup).toContain("#c084fc");
+        expect(markup).toContain('x="0" y="0" width="100" height="100"');
     });
 
-    it("visually bridges an opened prompt panel back to its media node", () => {
+    it("progressively reduces node title metadata after the canvas is zoomed out", () => {
+        const markup = renderImageNode({ scale: 0.25 });
+
+        expect(markup).toContain("data-canvas-node-title");
+        expect(resolveNodeMetaScale(1)).toBe(1);
+        expect(resolveNodeMetaScale(2)).toBe(1);
+        expect(resolveNodeMetaScale(0.39)).toBeLessThan(resolveNodeMetaScale(0.7));
+        expect(resolveNodeMetaScale(0.05)).toBe(0.38);
+        expect(markup).not.toContain("font-size:72px");
+        expect(markup).not.toContain("width:80px;height:80px");
+    });
+
+    it("keeps every node title in a compact line above its node", () => {
+        for (const type of Object.values(CanvasNodeType)) {
+            const markup = renderImageNode({ data: { ...imageNode, id: `title-${type}`, type, title: `${type}节点`, metadata: {} }, scale: 0.5 });
+
+            expect(markup, type).toContain("data-canvas-node-title");
+            expect(markup, type).toContain("data-canvas-node-title");
+            expect(markup, type).not.toContain("line-height:40px");
+        }
+    });
+
+    it("makes node titles keyboard-reachable inline edit controls", () => {
+        const markup = renderImageNode();
+
+        expect(markup).toContain("data-canvas-node-title");
+        expect(markup).toContain("data-canvas-no-drag");
+        expect(markup).toContain('aria-label="编辑节点标题：生成图片"');
+        expect(markup).toContain('title="点击修改节点标题"');
+    });
+
+    it("shows image and video resolution only once the node has enough screen width", () => {
+        const imageMarkup = renderImageNode({ data: { ...imageNode, metadata: { ...imageNode.metadata, naturalWidth: 3072, naturalHeight: 4096 } } });
+        const videoMarkup = renderImageNode({ data: { ...imageNode, type: CanvasNodeType.Video, metadata: { content: "/api/reference-assets/permanent/video.mp4", naturalWidth: 1920, naturalHeight: 1080 } } });
+        const compactMarkup = renderImageNode({ data: { ...imageNode, metadata: { ...imageNode.metadata, naturalWidth: 3072, naturalHeight: 4096 } }, scale: 0.5 });
+
+        expect(imageMarkup).toContain("data-canvas-node-resolution");
+        expect(imageMarkup).toContain("3072 × 4096");
+        expect(imageMarkup).not.toContain("background:#fbfbfdaa");
+        expect(videoMarkup).toContain("1920 × 1080");
+        expect(compactMarkup).not.toContain("data-canvas-node-resolution");
+        expect(resolveNodeResolutionOpacity(340, 0.5)).toBe(0);
+        expect(resolveNodeResolutionOpacity(340, 1)).toBe(1);
+    });
+
+    it("opens a fixed-size prompt panel without drawing a connector line", () => {
         const markup = renderImageNode({ showPanel: true, renderPanel: () => <div>生成提示词</div> });
 
         expect(markup).toContain('data-canvas-prompt-connection="true"');
         expect(markup).toContain('data-canvas-prompt-placement="below"');
-        expect(markup).toContain("canvas-panel-bridge");
+        expect(markup).not.toContain("canvas-panel-bridge");
         expect(markup).toContain("生成提示词");
     });
 
@@ -111,6 +165,13 @@ describe("CanvasNode image border", () => {
         const markup = renderImageNode({ data: batchChild, isRelated: true });
 
         expect(markup).toContain(`class="relative h-full w-full overflow-visible rounded-md border" style="background:transparent;border-color:${canvasThemes.light.node.stroke}"`);
+    });
+
+    it("keeps resize hit areas safe for fast pointer drags", () => {
+        const markup = renderImageNode();
+
+        expect(markup).toContain('data-canvas-resize-corner="bottom-right"');
+        expect(markup).toContain('style="touch-action:none;user-select:none"');
     });
 });
 
@@ -219,6 +280,28 @@ describe("CanvasNode error content", () => {
         expect(markup).toContain("重试");
     });
 
+    it.each(["light", "dark"] as const)("wraps complete error copy in a themed %s error surface", (themeName) => {
+        const theme = canvasThemes[themeName];
+        const errorDetails = "即梦 CLI 参考图暂存失败：媒体上传请求被上游拒绝，请检查可用授权素材地址后再试。";
+        const markup = renderContent({ ...imageNode, metadata: { status: "error", errorDetails } }, theme);
+
+        expect(markup).toContain("data-canvas-node-error-details");
+        expect(markup).toContain("whitespace-pre-wrap break-words");
+        expect(markup).toContain(`background:${theme.node.dangerSurface}`);
+        expect(markup).toContain(`border-color:${theme.node.dangerBorder}`);
+        expect(markup).toContain(errorDetails);
+    });
+
+    it("keeps error copy and retry control readable when the canvas is zoomed out", () => {
+        const failedNode: CanvasNodeData = { ...imageNode, metadata: { status: "error", errorDetails: "当前模型能力不满足参考素材或数量参数" } };
+
+        const markup = renderImageNode({ data: failedNode, scale: 0.25, onRetry: noop });
+
+        expect(markup).toContain("font-size:48px;line-height:80");
+        expect(markup).toContain("height:128px");
+        expect(markup).toContain("当前模型能力不满足参考素材或数量参数");
+    });
+
     it("renders a cancelled terminal state without a retry action", () => {
         const cancelledNode: CanvasNodeData = { ...imageNode, metadata: { status: "cancelled", agentTaskStatus: "cancelled" } };
 
@@ -236,5 +319,54 @@ describe("CanvasNode error content", () => {
         expect(markup).toContain("上游创建状态待确认");
         expect(markup).toContain("检查状态");
         expect(markup).not.toContain(">重试<");
+    });
+});
+
+describe("CanvasNode loading content", () => {
+    it("renders real progress in the top-left status without fabricating unavailable progress", () => {
+        const markup = renderContent({ ...imageNode, metadata: { status: "loading", generationProgress: 6, generationStage: "深度推理" } }, canvasThemes.light);
+        expect(markup).toContain('aria-label="生成中 6%"');
+        expect(markup).toContain("left-4 right-4 top-4");
+        expect(markup).toContain("深度推理");
+    });
+    it.each(Object.values(CanvasNodeType).filter((type) => type !== CanvasNodeType.Config))("fills a loading %s node with the shared video animation", (type) => {
+        const markup = renderContent({ ...imageNode, id: `loading-${type}`, type, metadata: { status: "loading" } }, canvasThemes.light);
+
+        expect(markup).toContain("data-canvas-node-loading");
+        expect(markup).toContain('role="status"');
+        expect(markup).toContain('aria-label="生成中 预计 1%"');
+        expect(markup).toContain("/generation-smoke.webp");
+        expect(markup).toContain("/animations/generation-loading-animation.mp4");
+        expect(markup).toContain('autoPlay=""');
+        expect(markup).toContain('muted=""');
+        expect(markup).toContain('loop=""');
+        expect(markup).toContain('playsInline=""');
+        expect(markup).toContain('preload="metadata"');
+        expect(markup.match(/<img[^>]+src="\/generation-smoke\.webp"/g)).toHaveLength(1);
+        expect(markup).not.toContain("animate-spin");
+    });
+
+    it("keeps a status label readable after a node is zoomed out", () => {
+        const markup = renderContent({ ...imageNode, metadata: { status: "loading" } }, canvasThemes.light);
+        const zoomedOutMarkup = renderToStaticMarkup(
+            <NodeContent
+                node={{ ...imageNode, metadata: { status: "loading" } }}
+                theme={canvasThemes.light}
+                scale={0.25}
+                isEditingContent={false}
+                textareaRef={{ current: null }}
+                isBatchRoot={false}
+                batchCount={0}
+                batchExpanded={false}
+                batchOpening={false}
+                batchRecovering={false}
+                onContentChange={noop}
+                onStopEditing={noop}
+                mentionReferences={[]}
+            />,
+        );
+
+        expect(markup).toContain("生成中");
+        expect(zoomedOutMarkup).toContain("font-size:34px");
     });
 });

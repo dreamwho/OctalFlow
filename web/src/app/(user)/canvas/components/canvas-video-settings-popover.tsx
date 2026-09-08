@@ -1,6 +1,7 @@
 "use client";
 
 import { SlidersHorizontal } from "lucide-react";
+import { useEffect } from "react";
 
 import { CreativeGenerationPreferences, generationPreferenceSummary, type CreativeGenerationPreferencePatch } from "@/components/creative-generation-preferences";
 import { useCreativeComposerPopoverPlacement, type CreativeComposerPopoverPlacement } from "@/components/creative-composer-popover";
@@ -14,6 +15,7 @@ import type { CanvasNodeMetadata } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 import { canvasVideoReferenceModeLabel, normalizeCanvasVideoReferenceMode } from "../utils/canvas-video-references";
 import { CanvasVideoReferenceSettings } from "./canvas-video-reference-settings";
+import { canvasDreaminaVideoCommand, canvasDreaminaVideoProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
 
 type CanvasVideoSettingsPopoverProps = {
     config: AiConfig;
@@ -28,6 +30,9 @@ type CanvasVideoSettingsPopoverProps = {
 export function CanvasVideoSettingsPopover({ config, metadata, references, onConfigChange, onMetadataChange, buttonClassName, placement = "topLeft" }: CanvasVideoSettingsPopoverProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const responsivePlacement = useCreativeComposerPopoverPlacement(placement);
+    const dreaminaModelId = resolveCanvasDreaminaModelId(config);
+    const dreaminaCommand = canvasDreaminaVideoCommand(metadata, references);
+    const dreamina = canvasDreaminaVideoProfile(dreaminaModelId, dreaminaCommand);
     const preferences: GenerationPreferences = {
         mode: "video",
         video: {
@@ -42,6 +47,20 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
     const summary = canvasVideoPreferenceSummary(preferences);
     const fullSummary = generationPreferenceSummary("video", preferences);
     const referenceLabel = canvasVideoReferenceModeLabel(metadata?.videoReferenceMode);
+    const fixedSizeLabel = dreamina?.fixedRatio ? "由参考素材比例决定" : undefined;
+
+    useEffect(() => {
+        if (!dreamina) return;
+        const quality = String(config.vquality || "720")
+            .toLowerCase()
+            .replace(/p$/, "");
+        if (!dreamina.qualities.some((option) => option.value === quality)) onConfigChange("vquality", dreamina.qualities[0]?.value || "720");
+        const seconds = positiveInteger(config.videoSeconds, 5);
+        if (seconds < dreamina.durationRange.min || seconds > dreamina.durationRange.max) onConfigChange("videoSeconds", String(Math.min(Math.max(5, dreamina.durationRange.min), dreamina.durationRange.max)));
+        const size = config.size || "auto";
+        if (dreamina.fixedRatio && size !== "auto") onConfigChange("size", "auto");
+        else if (!dreamina.fixedRatio && !dreamina.ratios.some((option) => option.value === size)) onConfigChange("size", "auto");
+    }, [config.size, config.videoSeconds, config.vquality, dreamina, onConfigChange]);
 
     return (
         <CreativeGenerationPreferences
@@ -51,11 +70,18 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
             triggerAriaLabel={`视频设置：${referenceLabel} · ${fullSummary}`}
             triggerIcon={<SlidersHorizontal className="size-4" />}
             triggerClassName={buttonClassName}
-            triggerLabelClassName="whitespace-nowrap text-left !overflow-visible !text-clip"
+            triggerLabelClassName="min-w-0 truncate whitespace-nowrap text-left"
             placement={responsivePlacement}
             autoAdjustOverflow
             showCount={false}
             tabless
+            fixedSizeLabel={fixedSizeLabel}
+            ratioOptions={dreamina?.ratios}
+            videoQualityOptions={dreamina?.qualities}
+            videoDurationOptions={dreamina?.durations}
+            videoDurationRange={dreamina?.durationRange}
+            allowCustomSize={!dreamina}
+            allowCustomVideoQuality={!dreamina}
             videoReferenceContent={<CanvasVideoReferenceSettings metadata={metadata} references={references} theme={theme} compact onChange={onMetadataChange} />}
             onChange={(patch) => applyVideoPreferencePatch(patch, onConfigChange)}
         />

@@ -23,6 +23,8 @@ import { authorizedWorkerUserId } from "@/lib/server/maintenance-auth";
 import { authorizeGenerationMediaProxyRequest } from "@/lib/server/generation-media-access";
 import { userOwnsGenerationUpstreamTask } from "@/lib/server/generation-task-authorization";
 import { authorizeSystemAiProxyRequest } from "@/lib/server/system-ai-proxy-policy";
+import { GEMINIAI_PROTOCOL, geminiAiProviderConfigured, geminiAiRuntimeRequest, isGeminiAiRuntimePath } from "@/lib/server/geminiai-provider";
+import { GEMINI_TOOLS_PROTOCOL, geminiToolsOAuthConfigured, geminiToolsRuntimeRequest, isGeminiToolsRuntimePath } from "@/lib/server/gemini-tools-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +75,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     const settings = await getAuthSettings();
     const channel = settings.systemChannels.find((item) => item.id === channelId && item.enabled);
     if (!channel || !channelConnectionReady(channel)) return NextResponse.json({ error: "默认接口未配置或已停用" }, { status: 404 });
+    if (channel.advancedConfig?.protocol === "dreamina-cli") return NextResponse.json({ error: "即梦 CLI 仅可通过已持久化的图片或视频生成任务执行" }, { status: 404 });
 
     if (isMediaProxyPath(path)) {
         const rate = await checkMediaProxyRateLimit(userId, request);
@@ -138,8 +141,18 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         if (!owned) return NextResponse.json({ error: "任务不存在或无权访问" }, { status: 404 });
     }
 
-    const target = targetUrl(globalPreset?.baseUrl || channel.baseUrl, globalPreset?.apiFormat || apiFormat, globalAdaptation?.path || path, new URL(request.url).search, globalChannel, modelConfig?.protocol || channel.advancedConfig?.protocol);
-    if (!(await isSafeOutboundUrl(target, { allowCredentials: false, allowProxyFakeIpSpace: true }))) return NextResponse.json({ error: "接口地址不允许访问内网或保留地址" }, { status: 400 });
+    const isGeminiAiChannel = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL;
+    const isGeminiToolsChannel = channel.advancedConfig?.protocol === GEMINI_TOOLS_PROTOCOL;
+    const routedPath = globalAdaptation?.path || path;
+    const requestSearch = new URL(request.url).search;
+    const geminiAiPath = `/${routedPath.join("/")}${requestSearch}`;
+    if (isGeminiAiChannel && !geminiAiProviderConfigured()) return NextResponse.json({ error: "GeminiAI 服务尚未配置或不可用" }, { status: 503 });
+    if (isGeminiAiChannel && !isGeminiAiRuntimePath(geminiAiPath)) return NextResponse.json({ error: "GeminiAI 不支持该运行时接口" }, { status: 404 });
+    if (isGeminiToolsChannel && !geminiToolsOAuthConfigured()) return NextResponse.json({ error: "GeminiTools OAuth 尚未配置" }, { status: 503 });
+    if (isGeminiToolsChannel && !isGeminiToolsRuntimePath(geminiAiPath)) return NextResponse.json({ error: "GeminiTools 不支持该运行时接口" }, { status: 404 });
+    const providerManaged = isGeminiAiChannel || isGeminiToolsChannel;
+    const target = providerManaged ? "" : targetUrl(globalPreset?.baseUrl || channel.baseUrl, globalPreset?.apiFormat || apiFormat, routedPath, requestSearch, globalChannel, modelConfig?.protocol || channel.advancedConfig?.protocol);
+    if (!providerManaged && !(await isSafeOutboundUrl(target, { allowCredentials: false, allowProxyFakeIpSpace: true }))) return NextResponse.json({ error: "接口地址不允许访问内网或保留地址" }, { status: 400 });
     const headers = new Headers();
     if (contentType && !isMultipart) headers.set("content-type", contentType);
     if (accept) headers.set("accept", accept);
@@ -186,21 +199,35 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
 
     let upstream: Response;
     try {
-        upstream = await fetchSafeOutbound(
-            target,
-            {
-                method: request.method,
-                headers,
-                body: globalAdaptation?.body || requestBody.body,
-                cache: "no-store",
-                redirect: "manual",
-                signal: request.signal,
-            },
-            { allowProxyFakeIpSpace: true },
-        );
+        upstream = isGeminiAiChannel
+            ? await geminiAiRuntimeRequest(geminiAiPath, {
+                  method: request.method,
+                  headers,
+                  body: globalAdaptation?.body || requestBody.body,
+                  signal: request.signal,
+              })
+            : isGeminiToolsChannel
+              ? await geminiToolsRuntimeRequest(geminiAiPath, {
+                    method: request.method,
+                    headers,
+                    body: globalAdaptation?.body || requestBody.body,
+                    signal: request.signal,
+                })
+              : await fetchSafeOutbound(
+                    target,
+                    {
+                        method: request.method,
+                        headers,
+                        body: globalAdaptation?.body || requestBody.body,
+                        cache: "no-store",
+                        redirect: "manual",
+                        signal: request.signal,
+                    },
+                    { allowProxyFakeIpSpace: true },
+                );
     } catch (error) {
         await refundConsumedPoints();
-        console.error("System API proxy request failed", error instanceof Error ? error.message : error);
+        if (!providerManaged) console.error("System API proxy request failed", error instanceof Error ? error.message : error);
         return NextResponse.json({ error: DEFAULT_CHANNEL_CONNECT_ERROR }, { status: 502, headers: responseHeaders(new Headers(), null, refundedPointsRemaining) });
     }
 
@@ -214,14 +241,14 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     if (upstream.ok) pointsSettled = true;
     if (globalAdaptation && upstream.ok) {
         const payload = await upstream.json().catch(() => null);
-        if (!payload) return NextResponse.json({ error: "上游文本接口返回了无效 JSON" }, { status: 502, headers: responseHeaders(upstream.headers, pointsResult, refundedPointsRemaining, target) });
-        return NextResponse.json(adaptGlobalAiOpcTextResponse(globalAdaptation.adapter, payload), { status: upstream.status, headers: responseHeaders(upstream.headers, pointsResult, refundedPointsRemaining, target) });
+        if (!payload) return NextResponse.json({ error: "上游文本接口返回了无效 JSON" }, { status: 502, headers: responseHeaders(upstream.headers, pointsResult, refundedPointsRemaining, providerManaged ? undefined : target) });
+        return NextResponse.json(adaptGlobalAiOpcTextResponse(globalAdaptation.adapter, payload), { status: upstream.status, headers: responseHeaders(upstream.headers, pointsResult, refundedPointsRemaining, providerManaged ? undefined : target) });
     }
 
     return new Response(upstream.body, {
         status: upstream.status,
         statusText: upstream.statusText,
-        headers: responseHeaders(upstream.headers, pointsResult, refundedPointsRemaining, target),
+        headers: responseHeaders(upstream.headers, pointsResult, refundedPointsRemaining, providerManaged ? undefined : target),
     });
 }
 
@@ -245,7 +272,7 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
     if (request.method !== "GET" && request.method !== "HEAD") return NextResponse.json({ error: "Media proxy only supports GET and HEAD" }, { status: 405 });
     const rawUrl = new URL(request.url).searchParams.get("url") || "";
     if (!(await authorizeGenerationMediaProxyRequest(request, { userId, channelId: channel.id, url: rawUrl }))) return NextResponse.json({ error: "媒体路径未获任务授权" }, { status: 403 });
-    const target = mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
+    const target = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL ? geminiAiMediaTarget(rawUrl) : mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
     if (!target) return NextResponse.json({ error: "Invalid media url" }, { status: 400 });
     // 媒体地址来自上游任务结果，且本请求携带按 URL 绑定的生成媒体授权：允许代理工具 fake-IP 段（198.18/15），由本机 TUN 按 Host 路由到真实公网目标。
     const mediaOutboundOptions = { allowCredentials: false, allowProxyFakeIpSpace: true };
@@ -289,6 +316,15 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
         if (error instanceof UnsupportedMediaContentError || error instanceof MediaProxyResponseError) return NextResponse.json({ error: error.message }, { status: error.status });
         console.error("System media proxy request failed", error instanceof Error ? error.message : error);
         return NextResponse.json({ error: DEFAULT_CHANNEL_CONNECT_ERROR }, { status: 502 });
+    }
+}
+
+function geminiAiMediaTarget(value: string): { url: string; includeAuth: boolean } | null {
+    try {
+        const url = new URL(value.trim());
+        return url.protocol === "http:" || url.protocol === "https:" ? { url: url.toString(), includeAuth: false } : null;
+    } catch {
+        return null;
     }
 }
 
@@ -642,7 +678,7 @@ function normalizeApiBaseUrl(baseUrl: string, apiFormat: "openai" | "gemini", gl
 
 function responseHeaders(headers: Headers, pointsResult?: Awaited<ReturnType<typeof consumeUserPoints>> | null, refundedPointsRemaining?: number | null, upstreamUrl?: string) {
     const nextHeaders = new Headers();
-    const passthrough = ["content-type", "cache-control", "content-disposition"];
+    const passthrough = ["content-type", "cache-control", "content-disposition", "retry-after"];
     passthrough.forEach((key) => {
         const value = headers.get(key);
         if (value) nextHeaders.set(key, value);

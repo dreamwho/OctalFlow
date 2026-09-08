@@ -16,7 +16,7 @@ describe("create Agent home layout", () => {
             readFile(resolve(process.cwd(), "src/components/works/public-work-preview-modal.tsx"), "utf8"),
         ]);
 
-        expect(page).toContain("让一个想法");
+        expect(page).toContain("从灵感");
         expect(page).toContain("OCTAFLOW CREATIVE OS");
         expect(page).toContain("create-studio.module.css");
         expect(page).toContain("createAgentDraftFromHash");
@@ -56,7 +56,7 @@ describe("create Agent home layout", () => {
         expect(composer).toContain("<ComposerMediaThumbnail key={asset.id} asset={asset} compact");
         expect(composer).toContain("autoSize={compactMode ? { minRows: 1, maxRows: 5 }");
         expect(composer).toContain("<CreativeGenerationControls");
-        expect(composer).toContain("使用 Skill");
+        expect(composer).toContain('>Skill</p>');
         expect(composer).toContain('aria-label={optimizing ? "正在优化提示词" : "优化提示词"}');
         expect(page).toContain("optimizePrompt");
         expect(page).toContain("mode: creationMode");
@@ -78,7 +78,8 @@ describe("create Agent home layout", () => {
         expect(generationControls).toContain("选择模型");
         expect(generationControls).toContain("<Orbit");
         expect(generationControls).toContain("<GenerationPreferencesControl");
-        expect(generationControls).toContain("max-w-[360px]");
+        expect(generationControls).toContain("max-w-[400px]");
+        expect(generationControls).toContain("bg-[#020813]/[.98]");
         expect(generationControls).not.toContain("选择比例");
         expect(preferences).toContain("Agent 模式");
         expect(preferences).toContain("图片生成");

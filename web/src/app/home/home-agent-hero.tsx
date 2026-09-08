@@ -1,193 +1,347 @@
 "use client";
 
-import { App } from "antd";
-import { ArrowUpRight, Boxes, Check, ChevronDown, Clapperboard, CloudUpload, Combine, Film, Layers3, PencilLine, Scissors, Send, ShieldCheck, Sparkles, Split, UsersRound, WandSparkles } from "lucide-react";
+import { App, Popover } from "antd";
+import { AudioLines, Box, Boxes, Check, ChevronDown, Film, Image as ImageIcon, Paperclip, PenLine, Plus, Send, Sparkles, Video, WandSparkles } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { useCreateDraftAttachmentsStore } from "@/app/(user)/create/use-create-draft-attachments-store";
+import { useCreativeAgentModels } from "@/hooks/use-creative-agent-options";
 import { CREATIVE_UPLOAD_MAX_BYTES } from "@/lib/creative-upload";
+import { listAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
+import { HOME_CREATION_MODES, type HomeCreationMode } from "./home-data";
 import { useHomeActions } from "./home-actions";
 import styles from "./home-agent-hero.module.css";
 
-const remakeModes = [
-    { id: "video-remake-universal", label: "通用复刻" },
-    { id: "video-remake-vlog", label: "VLOG" },
-    { id: "video-remake-drama", label: "短剧" },
-    { id: "video-remake-talking-head", label: "口播" },
-    { id: "video-remake-product", label: "产品种草" },
-    { id: "video-remake-tutorial", label: "教程" },
-] as const;
+const MODE_ICONS = { agent: Sparkles, image: ImageIcon, video: Video, audio: AudioLines } as const;
+const MODEL_CAPABILITIES = ["image", "video", "audio"] as const;
+type ModelCapability = (typeof MODEL_CAPABILITIES)[number];
+type SkillCategory = "all" | "image" | "video" | "canvas" | "drama" | "edit";
 
-const workflow = [
-    { icon: Scissors, title: "解析原片", detail: "提取镜头、节奏与转场" },
-    { icon: UsersRound, title: "重建资产", detail: "重塑角色与场景资产" },
-    { icon: Split, title: "智能分段", detail: "识别语义切点与镜头节奏" },
-    { icon: Layers3, title: "批量生成", detail: "并行生成连续视频片段" },
-    { icon: Combine, title: "自动合成", detail: "自动拼接为完整视频" },
-] as const;
+const shortcuts: Array<{ label: string; detail: string; icon: typeof Sparkles; mode?: HomeCreationMode; path?: string }> = [
+    { label: "爆款复刻", detail: "复刻结构与节奏", icon: Boxes, mode: "video" },
+    { label: "图片生成", detail: "从想法生成作品", icon: ImageIcon, mode: "image" },
+    { label: "视频生成", detail: "文字生成动态影像", icon: Film, mode: "video" },
+    { label: "智能画布", detail: "无限画布，自由创作", icon: PenLine, path: "/canvas" },
+];
 
 export function HomeAgentHero() {
     const { message } = App.useApp();
-    const [tab, setTab] = useState<"remake" | "create">("remake");
+    const [mode, setMode] = useState<HomeCreationMode>("agent");
     const [prompt, setPrompt] = useState("");
-    const [skillId, setSkillId] = useState<(typeof remakeModes)[number]["id"]>("video-remake-universal");
-    const [sourceVideo, setSourceVideo] = useState<File>();
-    const [sourceVideoUrl, setSourceVideoUrl] = useState("");
+    const [sourceFile, setSourceFile] = useState<File>();
+    const [skillMenuOpen, setSkillMenuOpen] = useState(false);
+    const [modelMenuOpen, setModelMenuOpen] = useState(false);
+    const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
+    const [skillsLoading, setSkillsLoading] = useState(false);
+    const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+    const [selectedModelId, setSelectedModelId] = useState("");
+    const [skillCategory, setSkillCategory] = useState<SkillCategory>("all");
+    const [modelCapability, setModelCapability] = useState<ModelCapability>("image");
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const flowBackgroundRef = useRef<HTMLDivElement>(null);
-    const flowPointerRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
-    const { startCreating, openProtectedPath } = useHomeActions();
+    const motionRef = useRef<HTMLDivElement>(null);
+    const pointerRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
+    const { authenticated, sessionReady, openLogin, startCreating, openProtectedPath } = useHomeActions();
+    const models = useCreativeAgentModels();
+    const selectedMode = HOME_CREATION_MODES.find((item) => item.id === mode) || HOME_CREATION_MODES[0];
+    const selectedModel = models.find((item) => item.id === selectedModelId);
+    const skillCategories = homeSkillCategories(skills);
+    const visibleSkills = skills.filter((skill) => homeSkillMatchesCategory(skill, skillCategory));
+    const visibleModels = models.filter((model) => model.capability === modelCapability);
+
+    useEffect(() => {
+        if (!authenticated) {
+            setSkills([]);
+            setSkillsLoading(false);
+            return;
+        }
+        let active = true;
+        setSkillsLoading(true);
+        void listAgentSkills("all")
+            .then((items) => {
+                if (active) setSkills(items);
+            })
+            .catch(() => {
+                if (active) setSkills([]);
+            })
+            .finally(() => {
+                if (active) setSkillsLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, [authenticated]);
 
     useEffect(() => {
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-        let animationFrame = 0;
+        let frame = 0;
         const animate = () => {
-            const pointer = flowPointerRef.current;
-            pointer.x += (pointer.targetX - pointer.x) * 0.105;
-            pointer.y += (pointer.targetY - pointer.y) * 0.105;
-            const layer = flowBackgroundRef.current;
-            if (layer) {
-                layer.style.setProperty("--flow-x", `${pointer.x * 108}px`);
-                layer.style.setProperty("--flow-y", `${pointer.y * 78}px`);
-                layer.style.setProperty("--flow-rotate", `${pointer.x * 4.5}deg`);
-                layer.style.setProperty("--flow-depth-x", `${pointer.x * -54}px`);
-                layer.style.setProperty("--flow-depth-y", `${pointer.y * -38}px`);
-                layer.style.setProperty("--flow-depth-rotate", `${pointer.x * -2.9}deg`);
-            }
-            animationFrame = window.requestAnimationFrame(animate);
+            const pointer = pointerRef.current;
+            pointer.x += (pointer.targetX - pointer.x) * 0.075;
+            pointer.y += (pointer.targetY - pointer.y) * 0.075;
+            motionRef.current?.style.setProperty("--pointer-x", `${pointer.x * 28}px`);
+            motionRef.current?.style.setProperty("--pointer-y", `${pointer.y * 18}px`);
+            frame = window.requestAnimationFrame(animate);
         };
-        animationFrame = window.requestAnimationFrame(animate);
-        return () => window.cancelAnimationFrame(animationFrame);
+        frame = window.requestAnimationFrame(animate);
+        return () => window.cancelAnimationFrame(frame);
     }, []);
 
-    const trackBackgroundPointer = (event: PointerEvent<HTMLElement>) => {
+    const trackPointer = (event: PointerEvent<HTMLElement>) => {
         const bounds = event.currentTarget.getBoundingClientRect();
-        flowPointerRef.current.targetX = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width - 0.5) * 2));
-        flowPointerRef.current.targetY = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height - 0.5) * 2));
+        pointerRef.current.targetX = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width - 0.5) * 2));
+        pointerRef.current.targetY = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height - 0.5) * 2));
     };
 
-    const releaseBackgroundPointer = () => {
-        flowPointerRef.current.targetX = 0;
-        flowPointerRef.current.targetY = 0;
+    const resetPointer = () => {
+        pointerRef.current.targetX = 0;
+        pointerRef.current.targetY = 0;
     };
 
-    useEffect(() => {
-        if (!sourceVideo) {
-            setSourceVideoUrl("");
-            return;
-        }
-        const url = URL.createObjectURL(sourceVideo);
-        setSourceVideoUrl(url);
-        return () => URL.revokeObjectURL(url);
-    }, [sourceVideo]);
-
-    const selectVideo = (file?: File) => {
+    const chooseFile = (file?: File) => {
         if (!file) return;
-        if (!file.type.startsWith("video/")) {
-            message.error("请选择 MP4、MOV 或 WEBM 视频文件");
+        if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+            message.error("请选择图片或视频素材");
             return;
         }
         if (file.size > CREATIVE_UPLOAD_MAX_BYTES) {
-            message.error(`参考视频不能超过 ${Math.round(CREATIVE_UPLOAD_MAX_BYTES / 1024 / 1024)}MB`);
+            message.error(`参考素材不能超过 ${Math.round(CREATIVE_UPLOAD_MAX_BYTES / 1024 / 1024)}MB`);
             return;
         }
-        setSourceVideo(file);
+        setSourceFile(file);
     };
 
     const submit = () => {
-        if (tab === "remake" && !sourceVideo) {
-            message.warning("请先上传需要分析的参考视频");
-            fileInputRef.current?.click();
-            return;
-        }
-        if (tab === "create" && !prompt.trim()) {
-            message.warning("请先描述你想创作的视频");
+        if (!prompt.trim()) {
+            message.warning("请先描述你想创作的内容");
             textareaRef.current?.focus();
             return;
         }
-        if (sourceVideo) useCreateDraftAttachmentsStore.getState().add([sourceVideo], "");
-        const selectedMode = remakeModes.find((item) => item.id === skillId)?.label || "通用复刻";
-        const request = prompt.trim() || `使用${selectedMode}复刻这条参考视频：保留可迁移的结构、镜头节奏与转场，创建全新角色、场景、声音与表达。`;
-        startCreating(request, "agent", { skillIds: tab === "remake" ? [skillId] : [] });
+        if (sourceFile) useCreateDraftAttachmentsStore.getState().add([sourceFile], "");
+        startCreating(prompt.trim(), mode, { skillIds: selectedSkillIds, modelIds: selectedModelId ? [selectedModelId] : [] });
+    };
+
+    const activateShortcut = (shortcut: (typeof shortcuts)[number]) => {
+        if (shortcut.path) {
+            openProtectedPath(shortcut.path);
+            return;
+        }
+        if (shortcut.mode) setMode(shortcut.mode);
+        if (shortcut.label === "爆款复刻") setPrompt((current) => current || "复刻参考内容的爆款结构与节奏，生成全新的原创作品");
+        textareaRef.current?.focus();
     };
 
     return (
-        <section className={styles.hero} aria-labelledby="home-hero-title" onPointerMove={trackBackgroundPointer} onPointerLeave={releaseBackgroundPointer}>
-            <div ref={flowBackgroundRef} className={styles.flowBackground} aria-hidden="true">
-                <span className={styles.flowPrimary} />
-                <span className={styles.flowDepth} />
+        <section className={styles.hero} aria-labelledby="home-hero-title" onPointerMove={trackPointer} onPointerLeave={resetPointer}>
+            <div ref={motionRef} className={styles.motionStage} data-testid="home-agent-halo" aria-hidden="true">
+                <video className={styles.motionVideo} src="/brand/octaflow-particle-infinity.mp4" autoPlay muted loop playsInline preload="auto" />
+                <span data-halo-ring className={styles.motionVeil} />
+                <span data-halo-ring className={styles.motionBloom} />
+                <span data-halo-ring className={styles.motionLeft} />
+                <span data-halo-ring className={styles.motionRight} />
             </div>
+
             <div className={styles.heroContent}>
-                <p className={styles.eyebrow}>AI 原生视频创作工作台</p>
-                <h1 id="home-hero-title" className={styles.heroTitle}>复刻爆款结构，创作你的全新视频</h1>
-                <p className={styles.heroSubtitle}>上传参考视频，OctalFlow 自动拆解镜头、节奏与转场，重建角色和场景，并批量生成可编辑的新作品。</p>
+                <p className={styles.eyebrow}>OCTALFLOW · AI CREATIVE SPACE</p>
+                <h1 id="home-hero-title" className={styles.heroTitle}>把灵感，变成作品</h1>
+                <p className={styles.heroSubtitle}>从一个想法开始，让 AI 帮你完成创作。</p>
 
-                <div className={styles.modeSwitch} role="tablist" aria-label="首页创作模式">
-                    <button type="button" role="tab" aria-selected={tab === "remake"} className={tab === "remake" ? styles.modeActive : undefined} onClick={() => setTab("remake")}><Sparkles aria-hidden="true" />爆款复刻</button>
-                    <button type="button" role="tab" aria-selected={tab === "create"} className={tab === "create" ? styles.modeActive : undefined} onClick={() => setTab("create")}><PencilLine aria-hidden="true" />自由创作</button>
-                </div>
-
-                <div className={styles.remakeComposer}>
-                    <p className={styles.composerLead}>{tab === "remake" ? "上传参考视频或描述你的改编方向，OctalFlow 将为你智能复刻。" : "描述你的创意，OctalFlow 将自动规划素材、镜头和生成任务。"}</p>
-                    <div className={styles.composerMain}>
-                        <button type="button" className={styles.uploadCard} onClick={() => fileInputRef.current?.click()} aria-label={sourceVideo ? `更换参考视频 ${sourceVideo.name}` : "上传参考视频"}>
-                            {sourceVideoUrl ? <video src={sourceVideoUrl} muted playsInline preload="metadata" /> : <CloudUpload aria-hidden="true" />}
-                            <span>{sourceVideo ? sourceVideo.name : "上传参考视频"}</span>
-                            <small>{sourceVideo ? `${(sourceVideo.size / 1024 / 1024).toFixed(1)}MB · 点击更换` : `支持 MP4 / MOV / WEBM · ≤ ${Math.round(CREATIVE_UPLOAD_MAX_BYTES / 1024 / 1024)}MB`}</small>
-                            {sourceVideo ? <Check className={styles.uploadReady} aria-hidden="true" /> : null}
-                        </button>
-                        <input ref={fileInputRef} className={styles.hiddenInput} type="file" accept="video/mp4,video/quicktime,video/webm" onChange={(event) => selectVideo(event.target.files?.[0])} />
-
-                        <div className={styles.promptPanel}>
-                            <textarea ref={textareaRef} value={prompt} maxLength={1000} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => {
+                <div className={styles.composerWrap}>
+                    <div className={styles.composerGlow} aria-hidden="true" />
+                    <div className={styles.composer} data-testid="home-agent-card">
+                        <textarea
+                            id="home-agent-prompt"
+                            ref={textareaRef}
+                            value={prompt}
+                            maxLength={2000}
+                            aria-label="描述你想创作的内容"
+                            placeholder="描述你想创作的内容，比如："
+                            onChange={(event) => setPrompt(event.target.value)}
+                            onKeyDown={(event) => {
                                 if ((event.metaKey || event.ctrlKey) && event.key === "Enter") submit();
-                            }} placeholder={tab === "remake" ? "描述你的改编方向、目标平台与角色设定…" : "例如：为新锐建筑设计师创作一条 45 秒竖屏 VLOG…"} />
-                            <div className={styles.remakeTypes} role="group" aria-label="复刻类型">
-                                {remakeModes.map((item) => <button key={item.id} type="button" disabled={tab !== "remake"} aria-pressed={skillId === item.id && tab === "remake"} className={skillId === item.id && tab === "remake" ? styles.typeActive : undefined} onClick={() => setSkillId(item.id)}>{item.label}</button>)}
+                            }}
+                        />
+                        <div className={styles.examplePrompts} aria-label="示例提示词">
+                            {selectedMode.examples.slice(0, 4).map((example) => (
+                                <button key={example} type="button" onClick={() => setPrompt(example)}>{example}</button>
+                            ))}
+                        </div>
+
+                        <div className={styles.composerToolbar}>
+                            <div className={styles.leftControls}>
+                                <button type="button" className={styles.iconControl} aria-label="进入创作页添加参考素材" onClick={() => fileInputRef.current?.click()}>
+                                    <Paperclip aria-hidden="true" />
+                                    {sourceFile ? <span className={styles.fileDot} aria-label="已选择素材" /> : null}
+                                </button>
+                                <input ref={fileInputRef} className={styles.hiddenInput} type="file" accept="image/*,video/mp4,video/quicktime,video/webm" onChange={(event) => chooseFile(event.target.files?.[0])} />
+                                <Popover
+                                    trigger="click"
+                                    placement="bottomLeft"
+                                    arrow={false}
+                                    open={skillMenuOpen}
+                                    onOpenChange={(open) => {
+                                        setSkillMenuOpen(open);
+                                        if (open) setModelMenuOpen(false);
+                                    }}
+                                    styles={{ container: { background: "transparent", boxShadow: "none", padding: 0 } }}
+                                    content={
+                                        <div className={styles.pickerPanel} data-testid="home-skill-picker">
+                                            <div className={styles.pickerHeader}>
+                                                <div><strong>Skill</strong><span>组合适合当前任务的创作能力</span></div>
+                                                {selectedSkillIds.length ? <small>已选 {selectedSkillIds.length}</small> : null}
+                                            </div>
+                                            {!sessionReady || skillsLoading ? <div className={styles.pickerEmpty}>正在载入创作能力...</div> : null}
+                                            {sessionReady && !authenticated ? <HomeLoginPrompt onLogin={() => openLogin("/create")} /> : null}
+                                            {authenticated && skills.length ? (
+                                                <>
+                                                    <div className={styles.pickerTabs} role="tablist" aria-label="Skill 分类">
+                                                        {skillCategories.map((category) => (
+                                                            <button key={category.id} type="button" role="tab" aria-selected={skillCategory === category.id} onClick={() => setSkillCategory(category.id)}>
+                                                                {category.label}<span>{category.count}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <div className={styles.pickerList}>
+                                                        {visibleSkills.map((skill) => {
+                                                            const selected = selectedSkillIds.includes(skill.id);
+                                                            return (
+                                                                <button
+                                                                    key={skill.id}
+                                                                    type="button"
+                                                                    className={selected ? styles.pickerItemSelected : undefined}
+                                                                    aria-pressed={selected}
+                                                                    onClick={() => setSelectedSkillIds((current) => (selected ? current.filter((id) => id !== skill.id) : [...current, skill.id].slice(0, 8)))}
+                                                                >
+                                                                    {skill.previewImageUrl ? <img src={skill.previewImageUrl} alt="" loading="lazy" /> : <span className={styles.pickerItemIcon}><WandSparkles aria-hidden="true" /></span>}
+                                                                    <span className={styles.pickerItemCopy}><strong>{skill.name}</strong><small>{skill.description}</small></span>
+                                                                    <span className={styles.pickerItemAction}>{selected ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </>
+                                            ) : null}
+                                            {authenticated && !skillsLoading && !skills.length ? <div className={styles.pickerEmpty}>暂无可用 Skill</div> : null}
+                                        </div>
+                                    }
+                                >
+                                    <button type="button" className={`${styles.toolControl} ${skillMenuOpen ? styles.toolControlActive : ""}`} aria-expanded={skillMenuOpen}>
+                                        <WandSparkles aria-hidden="true" /><span>Skill{selectedSkillIds.length ? ` · ${selectedSkillIds.length}` : ""}</span><ChevronDown aria-hidden="true" />
+                                    </button>
+                                </Popover>
+                                <Popover
+                                    trigger="click"
+                                    placement="bottomLeft"
+                                    arrow={false}
+                                    open={modelMenuOpen}
+                                    onOpenChange={(open) => {
+                                        setModelMenuOpen(open);
+                                        if (open) setSkillMenuOpen(false);
+                                    }}
+                                    styles={{ container: { background: "transparent", boxShadow: "none", padding: 0 } }}
+                                    content={
+                                        <div className={`${styles.pickerPanel} ${styles.modelPickerPanel}`} data-testid="home-model-picker">
+                                            <div className={styles.pickerHeader}><div><strong>模型</strong><span>{selectedModel ? "已指定模型，进入创作页后仍可调整" : "默认由 Agent 智能规划"}</span></div></div>
+                                            {sessionReady && !authenticated ? <HomeLoginPrompt onLogin={() => openLogin("/create")} /> : null}
+                                            {authenticated ? (
+                                                <>
+                                                    <div className={styles.pickerTabs} role="tablist" aria-label="模型能力分类">
+                                                        {MODEL_CAPABILITIES.map((capability) => (
+                                                            <button key={capability} type="button" role="tab" aria-selected={modelCapability === capability} onClick={() => setModelCapability(capability)}>
+                                                                {capability === "image" ? "图片" : capability === "video" ? "视频" : "音频"}<span>{models.filter((item) => item.capability === capability).length}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <div className={styles.pickerList}>
+                                                        <button type="button" className={!selectedModelId ? styles.pickerItemSelected : undefined} aria-pressed={!selectedModelId} onClick={() => setSelectedModelId("")}>
+                                                            <span className={styles.pickerItemIcon}><Sparkles aria-hidden="true" /></span>
+                                                            <span className={styles.pickerItemCopy}><strong>智能规划</strong><small>根据需求自动选择最合适的模型与参数</small></span>
+                                                            <span className={styles.pickerItemAction}>{!selectedModelId ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}</span>
+                                                        </button>
+                                                        {visibleModels.map((model) => {
+                                                            const selected = selectedModelId === model.id;
+                                                            return (
+                                                                <button key={model.id} type="button" className={selected ? styles.pickerItemSelected : undefined} aria-pressed={selected} onClick={() => setSelectedModelId(selected ? "" : model.id)}>
+                                                                    <span className={`${styles.pickerItemIcon} ${styles.modelIcon}`}><HomeModelIcon capability={model.capability} /></span>
+                                                                    <span className={styles.pickerItemCopy}><strong>{model.name}</strong><small>{model.capability === "image" ? "图片生成与编辑" : model.capability === "video" ? "视频生成与动态创作" : "语音与音频生成"}</small></span>
+                                                                    <span className={styles.pickerItemAction}>{selected ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {!visibleModels.length ? <div className={styles.pickerEmpty}>当前未配置可用模型</div> : null}
+                                                    </div>
+                                                </>
+                                            ) : null}
+                                        </div>
+                                    }
+                                >
+                                    <button type="button" className={`${styles.toolControl} ${modelMenuOpen ? styles.toolControlActive : ""}`} aria-expanded={modelMenuOpen}>
+                                        <Box aria-hidden="true" /><span>{selectedModel?.name || "智能模型"}</span><ChevronDown aria-hidden="true" />
+                                    </button>
+                                </Popover>
                             </div>
-                            <span className={styles.characterCount}>{prompt.length} / 1000</span>
-                        </div>
-                    </div>
 
-                    <div className={styles.composerFooter}>
-                        <div className={styles.planSummaries}>
-                            <span><Film aria-hidden="true" /><b>模型</b> 智能匹配<ChevronDown aria-hidden="true" /></span>
-                            <span><WandSparkles aria-hidden="true" /><b>Skill</b> {tab === "remake" ? "结构学习 + 节奏重构" : "智能创作编排"}<ChevronDown aria-hidden="true" /></span>
-                            <span><Boxes aria-hidden="true" /><b>资产库</b> 自动创建新资产<ChevronDown aria-hidden="true" /></span>
-                            <span><Clapperboard aria-hidden="true" /><b>比例</b> 跟随源视频<ChevronDown aria-hidden="true" /></span>
-                        </div>
-                        <button type="button" className={styles.submitButton} onClick={submit}><Send aria-hidden="true" />{tab === "remake" ? "开始智能复刻" : "开始自由创作"}</button>
-                    </div>
-                    <p className={styles.safetyNote}><ShieldCheck aria-hidden="true" />{tab === "remake" ? "仅学习可迁移的结构与节奏，不克隆人脸、声音、品牌、水印、音乐及高度独创表达" : "自动规划镜头、资产与生成任务，所有内容保持可编辑与可追踪"}</p>
-                </div>
-
-                <div className={styles.workflowCard}>
-                    <div className={styles.workflowHeading}>
-                        <div><strong>一键复刻视频</strong><span>工作流程</span></div>
-                        <button type="button" onClick={() => openProtectedPath("/canvas")}><ArrowUpRight aria-hidden="true" />从空白画布开始</button>
-                    </div>
-                    <div className={styles.workflowGrid}>
-                        {workflow.map((item, index) => {
-                            const Icon = item.icon;
-                            return <article key={item.title}>
-                                <div className={styles.workflowTitle}><Icon aria-hidden="true" /><b>{item.title}</b></div>
-                                <p>{item.detail}</p>
-                                <div className={styles.workflowVisual}>
-                                    {index === 0 && sourceVideoUrl ? <video src={sourceVideoUrl} muted playsInline preload="metadata" /> : null}
-                                    {index === 2 ? ["7s", "8s", "5s", "10s", "9s", "6s"].map((duration) => <span key={duration}>{duration}</span>) : null}
-                                    {index !== 0 && index !== 2 ? <Icon aria-hidden="true" /> : null}
-                                    {index === 0 && !sourceVideoUrl ? <Film aria-hidden="true" /> : null}
+                            <div className={styles.rightControls}>
+                                <div className={styles.modeGroup} aria-label="创作模式">
+                                    {HOME_CREATION_MODES.map((item) => {
+                                        const Icon = MODE_ICONS[item.id];
+                                        return (
+                                            <button key={item.id} type="button" aria-pressed={mode === item.id} aria-label={item.label} className={mode === item.id ? styles.modeActive : undefined} onClick={() => setMode(item.id)}>
+                                                <Icon aria-hidden="true" /><span>{item.label}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
-                            </article>;
-                        })}
+                                <button type="button" className={styles.submitButton} aria-label="开始创作" onClick={submit}>
+                                    <Send aria-hidden="true" /><span>生成</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div className={styles.trustRow} aria-label="安全与原创承诺">
-                    <span><ShieldCheck />端到端数据安全保护</span><span><ShieldCheck />不储存原片与隐私内容</span><span><ShieldCheck />不克隆人脸与声音特征</span><span><Film />不生成原品牌、水印与音乐</span>
+                <div className={styles.shortcutRow} aria-label="快捷创作入口">
+                    {shortcuts.map((shortcut) => {
+                        const Icon = shortcut.icon;
+                        return (
+                            <button key={shortcut.label} type="button" onClick={() => activateShortcut(shortcut)}>
+                                <span className={styles.shortcutIcon}><Icon aria-hidden="true" /></span>
+                                <span><strong>{shortcut.label}</strong><small>{shortcut.detail}</small></span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
         </section>
     );
+}
+
+function HomeLoginPrompt({ onLogin }: { onLogin: () => void }) {
+    return <div className={styles.loginPrompt}><span>登录后查看当前可用的 Skill 与模型</span><button type="button" onClick={onLogin}>立即登录</button></div>;
+}
+
+function HomeModelIcon({ capability }: { capability: ModelCapability }) {
+    if (capability === "video") return <Film aria-hidden="true" />;
+    if (capability === "audio") return <AudioLines aria-hidden="true" />;
+    return <Sparkles aria-hidden="true" />;
+}
+
+function homeSkillCategories(skills: AgentSkillSummary[]) {
+    const categories: Array<{ id: SkillCategory; label: string }> = [
+        { id: "all", label: "全部" },
+        { id: "image", label: "图片" },
+        { id: "video", label: "视频" },
+        { id: "canvas", label: "画布" },
+        { id: "drama", label: "短剧" },
+        { id: "edit", label: "编辑" },
+    ];
+    return categories
+        .map((category) => ({ ...category, count: skills.filter((skill) => homeSkillMatchesCategory(skill, category.id)).length }))
+        .filter((category) => category.id === "all" || category.count > 0);
+}
+
+function homeSkillMatchesCategory(skill: AgentSkillSummary, category: SkillCategory) {
+    if (category === "all") return true;
+    if (category === "edit") return skill.action === "edit";
+    return skill.workspaces?.includes(category) || false;
 }

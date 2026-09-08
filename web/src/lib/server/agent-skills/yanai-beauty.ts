@@ -7,6 +7,7 @@ export const YANAI_BEAUTY_SKILL = {
     license: "MIT",
     enabled: true,
     workspaces: ["image", "canvas"],
+    nodeModes: ["image"],
     action: "edit",
     requiresReference: true,
     defaultConfig: { quality: "high", count: 1 },

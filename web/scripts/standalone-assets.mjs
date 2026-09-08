@@ -1,9 +1,10 @@
-import { cp, mkdir, readdir, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 export async function prepareStandaloneAssets({ webRoot, distDir = ".next" }) {
     const buildRoot = resolveChildPath(webRoot, distDir, "build directory");
-    const standaloneRoot = path.join(buildRoot, "standalone");
+    const standaloneOutputRoot = path.join(buildRoot, "standalone");
+    const standaloneRoot = await findStandaloneServerRoot(standaloneOutputRoot);
     const serverEntry = path.join(standaloneRoot, "server.js");
     const sourceStatic = path.join(buildRoot, "static");
     const targetStatic = path.join(standaloneRoot, distDir, "static");
@@ -11,7 +12,7 @@ export async function prepareStandaloneAssets({ webRoot, distDir = ".next" }) {
     const targetPublic = path.join(standaloneRoot, "public");
 
     await assertFile(serverEntry, `Standalone server was not found: ${serverEntry}`);
-    const sharpRuntimePackages = await copySharpRuntimePackages(webRoot, standaloneRoot);
+    const sharpRuntimePackages = await copySharpRuntimePackages(webRoot, standaloneOutputRoot);
     const sourceStaticFiles = await listRelativeFiles(sourceStatic);
     if (!sourceStaticFiles.length) throw new Error(`Build static directory is empty: ${sourceStatic}`);
 
@@ -32,6 +33,21 @@ export async function prepareStandaloneAssets({ webRoot, distDir = ".next" }) {
     return { serverEntry, standaloneRoot, staticFiles: targetStaticFiles.length, publicFiles: targetPublicFiles.length, sharpRuntimePackages };
 }
 
+async function findStandaloneServerRoot(root, current = root, depth = 0) {
+    const candidate = path.join(current, "server.js");
+    try {
+        if ((await stat(candidate)).isFile()) return current;
+    } catch {}
+    if (depth >= 6) return root;
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const found = await findStandaloneServerRoot(root, path.join(current, entry.name), depth + 1);
+        if (found !== root || found === current) return found;
+    }
+    return root;
+}
+
 async function copySharpRuntimePackages(webRoot, standaloneRoot) {
     const sourcePnpmRoot = path.join(webRoot, "node_modules", ".pnpm");
     const targetPnpmRoot = path.join(standaloneRoot, "node_modules", ".pnpm");
@@ -45,8 +61,49 @@ async function copySharpRuntimePackages(webRoot, standaloneRoot) {
     }
 
     await mkdir(targetPnpmRoot, { recursive: true });
-    await Promise.all(packages.map((entry) => cp(path.join(sourcePnpmRoot, entry.name), path.join(targetPnpmRoot, entry.name), { recursive: true, force: true })));
+    await Promise.all(
+        packages.map(async (entry) => {
+            const sourcePackageRoot = path.join(sourcePnpmRoot, entry.name);
+            const targetPackageRoot = path.join(targetPnpmRoot, entry.name);
+            await rm(targetPackageRoot, { recursive: true, force: true });
+            await cp(sourcePackageRoot, targetPackageRoot, { recursive: true, force: true });
+            await hydrateTracedSharpPackages(sourcePackageRoot, standaloneRoot);
+        }),
+    );
     return packages.map((entry) => entry.name).sort();
+}
+
+async function hydrateTracedSharpPackages(sourcePackageRoot, standaloneRoot) {
+    const sourceScopeRoot = path.join(sourcePackageRoot, "node_modules", "@img");
+    const payloads = (await readdir(sourceScopeRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory());
+    for (const payload of payloads) {
+        const source = path.join(sourceScopeRoot, payload.name);
+        const targets = await findDirectoriesNamed(standaloneRoot, payload.name);
+        await Promise.all(targets.map((target) => cp(source, target, { recursive: true, force: true })));
+    }
+}
+
+async function findDirectoriesNamed(root, name, current = root) {
+    const entries = await readdir(current, { withFileTypes: true });
+    const matches = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const target = path.join(current, entry.name);
+        if (entry.name === name && (await isFile(path.join(target, "package.json")))) {
+            matches.push(target);
+            continue;
+        }
+        matches.push(...(await findDirectoriesNamed(root, name, target)));
+    }
+    return matches;
+}
+
+async function isFile(target) {
+    try {
+        return (await stat(target)).isFile();
+    } catch {
+        return false;
+    }
 }
 
 async function assertFile(target, message) {

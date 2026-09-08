@@ -8,6 +8,9 @@ const CHANNEL_PROTOCOLS: SystemChannelProtocol[] = [
     "openai",
     "yumeng",
     "gemini",
+    "geminiai",
+    "gemini-tools",
+    "dreamina-cli",
     "sub2api",
     "newapi",
     "lingkeai",
@@ -34,7 +37,7 @@ export function normalizeSystemChannelAdvancedConfig(config: Partial<SystemChann
     const modelCatalogPaths = Array.from(new Set((Array.isArray(config.modelCatalogPaths) ? config.modelCatalogPaths : []).map(normalizeApiPath).filter(Boolean))).slice(0, 12);
     return {
         protocol,
-        ...(config.authMode === "none" || config.authMode === "bearer" || config.authMode === "x-api-key" || config.authMode === "custom-header" ? { authMode: config.authMode } : {}),
+        ...(config.authMode === "none" || config.authMode === "bearer" || config.authMode === "x-api-key" || config.authMode === "custom-header" || config.authMode === "provider-managed" ? { authMode: config.authMode } : {}),
         ...(textOrEmpty(config.authHeader, 120) ? { authHeader: textOrEmpty(config.authHeader, 120) } : {}),
         ...(textOrEmpty(config.authPrefix, 120) ? { authPrefix: textOrEmpty(config.authPrefix, 120) } : {}),
         ...(normalizeDocumentationUrl(config.documentationUrl) ? { documentationUrl: normalizeDocumentationUrl(config.documentationUrl) } : {}),
@@ -114,6 +117,8 @@ function normalizeChannelModelConfigs(value: unknown) {
                         ...(textOrEmpty(config.resultField, 500) ? { resultField: textOrEmpty(config.resultField, 500) } : {}),
                         ...(textOrEmpty(config.statusField, 500) ? { statusField: textOrEmpty(config.statusField, 500) } : {}),
                         ...(textOrEmpty(config.durationRange, 120) ? { durationRange: textOrEmpty(config.durationRange, 120) } : {}),
+                        ...(normalizeStringOptions(config.aspectRatios).length ? { aspectRatios: normalizeStringOptions(config.aspectRatios) } : {}),
+                        ...(normalizeStringOptions(config.qualityOptions).length ? { qualityOptions: normalizeStringOptions(config.qualityOptions) } : {}),
                         ...(textOrEmpty(config.referenceRule, 1000) ? { referenceRule: textOrEmpty(config.referenceRule, 1000) } : {}),
                         ...(typeof config.supportsReferenceImage === "boolean" ? { supportsReferenceImage: config.supportsReferenceImage } : {}),
                         ...(typeof config.supportsReferenceVideo === "boolean" ? { supportsReferenceVideo: config.supportsReferenceVideo } : {}),
@@ -123,6 +128,11 @@ function normalizeChannelModelConfigs(value: unknown) {
             ];
         }),
     ) as NonNullable<SystemChannelAdvancedConfig["modelConfigs"]>;
+}
+
+function normalizeStringOptions(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean))).slice(0, 32);
 }
 
 function normalizeChannelOperationConfigs(value: unknown) {

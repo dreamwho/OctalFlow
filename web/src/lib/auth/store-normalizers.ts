@@ -6,6 +6,9 @@ import { ECOMMERCE_IMAGE_SKILL } from "@/lib/server/agent-skills/ecommerce-image
 import { YANAI_BEAUTY_SKILL } from "@/lib/server/agent-skills/yanai-beauty";
 import { DEFAULT_CREATIVE_SHORTCUT_SKILLS } from "@/lib/server/agent-skills/creative-shortcuts";
 import { VIDEO_REMAKE_SKILLS } from "@/lib/server/agent-skills/video-remake";
+import { PORTRAIT_IMAGE_SKILLS } from "@/lib/server/agent-skills/portrait-image";
+import { LEGACY_MINIMAX_H3_PROMPT_SKILL_ID, MINIMAX_H3_OFFICIAL_STYLE_SKILLS, cloneMinimaxH3OfficialStyleSkill } from "@/lib/server/agent-skills/minimax-h3-official";
+import { resolveAgentSkillNodeModes } from "@/lib/agent-skill-node-policy";
 import { deriveLogicalModelsConfig, normalizeDefaultModelsConfig, normalizeLogicalModelsConfig } from "@/lib/model-routing-config";
 import { applyChannelProtocol } from "@/lib/channel-protocol-registry";
 import { resolveConfiguredModelPointCost } from "@/lib/model-point-cost";
@@ -20,6 +23,7 @@ import {
     type LogicalModelCapabilityProfile,
     type LogicalModelBinding,
     type LogicalModel,
+    type LogicalModelCapability,
     type SystemDefaultModels,
     type AgentSkill,
     type GenerationConcurrencySettings,
@@ -269,13 +273,77 @@ export function deriveLogicalModels(channels: SystemModelChannel[]): LogicalMode
     return deriveLogicalModelsConfig(channels);
 }
 
+function normalizeAgentSkillModelConstraints(value: unknown): AgentSkill["modelConstraints"] {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const input = value as Record<string, unknown>;
+    const capability = input.capability;
+    if (capability !== "text" && capability !== "image" && capability !== "video" && capability !== "audio") return undefined;
+    const modelFamilies = (item: unknown) => (Array.isArray(item) ? Array.from(new Set(item.filter((family): family is "minimax-h3" => family === "minimax-h3"))).slice(0, 8) : []);
+    const normalized: NonNullable<AgentSkill["modelConstraints"]> = { capability: capability as LogicalModelCapability };
+    const requiredModelFamilies = modelFamilies(input.requiredModelFamilies);
+    const preferredModelFamilies = modelFamilies(input.preferredModelFamilies);
+    if (requiredModelFamilies.length) normalized.requiredModelFamilies = requiredModelFamilies;
+    if (preferredModelFamilies.length) normalized.preferredModelFamilies = preferredModelFamilies;
+    return normalized;
+}
+
+function normalizeAgentSkillAssetRoles(value: unknown): AgentSkill["requiredAssetRoles"] {
+    if (!Array.isArray(value)) return undefined;
+    const assetTypes = new Set(["image", "video", "audio", "text"]);
+    const roles = value.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const input = item as Record<string, unknown>;
+        const id = String(input.id || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, "-")
+            .slice(0, 60);
+        const label = String(input.label || "")
+            .trim()
+            .slice(0, 60);
+        const acceptedAssetTypes = Array.isArray(input.acceptedAssetTypes) ? Array.from(new Set(input.acceptedAssetTypes.filter((type): type is "image" | "video" | "audio" | "text" => typeof type === "string" && assetTypes.has(type)))).slice(0, 4) : [];
+        return id && label && acceptedAssetTypes.length ? [{ id, label, required: input.required === true, acceptedAssetTypes }] : [];
+    });
+    return roles.length ? roles.slice(0, 12) : undefined;
+}
+
+function normalizeAgentSkillStages(value: unknown): AgentSkill["stages"] {
+    if (!Array.isArray(value)) return undefined;
+    const stages = value.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const input = item as Record<string, unknown>;
+        const id = String(input.id || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, "-")
+            .slice(0, 60);
+        const label = String(input.label || "")
+            .trim()
+            .slice(0, 60);
+        const description = String(input.description || "")
+            .trim()
+            .slice(0, 240);
+        return id && label && description ? [{ id, label, description, ...(input.requiresUserConfirmation === true ? { requiresUserConfirmation: true } : {}) }] : [];
+    });
+    return stages.length ? stages.slice(0, 16) : undefined;
+}
+
 export function normalizeAgentSkill(skill: AgentSkill): AgentSkill {
-    if (skill.id === ECOMMERCE_IMAGE_SKILL.id && !skill.sourceUrl) return { ...ECOMMERCE_IMAGE_SKILL, keywords: [...ECOMMERCE_IMAGE_SKILL.keywords], workspaces: [...ECOMMERCE_IMAGE_SKILL.workspaces], enabled: skill.enabled !== false };
+    if (skill.id === ECOMMERCE_IMAGE_SKILL.id && !skill.sourceUrl)
+        return {
+            ...ECOMMERCE_IMAGE_SKILL,
+            keywords: [...ECOMMERCE_IMAGE_SKILL.keywords],
+            workspaces: [...ECOMMERCE_IMAGE_SKILL.workspaces],
+            nodeModes: Array.isArray(skill.nodeModes) ? [...new Set(skill.nodeModes.filter((item): item is "image" | "video" => item === "image" || item === "video"))] : [...ECOMMERCE_IMAGE_SKILL.nodeModes],
+            enabled: skill.enabled !== false,
+        };
+    const id = String(skill.id || randomUUID());
+    const workspaces: NonNullable<AgentSkill["workspaces"]> = Array.isArray(skill.workspaces) ? skill.workspaces.filter((item): item is "image" | "video" | "canvas" | "drama" => ["image", "video", "canvas", "drama"].includes(item)) : ["image"];
     const instructions = String(skill.instructions || "")
         .trim()
         .slice(0, 8000);
     return {
-        id: String(skill.id || randomUUID()),
+        id,
         name: String(skill.name || "")
             .trim()
             .slice(0, 60),
@@ -295,9 +363,17 @@ export function normalizeAgentSkill(skill: AgentSkill): AgentSkill {
                   .filter(Boolean)
                   .slice(0, 30)
             : [],
-        workspaces: Array.isArray(skill.workspaces) ? skill.workspaces.filter((item): item is "image" | "video" | "canvas" | "drama" => ["image", "video", "canvas", "drama"].includes(item)) : ["image"],
+        workspaces,
+        nodeModes: resolveAgentSkillNodeModes({ id, nodeModes: skill.nodeModes, workspaces }),
         action: skill.action === "edit" ? "edit" : "generate",
         requiresReference: Boolean(skill.requiresReference),
+        modelConstraints: normalizeAgentSkillModelConstraints(skill.modelConstraints),
+        requiredAssetRoles: normalizeAgentSkillAssetRoles(skill.requiredAssetRoles),
+        stages: normalizeAgentSkillStages(skill.stages),
+        previewImageUrl:
+            String(skill.previewImageUrl || "")
+                .trim()
+                .slice(0, 500) || undefined,
         defaultConfig: skill.defaultConfig && typeof skill.defaultConfig === "object" ? skill.defaultConfig : {},
         sourceUrl:
             String(skill.sourceUrl || "")
@@ -331,7 +407,7 @@ export function normalizeAgentSkill(skill: AgentSkill): AgentSkill {
 }
 
 export function normalizeAgentSkills(skills: AgentSkill[] | undefined) {
-    const normalized = Array.isArray(skills) ? skills.map(normalizeAgentSkill).filter((skill) => skill.name && skill.instructions) : [...DEFAULT_SETTINGS.agentSkills];
+    const normalized = Array.isArray(skills) ? skills.map(normalizeAgentSkill).filter((skill) => skill.name && skill.instructions && skill.id !== LEGACY_MINIMAX_H3_PROMPT_SKILL_ID) : [...DEFAULT_SETTINGS.agentSkills];
     if (!normalized.some((skill) => skill.id === YANAI_BEAUTY_SKILL.id)) normalized.push({ ...YANAI_BEAUTY_SKILL, keywords: [...YANAI_BEAUTY_SKILL.keywords], workspaces: [...YANAI_BEAUTY_SKILL.workspaces] });
     for (const skill of DEFAULT_CREATIVE_SHORTCUT_SKILLS) {
         const index = normalized.findIndex((item) => item.id === skill.id);
@@ -342,6 +418,31 @@ export function normalizeAgentSkills(skills: AgentSkill[] | undefined) {
         const index = normalized.findIndex((item) => item.id === skill.id);
         if (index < 0) normalized.push({ ...skill, keywords: [...skill.keywords], workspaces: [...(skill.workspaces || [])] });
         else normalized[index] = { ...normalized[index], workspaces: [...new Set([...(skill.workspaces || []), ...(normalized[index].workspaces || [])])] };
+    }
+    for (const skill of PORTRAIT_IMAGE_SKILLS) {
+        const index = normalized.findIndex((item) => item.id === skill.id);
+        if (index < 0) normalized.push({ ...skill, keywords: [...skill.keywords], workspaces: [...skill.workspaces], defaultConfig: { ...skill.defaultConfig } });
+        else
+            normalized[index] = {
+                ...normalized[index],
+                previewImageUrl: skill.previewImageUrl,
+                workspaces: [...new Set([...skill.workspaces, ...(normalized[index].workspaces || [])])],
+            };
+    }
+    for (const skill of MINIMAX_H3_OFFICIAL_STYLE_SKILLS) {
+        const index = normalized.findIndex((item) => item.id === skill.id);
+        if (index < 0) normalized.push(cloneMinimaxH3OfficialStyleSkill(skill));
+        else {
+            const current = normalized[index];
+            normalized[index] = {
+                ...current,
+                workspaces: [...new Set([...(skill.workspaces || []), ...(current.workspaces || [])])],
+                nodeModes: current.nodeModes === undefined ? (skill.nodeModes ? [...skill.nodeModes] : undefined) : current.nodeModes,
+                modelConstraints: current.modelConstraints || skill.modelConstraints,
+                requiredAssetRoles: current.requiredAssetRoles || skill.requiredAssetRoles?.map((item) => ({ ...item, acceptedAssetTypes: [...item.acceptedAssetTypes] })),
+                stages: current.stages || skill.stages?.map((item) => ({ ...item })),
+            };
+        }
     }
     return normalized;
 }
@@ -354,6 +455,7 @@ export function normalizeGenerationDefaults(settings: Partial<GenerationDefaultS
         imageCount: normalizePositiveSafeInteger(settings?.imageCount, DEFAULT_SETTINGS.generationDefaults.imageCount),
         videoQuality: normalizeText(settings?.videoQuality, DEFAULT_SETTINGS.generationDefaults.videoQuality, 40),
         videoSeconds: normalizeDefaultVideoSeconds(settings?.videoSeconds),
+        videoAnalysisModel: normalizeText(settings?.videoAnalysisModel, DEFAULT_SETTINGS.generationDefaults.videoAnalysisModel || "", 120),
         audioVoice: normalizeText(settings?.audioVoice, DEFAULT_SETTINGS.generationDefaults.audioVoice, 80),
         audioFormat: allowedText(settings?.audioFormat, ["mp3", "wav", "opus", "aac", "flac"], DEFAULT_SETTINGS.generationDefaults.audioFormat),
     };
@@ -639,7 +741,11 @@ export function normalizeSystemChannel(channel: Partial<SystemModelChannel>): Sy
         enabled: channel.enabled !== false,
         advancedConfig: normalizeSystemChannelAdvancedConfig(channel.advancedConfig),
     };
-    return normalized.advancedConfig?.protocol === "yumeng" ? applyChannelProtocol(normalized, "yumeng") : normalized;
+    if (normalized.advancedConfig?.protocol === "yumeng") return applyChannelProtocol(normalized, "yumeng");
+    if (normalized.advancedConfig?.protocol === "geminiai") return { ...normalized, name: "Gemini AI Studio" };
+    if (normalized.advancedConfig?.protocol === "gemini-tools") return { ...applyChannelProtocol(normalized, "gemini-tools"), name: "Gemini Antigravity Tools" };
+    if (normalized.advancedConfig?.protocol === "dreamina-cli") return { ...applyChannelProtocol(normalized, "dreamina-cli"), name: "即梦 CLI" };
+    return normalized;
 }
 
 export function normalizePoints(value: unknown, fallback: number) {

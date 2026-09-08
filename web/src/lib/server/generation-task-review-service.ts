@@ -1,9 +1,9 @@
 import { markAudioTaskFailed } from "@/lib/server/audio-task-runtime";
 import { getAudioTask, updateAudioTask } from "@/lib/server/audio-task-store";
 import { markImageTaskFailed } from "@/lib/server/image-task-runtime";
-import { getImageTask, updateImageTask } from "@/lib/server/image-task-store";
-import { getStoredGenerationTaskRecord, type GenerationTaskType } from "@/lib/server/generation-task-store";
+import { getImageTask, updateImageTask, type ImageTask } from "@/lib/server/image-task-store";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
+import { getStoredGenerationTaskRecord, type GenerationTaskType } from "@/lib/server/generation-task-store";
 import { markTextTaskFailed } from "@/lib/server/text-task-runtime";
 import { getTextTask, transitionTextTask, updateTextTask } from "@/lib/server/text-task-store";
 import { failVideoTaskFromWorker } from "@/lib/server/video-task-runtime";
@@ -46,6 +46,20 @@ export async function reviewGenerationTask(type: ReviewableGenerationTaskType, i
     await failTask(type, id, reason);
     await scheduleGenerationTask(type, id, { executionPhase: "completed", nextPollAt: undefined, lastUpstreamStatus: "manually_failed" });
     return { action: input.action, executionPhase: "completed" as const };
+}
+
+export async function resumeImageGenerationReview(task: ImageTask, executionPhase: string) {
+    if (!task.upstream?.id || !["pending", "running"].includes(task.status) || executionPhase !== "needs_review") throw new GenerationTaskReviewResumeError("当前任务不在可检查状态");
+    await scheduleGenerationTask("image", task.id, {
+        executionPhase: "submitted",
+        upstreamTaskId: task.upstream.id,
+        channelId: task.config.channelId,
+        provider: task.config.advancedConfig?.protocol || task.config.apiFormat,
+        queryPath: task.upstream.explicitPollUrl || task.config.advancedConfig?.queryPath,
+        nextPollAt: Date.now(),
+        lastUpstreamStatus: "manual_review_resumed",
+        resultPayload: undefined,
+    });
 }
 
 async function attachUpstreamTask(type: ReviewableGenerationTaskType, id: string, upstreamTaskId: string, origin: string) {
@@ -113,5 +127,12 @@ export class GenerationTaskReviewError extends Error {
         message: string,
     ) {
         super(message);
+    }
+}
+
+export class GenerationTaskReviewResumeError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "GenerationTaskReviewResumeError";
     }
 }

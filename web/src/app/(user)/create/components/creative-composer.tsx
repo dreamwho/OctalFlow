@@ -2,7 +2,7 @@
 
 import { Button, Input, Popover, Tooltip } from "antd";
 import type { TextAreaRef } from "antd/es/input/TextArea";
-import { ArrowUp, AtSign, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, FileAudio, FileVideo, ImageIcon, Plus, Sparkles, Square, WandSparkles, X } from "lucide-react";
+import { AtSign, Boxes, Check, ChevronDown, FileAudio, FileVideo, ImageIcon, Plus, Sparkles, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type MouseEventHandler, type PointerEventHandler, type RefObject, type WheelEvent } from "react";
 
 import type { CreativeAsset, CreativeGenerationMode, CreativeGenerationPreferences } from "@/lib/creative-runtime-contract";
@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 
 import { creativeComposerPopoverOverflow, useCreativeComposerPopoverPlacement } from "@/components/creative-composer-popover";
 import { creativeComposerToolButtonClass } from "@/components/creative-composer-styles";
+import { GenerationActionButton } from "@/components/generation-action-button";
+import { AgentSkillPreview } from "@/components/agent-skill-preview";
 import { shouldShowVideoFrameControls } from "./creative-composer-video-mode";
 import { creativeAssetMentionAtCursor, creativeAssetMentionCandidates, creativeAssetMentionDeletionAtKey, creativeAssetMentionSegments, replaceCreativeAssetMention, type CreativeAssetMentionSegment } from "./creative-asset-mention";
 import { CreativeAssetMentionPicker } from "./creative-asset-mention-picker";
@@ -26,6 +28,9 @@ type SkillOption = {
     id: string;
     name: string;
     description: string;
+    promptMode?: "required" | "optional";
+    promptHint?: string;
+    previewImageUrl?: string;
     action?: "generate" | "edit";
     workspaces?: Array<"image" | "video" | "canvas" | "drama">;
 };
@@ -123,6 +128,7 @@ export function CreativeComposer({
     const skillCategories = skillCategoryOptions(skills);
     const visibleSkills = skills.filter((skill) => matchesSkillCategory(skill, skillCategory) && creativeSkillMatchesQuery(skill, skillCommand?.query || ""));
     const currentMode = creativeModeOptions.find((option) => option.value === creationMode) || creativeModeOptions[0];
+    const canSubmitWithoutPrompt = selectedSkills.length > 0 && selectedSkills.every((skill) => skill.promptMode === "optional");
     const videoPreference = generationPreferences.video;
     const frameMode = videoPreference?.referenceMode || "reference";
     const showVideoFrames = shouldShowVideoFrameControls(creationMode, generationPreferences);
@@ -363,12 +369,12 @@ export function CreativeComposer({
                         />
                     </Tooltip>
                     <Tooltip title={busy ? "停止生成" : "发送"}>
-                        <Button
-                            type="primary"
-                            shape="circle"
-                            className="!size-11 !min-w-11 !shrink-0 !border-0 !bg-[linear-gradient(135deg,#5968ff,#604dff)] !text-white !shadow-[0_6px_16px_rgba(89,104,255,0.22)] hover:!bg-[linear-gradient(135deg,#5261f3,#5846ee)] disabled:!bg-none disabled:!bg-[#e2e5e8] disabled:!text-[#aeb5bd] disabled:!shadow-none dark:disabled:!bg-[#30353c] dark:disabled:!text-[#68717d]"
-                            icon={busy ? <Square className="size-3.5 fill-current" /> : <ArrowUp className="size-4" />}
-                            disabled={!busy && !value.trim()}
+                        <GenerationActionButton
+                            appearance="icon"
+                            running={busy}
+                            cancellable
+                            className="shrink-0"
+                            disabled={!busy && !value.trim() && !canSubmitWithoutPrompt}
                             onClick={busy ? onCancel : onSubmit}
                             aria-label={busy ? "停止生成" : "发送"}
                         />
@@ -388,7 +394,10 @@ export function CreativeComposer({
                 {selectedSkills.length || otherAttachments.length ? (
                     <div className="flex gap-2 overflow-x-auto px-2 pb-1 pt-1">
                         {selectedSkills.map((skill) => (
-                            <span key={skill.id} className="flex h-9 max-w-60 shrink-0 items-center gap-2 rounded-lg border border-[#d6dee8] bg-[#f1f4f8] px-2.5 text-xs font-medium text-[#344152] shadow-[0_2px_8px_rgba(38,49,65,0.07)] dark:border-[#3b4653] dark:bg-[#252b33] dark:text-[#edf1f5] dark:shadow-black/20">
+                            <span
+                                key={skill.id}
+                                className="flex h-9 max-w-60 shrink-0 items-center gap-2 rounded-lg border border-[#d6dee8] bg-[#f1f4f8] px-2.5 text-xs font-medium text-[#344152] shadow-[0_2px_8px_rgba(38,49,65,0.07)] dark:border-[#3b4653] dark:bg-[#252b33] dark:text-[#edf1f5] dark:shadow-black/20"
+                            >
                                 <span className="grid size-5 shrink-0 place-items-center rounded-md bg-[#d3a44f]/16 text-[#95681d] dark:bg-[#e4bb70]/14 dark:text-[#e4bb70]">
                                     <Sparkles className="size-3.5" />
                                 </span>
@@ -555,30 +564,23 @@ export function CreativeComposer({
                                 setSkillPickerOpen(open);
                                 if (!open) setSkillCommand(null);
                             }}
+                            styles={{ container: { background: "transparent", boxShadow: "none", padding: 0 } }}
                             content={
-                                <div className="w-[calc(100vw-56px)] max-w-[320px] py-1 sm:w-[680px] sm:max-w-[calc(100vw-64px)]">
-                                    <div className="flex items-center justify-between gap-3 px-2 pb-2">
+                                <div className="hide-scrollbar max-h-[300px] w-[calc(100vw-32px)] max-w-[430px] overflow-y-auto rounded-[20px] border border-cyan-300/20 bg-[#020813]/[.98] p-4 text-[#f7fbff] shadow-[0_28px_80px_rgba(0,0,0,.58),0_0_42px_rgba(79,104,255,.12),inset_0_1px_0_rgba(255,255,255,.07)] backdrop-blur-2xl">
+                                    <div className="flex items-start justify-between gap-3 pb-2">
                                         <div>
-                                            <p className="text-sm font-semibold text-[#20242a] dark:text-[#f3f5f7]">使用 Skill</p>
-                                            <p className="mt-0.5 text-[11px] text-[#8b949f] dark:text-[#7f8996]">可组合多个能力；输入 /名称 可快速筛选</p>
+                                            <p className="text-base font-semibold tracking-[-.02em] text-white">Skill</p>
+                                            <p className="mt-1 text-[11px] text-[#7f90aa]">组合多个能力，输入 /名称 也可快速筛选</p>
                                         </div>
-                                        {selectedSkills.length ? <span className="shrink-0 rounded-full bg-[#eef1f4] px-2 py-1 text-[11px] text-[#596572] dark:bg-[#292f37] dark:text-[#b6bec8]">已选 {selectedSkills.length}</span> : null}
+                                        {selectedSkills.length ? <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[11px] text-cyan-100">已选 {selectedSkills.length}</span> : null}
                                     </div>
-                                    {skillsLoading ? <p className="px-2 py-3 text-xs text-[#8b949f] dark:text-[#7f8996]">正在加载...</p> : null}
-                                    {!skillsLoading && !skills.length ? <p className="px-2 py-3 text-xs text-[#8b949f] dark:text-[#7f8996]">暂无可用 Skill</p> : null}
+                                    {skillsLoading ? <p className="px-2 py-3 text-xs text-[#7f90aa]">正在加载...</p> : null}
+                                    {!skillsLoading && !skills.length ? <p className="px-2 py-3 text-xs text-[#7f90aa]">暂无可用 Skill</p> : null}
                                     {skills.length ? (
-                                        <div className="mb-2 grid grid-cols-[28px_minmax(0,1fr)_28px] items-center gap-1">
-                                            <button
-                                                type="button"
-                                                className="grid size-7 place-items-center rounded-md text-[#7c8794] transition hover:bg-[#eef1f4] hover:text-[#20242a] disabled:cursor-default disabled:opacity-30 dark:text-[#929ca8] dark:hover:bg-[#292f37] dark:hover:text-white"
-                                                onClick={() => skillCategoryScrollRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
-                                                aria-label="向左查看更多 Skill 分类"
-                                            >
-                                                <ChevronLeft className="size-4" />
-                                            </button>
+                                        <div className="mb-2 rounded-xl border border-white/[.08] bg-white/[.035] p-1">
                                             <div
                                                 ref={skillCategoryScrollRef}
-                                                className="hide-scrollbar flex min-w-0 cursor-grab snap-x gap-1.5 overflow-x-auto overscroll-x-contain px-0.5 [touch-action:pan-x] active:cursor-grabbing"
+                                                className="hide-scrollbar flex min-w-0 cursor-grab snap-x gap-1 overflow-x-auto overscroll-x-contain [touch-action:pan-x] active:cursor-grabbing"
                                                 onWheel={scrollHorizontalCategories}
                                                 {...skillCategoryDragScrollProps}
                                                 role="tablist"
@@ -591,10 +593,10 @@ export function CreativeComposer({
                                                         role="tab"
                                                         aria-selected={skillCategory === category.id}
                                                         className={cn(
-                                                            "h-8 min-w-[72px] shrink-0 snap-start whitespace-nowrap rounded-lg border px-3 text-xs font-medium transition",
+                                                            "h-8 min-w-[68px] shrink-0 snap-start whitespace-nowrap rounded-lg border px-3 text-xs font-medium transition",
                                                             skillCategory === category.id
-                                                                ? "border-[#c9d7e2] bg-[#edf3f7] text-[#315d78] dark:border-[#466175] dark:bg-[#273742] dark:text-[#a8c8dc]"
-                                                                : "border-[#e0e4e8] bg-white text-[#66717e] hover:border-[#cbd2d9] hover:bg-[#f5f7f8] hover:text-[#20242a] dark:border-[#343a42] dark:bg-[#1d2127] dark:text-[#a3acb7] dark:hover:border-[#49515b] dark:hover:bg-[#292f37] dark:hover:text-white",
+                                                                ? "border-cyan-300/20 bg-gradient-to-r from-[#566fff]/25 to-[#42d7e7]/15 text-white"
+                                                                : "border-transparent bg-transparent text-[#7f90aa] hover:bg-white/[.04] hover:text-white",
                                                         )}
                                                         onClick={() => setSkillCategory(category.id)}
                                                     >
@@ -602,19 +604,11 @@ export function CreativeComposer({
                                                     </button>
                                                 ))}
                                             </div>
-                                            <button
-                                                type="button"
-                                                className="grid size-7 place-items-center rounded-md text-[#7c8794] transition hover:bg-[#eef1f4] hover:text-[#20242a] dark:text-[#929ca8] dark:hover:bg-[#292f37] dark:hover:text-white"
-                                                onClick={() => skillCategoryScrollRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
-                                                aria-label="向右查看更多 Skill 分类"
-                                            >
-                                                <ChevronRight className="size-4" />
-                                            </button>
                                         </div>
                                     ) : null}
                                     <div className="relative">
-                                        <div className="hide-scrollbar grid max-h-[260px] grid-cols-1 gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] sm:max-h-[340px] sm:grid-cols-2 lg:grid-cols-3 [&::-webkit-scrollbar]:hidden">
-                                            {!skillsLoading && skills.length && !visibleSkills.length ? <p className="px-2 py-5 text-center text-xs text-[#8b949f] dark:text-[#7f8996]">当前分类暂无可用 Skill</p> : null}
+                                        <div className="hide-scrollbar grid max-h-[200px] grid-cols-1 gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                            {!skillsLoading && skills.length && !visibleSkills.length ? <p className="px-2 py-5 text-center text-xs text-[#7f90aa]">当前分类暂无可用 Skill</p> : null}
                                             {visibleSkills.map((skill) => {
                                                 const selected = selectedSkills.some((item) => item.id === skill.id);
                                                 const visual = skillOptionVisual(skill);
@@ -624,21 +618,24 @@ export function CreativeComposer({
                                                         key={skill.id}
                                                         type="button"
                                                         className={cn(
-                                                            "flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition",
-                                                            selected ? "bg-[#eef1f4] text-[#20242a] dark:bg-[#292f37] dark:text-white" : "text-[#4d5662] hover:bg-[#f4f6f8] dark:text-[#c2c9d1] dark:hover:bg-[#242930]",
+                                                            "group flex w-full items-center gap-2.5 rounded-xl border px-2 py-2 text-left transition",
+                                                            selected ? "border-cyan-300/20 bg-gradient-to-r from-[#566fff]/20 to-[#42d7e7]/[.08] text-white" : "border-transparent text-[#dbe5f2] hover:border-cyan-300/15 hover:bg-white/[.045]",
                                                         )}
                                                         onClick={() => {
                                                             selectComposerSkill(skill);
                                                         }}
                                                     >
-                                                        <span className={cn("mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg", visual.surfaceClass)}>
-                                                            <Icon className={cn("size-3.5", visual.iconClass)} />
+                                                        <AgentSkillPreview skill={skill} className="!h-12 !w-12 shrink-0 !rounded-[10px]" />
+                                                        <span className="flex min-w-0 flex-1 items-start gap-2">
+                                                            <span className={cn("mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg", visual.surfaceClass)}>
+                                                                <Icon className={cn("size-3.5", visual.iconClass)} />
+                                                            </span>
+                                                            <span className="min-w-0 flex-1">
+                                                                <span className="block truncate text-xs font-medium">{skill.name}</span>
+                                                                <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-[#75869d]">{skill.description}</span>
+                                                            </span>
+                                                            {selected ? <Check className="mt-0.5 size-4 shrink-0" /> : null}
                                                         </span>
-                                                        <span className="min-w-0 flex-1">
-                                                            <span className="block truncate text-xs font-medium">{skill.name}</span>
-                                                            <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-[#8b949f] dark:text-[#7f8996]">{skill.description}</span>
-                                                        </span>
-                                                        {selected ? <Check className="mt-0.5 size-4 shrink-0" /> : null}
                                                     </button>
                                                 );
                                             })}
@@ -673,12 +670,12 @@ export function CreativeComposer({
                         </Tooltip>
                     </div>
                     <Tooltip title={busy ? "停止生成" : "发送"}>
-                        <Button
-                            type="primary"
-                            shape="circle"
-                            className="shrink-0 !size-11 !min-w-11 !border-0 !bg-[#20242a] !text-white shadow-none hover:!bg-[#343b44] disabled:!bg-[#e2e5e8] disabled:!text-[#aeb5bd] dark:!bg-[#f1f3f5] dark:!text-[#20242a] dark:hover:!bg-white dark:disabled:!bg-[#30353c] dark:disabled:!text-[#68717d]"
-                            icon={busy ? <Square className="size-3.5 fill-current" /> : <ArrowUp className="size-4" />}
-                            disabled={!busy && !value.trim()}
+                        <GenerationActionButton
+                            appearance="icon"
+                            running={busy}
+                            cancellable
+                            className="shrink-0"
+                            disabled={!busy && !value.trim() && !canSubmitWithoutPrompt}
                             onClick={busy ? onCancel : onSubmit}
                             aria-label={busy ? "停止生成" : "发送"}
                         />

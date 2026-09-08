@@ -1,21 +1,25 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Image as ImageIcon, LoaderCircle, MessageSquare, Music2, Play, Settings2, Sparkles, Square, Video } from "lucide-react";
+import { Check, ChevronDown, Image as ImageIcon, MessageSquare, Music2, Settings2, Sparkles, Video } from "lucide-react";
 import { Button, Dropdown } from "antd";
 
+import { GenerationActionButton } from "@/components/generation-action-button";
 import { ModelPicker } from "@/components/model-picker";
 import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
-import { useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { selectableModelsByCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasCameraControl } from "./canvas-camera-control";
+import { CanvasInteriorDesignNodePanel } from "./canvas-interior-design-node-panel";
 import type { CanvasGenerationMode, CanvasNodeData, CanvasNodeMetadata } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 import { buildCanvasNodeConfig, canvasAudioConfigPatch, canvasVideoConfigPatch, resolveCanvasGenerationModel } from "../utils/canvas-node-config";
+import { canvasDreaminaModelCompatible, canvasDreaminaVideoCommand } from "../utils/canvas-dreamina-cli";
+import { isInteriorDesignNode } from "../utils/canvas-interior-design";
 
 type CanvasConfigNodePanelProps = {
     node: CanvasNodeData;
@@ -26,9 +30,27 @@ type CanvasConfigNodePanelProps = {
     onGenerate: (nodeId: string) => void;
     onStop: (nodeId: string) => void;
     onComposerToggle: () => void;
+    onInteriorDesignEdit?: (nodeId: string) => void;
 };
 
-export function CanvasConfigNodePanel({ node, isRunning, inputSummary, references, onConfigChange, onGenerate, onStop, onComposerToggle }: CanvasConfigNodePanelProps) {
+export function CanvasConfigNodePanel(props: CanvasConfigNodePanelProps) {
+    if (isInteriorDesignNode(props.node.metadata)) {
+        return (
+            <CanvasInteriorDesignNodePanel
+                node={props.node}
+                isRunning={props.isRunning}
+                imageInputCount={props.inputSummary.imageCount}
+                onConfigChange={props.onConfigChange}
+                onEdit={(nodeId) => props.onInteriorDesignEdit?.(nodeId)}
+                onGenerate={props.onGenerate}
+                onStop={props.onStop}
+            />
+        );
+    }
+    return <CanvasDefaultConfigNodePanel {...props} />;
+}
+
+function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, references, onConfigChange, onGenerate, onStop, onComposerToggle }: CanvasConfigNodePanelProps) {
     const [detailsOpen, setDetailsOpen] = useState(node.metadata?.configDetailsOpen === true);
     const [modeMenuOpen, setModeMenuOpen] = useState(false);
     const globalConfig = useEffectiveConfig();
@@ -53,6 +75,8 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, reference
     const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
     const canGenerate = hasComposerContent || (mode === "audio" ? inputSummary.textCount > 0 : hasAnyInput);
     const modeLabel = generationModeLabel(mode);
+    const dreaminaCommand = mode === "video" ? canvasDreaminaVideoCommand(node.metadata, references) : inputSummary.imageCount ? "image2image" : "text2image";
+    const compatibleModels = selectableModelsByCapability(globalConfig, mode).filter((model) => canvasDreaminaModelCompatible(globalConfig, model, mode, dreaminaCommand));
     const setDetails = (nextOpen: boolean) => {
         setDetailsOpen(nextOpen);
         onConfigChange(node.id, { configDetailsOpen: nextOpen });
@@ -139,6 +163,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, reference
                     value={config.model}
                     onChange={(model) => onConfigChange(node.id, { model })}
                     capability={mode}
+                    options={compatibleModels}
                     onMissingConfig={() => openConfigDialog(true)}
                     fullWidth
                 />
@@ -222,40 +247,28 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, reference
                 ) : null}
             </div>
 
-            <Button
-                type="primary"
-                className="canvas-generate-button mt-auto !h-9 !w-full !cursor-pointer !rounded-xl !border !text-[13px] !font-semibold"
-                danger={isRunning}
+            <GenerationActionButton
+                appearance="primary"
+                icon={null}
+                running={isRunning}
+                cancellable
+                className="mt-auto !h-9 !w-full !cursor-pointer !rounded-xl !text-[13px] !font-semibold"
                 disabled={!isRunning && !canGenerate}
-                style={
-                    isRunning
-                        ? { background: theme.node.danger, borderColor: theme.node.danger, color: theme.node.actionDangerText }
-                        : canGenerate
-                          ? { background: theme.node.action, borderColor: theme.node.action, color: theme.node.actionText }
-                          : { background: theme.toolbar.itemHover, borderColor: theme.node.stroke, color: theme.node.muted }
-                }
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={() => (isRunning ? onStop(node.id) : onGenerate(node.id))}
             >
-                <span className="inline-flex items-center gap-1.5">
-                    {isRunning ? (
-                        <>
-                            <LoaderCircle className="size-4 animate-spin" />
-                            <Square className="size-3.5 fill-current" />
-                            <span>停止</span>
-                        </>
-                    ) : (
-                        <>
-                            <span className="inline-flex items-center gap-1">
-                                <CreditSymbol />
-                                {formatCreditAmount(credits)}
-                            </span>
-                            <Play className="size-4" />
-                            <span>开始生成</span>
-                        </>
-                    )}
-                </span>
-            </Button>
+                {isRunning ? (
+                    "停止生成"
+                ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1">
+                            <CreditSymbol />
+                            {formatCreditAmount(credits)}
+                        </span>
+                        <span>开始生成</span>
+                    </span>
+                )}
+            </GenerationActionButton>
         </div>
     );
 }

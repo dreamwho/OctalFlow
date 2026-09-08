@@ -19,6 +19,7 @@ export type ChannelProtocolDefinition = {
     modelCatalogPaths: string[];
     capabilities: LogicalModelCapability[];
     operations: Partial<Record<LogicalModelCapability, ProtocolOperation>>;
+    transport?: "http" | "local-cli";
     builtInModels?: ReadonlyArray<{ id: string; label: string; capability: LogicalModelCapability; operation?: ProtocolOperation }>;
     strict?: boolean;
     advanced?: boolean;
@@ -47,6 +48,12 @@ const openAiOperations: ChannelProtocolDefinition["operations"] = {
         supportsReferenceImage: true,
     },
     audio: { capability: "audio", createPath: "/audio/speech", requestTemplate: '{"model":"{{model}}","input":"{{prompt}}","voice":"alloy","response_format":"mp3"}', resultField: "binary" },
+};
+
+const geminiToolsTextOperation: ProtocolOperation = {
+    ...openAiOperations.text!,
+    referenceRule: "文本多模态输入使用 content 数组，服务端将参考图片和视频抽帧转换为 inlineData。",
+    supportsReferenceImage: true,
 };
 
 const lingkeaiSyncImageOperation: ProtocolOperation = {
@@ -88,6 +95,7 @@ const minimaxH3VideoOperation: ProtocolOperation = {
     resultField: "/v1/videos/:task_id/content",
     statusField: "status",
     durationRange: "5-15 秒",
+    qualityOptions: ["480p", "720p"],
     referenceRule: "参考媒体使用公网可访问 URL：普通参考进入 ref2va 的 images/videos/audios；首帧与首尾帧分别映射 i2va 与 fl2va 的 images，两种方式不能混用。",
     supportsReferenceImage: true,
     supportsReferenceVideo: true,
@@ -106,6 +114,7 @@ const minimaxH3OfficialVideoOperation: ProtocolOperation = {
     resultField: "task.content.url",
     statusField: "task.status",
     durationRange: "4-15 秒",
+    qualityOptions: ["768P", "2K"],
     referenceRule: "content 数组多模态输入：首帧、尾帧分别使用 role=first_frame/last_frame 的 image_url；多模态参考使用 role=reference_image/reference_video/reference_audio，且与首尾帧互斥。",
     supportsReferenceImage: true,
     supportsReferenceVideo: true,
@@ -122,6 +131,7 @@ const geminiVideoOperation: ProtocolOperation = {
     resultField: "response.generateVideoResponse.generatedSamples[0].video.uri",
     statusField: "done",
     durationRange: "4、6、8 秒",
+    qualityOptions: ["720p", "1080p"],
     referenceRule: "服务端将参考图片转为 inlineData；支持普通参考图、首帧和尾帧，不支持参考视频或参考音频。",
     supportsReferenceImage: true,
     supportsReferenceVideo: false,
@@ -219,6 +229,53 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
         modelCatalogPaths: ["/v1beta/models"],
         capabilities: ["video"],
         operations: { video: geminiVideoOperation },
+        strict: true,
+    },
+    {
+        id: "geminiai",
+        label: "Gemini AI Studio",
+        description: "通过服务器已授权的 Google AI Studio 账号调用；支持文本、Google 搜索与图片生成。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image"],
+        operations: { text: openAiOperations.text, image: openAiOperations.image },
+        strict: true,
+    },
+    {
+        id: "gemini-tools",
+        label: "Gemini Antigravity Tools",
+        description: "通过当前项目内置网关和已授权 Google 账号调用 Antigravity 文本与视觉理解模型。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text"],
+        operations: { text: geminiToolsTextOperation },
+        strict: true,
+    },
+    {
+        id: "dreamina-cli",
+        label: "即梦 CLI",
+        description: "服务器本地已授权的即梦 CLI 渠道。只可由图片、视频和 Canvas 任务 Runtime 调用，不提供通用 HTTP 代理或模型目录探测。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        transport: "local-cli",
+        modelCatalogPaths: [],
+        capabilities: ["image", "video"],
+        operations: {
+            image: {
+                capability: "image",
+                referenceRule: "服务端仅将已归属的图片素材暂存到受控目录，再由 Dreamina CLI 上传；图片超清使用独立 operation。",
+                supportsReferenceImage: true,
+            },
+            video: {
+                capability: "video",
+                referenceRule: "服务端仅将已归属的图片、视频、音频素材按角色暂存到受控目录，再由 Dreamina CLI 上传。",
+                supportsReferenceImage: true,
+                supportsReferenceVideo: true,
+                supportsReferenceAudio: true,
+            },
+        },
         strict: true,
     },
     {
@@ -504,7 +561,7 @@ export function applyChannelProtocol(channel: SystemModelChannel, protocol: Syst
 export function protocolAuthHeaders(apiKey: string, input: Pick<SystemChannelAdvancedConfig, "protocol" | "authMode" | "authHeader" | "authPrefix"> | undefined, fallback: ApiCallFormat = "openai"): Record<string, string> {
     if (input?.protocol === "gemini") return { "x-goog-api-key": apiKey };
     const mode = resolveChannelAuthMode(input);
-    if (mode === "none") return {};
+    if (mode === "none" || mode === "provider-managed") return {};
     if (fallback === "gemini" && !input?.authMode) return { "x-goog-api-key": apiKey };
     if (mode === "x-api-key") return { "x-api-key": apiKey };
     if (mode === "custom-header") {
@@ -521,7 +578,8 @@ export function resolveChannelAuthMode(input: Pick<SystemChannelAdvancedConfig, 
 }
 
 export function channelRequiresApiKey(channel: Pick<SystemModelChannel, "advancedConfig">) {
-    return resolveChannelAuthMode(channel.advancedConfig) !== "none";
+    const mode = resolveChannelAuthMode(channel.advancedConfig);
+    return mode !== "none" && mode !== "provider-managed";
 }
 
 export function channelCredentialsReady(channel: Pick<SystemModelChannel, "apiKey" | "hasApiKey" | "advancedConfig">) {
@@ -529,7 +587,7 @@ export function channelCredentialsReady(channel: Pick<SystemModelChannel, "apiKe
 }
 
 export function channelConnectionReady(channel: Pick<SystemModelChannel, "baseUrl" | "apiKey" | "hasApiKey" | "advancedConfig">) {
-    return Boolean(channel.baseUrl.trim() && channelCredentialsReady(channel));
+    return resolveChannelAuthMode(channel.advancedConfig) === "provider-managed" ? channelCredentialsReady(channel) : Boolean(channel.baseUrl.trim() && channelCredentialsReady(channel));
 }
 
 export function channelProtocolValidationErrors(channel: SystemModelChannel) {

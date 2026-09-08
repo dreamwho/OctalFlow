@@ -21,6 +21,7 @@ export async function listDramaProjectSummaries(userId: string, input: { page?: 
                 project.status,
                 project.project_json->>'summary' AS summary,
                 project.project_json->>'style' AS style,
+                project.project_json->>'stylePresetId' AS style_preset_id,
                 project.project_json->>'ratio' AS ratio,
                 jsonb_array_length(COALESCE(project.project_json->'episodes', '[]'::jsonb)) AS episode_count,
                 jsonb_array_length(COALESCE(project.project_json->'characters', '[]'::jsonb)) AS character_count,
@@ -179,6 +180,7 @@ type DramaProjectSummaryRow = {
     status: DramaProject["status"];
     summary: string | null;
     style: string | null;
+    style_preset_id: string | null;
     ratio: string | null;
     episode_count: number;
     character_count: number;
@@ -197,6 +199,7 @@ function summaryFromRow(row: DramaProjectSummaryRow): DramaProjectSummary {
         title: row.title,
         summary: row.summary || "",
         style: row.style || "",
+        stylePresetId: row.style_preset_id || undefined,
         ratio: normalizeDramaImageSize(row.ratio) || "9:16",
         status: row.status,
         episodeCount: Number(row.episode_count) || 0,

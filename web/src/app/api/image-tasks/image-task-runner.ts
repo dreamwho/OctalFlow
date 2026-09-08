@@ -9,8 +9,11 @@ export function stableMediaUrl(value?: string) {
 }
 
 export async function writeImageGenerationLog(task: ImageTask, status: "success" | "failed", result: Array<{ dataUrl?: string; remoteUrl?: string }> | { dataUrl?: string; remoteUrl?: string } | string, durationMs: number, error?: string) {
+    const publicPrompt = task.publicPrompt?.trim() || task.prompt;
     const results = Array.isArray(result) ? result : [result];
-    const targetSize = resolveResultSize(task.config.quality, task.config.size || "auto");
+    // A CLI upscale result must retain the upstream dimensions.  Never route it
+    // through the normal workbench target-size resize path.
+    const targetSize = task.kind === "upscale" ? undefined : resolveResultSize(task.config.quality, task.config.size || "auto");
     const assets = results.flatMap((item) => {
         const resultUrl = typeof item === "string" ? item : item.remoteUrl || item.dataUrl || "";
         return resultUrl ? [{ type: "image" as const, url: resultUrl, remoteUrl: typeof item === "string" ? undefined : item.remoteUrl, targetSize }] : [];
@@ -26,10 +29,10 @@ export async function writeImageGenerationLog(task: ImageTask, status: "success"
         kind: "image",
         source: task.source || "image-workbench",
         status,
-        title: task.title || task.prompt.slice(0, 36) || "图片生成",
-        prompt: task.prompt,
+        title: task.title || publicPrompt.slice(0, 36) || "图片生成",
+        prompt: publicPrompt,
         model: generationModelId(task.config),
-        summary: status === "success" ? (task.kind === "edit" ? "图生图调用完成" : "文生图调用完成") : "图片生成失败",
+        summary: status === "success" ? (task.kind === "upscale" ? "图片超清调用完成" : task.kind === "edit" ? "图生图调用完成" : "文生图调用完成") : "图片生成失败",
         durationMs,
         assets,
         error,

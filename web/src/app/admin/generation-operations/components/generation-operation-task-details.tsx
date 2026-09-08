@@ -37,7 +37,8 @@ export function GenerationTaskRuntimeSummary({ task, compact = false }: { task: 
                 {task.leaseExpired ? <Tag className={generationOperationThemeClasses.reviewTag}>Worker 租约已过期</Tag> : null}
             </div>
             <div className={compact ? "mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-xs" : "mt-1 space-y-1"}>
-                <RuntimeFact label="Worker" value={task.workerId || "未认领"} />
+                <RuntimeFact label="Worker" value={task.provider === "local-depth" ? "本地深度处理" : task.workerId || "未认领"} />
+                {task.lastUpstreamStatus ? <RuntimeFact label="执行进度" value={task.lastUpstreamStatus} /> : null}
                 <RuntimeFact label="心跳" value={operationTimeLabel(task.lastHeartbeatAt)} />
                 <RuntimeFact label="租约" value={operationTimeLabel(task.leaseUntil)} />
                 <RuntimeFact label="下次查询" value={operationTimeLabel(task.nextPollAt)} />
@@ -45,6 +46,18 @@ export function GenerationTaskRuntimeSummary({ task, compact = false }: { task: 
                 {task.queryPath ? <RuntimeFact label="查询路径" value={task.queryPath} /> : null}
             </div>
         </div>
+    );
+}
+
+export function GenerationTaskFailureSummary({ task }: { task: AdminGenerationTask }) {
+    if (!task.error) return null;
+    return (
+        <Tooltip title={task.error}>
+            <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs leading-5 text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
+                <div className="font-medium">失败原因{task.failurePhase ? ` · ${agentFailurePhaseLabel(task.failurePhase)}` : ""}</div>
+                <div className="break-words">{task.error}</div>
+            </div>
+        </Tooltip>
     );
 }
 
@@ -63,6 +76,10 @@ export function planningProtocolLabel(protocol?: "responses" | "chat" | "gemini"
 
 export function executionPhaseLabel(value?: AdminGenerationTask["executionPhase"]) {
     return ({ created: "已创建", submitting: "提交中", submitted: "已提交", polling: "查询结果", result_ready: "结果待保存", persisting: "保存结果", needs_review: "待人工确认", completed: "已结束" } as Record<string, string>)[value || ""] || "未记录阶段";
+}
+
+function agentFailurePhaseLabel(value: NonNullable<AdminGenerationTask["failurePhase"]>) {
+    return value === "planning" ? "规划阶段" : "执行阶段";
 }
 
 function RuntimeFact({ label, value }: { label: string; value: string }) {

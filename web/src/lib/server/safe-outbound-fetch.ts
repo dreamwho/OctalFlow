@@ -56,7 +56,7 @@ async function fetchPinned(input: URL, init: RequestInit, options?: SafeOutbound
     if (!target) throw new UnsafeOutboundUrlError();
 
     const headers = new Headers(init.headers);
-    const dispatcher = dispatcherFor(target.url, target.address, target.family);
+    const dispatcher = dispatcherFor(target.url, target.address, target.family, options?.proxyUrl);
     const body = await toUndiciRequestBody(init.body);
     return (await undiciFetch(target.url, { ...init, body, headers, dispatcher } as import("undici").RequestInit & { dispatcher: Dispatcher })) as unknown as Response;
 }
@@ -77,8 +77,8 @@ function redirectedRequestInit(currentUrl: URL, nextUrl: URL, status: number, in
     return { ...init, headers };
 }
 
-function dispatcherFor(url: URL, address: string, family: 4 | 6) {
-    const proxyUrl = isPublicIpAddress(address) || isProxyFakeIpAddress(address) ? resolveServerProxyUrl() : "";
+function dispatcherFor(url: URL, address: string, family: 4 | 6, proxyUrlOverride?: string) {
+    const proxyUrl = proxyUrlOverride ? normalizeProxyUrl(proxyUrlOverride) : isPublicIpAddress(address) || isProxyFakeIpAddress(address) ? resolveServerProxyUrl() : "";
     const servername = /^\d+(?:\.\d+){3}$/.test(url.hostname) || url.hostname.includes(":") ? undefined : url.hostname;
     const key = [proxyUrl, url.protocol, url.host, address, family].join("|");
     const now = Date.now();
@@ -122,6 +122,16 @@ function dispatcherFor(url: URL, address: string, family: 4 | 6) {
     dispatchers.set(key, { dispatcher, lastUsedAt: now });
     cleanupDispatchers(now);
     return dispatcher;
+}
+
+function normalizeProxyUrl(value: string) {
+    try {
+        const url = new URL(value.trim());
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== "")) throw new Error("invalid proxy URL");
+        return url.toString();
+    } catch {
+        throw new UnsafeOutboundUrlError("请求级代理地址无效");
+    }
 }
 
 function cleanupDispatchers(now: number) {

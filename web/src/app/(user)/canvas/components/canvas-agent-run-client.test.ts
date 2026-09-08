@@ -43,6 +43,7 @@ describe("Canvas Agent 事件流", () => {
         const messages: string[] = [];
         const details: unknown[] = [];
         const ops: unknown[] = [];
+        const terminal: string[] = [];
         const promise = watchCanvasAgentRun("run", {
             onPlan: () => undefined,
             onAssistant: (text, detail) => {
@@ -52,6 +53,7 @@ describe("Canvas Agent 事件流", () => {
             onStage: (stage) => stages.push(stage),
             onPaused: () => undefined,
             onOps: (value) => ops.push(...value),
+            onTerminal: (status) => terminal.push(status),
         });
         FakeEventSource.instance.emit("run.planning", {});
         FakeEventSource.instance.emit("canvas.ops", { data: { ops: [{ type: "add_node", id: "brief-run" }] } });
@@ -70,6 +72,25 @@ describe("Canvas Agent 事件流", () => {
             { nodeIds: ["output-run-0"], taskType: "text" },
         ]);
         expect(ops).toEqual([{ type: "select_nodes", ids: ["output-run-0"] }]);
+        expect(terminal).toEqual(["completed"]);
+    });
+
+    it.each(["completed", "failed", "cancelled"] as const)("marks a %s terminal event for persisted progress", async (status) => {
+        vi.stubGlobal("EventSource", FakeEventSource);
+        const terminal: string[] = [];
+        const promise = watchCanvasAgentRun("run", {
+            onPlan: () => undefined,
+            onAssistant: () => undefined,
+            onStage: () => undefined,
+            onPaused: () => undefined,
+            onOps: () => undefined,
+            onTerminal: (value) => terminal.push(value),
+        });
+
+        FakeEventSource.instance.emit(`run.${status}`, { data: {} });
+        await promise;
+
+        expect(terminal).toEqual([status]);
     });
 
     it("applies a replayed plan once and restores paused state from snapshots", async () => {
@@ -250,6 +271,29 @@ describe("Canvas Agent 事件流", () => {
         expect(messages).toEqual([{ text: "生成渠道暂时无法连接，请稍后重试或联系管理员。", detail: { runId: "run", title: "Agent 执行失败" } }]);
     });
 
+    it("shows the persisted planning error when no child task was created", async () => {
+        vi.stubGlobal("EventSource", FakeEventSource);
+        const messages: Array<{ text: string; detail: unknown }> = [];
+        const promise = watchCanvasAgentRun("run", {
+            onPlan: () => undefined,
+            onAssistant: (text, detail) => messages.push({ text, detail }),
+            onStage: () => undefined,
+            onPaused: () => undefined,
+            onOps: () => undefined,
+        });
+
+        FakeEventSource.instance.emit("run.snapshot", {
+            id: "run",
+            status: "failed",
+            error: "默认文本模型没有可用的规划渠道",
+            failurePhase: "planning",
+            tasks: [],
+        });
+        await promise;
+
+        expect(messages).toEqual([{ text: "默认文本模型没有可用的规划渠道", detail: { runId: "run", title: "Agent 执行失败" } }]);
+    });
+
     it("keeps a non-terminal Run alive after an event connection interruption", async () => {
         vi.stubGlobal("EventSource", FakeEventSource);
         mocks.getCreativeAgentRun.mockResolvedValue({ id: "run", conversationId: "conversation", inputMessageId: "input", assistantMessageId: "assistant", status: "running", assetIds: [], tasks: [] });
@@ -266,8 +310,34 @@ describe("Canvas Agent 事件流", () => {
         await vi.waitFor(() => expect(stages.some((stage) => stage.text === "任务仍在后台运行，正在恢复连接")).toBe(true));
         expect(FakeEventSource.instance.closed).toBe(false);
 
+        mocks.getCreativeAgentRun.mockResolvedValue({ id: "run", conversationId: "conversation", inputMessageId: "input", assistantMessageId: "assistant", status: "completed", assetIds: [], tasks: [] });
         FakeEventSource.instance.emit("run.completed", { data: { reply: "完成" } });
         await promise;
+    });
+
+    it("ignores a stale terminal event when persisted pending children revive the Run", async () => {
+        vi.stubGlobal("EventSource", FakeEventSource);
+        mocks.getCreativeAgentRun.mockResolvedValue({ id: "run", conversationId: "conversation", inputMessageId: "input", assistantMessageId: "assistant", status: "running", assetIds: [], tasks: [{ id: "video", title: "视频", status: "running", childTasks: [{ id: "child-1", status: "pending", attempt: 1 }] }] });
+        const terminal: string[] = [];
+        const stages: CanvasAgentRunStage[] = [];
+        const promise = watchCanvasAgentRun("run", {
+            onPlan: () => undefined,
+            onAssistant: () => undefined,
+            onStage: (stage) => stages.push(stage),
+            onPaused: () => undefined,
+            onOps: () => undefined,
+            onTerminal: (status) => terminal.push(status),
+        });
+
+        FakeEventSource.instance.emit("run.completed", { data: { reply: "过期完成事件" } });
+        await vi.waitFor(() => expect(stages.some((stage) => stage.text === "任务仍在后台运行，正在恢复连接")).toBe(true));
+        expect(terminal).toEqual([]);
+        expect(FakeEventSource.instance.closed).toBe(false);
+
+        mocks.getCreativeAgentRun.mockResolvedValue({ id: "run", conversationId: "conversation", inputMessageId: "input", assistantMessageId: "assistant", status: "completed", assetIds: [], tasks: [{ id: "video", title: "视频", status: "completed", childTasks: [{ id: "child-1", status: "completed", attempt: 1 }] }] });
+        FakeEventSource.instance.emit("run.completed", { data: { reply: "完成" } });
+        await promise;
+        expect(terminal).toEqual(["completed"]);
     });
 
     it("uses the persisted terminal state after an event connection interruption", async () => {
@@ -295,6 +365,49 @@ describe("Canvas Agent 事件流", () => {
 
         expect(messages).toEqual(["「视频」执行失败：上游明确失败"]);
         expect(FakeEventSource.instance.closed).toBe(true);
+    });
+
+    it("reconciles the complete child task list and final Canvas operations before terminal completion", async () => {
+        vi.stubGlobal("EventSource", FakeEventSource);
+        mocks.getCreativeAgentRun.mockResolvedValue({
+            id: "run",
+            conversationId: "conversation",
+            inputMessageId: "input",
+            assistantMessageId: "assistant",
+            status: "completed",
+            assetIds: [],
+            tasks: [
+                {
+                    id: "storyboard",
+                    title: "分镜图",
+                    status: "completed",
+                    childTasks: [
+                        { id: "child-1", status: "completed", attempt: 1 },
+                        { id: "child-2", status: "failed", attempt: 1, error: "上游失败" },
+                    ],
+                },
+            ],
+            recoveryOps: [{ type: "update_node", id: "output-run-0-0", metadata: { status: "success", agentGenerationTaskIds: ["provider-task"] } }],
+        });
+        const progress: unknown[] = [];
+        const ops: unknown[] = [];
+        const terminal: string[] = [];
+        const promise = watchCanvasAgentRun("run", {
+            onPlan: () => undefined,
+            onAssistant: () => undefined,
+            onStage: () => undefined,
+            onPaused: () => undefined,
+            onOps: (value) => ops.push(...value),
+            onRunProgress: (value) => progress.push(value),
+            onTerminal: (status) => terminal.push(status),
+        });
+
+        FakeEventSource.instance.emit("run.completed", { data: { reply: "完成" } });
+        await promise;
+
+        expect(progress.at(-1)).toEqual({ startedAt: undefined, tasks: [{ id: "storyboard", title: "分镜图", status: "completed", childTasks: [{ id: "child-1", status: "completed", attempt: 1 }, { id: "child-2", status: "failed", attempt: 1, error: "上游失败" }] }] });
+        expect(ops).toEqual([{ type: "update_node", id: "output-run-0-0", metadata: { status: "success", agentGenerationTaskIds: ["provider-task"] } }]);
+        expect(terminal).toEqual(["completed"]);
     });
 
     it("stops local observation on abort without applying later events", async () => {

@@ -2,10 +2,17 @@ import type { AgentRun, AgentRunTask } from "./agent-run-store";
 
 export function agentTaskCompletionMessage(task: AgentRunTask, surface: AgentRun["surface"] = "canvas") {
     if (task.type === "text") {
-        const summary = resultSummary(task.result);
-        return summary ? `「${task.title}」已完成：\n${sliceUnicode(summary, 1600)}` : `「${task.title}」已完成。`;
+        const content = textResult(task.result);
+        return content ? `「${task.title}」已完成：\n${content}` : `「${task.title}」已完成。`;
     }
     return surface === "canvas" ? `「${task.title}」已生成并返回画布。` : `「${task.title}」已生成。`;
+}
+
+function textResult(value: unknown) {
+    if (typeof value === "string") return value;
+    if (!value || typeof value !== "object") return resultSummary(value);
+    const content = (value as Record<string, unknown>).content;
+    return typeof content === "string" ? content : resultSummary(value);
 }
 
 export function agentRunCompletionReply(run: AgentRun) {

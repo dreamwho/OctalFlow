@@ -1,4 +1,5 @@
 import type { DramaEpisode, DramaNamedAsset, DramaProject, DramaShot, DramaShotContinuity } from "@/lib/drama-project-contract";
+import { dramaVisualStylePrompt } from "@/lib/drama-visual-style-presets";
 
 export type CompiledDramaPrompts = {
     imagePrompt: string;
@@ -15,7 +16,7 @@ export function compileDramaShotPrompts(project: DramaProject, episode: DramaEpi
     const continuity = continuityLines(shot.continuity);
     const shared = compact([
         `项目：${project.title} / ${episode.title}`,
-        project.style ? `统一风格：${project.style}` : "",
+        dramaVisualStylePrompt(project.style, project.stylePresetId),
         `画幅：${project.ratio}`,
         scene ? `场景设定：${assetText(scene)}` : "",
         characters.length ? `角色设定：${characters.map(assetText).join("；")}` : "",
@@ -48,7 +49,8 @@ export function compileDramaShotPrompts(project: DramaProject, episode: DramaEpi
 
 export function compileDramaAssetReferencePrompt(project: DramaProject, asset: DramaNamedAsset, kind: "角色" | "场景" | "道具") {
     return compact([
-        `${kind}设定图，${project.ratio}，${project.style}`,
+        `${kind}设定图，${project.ratio}`,
+        dramaVisualStylePrompt(project.style, project.stylePresetId),
         `名称：${asset.name}`,
         `基础描述：${asset.description}`,
         asset.profile?.visualIdentity ? `视觉识别：${asset.profile.visualIdentity}` : "",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { App, Button, Drawer, Empty, Input, Select, Space, Switch, Tag } from "antd";
 import { ArrowLeft, Check, CircleDollarSign, Info, Link2, PlugZap, RefreshCw, Save, WandSparkles } from "lucide-react";
 
@@ -105,7 +105,7 @@ export function AdminChannelOnboardingDrawer({ open, initialProtocol, settings, 
             });
         }
         onChange({ ...settings, logicalModels, defaultModels });
-        message.success("已按上游模型名自动合并逻辑模型");
+        message.success("已按渠道与上游模型路径同步独立逻辑模型");
     };
 
     const renderStep = () => {
@@ -264,10 +264,10 @@ function ConnectionStep({ channel, onChange }: { channel: SystemModelChannel; on
         <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
                 <LabeledControl label="渠道名称">
-                    <Input value={channel.name} placeholder="例如：生产主渠道" onChange={(event) => onChange({ name: event.target.value })} />
+                    <Input value={channel.name} placeholder="例如：生产主渠道" onChange={(event: ChangeEvent<HTMLInputElement>) => onChange({ name: event.target.value })} />
                 </LabeledControl>
                 <LabeledControl label="Base URL">
-                    <Input value={channel.baseUrl} placeholder="https://api.example.com" onChange={(event) => onChange({ baseUrl: event.target.value })} />
+                    <Input value={channel.baseUrl} placeholder="https://api.example.com" onChange={(event: ChangeEvent<HTMLInputElement>) => onChange({ baseUrl: event.target.value })} />
                 </LabeledControl>
                 {custom ? (
                     <LabeledControl label="鉴权方式">
@@ -277,17 +277,17 @@ function ConnectionStep({ channel, onChange }: { channel: SystemModelChannel; on
                 {custom && authMode === "custom-header" ? (
                     <>
                         <LabeledControl label="鉴权 Header">
-                            <Input value={channel.advancedConfig?.authHeader} placeholder="例如 X-API-Key" onChange={(event) => updateAuth({ authHeader: event.target.value })} />
+                            <Input value={channel.advancedConfig?.authHeader} placeholder="例如 X-API-Key" onChange={(event: ChangeEvent<HTMLInputElement>) => updateAuth({ authHeader: event.target.value })} />
                         </LabeledControl>
                         <LabeledControl label="值前缀（可选）">
-                            <Input value={channel.advancedConfig?.authPrefix} placeholder="例如 Token" onChange={(event) => updateAuth({ authPrefix: event.target.value })} />
+                            <Input value={channel.advancedConfig?.authPrefix} placeholder="例如 Token" onChange={(event: ChangeEvent<HTMLInputElement>) => updateAuth({ authPrefix: event.target.value })} />
                         </LabeledControl>
                     </>
                 ) : null}
                 {requiresApiKey ? (
                     <div className="sm:col-span-2">
                         <LabeledControl label="API Key">
-                            <Input.Password value={channel.apiKey} autoComplete="off" placeholder="仅保存在服务端" onChange={(event) => onChange({ apiKey: event.target.value, clearApiKey: false })} />
+                            <Input.Password value={channel.apiKey} autoComplete="off" placeholder="仅保存在服务端" onChange={(event: ChangeEvent<HTMLInputElement>) => onChange({ apiKey: event.target.value, clearApiKey: false })} />
                         </LabeledControl>
                     </div>
                 ) : (
@@ -432,7 +432,7 @@ function BindingStep({
 }) {
     return (
         <div className="space-y-4">
-            <ChannelInfoNote title="逻辑模型由渠道目录自动维护" description="同名上游模型会跨渠道合并；没有同名项时会按上游模型名建立独立逻辑模型，创建后可在逻辑模型页设置前端展示昵称。" />
+            <ChannelInfoNote title="逻辑模型由渠道目录同步" description="不同渠道即使使用同一上游模型路径，也会建立独立逻辑模型；可在逻辑模型页分别设置前端 ID、展示昵称与固定渠道绑定。" />
             <div className="divide-y divide-stone-200 border-y border-stone-200 dark:divide-stone-800 dark:border-stone-800">
                 {channel.models.map((upstreamModel) => {
                     const logical = logicalModels.find((model) => model.bindings.some((binding) => normalizedUpstreamModel(binding.upstreamModel) === normalizedUpstreamModel(upstreamModel)));

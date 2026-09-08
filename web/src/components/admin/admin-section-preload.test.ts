@@ -11,6 +11,11 @@ describe("admin section preload", () => {
         ]);
 
         expect(dashboard).toContain("sectionLoaders");
+        expect(dashboard).toContain("magicProxy: loadMagicProxySection");
+        expect(dashboard).toContain("geminiai: loadGeminiAiSection");
+        expect(dashboard).toContain("geminiTools: loadGeminiToolsSection");
+        expect(dashboard).toContain("dreamina: loadDreaminaSection");
+        expect(dashboard).toContain("runninghub: loadRunningHubSection");
         expect(dashboard).not.toContain("Object.values(sectionLoaders)");
         expect(dashboard).not.toContain("window.requestIdleCallback");
         expect(dashboard).toContain("onIntent={(section) => void sectionLoaders[section]?.()}");

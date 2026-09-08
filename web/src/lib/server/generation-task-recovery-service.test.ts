@@ -66,7 +66,7 @@ vi.mock("@/lib/server/generation-task-cancellation-service", () => ({
 }));
 vi.mock("@/lib/auth/store", () => ({ getAuthSettings: mocks.getAuthSettings }));
 
-import { runGenerationTaskRecoveryBatch } from "./generation-task-recovery-service";
+import { nextAgentRetryAt, runGenerationTaskRecoveryBatch } from "./generation-task-recovery-service";
 
 describe("generation task recovery service", () => {
     beforeEach(() => {
@@ -93,6 +93,19 @@ describe("generation task recovery service", () => {
         expect(mocks.executeAgentRun).toHaveBeenCalledWith(run, "http://internal", "worker-context:user-one");
         expect(mocks.release).toHaveBeenCalledWith("agent", "agent-one", "worker-one", expect.objectContaining({ executionPhase: "completed", nextPollAt: undefined, lastUpstreamStatus: "completed" }));
         expect(result).toMatchObject({ claimed: 1, completed: 1 });
+    });
+
+    it("keeps a confirmed unsubmitted retry on the provider's Retry-After schedule", async () => {
+        const retryAfterAt = Date.now() + 90_000;
+        const run = { id: "agent-one", userId: "user-one", status: "running", tasks: [{ id: "image-one", status: "ready", retryAfterAt }], createdAt: 1_000 };
+        mocks.claim.mockResolvedValue([lease()]);
+        mocks.getAgentRun.mockResolvedValue(run);
+
+        const result = await runGenerationTaskRecoveryBatch({ origin: "http://internal", workerId: "worker-one" });
+
+        expect(nextAgentRetryAt(run as never, 1_000)).toBe(retryAfterAt);
+        expect(mocks.release).toHaveBeenCalledWith("agent", "agent-one", "worker-one", expect.objectContaining({ executionPhase: "polling", nextPollAt: retryAfterAt }));
+        expect(result).toMatchObject({ claimed: 1, pending: 1 });
     });
 
     it("does not restart a paused Agent", async () => {
@@ -172,6 +185,23 @@ describe("generation task recovery service", () => {
         expect(mocks.queryVideoTaskUpstream).toHaveBeenCalledWith(task, "http://internal", "", task.userId);
         expect(mocks.release).toHaveBeenCalledWith("video", task.id, "worker-one", expect.objectContaining({ executionPhase: "polling", lastUpstreamStatus: "processing" }));
         expect(result).toMatchObject({ claimed: 1, pending: 1 });
+    });
+
+    it("moves an unpersisted Dreamina video result to manual review without settling the task", async () => {
+        const task = { id: "video-dreamina", userId: "user-one", status: "running", upstream: { id: "submit-one" }, createdAt: 1_000 };
+        mocks.claim.mockResolvedValue([{ ...lease(), id: task.id, userId: task.userId, type: "video", status: "running", executionPhase: "polling", upstreamTaskId: task.upstream.id }]);
+        mocks.getVideoTask.mockResolvedValue(task);
+        mocks.queryVideoTaskUpstream.mockResolvedValue({ state: "needs_review", status: "result_persistence_failed", error: "即梦 CLI 结果无法安全保存" });
+
+        const result = await runGenerationTaskRecoveryBatch({ origin: "http://internal", workerId: "worker-one" });
+
+        expect(mocks.release).toHaveBeenCalledWith(
+            "video",
+            task.id,
+            "worker-one",
+            expect.objectContaining({ executionPhase: "needs_review", nextPollAt: undefined, lastUpstreamStatus: "result_persistence_failed", resultPayload: { reviewReason: "即梦 CLI 结果无法安全保存" } }),
+        );
+        expect(result).toMatchObject({ claimed: 1, needsReview: 1, failed: 0 });
     });
 
     it("recovers a Gemini operation already persisted while submission was in flight", async () => {

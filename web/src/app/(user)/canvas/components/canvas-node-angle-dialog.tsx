@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Button, Modal, Segmented, Slider } from "antd";
-import { RotateCcw, WandSparkles } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
+import { GenerationActionButton } from "@/components/generation-action-button";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 
 export type CanvasImageAngleParams = {
@@ -67,9 +68,9 @@ export function CanvasNodeAngleDialog({ dataUrl, open, onClose, onConfirm }: { d
                     </div>
                 </div>
                 <div className="flex justify-end">
-                    <Button type="primary" size="large" icon={<WandSparkles className="size-4" />} onClick={() => onConfirm(params)}>
+                    <GenerationActionButton size="large" onClick={() => onConfirm(params)}>
                         AI 生成
-                    </Button>
+                    </GenerationActionButton>
                 </div>
             </div>
         </Modal>

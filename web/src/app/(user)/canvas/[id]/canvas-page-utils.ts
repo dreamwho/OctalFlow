@@ -13,6 +13,7 @@ import type { CanvasNodeGenerationMode } from "../components/canvas-node-prompt-
 import { resolveCanvasGenerationModel } from "../utils/canvas-node-config";
 import { nodeSizeFromRatio, resizeImageNodeToNaturalRatio } from "../utils/canvas-node-size";
 import { PANORAMA_IMAGE_SIZE } from "../utils/canvas-panorama";
+import { INTERIOR_DESIGN_NODE_SIZE, isInteriorDesignNode } from "../utils/canvas-interior-design";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasImageGenerationType, type CanvasNodeData, type CanvasNodeMetadata, type ConnectionHandle } from "../types";
 
 export function imageExtension(dataUrl: string) {
@@ -71,6 +72,17 @@ export function canvasNodeReferenceImage(node: CanvasNodeData): ReferenceImage {
     };
 }
 
+export function isDreaminaUpscaleImageNode(node: CanvasNodeData | null | undefined) {
+    return Boolean(node && isCanvasImageNodeType(node.type) && node.metadata?.upscaleTask?.provider === "dreamina-cli");
+}
+
+export function resolveDreaminaUpscaleSourceNode(node: CanvasNodeData | null | undefined, nodes: CanvasNodeData[]) {
+    const sourceNodeId = node?.metadata?.upscaleTask?.sourceNodeId;
+    if (!sourceNodeId || !isDreaminaUpscaleImageNode(node)) return null;
+    const source = nodes.find((item) => item.id === sourceNodeId);
+    return source && isCanvasImageNodeType(source.type) && source.metadata?.content ? source : null;
+}
+
 export function isRemoteGeneratedUrl(value: string) {
     return /^https?:\/\//i.test(value);
 }
@@ -95,6 +107,8 @@ export function videoMetadata(video: UploadedFile): CanvasNodeMetadata {
         bytes: video.bytes,
         mimeType: video.mimeType || "video/mp4",
         durationMs: video.durationMs,
+        videoFrameExtraction: undefined,
+        videoFrameExtractionError: undefined,
     };
 }
 
@@ -111,6 +125,7 @@ export function replaceCanvasNodeMediaMetadata(current: CanvasNodeMetadata | und
         generationType: undefined,
         model: undefined,
         size: undefined,
+        sizeUserSelected: undefined,
         quality: undefined,
         count: undefined,
         seconds: undefined,
@@ -121,6 +136,8 @@ export function replaceCanvasNodeMediaMetadata(current: CanvasNodeMetadata | und
         videoFirstFrame: undefined,
         videoLastFrame: undefined,
         videoReferences: undefined,
+        videoFrameExtraction: undefined,
+        videoFrameExtractionError: undefined,
         audioVoice: undefined,
         audioFormat: undefined,
         audioSpeed: undefined,
@@ -135,6 +152,7 @@ export function replaceCanvasNodeMediaMetadata(current: CanvasNodeMetadata | und
         primaryImageId: undefined,
         imageBatchExpanded: undefined,
         imageTask: undefined,
+        upscaleTask: undefined,
         videoTask: undefined,
         textTask: undefined,
         audioTask: undefined,
@@ -269,6 +287,10 @@ export function applyNodeConfigPatch(node: CanvasNodeData, patch: Partial<Canvas
 
 export function normalizeCanvasConfigNodeLayout(node: CanvasNodeData) {
     if (node.type !== CanvasNodeType.Config) return node;
+    if (isInteriorDesignNode(node.metadata)) {
+        if (node.width === INTERIOR_DESIGN_NODE_SIZE.width && node.height === INTERIOR_DESIGN_NODE_SIZE.height) return node;
+        return { ...node, width: INTERIOR_DESIGN_NODE_SIZE.width, height: INTERIOR_DESIGN_NODE_SIZE.height };
+    }
     const configDetailsOpen = node.metadata?.configDetailsOpen === true;
     const height = configDetailsOpen ? CANVAS_CONFIG_NODE_HEIGHT.expanded : CANVAS_CONFIG_NODE_HEIGHT.collapsed;
     if (node.height === height && node.metadata?.configDetailsOpen === configDetailsOpen) return node;
@@ -290,7 +312,11 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     if (second.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
     if (first.type === CanvasNodeType.Config && firstHandleType === "target") return { fromNodeId: second.id, toNodeId: first.id };
     if (first.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
-    return { fromNodeId: first.id, toNodeId: second.id };
+    return firstHandleType === "target" ? { fromNodeId: second.id, toNodeId: first.id } : { fromNodeId: first.id, toNodeId: second.id };
+}
+
+export function normalizeCreatedNodeConnection(originNodeId: string, createdNodeId: string, nodes: CanvasNodeData[]) {
+    return normalizeConnection(originNodeId, createdNodeId, nodes, "source");
 }
 
 export function getInputSummary(inputs: NodeGenerationInput[]) {

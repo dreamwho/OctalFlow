@@ -95,4 +95,14 @@ describe("safe outbound fetch", () => {
             bodyTimeout: GENERATION_TRANSPORT_TIMEOUT_MS,
         });
     });
+
+    it("uses an explicit request-scoped proxy override without consulting the process proxy", async () => {
+        mocks.resolve.mockResolvedValue({ url: new URL("https://google.example/v1internal:generateContent"), address: "8.8.4.4", family: 4 });
+        mocks.proxyUrl.mockReturnValue("http://process-proxy.test:8080");
+
+        await fetchSafeOutbound("https://google.example/v1internal:generateContent", {}, { proxyUrl: "http://mihomo-listener.test:17891" });
+
+        expect(mocks.proxyUrl).not.toHaveBeenCalled();
+        expect(mocks.agents.at(-1)?.options).toMatchObject({ uri: "http://mihomo-listener.test:17891/" });
+    });
 });

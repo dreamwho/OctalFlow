@@ -15,17 +15,19 @@ import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
 import { cn } from "@/lib/utils";
 import { userAvatarFallback } from "@/lib/user-avatar";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
+import type { ThemeScope } from "@/lib/theme-scope";
+import { useAdminThemeStore, useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore, type LocalUser } from "@/stores/use-user-store";
 import { resetClientSessionState } from "@/lib/client-session-reset";
 
 type UserStatusActionsProps = {
     variant?: "default" | "canvas";
+    themeScope?: ThemeScope;
     onOpenShortcuts?: () => void;
     initialUser?: LocalUser;
 };
 
-export function UserStatusActions({ variant = "default", onOpenShortcuts, initialUser }: UserStatusActionsProps) {
+export function UserStatusActions({ variant = "default", themeScope = "frontend", onOpenShortcuts, initialUser }: UserStatusActionsProps) {
     const router = useRouter();
     const { message } = App.useApp();
     const [pointsOpen, setPointsOpen] = useState(false);
@@ -35,8 +37,12 @@ export function UserStatusActions({ variant = "default", onOpenShortcuts, initia
     const rootRef = useRef<HTMLDivElement>(null);
     const storeUser = useUserStore((state) => state.user);
     const user = storeUser || initialUser || null;
-    const theme = useThemeStore((state) => state.theme);
-    const setTheme = useThemeStore((state) => state.setTheme);
+    const frontendTheme = useThemeStore((state) => state.theme);
+    const setFrontendTheme = useThemeStore((state) => state.setTheme);
+    const adminTheme = useAdminThemeStore((state) => state.theme);
+    const setAdminTheme = useAdminThemeStore((state) => state.setTheme);
+    const theme = themeScope === "admin" ? adminTheme : frontendTheme;
+    const setTheme = themeScope === "admin" ? setAdminTheme : setFrontendTheme;
     const canvasTheme = canvasThemes[theme];
     const defaultControlClass =
         "inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-[#e6e9ed] bg-white text-sm font-medium text-[#59616c] transition hover:border-[#d9dde3] hover:bg-[#f3f5f7] hover:text-[#20242a] dark:border-[#2c3138] dark:bg-[#181b20] dark:text-[#b7bec8] dark:hover:border-[#3b424c] dark:hover:bg-[#22262c] dark:hover:text-white";

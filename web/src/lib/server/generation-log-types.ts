@@ -81,8 +81,8 @@ export type GenerationTaskLogResultInput = {
     assets?: Array<Partial<GenerationLogAsset> & { url?: string; targetSize?: string }>;
     error?: string;
     canRetry?: boolean;
-    taskKind?: "generation" | "edit";
-    taskProvider?: "openai" | "seedance" | "generation";
+    taskKind?: "generation" | "edit" | "upscale";
+    taskProvider?: "openai" | "seedance" | "dreamina-cli" | "generation";
     taskPollPath?: string;
     serverTaskId?: string;
     createdAt: string | number;

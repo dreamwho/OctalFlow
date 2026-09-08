@@ -4,7 +4,7 @@ import { normalizeGenerationConcurrency, normalizeGenerationDefaults } from "./s
 
 describe("generation default normalization", () => {
     it("preserves administrator-defined video quality and positive duration", () => {
-        expect(normalizeGenerationDefaults({ videoQuality: "1440", videoSeconds: 60 })).toMatchObject({ videoQuality: "1440", videoSeconds: 60 });
+        expect(normalizeGenerationDefaults({ videoQuality: "1440", videoSeconds: 60, videoAnalysisModel: "gemini-video-review" })).toMatchObject({ videoQuality: "1440", videoSeconds: 60, videoAnalysisModel: "gemini-video-review" });
         expect(normalizeGenerationDefaults({ videoQuality: "2K", videoSeconds: -1 })).toMatchObject({ videoQuality: "2K", videoSeconds: -1 });
     });
 

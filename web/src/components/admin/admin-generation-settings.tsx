@@ -4,7 +4,7 @@ import { AutoComplete, Input, InputNumber, Select } from "antd";
 import { CircleGauge, SlidersHorizontal, Sparkles } from "lucide-react";
 
 import type { AuthSettings } from "@/lib/auth/store";
-import { resolveLogicalModelConfig } from "@/lib/model-routing-config";
+import { resolveLogicalModelCapabilityProfile, resolveLogicalModelConfig } from "@/lib/model-routing-config";
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
 
 const settingsPanelSurfaceClass = "rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950";
@@ -76,6 +76,15 @@ export function localAgentReadiness(settings: AuthSettings): AgentReadiness {
 }
 
 export function GenerationDefaultsPanel({ settings, onChange }: { settings: AuthSettings; onChange: <K extends keyof AuthSettings["generationDefaults"]>(key: K, value: AuthSettings["generationDefaults"][K]) => void }) {
+    const videoAnalysisModels = settings.logicalModels
+        .filter((model) => {
+            if (model.capability !== "text") return false;
+            const resolved = resolveLogicalModelConfig(settings.logicalModels, settings.systemChannels, "text", model.id);
+            if (!resolved) return false;
+            const profile = resolveLogicalModelCapabilityProfile(resolved.binding, "text", resolved.channel, resolved.binding.upstreamModel);
+            return profile?.supportsReferenceImage === true || profile?.supportsReferenceVideo === true;
+        })
+        .map((model) => ({ value: model.id, label: model.name }));
     return (
         <div className={settingsPanelSurfaceClass}>
             <SectionTitle icon={<SlidersHorizontal className="size-4" />} title="生成默认值" />
@@ -119,6 +128,18 @@ export function GenerationDefaultsPanel({ settings, onChange }: { settings: Auth
                 <LabeledControl label="默认视频秒数">
                     <InputNumber className="w-full" min={-1} precision={0} placeholder="-1 表示智能" value={settings.generationDefaults.videoSeconds} onChange={(value) => onChange("videoSeconds", value ?? 5)} />
                 </LabeledControl>
+                <LabeledControl label="视频分析模型">
+                    <Select
+                        className="w-full"
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        value={settings.generationDefaults.videoAnalysisModel || undefined}
+                        placeholder="选择文本逻辑模型"
+                        options={videoAnalysisModels}
+                        onChange={(value: string | undefined) => onChange("videoAnalysisModel", value || "")}
+                    />
+                </LabeledControl>
                 <LabeledControl label="默认音频音色">
                     <Input value={settings.generationDefaults.audioVoice} onChange={(event) => onChange("audioVoice", event.target.value)} />
                 </LabeledControl>
@@ -126,7 +147,7 @@ export function GenerationDefaultsPanel({ settings, onChange }: { settings: Auth
                     <Select className="w-full" value={settings.generationDefaults.audioFormat} options={["mp3", "wav", "opus", "aac", "flac"].map((value) => ({ value, label: value.toUpperCase() }))} onChange={(value) => onChange("audioFormat", value)} />
                 </LabeledControl>
             </div>
-            <div className="mt-2 text-xs leading-5 text-stone-500 dark:text-stone-400">新建画布生图节点和配置节点默认使用，单个节点仍可单独覆盖。</div>
+            <div className="mt-2 text-xs leading-5 text-stone-500 dark:text-stone-400">新建画布生图节点和配置节点默认使用；视频分析模型从可用的文本逻辑模型中选择。</div>
         </div>
     );
 }

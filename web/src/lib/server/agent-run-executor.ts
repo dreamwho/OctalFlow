@@ -2,14 +2,15 @@ import { getAuthSettings } from "@/lib/auth/store";
 import { nanoid } from "nanoid";
 import { resolveLogicalModelCandidates } from "@/lib/server/logical-model-router";
 import { systemAiIdempotencyKey } from "@/lib/server/system-ai-billing";
-import { getAgentRun, updateAgentRunById, type AgentRun } from "@/lib/server/agent-run-store";
+import { getAgentRun, updateAgentRunById, type AgentRun, type AgentRunFailurePhase } from "@/lib/server/agent-run-store";
 import { agentPlannerSystemPrompt, agentPlanReply, buildAgentPlannerInput, conversationFallbackReply, plannerAgentSkills, prioritizeAgentPlannerModels, selectAgentSkills, taskPlanSummary } from "@/lib/server/agent-run-surface-policy";
 import { getCreativeAssetsByIds, getCreativeConversationContext, listRecentCreativeMediaAssets } from "@/lib/server/creative-runtime-store";
 import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
 import { parseAgentPlanCall, type AgentFunctionCallResult } from "./agent-function-call";
 import { agentModelOptions, agentPlanFallbackExample, agentPlanTool, canContinue, directAgentPlan, executeTasks, normalizeTasks, planToOps, refundFunctionCall, requestFunctionCall } from "./agent-run-execution";
+import { layoutCanvasAgentTasks } from "./agent-run-canvas-ops";
 import { isExplicitProjectHandoffRequest, normalizeAgentProjectHandoff } from "./agent-run-project-handoff";
-import { normalizeCanvasPlanForSelection } from "./agent-run-task-input";
+import { normalizeCanvasPlanForSelection, selectedCanvasReferenceNodes } from "./agent-run-task-input";
 import { GenerationSubmissionUncertainError } from "@/lib/server/generation-submission-error";
 import { rankTextPlanningCandidates } from "@/lib/server/text-planning-runtime";
 import { filterAgentPlannerModels } from "@/lib/server/agent-run-planning-profile";
@@ -17,6 +18,8 @@ import { buildAgentRunPlannerAudit } from "@/lib/server/agent-run-audit";
 import { orderCreativeAssetsByIds } from "@/lib/creative-asset-references";
 import { finalizeVideoRemakeTasks, normalizeVideoRemakePlan } from "@/lib/server/video-remake-orchestration";
 import { canvasVideoRemakeSourceAsset, enrichVideoRemakeSourceAssets, videoRemakeStoryboardFrames } from "@/lib/server/video-remake-source-analysis";
+import { inlineAgentReferenceImage } from "@/lib/server/agent-run-reference-image";
+import type { AgentPlan } from "@/lib/server/agent-run-validation";
 
 const globalAgentExecutors = globalThis as typeof globalThis & { __octalaicanvasProAgentRunControllers?: Map<string, AbortController> };
 const controllers = (globalAgentExecutors.__octalaicanvasProAgentRunControllers ??= new Map<string, AbortController>());
@@ -29,6 +32,7 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
     abortAgentRun(run.id);
     const controller = new AbortController();
     const executionId = nanoid();
+    let failurePhase: AgentRunFailurePhase = "planning";
     let acceptedPlan: { userId: string; model: string; channelId: string; upstreamModel: string; call: AgentFunctionCallResult } | undefined;
     let planningPersisted = false;
     const refundAcceptedPlan = async () => {
@@ -52,27 +56,30 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
         }
         const directModelSelection = Boolean(claimed.requestedModelIds?.length);
         const usesMemoryCandidates = !directModelSelection && claimed.surface === "chat" && claimed.referencedAssetIds.length === 0;
+        const needsPlannerContext = !directModelSelection || Boolean(claimed.selectedSkillIds?.length);
         const [settings, loadedExplicitAssets, conversationContext, memoryAssets] = await Promise.all([
             getAuthSettings(),
             getCreativeAssetsByIds(claimed.referencedAssetIds, claimed.userId),
-            directModelSelection ? Promise.resolve(undefined) : getCreativeConversationContext(claimed.conversationId, claimed.userId, claimed.id),
+            needsPlannerContext ? getCreativeConversationContext(claimed.conversationId, claimed.userId, claimed.id) : Promise.resolve(undefined),
             usesMemoryCandidates ? listRecentCreativeMediaAssets(claimed.conversationId, claimed.userId, 6) : Promise.resolve([]),
         ]);
         let explicitAssets = orderCreativeAssetsByIds(loadedExplicitAssets, claimed.referencedAssetIds);
         const allModels = agentModelOptions(settings);
-        const availableModels = prioritizeAgentPlannerModels(filterAgentPlannerModels(allModels, claimed), claimed, settings);
+        const plannerModelOptions = filterAgentPlannerModels(allModels, claimed);
+        const directModelOptions = claimed.generationPreferences?.mode ? plannerModelOptions : allModels;
+        const selectedModels = (claimed.requestedModelIds || []).map((id) => directModelOptions.find((item) => item.id === id && item.capability !== "text")).filter((item): item is ReturnType<typeof agentModelOptions>[number] => Boolean(item));
+        if (directModelSelection && selectedModels.length !== claimed.requestedModelIds?.length) throw new Error("部分所选模型当前不可用，请重新选择");
+        const availableModels = prioritizeAgentPlannerModels(directModelSelection ? selectedModels : plannerModelOptions, claimed, settings);
         const skillOptions = plannerAgentSkills(settings, claimed);
         const skills = selectAgentSkills(settings, claimed.surface, claimed.selectedSkillIds);
         const canvasSource = claimed.surface === "canvas" ? canvasVideoRemakeSourceAsset(claimed.snapshot, claimed.userId, claimed.conversationId) : undefined;
         if (canvasSource && !explicitAssets.some((asset) => asset.type === "video")) explicitAssets = [canvasSource, ...explicitAssets];
         explicitAssets = await enrichVideoRemakeSourceAssets(explicitAssets, skills, origin, cookie, controller.signal);
         if (!(await canContinue(run.id, executionId))) return;
-        if (claimed.requestedModelIds?.length) {
-            const directModelOptions = claimed.generationPreferences?.mode ? availableModels : allModels;
-            const selectedModels = claimed.requestedModelIds.map((id) => directModelOptions.find((item) => item.id === id && item.capability !== "text")).filter((item): item is ReturnType<typeof agentModelOptions>[number] => Boolean(item));
-            if (selectedModels.length !== claimed.requestedModelIds.length) throw new Error("部分所选模型当前不可用，请重新选择");
+        if (directModelSelection && !skills.length) {
             const plan = normalizeVideoRemakePlan(directAgentPlan(selectedModels, claimed.prompt, claimed.referencedAssetIds), skills, explicitAssets, claimed.prompt);
-            const tasks = finalizeVideoRemakeTasks(normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, explicitAssets, claimed.requestedImageSize, claimed.generationPreferences), skills);
+            const normalizedTasks = finalizeVideoRemakeTasks(normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, explicitAssets, claimed.requestedImageSize, claimed.generationPreferences), skills);
+            const tasks = claimed.surface === "canvas" ? layoutCanvasAgentTasks(normalizedTasks, claimed.snapshot) : normalizedTasks;
             await updateAgentRunById(run.id, {}, { type: "skills.selected", data: { skills: skills.map((skill) => ({ id: skill.id, name: skill.name })) } }, ["running"], executionId);
             const event = claimed.surface === "canvas" ? { type: "canvas.ops", data: { ops: planToOps(plan, tasks, run.id, claimed.snapshot), reply: plan.reply } } : { type: "run.planned", data: { reply: plan.reply, tasks: tasks.map(taskPlanSummary) } };
             await updateAgentRunById(
@@ -82,6 +89,7 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
                 ["running"],
                 executionId,
             );
+            failurePhase = "execution";
             await executeTasks(run.id, origin, cookie, executionId, settings);
             return;
         }
@@ -93,24 +101,38 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
         const fallbackExample = agentPlanFallbackExample(availableModels);
         const plannerContext = buildAgentPlannerInput(claimed, conversationContext!, referencedAssets, referenceSource, skillOptions, availableModels, settings);
         if (!(await updateAgentRunById(run.id, { plannerContext: plannerContext.summary }, { type: "skills.selected", data: { skills: skills.map((skill) => ({ id: skill.id, name: skill.name })) } }, ["running"], executionId))) return;
-        const planningSystemPrompt = agentPlannerSystemPrompt(claimed.surface, fallbackExample);
+        const planningSystemPrompt = agentPlannerSystemPrompt(claimed.surface, fallbackExample, { hasSelectedSkills: skills.length > 0 });
         const planningPayload = JSON.stringify(plannerContext.input);
         const storyboardFrames = videoRemakeStoryboardFrames(referencedAssets);
+        const currentImageUrls = Array.from(
+            new Set(
+                [
+                    ...(claimed.surface === "canvas"
+                        ? selectedCanvasReferenceNodes(claimed.snapshot)
+                              .filter((reference) => reference.type === "image")
+                              .map((reference) => reference.url)
+                        : []),
+                ].filter((url): url is string => Boolean(url)),
+            ),
+        );
+        const referenceImages = await Promise.all(currentImageUrls.map((url) => inlineAgentReferenceImage(url, origin, cookie, controller.signal)));
+        const visualFrames = [...referenceImages, ...storyboardFrames];
+        const visualInstruction = referenceImages.length
+            ? `${planningPayload}\n\n以下图片是用户本轮明确选中的真实参考图。必须先观察图片像素，再规划回答或任务；不得声称没有附件，不得改用示例图片，也不得凭空替换主体、服装或场景。${storyboardFrames.length ? "后续图片按时间顺序截取自参考视频，请同时分析镜头、动作、场景与转场。" : ""}`
+            : `${planningPayload}\n\n以下图片按时间顺序截取自用户本轮选中的参考视频。请结合它们分析镜头景别、构图、人物动作、场景变化、屏幕方向、光影与转场结构；不得声称没有附件，也不得改用示例素材。`;
         let plan: Awaited<ReturnType<typeof parseAgentPlanCall>> | undefined;
         let latestPlanningError: unknown;
         for (const candidate of rankTextPlanningCandidates(candidates.map((candidate) => ({ ...candidate, channelId: candidate.channel.id })))) {
             try {
-                const supportsStoryboard = Boolean(storyboardFrames.length && candidate.capabilityProfile?.supportsReferenceImage);
+                if (visualFrames.length && !candidate.capabilityProfile?.supportsReferenceImage) {
+                    latestPlanningError = new Error("默认文本模型没有可用的视觉理解渠道");
+                    continue;
+                }
                 const planningInput = [
                     { role: "system", content: planningSystemPrompt },
                     {
                         role: "user",
-                        content: supportsStoryboard
-                            ? [
-                                  { type: "text" as const, text: `${planningPayload}\n\n以下图片按时间顺序截取自参考视频。请结合它们分析镜头景别、构图、人物动作、场景变化、屏幕方向、光影与转场结构；只迁移结构和节奏，不复刻人物身份、品牌、水印或独创表达。` },
-                                  ...storyboardFrames.map((url) => ({ type: "image_url" as const, image_url: { url } })),
-                              ]
-                            : planningPayload,
+                        content: visualFrames.length ? [{ type: "text" as const, text: visualInstruction }, ...visualFrames.map((url) => ({ type: "image_url" as const, image_url: { url } }))] : planningPayload,
                     },
                 ];
                 const planCall = await requestFunctionCall(
@@ -139,6 +161,7 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
             }
         }
         if (!plan) throw latestPlanningError instanceof Error ? latestPlanningError : new Error("没有可用的文本模型渠道");
+        if (directModelSelection) plan = applyRequestedMediaModels(plan, selectedModels, claimed.prompt, claimed.referencedAssetIds);
         if (claimed.surface === "canvas") plan = normalizeCanvasPlanForSelection(plan, claimed.snapshot, claimed.prompt);
         const plannerAudit = buildAgentRunPlannerAudit({
             mode: "model",
@@ -178,7 +201,8 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
             return;
         }
         plan = normalizeVideoRemakePlan(plan, skills, referencedAssets, claimed.prompt);
-        const tasks = finalizeVideoRemakeTasks(normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, referencedAssets, claimed.requestedImageSize, claimed.generationPreferences), skills);
+        const normalizedTasks = finalizeVideoRemakeTasks(normalizeTasks(plan, skills, settings, claimed.snapshot, claimed.prompt, claimed.surface, referencedAssets, claimed.requestedImageSize, claimed.generationPreferences), skills);
+        const tasks = claimed.surface === "canvas" ? layoutCanvasAgentTasks(normalizedTasks, claimed.snapshot) : normalizedTasks;
         const projectHandoff = normalizeAgentProjectHandoff(plan, claimed.surface, referencedAssets, claimed.prompt);
         const reply = agentPlanReply({ ...plan, projectHandoff }, tasks, claimed.surface);
         const event = claimed.surface === "canvas" ? { type: "canvas.ops", data: { ops: planToOps(plan, tasks, run.id, claimed.snapshot), reply } } : { type: "run.planned", data: { reply, tasks: tasks.map(taskPlanSummary), projectHandoff } };
@@ -194,8 +218,19 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
             return;
         }
         planningPersisted = true;
+        failurePhase = "execution";
         await executeTasks(run.id, origin, cookie, executionId, settings);
     } catch (error) {
+        const message = toSafeGenerationErrorMessage(error, "Agent 执行失败");
+        console.error("Agent Run 执行失败", {
+            runId: run.id,
+            userId: run.userId,
+            surface: run.surface,
+            phase: failurePhase,
+            error: message,
+            errorName: error instanceof Error ? error.name : typeof error,
+            stack: error instanceof Error ? error.stack : undefined,
+        });
         let failure = error;
         try {
             await refundAcceptedPlan();
@@ -207,12 +242,43 @@ export async function executeAgentRun(run: AgentRun, origin: string, cookie: str
         if (latest && !["paused", "cancelled"].includes(latest.status))
             await updateAgentRunById(
                 run.id,
-                { status: "failed", executionId: undefined, timings: { ...(latest.timings || { requestAcceptedAt: latest.createdAt }), runCompletedAt: Date.now() } },
-                { type: "run.failed", data: { message: toSafeGenerationErrorMessage(failure, "Agent 执行失败") } },
+                { status: "failed", error: toSafeGenerationErrorMessage(failure, message), failurePhase, executionId: undefined, timings: { ...(latest.timings || { requestAcceptedAt: latest.createdAt }), runCompletedAt: Date.now() } },
+                { type: "run.failed", data: { message: toSafeGenerationErrorMessage(failure, message) } },
                 ["planning", "running"],
                 executionId,
             );
     } finally {
         if (controllers.get(run.id) === controller) controllers.delete(run.id);
     }
+}
+
+function applyRequestedMediaModels(plan: AgentPlan, selectedModels: Array<ReturnType<typeof agentModelOptions>[number]>, requestPrompt: string, referencedAssetIds: string[]): AgentPlan {
+    if (plan.intent === "conversation") return directAgentPlan(selectedModels, requestPrompt, referencedAssetIds);
+    const byCapability = new Map<string, typeof selectedModels>();
+    for (const model of selectedModels) byCapability.set(model.capability, [...(byCapability.get(model.capability) || []), model]);
+    const selectedCapabilities = new Set(byCapability.keys());
+    const eligibleDeliverables = plan.deliverables.filter((deliverable) => deliverable.type === "text" || selectedCapabilities.has(deliverable.type));
+    const eligibleIds = new Set(eligibleDeliverables.map((deliverable, index) => deliverable.id?.trim() || `task-${index}`));
+    const deliverables = eligibleDeliverables.map((deliverable) => {
+        if (deliverable.type === "text") return deliverable;
+        const candidates = byCapability.get(deliverable.type) || [];
+        if (candidates.length === 1) return { ...deliverable, model: candidates[0].id };
+        return { ...deliverable, model: candidates.some((model) => model.id === deliverable.model) ? deliverable.model : candidates[0].id, dependencies: deliverable.dependencies?.filter((dependency) => eligibleIds.has(dependency)) };
+    });
+    const used = new Set(deliverables.flatMap((deliverable) => (deliverable.type === "text" ? [] : [deliverable.model])));
+    const missing = selectedModels.filter((model) => !used.has(model.id));
+    if (!missing.length) return { ...plan, deliverables };
+    const fallback = directAgentPlan(missing, requestPrompt, referencedAssetIds);
+    const fallbackDeliverables = fallback.deliverables.map((deliverable, index) => ({ ...deliverable, id: `requested-model-${index + 1}` }));
+    const prerequisiteImageIds = fallbackDeliverables.filter((deliverable) => deliverable.type === "image").map((deliverable) => deliverable.id);
+    return {
+        ...plan,
+        intent: "generation",
+        deliverables: [
+            ...deliverables.map((deliverable) =>
+                deliverable.type === "video" && prerequisiteImageIds.length ? { ...deliverable, dependencies: Array.from(new Set([...(deliverable.dependencies || []), ...prerequisiteImageIds])) } : deliverable,
+            ),
+            ...fallbackDeliverables,
+        ],
+    };
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     checkMediaProxyRateLimit: vi.fn(),
@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
     release: vi.fn(),
     mediaAccess: vi.fn(),
     taskAccess: vi.fn(),
+    geminiToolsRuntime: vi.fn(),
+    geminiToolsConfigured: vi.fn(() => true),
+    ensureMagicProxy: vi.fn(async () => ({ enabled: false })),
 }));
 
 vi.mock("@/lib/auth/session", () => ({ getCurrentUser: mocks.getCurrentUser }));
@@ -29,6 +32,16 @@ vi.mock("@/lib/server/media-concurrency", () => ({ acquireMediaConcurrency: mock
 vi.mock("@/lib/server/safe-outbound-fetch", () => ({ fetchSafeOutbound: (url: string | URL, init?: RequestInit) => fetch(url, init) }));
 vi.mock("@/lib/server/generation-media-access", () => ({ authorizeGenerationMediaProxyRequest: mocks.mediaAccess }));
 vi.mock("@/lib/server/generation-task-authorization", () => ({ userOwnsGenerationUpstreamTask: mocks.taskAccess }));
+vi.mock("@/lib/server/gemini-tools-service", () => ({
+    GEMINI_TOOLS_PROTOCOL: "gemini-tools",
+    geminiToolsOAuthConfigured: mocks.geminiToolsConfigured,
+    geminiToolsRuntimeRequest: mocks.geminiToolsRuntime,
+    isGeminiToolsRuntimePath: (path: string) => path === "/chat/completions" || path === "/v1/chat/completions" || path === "/v1/models" || path === "/v1/messages",
+}));
+vi.mock("@/lib/server/magic-proxy-service", () => ({
+    ensureMagicProxyProvider: mocks.ensureMagicProxy,
+    MagicProxyError: class MagicProxyError extends Error {},
+}));
 vi.mock("@/lib/server/security", () => ({
     checkMediaProxyRateLimit: mocks.checkMediaProxyRateLimit,
     isSafeOutboundUrl: mocks.safeUrl,
@@ -44,6 +57,52 @@ const context = { params: Promise.resolve({ channelId: "channel-one", path: ["_m
 describe("system generation proxy runtime", () => {
     it("keeps long image and video submissions alive beyond the framework default", () => {
         expect(maxDuration).toBeGreaterThanOrEqual(40 * 60);
+    });
+});
+
+describe("GeminiTools embedded provider route", () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
+        mocks.refundUserPoints.mockReset();
+        mocks.safeUrl.mockReset();
+        mocks.taskAccess.mockReset().mockResolvedValue(true);
+        mocks.geminiToolsConfigured.mockReturnValue(true);
+        mocks.geminiToolsRuntime.mockReset().mockResolvedValue(Response.json({ choices: [{ message: { content: "GeminiTools OK" } }] }));
+        mocks.getAuthSettings.mockResolvedValue({
+            generationPointMultipliers: {},
+            logicalModels: [logicalModel("writer-tools", "text", "gemini-2.5-pro")],
+            systemChannels: [
+                {
+                    id: "channel-one",
+                    name: "Gemini Antigravity Tools",
+                    enabled: true,
+                    baseUrl: "",
+                    apiKey: "",
+                    apiFormat: "openai",
+                    models: ["gemini-2.5-pro"],
+                    advancedConfig: { protocol: "gemini-tools", authMode: "provider-managed", modelConfigs: { "gemini-2.5-pro": { capability: "text", protocol: "gemini-tools", apiFormat: "openai", createPath: "/chat/completions" } } },
+                },
+            ],
+        });
+    });
+
+    it("routes through the current Next.js service without an independent provider URL", async () => {
+        const response = await POST(chatRequest({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "hello" }] }), textContext());
+
+        expect(response.status).toBe(200);
+        expect(mocks.geminiToolsRuntime).toHaveBeenCalledWith("/chat/completions", expect.objectContaining({ method: "POST" }));
+        expect(mocks.safeUrl).not.toHaveBeenCalled();
+        expect(response.headers.get("x-octalaicanvas-upstream-url")).toBeNull();
+    });
+
+    it("forwards Retry-After from a provider rate limit", async () => {
+        mocks.geminiToolsRuntime.mockResolvedValue(new Response(JSON.stringify({ error: { message: "busy" } }), { status: 429, headers: { "content-type": "application/json", "retry-after": "7" } }));
+
+        const response = await POST(chatRequest({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "hello" }] }), textContext());
+
+        expect(response.status).toBe(429);
+        expect(response.headers.get("retry-after")).toBe("7");
     });
 });
 
@@ -882,6 +941,53 @@ describe("system proxy authorization", () => {
         expect(response.status).toBe(405);
         expect(fetchMock).not.toHaveBeenCalled();
         expect(mocks.consumeUserPoints).not.toHaveBeenCalled();
+    });
+});
+
+describe("GeminiAI provider-managed proxy", () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "test-sidecar-key");
+        mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
+        mocks.refundUserPoints.mockReset();
+        mocks.safeUrl.mockReset().mockResolvedValue(true);
+        mocks.ensureMagicProxy.mockReset().mockResolvedValue({ enabled: false });
+        mocks.getAuthSettings.mockResolvedValue({
+            generationPointMultipliers: {},
+            logicalModels: [logicalModel("geminiai-text", "text", "gemini-3.1-pro-preview")],
+            systemChannels: [
+                {
+                    id: "channel-one",
+                    enabled: true,
+                    baseUrl: "",
+                    apiKey: "",
+                    apiFormat: "openai",
+                    models: ["gemini-3.1-pro-preview"],
+                    advancedConfig: {
+                        protocol: "geminiai",
+                        authMode: "provider-managed",
+                        modelConfigs: { "gemini-3.1-pro-preview": { capability: "text", protocol: "geminiai", apiFormat: "openai", createPath: "/chat/completions" } },
+                    },
+                },
+            ],
+        });
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
+    it("keeps the sidecar credential server-only while routing a real text runtime request", async () => {
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ choices: [{ message: { content: "GeminiAI OK" } }] }));
+
+        const response = await POST(chatRequest({ model: "gemini-3.1-pro-preview", messages: [{ role: "user", content: "hello" }] }), textContext());
+
+        expect(response.status).toBe(200);
+        expect(fetchMock.mock.calls[0]?.[0]).toBe("http://geminiai.test/v1/chat/completions");
+        expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Bearer test-sidecar-key");
+        expect(mocks.safeUrl).not.toHaveBeenCalled();
+        expect(response.headers.get("x-octalaicanvas-upstream-url")).toBeNull();
     });
 });
 

@@ -34,8 +34,8 @@ export type GenerationLogSlotSnapshot = {
     assetIndex?: number;
     clientRequestId?: string;
     taskId?: string;
-    taskKind?: "generation" | "edit";
-    taskProvider?: "openai" | "seedance" | "generation";
+    taskKind?: "generation" | "edit" | "upscale";
+    taskProvider?: "openai" | "seedance" | "dreamina-cli" | "generation";
     taskModel?: string;
     taskPollPath?: string;
     taskResultUrl?: string;

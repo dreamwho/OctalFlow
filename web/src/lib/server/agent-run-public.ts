@@ -1,6 +1,7 @@
 import type { CreativeRunEvent } from "@/lib/creative-runtime-contract";
 import { toSafeGenerationErrorMessage } from "./generation-errors";
 import type { AgentRun, AgentRunTask } from "./agent-run-store";
+import { agentRunRecoveryOps } from "./agent-run-canvas-ops";
 import { isVideoRemakeComposeTask } from "./video-remake-orchestration";
 
 export function publicAgentRun(run: AgentRun) {
@@ -12,6 +13,8 @@ export function publicAgentRun(run: AgentRun) {
         surface: run.surface,
         projectId: run.projectId,
         status: run.status,
+        ...(run.error ? { error: toSafeGenerationErrorMessage(run.error, "Agent 执行失败") } : {}),
+        ...(run.failurePhase ? { failurePhase: run.failurePhase } : {}),
         prompt: run.publicPrompt || run.prompt,
         referencedAssetIds: run.referencedAssetIds || [],
         selectedSkillIds: run.selectedSkillIds,
@@ -19,6 +22,7 @@ export function publicAgentRun(run: AgentRun) {
         generationPreferences: run.generationPreferences,
         assetIds: run.assetIds || [],
         tasks: (run.tasks || []).map(publicAgentRunTask),
+        ...(run.surface === "canvas" ? { recoveryOps: publicCanvasOps(agentRunRecoveryOps(run)) } : {}),
         cancellation: run.cancellation ? { pendingCount: run.cancellation.pendingChildTaskIds.length } : undefined,
         timings: run.timings,
         createdAt: run.createdAt,
@@ -28,7 +32,7 @@ export function publicAgentRun(run: AgentRun) {
 
 export function publicAgentRunSnapshot(run: AgentRun) {
     const value = publicAgentRun(run);
-    return { id: value.id, status: value.status, tasks: value.tasks, cancellation: value.cancellation, timings: value.timings, updatedAt: value.updatedAt };
+    return { id: value.id, status: value.status, error: value.error, failurePhase: value.failurePhase, tasks: value.tasks, recoveryOps: value.recoveryOps, cancellation: value.cancellation, timings: value.timings, updatedAt: value.updatedAt };
 }
 
 export function publicAgentRunEvent(event: CreativeRunEvent): CreativeRunEvent {
@@ -38,7 +42,21 @@ export function publicAgentRunEvent(event: CreativeRunEvent): CreativeRunEvent {
         const data = recordValue(event.data);
         return { ...event, data: { ...(textValue(data.reply) ? { reply: textValue(data.reply) } : {}), ops: publicCanvasOps(arrayValue(data.ops)) } };
     }
-    return event;
+    if (event.type === "run.failed") {
+        const data = recordValue(event.data);
+        return { ...event, data: { ...data, ...(textValue(data.message) ? { message: toSafeGenerationErrorMessage(new Error(textValue(data.message)), "Agent 执行失败") } : {}) } };
+    }
+    const data = recordValue(event.data);
+    const publicData = {
+        ...data,
+        ...(Array.isArray(data.childTasks) ? { childTasks: publicAgentChildTasks(data.childTasks) } : {}),
+        ...(Array.isArray(data.recoveryOps) ? { recoveryOps: publicCanvasOps(data.recoveryOps) } : {}),
+    };
+    if (!Array.isArray(data.childTasks) && !Array.isArray(data.recoveryOps)) return event;
+    return {
+        ...event,
+        data: publicData,
+    };
 }
 
 function publicAgentRunTask(task: AgentRunTask) {
@@ -62,8 +80,25 @@ function publicAgentRunTask(task: AgentRunTask) {
         status: task.status,
         startedAt: task.startedAt,
         completedAt: task.completedAt,
+        retryAfterAt: task.retryAfterAt,
         error: task.error ? toSafeGenerationErrorMessage(task.error, "生成任务失败") : undefined,
+        submittedParameters: publicSubmittedParameters(task.submittedParameters),
+        childTasks: publicAgentChildTasks(task.childTasks),
     };
+}
+
+function publicSubmittedParameters(value: AgentRunTask["submittedParameters"]) {
+    if (!value) return undefined;
+    const model = value.model?.trim();
+    const ratio = value.ratio?.trim();
+    const quality = value.quality?.trim();
+    const referenceMode = value.referenceMode?.trim();
+    const duration = Number.isFinite(value.duration) && (value.duration || 0) > 0 ? Math.floor(value.duration!) : undefined;
+    return model || ratio || quality || duration || referenceMode ? { ...(model ? { model } : {}), ...(ratio ? { ratio } : {}), ...(quality ? { quality } : {}), ...(duration ? { duration } : {}), ...(referenceMode ? { referenceMode } : {}) } : undefined;
+}
+
+function publicAgentChildTasks(children: AgentRunTask["childTasks"]) {
+    return children?.map((child, index) => ({ id: `child-${index + 1}`, status: child.status, attempt: child.attempt, error: child.error ? toSafeGenerationErrorMessage(child.error, "生成任务失败") : undefined }));
 }
 
 function publicPromptFromExecutionPrompt(prompt: string | undefined) {

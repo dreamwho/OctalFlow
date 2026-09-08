@@ -1,8 +1,9 @@
 "use client";
 
-import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Select, Space, Switch, Tag } from "antd";
-import { AlertTriangle, GitBranch, Pencil, RefreshCw, Route, Search } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag } from "antd";
+import type { CheckboxChangeEvent } from "antd";
+import { AlertTriangle, GitBranch, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
+import { type ChangeEvent, useDeferredValue, useMemo, useState } from "react";
 
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
@@ -45,7 +46,6 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
         [capabilityFilter, deferredQuery, logicalModels],
     );
     const availableDefaultFields = defaultFields.filter(({ capability }) => logicalModels.some((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)));
-    const availableCapabilityOptions = capabilityOptions.filter(({ value }) => availableDefaultFields.some(({ capability }) => capability === value));
     const readyCount = availableDefaultFields.filter(({ capability, key }) => isLogicalModelResolvable(logicalModels, channels, capability, defaultModels[key])).length;
 
     const openEdit = (model: LogicalModel) => {
@@ -54,17 +54,46 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
         setDrawerOpen(true);
     };
 
+    const openCreate = () => {
+        const channel = channels.find((item) => item.models.length);
+        const upstreamModel = channel?.models[0] || "";
+        const id = uniqueDraftId("custom-model", logicalModels);
+        setEditingId("");
+        setDraft({
+            id,
+            name: "自定义模型",
+            capability: "text",
+            enabled: true,
+            bindings: channel && upstreamModel ? [{ id: `${channel.id}:${upstreamModel}:${Date.now()}`, channelId: channel.id, upstreamModel, enabled: true, priority: 1 }] : [],
+        });
+        setDrawerOpen(true);
+    };
+
     const saveDraft = () => {
         if (!draft) return;
+        const id = draft.id.trim();
         const name = draft.name.trim();
-        if (!name) {
-            message.error("请填写前端展示昵称");
+        if (!id || !/^[a-zA-Z0-9._/-]+$/.test(id)) {
+            message.error("逻辑模型 ID 只能包含字母、数字、点、下划线、斜杠和短横线");
             return;
         }
-        const nextModels = logicalModels.map((model) => (model.id === editingId ? cloneLogicalModel({ ...draft, name }) : model));
-        onChange({ logicalModels: nextModels, defaultModels: normalizeDefaultModelsConfig(defaultModels, nextModels, channels) });
+        if (!name) return void message.error("请填写前端展示昵称");
+        if (!draft.bindings.length) return void message.error("请至少添加一个渠道绑定");
+        if (logicalModels.some((model) => model.id.toLowerCase() === id.toLowerCase() && model.id !== editingId)) return void message.error("逻辑模型 ID 已存在");
+        const bindingKeys = draft.bindings.map((binding) => `${binding.channelId}:${binding.upstreamModel.trim().toLowerCase()}`);
+        if (new Set(bindingKeys).size !== bindingKeys.length) return void message.error("同一逻辑模型中不能重复绑定相同的渠道模型");
+        const saved = cloneLogicalModel({ ...draft, id, name });
+        const nextModels = editingId ? logicalModels.map((model) => (model.id === editingId ? saved : model)) : [...logicalModels, saved];
+        const renamedDefaults = Object.fromEntries(Object.entries(defaultModels).map(([key, value]) => [key, editingId && value === editingId ? id : value])) as SystemDefaultModels;
+        onChange({ logicalModels: nextModels, defaultModels: normalizeDefaultModelsConfig(renamedDefaults, nextModels, channels) });
         setDrawerOpen(false);
-        message.success("模型路由设置已更新，请保存渠道配置");
+        message.success(editingId ? "逻辑模型已更新，请保存渠道配置" : "逻辑模型已创建，请保存渠道配置");
+    };
+
+    const deleteModel = (modelId: string) => {
+        const nextModels = logicalModels.filter((model) => model.id !== modelId);
+        onChange({ logicalModels: nextModels, defaultModels: normalizeDefaultModelsConfig(defaultModels, nextModels, channels) });
+        message.success("逻辑模型已删除，请保存渠道配置");
     };
 
     const syncChannelModels = () => {
@@ -74,7 +103,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
             return;
         }
         onChange({ logicalModels: nextModels, defaultModels: normalizeDefaultModelsConfig(defaultModels, nextModels, channels) });
-        message.success(`已按上游模型名同步 ${nextModels.length} 个逻辑模型`);
+        message.success(`已同步 ${nextModels.length} 个逻辑模型；同名上游路径保持按渠道独立`);
     };
 
     const updateDefault = (key: keyof SystemDefaultModels, modelId: string) => onChange({ logicalModels, defaultModels: { ...defaultModels, [key]: modelId } });
@@ -89,18 +118,23 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                             默认能力 {readyCount}/{availableDefaultFields.length} 可用
                         </Tag>
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">逻辑模型由渠道模型目录自动生成；同名上游模型跨渠道合并，前端昵称可独立设置。给同一模型的多个渠道设置不同「前端显示名称」后，前端会拆分为按渠道区分的独立选项。</p>
+                    <p className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">逻辑模型拥有独立的前端 ID 与昵称，并明确绑定渠道和上游模型。相同上游模型可以创建多个前端模型，分别固定到不同渠道。</p>
                 </div>
-                <Button icon={<RefreshCw className="size-4" />} onClick={syncChannelModels}>
-                    重新同步
-                </Button>
+                <Space wrap size={6}>
+                    <Button icon={<RefreshCw className="size-4" />} onClick={syncChannelModels}>
+                        同步未绑定模型
+                    </Button>
+                    <Button type="primary" icon={<Plus className="size-4" />} disabled={!channels.some((channel) => channel.models.length)} onClick={openCreate}>
+                        新建逻辑模型
+                    </Button>
+                </Space>
             </div>
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="min-w-0">
                     <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
-                        <Input allowClear value={query} prefix={<Search className="size-4 text-stone-400" />} placeholder="搜索模型昵称、ID 或上游模型" onChange={(event) => setQuery(event.target.value)} />
-                        <Select value={capabilityFilter} options={[{ label: "全部能力", value: "all" }, ...availableCapabilityOptions]} onChange={(value) => setCapabilityFilter(value)} />
+                        <Input allowClear value={query} prefix={<Search className="size-4 text-stone-400" />} placeholder="搜索模型昵称、ID 或上游模型" onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} />
+                        <Select value={capabilityFilter} options={[{ label: "全部能力", value: "all" }, ...capabilityOptions]} onChange={(value: LogicalModelCapability | "all") => setCapabilityFilter(value)} />
                     </div>
                     <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
                         {visibleModels.map((model) => {
@@ -123,13 +157,27 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                         </div>
                                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500 dark:text-stone-400">
                                             <span>ID：{model.id}</span>
-                                            <span>{model.bindings.length} 个同名渠道绑定</span>
+                                            <span>{model.bindings.length} 个渠道绑定</span>
                                             <span className={resolved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>{resolved ? `${resolved.channel.name} / ${resolved.binding.upstreamModel}` : "当前无可用渠道"}</span>
                                         </div>
                                     </div>
-                                    <Button className="shrink-0" size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEdit(model)}>
-                                        路由设置
-                                    </Button>
+                                    <Space size={4} className="shrink-0">
+                                        <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEdit(model)}>
+                                            编辑
+                                        </Button>
+                                        <Popconfirm
+                                            title="删除逻辑模型"
+                                            description={`删除后前端将不再显示「${model.name}」，对应默认模型会自动清理。`}
+                                            okText="删除"
+                                            cancelText="取消"
+                                            okButtonProps={{ danger: true }}
+                                            onConfirm={() => deleteModel(model.id)}
+                                        >
+                                            <Button danger size="small" icon={<Trash2 className="size-3.5" />}>
+                                                删除
+                                            </Button>
+                                        </Popconfirm>
+                                    </Space>
                                 </div>
                             );
                         })}
@@ -155,7 +203,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                         placeholder={`选择可用${capabilityLabel(capability)}模型`}
                                         options={options}
                                         status={defaultModels[key] && !resolved ? "error" : undefined}
-                                        onChange={(value) => updateDefault(key, value || "")}
+                                        onChange={(value: string | undefined) => updateDefault(key, value || "")}
                                     />
                                     <div className={`mt-1 flex items-center gap-1 text-xs ${resolved ? "text-stone-500 dark:text-stone-400" : "text-amber-600 dark:text-amber-400"}`}>
                                         {!resolved ? <AlertTriangle className="size-3.5 shrink-0" /> : null}
@@ -169,9 +217,8 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
             </div>
 
             <Drawer
-                title="模型路由设置"
-                size={760}
-                styles={{ wrapper: { maxWidth: "100vw" } }}
+                title={editingId ? "编辑逻辑模型" : "新建逻辑模型"}
+                width="min(760px, 100vw)"
                 open={drawerOpen}
                 destroyOnHidden
                 onClose={() => setDrawerOpen(false)}
@@ -187,8 +234,17 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                 {draft ? (
                     <>
                         <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-stone-900/40">
-                            <div className="truncate text-xs text-stone-500 dark:text-stone-400">逻辑 ID：{draft.id}（由上游模型自动建立）</div>
-                            <div className="mt-2 grid gap-3 sm:max-w-[456px] sm:grid-cols-[192px_144px_96px]">
+                            <div className="grid gap-3 sm:grid-cols-[minmax(0,180px)_minmax(0,180px)_140px_96px]">
+                                <LabeledControl label="逻辑模型 ID">
+                                    <Input
+                                        className="!w-full"
+                                        aria-label="逻辑模型 ID"
+                                        maxLength={120}
+                                        value={draft.id}
+                                        placeholder="image-pro"
+                                        onChange={(event: ChangeEvent<HTMLInputElement>) => setDraft((current) => (current ? { ...current, id: event.target.value } : current))}
+                                    />
+                                </LabeledControl>
                                 <LabeledControl label="前端昵称">
                                     <Input
                                         className="!w-full"
@@ -196,22 +252,29 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                         maxLength={120}
                                         value={draft.name}
                                         placeholder={draft.bindings[0]?.upstreamModel || draft.id}
-                                        onChange={(event) => setDraft((current) => (current ? { ...current, name: event.target.value } : current))}
+                                        onChange={(event: ChangeEvent<HTMLInputElement>) => setDraft((current) => (current ? { ...current, name: event.target.value } : current))}
                                     />
                                 </LabeledControl>
                                 <LabeledControl label="能力类型">
-                                    <Select className="w-full" value={draft.capability} options={capabilityOptions} onChange={(capability) => setDraft((current) => (current ? { ...current, capability } : current))} />
+                                    <Select className="w-full" value={draft.capability} options={capabilityOptions} onChange={(capability: LogicalModelCapability) => setDraft((current) => (current ? { ...current, capability } : current))} />
                                 </LabeledControl>
                                 <LabeledControl label="模型状态">
                                     <div className="flex h-8 items-center">
-                                        <Switch checkedChildren="启用" unCheckedChildren="停用" checked={draft.enabled} onChange={(enabled) => setDraft((current) => (current ? { ...current, enabled } : current))} />
+                                        <Switch checkedChildren="启用" unCheckedChildren="停用" checked={draft.enabled} onChange={(enabled: boolean) => setDraft((current) => (current ? { ...current, enabled } : current))} />
                                     </div>
                                 </LabeledControl>
                             </div>
                         </div>
                         <div className="mt-5">
-                            <h3 className="text-sm font-semibold text-stone-950 dark:text-stone-100">同名渠道绑定</h3>
-                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">渠道与上游模型由目录自动同步；这里调整路由优先级、启停、能力档案和前端显示名称。</p>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-stone-950 dark:text-stone-100">渠道绑定</h3>
+                                    <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">每个绑定明确选择渠道与上游模型；多个绑定只用于当前逻辑模型内部的优先级和故障切换。</p>
+                                </div>
+                                <Button size="small" icon={<Plus className="size-3.5" />} onClick={() => setDraft((current) => (current ? addDraftBinding(current, channels) : current))}>
+                                    添加绑定
+                                </Button>
+                            </div>
                             <div className="mt-3 space-y-3">
                                 {draft.bindings.map((binding) => (
                                     <BindingEditor
@@ -220,6 +283,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                         capability={draft.capability}
                                         channels={channels}
                                         onChange={(patch) => setDraft((current) => (current ? { ...current, bindings: current.bindings.map((item) => (item.id === binding.id ? { ...item, ...patch } : item)) } : current))}
+                                        onRemove={() => setDraft((current) => (current ? { ...current, bindings: current.bindings.filter((item) => item.id !== binding.id) } : current))}
                                     />
                                 ))}
                             </div>
@@ -231,7 +295,19 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
     );
 }
 
-function BindingEditor({ binding, capability, channels, onChange }: { binding: LogicalModelBinding; capability: LogicalModelCapability; channels: SystemModelChannel[]; onChange: (patch: Partial<LogicalModelBinding>) => void }) {
+function BindingEditor({
+    binding,
+    capability,
+    channels,
+    onChange,
+    onRemove,
+}: {
+    binding: LogicalModelBinding;
+    capability: LogicalModelCapability;
+    channels: SystemModelChannel[];
+    onChange: (patch: Partial<LogicalModelBinding>) => void;
+    onRemove: () => void;
+}) {
     const channel = channels.find((item) => item.id === binding.channelId);
     const profile = binding.capabilityProfile || {};
     const effectiveAsync = profile.supportsAsync ?? (capability === "image" || capability === "video");
@@ -247,34 +323,38 @@ function BindingEditor({ binding, capability, channels, onChange }: { binding: L
         });
     return (
         <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-stone-900/40">
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_90px_90px_auto] sm:items-end">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_90px_90px_auto_auto] sm:items-end">
                 <LabeledControl label="渠道">
-                    <div className="flex h-8 items-center truncate rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-700 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-200">{channel?.name || "渠道已移除"}</div>
-                </LabeledControl>
-                <LabeledControl label="上游模型">
-                    <div className="flex h-8 items-center truncate rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-700 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-200">{binding.upstreamModel}</div>
-                </LabeledControl>
-                <LabeledControl label="优先级">
-                    <InputNumber className="w-full" min={1} max={10000} precision={0} value={binding.priority} onChange={(priority) => onChange({ priority: Number(priority) || 1 })} />
-                </LabeledControl>
-                <LabeledControl label="权重">
-                    <InputNumber className="w-full" min={1} max={10000} precision={0} value={binding.weight || 100} onChange={(weight) => onChange({ weight: Number(weight) || 100 })} />
-                </LabeledControl>
-                <div className="flex h-8 items-center">
-                    <Switch size="small" checked={binding.enabled} aria-label={`${channel?.name || "渠道"}绑定启用状态`} onChange={(enabled) => onChange({ enabled })} />
-                </div>
-            </div>
-            <div className="mt-3 grid gap-3 sm:max-w-[456px]">
-                <LabeledControl label="前端显示名称">
-                    <Input
-                        className="!w-full"
-                        aria-label={`${channel?.name || "渠道"}前端显示名称`}
-                        maxLength={120}
-                        value={binding.displayName || ""}
-                        placeholder="留空与其他渠道合并显示；同一模型多个渠道设置不同名称后，前端会拆分为独立选项"
-                        onChange={(event) => onChange({ displayName: event.target.value })}
+                    <Select
+                        className="w-full"
+                        value={binding.channelId}
+                        options={channels.filter((item) => item.models.length).map((item) => ({ value: item.id, label: item.name }))}
+                        onChange={(channelId: string) => {
+                            const next = channels.find((item) => item.id === channelId);
+                            onChange({ channelId, upstreamModel: next?.models[0] || "" });
+                        }}
                     />
                 </LabeledControl>
+                <LabeledControl label="上游模型">
+                    <Select
+                        className="w-full"
+                        showSearch
+                        optionFilterProp="label"
+                        value={binding.upstreamModel || undefined}
+                        options={(channel?.models || []).map((model) => ({ value: model, label: model }))}
+                        onChange={(upstreamModel: string) => onChange({ upstreamModel })}
+                    />
+                </LabeledControl>
+                <LabeledControl label="优先级">
+                    <InputNumber className="w-full" min={1} max={10000} precision={0} value={binding.priority} onChange={(priority: number | null) => onChange({ priority: Number(priority) || 1 })} />
+                </LabeledControl>
+                <LabeledControl label="权重">
+                    <InputNumber className="w-full" min={1} max={10000} precision={0} value={binding.weight || 100} onChange={(weight: number | null) => onChange({ weight: Number(weight) || 100 })} />
+                </LabeledControl>
+                <div className="flex h-8 items-center">
+                    <Switch size="small" checked={binding.enabled} aria-label={`${channel?.name || "渠道"}绑定启用状态`} onChange={(enabled: boolean) => onChange({ enabled })} />
+                </div>
+                <Button danger type="text" aria-label="删除渠道绑定" icon={<Trash2 className="size-4" />} onClick={onRemove} />
             </div>
             <div className="mt-3 rounded-md border border-stone-200/80 bg-white/70 p-3 dark:border-stone-800 dark:bg-stone-950/40">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -286,40 +366,58 @@ function BindingEditor({ binding, capability, channels, onChange }: { binding: L
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="flex flex-wrap items-center gap-3 text-xs text-stone-600 dark:text-stone-300 sm:col-span-2 lg:col-span-4">
-                        <Checkbox checked={profile.supportsReferenceImage === true} onChange={(event) => updateProfile({ supportsReferenceImage: event.target.checked })}>
+                        <Checkbox checked={profile.supportsReferenceImage === true} onChange={(event: CheckboxChangeEvent) => updateProfile({ supportsReferenceImage: event.target.checked })}>
                             参考图片
                         </Checkbox>
-                        <Checkbox checked={profile.supportsReferenceVideo === true} onChange={(event) => updateProfile({ supportsReferenceVideo: event.target.checked })}>
+                        <Checkbox checked={profile.supportsReferenceVideo === true} onChange={(event: CheckboxChangeEvent) => updateProfile({ supportsReferenceVideo: event.target.checked })}>
                             参考视频
                         </Checkbox>
-                        <Checkbox checked={profile.supportsReferenceAudio === true} onChange={(event) => updateProfile({ supportsReferenceAudio: event.target.checked })}>
+                        <Checkbox checked={profile.supportsReferenceAudio === true} onChange={(event: CheckboxChangeEvent) => updateProfile({ supportsReferenceAudio: event.target.checked })}>
                             参考音频
                         </Checkbox>
-                        <Checkbox checked={effectiveAsync} onChange={(event) => updateProfile({ supportsAsync: event.target.checked })}>
+                        <Checkbox checked={effectiveAsync} onChange={(event: CheckboxChangeEvent) => updateProfile({ supportsAsync: event.target.checked })}>
                             异步查询
                         </Checkbox>
-                        <Checkbox checked={profile.supportsCancel === true} onChange={(event) => updateProfile({ supportsCancel: event.target.checked })}>
+                        <Checkbox checked={profile.supportsCancel === true} onChange={(event: CheckboxChangeEvent) => updateProfile({ supportsCancel: event.target.checked })}>
                             上游取消
                         </Checkbox>
-                        <Checkbox checked={profile.supportsWebhook === true} onChange={(event) => updateProfile({ supportsWebhook: event.target.checked })}>
+                        <Checkbox checked={profile.supportsWebhook === true} onChange={(event: CheckboxChangeEvent) => updateProfile({ supportsWebhook: event.target.checked })}>
                             Webhook
                         </Checkbox>
                     </div>
                     <LabeledControl label="最大参考图数量">
-                        <InputNumber className="w-full" min={0} max={16} precision={0} value={profile.maxReferenceImages} onChange={(value) => updateProfile({ maxReferenceImages: Number(value) || 0 })} />
+                        <InputNumber className="w-full" min={0} max={16} precision={0} value={profile.maxReferenceImages} onChange={(value: number | null) => updateProfile({ maxReferenceImages: Number(value) || 0 })} />
                     </LabeledControl>
                     <LabeledControl label="最大批量数量">
-                        <InputNumber className="w-full" min={1} max={100} precision={0} value={profile.maxBatchSize} onChange={(value) => updateProfile({ maxBatchSize: Number(value) || 1 })} />
+                        <InputNumber className="w-full" min={1} max={100} precision={0} value={profile.maxBatchSize} onChange={(value: number | null) => updateProfile({ maxBatchSize: Number(value) || 1 })} />
                     </LabeledControl>
                     <LabeledControl label="最短时长（秒）">
-                        <InputNumber className="w-full" min={0} max={3600} precision={0} value={profile.minDurationSeconds} onChange={(value) => updateProfile({ minDurationSeconds: Number(value) || 0 })} />
+                        <InputNumber className="w-full" min={0} max={3600} precision={0} value={profile.minDurationSeconds} onChange={(value: number | null) => updateProfile({ minDurationSeconds: Number(value) || 0 })} />
                     </LabeledControl>
                     <LabeledControl label="最长时长（秒）">
-                        <InputNumber className="w-full" min={0} max={3600} precision={0} value={profile.maxDurationSeconds} onChange={(value) => updateProfile({ maxDurationSeconds: Number(value) || 0 })} />
+                        <InputNumber className="w-full" min={0} max={3600} precision={0} value={profile.maxDurationSeconds} onChange={(value: number | null) => updateProfile({ maxDurationSeconds: Number(value) || 0 })} />
                     </LabeledControl>
+                    {capability === "video" ? (
+                        <LabeledControl label="时长档位/范围">
+                            <Input value={profile.durationRange || ""} placeholder="4-15 秒 或 4、6、8 秒" onChange={(event: ChangeEvent<HTMLInputElement>) => updateProfile({ durationRange: event.target.value.trim() || undefined })} />
+                        </LabeledControl>
+                    ) : null}
                     <LabeledControl label="支持比例（逗号分隔）">
-                        <Input value={profile.aspectRatios?.join(", ") || ""} placeholder="1:1, 16:9, 9:16" onChange={(event) => updateList(event.target.value)} />
+                        <Input value={profile.aspectRatios?.join(", ") || ""} placeholder="1:1, 16:9, 9:16" onChange={(event: ChangeEvent<HTMLInputElement>) => updateList(event.target.value)} />
                     </LabeledControl>
+                    {capability === "video" ? (
+                        <LabeledControl label="支持清晰度（逗号分隔）">
+                            <Input
+                                value={profile.qualityOptions?.join(", ") || ""}
+                                placeholder="480p, 720p, 1080p"
+                                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                    updateProfile({
+                                        qualityOptions: Array.from(new Set(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))),
+                                    })
+                                }
+                            />
+                        </LabeledControl>
+                    ) : null}
                     <LabeledControl label="请求超时（秒）">
                         <InputNumber
                             className="w-full"
@@ -328,17 +426,17 @@ function BindingEditor({ binding, capability, channels, onChange }: { binding: L
                             precision={0}
                             value={timeoutSeconds}
                             placeholder={`默认 ${defaultTimeoutSeconds} 秒`}
-                            onChange={(value) => updateProfile({ timeoutMs: value ? Number(value) * 1000 : undefined })}
+                            onChange={(value: number | null) => updateProfile({ timeoutMs: value ? Number(value) * 1000 : undefined })}
                         />
                     </LabeledControl>
                     <LabeledControl label="并发上限">
-                        <InputNumber className="w-full" min={1} max={1000} precision={0} value={profile.concurrencyLimit} onChange={(value) => updateProfile({ concurrencyLimit: Number(value) || 1 })} />
+                        <InputNumber className="w-full" min={1} max={1000} precision={0} value={profile.concurrencyLimit} onChange={(value: number | null) => updateProfile({ concurrencyLimit: Number(value) || 1 })} />
                     </LabeledControl>
                     <LabeledControl label="单次成本">
-                        <InputNumber className="w-full" min={0} precision={4} value={profile.unitCost} onChange={(value) => updateProfile({ unitCost: Number(value) || 0 })} />
+                        <InputNumber className="w-full" min={0} precision={4} value={profile.unitCost} onChange={(value: number | null) => updateProfile({ unitCost: Number(value) || 0 })} />
                     </LabeledControl>
                     <LabeledControl label="成本货币">
-                        <Input value={profile.unitCostCurrency || ""} maxLength={12} placeholder="USD / CNY" onChange={(event) => updateProfile({ unitCostCurrency: event.target.value.trim().toUpperCase() })} />
+                        <Input value={profile.unitCostCurrency || ""} maxLength={12} placeholder="USD / CNY" onChange={(event: ChangeEvent<HTMLInputElement>) => updateProfile({ unitCostCurrency: event.target.value.trim().toUpperCase() })} />
                     </LabeledControl>
                 </div>
             </div>
@@ -348,4 +446,19 @@ function BindingEditor({ binding, capability, channels, onChange }: { binding: L
 
 function cloneLogicalModel(model: LogicalModel): LogicalModel {
     return { ...model, bindings: model.bindings.map((binding) => ({ ...binding, capabilityProfile: binding.capabilityProfile ? { ...binding.capabilityProfile } : undefined })) };
+}
+
+function addDraftBinding(model: LogicalModel, channels: SystemModelChannel[]) {
+    const channel = channels.find((item) => item.models.length && !model.bindings.some((binding) => binding.channelId === item.id && binding.upstreamModel === item.models[0])) || channels.find((item) => item.models.length);
+    if (!channel) return model;
+    const upstreamModel = channel.models.find((item) => !model.bindings.some((binding) => binding.channelId === channel.id && binding.upstreamModel === item)) || channel.models[0];
+    return { ...model, bindings: [...model.bindings, { id: `${channel.id}:${upstreamModel}:${Date.now()}`, channelId: channel.id, upstreamModel, enabled: true, priority: model.bindings.length + 1 }] };
+}
+
+function uniqueDraftId(base: string, models: LogicalModel[]) {
+    const ids = new Set(models.map((model) => model.id.toLowerCase()));
+    let candidate = base;
+    let suffix = 2;
+    while (ids.has(candidate.toLowerCase())) candidate = `${base}-${suffix++}`;
+    return candidate;
 }

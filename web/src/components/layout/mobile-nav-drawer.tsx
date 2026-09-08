@@ -35,7 +35,7 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
     return (
         <Drawer
             title={
-                <Link href="/create" onClick={onClose} className="inline-flex min-w-0 items-center gap-2.5 text-base font-semibold leading-none text-[#20242a] dark:text-[#f3f5f7]">
+                <Link href="/create" onClick={onClose} className="inline-flex min-w-0 cursor-pointer items-center gap-2.5 text-base font-semibold leading-none text-[#20242a] dark:text-[#f3f5f7]">
                     <SiteLogo logoUrl={site.logoUrl} className="size-8" />
                     <span className="truncate">{siteTitle}</span>
                 </Link>
@@ -65,7 +65,7 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
                                         onFocus={() => router.prefetch(`/${tool.slug}`)}
                                         onClick={onClose}
                                         className={cn(
-                                            "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition",
+                                            "flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition",
                                             active
                                                 ? "bg-[#f0f2f4] font-medium text-[#1d2127] dark:bg-[#22262c] dark:text-[#f3f5f7]"
                                                 : "text-[#697381] hover:bg-[#f3f5f7] hover:text-[#20242a] dark:text-[#9aa3af] dark:hover:bg-[#20242a] dark:hover:text-[#f3f5f7]",
@@ -89,7 +89,7 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
                     onFocus={() => router.prefetch("/help")}
                     onClick={onClose}
                     className={cn(
-                        "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition",
+                        "flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition",
                         helpActive ? "bg-[#f0f2f4] font-medium text-[#1d2127] dark:bg-[#22262c] dark:text-[#f3f5f7]" : "text-[#697381] hover:bg-[#f3f5f7] hover:text-[#20242a] dark:text-[#9aa3af] dark:hover:bg-[#20242a] dark:hover:text-[#f3f5f7]",
                     )}
                     aria-current={helpActive ? "page" : undefined}

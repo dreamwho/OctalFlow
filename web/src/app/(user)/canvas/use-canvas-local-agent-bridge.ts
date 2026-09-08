@@ -63,7 +63,7 @@ export function resolveCanvasAgentConnection(search: string): CanvasAgentConnect
     try {
         const url = new URL(endpoint);
         const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-        if (url.protocol !== "http:" || !["localhost", "127.0.0.1", "::1"].includes(hostname)) return null;
+        if (url.protocol !== "http:" || !["localhost", "127.0.0.1"].includes(hostname)) return null;
         return { endpoint: url.origin, token };
     } catch {
         return null;

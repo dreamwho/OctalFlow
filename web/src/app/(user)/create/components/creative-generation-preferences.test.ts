@@ -46,4 +46,12 @@ describe("generationPreferenceSummary", () => {
         expect(source.indexOf("画面")).toBeLessThan(source.indexOf("输出"));
         expect(source.indexOf("比例")).toBeLessThan(source.indexOf("自定义像素尺寸"));
     });
+
+    it("uses the shared luminous selected surface and keeps a visible popup border", async () => {
+        const source = await readFile(resolve(process.cwd(), "src/components/creative-generation-preferences.tsx"), "utf8");
+
+        expect(source).toContain('classNames={{ container: "border border-[#d9e4ee] dark:border-[#4d6478]" }}');
+        expect(source).toContain("octaflow-selection-surface");
+        expect(source).not.toContain("dark:bg-[#55dff3]");
+    });
 });

@@ -1,4 +1,4 @@
-import type { SystemModelChannel } from "@/lib/auth/store";
+import type { LogicalModelCapabilityProfile, SystemModelChannel } from "@/lib/auth/store";
 import { recordChannelRuntimeFailure, recordChannelRuntimeSuccess } from "@/lib/server/channel-runtime-health";
 import { fetchInternalApi } from "@/lib/server/internal-origin";
 import { resolveModelRequestTimeoutMs } from "@/lib/server/model-request-policy";
@@ -11,11 +11,18 @@ export type TextPlanningCandidate = {
     channelId: string;
     upstreamModel: string;
     channel: SystemModelChannel;
-    capabilityProfile?: { timeoutMs?: number };
+    capabilityProfile?: Pick<LogicalModelCapabilityProfile, "timeoutMs" | "supportsReferenceImage" | "supportsReferenceVideo" | "supportsReferenceAudio" | "maxReferenceImages">;
 };
 export type TextPlanningTool = { name: string; description: string; parameters: Record<string, unknown> };
 export type TextPlanningCall = { arguments: string; headers: Headers; protocol: TextPlanningProtocol; elapsedMs: number };
-export type TextPlanningMessageContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+export type TextPlanningMessageContent =
+    | string
+    | Array<
+          | { type: "text"; text: string }
+          | { type: "image_url"; image_url: { url: string; mimeType?: string } }
+          | { type: "video_url"; video_url: { url: string; mimeType?: string } }
+          | { type: "audio_url"; audio_url: { url: string; mimeType?: string } }
+      >;
 export type TextPlanningMessage = { role: string; content: TextPlanningMessageContent };
 
 type RuntimeState = {
@@ -197,21 +204,36 @@ function planningMessages(input: StructuredTextRequest) {
 
 function responsesPlanningContent(content: TextPlanningMessageContent) {
     if (!Array.isArray(content)) return content;
-    return content.map((item) => (item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url }));
+    return content.map((item) => {
+        if (item.type === "text") return { type: "input_text", text: item.text };
+        if (item.type === "image_url") return { type: "input_image", image_url: item.image_url.url };
+        const media = item.type === "video_url" ? item.video_url : item.audio_url;
+        return { type: "input_file", filename: mediaFileName(item.type, media.mimeType), file_data: media.url };
+    });
 }
 
 function geminiPlanningParts(content: TextPlanningMessageContent) {
     if (!Array.isArray(content)) return [{ text: content }];
     return content.map((item) => {
         if (item.type === "text") return { text: item.text };
-        const match = item.image_url.url.match(/^data:([^;,]+);base64,(.+)$/);
-        return match ? { inlineData: { mimeType: match[1], data: match[2] } } : { fileData: { mimeType: "image/jpeg", fileUri: item.image_url.url } };
+        const media = item.type === "image_url" ? item.image_url : item.type === "video_url" ? item.video_url : item.audio_url;
+        const match = media.url.match(/^data:([^;,]+);base64,([\s\S]+)$/);
+        return match ? { inlineData: { mimeType: match[1], data: match[2] } } : { fileData: { mimeType: media.mimeType || defaultMediaMimeType(item.type), fileUri: media.url } };
     });
 }
 
 function planningContentText(content: TextPlanningMessageContent) {
     if (!Array.isArray(content)) return content;
-    return content.map((item) => (item.type === "text" ? item.text : "[storyboard frame]")).join("\n");
+    return content.map((item) => (item.type === "text" ? item.text : item.type === "image_url" ? "[storyboard frame]" : item.type === "video_url" ? "[native video evidence]" : "[native audio evidence]")).join("\n");
+}
+
+function mediaFileName(type: "video_url" | "audio_url", mimeType?: string) {
+    const extension = mimeType === "video/webm" ? "webm" : mimeType === "video/quicktime" ? "mov" : mimeType === "audio/wav" ? "wav" : mimeType === "audio/mpeg" ? "mp3" : type === "video_url" ? "mp4" : "m4a";
+    return `reference.${extension}`;
+}
+
+function defaultMediaMimeType(type: "image_url" | "video_url" | "audio_url") {
+    return type === "video_url" ? "video/mp4" : type === "audio_url" ? "audio/mpeg" : "image/jpeg";
 }
 
 function chatArguments(payload: Record<string, unknown>, toolName: string, allowNaturalLanguage: boolean) {

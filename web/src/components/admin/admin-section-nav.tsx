@@ -7,6 +7,7 @@ import {
     Activity,
     BadgePercent,
     BookOpen,
+    Bot,
     CircleDollarSign,
     Cloud,
     ChevronDown,
@@ -33,6 +34,7 @@ import {
     UsersRound,
     UserRoundX,
     WalletCards,
+    Workflow,
     X,
 } from "lucide-react";
 import { canAccessAdminSection, type AdminSectionKey } from "@/components/admin/admin-sections";
@@ -89,7 +91,7 @@ export function AdminSectionNav({
                     type="button"
                     title={desktopCollapsed ? section.label : undefined}
                     aria-label={section.label}
-                    className={`admin-section-nav-item relative flex h-9 w-full min-w-0 items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition ${active ? "is-active bg-zinc-100 font-medium text-zinc-950 dark:bg-zinc-900 dark:text-zinc-50" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"}`}
+                    className={`admin-section-nav-item relative flex h-9 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition ${active ? "is-active bg-zinc-100 font-medium text-zinc-950 dark:bg-zinc-900 dark:text-zinc-50" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"}`}
                     onPointerEnter={() => onIntent?.(section.key)}
                     onPointerDown={() => onIntent?.(section.key)}
                     onFocus={() => onIntent?.(section.key)}
@@ -110,14 +112,14 @@ export function AdminSectionNav({
                 <div className="admin-section-mobile-head flex h-[58px] shrink-0 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800 lg:hidden">
                     <button
                         type="button"
-                        className="admin-section-nav-toggle flex size-8 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                        className="admin-section-nav-toggle flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
                         aria-label={mobileOpen ? "收起后台侧边栏" : "展开后台侧边栏"}
                         aria-expanded={mobileOpen}
                         onClick={onMobileToggle}
                     >
                         {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
                     </button>
-                    <Link href="/" className="admin-section-mobile-brand flex min-w-0 flex-1 items-center gap-2.5 px-1 text-zinc-950 dark:text-zinc-100" onClick={onMobileClose}>
+                    <Link href="/" className="admin-section-mobile-brand flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-1 text-zinc-950 dark:text-zinc-100" onClick={onMobileClose}>
                         <SiteLogo logoUrl={site.logoUrl} className="size-7" />
                         <span className="min-w-0">
                             <span className="block truncate text-sm font-semibold">{site.title}</span>
@@ -126,7 +128,7 @@ export function AdminSectionNav({
                     </Link>
                 </div>
                 <div className="admin-section-desktop-head hidden h-[58px] shrink-0 min-w-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800 lg:flex">
-                    <Link href="/" className="admin-section-brand flex min-w-0 flex-1 items-center gap-2.5 text-zinc-950 dark:text-zinc-100">
+                    <Link href="/" className="admin-section-brand flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-zinc-950 dark:text-zinc-100">
                         <SiteLogo logoUrl={site.logoUrl} className="size-7" />
                         <span className="admin-section-brand-copy min-w-0">
                             <span className="block truncate text-sm font-semibold">{site.title}</span>
@@ -135,7 +137,7 @@ export function AdminSectionNav({
                     </Link>
                     <button
                         type="button"
-                        className="admin-section-desktop-toggle flex size-8 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"
+                        className="admin-section-desktop-toggle flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"
                         aria-label={desktopCollapsed ? "展开后台侧边栏" : "收起后台侧边栏"}
                         aria-expanded={!desktopCollapsed}
                         title={desktopCollapsed ? "展开侧边栏" : "收起侧边栏"}
@@ -151,7 +153,7 @@ export function AdminSectionNav({
                             <div key={group.title} className="admin-section-nav-group block min-w-0">
                                 <button
                                     type="button"
-                                    className="admin-section-nav-group-title relative flex w-full items-center rounded-md px-2 pb-1.5 pr-7 text-left text-[10px] font-semibold text-zinc-400 transition hover:text-zinc-700 dark:text-zinc-600 dark:hover:text-zinc-300"
+                                    className="admin-section-nav-group-title relative flex w-full cursor-pointer items-center rounded-md px-2 pb-1.5 pr-7 text-left text-[10px] font-semibold text-zinc-400 transition hover:text-zinc-700 dark:text-zinc-600 dark:hover:text-zinc-300"
                                     aria-expanded={!collapsed}
                                     aria-controls={`admin-section-group-${group.title}`}
                                     onClick={() => setCollapsedGroups((current) => ({ ...current, [group.title]: !current[group.title] }))}
@@ -189,6 +191,11 @@ export const adminSections: AdminSection[] = [
     { key: "wallet", label: "财务流水", description: "查看资金流水、积分负债和收入/退款对账口径。", shortDescription: "收入对账", icon: <WalletCards className="size-4" /> },
     { key: "site", label: "站点资料", description: "管理前台网站标题、Logo、SEO 标题、描述和关键词。", shortDescription: "品牌与 SEO", icon: <Globe2 className="size-4" /> },
     { key: "channels", label: "模型渠道", description: "添加上游接口，维护模型目录、逻辑绑定和各能力默认模型。", shortDescription: "上游接口", icon: <PlugZap className="size-4" /> },
+    { key: "magicProxy", label: "魔法代理", description: "导入和更新魔法代理订阅，查看运行时、分组和节点状态。", shortDescription: "订阅与节点", icon: <Cloud className="size-4" /> },
+    { key: "runninghub", label: "RunningHub", description: "管理 RunningHub 账户、应用工作流、功能绑定、任务监控和请求日志。", shortDescription: "应用与任务", icon: <Workflow className="size-4" /> },
+    { key: "geminiai", label: "GeminiAIStudio", description: "授权 Google AI Studio 账号，同步 Gemini AI Studio 模型并进行单模型实测。", shortDescription: "账号与模型", icon: <Bot className="size-4" /> },
+    { key: "geminiTools", label: "GeminiTools", description: "使用当前浏览器授权 Google 账号，管理 Antigravity 文本模型、额度、网关、API 密钥和请求日志。", shortDescription: "Antigravity 网关", icon: <KeyRound className="size-4" /> },
+    { key: "dreamina", label: "即梦 CLI", description: "查看即梦 CLI 安装与授权状态，配置 Seedream、Seedance 和图片超清模型。", shortDescription: "账号与模型", icon: <Sparkles className="size-4" /> },
     { key: "skills", label: "Agent Skills", description: "管理 Agent 专业能力、触发词、来源和执行规则。", shortDescription: "专业能力", icon: <Sparkles className="size-4" /> },
     { key: "settings", label: "基础设置", description: "管理注册、邮箱、生成与数据维护。", shortDescription: "账号与生成", icon: <SlidersHorizontal className="size-4" /> },
     { key: "accountDeletion", label: "注销申请", description: "查看用户账号注销申请，完成身份核验、受理或拒绝并保留审计记录。", shortDescription: "用户权利请求", icon: <UserRoundX className="size-4" /> },
@@ -207,7 +214,7 @@ export const adminSectionGroups: AdminSectionGroup[] = [
     { title: "商品运营", items: sectionsFor(["products", "orders"]) },
     { title: "营销推广", items: sectionsFor(["promotions", "coupons", "referrals"]) },
     { title: "财务管理", items: sectionsFor(["points", "payments", "cdk", "wallet"]) },
-    { title: "上游配置", items: sectionsFor(["channels", "skills"]) },
+    { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "runninghub", "geminiai", "geminiTools", "dreamina", "skills"]) },
     { title: "系统管理", items: sectionsFor(["site", "settings", "accountDeletion"]) },
     { title: "存储与备份", items: sectionsFor(["mediaStorage", "externalStorage", "backup"]) },
     { title: "内容运营", items: sectionsFor(["works", "announcements", "prompts"]) },

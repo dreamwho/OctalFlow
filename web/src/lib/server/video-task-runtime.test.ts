@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     touch: vi.fn(),
     update: vi.fn(),
     writeLog: vi.fn(),
+    dreaminaQuery: vi.fn(),
+    schedule: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/store", () => ({ refundUserPoints: mocks.refund }));
@@ -29,6 +31,12 @@ vi.mock("@/lib/server/video-task-store", () => ({
     updateVideoTask: mocks.update,
 }));
 vi.mock("@/lib/server/generation-media-authorization", () => ({ generationMediaProxyHeaders: vi.fn(() => ({ "x-media-auth": "signed" })) }));
+vi.mock("@/lib/server/dreamina-cli-video-task", () => ({
+    isDreaminaCliPersistedResultUrl: (value: string) => value.startsWith("/api/reference-assets/permanent/"),
+    isDreaminaCliVideoTask: (config: { advancedConfig?: { protocol?: string } }) => config.advancedConfig?.protocol === "dreamina-cli",
+    queryDreaminaCliVideoTask: mocks.dreaminaQuery,
+}));
+vi.mock("@/lib/server/generation-task-scheduler", () => ({ scheduleGenerationTask: mocks.schedule }));
 
 import { queryVideoTaskUpstream, refreshVideoTaskFromUpstream } from "./video-task-runtime";
 import type { VideoTask } from "./video-task-store";
@@ -213,6 +221,64 @@ describe("video task upstream reconciliation", () => {
 
         expect(result).toEqual(task);
         expect(mocks.complete).not.toHaveBeenCalled();
+        expect(mocks.fail).not.toHaveBeenCalled();
+        expect(mocks.refund).not.toHaveBeenCalled();
+    });
+
+    it("queries a Dreamina task with query_result without making an HTTP request", async () => {
+        const task = videoTask({
+            config: {
+                ...videoTask().config,
+                channelId: "dreamina-cli",
+                model: "dreamina-seedance-2-0",
+                advancedConfig: { protocol: "dreamina-cli" } as NonNullable<VideoTask["config"]["advancedConfig"]>,
+            },
+            upstream: { id: "dreamina-submit", provider: "dreamina-cli", model: "dreamina-seedance-2-0", command: "text2video", pollPath: "query_result", queryPath: "query_result" },
+        });
+        mocks.dreaminaQuery.mockResolvedValue({ state: "pending", status: "processing" });
+
+        await expect(queryVideoTaskUpstream(task, "http://localhost", "session=test")).resolves.toEqual({ state: "pending", status: "processing" });
+        expect(mocks.dreaminaQuery).toHaveBeenCalledWith(task);
+        expect(mocks.fetchInternalApi).not.toHaveBeenCalled();
+    });
+
+    it("accepts an already persisted Dreamina result without downloading it again", async () => {
+        const task = videoTask({
+            config: {
+                ...videoTask().config,
+                channelId: "dreamina-cli",
+                model: "dreamina-seedance-2-0",
+                advancedConfig: { protocol: "dreamina-cli" } as NonNullable<VideoTask["config"]["advancedConfig"]>,
+            },
+            upstream: { id: "dreamina-submit", provider: "dreamina-cli", model: "dreamina-seedance-2-0", command: "text2video", pollPath: "query_result", queryPath: "query_result" },
+        });
+        const completed = { ...task, status: "success" as const, result: { url: "/api/reference-assets/permanent/2026/08/31/videos/result.mp4", mimeType: "video/mp4", durationMs: 5_000 } };
+        mocks.claim.mockResolvedValue(task);
+        mocks.get.mockResolvedValue(task);
+        mocks.dreaminaQuery.mockResolvedValue({ state: "result_ready", status: "completed", resultUrl: "/api/reference-assets/permanent/2026/08/31/videos/result.mp4" });
+        mocks.complete.mockResolvedValue(completed);
+
+        await expect(refreshVideoTaskFromUpstream(task, "http://localhost", "session=test")).resolves.toEqual(completed);
+        expect(mocks.normalize).not.toHaveBeenCalled();
+        expect(mocks.complete).toHaveBeenCalledWith(task.id, { url: "/api/reference-assets/permanent/2026/08/31/videos/result.mp4", mimeType: "video/mp4", durationMs: 5_000 });
+    });
+
+    it("keeps an unpersisted Dreamina success for review without failing or refunding the task", async () => {
+        const task = videoTask({
+            config: {
+                ...videoTask().config,
+                channelId: "dreamina-cli",
+                model: "dreamina-seedance-2-0",
+                advancedConfig: { protocol: "dreamina-cli" } as NonNullable<VideoTask["config"]["advancedConfig"]>,
+            },
+            upstream: { id: "dreamina-submit", provider: "dreamina-cli", model: "dreamina-seedance-2-0", command: "text2video", pollPath: "query_result", queryPath: "query_result" },
+        });
+        mocks.claim.mockResolvedValue(task);
+        mocks.get.mockResolvedValue(task);
+        mocks.dreaminaQuery.mockResolvedValue({ state: "needs_review", status: "result_persistence_failed", error: "即梦 CLI 结果无法安全保存" });
+
+        await expect(refreshVideoTaskFromUpstream(task, "http://localhost", "session=test")).resolves.toEqual(task);
+        expect(mocks.schedule).toHaveBeenCalledWith("video", task.id, expect.objectContaining({ executionPhase: "needs_review", nextPollAt: undefined, lastUpstreamStatus: "result_persistence_failed" }));
         expect(mocks.fail).not.toHaveBeenCalled();
         expect(mocks.refund).not.toHaveBeenCalled();
     });

@@ -9,7 +9,7 @@ import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { AdminUserIdentity } from "@/components/admin/admin-user-identity";
 import type { AdminGenerationOperationsPayload, AdminGenerationTask } from "@/lib/admin-generation-operations";
 import { GenerationChannelStatus } from "./generation-channel-status";
-import { AgentPlannerAuditSummary, executionPhaseLabel, GenerationTaskRuntimeSummary, generationTaskPointsLabel } from "./generation-operation-task-details";
+import { AgentPlannerAuditSummary, executionPhaseLabel, GenerationTaskFailureSummary, GenerationTaskRuntimeSummary, generationTaskPointsLabel } from "./generation-operation-task-details";
 import { generationOperationStatusTagClass, generationOperationThemeClasses } from "./generation-operations-theme";
 
 const PAGE_SIZE = 20;
@@ -152,6 +152,7 @@ export function GenerationOperationsClient() {
                 render: (_, task) => (
                     <div>
                         <div className="line-clamp-2 text-sm leading-5">{task.prompt || task.error || "无请求摘要"}</div>
+                        <GenerationTaskFailureSummary task={task} />
                         <div className="mt-1 text-xs text-zinc-500">
                             {formatDuration(task.durationMs)} · {generationTaskPointsLabel(task)}
                             {task.attempts && task.attempts.length > 1 ? ` · ${task.attempts.length} 次渠道尝试` : ""}
@@ -236,7 +237,7 @@ export function GenerationOperationsClient() {
                 ) : null}
 
                 <Panel>
-                    <PanelHeader title="任务队列" description={`共 ${data?.total || 0} 条记录，可按任务、用户、模型、状态和创作入口定位问题。`} />
+                    <PanelHeader title="任务队列" description={`共 ${data?.total || 0} 条记录，可按任务、用户、模型、状态和创作入口定位问题；失败原因会显示在请求摘要下方。`} />
                     <section className="border-b border-zinc-200 bg-zinc-50/70 p-3 dark:border-zinc-800 dark:bg-zinc-900/40 sm:p-4">
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-[minmax(280px,1fr)_repeat(3,minmax(140px,180px))] xl:gap-3">
                             <Input.Search
@@ -439,6 +440,7 @@ function TaskCard({ task, actingId, onAction, onReview }: { task: AdminGeneratio
             <div className="mt-3">
                 <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500">请求摘要</div>
                 <p className="mt-1 line-clamp-3 text-sm leading-5 text-zinc-700 dark:text-zinc-300">{task.prompt || task.error || "无请求摘要"}</p>
+                <GenerationTaskFailureSummary task={task} />
             </div>
         </article>
     );

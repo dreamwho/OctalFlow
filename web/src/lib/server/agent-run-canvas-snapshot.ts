@@ -6,6 +6,8 @@ export type AgentRunCanvasSnapshotNode = {
     title: string;
     width?: number;
     height?: number;
+    /** Canvas placement is execution context, not planner prose. */
+    position?: { x: number; y: number };
     metadata: {
         size?: string;
         content?: string;
@@ -129,6 +131,7 @@ function normalizeNode(node: Record<string, unknown>, id: string, type: string):
         title: text(node.title),
         width: positiveNumber(node.width),
         height: positiveNumber(node.height),
+        position: canvasPosition(node.position),
         metadata: {
             size: optionalText(metadata.size),
             content: safeNodeContent(metadata.content) || safeNodeContent(metadata.prompt),
@@ -140,6 +143,13 @@ function normalizeNode(node: Record<string, unknown>, id: string, type: string):
             remakeMode: optionalText(metadata.remakeMode),
         },
     };
+}
+
+function canvasPosition(value: unknown) {
+    const position = record(value);
+    const x = Number(position.x);
+    const y = Number(position.y);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
 }
 
 function record(value: unknown): Record<string, unknown> {

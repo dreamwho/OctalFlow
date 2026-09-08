@@ -14,8 +14,10 @@ export const CANVAS_CONFIG_NODE_HEIGHT = {
     expanded: 226,
 } as const;
 
+export const IMAGE_NODE_DEFAULT_SIZE = { width: 340, height: 240 } as const;
+
 export const NODE_DEFAULT_SIZE = {
-    [CanvasNodeType.Image]: { width: 340, height: 240, title: "图片生成" },
+    [CanvasNodeType.Image]: { ...IMAGE_NODE_DEFAULT_SIZE, title: "图片生成" },
     [CanvasNodeType.Panorama]: { ...PANORAMA_NODE_SIZE, title: "全景生成" },
     [CanvasNodeType.Text]: { width: 340, height: 240, title: "文本" },
     [CanvasNodeType.Config]: { width: 340, height: CANVAS_CONFIG_NODE_HEIGHT.collapsed, title: "生成配置" },

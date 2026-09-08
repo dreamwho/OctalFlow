@@ -1,4 +1,66 @@
 services:
+  magic-proxy:
+    image: ${OCTALAICANVAS_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}
+    container_name: octalaicanvas-magic-proxy
+    entrypoint: ["/usr/local/bin/octalaicanvas-mihomo-entrypoint.sh"]
+    environment:
+      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
+      OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST: 0.0.0.0
+    volumes:
+      - ./docker/mihomo/bootstrap.yaml:/root/.config/mihomo/config.yaml:ro
+      - ./docker/mihomo/entrypoint.sh:/usr/local/bin/octalaicanvas-mihomo-entrypoint.sh:ro
+      - octalaicanvas-magic-proxy-runtime:/root/.config/mihomo/runtime
+    expose:
+      - "9090"
+      - "17890"
+      - "17891"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'wget -q -O /dev/null -T 5 --header="Authorization: Bearer $$OCTALAICANVAS_MAGIC_PROXY_SECRET" http://127.0.0.1:9090/version',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  geminiai:
+    image: ${OCTALAICANVAS_GEMINIAI_IMAGE:-octalaicanvas-geminiai:local}
+    build:
+      context: ./services/geminiai
+      dockerfile: Dockerfile
+    environment:
+      AISTUDIO_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
+      AISTUDIO_ACCOUNTS_DIR: /data/accounts
+      AISTUDIO_CONFIG_FILE: /app/config.yaml
+      AISTUDIO_DUMP_RAW_RESPONSE: "0"
+      AISTUDIO_HOST: 0.0.0.0
+      AISTUDIO_PORT: "8080"
+      AISTUDIO_PROXY: http://magic-proxy:17890
+      AISTUDIO_STUDIO_URL: ${OCTALAICANVAS_GEMINIAI_STUDIO_URL:-https://aistudio.google.com/prompts/new_chat}
+    volumes:
+      - octalaicanvas-geminiai-accounts:/data/accounts
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    depends_on:
+      magic-proxy:
+        condition: service_healthy
+
   app:
     image: ${OCTALAICANVAS_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}
     env_file:
@@ -7,6 +69,7 @@ services:
       - "3000:3000"
     volumes:
       - octalaicanvas-data:/app/web/.data
+      - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
     environment:
       NODE_OPTIONS: "--max-old-space-size=384"
       UV_THREADPOOL_SIZE: "2"
@@ -21,6 +84,19 @@ services:
       OCTALAICANVAS_INSTALL_TOKEN: ${OCTALAICANVAS_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}
       OCTALAICANVAS_MAINTENANCE_TOKEN: ${OCTALAICANVAS_MAINTENANCE_TOKEN:?请在 .env 中配置至少 32 位维护令牌}
       OCTALAICANVAS_WORKER_TOKEN: ${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
+      OCTALAICANVAS_MAGIC_PROXY_CONTROLLER_URL: http://magic-proxy:9090
+      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
+      OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE: /app/web/.magic-proxy-runtime/subscription.yaml
+      OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL: http://magic-proxy:17890
+      OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_URL: http://magic-proxy:17891
+      OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST: 0.0.0.0
+      OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_PORT: "17890"
+      OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_PORT: "17891"
+      OCTALAICANVAS_GEMINIAI_URL: http://geminiai:8080
+      OCTALAICANVAS_GEMINIAI_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
+      GEMINI_TOOLS_OAUTH_CLIENT_ID: ${GEMINI_TOOLS_OAUTH_CLIENT_ID:-}
+      GEMINI_TOOLS_OAUTH_CLIENT_SECRET: ${GEMINI_TOOLS_OAUTH_CLIENT_SECRET:-}
+      GEMINI_TOOLS_OAUTH_REDIRECT_URI: ${GEMINI_TOOLS_OAUTH_REDIRECT_URI:-}
     mem_limit: 512m
     memswap_limit: 768m
     healthcheck:
@@ -36,6 +112,11 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
+    depends_on:
+      geminiai:
+        condition: service_healthy
+      magic-proxy:
+        condition: service_healthy
 
   generation-worker:
     image: ${OCTALAICANVAS_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}
@@ -53,3 +134,5 @@ services:
 
 volumes:
   octalaicanvas-data:
+  octalaicanvas-geminiai-accounts:
+  octalaicanvas-magic-proxy-runtime:

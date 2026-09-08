@@ -50,19 +50,29 @@ export function canvasVideoRemakeSourceAsset(snapshot: unknown, userId: string, 
         durationMs: positiveNumber(metadata.durationMs),
         width: positiveNumber(metadata.naturalWidth) || positiveNumber(video.width),
         height: positiveNumber(metadata.naturalHeight) || positiveNumber(video.height),
-        metadata: { source: "canvas-video-remake" },
+        metadata: { source: "canvas-video-reference" },
         createdAt: now,
         updatedAt: now,
     };
 }
 
 export async function enrichVideoRemakeSourceAssets(assets: CreativeAsset[], skills: AgentSkill[], origin: string, cookie: string, signal?: AbortSignal) {
-    if (!selectedVideoRemakeSkill(skills)) return assets;
+    if (!selectedVideoRemakeSkill(skills) && !assets.some((asset) => asset.metadata.source === "canvas-video-reference")) return assets;
     const source = assets.find((asset) => asset.type === "video" && asset.status === "ready");
     if (!source || !(await ffmpegAvailable())) return assets;
     try {
         const analysis = await analyzeVideoRemakeSource(source, origin, cookie, signal);
-        return assets.map((asset) => (asset.id === source.id ? { ...asset, durationMs: asset.durationMs || (analysis.durationSeconds ? Math.round(analysis.durationSeconds * 1_000) : undefined), width: asset.width || analysis.width, height: asset.height || analysis.height, metadata: { ...asset.metadata, videoRemakeAnalysis: analysis } } : asset));
+        return assets.map((asset) =>
+            asset.id === source.id
+                ? {
+                      ...asset,
+                      durationMs: asset.durationMs || (analysis.durationSeconds ? Math.round(analysis.durationSeconds * 1_000) : undefined),
+                      width: asset.width || analysis.width,
+                      height: asset.height || analysis.height,
+                      metadata: { ...asset.metadata, videoRemakeAnalysis: analysis },
+                  }
+                : asset,
+        );
     } catch {
         return assets;
     }

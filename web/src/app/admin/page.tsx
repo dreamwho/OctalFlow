@@ -61,7 +61,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                     headerActions={
                         <>
                             <AdminReturnButton />
-                            <UserStatusActions initialUser={currentUser} />
+                            <UserStatusActions initialUser={currentUser} themeScope="admin" />
                         </>
                     }
                 />

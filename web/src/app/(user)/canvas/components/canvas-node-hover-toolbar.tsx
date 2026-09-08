@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { App, Modal, Segmented, Tooltip } from "antd";
-import { Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Pencil, Plus, RefreshCw, Settings2, Trash2, Upload, Video } from "lucide-react";
+import { App, Modal, Popover, Segmented, Tooltip } from "antd";
+import { Camera, Clapperboard, Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Pencil, Plus, RefreshCw, ScanLine, ScanSearch, Settings2, Trash2, Upload, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
@@ -16,8 +16,9 @@ type CanvasNodeHoverToolbarProps = {
     node: CanvasNodeData | null;
     viewport: ViewportTransform;
     onKeep: (nodeId: string) => void;
-    onLeave: () => void;
+    onLeave: (nodeId?: string) => void;
     onInfo: (node: CanvasNodeData) => void;
+    onRename: (node: CanvasNodeData) => void;
     onEditText: (node: CanvasNodeData) => void;
     onDecreaseFont: (node: CanvasNodeData) => void;
     onIncreaseFont: (node: CanvasNodeData) => void;
@@ -32,8 +33,12 @@ type CanvasNodeHoverToolbarProps = {
     onUpscale: (node: CanvasNodeData) => void;
     onSuperResolve: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
+    onStoryboard: (node: CanvasNodeData) => void;
     onViewImage: (node: CanvasNodeData) => void;
     onReversePrompt: (node: CanvasNodeData) => void;
+    onDepthExtract?: (node: CanvasNodeData) => void;
+    onCaptureFrames?: (node: CanvasNodeData) => void;
+    onAnalyzeVideo?: (node: CanvasNodeData) => void;
     onRetry: (node: CanvasNodeData) => void;
     onToggleFreeResize: (node: CanvasNodeData) => void;
     onDelete: (node: CanvasNodeData) => void;
@@ -55,6 +60,7 @@ export function CanvasNodeHoverToolbar({
     onKeep,
     onLeave,
     onInfo,
+    onRename,
     onEditText,
     onDecreaseFont,
     onIncreaseFont,
@@ -69,8 +75,12 @@ export function CanvasNodeHoverToolbar({
     onUpscale,
     onSuperResolve,
     onAngle,
+    onStoryboard,
     onViewImage,
     onReversePrompt,
+    onDepthExtract,
+    onCaptureFrames,
+    onAnalyzeVideo,
     onRetry,
     onToggleFreeResize,
     onDelete,
@@ -79,6 +89,7 @@ export function CanvasNodeHoverToolbar({
     const [quickImageToolIds, setQuickImageToolIds] = useState<ImageQuickToolId[]>(defaultImageQuickToolIds);
     const [draftImageToolIds, setDraftImageToolIds] = useState<ImageQuickToolId[]>(defaultImageQuickToolIds);
     const [imageToolSettingsOpen, setImageToolSettingsOpen] = useState(false);
+    const [storyboardMenuOpen, setStoryboardMenuOpen] = useState(false);
     const toolbarRef = useRef<HTMLDivElement>(null);
     const [toolbarMetrics, setToolbarMetrics] = useState({ width: 0, viewportWidth: 0 });
     const { message } = App.useApp();
@@ -98,6 +109,7 @@ export function CanvasNodeHoverToolbar({
 
     useEffect(() => {
         setImageToolSettingsOpen(false);
+        setStoryboardMenuOpen(false);
     }, [node?.id]);
 
     useEffect(() => {
@@ -126,6 +138,7 @@ export function CanvasNodeHoverToolbar({
     const isVideo = node.type === CanvasNodeType.Video;
     const isAudio = node.type === CanvasNodeType.Audio;
     const hasImage = isImage && Boolean(node.metadata?.content);
+    const hasStoryboardSource = isImage && Boolean(node.metadata?.content?.trim());
     const hasVideo = isVideo && Boolean(node.metadata?.content);
     const hasAudio = isAudio && Boolean(node.metadata?.content);
     const isText = node.type === CanvasNodeType.Text;
@@ -152,6 +165,7 @@ export function CanvasNodeHoverToolbar({
 
     const baseToolbarTools: ToolbarTool[] = [
         { id: "info", title: "查看节点信息", label: "信息", icon: <Info className="size-4" />, onClick: () => onInfo(node) },
+        { id: "rename", title: "编辑节点名称", label: "编辑名称", icon: <Pencil className="size-4" />, onClick: () => onRename(node) },
         { id: "delete", title: "移除节点", label: "删除", icon: <Trash2 className="size-4" />, onClick: () => onDelete(node), danger: true },
     ];
     const nodeToolbarTools: ToolbarTool[] = [
@@ -166,15 +180,18 @@ export function CanvasNodeHoverToolbar({
         ...(isText ? [{ id: "increaseFont", title: "增大字号", label: "放大", icon: <Plus className="size-4" />, onClick: () => onIncreaseFont(node) }] : []),
         ...(isImage && !hasImage ? [{ id: "uploadImage", title: "上传图片", label: "上传图片", icon: <Upload className="size-4" />, onClick: () => onUpload(node) }] : []),
         ...(isVideo ? [{ id: "uploadVideo", title: hasVideo ? "替换视频" : "上传视频", label: hasVideo ? "替换视频" : "上传视频", icon: <Video className="size-4" />, onClick: () => onUpload(node) }] : []),
+        ...(hasVideo ? [{ id: "captureFrames", title: "捕捉视频帧", label: "捕捉帧", icon: <Camera className="size-4" />, onClick: () => onCaptureFrames?.(node) }] : []),
+        ...(hasVideo ? [{ id: "depthExtract", title: "提取深度视频", label: "深度提取", icon: <ScanLine className="size-4" />, onClick: () => onDepthExtract?.(node) }] : []),
+        ...(hasVideo ? [{ id: "analyzeVideo", title: "详细分析视频", label: "分析", icon: <ScanSearch className="size-4" />, onClick: () => onAnalyzeVideo?.(node) }] : []),
         ...(isAudio ? [{ id: "uploadAudio", title: hasAudio ? "替换音频" : "上传音频", label: hasAudio ? "替换音频" : "上传音频", icon: <Music2 className="size-4" />, onClick: () => onUpload(node) }] : []),
         ...(hasImage && !isPanorama ? imageTools.map((tool) => ({ id: tool.id, title: tool.title, label: tool.label, icon: tool.icon, active: tool.active, onClick: tool.onClick })) : []),
     ];
-    const toolbarTools = hasImage ? [...baseToolbarTools, ...nodeToolbarTools].filter((tool) => quickImageToolIdSet.has(tool.id as ImageQuickToolId)) : [...baseToolbarTools, ...nodeToolbarTools];
-    const selectableImageToolbarTools = [...baseToolbarTools, ...nodeToolbarTools].filter((tool) => tool.id !== "retry") as ImageToolbarSettingsTool[];
+    const toolbarTools = hasImage ? [...baseToolbarTools, ...nodeToolbarTools].filter((tool) => tool.id === "rename" || quickImageToolIdSet.has(tool.id as ImageQuickToolId)) : [...baseToolbarTools, ...nodeToolbarTools];
+    const selectableImageToolbarTools = [...baseToolbarTools, ...nodeToolbarTools].filter((tool) => tool.id !== "rename" && tool.id !== "retry") as ImageToolbarSettingsTool[];
 
     const closeImageToolSettings = () => {
         setImageToolSettingsOpen(false);
-        onLeave();
+        onLeave(node.id);
     };
 
     const setDraftImageToolVisible = (id: ImageQuickToolId, visible: boolean) => {
@@ -197,12 +214,12 @@ export function CanvasNodeHoverToolbar({
         <>
             <div
                 ref={toolbarRef}
-                data-canvas-hover-toolbar
+                data-canvas-node-toolbar
                 className="hide-scrollbar absolute z-[70] flex h-10 max-w-[calc(100vw-32px)] items-center overflow-x-auto overflow-y-hidden rounded-xl border shadow-[0_7px_22px_rgba(15,23,42,.10)]"
                 style={{ left: toolbarLeft, top, transform: "translate(-50%, -100%)", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
-                    if (!imageToolSettingsOpen) onLeave();
+                    if (!imageToolSettingsOpen && !storyboardMenuOpen) onLeave(node.id);
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
@@ -210,6 +227,50 @@ export function CanvasNodeHoverToolbar({
                 {toolbarTools.map((tool) => (
                     <ToolbarAction key={tool.id} {...tool} theme={theme} />
                 ))}
+                {hasStoryboardSource ? (
+                    <Tooltip title="分镜大师" placement="top" mouseEnterDelay={0.2}>
+                        <Popover
+                            trigger="click"
+                            placement="bottom"
+                            open={storyboardMenuOpen}
+                            onOpenChange={(open) => {
+                                setStoryboardMenuOpen(open);
+                                if (open) onKeep(node.id);
+                            }}
+                            content={
+                                <div data-canvas-storyboard-action-menu className="w-36 p-1">
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/10"
+                                        onClick={() => {
+                                            setStoryboardMenuOpen(false);
+                                            onStoryboard(node);
+                                        }}
+                                    >
+                                        <Clapperboard className="size-4" />
+                                        人物三视图
+                                    </button>
+                                </div>
+                            }
+                        >
+                            <button
+                                type="button"
+                                data-canvas-storyboard-trigger
+                                aria-label="分镜大师"
+                                className="group relative flex size-10 shrink-0 items-center justify-center"
+                                style={{ color: theme.toolbar.item, "--canvas-tool-hover": theme.toolbar.itemHover } as CSSProperties}
+                            >
+                                <span
+                                    className="flex size-8 items-center justify-center rounded-lg transition group-hover:bg-[var(--canvas-tool-hover)]"
+                                    style={{ background: storyboardMenuOpen ? theme.toolbar.activeBg : undefined, color: storyboardMenuOpen ? theme.toolbar.activeText : undefined }}
+                                >
+                                    <Clapperboard className="size-4" />
+                                </span>
+                            </button>
+                        </Popover>
+                    </Tooltip>
+                ) : null}
                 {hasImage ? <ToolbarAction id="more" title="配置快捷工具" label="更多" icon={<Ellipsis className="size-4" />} active={imageToolSettingsOpen} onClick={openImageToolSettings} theme={theme} /> : null}
             </div>
             {hasImage ? (

@@ -23,6 +23,35 @@ beforeEach(() => {
 });
 
 describe("OpenAI image provider over a live compatible fixture", () => {
+    it("sends GeminiAI Canvas ratio and quality as explicit AI Studio fields", async () => {
+        const fixture = createProtocolFixtureServer();
+        await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));
+        const address = fixture.server.address();
+        if (!address || typeof address === "string") throw new Error("Protocol fixture did not bind a TCP port");
+        const origin = `http://127.0.0.1:${address.port}`;
+        const task = liveImageTask(origin, {
+            id: "image-geminiai-live",
+            config: {
+                baseUrl: origin,
+                apiKey: "fixture-key",
+                apiFormat: "openai",
+                model: "gemini-3.1-flash-image-preview",
+                channelId: "geminiai",
+                size: "9:16",
+                quality: "high",
+                advancedConfig: { ...emptyAdvancedConfig(), protocol: "geminiai", createPath: "/images/generations", editPath: "/images/edits", supportsReferenceImage: true },
+            },
+        });
+
+        try {
+            await expect(runOpenAiImageTask(task, "http://internal", "http://public", "", true)).resolves.toMatchObject({ dataUrl: expect.stringMatching(/^data:image\/png;base64,/) });
+            const body = JSON.parse(fixture.requests[0]?.body.toString("utf8") || "{}");
+            expect(body).toMatchObject({ size: expect.any(String), quality: "high", aspect_ratio: "9:16", image_size: "4K" });
+        } finally {
+            await new Promise<void>((resolve, reject) => fixture.server.close((error?: Error) => (error ? reject(error) : resolve())));
+        }
+    });
+
     it("parses a valid PNG returned over TCP", async () => {
         const fixture = createProtocolFixtureServer();
         await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));

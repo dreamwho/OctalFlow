@@ -1,0 +1,39 @@
+# OctalFlow host-network bootstrap. Controller authentication is supplied at
+# process start; subscription proxies arrive through the shared file provider.
+mode: rule
+log-level: info
+external-controller: 127.0.0.1:9090
+
+proxy-providers:
+  OctalFlow-Subscription:
+    type: file
+    path: /root/.config/mihomo/runtime/subscription.yaml
+
+proxy-groups:
+  - name: OctalFlow-GeminiAIStudio
+    type: select
+    use:
+      - OctalFlow-Subscription
+    proxies:
+      - DIRECT
+  - name: OctalFlow-GeminiTools
+    type: select
+    use:
+      - OctalFlow-Subscription
+    proxies:
+      - DIRECT
+
+listeners:
+  - name: OctalFlow-GeminiAIStudio
+    type: mixed
+    listen: 127.0.0.1
+    port: 17890
+    proxy: OctalFlow-GeminiAIStudio
+  - name: OctalFlow-GeminiTools
+    type: mixed
+    listen: 127.0.0.1
+    port: 17891
+    proxy: OctalFlow-GeminiTools
+
+rules:
+  - MATCH,DIRECT

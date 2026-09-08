@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import type { CreateDramaProjectInput, DramaAssetProfile, DramaAssetReference, DramaEpisode, DramaNamedAsset, DramaProject, DramaShot, DramaShotContinuity, DramaUtterance, DramaVideoMode } from "@/lib/drama-project-contract";
 import { dramaRichContentToPlainText, normalizeDramaScriptRichContent } from "@/lib/drama-script-rich-content";
 import { normalizeDramaImageSize } from "@/lib/drama-image-size";
+import { DEFAULT_DRAMA_VISUAL_STYLE_ID, getDramaVisualStylePreset } from "@/lib/drama-visual-style-presets";
 import { resolveDramaShotDuration } from "@/lib/server/drama-shot-config";
 import { listAgentRuns } from "@/lib/server/agent-run-store";
 import { CreativeEntityDeletionConflict, deleteDramaConversationAggregate } from "@/lib/server/creative-entity-deletion-store";
@@ -59,6 +60,7 @@ export async function createDramaProjectForUser(userId: string, value: unknown) 
         title: input.title,
         summary: input.summary,
         style: input.style,
+        stylePresetId: input.stylePresetId,
         ratio: input.ratio,
         status: "active",
         creativeConversationId: conversation.id,
@@ -180,6 +182,7 @@ function normalizeCreateInput(value: unknown): Required<Omit<CreateDramaProjectI
         sourceHandoffId: optionalText(input.sourceHandoffId),
         summary: cleanText(input.summary),
         style: cleanText(input.style) || "电影感国漫",
+        stylePresetId: cleanText(input.stylePresetId) || DEFAULT_DRAMA_VISUAL_STYLE_ID,
         ratio,
         initialScript: cleanText(input.initialScript),
         sourceAssets: normalizeSourceAssets(input.sourceAssets),
@@ -201,7 +204,8 @@ export function normalizeProject(value: unknown, current: DramaProject): DramaPr
         sourceHandoffId: current.sourceHandoffId,
         title: cleanText(input.title) || current.title,
         summary: cleanText(input.summary),
-        style: cleanText(input.style),
+        style: cleanText(input.style) || current.style || getDramaVisualStylePreset(current.stylePresetId, current.style).label,
+        stylePresetId: cleanText(input.stylePresetId) || current.stylePresetId || getDramaVisualStylePreset(undefined, current.style).id,
         ratio,
         status: input.status === "archived" ? "archived" : "active",
         creativeConversationId: current.creativeConversationId,

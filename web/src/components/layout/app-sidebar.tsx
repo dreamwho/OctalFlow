@@ -18,18 +18,18 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
     const helpActive = pathname.startsWith("/help");
 
     return (
-        <aside className={cn("hidden h-full shrink-0 flex-col border-r border-[#eaecf0] bg-white text-[#111827] transition-[width] duration-200 lg:flex dark:border-[#292d33] dark:bg-[#111316] dark:text-[#f3f5f7]", expanded ? "w-44" : "w-[72px]")}>
-            <Link href="/create" className={cn("flex h-16 shrink-0 items-center border-b border-[#eaecf0] px-3 dark:border-[#292d33]", expanded ? "justify-start px-5" : "justify-center")} aria-label={siteTitle}>
-                <SiteLogo logoUrl={site.logoUrl} className="size-8" />
-                {expanded ? <span className="ml-3 min-w-0 truncate text-[15px] font-semibold">{siteTitle}</span> : null}
+        <aside className={cn("app-sidebar hidden h-full shrink-0 flex-col border-r text-[#111827] transition-[width] duration-200 lg:flex dark:text-[#f3f5f7]", expanded ? "w-[156px]" : "w-[60px]")}>
+            <Link href="/create" className={cn("app-sidebar-brand cursor-pointer flex h-14 shrink-0 items-center px-2.5", expanded ? "justify-start px-4" : "justify-center")} aria-label={siteTitle}>
+                <SiteLogo logoUrl={site.logoUrl} className="size-7" />
+                {expanded ? <span className="ml-2.5 min-w-0 truncate text-sm font-semibold">{siteTitle}</span> : null}
             </Link>
 
-            <nav className={cn("hide-scrollbar min-h-0 flex-1 overflow-y-auto py-5", expanded ? "px-3" : "px-2")} aria-label="工作空间导航">
+            <nav className={cn("hide-scrollbar min-h-0 flex-1 overflow-y-auto py-4", expanded ? "px-2.5" : "px-2")} aria-label="工作空间导航">
                 {navigationGroups.map((group, groupIndex) => {
                     const tools = navigationTools.filter((tool) => tool.group === group.id);
                     return (
-                        <div key={group.id} className={cn(groupIndex > 0 && "mt-[22px]")}>
-                            {expanded ? <div className="mb-1.5 px-2 text-xs font-normal text-[#98a2b3] dark:text-[#737d89]">{group.label}</div> : null}
+                        <div key={group.id} className={cn(groupIndex > 0 && "mt-4")}>
+                            {expanded ? <div className="mb-1 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8d9aad] dark:text-[#68768b]">{group.label}</div> : null}
                             <div className="space-y-1">
                                 {tools.map((tool) => {
                                     const Icon = tool.icon;
@@ -44,19 +44,19 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
                                             onMouseEnter={() => router.prefetch(`/${tool.slug}`)}
                                             onFocus={() => router.prefetch(`/${tool.slug}`)}
                                             className={cn(
-                                                "group relative flex h-[42px] items-center rounded-lg px-2 text-sm font-medium transition-colors duration-150",
-                                                expanded ? "justify-start gap-3 px-3" : "justify-center",
+                                                "app-sidebar-item group relative flex h-9 cursor-pointer items-center rounded-lg border border-transparent px-2 text-[13px] font-medium transition duration-150",
+                                                expanded ? "justify-start gap-2.5 px-2.5" : "justify-center",
                                                 active
-                                                    ? "bg-[#f5f4ff] text-[#111827] dark:bg-[#26243a] dark:text-[#f3f5f7]"
+                                                    ? "is-active octaflow-selection-surface"
                                                     : primary
-                                                      ? "text-[#111827] hover:bg-[#f8f9fb] dark:text-[#d4d9df] dark:hover:bg-[#20242a]"
-                                                      : "text-[#111827] hover:bg-[#f8f9fb] dark:text-[#c7cdd5] dark:hover:bg-[#20242a] dark:hover:text-[#f3f5f7]",
+                                                      ? "text-[#243044] hover:border-cyan-300/20 hover:bg-cyan-50/50 dark:text-[#d4d9df] dark:hover:bg-cyan-300/[.05]"
+                                                      : "text-[#526077] hover:border-cyan-300/20 hover:bg-cyan-50/50 hover:text-[#172033] dark:text-[#aeb9c8] dark:hover:bg-cyan-300/[.05] dark:hover:text-[#f3fbff]",
                                             )}
                                             aria-current={active ? "page" : undefined}
                                         >
-                                            <Icon className={cn("size-[18px] shrink-0", active && "text-[#5965ff]")} />
+                                            <Icon className={cn("size-[17px] shrink-0", active && "text-[var(--octa-selection-accent)]")} />
                                             {expanded ? <span className="min-w-0 truncate">{tool.label}</span> : null}
-                                            {active ? <span className="absolute right-2.5 h-[18px] w-0.5 rounded-full bg-[#5965ff]" /> : null}
+                                            {active ? <span className="app-sidebar-active-mark absolute right-1 h-4 w-px rounded-full" /> : null}
                                         </Link>
                                     );
                                 })}
@@ -66,7 +66,7 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
                 })}
             </nav>
 
-            <div className={cn("shrink-0 border-t border-[#eaecf0] dark:border-[#292d33]", expanded ? "px-3 pb-3 pt-3.5" : "p-2")}>
+            <div className={cn("app-sidebar-footer shrink-0", expanded ? "px-2.5 pb-3 pt-2.5" : "p-2")}>
                 <Link
                     href="/help"
                     prefetch
@@ -74,13 +74,13 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
                     onMouseEnter={() => router.prefetch("/help")}
                     onFocus={() => router.prefetch("/help")}
                     className={cn(
-                        "relative flex min-h-[46px] items-center rounded-lg px-2 text-sm font-medium text-[#111827] transition-colors duration-150 hover:bg-[#f8f9fb] dark:text-[#c7cdd5] dark:hover:bg-[#20242a] dark:hover:text-[#f3f5f7]",
-                        expanded ? "justify-start gap-3 px-2" : "justify-center",
-                        helpActive && "bg-[#f0f2f4] text-[#1d2127] dark:bg-[#22262c] dark:text-[#f3f5f7]",
+                        "app-sidebar-item relative flex min-h-9 cursor-pointer items-center rounded-lg border border-transparent px-2 text-[13px] font-medium text-[#526077] transition duration-150 hover:border-cyan-300/20 hover:bg-cyan-50/50 hover:text-[#172033] dark:text-[#aeb9c8] dark:hover:bg-cyan-300/[.05] dark:hover:text-[#f3fbff]",
+                        expanded ? "justify-start gap-2.5 px-2.5" : "justify-center",
+                        helpActive && "is-active octaflow-selection-surface",
                     )}
                     aria-current={helpActive ? "page" : undefined}
                 >
-                    <CircleHelp className="size-[18px] shrink-0" />
+                    <CircleHelp className="size-[17px] shrink-0" />
                     {expanded ? (
                         <>
                             <span className="min-w-0 flex-1">
@@ -89,7 +89,7 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
                             <ChevronRight className="size-4 shrink-0 text-[#7f8995]" />
                         </>
                     ) : null}
-                    {helpActive ? <span className="absolute right-0 h-4 w-0.5 rounded-full bg-[#5965ff]" /> : null}
+                    {helpActive ? <span className="app-sidebar-active-mark absolute right-1 h-4 w-px rounded-full" /> : null}
                 </Link>
             </div>
         </aside>
