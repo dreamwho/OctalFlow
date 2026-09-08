@@ -113,7 +113,7 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
 
     settings = client.get("/api/settings", headers=admin)
     assert settings.status_code == 200
-    assert settings.json()["settings"]["image_account_retry_enabled"] is False
+    assert settings.json()["settings"]["image_account_retry_enabled"] is True
     assert settings.json()["settings"]["auto_remove_invalid_accounts"] is False
     assert settings.json()["settings"]["auto_remove_rate_limited_accounts"] is False
     revision = settings.json()["revision"]
@@ -122,6 +122,27 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
         headers=admin,
         json={"revision": revision, "log_levels": ["info"]},
     ).status_code == 200
+    retry_enabled = client.get("/api/settings", headers=admin).json()
+    retry_patch = client.patch(
+        "/api/settings",
+        headers=admin,
+        json={
+            "revision": retry_enabled["revision"],
+            "image_account_retry_enabled": False,
+        },
+    )
+    assert retry_patch.status_code == 200
+    assert retry_patch.json()["settings"]["image_account_retry_enabled"] is False
+    retry_restore = client.patch(
+        "/api/settings",
+        headers=admin,
+        json={
+            "revision": retry_patch.json()["revision"],
+            "image_account_retry_enabled": True,
+        },
+    )
+    assert retry_restore.status_code == 200
+    assert retry_restore.json()["settings"]["image_account_retry_enabled"] is True
     assert client.patch(
         "/api/settings",
         headers=admin,

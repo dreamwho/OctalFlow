@@ -34,7 +34,6 @@ _REMOVED_TOP_LEVEL_SETTINGS = (
     "image_preflight_token_refresh_enabled",
 )
 _RUNTIME_LOCKED_FALSE_SETTINGS = (
-    "image_account_retry_enabled",
     "auto_remove_invalid_accounts",
     "auto_remove_rate_limited_accounts",
 )
@@ -567,7 +566,8 @@ class ConfigStore:
 
     @property
     def image_account_retry_enabled(self) -> bool:
-        return False
+        self.reload_if_changed()
+        return _normalize_bool(self.data.get("image_account_retry_enabled"), True)
 
     @property
     def image_upscale_enabled(self) -> bool:

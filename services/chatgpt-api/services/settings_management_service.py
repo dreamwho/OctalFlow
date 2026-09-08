@@ -248,7 +248,7 @@ _FIELD_SPECS: dict[str, dict[str, Any]] = {
     "image_poll_interval_secs": _numeric_field_metadata("image_poll_interval_secs"),
     "image_account_concurrency": _numeric_field_metadata("image_account_concurrency"),
     "account_processing_concurrency": _numeric_field_metadata("account_processing_concurrency"),
-    "image_account_retry_enabled": _field_metadata(False),
+    "image_account_retry_enabled": _field_metadata(True),
     "image_upscale_enabled": _field_metadata(False),
     "image_upscale_engine": _field_metadata("sharp_lanczos3", options=("sharp_lanczos3", "pillow_lanczos")),
     "image_max_account_attempts": _numeric_field_metadata("image_max_account_attempts"),
@@ -524,7 +524,7 @@ class SettingsManagementService:
                 "account_processing_concurrency",
                 effective.get("account_processing_concurrency"),
             ),
-            image_account_retry_enabled=False,
+            image_account_retry_enabled=_bool(effective.get("image_account_retry_enabled"), True),
             image_upscale_enabled=_bool(effective.get("image_upscale_enabled"), False),
             image_upscale_engine=_enum(
                 effective.get("image_upscale_engine"),

@@ -118,6 +118,7 @@ class SafeSettingsPatch(BaseModel):
     image_poll_interval_secs: float | None = None
     image_account_concurrency: int | None = None
     account_processing_concurrency: int | None = None
+    image_account_retry_enabled: bool | None = None
     image_upscale_enabled: bool | None = None
     image_upscale_engine: Literal["sharp_lanczos3", "pillow_lanczos"] | None = None
     image_max_account_attempts: int | None = None

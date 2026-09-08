@@ -3,7 +3,7 @@
 import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
 import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
-import { type ChangeEvent, type DragEvent, useDeferredValue, useMemo, useState } from "react";
+import { type ChangeEvent, type DragEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
@@ -304,16 +304,51 @@ function LogicalModelDisplayOrder({ models, onChange }: { models: LogicalModel[]
     const [capability, setCapability] = useState<LogicalModelCapability>("image");
     const [draggingId, setDraggingId] = useState("");
     const [dragOverId, setDragOverId] = useState("");
+    const pointerDragRef = useRef<{ id: string; pointerId: number } | null>(null);
+    const dragOverIdRef = useRef("");
     const scopedModels = models.filter((model) => model.capability === capability);
     const nodeLabel = `${capabilityLabel(capability)}节点`;
     const visibleCount = scopedModels.filter((model) => model.enabled && model.pickerVisible !== false).length;
-    const reorder = (sourceId: string, targetId: string) => onChange(reorderLogicalModels(models, capability, sourceId, targetId));
+    const reorder = useCallback((sourceId: string, targetId: string) => onChange(reorderLogicalModels(models, capability, sourceId, targetId)), [capability, models, onChange]);
+    const updateDragOver = useCallback((targetId: string) => {
+        dragOverIdRef.current = targetId;
+        setDragOverId(targetId);
+    }, []);
     const drop = (event: DragEvent<HTMLDivElement>, targetId: string) => {
         event.preventDefault();
         if (draggingId) reorder(draggingId, targetId);
         setDraggingId("");
-        setDragOverId("");
+        updateDragOver("");
     };
+
+    useEffect(() => {
+        if (!draggingId || !pointerDragRef.current) return;
+        const pointerId = pointerDragRef.current.pointerId;
+        const handlePointerMove = (event: PointerEvent) => {
+            if (event.pointerId !== pointerId) return;
+            const element = document.elementFromPoint(event.clientX, event.clientY);
+            const row = element?.closest<HTMLElement>("[data-logical-model-order]");
+            const targetId = row?.dataset.logicalModelOrder ?? "";
+            updateDragOver(targetId !== draggingId ? targetId : "");
+        };
+        const finishPointerDrag = (event: PointerEvent) => {
+            if (event.pointerId !== pointerId) return;
+            const sourceId = pointerDragRef.current?.id;
+            const targetId = dragOverIdRef.current;
+            if (sourceId && targetId) reorder(sourceId, targetId);
+            pointerDragRef.current = null;
+            setDraggingId("");
+            updateDragOver("");
+        };
+        document.addEventListener("pointermove", handlePointerMove);
+        document.addEventListener("pointerup", finishPointerDrag);
+        document.addEventListener("pointercancel", finishPointerDrag);
+        return () => {
+            document.removeEventListener("pointermove", handlePointerMove);
+            document.removeEventListener("pointerup", finishPointerDrag);
+            document.removeEventListener("pointercancel", finishPointerDrag);
+        };
+    }, [draggingId, reorder, updateDragOver]);
 
     return (
         <section className="rounded-lg border border-stone-200 bg-stone-50/70 p-4 dark:border-stone-800 dark:bg-stone-900/40">
@@ -330,29 +365,42 @@ function LogicalModelDisplayOrder({ models, onChange }: { models: LogicalModel[]
                     <div
                         key={model.id}
                         data-logical-model-order={model.id}
+                        aria-grabbed={draggingId === model.id}
                         draggable
                         onDragStart={(event) => {
                             setDraggingId(model.id);
-                            setDragOverId("");
+                            updateDragOver("");
                             event.dataTransfer.effectAllowed = "move";
                             event.dataTransfer.setData("text/plain", model.id);
                         }}
                         onDragOver={(event) => {
                             event.preventDefault();
                             event.dataTransfer.dropEffect = "move";
-                            if (draggingId && draggingId !== model.id) setDragOverId(model.id);
+                            if (draggingId && draggingId !== model.id) updateDragOver(model.id);
                         }}
                         onDragLeave={(event) => {
-                            if (event.currentTarget === event.target) setDragOverId("");
+                            if (event.currentTarget === event.target) updateDragOver("");
                         }}
                         onDrop={(event) => drop(event, model.id)}
                         onDragEnd={() => {
                             setDraggingId("");
-                            setDragOverId("");
+                            updateDragOver("");
                         }}
                         className={`flex min-w-0 items-center gap-2 rounded-lg border bg-white px-2 py-2 transition dark:bg-stone-950 ${draggingId === model.id ? "border-blue-400 opacity-55 dark:border-blue-500" : dragOverId === model.id ? "border-dashed border-blue-500 bg-blue-50/70 dark:border-blue-400 dark:bg-blue-950/30" : "border-stone-200 dark:border-stone-800"}`}
                     >
-                        <span className="cursor-grab touch-none text-stone-400 active:cursor-grabbing" title={`拖动调整${model.name}的顺序`} aria-label={`拖动调整${model.name}的顺序`} role="img">
+                        <span
+                            className="cursor-grab touch-none text-stone-400 active:cursor-grabbing"
+                            title={`拖动调整${model.name}的顺序`}
+                            aria-label={`拖动调整${model.name}的顺序`}
+                            role="img"
+                            onPointerDown={(event) => {
+                                if (event.button !== 0) return;
+                                event.preventDefault();
+                                pointerDragRef.current = { id: model.id, pointerId: event.pointerId };
+                                setDraggingId(model.id);
+                                updateDragOver("");
+                            }}
+                        >
                             <GripVertical className="size-4" />
                         </span>
                         <span className="w-5 shrink-0 text-center text-xs tabular-nums text-stone-400">{index + 1}</span>

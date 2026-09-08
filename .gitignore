@@ -59,3 +59,6 @@ web/scripts/local-data-migration.mjs
 services/chatgpt-api/.venv/
 services/chatgpt-api/.pytest_cache/
 services/chatgpt-api/config.json
+
+# 本地任务探测脚本
+.octal-task.*

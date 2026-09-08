@@ -258,9 +258,10 @@ only these optional fields:
   "image_poll_interval_secs":5,
   "image_account_concurrency":1,
   "account_processing_concurrency":1,
+  "image_account_retry_enabled":true,
   "image_upscale_enabled":false,
   "image_upscale_engine":"pillow_lanczos",
-  "image_max_account_attempts":1,
+  "image_max_account_attempts":4,
   "image_remove_conversation_after_result":false,
   "image_settle_enabled":true,
   "image_settle_secs":0
@@ -268,8 +269,7 @@ only these optional fields:
 ```
 
 It cannot set proxy runtime, upstream base URL, image storage, GenBox, backup,
-third-party apps, retention cleanup, source retry flags, or account
-auto-deletion flags.
+third-party apps, retention cleanup, or account auto-deletion flags.
 
 The OpenAI request schemas remain the vendored source contracts. In particular,
 `/v1/images/generations` defaults to

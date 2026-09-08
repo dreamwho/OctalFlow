@@ -14,6 +14,108 @@ export type ChatGptAccountPage = { items: ChatGptAccount[]; total: number };
 export type ChatGptModelCatalog = { chat_models: string[]; image_models: string[]; source: { chat: string; image: string } };
 export type ChatGptKey = { id: string; name: string; enabled: boolean; created_at?: string; last_used_at?: string };
 export type ChatGptGateway = { enabled: boolean };
+export type ChatGptLogStatus = "" | "success" | "failed" | "limited";
+export type ChatGptLogField = { label: string; value: string; copyable?: boolean; wide?: boolean };
+export type ChatGptLogTimelineStep = { key: string; label: string; category: string; value_ms: number; value_text: string; tone: string; status_label: string; time: string; description: string };
+export type ChatGptLogTimeline = {
+    segments: Array<{ key: string; label: string; category: string; value_ms: number; value_text: string; tone: string }>;
+    legend_items: Array<{ key: string; label: string; category: string; tone: string }>;
+    groups: Array<{ key: string; label: string; steps: ChatGptLogTimelineStep[] }>;
+};
+export type ChatGptLogPresentation = {
+    request?: { kind?: string; primary?: string; secondary?: string };
+    execution?: { primary?: string; secondary?: string };
+    status?: { label?: string; tone?: string };
+    result?: { text?: string; diagnostics?: string };
+    summary_text?: string;
+    duration?: { text?: string; breakdown?: string; tone?: string };
+    is_failure?: boolean;
+};
+export type ChatGptLogSummary = {
+    id: string;
+    time?: string;
+    type?: string;
+    summary?: string;
+    business?: string;
+    outcome?: string;
+    display_status?: string;
+    endpoint?: string;
+    model?: string;
+    started_at?: string;
+    ended_at?: string;
+    duration_ms?: number;
+    key_id?: string;
+    key_name?: string;
+    role?: string;
+    account_email?: string;
+    conversation_id?: string;
+    status_code?: number;
+    error_code?: string;
+    public_error?: string;
+    image_requested_count?: number;
+    image_succeeded_count?: number;
+    image_failed_count?: number;
+    image_result_status?: string;
+    preview_image_url?: string;
+    attempt_count?: number;
+    switch_count?: number;
+    recovered_after_switch?: boolean;
+    presentation?: ChatGptLogPresentation;
+};
+export type ChatGptLogAttempt = {
+    slot?: number;
+    attempt?: number;
+    account_email?: string;
+    conversation_id?: string;
+    status?: string;
+    outcome?: string;
+    result_status?: string;
+    duration_ms?: number;
+    status_code?: number;
+    error_code?: string;
+    error_label?: string;
+    public_error?: string;
+    upstream_error?: string;
+    upstream_text?: string;
+    switched_account?: boolean | null;
+    timings_ms?: Record<string, number>;
+    monitor?: Record<string, unknown>;
+    presentation?: { status?: { label?: string; tone?: string }; failure_label?: string; switch_label?: string; error_code_text?: string; status_code_text?: string; timeline?: ChatGptLogTimeline };
+};
+export type ChatGptLogDetail = ChatGptLogSummary & {
+    request_text?: string;
+    request_text_full?: string;
+    request_text_truncated?: boolean;
+    request_shape?: Record<string, unknown>;
+    request_meta?: { lifecycle?: Array<{ time: string; status: string; message: string }>; [key: string]: unknown };
+    upstream_error?: string;
+    upstream_text?: string;
+    image_urls?: string[];
+    attempts?: ChatGptLogAttempt[];
+    timings_ms?: Record<string, number>;
+    perf?: Record<string, unknown>;
+    metrics?: Record<string, unknown>;
+    monitor?: Record<string, unknown>;
+    detail_presentation?: {
+        primary_fields?: ChatGptLogField[];
+        diagnostic_fields?: ChatGptLogField[];
+        auto_expand_timeline?: boolean;
+        timeline?: ChatGptLogTimeline;
+        attempt_groups?: Array<{ slot?: number; slot_label?: string; attempt_count?: number; attempt_text?: string; switch_count?: number; switch_text?: string; status?: { label?: string; tone?: string } }>;
+    };
+};
+export type ChatGptLogPage = {
+    items: ChatGptLogSummary[];
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+    facets_scope?: string;
+    stats_scope?: string;
+    total_scope?: string;
+    facets?: { statuses?: Record<string, number>; endpoints?: Record<string, number>; models?: Record<string, number>; accounts?: Record<string, number> };
+    stats?: { total?: number; success?: number; text_review?: number; failed?: number; limited?: number; image?: number };
+};
 export type ChatGptProxyRuntimeMode = "native" | "magic";
 export type ChatGptProxyNativeSource = "manual" | "ipwo";
 export type ChatGptProxyRuntime = {
@@ -75,6 +177,15 @@ export async function chatGptApiRequest<T>(path: string, init?: RequestInit): Pr
     if (!response.ok || payload?.code !== 0 || payload.data === undefined) throw new Error(payload?.msg || "GPTAPI 操作失败");
     return payload.data;
 }
+
+export const getChatGptLogs = (params: { limit?: number; offset?: number; search?: string; status?: Exclude<ChatGptLogStatus, ""> } = {}) => {
+    const query = new URLSearchParams(
+        Object.entries(params)
+            .filter(([, value]) => value !== undefined && value !== "")
+            .map(([key, value]) => [key, String(value)]),
+    );
+    return chatGptApiRequest<ChatGptLogPage>(`logs?${query}`);
+};
 
 export const getChatGptProxyRuntime = (init?: RequestInit) => chatGptApiRequest<ChatGptProxyRuntime>("proxy-selection", init);
 
