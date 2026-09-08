@@ -89,6 +89,28 @@ describe("normalizeAgentSkill", () => {
         );
     });
 
+    it("replaces the legacy local actor skill with the current backend-managed definition", () => {
+        const skills = normalizeAgentSkills([
+            {
+                id: "skill-character-casting",
+                name: "角色选角与定妆",
+                description: "旧版规则",
+                instructions: "旧版规则",
+                enabled: true,
+                keywords: ["选角"],
+                workspaces: ["image", "canvas", "drama"],
+                sourceVersion: "local-legacy",
+            },
+        ]);
+
+        expect(skills.find((skill) => skill.id === "skill-character-casting")).toMatchObject({
+            name: "演员建立",
+            previewImageUrl: "/skills/previews/character-casting-studio.png",
+            workspaces: ["image", "canvas"],
+            nodeModes: ["image"],
+        });
+    });
+
     it("keeps only recognized model, asset-role, and staged-confirmation metadata", () => {
         const skill = normalizeAgentSkill({
             id: "h3-workflow",
@@ -136,9 +158,7 @@ describe("normalizeAgentSkill", () => {
     });
 
     it("retires the legacy selectable H3 prompt skill now that H3 prompt compilation is automatic", () => {
-        const skills = normalizeAgentSkills([
-            { id: "skill-minimax-h3-prompt", name: "MiniMax H3 视频提示词", description: "旧入口", instructions: "旧规则", enabled: true, keywords: [] },
-        ]);
+        const skills = normalizeAgentSkills([{ id: "skill-minimax-h3-prompt", name: "MiniMax H3 视频提示词", description: "旧入口", instructions: "旧规则", enabled: true, keywords: [] }]);
 
         expect(skills.some((skill) => skill.id === "skill-minimax-h3-prompt")).toBe(false);
         expect(skills.some((skill) => skill.id === "minimax-h3-handdrawn-live")).toBe(true);

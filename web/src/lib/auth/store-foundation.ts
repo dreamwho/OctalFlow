@@ -3,6 +3,7 @@ import { YANAI_BEAUTY_SKILL } from "@/lib/server/agent-skills/yanai-beauty";
 import { DEFAULT_CREATIVE_SHORTCUT_SKILLS } from "@/lib/server/agent-skills/creative-shortcuts";
 import { VIDEO_REMAKE_SKILLS } from "@/lib/server/agent-skills/video-remake";
 import { PORTRAIT_IMAGE_SKILLS } from "@/lib/server/agent-skills/portrait-image";
+import { CHARACTER_CASTING_SKILL } from "@/lib/server/agent-skills/character-casting";
 import { MINIMAX_H3_OFFICIAL_STYLE_SKILLS, cloneMinimaxH3OfficialStyleSkill } from "@/lib/server/agent-skills/minimax-h3-official";
 import {
     type UserRole,
@@ -183,6 +184,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
         ...DEFAULT_CREATIVE_SHORTCUT_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...skill.workspaces] })),
         ...VIDEO_REMAKE_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...(skill.workspaces || [])] })),
         ...PORTRAIT_IMAGE_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...skill.workspaces], defaultConfig: { ...skill.defaultConfig } })),
+        { ...CHARACTER_CASTING_SKILL, keywords: [...CHARACTER_CASTING_SKILL.keywords], workspaces: [...(CHARACTER_CASTING_SKILL.workspaces || [])], defaultConfig: { ...CHARACTER_CASTING_SKILL.defaultConfig } },
         ...MINIMAX_H3_OFFICIAL_STYLE_SKILLS.map(cloneMinimaxH3OfficialStyleSkill),
     ],
 };

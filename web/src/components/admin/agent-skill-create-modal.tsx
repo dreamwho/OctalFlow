@@ -8,12 +8,7 @@ import { nanoid } from "nanoid";
 import { AGENT_SKILL_ARCHIVE_MAX_BYTES } from "@/lib/agent-skill-import-types";
 import { inferAgentSkillNodeModes } from "@/lib/agent-skill-node-policy";
 import type { AgentSkill } from "@/lib/auth/store-types";
-import {
-    importAgentSkillFromGithub,
-    importAgentSkillFromFile,
-    type AgentSkillImportCandidate,
-    type ImportedAgentSkill,
-} from "@/services/api/admin-agent-skills";
+import { importAgentSkillFromGithub, importAgentSkillFromFile, type AgentSkillImportCandidate, type ImportedAgentSkill } from "@/services/api/admin-agent-skills";
 
 type AgentSkillCreateModalProps = {
     open: boolean;
@@ -24,6 +19,7 @@ type AgentSkillCreateModalProps = {
 
 type SkillFormValues = {
     name: string;
+    previewImageUrl: string;
     description: string;
     instructions: string;
     keywords: string;
@@ -65,6 +61,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
         setImportError("");
         form.setFieldsValue({
             name: "",
+            previewImageUrl: "",
             description: "",
             instructions: "",
             keywords: "",
@@ -146,6 +143,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
             const saved = await onCreate({
                 id,
                 name: values.name.trim(),
+                previewImageUrl: values.previewImageUrl.trim() || undefined,
                 description: values.description.trim(),
                 plannerSummary: importedSkill?.plannerSummary || values.description.trim(),
                 instructions: values.instructions.trim(),
@@ -260,33 +258,16 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                             >
                                 <Button icon={<UploadCloud className="size-4" />}>选择压缩包或文件</Button>
                             </Upload>
-                            <Button
-                                type="primary"
-                                icon={<Download className="size-4" />}
-                                loading={loading}
-                                disabled={!selectedFile}
-                                onClick={() => void extractFromFile()}
-                            >
+                            <Button type="primary" icon={<Download className="size-4" />} loading={loading} disabled={!selectedFile} onClick={() => void extractFromFile()}>
                                 解析并导入
                             </Button>
                         </div>
                         {importError ? <Alert type="error" showIcon message={importError} /> : null}
                         {candidates.length ? (
                             <div className="space-y-2">
-                                <div className="text-xs text-stone-600 dark:text-stone-300">
-                                    压缩包中发现 {candidates.length} 个候选文件，请选择一个并提取：
-                                </div>
-                                <Select
-                                    className="w-full"
-                                    value={selectedPath}
-                                    options={candidates.map((item) => ({ value: item.path, label: `${item.name} · ${item.path}` }))}
-                                    onChange={setSelectedPath}
-                                />
-                                <Button
-                                    icon={<Download className="size-4" />}
-                                    loading={loading}
-                                    onClick={() => void extractFromFile(selectedPath)}
-                                >
+                                <div className="text-xs text-stone-600 dark:text-stone-300">压缩包中发现 {candidates.length} 个候选文件，请选择一个并提取：</div>
+                                <Select className="w-full" value={selectedPath} options={candidates.map((item) => ({ value: item.path, label: `${item.name} · ${item.path}` }))} onChange={setSelectedPath} />
+                                <Button icon={<Download className="size-4" />} loading={loading} onClick={() => void extractFromFile(selectedPath)}>
                                     读取选中的 Skill
                                 </Button>
                             </div>
@@ -304,9 +285,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                                 }
                             />
                         ) : (
-                            <div className="text-xs leading-5 text-stone-600 dark:text-stone-400">
-                                只读取 SKILL.md 及同目录参考文档，不执行压缩包内脚本；解析后可继续编辑名称和规则。
-                            </div>
+                            <div className="text-xs leading-5 text-stone-600 dark:text-stone-400">只读取 SKILL.md 及同目录参考文档，不执行压缩包内脚本；解析后可继续编辑名称和规则。</div>
                         )}
                     </div>
                 ) : null}
@@ -369,6 +348,9 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
                             <Input placeholder="用逗号分隔，例如：海报, 电商" />
                         </Form.Item>
                     </div>
+                    <Form.Item label="预览图地址（可选）" name="previewImageUrl" extra="可填站内路径（如 /skills/previews/example.png）或公开 HTTPS 图片地址，后台保存后会显示在 Skill 选择器中。">
+                        <Input placeholder="/skills/previews/example.png 或 https://..." />
+                    </Form.Item>
                     <Form.Item label="用途说明" name="description">
                         <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} maxLength={240} placeholder="说明这个 Skill 适合处理什么任务" />
                     </Form.Item>
@@ -425,6 +407,7 @@ export function AgentSkillCreateModal({ open, existingSkills, onClose, onCreate 
 function valuesFromSkill(skill: ImportedAgentSkill): SkillFormValues {
     return {
         name: skill.name,
+        previewImageUrl: skill.previewImageUrl || "",
         description: skill.description,
         instructions: skill.instructions,
         keywords: skill.keywords.join("、"),

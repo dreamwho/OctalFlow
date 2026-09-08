@@ -26,6 +26,9 @@ web/playwright-report
 **/*.pyc
 **/*.tsbuildinfo
 services/video-depth/models
+services/chatgpt-api/config.json
+services/chatgpt-api/.pytest_cache
+services/chatgpt-api/tests
 web/.e2e-data
 .design-qa
 .workbuddy

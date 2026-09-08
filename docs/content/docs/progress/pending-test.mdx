@@ -7,6 +7,8 @@ description: OctalFlow 当前版本需要人工或真实环境确认的事项
 
 ## 上游渠道与部署
 
+- ChatGPT API 内部运行时已打入主应用镜像并接入两套离线 Compose：镜像内置按 `uv.lock` 生成的 `.venv`，新增 `chatgpt-api` 独立服务（外部数据库模式为宿主网络 127.0.0.1:8046，内嵌数据库模式为 bridge 服务名互访），部署脚本自动生成并校验 `OCTALAICANVAS_CHATGPT_API_KEY`。Python 48 项测试、运行时与离线包脚本 11 项测试、双 Compose 渲染及容器内服务启动与健康检查已通过；服务器上真实账号导入、额度刷新、代理与网关调用仍待用户验收。
+
 - GeminiTools 的 Antigravity 内置 OAuth 客户端凭据不再写入源码，改为只从服务端环境变量 `GEMINI_TOOLS_OAUTH_CLIENT_ID` 与 `GEMINI_TOOLS_OAUTH_CLIENT_SECRET` 读取；未配置时授权入口返回明确的 400 提示，配置了 `GEMINI_TOOLS_OAUTH_REDIRECT_URI` 时按自定义客户端使用公网回调，否则按内置客户端使用本机回环回调。专项 15 项测试与类型检查通过；已有部署更新后需要在服务器 `.env` 补齐这两个变量，GeminiTools 添加账号与刷新令牌才可用，待用户在真实部署中验收。
 
 ## ChatGPT API 与上游页面分区

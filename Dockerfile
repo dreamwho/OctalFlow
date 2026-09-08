@@ -18,6 +18,12 @@ COPY services/video-depth/download_model.py ./download_model.py
 RUN OCTALAICANVAS_VIDEO_DEPTH_MODEL=/opt/video-depth-model /opt/video-depth/bin/python download_model.py \
     && /opt/video-depth/bin/python -c "from transformers import AutoImageProcessor, AutoModelForDepthEstimation; p='/opt/video-depth-model'; AutoImageProcessor.from_pretrained(p, local_files_only=True); AutoModelForDepthEstimation.from_pretrained(p, local_files_only=True)"
 
+FROM python:3.13-slim-bookworm AS chatgpt-build
+WORKDIR /app/services/chatgpt-api
+COPY services/chatgpt-api/pyproject.toml services/chatgpt-api/uv.lock ./
+RUN pip install --no-cache-dir uv \
+    && uv sync --locked --no-dev
+
 FROM node:22-bookworm-slim AS web-build
 
 WORKDIR /app/web
@@ -64,12 +70,19 @@ ENV OCTALAICANVAS_VIDEO_DEPTH_MODEL=/opt/video-depth-model
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg fonts-noto-cjk postgresql-client python3 libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg fonts-noto-cjk postgresql-client python3 libgomp1 libsqlite3-0 libbz2-1.0 libreadline8 libffi8 && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/web/scripts
 COPY --from=depth-build /opt/video-depth /opt/video-depth
 COPY --from=depth-build /opt/video-depth-model /opt/video-depth-model
 COPY services/video-depth/infer_depth_frames.py services/video-depth/NOTICE.md /app/services/video-depth/
 COPY --from=dreamina-build /usr/local/bin/dreamina /usr/local/bin/dreamina
+COPY --from=chatgpt-build /usr/local/bin/python3.13 /usr/local/bin/python3.13
+COPY --from=chatgpt-build /usr/local/lib/libpython3.13.so.1.0 /usr/local/lib/libpython3.13.so.1.0
+COPY --from=chatgpt-build /usr/local/lib/python3.13 /usr/local/lib/python3.13
+COPY services/chatgpt-api /app/services/chatgpt-api
+COPY --from=chatgpt-build /app/services/chatgpt-api/.venv /app/services/chatgpt-api/.venv
+RUN ln -sfn python3.13 /usr/local/bin/python3 && ln -sfn python3.13 /usr/local/bin/python \
+    && /app/services/chatgpt-api/.venv/bin/python -c "import fastapi, uvicorn, sqlalchemy, cryptography, curl_cffi, tiktoken, PIL, pybase64"
 
 COPY VERSION /app/VERSION
 COPY CHANGELOG.md /app/CHANGELOG.md
@@ -91,6 +104,7 @@ COPY web/scripts/restore-private-files.mjs web/scripts/restore-private-migration
 RUN cd /app/web && node -e "require('sharp')"
 COPY docker/dreamina/version.json /app/web/.data/dreamina/version.json
 RUN mkdir -p /app/web/.data/dreamina && ln -s /app/web/.data/dreamina /home/node/.dreamina_cli && chown -R node:node /app/web
+RUN install -d -o node -g node /app/web/.data/chatgpt-api
 
 EXPOSE 3000
 USER node

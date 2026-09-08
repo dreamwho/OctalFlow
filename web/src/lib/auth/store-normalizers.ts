@@ -7,6 +7,7 @@ import { YANAI_BEAUTY_SKILL } from "@/lib/server/agent-skills/yanai-beauty";
 import { DEFAULT_CREATIVE_SHORTCUT_SKILLS } from "@/lib/server/agent-skills/creative-shortcuts";
 import { VIDEO_REMAKE_SKILLS } from "@/lib/server/agent-skills/video-remake";
 import { PORTRAIT_IMAGE_SKILLS } from "@/lib/server/agent-skills/portrait-image";
+import { CHARACTER_CASTING_SKILL } from "@/lib/server/agent-skills/character-casting";
 import { LEGACY_MINIMAX_H3_PROMPT_SKILL_ID, MINIMAX_H3_OFFICIAL_STYLE_SKILLS, cloneMinimaxH3OfficialStyleSkill } from "@/lib/server/agent-skills/minimax-h3-official";
 import { resolveAgentSkillNodeModes } from "@/lib/agent-skill-node-policy";
 import { deriveLogicalModelsConfig, normalizeDefaultModelsConfig, normalizeLogicalModelsConfig } from "@/lib/model-routing-config";
@@ -427,6 +428,19 @@ export function normalizeAgentSkills(skills: AgentSkill[] | undefined) {
                 ...normalized[index],
                 previewImageUrl: skill.previewImageUrl,
                 workspaces: [...new Set([...skill.workspaces, ...(normalized[index].workspaces || [])])],
+            };
+    }
+    {
+        const index = normalized.findIndex((item) => item.id === CHARACTER_CASTING_SKILL.id);
+        if (index < 0) normalized.push({ ...CHARACTER_CASTING_SKILL, keywords: [...CHARACTER_CASTING_SKILL.keywords], workspaces: [...(CHARACTER_CASTING_SKILL.workspaces || [])], defaultConfig: { ...CHARACTER_CASTING_SKILL.defaultConfig } });
+        else if (String(normalized[index].sourceVersion || "").startsWith("local-"))
+            normalized[index] = { ...CHARACTER_CASTING_SKILL, keywords: [...CHARACTER_CASTING_SKILL.keywords], workspaces: [...(CHARACTER_CASTING_SKILL.workspaces || [])], defaultConfig: { ...CHARACTER_CASTING_SKILL.defaultConfig } };
+        else
+            normalized[index] = {
+                ...normalized[index],
+                previewImageUrl: CHARACTER_CASTING_SKILL.previewImageUrl,
+                nodeModes: CHARACTER_CASTING_SKILL.nodeModes,
+                workspaces: [...new Set([...(CHARACTER_CASTING_SKILL.workspaces || []), ...(normalized[index].workspaces || [])])],
             };
     }
     for (const skill of MINIMAX_H3_OFFICIAL_STYLE_SKILLS) {

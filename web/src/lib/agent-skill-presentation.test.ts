@@ -14,7 +14,8 @@ describe("agent skill presentation", () => {
     });
 
     it("describes reference requirements and filters media workspaces", () => {
-        expect(agentSkillPromptHint({ name: "角色三视图", description: "", requiresReference: true }, "optional")).toContain("参考素材");
+        expect(agentSkillPromptHint({ id: "other", name: "角色三视图", description: "", requiresReference: true }, "optional")).toContain("参考素材");
+        expect(agentSkillPromptHint({ id: "skill-character-casting", name: "演员建立", description: "", requiresReference: false }, "optional")).toContain("人物基础信息");
         expect(agentSkillSupportsWorkspace({ workspaces: ["image", "canvas"] }, "image")).toBe(true);
         expect(agentSkillSupportsWorkspace({ workspaces: ["image", "canvas"] }, "video")).toBe(false);
     });

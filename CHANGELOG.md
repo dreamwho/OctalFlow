@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [部署/ChatGPT API] ChatGPT API 内部运行时正式打入主应用镜像并接入离线部署：Dockerfile 新增 `python:3.13-slim` 构建阶段按 `uv.lock` 固定依赖生成 `.venv`，两套离线 Compose 新增 `chatgpt-api` 独立服务（宿主网络绑 127.0.0.1:8046 / bridge 绑 0.0.0.0 并按服务名互访），`main.py` 支持默认不变的 `--host` 参数，部署脚本自动生成 `OCTALAICANVAS_CHATGPT_API_KEY` 并校验长度；容器内已验证服务启动与 `/integration/health` 响应。
+
 - [上游/GeminiTools] Antigravity 内置 OAuth 客户端凭据不再写入源码，改为只从服务端环境变量 `GEMINI_TOOLS_OAUTH_CLIENT_ID` / `GEMINI_TOOLS_OAUTH_CLIENT_SECRET` 读取；未配置时授权入口返回明确错误，配置 `GEMINI_TOOLS_OAUTH_REDIRECT_URI` 时按自定义客户端回调。已有部署更新需在服务器 `.env` 补齐这两个变量。
 
 - [ChatGPT API] 新增全账号额度刷新进度、请求日志刷新，以及 `24h`/`7d`/`30d` 原生时间桶与模型维度统计；当前 UI 覆盖摘要、堆叠趋势、模型数量和时间表。

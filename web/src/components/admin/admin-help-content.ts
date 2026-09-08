@@ -213,8 +213,8 @@ export const adminHelpArticles: AdminHelpArticle[] = [
             },
             {
                 title: "配置 Agent Skills",
-                description: "为专业能力设置名称、分类、触发词、能力约束和执行规则，保持 Skill 与真实可用模型相匹配。",
-                checks: ["触发描述清晰且不互相冲突", "Skill 不包含用户不可用的能力", "启停后用户端选择状态正确"],
+                description: "可在 Agent Skills 页面粘贴公开 GitHub 地址或上传本地 SKILL.md，由后台默认文本 Agent 整理为中文规则；确认保存后无需修改源码即可安装、启停和维护。",
+                checks: ["触发描述清晰且不互相冲突", "Skill 不包含用户不可用的能力", "预览图地址与实际资源可访问", "启停后用户端选择状态正确"],
             },
         ],
         checks: ["文本、图片、视频和音频按启用范围在用户工作台逐项真实调用", "默认逻辑模型、绑定渠道和计费规则一致", "Agent 与 Canvas 的内部文本任务显式携带逻辑模型 ID"],

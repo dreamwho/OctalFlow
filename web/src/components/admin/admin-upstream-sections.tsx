@@ -55,7 +55,7 @@ export function AdminSkillsSection({ controller }: { controller: AdminDashboardC
         <Panel>
             <PanelHeader
                 title="Agent Skills"
-                description="管理 Agent 的专业能力、触发关键词、来源版本和执行规则。"
+                description="通过后台 Agent 解析 GitHub 或本地 Skill，自动整理为中文执行规则；确认保存后即可生效，无需修改源码。"
                 actions={
                     <>
                         <Button icon={<Plus className="size-4" />} onClick={() => setCreateModalOpen(true)}>
@@ -152,6 +152,17 @@ export function AdminSkillsSection({ controller }: { controller: AdminDashboardC
                                                       }
                                                     : item,
                                             ),
+                                        }))
+                                    }
+                                />
+                                <Input
+                                    className="mt-3"
+                                    value={skill.previewImageUrl || ""}
+                                    placeholder="预览图地址，可填 /skills/previews/example.png 或 HTTPS 图片地址"
+                                    onChange={(event) =>
+                                        setSettings((current) => ({
+                                            ...current,
+                                            agentSkills: current.agentSkills.map((item) => (item.id === skill.id ? { ...item, previewImageUrl: event.target.value.trim() || undefined } : item)),
                                         }))
                                     }
                                 />

@@ -67,6 +67,33 @@ services:
       magic-proxy:
         condition: service_healthy
 
+  chatgpt-api:
+    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
+    image: ${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}
+    container_name: octalaicanvas-chatgpt-api
+    network_mode: host
+    working_dir: /app/services/chatgpt-api
+    command: ["/app/services/chatgpt-api/.venv/bin/python", "main.py", "--port", "8046"]
+    environment:
+      OCTALAICANVAS_CHATGPT_API_KEY: ${OCTALAICANVAS_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
+      OCTALAICANVAS_ENCRYPTION_KEY: ${OCTALAICANVAS_ENCRYPTION_KEY:?请在 .env 中配置 OCTALAICANVAS_ENCRYPTION_KEY}
+      OCTALAICANVAS_CHATGPT_DATA_DIR: /app/web/.data/chatgpt-api
+    volumes:
+      - octalaicanvas-data:/app/web/.data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/services/chatgpt-api/.venv/bin/python",
+          "-c",
+          "import os,urllib.request;req=urllib.request.Request('http://127.0.0.1:8046/integration/health',headers={'x-octal-runtime-key':os.environ['OCTALAICANVAS_CHATGPT_API_KEY']});urllib.request.urlopen(req,timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
   app:
     platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
     image: ${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}
@@ -105,8 +132,12 @@ services:
       GEMINI_TOOLS_OAUTH_CLIENT_ID: ${GEMINI_TOOLS_OAUTH_CLIENT_ID:-}
       GEMINI_TOOLS_OAUTH_CLIENT_SECRET: ${GEMINI_TOOLS_OAUTH_CLIENT_SECRET:-}
       GEMINI_TOOLS_OAUTH_REDIRECT_URI: ${GEMINI_TOOLS_OAUTH_REDIRECT_URI:-}
+      OCTALAICANVAS_CHATGPT_API_URL: http://127.0.0.1:8046
+      OCTALAICANVAS_CHATGPT_API_KEY: ${OCTALAICANVAS_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
     depends_on:
       geminiai:
+        condition: service_healthy
+      chatgpt-api:
         condition: service_healthy
       magic-proxy:
         condition: service_healthy

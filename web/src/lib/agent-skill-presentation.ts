@@ -10,7 +10,8 @@ export function agentSkillPromptMode(skill: Pick<AgentSkill, "id" | "defaultConf
     return "required";
 }
 
-export function agentSkillPromptHint(skill: Pick<AgentSkill, "name" | "description" | "requiresReference">, mode: AgentSkillPromptMode) {
+export function agentSkillPromptHint(skill: Pick<AgentSkill, "id" | "name" | "description" | "requiresReference">, mode: AgentSkillPromptMode) {
+    if (skill.id === "skill-character-casting") return "请填写人物基础信息，如年龄、身份、脸型、发型、气质与服装；写明“头肩肖像”或“三视图”即可切换生成模式。";
     if (mode === "optional") return skill.requiresReference ? `点击生成，直接基于当前参考素材执行「${skill.name}」；也可继续补充细节。` : `点击生成，直接执行「${skill.name}」的默认流程；也可继续补充要求。`;
     return skill.description ? `${skill.description} 请继续描述主体、场景或目标效果。` : `请继续补充「${skill.name}」需要处理的内容。`;
 }
