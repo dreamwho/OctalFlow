@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [上游/GeminiTools] Antigravity 内置 OAuth 客户端凭据不再写入源码，改为只从服务端环境变量 `GEMINI_TOOLS_OAUTH_CLIENT_ID` / `GEMINI_TOOLS_OAUTH_CLIENT_SECRET` 读取；未配置时授权入口返回明确错误，配置 `GEMINI_TOOLS_OAUTH_REDIRECT_URI` 时按自定义客户端回调。已有部署更新需在服务器 `.env` 补齐这两个变量。
+
 - [ChatGPT API] 新增全账号额度刷新进度、请求日志刷新，以及 `24h`/`7d`/`30d` 原生时间桶与模型维度统计；当前 UI 覆盖摘要、堆叠趋势、模型数量和时间表。
 
 - [ChatGPT API/代理] 代理管理覆盖代理组、节点、默认出口、失败回退、批量导入和单节点/全组测试，代理凭据在非管理输出中脱敏；用户代理方式只有 native（移植代理管理）与 Magic Proxy 两种。Next `/api/admin/chatgpt-api/proxy-selection` 对接 Python `GET/PATCH /integration/proxy-selection`，请求体持久 `enabled`、`mode` 与 native 内部 `native_source`，默认 `false/native/manual`，响应另含 `magicConfigured`/`ipwoConfigured` 两个布尔配置状态位；关闭强制直连、开启只能一种，`native_source` 只选择 manual 或 ipwo，关闭 Magic 不自动恢复 native，URL 同步与 mode 切换分离。
