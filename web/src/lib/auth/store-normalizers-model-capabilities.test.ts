@@ -31,6 +31,32 @@ describe("system channel model capabilities", () => {
         });
     });
 
+    it("upgrades the fixed GPTAPI channel from self-HTTP credentials to the managed text and image contract", () => {
+        const normalized = normalizeSystemChannel({
+            id: "chatgpt-api",
+            name: "旧 ChatGPT 通道",
+            baseUrl: "https://canvas.example/api/chatgpt-api/v1",
+            apiKey: "legacy-source-user-key",
+            apiFormat: "openai",
+            models: ["gpt-5.6", "gpt-image-2"],
+            enabled: true,
+            advancedConfig: {
+                protocol: "openai",
+                modelCapabilities: { "gpt-5.6": "text", "gpt-image-2": "image" },
+            },
+        } as never);
+
+        expect(normalized).toMatchObject({ name: "GPTAPI", baseUrl: "", apiKey: "", hasApiKey: false });
+        expect(normalized.advancedConfig).toMatchObject({
+            protocol: "chatgpt-api",
+            authMode: "provider-managed",
+            modelConfigs: {
+                "gpt-5.6": { capability: "text", protocol: "chatgpt-api", createPath: "/chat/completions" },
+                "gpt-image-2": { capability: "image", protocol: "chatgpt-api", createPath: "/images/generations", editPath: "/images/edits" },
+            },
+        });
+    });
+
     it("normalizes supported capabilities and removes invalid entries", () => {
         const normalized = normalizeSystemChannelAdvancedConfig({
             protocol: "auto",

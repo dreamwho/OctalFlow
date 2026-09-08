@@ -2,12 +2,14 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { BriefcaseBusiness, ChevronRight, CircleCheck, CircleX, Clock3, Film, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, ShieldCheck, Sparkles, Star, Video } from "lucide-react";
+import { Button, Dropdown, Modal } from "antd";
+import { BriefcaseBusiness, ChevronDown, ChevronRight, CircleCheck, CircleX, Clock3, Copy, Expand, Film, Globe2, Image as ImageIcon, ListChecks, Minimize2, Music2, Palette, Pencil, RefreshCw, ShieldCheck, Sparkles, Star, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useCopyText } from "@/hooks/use-copy-text";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasPanoramaViewer } from "./canvas-panorama-viewer";
 import { useCanvasGenerationProgress } from "./use-canvas-generation-progress";
@@ -29,6 +31,7 @@ export type NodeContentRendererProps = {
     batchRecovering: boolean;
     renderNodeContent?: (node: CanvasNodeData) => ReactNode;
     onContentChange: (nodeId: string, content: string) => void;
+    onStartEditing?: () => void;
     onStopEditing: () => void;
     mentionReferences: CanvasResourceReference[];
     onRetry?: (node: CanvasNodeData) => void;
@@ -40,9 +43,17 @@ export type NodeContentRendererProps = {
 };
 
 export function NodeContent(props: NodeContentRendererProps) {
+    const key = `${props.node.id}:${props.node.metadata?.generationStartedAt || ""}`;
+    const status = props.node.metadata?.status;
+    const [transition, setTransition] = useState({ key, status, completing: false });
+    if (transition.key !== key || transition.status !== status) {
+        setTransition({ key, status, completing: transition.key === key && transition.status === "loading" && status === "success" });
+    }
+    const finish = useCallback(() => setTransition((current) => (current.key === key ? { ...current, completing: false } : current)), [key]);
     if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
+    if (transition.completing && transition.key === key && status === "success") return <LoadingContent key={key} theme={props.theme} scale={props.scale} node={props.node} completed onComplete={finish} />;
     if (props.isBatchRoot) return <ImageNodeContent {...props} />;
-    if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} scale={props.scale} node={props.node} />;
+    if (props.node.metadata?.status === "loading") return <LoadingContent key={key} theme={props.theme} scale={props.scale} node={props.node} />;
     if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} scale={props.scale} onRetry={props.onRetry} />;
     if (props.node.metadata?.status === "needs_review") return <ReviewContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
     if (props.node.metadata?.status === "cancelled") return <CancelledContent theme={props.theme} />;
@@ -196,21 +207,17 @@ export function BrandKitNodeContent({ node, theme }: NodeContentRendererProps) {
     );
 }
 
-export function LoadingContent({ theme, scale = 1, node }: Pick<NodeContentRendererProps, "theme" | "scale"> & { node?: NodeContentRendererProps["node"] }) {
+export function LoadingContent({ theme, scale = 1, node, completed = false, onComplete }: Pick<NodeContentRendererProps, "theme" | "scale"> & { node?: NodeContentRendererProps["node"]; completed?: boolean; onComplete?: () => void }) {
     const [videoFailed, setVideoFailed] = useState(false);
-    const { status, detail, title } = useCanvasGenerationProgress(node);
+    const { status, detail, title } = useCanvasGenerationProgress(node, completed, onComplete);
     const statusFontSize = Math.min(34, Math.max(12, 12 / Math.max(scale, 0.35)));
     return (
         <div data-canvas-node-loading role="status" aria-live="polite" aria-label={status} className="relative isolate h-full w-full overflow-hidden" style={{ background: theme.node.fill, color: theme.node.text }}>
             <img src="/generation-smoke.webp" alt="" aria-hidden="true" className={`canvas-node-generation-smoke canvas-node-generation-smoke-fallback${videoFailed ? " is-visible" : ""}`} />
             {!videoFailed ? <video src="/animations/generation-loading-animation.mp4" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" className="canvas-node-generation-video" onError={() => setVideoFailed(true)} /> : null}
-            <span
-                className="pointer-events-none absolute left-4 right-4 top-4 z-10 text-left font-medium"
-                style={{ fontSize: statusFontSize, lineHeight: 1.2, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
-                title={title}
-            >
+            <span className="pointer-events-none absolute left-4 right-4 top-4 z-10 text-left font-medium" style={{ fontSize: statusFontSize, lineHeight: 1.2, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }} title={title}>
                 {status}
-                {node?.metadata?.generationStage ? ` · ${node.metadata.generationStage}` : ""}
+                {!completed && node?.metadata?.generationStage ? ` · ${node.metadata.generationStage}` : ""}
                 {detail ? <span className="mt-1 block text-[0.85em] font-normal opacity-80">{detail}</span> : null}
             </span>
         </div>
@@ -292,34 +299,43 @@ export function UnknownNodeContent({ theme }: Pick<NodeContentRendererProps, "th
     );
 }
 
-export function TextContent({ node, theme, isEditingContent, textareaRef, mentionReferences, onContentChange, onStopEditing, onGenerateImage }: NodeContentRendererProps) {
+export function TextContent({ node, theme, isEditingContent, textareaRef, mentionReferences, onContentChange, onStartEditing, onStopEditing, onGenerateImage }: NodeContentRendererProps) {
     const fontSize = node.metadata?.fontSize || 14;
     const textStyle = { fontSize: `${fontSize}px`, lineHeight: `${Math.round(fontSize * 1.65)}px`, color: theme.node.text, boxSizing: "border-box" } as React.CSSProperties;
+    const [expanded, setExpanded] = useState(false);
+    const expandedEditorRef = useRef<HTMLTextAreaElement>(null);
+    const copyText = useCopyText();
+    const content = node.metadata?.content || "";
+    const stopCanvasInteraction = (event: React.SyntheticEvent) => event.stopPropagation();
+    const copyContent = () => copyText(content, "文本已复制");
 
     return (
-        <div className="flex h-full w-full flex-col overflow-hidden pt-8">
-            <button
-                type="button"
-                className="absolute right-3 top-3 z-20 inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-medium opacity-85 backdrop-blur-md transition hover:scale-[1.02] hover:opacity-100"
-                style={{ background: `${theme.toolbar.panel}dd`, borderColor: theme.node.stroke, color: theme.node.text }}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    onGenerateImage?.(node);
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-                title="用文本生图"
-                aria-label="用文本生图"
-            >
-                <ImageIcon className="size-3.5" />
-                生图
-            </button>
+        <div className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden pt-8">
+            <div data-canvas-no-drag className="absolute right-3 top-3 z-20 flex h-8 items-center overflow-hidden rounded-lg border backdrop-blur-md" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }} onMouseDown={stopCanvasInteraction} onPointerDown={stopCanvasInteraction} onClick={stopCanvasInteraction}>
+                <Dropdown
+                    trigger={["click"]}
+                    menu={{
+                        items: [
+                            { key: "edit", label: "编辑文本", icon: <Pencil className="size-3.5" />, onClick: onStartEditing },
+                            { key: "copy", label: "复制全文", icon: <Copy className="size-3.5" />, disabled: !content, onClick: copyContent },
+                            { key: "image", label: "用文本生图", icon: <ImageIcon className="size-3.5" />, disabled: !content, onClick: () => onGenerateImage?.(node) },
+                        ],
+                    }}
+                >
+                    <button type="button" className="inline-flex h-full items-center gap-1 px-2 text-xs transition hover:bg-black/5 dark:hover:bg-white/10" aria-label="文本操作菜单">
+                        操作 <ChevronDown className="size-3" />
+                    </button>
+                </Dropdown>
+                <button type="button" disabled={!content} className="grid h-full w-8 place-items-center border-l transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10" style={{ borderColor: theme.node.stroke }} onClick={copyContent} title="一键复制全文" aria-label="一键复制全文"><Copy className="size-3.5" /></button>
+                <button type="button" className="grid h-full w-8 place-items-center border-l transition hover:bg-black/5 dark:hover:bg-white/10" style={{ borderColor: theme.node.stroke }} onClick={() => setExpanded(true)} title="展开文本" aria-label="展开文本"><Expand className="size-3.5" /></button>
+            </div>
             {isEditingContent ? (
                 <CanvasResourceMentionTextarea
                     ref={textareaRef}
-                    className="thin-scrollbar block h-full w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent pl-4 pr-14 pt-0 pb-4 m-0 font-mono outline-none select-text appearance-none"
+                    containerClassName="min-h-0 min-w-0 flex-1 w-full"
+                    className="thin-scrollbar block h-full min-h-0 w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent pl-4 pr-14 pt-0 pb-4 m-0 font-mono outline-none select-text appearance-none"
                     style={textStyle}
-                    value={node.metadata?.content || ""}
+                    value={content}
                     references={mentionReferences}
                     highlightLabels={false}
                     onChange={(value) => onContentChange(node.id, value)}
@@ -332,10 +348,36 @@ export function TextContent({ node, theme, isEditingContent, textareaRef, mentio
                     onWheel={(event) => event.stopPropagation()}
                 />
             ) : (
-                <div className="thin-scrollbar block h-full w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent pl-4 pr-14 pt-0 pb-4 font-mono" style={textStyle} onWheel={(event) => event.stopPropagation()}>
-                    {node.metadata?.content || <span style={{ color: theme.node.placeholder }}>点击编辑文字</span>}
+                <div className="thin-scrollbar block min-h-0 min-w-0 flex-1 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent px-4 pb-4 pt-0 font-mono" style={textStyle} onWheel={(event) => event.stopPropagation()}>
+                    {content || <span style={{ color: theme.node.placeholder }}>点击编辑文字</span>}
                 </div>
             )}
+            <div className="contents" onClick={stopCanvasInteraction} onDoubleClick={stopCanvasInteraction} onMouseDown={stopCanvasInteraction} onPointerDown={stopCanvasInteraction} onWheel={stopCanvasInteraction} onContextMenu={stopCanvasInteraction}>
+                <Modal
+                    className="canvas-text-editor-modal"
+                    open={expanded}
+                    title="展开编辑文本"
+                    centered
+                    destroyOnHidden
+                    mask={{ closable: false }}
+                    width={760}
+                    style={{ maxWidth: "calc(100vw - 24px)" }}
+                    onCancel={() => setExpanded(false)}
+                    afterOpenChange={(open) => {
+                        if (open) requestAnimationFrame(() => expandedEditorRef.current?.focus({ preventScroll: true }));
+                    }}
+                    footer={null}
+                    styles={{ wrapper: { width: "100vw", maxWidth: "100vw" }, container: { background: theme.node.panel, border: `1px solid ${theme.toolbar.border}`, color: theme.node.text }, header: { background: theme.node.panel, marginBottom: 0, paddingBottom: 8 }, title: { color: theme.node.text }, body: { background: theme.node.panel, padding: "4px 12px 12px" } }}
+                >
+                    <div className="min-w-0 overflow-hidden rounded-xl border" style={{ borderColor: theme.node.stroke }}>
+                        <CanvasResourceMentionTextarea ref={expandedEditorRef} value={content} references={mentionReferences} highlightLabels={false} onChange={(value) => onContentChange(node.id, value)} aria-label="展开文本编辑器" className="thin-scrollbar h-[min(58vh,30rem)] min-h-64 w-full resize-none border-0 px-4 py-3 font-mono outline-none" style={{ ...textStyle, background: theme.node.fill }} />
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                        <Button icon={<Copy className="size-4" />} disabled={!content} onClick={copyContent}>复制全文</Button>
+                        <Button icon={<Minimize2 className="size-4" />} onClick={() => setExpanded(false)}>收起</Button>
+                    </div>
+                </Modal>
+            </div>
         </div>
     );
 }

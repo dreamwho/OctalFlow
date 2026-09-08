@@ -38,7 +38,24 @@ scripts/capture-readme-screenshots.mjs
 
 # 本地密码便签，禁止入库
 数据库密码.txt
+cloudfare数据库.txt
+ROTua4evaSsp.yaml
+backups/
+
+# 本地设计与验收材料，禁止入库
+.design-qa/
+.workbuddy/
+design-references/
+design-qa.md
+品牌图标LOGO/
 
 # 服务器部署包（含密钥，禁止入库）
 待上传文件_*
 本次修改需上传文件_*
+private-migration/
+web/scripts/local-data-migration.mjs
+
+# ChatGPT 内部运行时：依赖环境和私有数据不得入库
+services/chatgpt-api/.venv/
+services/chatgpt-api/.pytest_cache/
+services/chatgpt-api/config.json

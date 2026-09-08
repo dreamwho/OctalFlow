@@ -9,13 +9,70 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from "@
 
 test.describe.configure({ mode: "serial" });
 
+for (const outcome of ["success-50", "success-70", "failure", "reduced"] as const)
+    test(`confirmed ${outcome} handles estimated mid-progress without an abrupt successful result`, async ({ page, request }) => {
+        const url = "/animations/generation-loading-animation.mp4";
+        const project = await createCanvasProject(request, {
+            title: "完成进度收尾回归",
+            viewport: { x: 0, y: 0, k: 1 },
+            nodes: [node("completion-source", "video", 20, 140, 340, 191, { status: "success", content: url, serverUrl: url, storageKey: "completion-fixture.mp4" })],
+            connections: [],
+        });
+        let finish!: () => void;
+        const ready = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        await page.route("**/api/canvas/video-depth", async (route) => {
+            await ready;
+            await route.fulfill({
+                contentType: "application/x-ndjson",
+                body: `${JSON.stringify(outcome === "failure" ? { code: 502, msg: "完成进度测试失败" } : { code: 0, data: { video: { serverUrl: url, storageKey: "completed-fixture.mp4", mimeType: "video/mp4", bytes: 1, width: 480, height: 480 } } })}\n`,
+            });
+        });
+        try {
+            await page.clock.install();
+            if (outcome === "reduced") await page.emulateMedia({ reducedMotion: "reduce" });
+            await page.goto(`/canvas/${project.id}`);
+            await page.locator('[data-node-id="completion-source"]').click({ button: "right", position: { x: 100, y: 80 } });
+            await page.getByRole("menuitem", { name: "深度提取", exact: true }).click();
+            const result = page.locator('[data-node-id^="video-depth-"]');
+            const loading = result.locator("[data-canvas-node-loading]");
+            await expect(loading).toHaveAttribute("aria-label", /生成中 预计/);
+            await page.clock.fastForward(outcome === "success-70" ? 68_000 : 42_000);
+            await expect(loading).toHaveAttribute("aria-label", outcome === "success-70" ? /生成中 预计 7\d%/ : /生成中 预计 [45]\d%/);
+            finish();
+            if (outcome.startsWith("success")) {
+                await expect(loading).toHaveAttribute("aria-label", /生成完成 \d+%/);
+                await page.clock.runFor(360);
+                await expect(loading).toHaveAttribute("aria-label", "生成完成 100%");
+                await page.screenshot({ path: `.e2e-artifacts/completion-${outcome}-100.png` });
+                await page.clock.runFor(150);
+            }
+            await expect(loading).toHaveCount(0);
+            if (outcome === "failure") await expect(result.getByRole("alert")).toContainText("完成进度测试失败");
+            else await expect(result.locator("video")).toHaveAttribute("src", url);
+            await page.clock.runFor(1000);
+            await expectCanvasSaved(page);
+            await page.reload();
+            await expect(page.locator("[data-canvas-node-loading]")).toHaveCount(0);
+        } finally {
+            finish();
+            await deleteCanvasProject(request, project.id);
+        }
+    });
+
 test("estimated generation progress advances and survives reload without claiming completion", async ({ page, request }) => {
     const startedAt = Date.now() - 180_000;
-    const project = await createCanvasProject(request, { title: "预计进度回归", viewport: { x: 0, y: 0, k: 1 }, nodes: [node("estimated-progress", "image", 20, 140, 340, 191, { status: "loading", generationStartedAt: startedAt }), node("fresh-progress", "text", 420, 140, 340, 191, { status: "loading" })], connections: [] });
+    const project = await createCanvasProject(request, {
+        title: "预计进度回归",
+        viewport: { x: 0, y: 0, k: 1 },
+        nodes: [node("estimated-progress", "image", 20, 140, 340, 191, { status: "loading", generationStartedAt: startedAt }), node("fresh-progress", "text", 420, 140, 340, 191, { status: "loading" })],
+        connections: [],
+    });
     try {
         await page.goto(`/canvas/${project.id}`);
         const loading = page.locator('[data-node-id="estimated-progress"] [data-canvas-node-loading]');
-        await expect(loading).toHaveAttribute("aria-label", /生成中 预计 8\d%/);
+        await expect(loading).toHaveAttribute("aria-label", /生成中 预计 9\d%/);
         await expect(loading).toContainText("已等待 3:");
         await expect(loading).toContainText("等待结果");
         const fresh = page.locator('[data-node-id="fresh-progress"] [data-canvas-node-loading]');
@@ -23,7 +80,7 @@ test("estimated generation progress advances and survives reload without claimin
         await expect(fresh).not.toHaveAttribute("aria-label", initial!);
         const before = Number((await loading.getAttribute("aria-label"))!.match(/\d+/)![0]);
         await page.reload();
-        await expect(loading).toHaveAttribute("aria-label", /生成中 预计 8\d%/);
+        await expect(loading).toHaveAttribute("aria-label", /生成中 预计 9\d%/);
         expect(Number((await loading.getAttribute("aria-label"))!.match(/\d+/)![0])).toBeGreaterThanOrEqual(before);
         for (const width of [1440, 390, 430]) {
             await page.setViewportSize({ width, height: 900 });
@@ -1026,14 +1083,14 @@ test("canvas remains operable with 2000 nodes and 5000 connections", async ({ pa
     }
 });
 
-test("canvas restores all nine node types and opens text editing on a single click", async ({ page, request }) => {
+test("canvas restores all nine node types and opens text editing on a single click", async ({ page, request }, testInfo) => {
     const project = await createCanvasProject(request, {
         title: `Canvas 节点矩阵 ${randomUUID().slice(0, 8)}`,
         viewport: { x: 90, y: 80, k: 0.75 },
         nodes: [
             node("matrix-image", "image", 40, 80, 240, 180, { content: "/logo.svg", naturalWidth: 240, naturalHeight: 180 }),
             node("matrix-panorama", "panorama", 340, 80, 300, 150, { content: "/logo.svg", naturalWidth: 300, naturalHeight: 150 }),
-            node("matrix-text", "text", 700, 80, 260, 180, { content: "单击编辑文本" }),
+            node("matrix-text", "text", 700, 80, 260, 180, { content: Array.from({ length: 18 }, (_, index) => `第${index + 1}段完整文本`).join("\n") }),
             node("matrix-config", "config", 1020, 80, 300, 180, { generationMode: "image", model: "" }),
             node("matrix-video", "video", 40, 360, 260, 170, { content: "/logo.svg", mimeType: "video/mp4" }),
             node("matrix-audio", "audio", 340, 360, 260, 150, { content: "/logo.svg", mimeType: "audio/mpeg" }),
@@ -1057,7 +1114,7 @@ test("canvas restores all nine node types and opens text editing on a single cli
     const expectNodeTheme = async (theme: "light" | "dark") => {
         const colors =
             theme === "light"
-                ? { fill: "rgb(238, 246, 251)", panel: "rgb(255, 255, 255)", stroke: "rgb(217, 231, 238)", text: "rgb(30, 41, 59)", subtle: "rgb(248, 250, 252)", subtleText: "rgb(71, 85, 105)" }
+                ? { fill: "rgb(246, 247, 251)", panel: "rgb(255, 255, 255)", stroke: "rgb(226, 229, 239)", text: "rgb(32, 37, 50)", subtle: "rgb(248, 248, 251)", subtleText: "rgb(82, 88, 102)" }
                 : { fill: "rgb(17, 19, 24)", panel: "rgb(15, 17, 21)", stroke: "rgb(48, 54, 66)", text: "rgb(248, 250, 252)", subtle: "rgb(26, 31, 39)", subtleText: "rgb(203, 213, 225)" };
 
         for (const [id, type] of nodeTypes) {
@@ -1094,10 +1151,70 @@ test("canvas restores all nine node types and opens text editing on a single cli
         const textEditor = textNode.locator("textarea");
         await expect(textEditor).toBeVisible();
         await expect.poll(() => textEditor.evaluate((element) => document.activeElement === element)).toBe(true);
+        await expect(textEditor).toHaveValue(/第1段完整文本[\s\S]*第18段完整文本/);
+        expect(await textEditor.evaluate((element) => element.scrollTop)).toBe(0);
+        const textNodeBounds = await textNode.boundingBox();
+        const textEditorMetrics = await textEditor.evaluate((element) => {
+            const wrapper = element.parentElement;
+            const rect = element.getBoundingClientRect();
+            const wrapperRect = wrapper?.getBoundingClientRect();
+            return {
+                height: rect.height,
+                wrapperHeight: wrapperRect?.height ?? 0,
+                clientHeight: element.clientHeight,
+                scrollHeight: element.scrollHeight,
+            };
+        });
+        expect(textNodeBounds).not.toBeNull();
+        expect(textEditorMetrics.height).toBeGreaterThan(textNodeBounds!.height * 0.75);
+        expect(textEditorMetrics.wrapperHeight).toBeGreaterThan(textNodeBounds!.height * 0.75);
+        expect(textEditorMetrics.scrollHeight).toBeGreaterThan(textEditorMetrics.clientHeight);
+        await textEditor.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+        });
+        await expect.poll(() => textEditor.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
         await textEditor.fill("单击后立即可编辑");
 
+        await page.getByRole("button", { name: "文本操作菜单", exact: true }).click();
+        await expect(page.getByRole("menuitem", { name: "编辑文本", exact: true })).toBeVisible();
+        await expect(page.getByRole("menuitem", { name: "复制全文", exact: true })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menuitem", { name: "编辑文本", exact: true })).toBeHidden();
+        await textNode.getByRole("button", { name: "一键复制全文", exact: true }).click();
+        await expect(page.getByText("文本已复制", { exact: true })).toBeVisible();
+        await textNode.getByRole("button", { name: "展开文本", exact: true }).click();
+        const expandedTextDialog = page.getByRole("dialog", { name: "展开编辑文本", exact: true });
+        await expect(expandedTextDialog).toBeVisible();
+        const expandedEditor = expandedTextDialog.getByRole("textbox", { name: "展开文本编辑器", exact: true });
+        await expect(expandedEditor).toHaveValue("单击后立即可编辑");
+        await expandedEditor.fill("展开编辑后保存完整内容");
+        await expect.poll(() => expandedTextDialog.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+        await page.screenshot({ path: testInfo.outputPath("text-node-expanded-desktop.png") });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect
+            .poll(async () => {
+                const bounds = await expandedTextDialog.boundingBox();
+                return bounds ? bounds.x + bounds.width : Number.POSITIVE_INFINITY;
+            })
+            .toBeLessThanOrEqual(391);
+        const mobileDialogBounds = await expandedTextDialog.boundingBox();
+        expect(mobileDialogBounds).not.toBeNull();
+        expect(mobileDialogBounds!.x).toBeGreaterThanOrEqual(0);
+        expect(mobileDialogBounds!.x + mobileDialogBounds!.width).toBeLessThanOrEqual(391);
+        await expectNoHorizontalOverflow(page, "文本节点展开编辑器 390px");
+        await page.screenshot({ path: testInfo.outputPath("text-node-expanded-390.png") });
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await expandedTextDialog.getByRole("button", { name: "收起", exact: true }).click();
+        await expect(expandedTextDialog).toBeHidden();
+        await expect(textNode.getByText("展开编辑后保存完整内容", { exact: true })).toBeVisible();
+        await textNode.click({ position: { x: 28, y: 120 } });
+        const selectedBorder = textNode.locator("[data-canvas-node-selection-flow] rect");
+        await expect(selectedBorder).toHaveAttribute("x", "0.8");
+        await expect(selectedBorder).toHaveAttribute("width", "98.4");
+        await textNode.screenshot({ path: testInfo.outputPath("text-node-selected.png") });
+
         await page.reload({ waitUntil: "domcontentloaded" });
-        await expect(page.locator('[data-node-id="matrix-text"]').getByText("单击后立即可编辑")).toBeVisible();
+        await expect(page.locator('[data-node-id="matrix-text"]').getByText("展开编辑后保存完整内容")).toBeVisible();
         await page.getByRole("button", { name: "切换到深色主题" }).click();
         await expect(page.locator("html")).toHaveClass(/dark/);
         await expectNodeTheme("dark");

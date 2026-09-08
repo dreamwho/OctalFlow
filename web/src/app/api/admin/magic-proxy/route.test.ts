@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     auditFailure: vi.fn(),
     routeError: vi.fn((error: Error) => Response.json({ code: 500, data: null, msg: error.message }, { status: 500 })),
     readJson: vi.fn(),
+    subscriptionBodyBytes: vi.fn(() => 4 * 1024 * 1024),
     getOverview: vi.fn(),
     updateBinding: vi.fn(),
     importSubscription: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@/lib/server/magic-proxy-admin", () => ({
     auditMagicProxyFailure: mocks.auditFailure,
     magicProxyRouteError: mocks.routeError,
     readMagicProxyAdminJson: mocks.readJson,
+    magicProxySubscriptionRequestBodyBytes: mocks.subscriptionBodyBytes,
 }));
 vi.mock("@/lib/server/magic-proxy-service", () => ({
     getMagicProxyOverview: mocks.getOverview,
@@ -79,5 +81,15 @@ describe("magic proxy admin routes", () => {
         expect(postPayload.data).toEqual(overview);
         expect(postPayload.data.groups.every((group: { now: unknown }) => typeof group.now === "string")).toBe(true);
         expect(mocks.auditAction).toHaveBeenLastCalledWith(expect.any(Request), user, "admin.magic_proxy.subscription.import", { type: "magic_proxy_subscription", id: "default" }, { nodeCount: 1 });
+    });
+
+    it("accepts local subscription content with the larger request-body limit and audits it separately", async () => {
+        const content = "proxies:\n  - name: Local-01\n    type: http\n    server: proxy.example\n    port: 443\n";
+        mocks.readJson.mockResolvedValue({ content });
+        await POST(new Request("http://localhost/api/admin/magic-proxy/subscription", { method: "POST", body: JSON.stringify({ content }) }));
+
+        expect(mocks.readJson).toHaveBeenCalledWith(expect.any(Request), 4 * 1024 * 1024);
+        expect(mocks.importSubscription).toHaveBeenCalledWith({ content });
+        expect(mocks.auditAction).toHaveBeenLastCalledWith(expect.any(Request), user, "admin.magic_proxy.subscription.file_import", { type: "magic_proxy_subscription", id: "default" }, { nodeCount: 1 });
     });
 });

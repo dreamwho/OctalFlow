@@ -1,4 +1,4 @@
-export type MagicProxyProvider = "geminiai" | "geminiTools";
+export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi";
 
 export type MagicProxyNode = {
     name: string;
@@ -35,6 +35,8 @@ export type MagicProxyBindingPatch = {
     node?: string;
 };
 
+export type MagicProxySubscriptionImport = { url?: string; content?: string };
+
 type ApiEnvelope<T> = { code?: number; data?: T; msg?: string; error?: string };
 
 async function request<T>(path: string, init?: RequestInit) {
@@ -56,10 +58,10 @@ const json = (value: unknown) => JSON.stringify(value);
 export const getMagicProxy = () => request<MagicProxyState>("/api/admin/magic-proxy");
 export const getMagicProxyState = getMagicProxy;
 
-export const importMagicProxySubscription = (url: string) =>
+export const importMagicProxySubscription = (input: string | MagicProxySubscriptionImport) =>
     request<MagicProxyState>("/api/admin/magic-proxy/subscription", {
         method: "POST",
-        body: json({ url }),
+        body: json(typeof input === "string" ? { url: input } : input),
     });
 
 export const refreshMagicProxySubscription = () =>

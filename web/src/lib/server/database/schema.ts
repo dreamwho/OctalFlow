@@ -191,10 +191,14 @@ CREATE TABLE IF NOT EXISTS magic_proxy_settings (
     geminiai_node text,
     gemini_tools_enabled boolean NOT NULL DEFAULT false,
     gemini_tools_node text,
+    chatgpt_api_enabled boolean NOT NULL DEFAULT false,
+    chatgpt_api_node text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT magic_proxy_settings_singleton CHECK (id = 'default')
 );
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_enabled boolean NOT NULL DEFAULT false;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_node text;
 INSERT INTO magic_proxy_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS gemini_tools_accounts (

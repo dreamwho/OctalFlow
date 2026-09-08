@@ -79,7 +79,7 @@ function resolved(kind: ResolvedTextProtocolKind, path: string): ResolvedTextPro
 }
 
 function isChatPreset(protocol: SystemChannelProtocol | undefined) {
-    return protocol === "openai" || protocol === "sub2api" || protocol === "newapi" || protocol === "lingkeai";
+    return protocol === "openai" || protocol === "sub2api" || protocol === "newapi" || protocol === "lingkeai" || protocol === "chatgpt-api";
 }
 
 function isResponsesPath(value: string) {

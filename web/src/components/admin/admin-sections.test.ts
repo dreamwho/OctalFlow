@@ -8,6 +8,7 @@ describe("admin sections", () => {
         expect(parseAdminSection("magicProxy")).toBe("magicProxy");
         expect(parseAdminSection("geminiai")).toBe("geminiai");
         expect(parseAdminSection("geminiTools")).toBe("geminiTools");
+        expect(parseAdminSection("chatgptApi")).toBe("chatgptApi");
         expect(parseAdminSection("dreamina")).toBe("dreamina");
         expect(parseAdminSection("runninghub")).toBe("runninghub");
         expect(parseAdminSection(["skills", "channels"])).toBe("skills");
@@ -24,6 +25,8 @@ describe("admin sections", () => {
         const upstreamOperator = { role: "admin", status: "active", adminPermissions: ["upstream.manage"] };
 
         expect(canAccessAdminSection(auditor, "backup")).toBe(false);
+        expect(canAccessAdminSection(auditor, "chatgptApi")).toBe(false);
+        expect(canAccessAdminSection(upstreamOperator, "chatgptApi")).toBe(true);
         expect(canAccessAdminSection(auditor, "geminiai")).toBe(false);
         expect(canAccessAdminSection(auditor, "magicProxy")).toBe(false);
         expect(canAccessAdminSection(upstreamOperator, "magicProxy")).toBe(true);

@@ -146,6 +146,7 @@ export function serializePublicSettings(settings: AuthSettings) {
                 name: model.name,
                 capability: model.capability,
                 enabled: true,
+                pickerVisible: model.pickerVisible !== false,
                 bindings: model.bindings
                     .filter((binding) => binding.enabled)
                     .map((binding) => ({

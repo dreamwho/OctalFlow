@@ -102,11 +102,13 @@ describe("admin model catalog", () => {
                 data: [
                     { id: "openai-text", capability: "text", api_format: "openai", endpoint: "/chat/completions" },
                     { id: "sd2.0", capability: "video", protocol: "seedance", endpoint: "/videos", query_path: "/videos/:task_id" },
+                    { id: "runtime-image", capability: "image", protocol: "chatgpt-api", endpoint: "/images/generations" },
                 ],
             }),
         ).toEqual({
             "openai-text": { capability: "text", source: "provider", apiFormat: "openai", createPath: "/chat/completions" },
             "sd2.0": { capability: "video", source: "provider", protocol: "seedance", createPath: "/videos", queryPath: "/videos/:task_id" },
+            "runtime-image": { capability: "image", source: "provider", protocol: "chatgpt-api", createPath: "/images/generations" },
         });
     });
 

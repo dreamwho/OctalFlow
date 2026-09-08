@@ -66,7 +66,7 @@ export function AdminChannelWorkspace({ settings, fetchingModelId, saving, onCha
                         <span className="max-w-[240px] truncate font-medium text-stone-950 dark:text-stone-100">{channel.name || "未命名渠道"}</span>
                         <ChannelStatusTag channel={channel} />
                     </div>
-                    <div className="mt-1 max-w-[320px] truncate text-xs text-stone-500 dark:text-stone-400">{channel.baseUrl || "未配置 Base URL"}</div>
+                    <div className="mt-1 max-w-[320px] truncate text-xs text-stone-500 dark:text-stone-400">{channel.advancedConfig?.protocol === "chatgpt-api" ? "GPTAPI 托管运行时 · 无需填写地址或密钥" : channel.baseUrl || "未配置 Base URL"}</div>
                 </div>
             ),
         },

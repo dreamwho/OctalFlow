@@ -273,7 +273,7 @@ export function useAdminDashboardSettingsActions({ state, data }: { state: Admin
             message.warning("当前协议没有可用的模型目录，请手动填写上游模型 ID");
             return;
         }
-        if (!channel.baseUrl.trim()) {
+        if (!channel.baseUrl.trim() && channel.advancedConfig?.protocol !== "chatgpt-api") {
             message.error("请先填写该渠道的 Base URL");
             return;
         }
@@ -292,7 +292,7 @@ export function useAdminDashboardSettingsActions({ state, data }: { state: Admin
     };
 
     const fetchAllModels = async () => {
-        const runnable = settings.systemChannels.filter((channel) => channel.baseUrl.trim() && channelSupportsModelCatalog(channel));
+        const runnable = settings.systemChannels.filter((channel) => (channel.baseUrl.trim() || channel.advancedConfig?.protocol === "chatgpt-api") && channelSupportsModelCatalog(channel));
         if (!runnable.length) {
             message.warning("当前没有可同步模型目录的渠道；请先配置目录，或手动维护模型 ID");
             return;

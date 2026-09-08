@@ -254,6 +254,17 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
         strict: true,
     },
     {
+        id: "chatgpt-api",
+        label: "GPTAPI",
+        description: "通过服务器已配置的 ChatGPT 内部运行时调用；模型只能从该运行时的文本与图片目录中选择。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image"],
+        operations: { text: openAiOperations.text, image: openAiOperations.image },
+        strict: true,
+    },
+    {
         id: "dreamina-cli",
         label: "即梦 CLI",
         description: "服务器本地已授权的即梦 CLI 渠道。只可由图片、视频和 Canvas 任务 Runtime 调用，不提供通用 HTTP 代理或模型目录探测。",

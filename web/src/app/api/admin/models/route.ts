@@ -31,6 +31,7 @@ import { channelProtocolDefinition, protocolAuthHeaders, protocolModelConfig, re
 import type { SystemChannelAdvancedConfig, SystemChannelProtocol } from "@/lib/auth/store";
 import { GEMINIAI_PROTOCOL } from "@/lib/server/geminiai-provider";
 import { listGeminiAiCatalog } from "@/lib/server/geminiai-service";
+import { getChatGptModelCatalog } from "@/lib/server/chatgpt-api-models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +77,13 @@ export async function POST(request: Request) {
     const selectedChannelId = typeof body.channelId === "string" ? body.channelId.trim() : "";
     const selectedChannel = selectedChannelId ? settings.systemChannels.find((channel) => channel.id === selectedChannelId) : undefined;
     const selectedProtocol = typeof body.protocol === "string" ? body.protocol : selectedChannel?.advancedConfig?.protocol;
+    if (selectedProtocol === "chatgpt-api") {
+        try {
+            return NextResponse.json(await getChatGptModelCatalog());
+        } catch {
+            return NextResponse.json({ error: "拉取 GPTAPI 模型目录失败，请检查 GPTAPI 运行时是否已启动" }, { status: 502 });
+        }
+    }
     if (selectedProtocol === GEMINIAI_PROTOCOL) {
         try {
             const catalog = await listGeminiAiCatalog();

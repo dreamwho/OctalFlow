@@ -179,6 +179,19 @@ describe("model routing config", () => {
         expect(synchronizeLogicalModelsWithChannels(existing, [channel("one", ["vendor/image-v2"])])[0]?.name).toBe("商业图片 Pro");
     });
 
+    it("preserves model picker visibility and administrator ordering", () => {
+        const existing: LogicalModel[] = [
+            { id: "image-second", name: "第二模型", capability: "image", enabled: true, pickerVisible: false, bindings: [{ id: "second", channelId: "one", upstreamModel: "image-second", enabled: true, priority: 1 }] },
+            { id: "image-first", name: "第一模型", capability: "image", enabled: true, bindings: [{ id: "first", channelId: "one", upstreamModel: "image-first", enabled: true, priority: 1 }] },
+        ];
+
+        const normalized = synchronizeLogicalModelsWithChannels(existing, [channel("one", ["image-first", "image-second"])]);
+
+        expect(normalized.map((model) => model.id)).toEqual(["image-second", "image-first"]);
+        expect(normalized[0]?.pickerVisible).toBe(false);
+        expect(normalized[1]?.pickerVisible).toBeUndefined();
+    });
+
     it("preserves a per-binding display name across catalog synchronization", () => {
         const existing: LogicalModel[] = [
             {

@@ -124,6 +124,20 @@ describe("applyPublicSystemSettings", () => {
         expect(resolveModelChannel(config, "image-plus").id).toBe("channel-b");
         expect(resolveModelRequestConfig(config, "image-plus")).toMatchObject({ model: "gpt-image-2", modelId: "image-plus", baseUrl: "/api/ai/system/channel-b" });
     });
+
+    it("keeps administrator ordering and hides picker-disabled models without falling back to raw channel models", () => {
+        const settings = splitLogicalModelSettings();
+        settings.logicalModels = [
+            { ...settings.logicalModels![1], pickerVisible: true },
+            { ...settings.logicalModels![0], pickerVisible: false },
+        ];
+
+        const config = applyPublicSystemSettings(defaultConfig, settings);
+
+        expect(config.imageModels).toEqual(["image-plus"]);
+        expect(config.models).toEqual(["image-plus"]);
+        expect(config.logicalModels.map((model) => model.id)).toEqual(["image-plus", "image-pro"]);
+    });
 });
 
 function rawModelSettings(): PublicSystemSettings {

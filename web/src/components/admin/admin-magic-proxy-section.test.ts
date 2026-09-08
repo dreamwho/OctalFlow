@@ -17,7 +17,10 @@ describe("magic proxy admin section", () => {
         expect(source).toContain("<Input.Password");
         expect(source).toContain('autoComplete="new-password"');
         expect(source).toContain("导入/替换订阅");
-        expect(source).toContain("更新订阅");
+        expect(source).toContain("YAML / 文本文件导入");
+        expect(source).toContain('type="file"');
+        expect(source).toContain("导入文件");
+        expect(source).toContain("更新订阅地址");
         expect(source).toContain("runtimeAvailable");
         expect(source).toContain("state.groups.map");
         expect(source).toContain("state.nodes.map");

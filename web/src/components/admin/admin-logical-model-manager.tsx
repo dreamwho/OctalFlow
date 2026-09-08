@@ -2,12 +2,13 @@
 
 import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { AlertTriangle, GitBranch, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
-import { type ChangeEvent, useDeferredValue, useMemo, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
+import { type ChangeEvent, type DragEvent, useDeferredValue, useMemo, useState } from "react";
 
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
 import { capabilityLabel, isLogicalModelResolvable, normalizeDefaultModelsConfig, resolveLogicalModelConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
+import { moveLogicalModel, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
 
 type Props = {
     channels: SystemModelChannel[];
@@ -149,6 +150,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                             <Tag color={model.enabled ? "green" : "default"} className="m-0">
                                                 {model.enabled ? "启用" : "停用"}
                                             </Tag>
+                                            {model.pickerVisible === false ? <Tag className="m-0">节点隐藏</Tag> : null}
                                             {isDefault ? (
                                                 <Tag color="blue" className="m-0">
                                                     默认
@@ -185,34 +187,37 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                     </div>
                 </div>
 
-                <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-4 dark:border-stone-800 dark:bg-stone-900/40">
-                    <SectionTitle icon={<GitBranch className="size-4" />} title="默认模型" />
-                    <div className="mt-4 space-y-4">
-                        {availableDefaultFields.map(({ capability, key, label }) => {
-                            const options = logicalModels.filter((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)).map((model) => ({ label: model.name, value: model.id }));
-                            const selected = logicalModels.find((model) => model.id === defaultModels[key]);
-                            const resolved = selected ? resolveLogicalModelConfig(logicalModels, channels, capability, selected.id) : null;
-                            return (
-                                <LabeledControl key={key} label={label}>
-                                    <Select
-                                        className="w-full"
-                                        allowClear
-                                        showSearch
-                                        optionFilterProp="label"
-                                        value={defaultModels[key] || undefined}
-                                        placeholder={`选择可用${capabilityLabel(capability)}模型`}
-                                        options={options}
-                                        status={defaultModels[key] && !resolved ? "error" : undefined}
-                                        onChange={(value: string | undefined) => updateDefault(key, value || "")}
-                                    />
-                                    <div className={`mt-1 flex items-center gap-1 text-xs ${resolved ? "text-stone-500 dark:text-stone-400" : "text-amber-600 dark:text-amber-400"}`}>
-                                        {!resolved ? <AlertTriangle className="size-3.5 shrink-0" /> : null}
-                                        <span>{resolved ? `实际路由：${resolved.channel.name} / ${resolved.binding.upstreamModel}` : defaultModels[key] ? "当前默认模型不可解析" : "尚未设置默认模型"}</span>
-                                    </div>
-                                </LabeledControl>
-                            );
-                        })}
+                <div className="min-w-0 space-y-4">
+                    <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-4 dark:border-stone-800 dark:bg-stone-900/40">
+                        <SectionTitle icon={<GitBranch className="size-4" />} title="默认模型" />
+                        <div className="mt-4 space-y-4">
+                            {availableDefaultFields.map(({ capability, key, label }) => {
+                                const options = logicalModels.filter((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)).map((model) => ({ label: model.name, value: model.id }));
+                                const selected = logicalModels.find((model) => model.id === defaultModels[key]);
+                                const resolved = selected ? resolveLogicalModelConfig(logicalModels, channels, capability, selected.id) : null;
+                                return (
+                                    <LabeledControl key={key} label={label}>
+                                        <Select
+                                            className="w-full"
+                                            allowClear
+                                            showSearch
+                                            optionFilterProp="label"
+                                            value={defaultModels[key] || undefined}
+                                            placeholder={`选择可用${capabilityLabel(capability)}模型`}
+                                            options={options}
+                                            status={defaultModels[key] && !resolved ? "error" : undefined}
+                                            onChange={(value: string | undefined) => updateDefault(key, value || "")}
+                                        />
+                                        <div className={`mt-1 flex items-center gap-1 text-xs ${resolved ? "text-stone-500 dark:text-stone-400" : "text-amber-600 dark:text-amber-400"}`}>
+                                            {!resolved ? <AlertTriangle className="size-3.5 shrink-0" /> : null}
+                                            <span>{resolved ? `实际路由：${resolved.channel.name} / ${resolved.binding.upstreamModel}` : defaultModels[key] ? "当前默认模型不可解析" : "尚未设置默认模型"}</span>
+                                        </div>
+                                    </LabeledControl>
+                                );
+                            })}
+                        </div>
                     </div>
+                    <LogicalModelDisplayOrder models={logicalModels} onChange={(nextModels) => onChange({ logicalModels: nextModels, defaultModels })} />
                 </div>
             </div>
 
@@ -291,6 +296,85 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                     </>
                 ) : null}
             </Drawer>
+        </section>
+    );
+}
+
+function LogicalModelDisplayOrder({ models, onChange }: { models: LogicalModel[]; onChange: (models: LogicalModel[]) => void }) {
+    const [capability, setCapability] = useState<LogicalModelCapability>("image");
+    const [draggingId, setDraggingId] = useState("");
+    const [dragOverId, setDragOverId] = useState("");
+    const scopedModels = models.filter((model) => model.capability === capability);
+    const nodeLabel = `${capabilityLabel(capability)}节点`;
+    const visibleCount = scopedModels.filter((model) => model.enabled && model.pickerVisible !== false).length;
+    const reorder = (sourceId: string, targetId: string) => onChange(reorderLogicalModels(models, capability, sourceId, targetId));
+    const drop = (event: DragEvent<HTMLDivElement>, targetId: string) => {
+        event.preventDefault();
+        if (draggingId) reorder(draggingId, targetId);
+        setDraggingId("");
+        setDragOverId("");
+    };
+
+    return (
+        <section className="rounded-lg border border-stone-200 bg-stone-50/70 p-4 dark:border-stone-800 dark:bg-stone-900/40">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <SectionTitle icon={<ListOrdered className="size-4" />} title="节点模型显示与排序" />
+                <Tag color={visibleCount ? "blue" : "default"} className="m-0">
+                    显示 {visibleCount}/{scopedModels.length}
+                </Tag>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">选择节点类型后拖动模型调整下拉顺序；关闭“显示”只隐藏节点选项，不删除模型或渠道路由。</p>
+            <Select className="mt-3 w-full" aria-label="选择节点模型类型" value={capability} options={capabilityOptions.map((item) => ({ ...item, label: `${item.label}节点` }))} onChange={setCapability} />
+            <div className="mt-3 space-y-2 pr-1" aria-label={`${nodeLabel}模型排序`}>
+                {scopedModels.map((model, index) => (
+                    <div
+                        key={model.id}
+                        data-logical-model-order={model.id}
+                        draggable
+                        onDragStart={(event) => {
+                            setDraggingId(model.id);
+                            setDragOverId("");
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", model.id);
+                        }}
+                        onDragOver={(event) => {
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = "move";
+                            if (draggingId && draggingId !== model.id) setDragOverId(model.id);
+                        }}
+                        onDragLeave={(event) => {
+                            if (event.currentTarget === event.target) setDragOverId("");
+                        }}
+                        onDrop={(event) => drop(event, model.id)}
+                        onDragEnd={() => {
+                            setDraggingId("");
+                            setDragOverId("");
+                        }}
+                        className={`flex min-w-0 items-center gap-2 rounded-lg border bg-white px-2 py-2 transition dark:bg-stone-950 ${draggingId === model.id ? "border-blue-400 opacity-55 dark:border-blue-500" : dragOverId === model.id ? "border-dashed border-blue-500 bg-blue-50/70 dark:border-blue-400 dark:bg-blue-950/30" : "border-stone-200 dark:border-stone-800"}`}
+                    >
+                        <span className="cursor-grab touch-none text-stone-400 active:cursor-grabbing" title={`拖动调整${model.name}的顺序`} aria-label={`拖动调整${model.name}的顺序`} role="img">
+                            <GripVertical className="size-4" />
+                        </span>
+                        <span className="w-5 shrink-0 text-center text-xs tabular-nums text-stone-400">{index + 1}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-stone-800 dark:text-stone-200" title={model.name}>
+                            {model.name}
+                        </span>
+                        <Button type="text" size="small" disabled={index === 0} aria-label={`${model.name}上移`} title="上移" icon={<ArrowUp className="size-3.5" />} onClick={() => onChange(moveLogicalModel(models, capability, model.id, -1))} />
+                        <Button
+                            type="text"
+                            size="small"
+                            disabled={index === scopedModels.length - 1}
+                            aria-label={`${model.name}下移`}
+                            title="下移"
+                            icon={<ArrowDown className="size-3.5" />}
+                            onClick={() => onChange(moveLogicalModel(models, capability, model.id, 1))}
+                        />
+                        <Switch size="small" checked={model.pickerVisible !== false} disabled={!model.enabled} aria-label={`${model.name}在${nodeLabel}显示`} onChange={(visible) => onChange(setLogicalModelPickerVisibility(models, model.id, visible))} />
+                    </div>
+                ))}
+                {!scopedModels.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${nodeLabel}模型`} /> : null}
+            </div>
+            <p className="mt-3 text-[11px] text-stone-400">调整后点击页面右上角“保存更改”生效。</p>
         </section>
     );
 }
@@ -412,7 +496,14 @@ function BindingEditor({
                                 placeholder="480p, 720p, 1080p"
                                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                     updateProfile({
-                                        qualityOptions: Array.from(new Set(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))),
+                                        qualityOptions: Array.from(
+                                            new Set(
+                                                event.target.value
+                                                    .split(",")
+                                                    .map((item) => item.trim())
+                                                    .filter(Boolean),
+                                            ),
+                                        ),
                                     })
                                 }
                             />

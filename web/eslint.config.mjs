@@ -16,5 +16,5 @@ export default defineConfig([
             "react-hooks/use-memo": "off",
         },
     },
-    globalIgnores([".next/**", ".next-*/**", "coverage/**", "node_modules/**", "public/**"]),
+    globalIgnores([".next/**", ".next-*/**", "coverage/**", "node_modules/**", "public/**", "scripts/local-data-migration.mjs"]),
 ]);

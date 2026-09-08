@@ -1,0 +1,5 @@
+{
+    "version": "1.4.17",
+    "release_date": "2026-08-18",
+    "release_notes": "为seedance 2.5增加1080p分辨率的参数支持\n更新命令：curl -fsSL https://jimeng.jianying.com/cli | bash"
+}

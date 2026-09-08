@@ -321,6 +321,7 @@ function isChannelProtocol(value: unknown): value is SystemChannelProtocol {
         value === "gemini" ||
         value === "geminiai" ||
         value === "gemini-tools" ||
+        value === "chatgpt-api" ||
         value === "dreamina-cli" ||
         value === "sub2api" ||
         value === "newapi" ||

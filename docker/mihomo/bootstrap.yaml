@@ -22,6 +22,12 @@ proxy-groups:
       - OctalFlow-Subscription
     proxies:
       - DIRECT
+  - name: OctalFlow-ChatGPTAPI
+    type: select
+    use:
+      - OctalFlow-Subscription
+    proxies:
+      - DIRECT
 
 listeners:
   - name: OctalFlow-GeminiAIStudio
@@ -34,6 +40,11 @@ listeners:
     listen: 0.0.0.0
     port: 17891
     proxy: OctalFlow-GeminiTools
+  - name: OctalFlow-ChatGPTAPI
+    type: mixed
+    listen: 0.0.0.0
+    port: 17892
+    proxy: OctalFlow-ChatGPTAPI
 
 rules:
   - MATCH,DIRECT

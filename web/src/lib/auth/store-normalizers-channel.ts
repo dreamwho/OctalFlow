@@ -10,6 +10,7 @@ const CHANNEL_PROTOCOLS: SystemChannelProtocol[] = [
     "gemini",
     "geminiai",
     "gemini-tools",
+    "chatgpt-api",
     "dreamina-cli",
     "sub2api",
     "newapi",

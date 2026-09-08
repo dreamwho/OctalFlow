@@ -41,6 +41,9 @@ def main() -> None:
         os.setgid(SERVICE_GID)
         os.setuid(SERVICE_UID)
 
+    # Browser assets were installed for this account during image construction.
+    os.environ["HOME"] = "/home/geminiai"
+
     if len(sys.argv) < 2:
         raise SystemExit("missing sidecar command")
     os.execvp(sys.argv[1], sys.argv[1:])

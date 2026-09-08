@@ -8,6 +8,12 @@ const mocks = vi.hoisted(() => ({
     consumeUserPoints: vi.fn(),
     fetchInternalApi: vi.fn(),
     getCurrentUser: vi.fn(),
+    chatGptRuntimeRequest: vi.fn(),
+    chatGptRuntimeConfig: vi.fn(),
+    chatGptResolveReferences: vi.fn(),
+    chatGptRewriteMedia: vi.fn(),
+    chatGptRewriteStream: vi.fn(),
+    chatGptSyncMagicProxy: vi.fn(),
     geminiToolsRuntimeRequest: vi.fn(),
     mediaAccess: vi.fn(),
     refundUserPoints: vi.fn(),
@@ -35,6 +41,15 @@ vi.mock("@/lib/server/gemini-tools-service", () => ({
     geminiToolsOAuthConfigured: () => true,
     isGeminiToolsRuntimePath: (path: string) => ["/chat/completions", "/v1/chat/completions", "/messages", "/v1/messages", "/models", "/v1/models"].includes(path.split("?")[0]),
     geminiToolsRuntimeRequest: mocks.geminiToolsRuntimeRequest,
+}));
+vi.mock("@/lib/server/chatgpt-api-service", () => ({
+    chatGptErrorMessage: () => "fixture ChatGPT runtime failure",
+    chatGptRuntimeRequest: mocks.chatGptRuntimeRequest,
+    getChatGptRuntimeConfig: mocks.chatGptRuntimeConfig,
+    resolveChatGptReferences: mocks.chatGptResolveReferences,
+    rewriteChatGptMedia: mocks.chatGptRewriteMedia,
+    rewriteChatGptStream: mocks.chatGptRewriteStream,
+    syncChatGptMagicProxy: mocks.chatGptSyncMagicProxy,
 }));
 
 import { runCustomImageTask, pollCustomImageTask } from "@/app/api/image-tasks/image-task-custom";
@@ -87,6 +102,12 @@ describe("active protocols through persisted admin settings and the system proxy
             const normalized = path.startsWith("/v1/") ? path : `/v1${path}`;
             return fetch(`${fixtureOrigin}${normalized}`, init);
         });
+        mocks.chatGptRuntimeConfig.mockReset().mockReturnValue({ baseUrl: new URL(fixtureOrigin), apiKey: "fixture-runtime-key" });
+        mocks.chatGptRuntimeRequest.mockReset().mockImplementation((path: string, init: RequestInit) => fetch(`${fixtureOrigin}${path}`, init));
+        mocks.chatGptResolveReferences.mockReset().mockImplementation(async (value: unknown) => value);
+        mocks.chatGptRewriteMedia.mockReset().mockImplementation((value: unknown) => value);
+        mocks.chatGptRewriteStream.mockReset().mockImplementation((value: ReadableStream<Uint8Array>) => value);
+        mocks.chatGptSyncMagicProxy.mockReset().mockResolvedValue(undefined);
     });
 
     afterEach(async () => {
@@ -277,7 +298,17 @@ async function configureProxyChannel(definition: ChannelProtocolDefinition, capa
     const channelId = `proxy-${definition.id}-${capability}`;
     const logicalModelId = `${definition.id}-${capability}`;
     const upstreamBaseUrl = fixtureBaseUrl(definition.id, advancedConfig.protocol === "gemini" ? "gemini" : definition.apiFormat);
-    const savedChannel = { id: channelId, name: channelId, enabled: true, baseUrl: upstreamBaseUrl, apiKey: "fixture-key", apiFormat: definition.apiFormat, models: [model], advancedConfig } satisfies SystemModelChannel;
+    const chatGptManaged = definition.id === "chatgpt-api";
+    const savedChannel = {
+        id: channelId,
+        name: channelId,
+        enabled: true,
+        baseUrl: chatGptManaged ? "" : upstreamBaseUrl,
+        apiKey: chatGptManaged ? "" : "fixture-key",
+        apiFormat: definition.apiFormat,
+        models: [model],
+        advancedConfig,
+    } satisfies SystemModelChannel;
     const logicalModels = [{ id: logicalModelId, name: logicalModelId, capability, enabled: true, bindings: [{ id: `${logicalModelId}-binding`, channelId, upstreamModel: model, enabled: true, priority: 1 }] }];
     const defaultModels: SystemDefaultModels = { textModel: "", imageModel: "", videoModel: "", audioModel: "", [`${capability}Model`]: logicalModelId };
     const response = await saveAdminSettings(
@@ -290,10 +321,11 @@ async function configureProxyChannel(definition: ChannelProtocolDefinition, capa
     const responseText = await response.text();
     if (!response.ok) throw new Error(`Admin channel save failed for ${definition.id}/${capability}: ${responseText}`);
     const payload = JSON.parse(responseText) as { settings: { systemChannels: Array<{ apiKey: string; hasApiKey: boolean }> } };
-    expect(payload.settings.systemChannels[0]).toMatchObject({ apiKey: "", hasApiKey: true });
+    expect(payload.settings.systemChannels[0]).toMatchObject(chatGptManaged ? { apiKey: "", hasApiKey: false } : { apiKey: "", hasApiKey: true });
     const persisted = await readFile(join(dataDir, "auth.json"), "utf8");
     expect(persisted).not.toContain("fixture-key");
-    expect(persisted).toContain("octalaicanvas-secret:v1:");
+    if (chatGptManaged) expect(persisted).not.toContain("octalaicanvas-secret:v1:");
+    else expect(persisted).toContain("octalaicanvas-secret:v1:");
     // 渠道保存完成：后续生成请求改用普通用户身份，走真实积分扣费路径（管理员会豁免计费）
     mocks.getCurrentUser.mockResolvedValue({ id: "proxy-user", role: "user", status: "active", adminPermissions: [], pointsBalance: 100 });
     return {
@@ -404,6 +436,7 @@ function expectProxyRequests(channel: ProxyChannel, createPath: string | undefin
     expect(request.headers["idempotency-key"]).toBeTruthy();
     expect(request.headers["x-client-request-id"]).toBeTruthy();
     Object.entries(channel.expectedAuthHeaders).forEach(([key, value]) => expect(request.headers[key.toLowerCase()]).toBe(value));
+    if (channel.config.advancedConfig?.protocol === "chatgpt-api") expect(request.headers["x-octal-internal-dispatch"]).toBe("1");
     expect(requestContainsReference(request)).toBe(referenceRequired);
     if (queryPath && taskId) expect(fixture.requests.some((request) => request.method === "GET" && request.path === upstreamPath(channel.upstreamBaseUrl, queryPath.replace(":model", model).replace(":task_id", taskId)))).toBe(true);
     expect(mocks.consumeUserPoints).toHaveBeenCalled();

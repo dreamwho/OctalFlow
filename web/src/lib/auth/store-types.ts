@@ -14,6 +14,7 @@ export type SystemChannelProtocol =
     | "gemini"
     | "geminiai"
     | "gemini-tools"
+    | "chatgpt-api"
     | "dreamina-cli"
     | "sub2api"
     | "newapi"
@@ -148,6 +149,7 @@ export type LogicalModel = {
     name: string;
     capability: LogicalModelCapability;
     enabled: boolean;
+    pickerVisible?: boolean;
     bindings: LogicalModelBinding[];
 };
 

@@ -10,6 +10,7 @@ import { getMagicProxy, updateMagicProxyBinding, type MagicProxyNode, type Magic
 const providerLabels: Record<MagicProxyProvider, string> = {
     geminiai: "GeminiAIStudio",
     geminiTools: "GeminiTools",
+    chatgptApi: "GPTAPI",
 };
 
 export function magicProxyBindingValidationMessage(enabled: boolean, node?: string) {
@@ -84,12 +85,13 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
     const configured = state?.configured === true;
     const runtimeAvailable = state?.runtimeAvailable === true;
     const disabledReason = !configured ? "请先在魔法代理页面导入订阅" : !runtimeAvailable ? "魔法代理运行时当前不可用" : !nodes.length ? "暂无可用代理节点" : "";
+    const description = provider === "geminiTools" ? "仅控制当前 Provider 是否使用魔法代理及其节点；GeminiTools 账号列表中的账号启用开关仍保持原有含义。" : "仅控制当前 Provider 是否使用魔法代理及其节点。";
 
     return (
         <Panel>
             <PanelHeader
                 title={`${providerLabels[provider]} · 魔法代理`}
-                description="仅控制当前 Provider 是否使用魔法代理及其节点；GeminiTools 账号列表中的账号启用开关仍保持原有含义。"
+                description={description}
                 actions={
                     <Button size="small" icon={<RefreshCw className="size-3.5" />} loading={loading} onClick={() => void load()}>
                         刷新

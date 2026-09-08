@@ -163,6 +163,8 @@ export type CanvasNodeMetadata = {
     status?: CanvasNodeStatus;
     generationProgress?: number;
     generationStartedAt?: number;
+    generationFinishedAt?: number;
+    generationExpectedMs?: number;
     generationStage?: string;
     errorDetails?: string;
     fontSize?: number;

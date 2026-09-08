@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ isSafeOutboundUrl: vi.fn(async () => true) }));
+const mocks = vi.hoisted(() => ({ isSafeOutboundUrl: vi.fn(async () => true), getChatGptModelCatalog: vi.fn() }));
+vi.mock("@/lib/server/chatgpt-api-models", () => ({ getChatGptModelCatalog: mocks.getChatGptModelCatalog }));
 const savedChannel = { id: "saved", name: "已保存", baseUrl: "https://api.example.com/v1", apiKey: "test-secret-value", apiFormat: "openai", models: [], enabled: true };
 
 vi.mock("@/lib/auth/session", () => ({ getCurrentUser: vi.fn(async () => ({ id: "admin", role: "admin", status: "active", adminPermissions: ["upstream.manage"] })) }));
@@ -12,6 +13,23 @@ vi.mock("@/lib/server/proxy-dispatcher", () => ({ configureServerProxyDispatcher
 import { POST } from "./route";
 
 describe("admin models route", () => {
+    it("loads GPTAPI managed models without client URL or credentials", async () => {
+        const result = { models: ["gpt-image-2"], modelCapabilities: { "gpt-image-2": "image" }, provider: "chatgpt-api" };
+        mocks.getChatGptModelCatalog.mockResolvedValueOnce(result);
+        const fetchMock = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+        const response = await POST(request({ protocol: "chatgpt-api", baseUrl: "", apiKey: "" }));
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual(result);
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not leak GPTAPI runtime errors to administrators", async () => {
+        mocks.getChatGptModelCatalog.mockRejectedValueOnce(new Error("secret-token http://private-runtime"));
+        const response = await POST(request({ protocol: "chatgpt-api" }));
+        expect(response.status).toBe(502);
+        expect(await response.text()).not.toContain("secret-token");
+    });
     beforeEach(() => {
         vi.restoreAllMocks();
         mocks.isSafeOutboundUrl.mockClear();

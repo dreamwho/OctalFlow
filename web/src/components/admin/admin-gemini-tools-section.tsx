@@ -35,6 +35,7 @@ import { MagicProxyBindingCard } from "./magic-proxy-binding-card";
 
 type KeyDraft = { name: string; expiresAt: string; allowedIps: string };
 type AccountDraft = { name: string; note: string; priority: number };
+type GeminiToolsTab = "overview" | "gateway" | "magic-proxy" | "logs";
 
 export function AdminGeminiToolsSection({ controller }: { controller: AdminDashboardController }) {
     const { message } = App.useApp();
@@ -53,7 +54,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
     const [rawKey, setRawKey] = useState("");
     const [editingAccount, setEditingAccount] = useState<GeminiToolsAccount | null>(null);
     const [accountDraft, setAccountDraft] = useState<AccountDraft>({ name: "", note: "", priority: 0 });
-    const [activeTab, setActiveTab] = useState<"overview" | "logs">("overview");
+    const [activeTab, setActiveTab] = useState<GeminiToolsTab>("overview");
     const [logs, setLogs] = useState<GeminiToolsLog[]>([]);
     const [logKeyword, setLogKeyword] = useState("");
     const [logStatus, setLogStatus] = useState<"" | "success" | "failed">("");
@@ -178,7 +179,6 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
 
     return (
         <div className="space-y-4">
-            <MagicProxyBindingCard provider="geminiTools" />
             {error ? (
                 <Alert
                     type="error"
@@ -194,31 +194,30 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
             ) : null}
 
             <Tabs
+                className="max-sm:[&_.ant-tabs-nav-list]:w-full max-sm:[&_.ant-tabs-tab]:!m-0 max-sm:[&_.ant-tabs-tab]:min-w-0 max-sm:[&_.ant-tabs-tab]:flex-1 max-sm:[&_.ant-tabs-tab]:justify-center max-sm:[&_.ant-tabs-tab]:!px-1 max-sm:[&_.ant-tabs-tab-btn]:text-xs"
                 activeKey={activeTab}
+                tabBarGutter={16}
                 onChange={(key) => {
-                    const next = key as "overview" | "logs";
+                    const next = key as GeminiToolsTab;
                     setActiveTab(next);
                     if (next === "logs") void loadLogs();
                 }}
                 items={[
-                    { key: "overview", label: "账号与渠道" },
+                    { key: "overview", label: <GeminiToolsTabLabel label="账号与渠道" compact="账号" /> },
+                    { key: "gateway", label: <GeminiToolsTabLabel label="反代网关与 API 密钥" compact="网关与密钥" /> },
+                    { key: "magic-proxy", label: <GeminiToolsTabLabel label="魔法代理" compact="魔法代理" /> },
                     {
                         key: "logs",
-                        label: (
-                            <span className="inline-flex items-center gap-1.5">
-                                <BarChart3 className="size-4" />
-                                请求日志
-                            </span>
-                        ),
+                        label: <GeminiToolsTabLabel label="请求日志" compact="日志" icon={<BarChart3 className="size-4" />} />,
                     },
                 ]}
             />
 
-            <div className={activeTab === "overview" ? "space-y-4" : "hidden"}>
+            <div data-gemini-tools-tab-panel="overview" className={activeTab === "overview" ? "space-y-4" : "hidden"}>
                 <Panel>
                     <PanelHeader
                         title="GeminiTools"
-                        description="使用当前浏览器的 Google 登录会话完成标准 OAuth；账号、额度、网关和密钥均由当前项目管理，不依赖独立 Provider。"
+                        description="使用当前浏览器的 Google 登录会话完成标准 OAuth；账号、额度与模型渠道均由当前项目管理，不依赖独立 Provider。"
                         actions={
                             <Space wrap size={6}>
                                 <Button icon={<RefreshCw className="size-4" />} loading={loading} onClick={() => void load()}>
@@ -230,11 +229,10 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                             </Space>
                         }
                     />
-                    <div className="grid gap-px border-b border-zinc-200 bg-zinc-200 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-800">
+                    <div className="grid gap-px border-b border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800">
                         <Metric label="服务状态" value={state?.healthy ? "正常" : "待授权"} detail="已内置 Antigravity OAuth 客户端" ok={Boolean(state?.healthy)} />
                         <Metric label="可用账号" value={String(enabledAccounts)} detail={`共 ${state?.accounts.length || 0} 个授权账号`} />
                         <Metric label="文本模型" value={String(availableModels.length)} detail="仅建立文本能力渠道" />
-                        <Metric label="API 密钥" value={String(state?.apiKeys.length || 0)} detail="明文只在创建时展示" />
                     </div>
                     <div className="p-3 sm:p-5">
                         <Alert
@@ -286,95 +284,95 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                     )}
                 </Panel>
 
-                <div className="grid gap-4 xl:grid-cols-2">
-                    <Panel>
-                        <PanelHeader
-                            title="Gemini Antigravity Tools 模型渠道"
-                            description="模型目录从已授权账号实时汇总；获取最新模型默认不改动渠道，只有明确选择时才会启用本次新发现的真实模型。"
-                            actions={
-                                <Space wrap size={6}>
-                                    <Button icon={<RefreshCw className="size-4" />} loading={action === "sync-models"} disabled={!state?.accounts.length} onClick={() => void syncLatestModels(false)}>
-                                        获取最新模型
-                                    </Button>
-                                    <Popconfirm title="获取并启用本次新发现的模型？" description="只会追加上游本次真实返回、此前目录中没有的模型，不会移除当前选择。" okText="获取并启用" cancelText="取消" onConfirm={() => void syncLatestModels(true)}>
-                                        <Button loading={action === "sync-models"} disabled={!state?.accounts.length}>
-                                            获取并启用新模型
-                                        </Button>
-                                    </Popconfirm>
-                                    <Button type="primary" icon={<Check className="size-4" />} loading={action === "models"} disabled={!state?.models.length} onClick={() => void run("models", saveModels, "模型渠道已保存并同步到模型渠道与逻辑模型")}>
-                                        保存模型
-                                    </Button>
-                                </Space>
-                            }
-                        />
-                        <div className="max-h-[430px] space-y-2 overflow-y-auto p-3 sm:p-4">
-                            {state?.models.length ? (
-                                state.models.map((model) => (
-                                    <label key={model.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
-                                        <Checkbox
-                                            checked={selectedModels.includes(model.id)}
-                                            onChange={(event: CheckboxChangeEvent) => setSelectedModels((current) => (event.target.checked ? [...current, model.id] : current.filter((id) => id !== model.id)))}
-                                        />
-                                        <span className="min-w-0">
-                                            <span className="flex min-w-0 items-center gap-1.5">
-                                                <span className="min-w-0 truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{model.name}</span>
-                                                {!model.available ? <Tag color="gold">上游当前未返回</Tag> : null}
-                                            </span>
-                                            <span className="block truncate font-mono text-xs text-zinc-500">{model.id}</span>
-                                        </span>
-                                    </label>
-                                ))
-                            ) : (
-                                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="授权并刷新账号后读取真实模型目录" />
-                            )}
-                        </div>
-                    </Panel>
-
-                    <Panel>
-                        <PanelHeader
-                            title="反代与网关"
-                            description="站内渠道由逻辑模型路由；外部兼容 OpenAI Chat 和 Anthropic Messages。"
-                            actions={
-                                <Button type="primary" loading={action === "gateway"} onClick={() => void run("gateway", () => saveGeminiToolsGateway(gateway), "网关设置已保存")}>
-                                    保存网关
+                <Panel>
+                    <PanelHeader
+                        title="Gemini Antigravity Tools 模型渠道"
+                        description="模型目录从已授权账号实时汇总；获取最新模型默认不改动渠道，只有明确选择时才会启用本次新发现的真实模型。"
+                        actions={
+                            <Space wrap size={6}>
+                                <Button icon={<RefreshCw className="size-4" />} loading={action === "sync-models"} disabled={!state?.accounts.length} onClick={() => void syncLatestModels(false)}>
+                                    获取最新模型
                                 </Button>
-                            }
-                        />
-                        <div className="space-y-4 p-3 sm:p-4">
-                            <SettingRow label="启用网关" description="关闭后站内渠道和外部 API 均停止转发">
-                                <Switch checked={gateway.enabled} onChange={(checked: boolean) => setGateway((current) => ({ ...current, enabled: checked }))} />
-                            </SettingRow>
-                            <SettingRow label="账号调度" description="轮询优先使用最久未调用账号；优先级模式按账号优先级选择">
-                                <Select
-                                    className="w-36"
-                                    value={gateway.strategy}
-                                    options={[
-                                        { value: "round_robin", label: "轮询" },
-                                        { value: "priority", label: "优先级" },
-                                    ]}
-                                    onChange={(value: "round_robin" | "priority") => setGateway((current) => ({ ...current, strategy: value }))}
-                                />
-                            </SettingRow>
-                            <SettingRow label="会话粘性" description="预留网关会话策略；关闭时每次按当前调度规则选择">
-                                <Switch checked={gateway.sessionStickiness} onChange={(checked: boolean) => setGateway((current) => ({ ...current, sessionStickiness: checked }))} />
-                            </SettingRow>
-                            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs leading-6 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-                                <div>
-                                    <strong>OpenAI：</strong>
-                                    <code>/api/gemini-tools/v1/chat/completions</code>
-                                </div>
-                                <div>
-                                    <strong>Anthropic：</strong>
-                                    <code>/api/gemini-tools/v1/messages</code>
-                                </div>
-                                <div>
-                                    <strong>模型目录：</strong>
-                                    <code>/api/gemini-tools/v1/models</code>
-                                </div>
+                                <Popconfirm title="获取并启用本次新发现的模型？" description="只会追加上游本次真实返回、此前目录中没有的模型，不会移除当前选择。" okText="获取并启用" cancelText="取消" onConfirm={() => void syncLatestModels(true)}>
+                                    <Button loading={action === "sync-models"} disabled={!state?.accounts.length}>
+                                        获取并启用新模型
+                                    </Button>
+                                </Popconfirm>
+                                <Button type="primary" icon={<Check className="size-4" />} loading={action === "models"} disabled={!state?.models.length} onClick={() => void run("models", saveModels, "模型渠道已保存并同步到模型渠道与逻辑模型")}>
+                                    保存模型
+                                </Button>
+                            </Space>
+                        }
+                    />
+                    <div className="max-h-[430px] space-y-2 overflow-y-auto p-3 sm:p-4">
+                        {state?.models.length ? (
+                            state.models.map((model) => (
+                                <label key={model.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
+                                    <Checkbox
+                                        checked={selectedModels.includes(model.id)}
+                                        onChange={(event: CheckboxChangeEvent) => setSelectedModels((current) => (event.target.checked ? [...current, model.id] : current.filter((id) => id !== model.id)))}
+                                    />
+                                    <span className="min-w-0">
+                                        <span className="flex min-w-0 items-center gap-1.5">
+                                            <span className="min-w-0 truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{model.name}</span>
+                                            {!model.available ? <Tag color="gold">上游当前未返回</Tag> : null}
+                                        </span>
+                                        <span className="block truncate font-mono text-xs text-zinc-500">{model.id}</span>
+                                    </span>
+                                </label>
+                            ))
+                        ) : (
+                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="授权并刷新账号后读取真实模型目录" />
+                        )}
+                    </div>
+                </Panel>
+            </div>
+
+            <div data-gemini-tools-tab-panel="gateway" className={activeTab === "gateway" ? "grid gap-4 xl:grid-cols-2" : "hidden"}>
+                <Panel>
+                    <PanelHeader
+                        title="反代与网关"
+                        description="站内渠道由逻辑模型路由；外部兼容 OpenAI Chat 和 Anthropic Messages。"
+                        actions={
+                            <Button type="primary" loading={action === "gateway"} onClick={() => void run("gateway", () => saveGeminiToolsGateway(gateway), "网关设置已保存")}>
+                                保存网关
+                            </Button>
+                        }
+                    />
+                    <div className="space-y-4 p-3 sm:p-4">
+                        <SettingRow label="启用网关" description="关闭后站内渠道和外部 API 均停止转发">
+                            <Switch checked={gateway.enabled} onChange={(checked: boolean) => setGateway((current) => ({ ...current, enabled: checked }))} />
+                        </SettingRow>
+                        <SettingRow label="账号调度" description="轮询优先使用最久未调用账号；优先级模式按账号优先级选择">
+                            <Select
+                                className="w-36"
+                                value={gateway.strategy}
+                                options={[
+                                    { value: "round_robin", label: "轮询" },
+                                    { value: "priority", label: "优先级" },
+                                ]}
+                                onChange={(value: "round_robin" | "priority") => setGateway((current) => ({ ...current, strategy: value }))}
+                            />
+                        </SettingRow>
+                        <SettingRow label="会话粘性" description="预留网关会话策略；关闭时每次按当前调度规则选择">
+                            <Switch checked={gateway.sessionStickiness} onChange={(checked: boolean) => setGateway((current) => ({ ...current, sessionStickiness: checked }))} />
+                        </SettingRow>
+                        <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs leading-6 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+                            <div>
+                                <strong>OpenAI：</strong>
+                                <code>/api/gemini-tools/v1/chat/completions</code>
+                            </div>
+                            <div>
+                                <strong>Anthropic：</strong>
+                                <code>/api/gemini-tools/v1/messages</code>
+                            </div>
+                            <div>
+                                <strong>模型目录：</strong>
+                                <code>/api/gemini-tools/v1/models</code>
                             </div>
                         </div>
-                    </Panel>
-                </div>
+                    </div>
+                </Panel>
 
                 <Panel>
                     <PanelHeader
@@ -406,7 +404,11 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                 </Panel>
             </div>
 
-            {activeTab === "logs" ? (
+            <div data-gemini-tools-tab-panel="magic-proxy" className={activeTab === "magic-proxy" ? "space-y-4" : "hidden"}>
+                <MagicProxyBindingCard provider="geminiTools" />
+            </div>
+
+            <div data-gemini-tools-tab-panel="logs" className={activeTab === "logs" ? "space-y-4" : "hidden"}>
                 <Panel>
                     <PanelHeader
                         title="请求日志"
@@ -467,7 +469,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                         </div>
                     )}
                 </Panel>
-            ) : null}
+            </div>
 
             <Modal
                 title="编辑 Google 账号"
@@ -576,6 +578,16 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
             setAction("");
         }
     }
+}
+
+function GeminiToolsTabLabel({ label, compact, icon }: { label: string; compact: string; icon?: ReactNode }) {
+    return (
+        <span aria-label={label} className="inline-flex min-w-0 items-center justify-center gap-1.5">
+            {icon}
+            <span className="sm:hidden">{compact}</span>
+            <span className="hidden sm:inline">{label}</span>
+        </span>
+    );
 }
 
 function Metric({ label, value, detail, ok }: { label: string; value: string; detail: string; ok?: boolean }) {

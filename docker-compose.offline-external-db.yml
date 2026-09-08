@@ -79,8 +79,10 @@ services:
       - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
+      HOSTNAME: ${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}
+      PORT: ${PORT:-8866}
       OCTALAICANVAS_DATA_DIR: /app/web/.data
-      OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:3000
+      OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:${PORT:-8866}
       OCTALAICANVAS_DATABASE_PROVIDER: postgres
       DATABASE_URL: ${DATABASE_URL:?请在 .env 中配置已有 PostgreSQL 的 DATABASE_URL}
       OCTALAICANVAS_DATABASE_POOL_MAX: ${OCTALAICANVAS_DATABASE_POOL_MAX:-10}
@@ -89,7 +91,7 @@ services:
       OCTALAICANVAS_INSTALL_TOKEN: ${OCTALAICANVAS_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}
       OCTALAICANVAS_MAINTENANCE_TOKEN: ${OCTALAICANVAS_MAINTENANCE_TOKEN:?请在 .env 中配置至少 32 位维护令牌}
       OCTALAICANVAS_WORKER_TOKEN: ${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
-      OCTALAICANVAS_TRUSTED_PROXY_HOPS: ${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-1}
+      OCTALAICANVAS_TRUSTED_PROXY_HOPS: ${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}
       OCTALAICANVAS_MAGIC_PROXY_CONTROLLER_URL: http://127.0.0.1:9090
       OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
       OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE: /app/web/.magic-proxy-runtime/subscription.yaml
@@ -114,7 +116,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:${PORT:-8866}/api/health/live').then(async live=>{if(!live.ok)throw new Error('live');const ready=await fetch('http://127.0.0.1:${PORT:-8866}/api/health/ready');const body=await ready.json();if(!body?.data?.database?.healthy)throw new Error('database')}).catch(()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 10s
@@ -129,7 +131,7 @@ services:
     network_mode: host
     command: ["node", "/app/web/scripts/generation-worker.mjs"]
     environment:
-      OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:3000
+      OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}
       OCTALAICANVAS_WORKER_TOKEN: ${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
     depends_on:
       app:

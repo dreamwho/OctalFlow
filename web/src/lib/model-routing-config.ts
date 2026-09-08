@@ -188,7 +188,16 @@ function sanitizeLogicalModels(models: LogicalModel[], channels: SystemModelChan
         const first = bindings[0];
         const channel = channels.find((item) => item.id === first.channelId);
         const detected = channel ? resolveChannelModelCapability(channel, first.upstreamModel) : null;
-        return [{ id, name: text(model.name, 120) || id, capability: detected?.authoritative ? detected.capability : normalizeCapability(model.capability), enabled: model.enabled !== false, bindings }];
+        return [
+            {
+                id,
+                name: text(model.name, 120) || id,
+                capability: detected?.authoritative ? detected.capability : normalizeCapability(model.capability),
+                enabled: model.enabled !== false,
+                ...(model.pickerVisible === false ? { pickerVisible: false } : {}),
+                bindings,
+            },
+        ];
     });
 }
 

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- [ChatGPT API] 新增全账号额度刷新进度、请求日志刷新，以及 `24h`/`7d`/`30d` 原生时间桶与模型维度统计；当前 UI 覆盖摘要、堆叠趋势、模型数量和时间表。
+
+- [ChatGPT API/代理] 代理管理覆盖代理组、节点、默认出口、失败回退、批量导入和单节点/全组测试，代理凭据在非管理输出中脱敏；用户代理方式只有 native（移植代理管理）与 Magic Proxy 两种。Next `/api/admin/chatgpt-api/proxy-selection` 对接 Python `GET/PATCH /integration/proxy-selection`，请求体持久 `enabled`、`mode` 与 native 内部 `native_source`，默认 `false/native/manual`，响应另含 `magicConfigured`/`ipwoConfigured` 两个布尔配置状态位；关闭强制直连、开启只能一种，`native_source` 只选择 manual 或 ipwo，关闭 Magic 不自动恢复 native，URL 同步与 mode 切换分离。
+
+- [ChatGPT API/IPWO] IPWO 以独立 Tab/来源开关作为 native 的 `native_source="ipwo"` 选择，与 `manual` 区分；`timeout_seconds` 接受任意正整数、默认 10，不设 10–30 上限。Fake-IP 兼容沿用现有 TUN 而非 DoH，仅已验证的 `ipwo.net` HTTPS 443 可使用 `198.18.0.0/15`，Curl 固定解析且保持 `verify=True`；其他私有/保留 DNS 拒绝，返回代理 IP 必须 public/global，且 `198.18/15` 不得用于返回的代理 endpoint。root 已报告 Web `617` 个测试文件、`2978` 项通过、`10` 项跳过，typecheck/lint/build 通过；真实双进程 HTTP 与首轮 Playwright 已通过，第二轮 IPWO 手机日志截图验收正在进行。`GET/PATCH /integration/ipwo` 只返回脱敏配置，`POST /integration/ipwo/test` 作为显式临时诊断返回固定阶段 NDJSON，可在共享开关关闭时运行但不自动调用、不启用代理策略、不保存节点；错误不得泄露 URL、查询参数、令牌、上游原文或异常；关闭不自动选择另一来源，正常请求仍受 `enabled`/`mode`/`native_source` 门控。Python 全 tests 的 fixture 身份串扰由 Turing 修复；IPWO fixture-only `20 passed` 使用隔离 runtime fixture，不替代最终 Python 全量，单轮 `2972` 也不作为最终全量结论。
+
+- [上游协议] `chatgpt-api` 托管协议与逻辑模型接入继续按内部/公共网关分离推进；root 当前协议回归尚未形成最终全量结论，真实账号仍待用户验收，未构建 Docker。
+
+- [ChatGPT API] 大批量账号按实际请求字节数自动拆批导入，支持一次选择 50 个账号；显示整体确认进度，中断时保留已确认数量且不自动重提。
+
+- [ChatGPT API] 修复同步导入完成后被误判为缺少进度 ID，成功后立即显示导入统计并刷新账号列表。
+
+- [ChatGPT API] 账号导入支持多选 CPA/Sub2API JSON 文件，增加本地格式校验、凭据去重和导入数量预览；不导入外部代理或计费设置。
+
+- [上游配置] 新增 ChatGPT API 管理入口与独立内部运行时接入；管理范围覆盖账号/模型、额度进度、请求日志、统计、代理、网关与 API 密钥。真实账号与部署验收单独登记，不包含本轮 Docker 构建。
+
 - [部署/魔法代理] 七套 Docker Compose 和离线包统一接入单一 Mihomo v1.19.30 镜像，以两个静态 mixed listener 和代理组隔离 GeminiAIStudio/GeminiTools；动态订阅改用共享私有 Docker volume 的 file provider，入口脚本在进程启动时设置 Controller secret 并初始化 uid/gid 1000 可写、0700/0600 的 runtime 文件，Controller/代理端口不对公网发布。离线构建会拉取、保存并清单化第三镜像，未进行真实订阅或 Provider 调用验收。
 - [首页] 按选定方案升级首屏为宽幅流光创作入口：沿用简洁居中布局，统一钴蓝、冰青、薄荷与淡紫品牌光效，加入鼠标视差与粒子无限环背景视频，并保留附件、Skill、智能模型、四类创作模式和快捷入口的真实交互。
 - [Canvas/室内设计] 室内设计节点改为与正常 1:1 图片一致的短边基准正方形，模型、模型参数、摄影参数和生成操作重新分层排版，修复尺寸摘要换行与摄影参数截断；模型参数中的比例与画质继续参与实际生成。
@@ -119,7 +135,7 @@
 - [图片] OpenAI 图生图使用官方 `/v1/images/edits` multipart，Sub2API 使用 `image_urls`，Stable Diffusion 使用内联 `init_images`，Gemini 使用 `inlineData`；上游一次返回多张图片时完整保存，并在图片工作台、Canvas 和短剧候选资产中展示全部结果。
 - [视频] 视频请求使用跨运行时 Undici multipart，提交前预占并发槽，快速重复点击只创建一个任务；刷新后可继续查看或取消原任务，参考素材不再误发为 `text/plain` 或 `[object FormData]`。
 - [生成] 修复 Docker 和代理环境中长耗时生成被 Undici 默认 5 分钟响应超时提前中断的问题；系统代理、生成 Route、页面恢复和 Worker 生命周期覆盖最长视频请求及落盘余量，原业务超时与上游协议保持不变。
-- [上游] `chatgpt2api` 按标准 OpenAI 兼容协议请求，不新增专用协议或猜测异步查询路径；图片接口仅返回任务 ID、网页内容或无效 JSON 时保留原任务进入待确认，不切换渠道、不退款、不重复创建。
+- [上游] `chatgpt2api` 兼容接口按已声明路径请求，不新增未确认的异步查询路径；图片接口仅返回任务 ID、网页内容或无效 JSON 时保留原任务进入待确认，不切换渠道、不退款、不重复创建。
 - [积分] 修复 PostgreSQL 当日钱包的小数余额参数被误推断为整数的问题，`1.7/1.8` 等小数模型价格不再导致普通用户扣费返回 500。
 - [计费] AI 消费幂等键由服务端绑定用户、业务请求、逻辑模型、渠道、上游模型和调用类型生成，客户端请求头不能控制本地流水；参数冲突返回 409，零积分调用继续记录并支持失败撤销。
 - [支付] 上游表单只在服务端解析为受控 action、method 和隐藏字段，并从当前用户订单读取已保存参数；带动态 CSP 和一次性 nonce 的隔离页自动提交，生产环境拒绝公网 HTTP 支付地址，Checkout 使用统一业务响应。

@@ -15,6 +15,13 @@ const mocks = vi.hoisted(() => ({
     taskAccess: vi.fn(),
     geminiToolsRuntime: vi.fn(),
     geminiToolsConfigured: vi.fn(() => true),
+    chatGptRuntime: vi.fn(),
+    chatGptRuntimeConfig: vi.fn(),
+    chatGptResolveReferences: vi.fn(),
+    chatGptRewriteMedia: vi.fn(),
+    chatGptRewriteStream: vi.fn(),
+    chatGptSyncMagicProxy: vi.fn(),
+    chatGptErrorMessage: vi.fn(),
     ensureMagicProxy: vi.fn(async () => ({ enabled: false })),
 }));
 
@@ -37,6 +44,15 @@ vi.mock("@/lib/server/gemini-tools-service", () => ({
     geminiToolsOAuthConfigured: mocks.geminiToolsConfigured,
     geminiToolsRuntimeRequest: mocks.geminiToolsRuntime,
     isGeminiToolsRuntimePath: (path: string) => path === "/chat/completions" || path === "/v1/chat/completions" || path === "/v1/models" || path === "/v1/messages",
+}));
+vi.mock("@/lib/server/chatgpt-api-service", () => ({
+    chatGptErrorMessage: mocks.chatGptErrorMessage,
+    chatGptRuntimeRequest: mocks.chatGptRuntime,
+    getChatGptRuntimeConfig: mocks.chatGptRuntimeConfig,
+    resolveChatGptReferences: mocks.chatGptResolveReferences,
+    rewriteChatGptMedia: mocks.chatGptRewriteMedia,
+    rewriteChatGptStream: mocks.chatGptRewriteStream,
+    syncChatGptMagicProxy: mocks.chatGptSyncMagicProxy,
 }));
 vi.mock("@/lib/server/magic-proxy-service", () => ({
     ensureMagicProxyProvider: mocks.ensureMagicProxy,
@@ -103,6 +119,99 @@ describe("GeminiTools embedded provider route", () => {
 
         expect(response.status).toBe(429);
         expect(response.headers.get("retry-after")).toBe("7");
+    });
+});
+
+describe("GPTAPI embedded provider route", () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
+        mocks.refundUserPoints.mockReset();
+        mocks.safeUrl.mockReset();
+        mocks.taskAccess.mockReset().mockResolvedValue(true);
+        mocks.chatGptRuntimeConfig.mockReset().mockReturnValue({ baseUrl: new URL("http://chatgpt-runtime.test"), apiKey: "runtime-key" });
+        mocks.chatGptRuntime.mockReset().mockResolvedValue(Response.json({ choices: [{ message: { content: "GPTAPI OK" } }] }));
+        mocks.chatGptResolveReferences.mockReset().mockImplementation(async (value: unknown) => value);
+        mocks.chatGptRewriteMedia.mockReset().mockImplementation((value: unknown) => value);
+        mocks.chatGptRewriteStream.mockReset().mockImplementation((value: ReadableStream<Uint8Array>) => value);
+        mocks.chatGptSyncMagicProxy.mockReset().mockResolvedValue(undefined);
+        mocks.chatGptErrorMessage.mockReset().mockReturnValue("runtime failed");
+        mocks.getAuthSettings.mockResolvedValue({
+            generationPointMultipliers: {},
+            logicalModels: [logicalModel("writer-chatgpt", "text", "gpt-5.6"), logicalModel("image-chatgpt", "image", "gpt-image-1")],
+            systemChannels: [
+                {
+                    id: "channel-one",
+                    name: "GPTAPI",
+                    enabled: true,
+                    baseUrl: "",
+                    apiKey: "",
+                    apiFormat: "openai",
+                    models: ["gpt-5.6", "gpt-image-1"],
+                    advancedConfig: {
+                        protocol: "chatgpt-api",
+                        authMode: "provider-managed",
+                        modelConfigs: {
+                            "gpt-5.6": { capability: "text", protocol: "chatgpt-api", apiFormat: "openai", createPath: "/chat/completions" },
+                            "gpt-image-1": { capability: "image", protocol: "chatgpt-api", apiFormat: "openai", createPath: "/images/generations", editPath: "/images/edits", supportsReferenceImage: true },
+                        },
+                    },
+                },
+            ],
+        });
+    });
+
+    it("uses the protected internal runtime path without a channel or public-gateway key", async () => {
+        const response = await POST(chatRequest({ model: "gpt-5.6", messages: [{ role: "user", content: "hello" }] }), textContext());
+
+        expect(response.status).toBe(200);
+        expect(mocks.chatGptSyncMagicProxy).toHaveBeenCalledTimes(1);
+        expect(mocks.chatGptRuntime).toHaveBeenCalledWith("/v1/chat/completions", expect.objectContaining({ method: "POST" }));
+        const runtimeHeaders = new Headers(mocks.chatGptRuntime.mock.calls[0]?.[1]?.headers);
+        expect(runtimeHeaders.get("x-octal-internal-dispatch")).toBe("1");
+        expect(runtimeHeaders.get("authorization")).toBeNull();
+        expect(mocks.safeUrl).not.toHaveBeenCalled();
+        expect(response.headers.get("x-octalaicanvas-upstream-url")).toBeNull();
+    });
+
+    it("serves the exact runtime model catalog without requiring a synthetic logical-model request", async () => {
+        mocks.chatGptRuntime.mockResolvedValue(Response.json({ object: "list", data: [{ id: "gpt-5.6" }, { id: "gpt-image-1" }] }));
+
+        const response = await GET(new Request("http://localhost/api/ai/system/channel-one/models"), {
+            params: Promise.resolve({ channelId: "channel-one", path: ["models"] }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(mocks.chatGptRuntime).toHaveBeenCalledWith("/v1/models", expect.objectContaining({ method: "GET" }));
+        expect(mocks.chatGptSyncMagicProxy).not.toHaveBeenCalled();
+        expect(new Headers(mocks.chatGptRuntime.mock.calls[0]?.[1]?.headers).get("x-octal-internal-dispatch")).toBe("1");
+        await expect(response.json()).resolves.toEqual({ object: "list", data: [{ id: "gpt-5.6" }, { id: "gpt-image-1" }] });
+    });
+
+    it("rewrites media returned from the managed image runtime", async () => {
+        mocks.chatGptRuntime.mockResolvedValue(Response.json({ data: [{ url: "/images/generated.png" }] }));
+        mocks.chatGptRewriteMedia.mockReturnValue({ data: [{ url: "http://localhost/api/chatgpt-api/media/images/generated.png?signature=signed" }] });
+        const imageRequest = new Request("http://localhost/api/ai/system/channel-one/images/generations", {
+            method: "POST",
+            headers: { "content-type": "application/json", ...systemModelHeaders("image-chatgpt", "gpt-image-1") },
+            body: JSON.stringify({ model: "gpt-image-1", prompt: "a cat" }),
+        });
+        const response = await POST(imageRequest, { params: Promise.resolve({ channelId: "channel-one", path: ["images", "generations"] }) });
+
+        expect(response.status).toBe(200);
+        expect(mocks.chatGptRuntime).toHaveBeenCalledWith("/v1/images/generations", expect.objectContaining({ method: "POST" }));
+        await expect(response.json()).resolves.toEqual({ data: [{ url: "http://localhost/api/chatgpt-api/media/images/generated.png?signature=signed" }] });
+    });
+
+    it("returns the runtime configuration failure without making an upstream request", async () => {
+        mocks.chatGptRuntimeConfig.mockImplementation(() => {
+            throw Object.assign(new Error("ChatGPT 运行时未就绪"), { status: 503 });
+        });
+
+        const response = await POST(chatRequest({ model: "gpt-5.6", messages: [{ role: "user", content: "hello" }] }), textContext());
+
+        expect(response.status).toBe(503);
+        expect(mocks.chatGptRuntime).not.toHaveBeenCalled();
     });
 });
 

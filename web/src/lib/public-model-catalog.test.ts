@@ -24,4 +24,19 @@ describe("resolvePublicCapabilityModels", () => {
 
         expect(flattenPublicCapabilityModels(result)).toEqual(["image-logical", "video-logical", "text-logical", "audio-logical"]);
     });
+
+    it("preserves logical ordering and returns an empty picker when a configured capability is fully hidden", () => {
+        const result = resolvePublicCapabilityModels(
+            [
+                { id: "image-second", capability: "image" as const },
+                { id: "image-first", capability: "image" as const, pickerVisible: false },
+                { id: "video-hidden", capability: "video" as const, pickerVisible: false },
+            ],
+            fallback,
+        );
+
+        expect(result.image).toEqual(["image-second"]);
+        expect(result.video).toEqual([]);
+        expect(result.text).toEqual(["text-upstream"]);
+    });
 });

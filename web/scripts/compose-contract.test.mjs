@@ -60,8 +60,8 @@ describe("Docker Compose contracts", () => {
 
     it("keeps static providers and listeners in secret-free bootstraps", () => {
         expect(validateMihomoBootstrapContracts({ repoRoot })).toEqual([
-            { file: "docker/mihomo/bootstrap.yaml", listenHost: "0.0.0.0", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891] },
-            { file: "docker/mihomo/bootstrap-host.yaml", listenHost: "127.0.0.1", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891] },
+            { file: "docker/mihomo/bootstrap.yaml", listenHost: "0.0.0.0", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892] },
+            { file: "docker/mihomo/bootstrap-host.yaml", listenHost: "127.0.0.1", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892] },
         ]);
     });
 
@@ -99,6 +99,21 @@ describe("Docker Compose contracts", () => {
         const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("      OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000", "      OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000\n      OCTALAICANVAS_MAINTENANCE_TOKEN: leaked");
 
         expect(() => validateComposeContract(source, profile)).toThrow("generation-worker 不得获得外部维护令牌");
+    });
+
+    it("keeps offline external app, healthcheck, and Worker endpoints on the resolved host port", () => {
+        const profile = composeProfiles.find(({ file }) => file === "docker-compose.offline-external-db.yml");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8");
+
+        expect(profile).toMatchObject({
+            appPort: "${PORT:-8866}",
+            internalOrigin: "http://127.0.0.1:${PORT:-8866}",
+            trustedProxyHops: "${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}",
+            workerOrigin: "http://127.0.0.1:${PORT:-8866}",
+        });
+        expect(() => validateComposeContract(source.replace("      PORT: ${PORT:-8866}", "      PORT: 3000"), profile)).toThrow("app 监听端口必须为 ${PORT:-8866}");
+        expect(() => validateComposeContract(source.replace("      OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}", "      OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:3000"), profile)).toThrow("Worker API 地址必须为 http://127.0.0.1:${PORT:-8866}");
+        expect(() => validateComposeContract(source.replace("http://127.0.0.1:${PORT:-8866}/api/health/live", "http://127.0.0.1:3000/api/health/live"), profile)).toThrow("app 健康检查必须请求 http://127.0.0.1:${PORT:-8866}/api/health/live");
     });
 
     it("rejects Baota-only host networking in the public default topology", () => {

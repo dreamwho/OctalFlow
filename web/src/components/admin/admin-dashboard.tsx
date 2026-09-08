@@ -47,6 +47,7 @@ const loadMagicProxySection = () => import("./admin-magic-proxy-section").then((
 const loadRunningHubSection = () => import("@/app/admin/runninghub/components/admin-runninghub-section").then((module) => module.AdminRunningHubSection);
 const loadGeminiAiSection = () => import("./admin-geminiai-section").then((module) => module.AdminGeminiAiSection);
 const loadGeminiToolsSection = () => import("./admin-gemini-tools-section").then((module) => module.AdminGeminiToolsSection);
+const loadChatGptApiSection = () => import("@/app/admin/chatgpt-api/components/admin-chatgpt-api-section").then((module) => module.AdminChatGptApiSection);
 const loadDreaminaSection = () => import("./admin-dreamina-section").then((module) => module.AdminDreaminaSection);
 const loadSkillsSection = () => import("./admin-upstream-sections").then((module) => module.AdminSkillsSection);
 const loadAnnouncementsSection = () => import("./admin-content-sections").then((module) => module.AdminAnnouncementsSection);
@@ -79,6 +80,7 @@ const sectionLoaders: Partial<Record<AdminSectionKey, () => Promise<unknown>>> =
     runninghub: loadRunningHubSection,
     geminiai: loadGeminiAiSection,
     geminiTools: loadGeminiToolsSection,
+    chatgptApi: loadChatGptApiSection,
     dreamina: loadDreaminaSection,
     skills: loadSkillsSection,
     announcements: loadAnnouncementsSection,
@@ -111,6 +113,7 @@ const AdminMagicProxySection = dynamic(loadMagicProxySection, { loading: AdminSe
 const AdminRunningHubSection = dynamic(loadRunningHubSection, { loading: AdminSectionLoading });
 const AdminGeminiAiSection = dynamic(loadGeminiAiSection, { loading: AdminSectionLoading });
 const AdminGeminiToolsSection = dynamic(loadGeminiToolsSection, { loading: AdminSectionLoading });
+const AdminChatGptApiSection = dynamic(loadChatGptApiSection, { loading: AdminSectionLoading });
 const AdminDreaminaSection = dynamic(loadDreaminaSection, { loading: AdminSectionLoading });
 const AdminSkillsSection = dynamic(loadSkillsSection, { loading: AdminSectionLoading });
 const AdminAnnouncementsSection = dynamic(loadAnnouncementsSection, { loading: AdminSectionLoading });
@@ -268,6 +271,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "runninghub" ? <AdminRunningHubSection /> : null}
                     {activeSection === "geminiai" ? <AdminGeminiAiSection /> : null}
                     {activeSection === "geminiTools" ? <AdminGeminiToolsSection controller={controller} /> : null}
+                    {activeSection === "chatgptApi" ? <AdminChatGptApiSection controller={controller} /> : null}
                     {activeSection === "dreamina" ? <AdminDreaminaSection /> : null}
                     {activeSection === "skills" ? <AdminSkillsSection controller={controller} /> : null}
                     {activeSection === "cdk" ? <AdminCdkSection controller={controller} /> : null}

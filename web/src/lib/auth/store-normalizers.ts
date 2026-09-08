@@ -744,6 +744,16 @@ export function normalizeSystemChannel(channel: Partial<SystemModelChannel>): Sy
     if (normalized.advancedConfig?.protocol === "yumeng") return applyChannelProtocol(normalized, "yumeng");
     if (normalized.advancedConfig?.protocol === "geminiai") return { ...normalized, name: "Gemini AI Studio" };
     if (normalized.advancedConfig?.protocol === "gemini-tools") return { ...applyChannelProtocol(normalized, "gemini-tools"), name: "Gemini Antigravity Tools" };
+    if (normalized.id === "chatgpt-api") {
+        return {
+            ...applyChannelProtocol({ ...normalized, name: "GPTAPI", baseUrl: "", apiKey: "", hasApiKey: false, clearApiKey: false }, "chatgpt-api"),
+            name: "GPTAPI",
+            baseUrl: "",
+            apiKey: "",
+            hasApiKey: false,
+            clearApiKey: false,
+        };
+    }
     if (normalized.advancedConfig?.protocol === "dreamina-cli") return { ...applyChannelProtocol(normalized, "dreamina-cli"), name: "即梦 CLI" };
     return normalized;
 }

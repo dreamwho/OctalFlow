@@ -266,9 +266,13 @@ function ConnectionStep({ channel, onChange }: { channel: SystemModelChannel; on
                 <LabeledControl label="渠道名称">
                     <Input value={channel.name} placeholder="例如：生产主渠道" onChange={(event: ChangeEvent<HTMLInputElement>) => onChange({ name: event.target.value })} />
                 </LabeledControl>
-                <LabeledControl label="Base URL">
-                    <Input value={channel.baseUrl} placeholder="https://api.example.com" onChange={(event: ChangeEvent<HTMLInputElement>) => onChange({ baseUrl: event.target.value })} />
-                </LabeledControl>
+                {channel.advancedConfig?.protocol === "chatgpt-api" ? (
+                    <p className="text-sm text-stone-500">GPTAPI 使用本机托管运行时，无需填写 Base URL 或 API Key。下一步可直接同步模型。</p>
+                ) : (
+                    <LabeledControl label="Base URL">
+                        <Input value={channel.baseUrl} placeholder="https://api.example.com" onChange={(event: ChangeEvent<HTMLInputElement>) => onChange({ baseUrl: event.target.value })} />
+                    </LabeledControl>
+                )}
                 {custom ? (
                     <LabeledControl label="鉴权方式">
                         <Select className="w-full" value={authMode} options={authModeOptions} onChange={(value: SystemChannelAuthMode) => updateAuth({ authMode: value, ...(value !== "custom-header" ? { authHeader: "", authPrefix: "" } : {}) })} />

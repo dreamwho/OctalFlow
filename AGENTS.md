@@ -186,6 +186,8 @@
 
 ## Mandatory Testing
 
+- 移植 Provider 的账号导入、刷新和删除等写接口，浏览器夹具必须对照原生隔离接口实测返回结构；同步完成结果不能强制要求异步 progress_id。回归必须覆盖真实落库、同步完成后的列表刷新及重复提交返回，禁止只用自行假定的成功响应证明功能可用。
+
 - After every code change, run the relevant automated checks and browser regression flow before reporting completion.
 - 协议回归默认必须使用仓库内本地 TCP fixture、每次运行确认空闲的随机端口和固定测试凭据，禁止读取或调用管理员后台已配置的真实渠道/API；只有用户明确要求真实上游验收时才允许调用，并必须单独报告测试范围。
 - Cover desktop and mobile layouts, canvas interactions including node actions and linking, image workbench generation/history/reference-image flows, video workbench text-to-video and image-to-video flows, all visible buttons touched by the change, and configured API capability checks for text/image/video.

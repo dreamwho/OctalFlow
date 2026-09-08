@@ -12,6 +12,7 @@ const state = {
     bindings: {
         geminiai: { enabled: false },
         geminiTools: { enabled: true, node: "节点 A" },
+        chatgptApi: { enabled: false },
     },
 };
 
@@ -41,13 +42,24 @@ describe("magic proxy api", () => {
         expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({});
     });
 
-    it("persists a provider binding without exposing a second settings contract", async () => {
+    it("sends local Clash YAML content as a file import", async () => {
+        const fetchMock = vi.fn(async () => new Response(JSON.stringify({ code: 0, data: state }), { status: 200 }));
+        vi.stubGlobal("fetch", fetchMock);
+        const content = "proxies:\n  - name: Local-01\n    type: http\n";
+
+        await importMagicProxySubscription({ content });
+
+        const requestInit = (fetchMock.mock.calls as unknown as Array<[string, RequestInit?]>)[0]?.[1];
+        expect(JSON.parse(String(requestInit?.body))).toEqual({ content });
+    });
+
+    it("persists a ChatGPTAPI provider binding without exposing a second settings contract", async () => {
         const fetchMock = vi.fn(async () => new Response(JSON.stringify({ code: 0, data: state }), { status: 200 }));
         vi.stubGlobal("fetch", fetchMock);
 
-        await updateMagicProxyBinding({ provider: "geminiai", enabled: true, node: "节点 A" });
+        await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "节点 A" });
 
-        expect(fetchMock).toHaveBeenCalledWith("/api/admin/magic-proxy", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ provider: "geminiai", enabled: true, node: "节点 A" }) }));
+        expect(fetchMock).toHaveBeenCalledWith("/api/admin/magic-proxy", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ provider: "chatgptApi", enabled: true, node: "节点 A" }) }));
     });
 
     it("surfaces envelope errors", async () => {

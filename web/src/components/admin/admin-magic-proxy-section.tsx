@@ -1,8 +1,8 @@
 "use client";
 
 import { Alert, App, Button, Empty, Input, Tag } from "antd";
-import { RefreshCw, ShieldCheck, Wifi, WifiOff } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { FileText, RefreshCw, ShieldCheck, Upload, Wifi, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { getMagicProxy, importMagicProxySubscription, refreshMagicProxySubscription, type MagicProxyGroup, type MagicProxyNode, type MagicProxyState } from "@/services/api/magic-proxy";
@@ -11,8 +11,10 @@ export function AdminMagicProxySection() {
     const { message } = App.useApp();
     const [state, setState] = useState<MagicProxyState | null>(null);
     const [subscriptionUrl, setSubscriptionUrl] = useState("");
+    const [subscriptionFile, setSubscriptionFile] = useState<File | null>(null);
+    const subscriptionFileInputRef = useRef<HTMLInputElement>(null);
     const [loading, setLoading] = useState(true);
-    const [action, setAction] = useState<"import" | "refresh" | "">("");
+    const [action, setAction] = useState<"import" | "file-import" | "refresh" | "">("");
     const [error, setError] = useState("");
 
     const loadState = useCallback(async () => {
@@ -45,6 +47,28 @@ export function AdminMagicProxySection() {
             message.success("魔法代理订阅已导入并替换");
         } catch (importError) {
             const nextError = importError instanceof Error ? importError.message : "导入魔法代理订阅失败";
+            setError(nextError);
+            message.error(nextError);
+        } finally {
+            setAction("");
+        }
+    };
+
+    const importSubscriptionFile = async () => {
+        if (!subscriptionFile) {
+            message.error("请选择 YAML 或文本文件");
+            return;
+        }
+        setAction("file-import");
+        setError("");
+        try {
+            const content = await subscriptionFile.text();
+            setState(await importMagicProxySubscription({ content }));
+            setSubscriptionFile(null);
+            if (subscriptionFileInputRef.current) subscriptionFileInputRef.current.value = "";
+            message.success("魔法代理文件订阅已导入并替换");
+        } catch (importError) {
+            const nextError = importError instanceof Error ? importError.message : "导入魔法代理文件失败";
             setError(nextError);
             message.error(nextError);
         } finally {
@@ -96,22 +120,48 @@ export function AdminMagicProxySection() {
                     }
                 />
                 <div className="space-y-4 p-3 sm:p-5">
-                    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                    <div className="grid min-w-0 gap-4 lg:grid-cols-2">
                         <div className="min-w-0">
                             <label htmlFor="magic-proxy-subscription" className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                                订阅地址（仅本次使用）
+                                订阅地址导入
                             </label>
                             <Input.Password id="magic-proxy-subscription" value={subscriptionUrl} autoComplete="new-password" placeholder="输入订阅地址，导入后不会回显" onChange={(event) => setSubscriptionUrl(event.target.value)} />
-                            <p className="mt-1.5 text-xs leading-5 text-zinc-500 dark:text-zinc-400">已保存的订阅不会回填到输入框；页面只显示脱敏后的运行状态和节点名称。</p>
+                            <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+                                <Button type="primary" icon={<ShieldCheck className="size-4" />} loading={action === "import"} onClick={() => void importSubscription()}>
+                                    导入/替换订阅
+                                </Button>
+                            </div>
                         </div>
-                        <div className="flex min-w-0 flex-wrap gap-2">
-                            <Button type="primary" icon={<ShieldCheck className="size-4" />} loading={action === "import"} onClick={() => void importSubscription()}>
-                                导入/替换订阅
-                            </Button>
-                            <Button disabled={!state?.configured} loading={action === "refresh"} onClick={() => void refreshSubscription()}>
-                                更新订阅
-                            </Button>
+                        <div className="min-w-0">
+                            <label htmlFor="magic-proxy-subscription-file" className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                                YAML / 文本文件导入
+                            </label>
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <input
+                                    ref={subscriptionFileInputRef}
+                                    id="magic-proxy-subscription-file"
+                                    type="file"
+                                    accept=".yaml,.yml,.txt,text/yaml,text/plain"
+                                    className="sr-only"
+                                    onChange={(event) => setSubscriptionFile(event.target.files?.[0] || null)}
+                                />
+                                <Button icon={<Upload className="size-4" />} onClick={() => subscriptionFileInputRef.current?.click()}>
+                                    选择文件
+                                </Button>
+                                <span className="min-w-0 max-w-full truncate text-xs text-zinc-500 dark:text-zinc-400" title={subscriptionFile?.name}>
+                                    {subscriptionFile?.name || "支持 .yaml、.yml、.txt，内容需包含 Clash proxies"}
+                                </span>
+                                <Button type="primary" ghost disabled={!subscriptionFile} loading={action === "file-import"} icon={<FileText className="size-4" />} onClick={() => void importSubscriptionFile()}>
+                                    导入文件
+                                </Button>
+                            </div>
                         </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button disabled={!state?.configured} loading={action === "refresh"} onClick={() => void refreshSubscription()}>
+                            更新订阅地址
+                        </Button>
+                        <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">已保存的订阅地址不会回填；文件导入后如需更新，请重新选择文件导入。</p>
                     </div>
 
                     <div className="grid gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 sm:grid-cols-2 xl:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-800">

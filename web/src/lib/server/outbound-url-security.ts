@@ -48,7 +48,7 @@ const PRIVATE_ALLOWLISTABLE_IPV6_ADDRESSES = addressBlockList([
 // Clash/Surge 等代理工具 fake-IP 模式使用的保留段：系统 TUN 会按 Host 路由到真实公网目标，不属于可攻击的内网地址。
 const PROXY_FAKE_IP_IPV4_ADDRESSES = addressBlockList([["198.18.0.0", 15, "ipv4"]]);
 
-export type SafeOutboundOptions = { allowCredentials?: boolean; allowProxyFakeIpSpace?: boolean; proxyUrl?: string };
+export type SafeOutboundOptions = { allowCredentials?: boolean; allowProxyFakeIpSpace?: boolean; proxyUrl?: string; publicOnly?: boolean };
 
 export type SafeOutboundTarget = {
     url: URL;
@@ -68,7 +68,7 @@ export async function resolveSafeOutboundTarget(value: string | URL, options?: S
 
     const hostname = normalizeHostname(url.hostname);
     if (!hostname || isBlockedHostname(hostname)) return null;
-    const privateAllowed = privateUpstreamHostAllowed(hostname);
+    const privateAllowed = !options?.publicOnly && privateUpstreamHostAllowed(hostname);
     if ((hostname === "localhost" || hostname.endsWith(".localhost")) && !privateAllowed) return null;
     const directFamily = isIP(hostname);
     if (directFamily) return addressAllowed(hostname, privateAllowed, options) ? { url, address: hostname, family: directFamily as 4 | 6 } : null;

@@ -63,6 +63,7 @@ describe("serializePublicSettings", () => {
                 name: "图片模型",
                 capability: "image",
                 enabled: true,
+                pickerVisible: false,
                 bindings: [
                     {
                         id: "binding-one",
@@ -98,6 +99,7 @@ describe("serializePublicSettings", () => {
                 hasApiKey: true,
             },
         ]);
+        expect(result.logicalModels[0]).toMatchObject({ id: "image-main", pickerVisible: false });
         expect(result.logicalModels[0]?.bindings[0]).toEqual({ id: "binding-one", channelId: "channel-one", upstreamModel: "vendor-image", enabled: true, priority: 1 });
         expect(serialized).not.toContain("provider-secret");
         expect(serialized).not.toContain("internal-provider.example");

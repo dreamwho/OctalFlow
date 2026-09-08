@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { localGeminiAiRuntime } from "./geminiai-local-runtime.mjs";
+import { localChatGptApiRuntime } from "./chatgpt-api-local-runtime.mjs";
 import { generationRuntimeEnvironment, superviseGenerationRuntime } from "./generation-runtime.mjs";
 import { prepareStandaloneAssets } from "./standalone-assets.mjs";
 
@@ -10,11 +11,12 @@ const repoRoot = path.resolve(webRoot, "..");
 const distDir = process.env.NEXT_DIST_DIR?.trim() || ".next";
 const { standaloneRoot } = await prepareStandaloneAssets({ webRoot, distDir });
 const geminiAi = localGeminiAiRuntime({ repoRoot, webRoot });
+const chatGptApi = localChatGptApiRuntime({ repoRoot, webRoot, environment: geminiAi.environment });
 
 const runtime = generationRuntimeEnvironment({
     allowEphemeralToken: true,
     environment: {
-        ...geminiAi.environment,
+        ...chatGptApi.environment,
         PORT: process.env.PORT || "3333",
         HOSTNAME: process.env.HOSTNAME || "0.0.0.0",
         OCTALAICANVAS_DATA_DIR: process.env.OCTALAICANVAS_DATA_DIR || path.join(webRoot, ".data"),
@@ -28,5 +30,5 @@ process.exitCode = await superviseGenerationRuntime({
     app: { command: process.execPath, args: ["server.js"], cwd: standaloneRoot },
     workerScript: path.join(webRoot, "scripts", "generation-worker.mjs"),
     environment: runtime.environment,
-    services: geminiAi.service ? [geminiAi.service] : [],
+    services: [geminiAi.service, chatGptApi.service].filter(Boolean),
 });

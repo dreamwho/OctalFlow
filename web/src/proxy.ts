@@ -3,7 +3,7 @@ import { getTrustedProxyHops } from "@/lib/server/trusted-proxy";
 
 export function proxy(request: NextRequest) {
     const nonce = crypto.randomUUID().replaceAll("-", "");
-    const contentSecurityPolicy = buildContentSecurityPolicy(nonce, request.headers.get("host") || request.nextUrl.hostname);
+    const contentSecurityPolicy = buildContentSecurityPolicy(nonce, request.headers.get("host") || request.nextUrl.hostname, publicRequestProtocol(request));
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-nonce", nonce);
     requestHeaders.set("content-security-policy", contentSecurityPolicy);
@@ -44,7 +44,7 @@ function securedJsonResponse(body: unknown, status: number, contentSecurityPolic
     return response;
 }
 
-function buildContentSecurityPolicy(nonce: string, host: string) {
+function buildContentSecurityPolicy(nonce: string, host: string, protocol: string) {
     const isDev = process.env.NODE_ENV !== "production";
     const hostname = host.toLowerCase().replace(/^\[([^\]]+)\](?::\d+)?$/, "$1").replace(/:\d+$/, "");
     const localCanvasHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
@@ -62,8 +62,13 @@ function buildContentSecurityPolicy(nonce: string, host: string) {
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'none'",
-        ...(isDev || localCanvasHost ? [] : ["upgrade-insecure-requests"]),
+        ...(isDev || localCanvasHost || protocol !== "https" ? [] : ["upgrade-insecure-requests"]),
     ].join("; ");
+}
+
+function publicRequestProtocol(request: NextRequest) {
+    const forwardedProto = getTrustedProxyHops() > 0 ? request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase() : "";
+    return forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : request.nextUrl.protocol.replace(/:$/, "").toLowerCase();
 }
 
 function publicRequestOrigin(request: NextRequest) {

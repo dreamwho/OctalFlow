@@ -320,6 +320,83 @@ test("canvas projects round-trip two nodes and one connection", async ({ request
     expect(await loaded.json()).toMatchObject({ data: { project: { nodes: [{ id: "node-a" }, { id: "node-b" }], connections: [{ id: "edge-a-b", fromNodeId: "node-a", toNodeId: "node-b" }] } } });
 });
 
+test("administrator orders and hides Canvas node models from the logical model catalog", async ({ page, request }, testInfo) => {
+    const beforeResponse = await request.get("/api/admin/settings");
+    expect(beforeResponse.ok(), await beforeResponse.text()).toBe(true);
+    const before = (await beforeResponse.json()) as { settings: { systemChannels: Array<{ id: string; models: string[] }>; logicalModels: unknown[]; defaultModels: Record<string, string> } };
+    const channel = before.settings.systemChannels.find((item) => item.models.includes("e2e-image"));
+    expect(channel).toBeTruthy();
+    const logicalModels = [
+        logicalModel("canvas-image-a", "画布图片 A", "e2e-image"),
+        logicalModel("canvas-image-b", "画布图片 B", "e2e-image-fallback"),
+        logicalModel("canvas-image-c", "画布图片 C", "e2e-image"),
+    ];
+    let projectId = "";
+    try {
+        const seeded = await request.patch("/api/admin/settings", { data: { logicalModels: logicalModels.map((model) => ({ ...model, bindings: model.bindings.map((binding) => ({ ...binding, channelId: channel!.id })) })), defaultModels: { ...before.settings.defaultModels, imageModel: "canvas-image-a" } } });
+        expect(seeded.ok(), await seeded.text()).toBe(true);
+
+        await page.goto("/admin?section=channels", { waitUntil: "domcontentloaded" });
+        await expect(page.locator(".admin-dashboard-shell")).toHaveAttribute("data-hydrated", "true");
+        await page.getByRole("tab", { name: "逻辑模型" }).click();
+        await expect(page.getByText("节点模型显示与排序", { exact: true })).toBeVisible();
+        const order = page.locator("[data-logical-model-order]");
+        await expect(order).toHaveCount(3);
+        await expect.poll(() => order.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-logical-model-order")))).toEqual(["canvas-image-a", "canvas-image-b", "canvas-image-c"]);
+        await page.locator('[data-logical-model-order="canvas-image-c"]').dragTo(page.locator('[data-logical-model-order="canvas-image-a"]'));
+        await expect.poll(() => order.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-logical-model-order")))).toEqual(["canvas-image-c", "canvas-image-a", "canvas-image-b"]);
+        await page.getByRole("switch", { name: "画布图片 A在图片节点显示" }).click();
+        await expect(page.getByText("显示 2/3", { exact: true })).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath("logical-model-node-order.png") });
+        await page.getByRole("button", { name: "保存模型渠道配置" }).click();
+        await expect(page.getByText("模型渠道配置已保存", { exact: true })).toBeVisible();
+
+        const publicResponse = await request.get("/api/auth/session");
+        const publicModels = ((await publicResponse.json()) as { settings: { logicalModels: Array<{ id: string; pickerVisible?: boolean }> } }).settings.logicalModels;
+        expect(publicModels.map((model) => [model.id, model.pickerVisible])).toEqual([
+            ["canvas-image-c", true],
+            ["canvas-image-a", false],
+            ["canvas-image-b", true],
+        ]);
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto("/admin?section=channels", { waitUntil: "domcontentloaded" });
+        await page.getByRole("tab", { name: "逻辑模型" }).click();
+        const displayPanel = page.getByText("节点模型显示与排序", { exact: true }).locator("xpath=ancestor::section[1]");
+        await expect(displayPanel).toBeVisible();
+        await displayPanel.scrollIntoViewIfNeeded();
+        const mobileBounds = await displayPanel.boundingBox();
+        expect(mobileBounds).not.toBeNull();
+        expect(mobileBounds!.x).toBeGreaterThanOrEqual(0);
+        expect(mobileBounds!.x + mobileBounds!.width).toBeLessThanOrEqual(391);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+        await page.screenshot({ path: testInfo.outputPath("logical-model-node-order-390.png") });
+        await page.setViewportSize({ width: 1280, height: 720 });
+
+        const created = await request.post("/api/canvas/projects", {
+            data: { title: "节点模型排序 E2E", project: { nodes: [{ id: "model-order-config", type: "config", title: "生成配置", position: { x: 120, y: 120 }, width: 320, height: 220, metadata: { generationMode: "image", model: "canvas-image-c" } }], connections: [] } },
+        });
+        expect(created.ok(), await created.text()).toBe(true);
+        projectId = ((await created.json()) as { data: { project: { id: string } } }).data.project.id;
+        await page.goto(`/canvas/${projectId}`, { waitUntil: "domcontentloaded" });
+        const picker = page.locator('[data-node-id="model-order-config"] .canvas-composer-model-picker');
+        await picker.click();
+        const options = page.getByRole("option");
+        await expect(options).toHaveCount(2);
+        await expect(options.nth(0)).toContainText("画布图片 C");
+        await expect(options.nth(1)).toContainText("画布图片 B");
+        await expect(page.getByRole("option", { name: /画布图片 A/ })).toHaveCount(0);
+    } finally {
+        if (projectId) await request.delete(`/api/canvas/projects/${projectId}`);
+        const restored = await request.patch("/api/admin/settings", { data: { logicalModels: before.settings.logicalModels, defaultModels: before.settings.defaultModels } });
+        expect(restored.ok(), await restored.text()).toBe(true);
+    }
+
+    function logicalModel(id: string, name: string, upstreamModel: string) {
+        return { id, name, capability: "image", enabled: true, bindings: [{ id: `${id}-binding`, channelId: "", upstreamModel, enabled: true, priority: 1 }] };
+    }
+});
+
 test("new Agent Skill is saved before leaving the administrator page", async ({ page, request }) => {
     const beforeResponse = await request.get("/api/admin/settings");
     expect(beforeResponse.ok(), await beforeResponse.text()).toBe(true);

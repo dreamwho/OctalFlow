@@ -44,12 +44,12 @@ function renderImageNode(overrides: Partial<React.ComponentProps<typeof CanvasNo
     );
 }
 
-function renderContent(node: CanvasNodeData, theme: (typeof canvasThemes)[keyof typeof canvasThemes]) {
+function renderContent(node: CanvasNodeData, theme: (typeof canvasThemes)[keyof typeof canvasThemes], isEditingContent = false) {
     return renderToStaticMarkup(
         <NodeContent
             node={node}
             theme={theme}
-            isEditingContent={false}
+            isEditingContent={isEditingContent}
             textareaRef={{ current: null }}
             isBatchRoot={false}
             batchCount={0}
@@ -84,7 +84,7 @@ describe("CanvasNode image border", () => {
         expect(markup).toContain("#67e8f9");
         expect(markup).toContain("#818cf8");
         expect(markup).toContain("#c084fc");
-        expect(markup).toContain('x="0" y="0" width="100" height="100"');
+        expect(markup).toContain('x="0.8" y="0.8" width="98.4" height="98.4"');
     });
 
     it("progressively reduces node title metadata after the canvas is zoomed out", () => {
@@ -172,6 +172,22 @@ describe("CanvasNode image border", () => {
 
         expect(markup).toContain('data-canvas-resize-corner="bottom-right"');
         expect(markup).toContain('style="touch-action:none;user-select:none"');
+    });
+});
+
+describe("Canvas text node controls", () => {
+    it("keeps complete text visible and exposes copy, menu, and expanded editing actions", () => {
+        const textNode = { ...imageNode, id: "text-node", type: CanvasNodeType.Text, title: "视频分析", metadata: { content: "第一段\n第二段完整内容" } } satisfies CanvasNodeData;
+        const markup = renderImageNode({ data: textNode });
+        const editorMarkup = renderContent(textNode, canvasThemes.light, true);
+
+        expect(markup).toContain("第一段\n第二段完整内容");
+        expect(markup).toContain('aria-label="文本操作菜单"');
+        expect(markup).toContain('aria-label="一键复制全文"');
+        expect(markup).toContain('aria-label="展开文本"');
+        expect(markup).toContain(`background:${canvasThemes.light.toolbar.panel}`);
+        expect(editorMarkup).toContain('class="relative min-h-0 min-w-0 flex-1 w-full"');
+        expect(markup).toContain('class="thin-scrollbar block min-h-0 min-w-0 flex-1 w-full overflow-y-auto');
     });
 });
 

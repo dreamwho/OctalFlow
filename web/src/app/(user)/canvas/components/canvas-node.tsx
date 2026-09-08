@@ -229,9 +229,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 
     useEffect(() => {
         if (!isEditingContent) return;
-        const textarea = textareaRef.current;
-        textarea?.focus();
-        textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+        textareaRef.current?.focus({ preventScroll: true });
     }, [isEditingContent]);
 
     useLayoutEffect(() => {
@@ -509,7 +507,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                                 <stop offset="100%" stopColor="#c084fc" />
                             </linearGradient>
                         </defs>
-                        <rect x="0" y="0" width="100" height="100" rx={isConfig ? 4 : 3} fill="none" stroke={`url(#${selectionFlowId})`} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+                        <rect x="0.8" y="0.8" width="98.4" height="98.4" rx={isConfig ? 4 : 3} fill="none" stroke={`url(#${selectionFlowId})`} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
                     </svg>
                 ) : null}
                 <div
@@ -539,6 +537,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         renderNodeContent={renderNodeContent}
                         mentionReferences={mentionReferences}
                         onContentChange={onContentChange}
+                        onStartEditing={() => setIsEditingContent(true)}
                         onStopEditing={() => setIsEditingContent(false)}
                         onRetry={onRetry}
                         onGenerateImage={onGenerateImage}

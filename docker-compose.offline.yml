@@ -131,7 +131,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3000/api/health/live').then(async live=>{if(!live.ok)throw new Error('live');const ready=await fetch('http://127.0.0.1:3000/api/health/ready');const body=await ready.json();if(!body?.data?.database?.healthy)throw new Error('database')}).catch(()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 10s

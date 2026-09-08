@@ -1,6 +1,6 @@
 import type { QueryExecutor } from "./postgres";
 
-export type MagicProxyProvider = "geminiai" | "geminiTools";
+export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi";
 
 export type MagicProxyBinding = {
     enabled: boolean;
@@ -10,6 +10,7 @@ export type MagicProxyBinding = {
 export type MagicProxyBindings = {
     geminiai: MagicProxyBinding;
     geminiTools: MagicProxyBinding;
+    chatgptApi: MagicProxyBinding;
 };
 
 export type MagicProxySettings = {
@@ -30,8 +31,8 @@ export class MagicProxyRepository {
     async save(settings: MagicProxySettings) {
         const result = await this.db.query(
             `INSERT INTO magic_proxy_settings (
-                id,subscription_url_ciphertext,nodes_ciphertext,geminiai_enabled,geminiai_node,gemini_tools_enabled,gemini_tools_node,updated_at
-             ) VALUES ('default',$1,$2,$3,$4,$5,$6,$7)
+                id,subscription_url_ciphertext,nodes_ciphertext,geminiai_enabled,geminiai_node,gemini_tools_enabled,gemini_tools_node,chatgpt_api_enabled,chatgpt_api_node,updated_at
+             ) VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9)
              ON CONFLICT (id) DO UPDATE SET
                 subscription_url_ciphertext=EXCLUDED.subscription_url_ciphertext,
                 nodes_ciphertext=EXCLUDED.nodes_ciphertext,
@@ -39,6 +40,8 @@ export class MagicProxyRepository {
                 geminiai_node=EXCLUDED.geminiai_node,
                 gemini_tools_enabled=EXCLUDED.gemini_tools_enabled,
                 gemini_tools_node=EXCLUDED.gemini_tools_node,
+                chatgpt_api_enabled=EXCLUDED.chatgpt_api_enabled,
+                chatgpt_api_node=EXCLUDED.chatgpt_api_node,
                 updated_at=EXCLUDED.updated_at
              RETURNING *`,
             [
@@ -48,6 +51,8 @@ export class MagicProxyRepository {
                 settings.bindings.geminiai.node || null,
                 settings.bindings.geminiTools.enabled,
                 settings.bindings.geminiTools.node || null,
+                settings.bindings.chatgptApi.enabled,
+                settings.bindings.chatgptApi.node || null,
                 new Date(settings.updatedAt),
             ],
         );
@@ -63,6 +68,7 @@ function mapSettings(row: Record<string, unknown>): MagicProxySettings {
         bindings: {
             geminiai: binding(row.geminiai_enabled, row.geminiai_node),
             geminiTools: binding(row.gemini_tools_enabled, row.gemini_tools_node),
+            chatgptApi: binding(row.chatgpt_api_enabled, row.chatgpt_api_node),
         },
         updatedAt,
     };

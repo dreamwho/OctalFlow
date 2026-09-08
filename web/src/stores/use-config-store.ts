@@ -18,6 +18,7 @@ type SystemChannelProtocol =
     | "gemini"
     | "geminiai"
     | "gemini-tools"
+    | "chatgpt-api"
     | "dreamina-cli"
     | "sub2api"
     | "newapi"
@@ -92,6 +93,7 @@ type LogicalModel = {
     name: string;
     capability: ModelCapability;
     enabled: boolean;
+    pickerVisible?: boolean;
     bindings: Array<{ id: string; channelId: string; upstreamModel: string; enabled: boolean; priority: number; displayName?: string }>;
 };
 
@@ -428,8 +430,9 @@ function expandPublicCapabilityModels(logicalModels: LogicalModel[], channels: M
     const channelIds = new Set(channels.map((channel) => channel.id));
     return Object.fromEntries(
         (Object.keys(fallback) as ModelCapability[]).map((capability) => {
-            const options = logicalModels.filter((model) => model.capability === capability && model.bindings.some((binding) => binding.enabled && channelIds.has(binding.channelId))).map((model) => model.id);
-            return [capability, options.length ? options : fallback[capability]];
+            const scopedModels = logicalModels.filter((model) => model.capability === capability);
+            const options = scopedModels.filter((model) => model.pickerVisible !== false && model.bindings.some((binding) => binding.enabled && channelIds.has(binding.channelId))).map((model) => model.id);
+            return [capability, scopedModels.length ? options : fallback[capability]];
         }),
     ) as Record<ModelCapability, string[]>;
 }

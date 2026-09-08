@@ -22,7 +22,10 @@ export const composeProfiles = [
         embeddedPostgres: false,
         hostNetwork: true,
         image: "${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}",
-        workerOrigin: "http://127.0.0.1:3000",
+        appPort: "${PORT:-8866}",
+        internalOrigin: "http://127.0.0.1:${PORT:-8866}",
+        trustedProxyHops: "${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}",
+        workerOrigin: "http://127.0.0.1:${PORT:-8866}",
         expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"],
     },
     { file: "docker-compose.local.yml", embeddedPostgres: true, image: "octalaicanvas:local", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
@@ -81,6 +84,7 @@ export function validateMihomoBootstrapContracts({ repoRoot }) {
                 JSON.stringify([
                     { name: "OctalFlow-GeminiAIStudio", type: "select", use: ["OctalFlow-Subscription"], proxies: ["DIRECT"] },
                     { name: "OctalFlow-GeminiTools", type: "select", use: ["OctalFlow-Subscription"], proxies: ["DIRECT"] },
+                    { name: "OctalFlow-ChatGPTAPI", type: "select", use: ["OctalFlow-Subscription"], proxies: ["DIRECT"] },
                 ]),
             "proxy groups 必须保持静态并使用共享 file provider",
         );
@@ -89,8 +93,9 @@ export function validateMihomoBootstrapContracts({ repoRoot }) {
                 JSON.stringify([
                     { name: "OctalFlow-GeminiAIStudio", type: "mixed", listen: listenHost, port: 17890, proxy: "OctalFlow-GeminiAIStudio" },
                     { name: "OctalFlow-GeminiTools", type: "mixed", listen: listenHost, port: 17891, proxy: "OctalFlow-GeminiTools" },
+                    { name: "OctalFlow-ChatGPTAPI", type: "mixed", listen: listenHost, port: 17892, proxy: "OctalFlow-ChatGPTAPI" },
                 ]),
-            "listeners 必须保持两项静态 mixed listener",
+            "listeners 必须保持三项静态 mixed listener",
         );
         return { file, listenHost, providerPath: provider.path, listenerPorts: listeners.map(({ port }) => port) };
     });
@@ -220,6 +225,19 @@ export function validateComposeContract(source, profile) {
     ensure(!("OCTALAICANVAS_GEMINIAI_API_KEY" in workerEnvironment), "generation-worker 不得获得 GeminiAI 内部密钥");
     ensure(!("GEMINI_TOOLS_OAUTH_CLIENT_SECRET" in workerEnvironment), "generation-worker 不得获得 GeminiTools OAuth Client Secret");
     ensure(workerEnvironment.OCTALAICANVAS_WORKER_API_ORIGIN === profile.workerOrigin, `Worker API 地址必须为 ${profile.workerOrigin}`);
+    if (profile.appPort) {
+        ensure(appEnvironment.PORT === profile.appPort, `app 监听端口必须为 ${profile.appPort}`);
+        ensure(appEnvironment.OCTALAICANVAS_INTERNAL_ORIGIN === profile.internalOrigin, `app 内部地址必须为 ${profile.internalOrigin}`);
+        ensure(appEnvironment.OCTALAICANVAS_TRUSTED_PROXY_HOPS === profile.trustedProxyHops, `app 可信代理层数必须为 ${profile.trustedProxyHops}`);
+        ensure(
+            app.healthcheck?.test?.some((value) => String(value).includes(`${profile.internalOrigin}/api/health/live`)),
+            `app 健康检查必须请求 ${profile.internalOrigin}/api/health/live`,
+        );
+        ensure(
+            app.healthcheck?.test?.some((value) => String(value).includes(`${profile.internalOrigin}/api/health/ready`)),
+            `app 健康检查必须请求 ${profile.internalOrigin}/api/health/ready`,
+        );
+    }
     ensure(appEnvironment.OCTALAICANVAS_DATABASE_PROVIDER === "postgres", "app 必须使用 PostgreSQL provider");
     ensure(typeof appEnvironment.DATABASE_URL === "string", "app 缺少 DATABASE_URL");
     ensure(!("DATABASE_URL" in workerEnvironment), "generation-worker 不应直接持有数据库连接串");

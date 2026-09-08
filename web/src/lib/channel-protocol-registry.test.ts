@@ -35,6 +35,7 @@ describe("channel protocol registry", () => {
             "gemini",
             "geminiai",
             "gemini-tools",
+            "chatgpt-api",
             "dreamina-cli",
             "seedance",
             "stable-diffusion",
@@ -71,6 +72,18 @@ describe("channel protocol registry", () => {
             capabilities: ["text"],
             operations: { text: { supportsReferenceImage: true, referenceRule: expect.stringContaining("inlineData") } },
         });
+        expect(channelProtocolDefinition("chatgpt-api")).toMatchObject({
+            label: "GPTAPI",
+            apiFormat: "openai",
+            authMode: "provider-managed",
+            modelCatalogPaths: ["/v1/models"],
+            capabilities: ["text", "image"],
+            operations: {
+                text: { createPath: "/chat/completions" },
+                image: { createPath: "/images/generations", editPath: "/images/edits", supportsReferenceImage: true },
+            },
+        });
+        expect(channelProtocolDefinition("chatgpt-api").builtInModels).toBeUndefined();
         expect(channelProtocolDefinition("dreamina-cli")).toMatchObject({
             label: "即梦 CLI",
             apiFormat: "openai",
@@ -268,6 +281,28 @@ describe("channel protocol registry", () => {
         expect(protocolAuthHeaders("", configured.advancedConfig)).toEqual({});
         expect(configured.advancedConfig?.modelConfigs?.["gemini-3.1-pro-preview"]).toMatchObject({ protocol: "geminiai", capability: "text", createPath: "/chat/completions" });
         expect(configured.advancedConfig?.modelConfigs?.["gemini-3.1-flash-image-preview"]).toMatchObject({ protocol: "geminiai", capability: "image", createPath: "/images/generations", editPath: "/images/edits" });
+        expect(channelProtocolValidationErrors(configured)).toEqual([]);
+    });
+
+    it("keeps GPTAPI credentials provider-managed while requiring catalog-backed model configs", () => {
+        const configured = applyChannelProtocol(
+            {
+                ...channel,
+                baseUrl: "",
+                apiKey: "",
+                hasApiKey: false,
+                models: ["catalog-text", "catalog-image"],
+            },
+            "chatgpt-api",
+        );
+
+        expect(configured.advancedConfig?.authMode).toBe("provider-managed");
+        expect(channelCredentialsReady(configured)).toBe(true);
+        expect(protocolAuthHeaders("", configured.advancedConfig)).toEqual({});
+        expect(configured.advancedConfig?.modelConfigs).toMatchObject({
+            "catalog-text": { protocol: "chatgpt-api", capability: "text", createPath: "/chat/completions" },
+            "catalog-image": { protocol: "chatgpt-api", capability: "image", createPath: "/images/generations", editPath: "/images/edits" },
+        });
         expect(channelProtocolValidationErrors(configured)).toEqual([]);
     });
 

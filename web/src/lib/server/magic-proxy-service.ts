@@ -14,15 +14,18 @@ const FILE_NAME = "magic-proxy.json";
 const PROVIDER_NAME = "OctalFlow-Subscription";
 const PROVIDER_FILE_NAME = "subscription.yaml";
 const PROVIDER_ENDPOINT = `/providers/proxies/${encodeURIComponent(PROVIDER_NAME)}`;
+const LOCAL_FILE_SUBSCRIPTION_URL = "local://file-import";
 const GROUP_NAMES: Record<MagicProxyProvider, string> = {
     geminiai: "OctalFlow-GeminiAIStudio",
     geminiTools: "OctalFlow-GeminiTools",
+    chatgptApi: "OctalFlow-ChatGPTAPI",
 };
 const DEFAULT_MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES = 4 * 1024 * 1024;
 const MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES_ENV = "OCTALAICANVAS_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES";
 const EMPTY_BINDINGS: MagicProxyBindings = {
     geminiai: { enabled: false },
     geminiTools: { enabled: false },
+    chatgptApi: { enabled: false },
 };
 
 type MagicProxyNode = Record<string, unknown> & { name: string; type: string };
@@ -33,7 +36,7 @@ type MihomoRuntimeConfig = {
     controllerUrl: URL;
     secret: string;
     providerFile: string;
-    proxyUrls: Record<MagicProxyProvider, string>;
+    proxyUrls: Partial<Record<MagicProxyProvider, string>>;
 };
 
 export type MagicProxyPublicBinding = MagicProxyBinding;
@@ -91,17 +94,21 @@ export async function getMagicProxyOverview(): Promise<MagicProxyOverview> {
     };
 }
 
-export async function importMagicProxySubscription(input: { url?: unknown }) {
+export async function importMagicProxySubscription(input: { url?: unknown; content?: unknown }) {
+    const hasFileContent = typeof input.content === "string";
+    const suppliedContent = typeof input.content === "string" ? input.content : "";
     const provided = optionalText(input.url);
-    const suppliedSubscriptionUrl = provided ? normalizeSubscriptionUrl(provided) : "";
-    const initial = suppliedSubscriptionUrl ? null : await readSettings();
-    const subscriptionUrl = suppliedSubscriptionUrl || initial?.subscriptionUrl;
+    const suppliedSubscriptionUrl = hasFileContent ? "" : provided ? normalizeSubscriptionUrl(provided) : "";
+    const initial = suppliedSubscriptionUrl || hasFileContent ? null : await readSettings();
+    const subscriptionUrl = hasFileContent ? LOCAL_FILE_SUBSCRIPTION_URL : suppliedSubscriptionUrl || initial?.subscriptionUrl;
+    if (hasFileContent && !optionalText(suppliedContent)) throw new MagicProxyError("请选择包含 Clash YAML 内容的文件", 400);
     if (!subscriptionUrl) throw new MagicProxyError("请提供 HTTPS Clash YAML 订阅地址，或先导入一次订阅后再刷新", 400);
+    if (subscriptionUrl === LOCAL_FILE_SUBSCRIPTION_URL && !hasFileContent) throw new MagicProxyError("当前订阅来自本地文件，不支持自动更新，请重新选择 YAML 或文本文件导入", 409);
 
-    const nodes = await fetchSubscriptionNodes(subscriptionUrl);
+    const nodes = hasFileContent ? parseSubscriptionNodes(suppliedContent) : await fetchSubscriptionNodes(subscriptionUrl);
     return withRuntimeLock(async () => {
         const existing = await readSettings();
-        if (!suppliedSubscriptionUrl && existing?.subscriptionUrl !== subscriptionUrl) throw new MagicProxyError("订阅地址已在刷新期间变更，请重新刷新", 409);
+        if (!suppliedSubscriptionUrl && !hasFileContent && existing?.subscriptionUrl !== subscriptionUrl) throw new MagicProxyError("订阅地址已在刷新期间变更，请重新刷新", 409);
         const next: DecodedMagicProxySettings = {
             subscriptionUrl,
             nodes,
@@ -144,6 +151,7 @@ export async function updateMagicProxyBinding(input: { provider?: unknown; enabl
             updatedAt: new Date().toISOString(),
         };
         const runtime = requireRuntimeConfig();
+        if (input.enabled && provider === "chatgptApi") runtimeProxyUrl(runtime, provider);
         try {
             await ensureMihomoGroupSelection(next, runtime, provider);
             await saveSettings(encodeSettings(next));
@@ -167,7 +175,7 @@ export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Pr
         }
         if (binding.enabled && !binding.node) throw new MagicProxyError("魔法代理绑定缺少节点，请在服务设置中重新选择", 409);
         await ensureMihomoGroupSelection(settings, runtime, provider);
-        return binding.enabled ? { enabled: true, ...(provider === "geminiTools" ? { proxyUrl: runtime.proxyUrls.geminiTools } : {}) } : { enabled: false };
+        return binding.enabled ? { enabled: true, ...(provider === "geminiai" ? {} : { proxyUrl: runtimeProxyUrl(runtime, provider) }) } : { enabled: false };
     });
 }
 
@@ -255,6 +263,7 @@ function magicProxySubscriptionMaxBytes() {
 }
 
 function parseSubscriptionNodes(raw: string) {
+    if (Buffer.byteLength(raw, "utf8") > magicProxySubscriptionMaxBytes()) throw new MagicProxyError(`订阅内容超过 ${magicProxySubscriptionMaxBytes()} 字节限制，请缩小文件或调整服务器限制`, 413);
     let document: ReturnType<typeof parseDocument>;
     try {
         document = parseDocument(raw);
@@ -273,7 +282,7 @@ function normalizeSubscriptionNodes(value: unknown) {
         const node = record(rawNode);
         const name = requiredText(node.name, "订阅节点缺少名称");
         const type = requiredText(node.type, `订阅节点“${name}”缺少类型`);
-        if (name === "DIRECT" || name === GROUP_NAMES.geminiai || name === GROUP_NAMES.geminiTools) throw new MagicProxyError("订阅节点名称与魔法代理保留名称冲突", 422);
+        if (name === "DIRECT" || Object.values(GROUP_NAMES).includes(name)) throw new MagicProxyError("订阅节点名称与魔法代理保留名称冲突", 422);
         if (names.has(name)) throw new MagicProxyError("订阅节点名称不能重复", 422);
         names.add(name);
         const sanitized = sanitizeJson(node);
@@ -298,6 +307,7 @@ function normalizeBindings(value: MagicProxyBindings | undefined, names: Set<str
     return {
         geminiai: normalizedBinding(value?.geminiai, names),
         geminiTools: normalizedBinding(value?.geminiTools, names),
+        chatgptApi: normalizedBinding(value?.chatgptApi, names),
     };
 }
 
@@ -327,6 +337,10 @@ async function syncMihomoProvider(settings: MihomoProviderState, runtime: Mihomo
     }
     for (const provider of Object.keys(GROUP_NAMES) as MagicProxyProvider[]) {
         const binding = settings.bindings[provider];
+        if (provider === "chatgptApi" && !runtime.proxyUrls.chatgptApi) {
+            if (binding.enabled) runtimeProxyUrl(runtime, provider);
+            continue;
+        }
         await selectMihomoProxy(runtime, GROUP_NAMES[provider], binding.enabled && binding.node ? binding.node : "DIRECT");
     }
 }
@@ -458,6 +472,7 @@ function readRuntimeConfig(): MihomoRuntimeConfig | null {
     const listenHost = process.env.OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST?.trim() || "";
     const geminiaiPort = port(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_PORT);
     const geminiToolsPort = port(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_PORT);
+    const chatgptApiPort = port(process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT);
     const geminiaiUrl = proxyUrl(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL, geminiaiPort);
     const geminiToolsUrl = proxyUrl(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_URL, geminiToolsPort);
     if (!controllerValue || secret.length < 32 || !isMagicProxyProviderFile(providerFile) || !isMagicProxyListenHost(listenHost) || !geminiaiPort || !geminiToolsPort || geminiaiPort === geminiToolsPort || !geminiaiUrl || !geminiToolsUrl) return null;
@@ -465,11 +480,13 @@ function readRuntimeConfig(): MihomoRuntimeConfig | null {
         const controllerUrl = new URL(controllerValue);
         const controllerPort = port(controllerUrl.port);
         if (!["http:", "https:"].includes(controllerUrl.protocol) || !controllerPort || controllerUrl.username || controllerUrl.password || controllerUrl.pathname !== "/" || controllerUrl.search || controllerUrl.hash) return null;
+        const chatgptApiUrl = proxyUrl(process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL, chatgptApiPort);
+        const chatgptApiProxyUrl = chatgptApiPort && chatgptApiPort !== controllerPort && chatgptApiPort !== geminiaiPort && chatgptApiPort !== geminiToolsPort ? chatgptApiUrl : "";
         return {
             controllerUrl,
             secret,
             providerFile,
-            proxyUrls: { geminiai: geminiaiUrl, geminiTools: geminiToolsUrl },
+            proxyUrls: { geminiai: geminiaiUrl, geminiTools: geminiToolsUrl, ...(chatgptApiProxyUrl ? { chatgptApi: chatgptApiProxyUrl } : {}) },
         };
     } catch {
         return null;
@@ -480,6 +497,15 @@ function requireRuntimeConfig() {
     const runtime = readRuntimeConfig();
     if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查 Mihomo 控制器、订阅文件、监听地址和两个独立端口", 503);
     return runtime;
+}
+
+function runtimeProxyUrl(runtime: MihomoRuntimeConfig, provider: Exclude<MagicProxyProvider, "geminiai">) {
+    const value = runtime.proxyUrls[provider];
+    if (value) return value;
+    if (provider === "chatgptApi") {
+        throw new MagicProxyError("ChatGPTAPI 魔法代理监听未配置，请同时设置 OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT 和 OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL，并使用独立端口", 503);
+    }
+    throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
 }
 
 function proxyUrl(value: string | undefined, expectedPort: number) {
@@ -511,7 +537,8 @@ async function readSettings(): Promise<DecodedMagicProxySettings | null> {
     const stored = isPostgresDatabaseEnabled() ? await (await postgresRepository()).get() : await readFileSettings();
     if (!stored?.subscriptionUrlCiphertext || !stored.nodesCiphertext) return null;
     try {
-        const subscriptionUrl = normalizeSubscriptionUrl(decryptSecretValue(stored.subscriptionUrlCiphertext));
+        const storedSubscriptionUrl = decryptSecretValue(stored.subscriptionUrlCiphertext);
+        const subscriptionUrl = storedSubscriptionUrl === LOCAL_FILE_SUBSCRIPTION_URL ? storedSubscriptionUrl : normalizeSubscriptionUrl(storedSubscriptionUrl);
         const nodes = normalizeSubscriptionNodes(JSON.parse(decryptSecretValue(stored.nodesCiphertext)));
         return {
             subscriptionUrl,
@@ -558,6 +585,7 @@ function storedBindings(value: unknown): MagicProxyBindings {
     return {
         geminiai: storedBinding(bindings.geminiai),
         geminiTools: storedBinding(bindings.geminiTools),
+        chatgptApi: storedBinding(bindings.chatgptApi),
     };
 }
 
@@ -606,7 +634,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function magicProxyProvider(value: unknown): MagicProxyProvider | null {
-    return value === "geminiai" || value === "geminiTools" ? value : null;
+    return value === "geminiai" || value === "geminiTools" || value === "chatgptApi" ? value : null;
 }
 
 function cloneBinding(value: MagicProxyBinding): MagicProxyBinding {
@@ -614,7 +642,7 @@ function cloneBinding(value: MagicProxyBinding): MagicProxyBinding {
 }
 
 function cloneBindings(value: MagicProxyBindings): MagicProxyBindings {
-    return { geminiai: cloneBinding(value.geminiai), geminiTools: cloneBinding(value.geminiTools) };
+    return { geminiai: cloneBinding(value.geminiai), geminiTools: cloneBinding(value.geminiTools), chatgptApi: cloneBinding(value.chatgptApi) };
 }
 
 const runtimeState = globalThis as typeof globalThis & { __octalaicanvasMagicProxyRuntimeQueue?: Promise<void> };

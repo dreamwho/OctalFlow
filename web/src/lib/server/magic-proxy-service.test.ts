@@ -7,6 +7,7 @@ const PROVIDER_FILE = "/runtime/mihomo/subscription.yaml";
 const PROVIDER_ENDPOINT = "/providers/proxies/OctalFlow-Subscription";
 const GEMINIAI_GROUP = "OctalFlow-GeminiAIStudio";
 const GEMINI_TOOLS_GROUP = "OctalFlow-GeminiTools";
+const CHATGPT_API_GROUP = "OctalFlow-ChatGPTAPI";
 
 const mocks = vi.hoisted(() => ({
     files: new Map<string, unknown>(),
@@ -125,6 +126,7 @@ describe("magic proxy service", () => {
         expect(providerGetCalls()).toHaveLength(1);
         expect(selectionFor(GEMINIAI_GROUP)).toBe("DIRECT");
         expect(selectionFor(GEMINI_TOOLS_GROUP)).toBe("DIRECT");
+        expect(selectionFor(CHATGPT_API_GROUP)).toBeUndefined();
 
         const overview = await getMagicProxyOverview();
 
@@ -133,8 +135,8 @@ describe("magic proxy service", () => {
             runtimeAvailable: true,
             nodeCount: 1,
             nodes: [{ name: "Tokyo-01", type: "ss", alive: true, delay: 42 }],
-            groups: expect.arrayContaining([expect.objectContaining({ name: GEMINIAI_GROUP, now: "DIRECT" }), expect.objectContaining({ name: GEMINI_TOOLS_GROUP, now: "DIRECT" })]),
-            bindings: { geminiai: { enabled: false }, geminiTools: { enabled: false } },
+            groups: expect.arrayContaining([expect.objectContaining({ name: GEMINIAI_GROUP, now: "DIRECT" }), expect.objectContaining({ name: GEMINI_TOOLS_GROUP, now: "DIRECT" }), expect.objectContaining({ name: CHATGPT_API_GROUP, now: "" })]),
+            bindings: { geminiai: { enabled: false }, geminiTools: { enabled: false }, chatgptApi: { enabled: false } },
         });
         expect(groupGetCalls()).toHaveLength(1);
         expect(providerGetCalls()).toHaveLength(2);
@@ -162,6 +164,64 @@ describe("magic proxy service", () => {
         expect(providerRefreshCalls()).toHaveLength(0);
         expect(selectionFor(GEMINI_TOOLS_GROUP)).toBe("Tokyo-01");
         expect(selectionFor(GEMINIAI_GROUP)).toBeUndefined();
+    });
+
+    it("imports local Clash YAML content without fetching a URL and requires a new file for refresh", async () => {
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+        mocks.safeFetch.mockClear();
+
+        const result = await importMagicProxySubscription({ content: SUBSCRIPTION_YAML });
+
+        expect(result.nodes).toEqual([{ name: "Tokyo-01", type: "ss" }]);
+        expect(mocks.safeFetch).not.toHaveBeenCalled();
+        expect((await getMagicProxyOverview()).configured).toBe(true);
+        await expect(importMagicProxySubscription({})).rejects.toMatchObject({ status: 409, message: expect.stringContaining("本地文件") });
+    });
+
+    it("keeps legacy providers usable without ChatGPTAPI listener settings and rejects ChatGPTAPI enablement clearly", async () => {
+        expect(controllerResponse(`http://mihomo-controller.test:9090/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}`, { method: "PUT" }).status).toBe(404);
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+        await updateMagicProxyBinding({ provider: "geminiTools", enabled: true, node: "Tokyo-01" });
+
+        expect(controllerCalls(`/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}`, "PUT")).toHaveLength(0);
+        await expect(ensureMagicProxyProvider("geminiTools")).resolves.toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/" });
+        await expect(updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" })).rejects.toMatchObject({
+            status: 503,
+            message: expect.stringContaining("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT"),
+        });
+    });
+
+    it("fails explicitly instead of PUTing an unavailable ChatGPTAPI group after its enabled runtime config is removed", async () => {
+        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+        await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" });
+
+        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT", "");
+        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL", "");
+        mocks.controllerFetch.mockClear();
+
+        await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({
+            status: 503,
+            message: expect.stringContaining("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT"),
+        });
+        expect(controllerCalls(`/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}`, "PUT")).toHaveLength(0);
+    });
+
+    it("returns ChatGPTAPI's dedicated outbound listener URL without changing other provider selections", async () => {
+        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+        mocks.controllerFetch.mockClear();
+
+        await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" });
+        const resolved = await ensureMagicProxyProvider("chatgptApi");
+
+        expect(resolved).toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17892/" });
+        expect(providerRefreshCalls()).toHaveLength(0);
+        expect(selectionFor(CHATGPT_API_GROUP)).toBe("Tokyo-01");
+        expect(selectionFor(GEMINIAI_GROUP)).toBeUndefined();
+        expect(selectionFor(GEMINI_TOOLS_GROUP)).toBeUndefined();
     });
 
     it("refreshes the provider before selecting a binding whose static group is missing the expected node", async () => {
@@ -202,6 +262,7 @@ describe("magic proxy service", () => {
         expect(providerFileConfig()).toEqual({ proxies: [] });
         expect(selectionFor(GEMINIAI_GROUP)).toBe("DIRECT");
         expect(selectionFor(GEMINI_TOOLS_GROUP)).toBe("DIRECT");
+        expect(selectionFor(CHATGPT_API_GROUP)).toBeUndefined();
         expect(mocks.files.has("magic-proxy.json")).toBe(false);
     });
 
@@ -214,7 +275,7 @@ describe("magic proxy service", () => {
 
         const overview = await getMagicProxyOverview();
 
-        expect(overview.groups.map((group) => group.now)).toEqual(["", ""]);
+        expect(overview.groups.map((group) => group.now)).toEqual(["", "", ""]);
     });
 
     it("rejects non-HTTPS or credential-bearing subscription URLs before any outbound request", async () => {
@@ -294,6 +355,15 @@ describe("magic proxy service", () => {
         await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({ status: 413 });
 
         expect(mocks.controllerFetch).not.toHaveBeenCalled();
+    });
+
+    it("rejects oversized local files before writing the provider", async () => {
+        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES", "64");
+
+        await expect(importMagicProxySubscription({ content: SUBSCRIPTION_YAML })).rejects.toMatchObject({ status: 413 });
+
+        expect(mocks.controllerFetch).not.toHaveBeenCalled();
+        expect(mocks.writeFile).not.toHaveBeenCalled();
     });
 
     it("enforces the subscription stream byte limit when Content-Length is absent", async () => {
@@ -406,16 +476,23 @@ function controllerResponse(url: string, init?: RequestInit) {
     if (parsed.pathname === PROVIDER_ENDPOINT && init?.method === "GET") return jsonResponse({ proxies: providerRuntimeNodes() });
     if (parsed.pathname === PROVIDER_ENDPOINT && init?.method === "PUT") return new Response(null, { status: 204 });
     if (parsed.pathname === "/proxies" && parsed.search === "" && init?.method === "GET") return groupsResponse(providerRuntimeNodes().map((node) => node.name));
+    if (parsed.pathname === `/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}` && init?.method === "PUT" && !chatgptApiRuntimeConfigured()) return new Response(null, { status: 404 });
     return new Response(null, { status: 204 });
 }
 
 function groupsResponse(nodeNames: string[]) {
+    const chatgptApiGroup = chatgptApiRuntimeConfigured() ? { [CHATGPT_API_GROUP]: { name: CHATGPT_API_GROUP, type: "Selector", now: "DIRECT", all: ["DIRECT", ...nodeNames] } } : {};
     return jsonResponse({
         proxies: {
             [GEMINIAI_GROUP]: { name: GEMINIAI_GROUP, type: "Selector", now: "DIRECT", all: ["DIRECT", ...nodeNames] },
             [GEMINI_TOOLS_GROUP]: { name: GEMINI_TOOLS_GROUP, type: "Selector", now: "DIRECT", all: ["DIRECT", ...nodeNames] },
+            ...chatgptApiGroup,
         },
     });
+}
+
+function chatgptApiRuntimeConfigured() {
+    return Boolean(process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT && process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL);
 }
 
 function jsonResponse(value: unknown) {

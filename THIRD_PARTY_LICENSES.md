@@ -4,6 +4,10 @@
 
 ## Web 应用
 
+### 内部 ChatGPT 执行服务
+
+`services/chatgpt-api` 移植自 `https://github.com/dreamwho/chatgpt2api2` 的本地 3.2.2 源码，保留其 AGPL-3.0 许可证及上游 NOTICE 中的版权声明。具体纳入文件、来源与本项目修改见该目录的来源说明；不包含原项目的账号数据、密钥或前端品牌素材。
+
 共 464 个运行时依赖记录。
 
 | 包 | 版本 | 许可证 | 项目主页 |
