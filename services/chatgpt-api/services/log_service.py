@@ -450,6 +450,43 @@ def _next_item(items):
         return False, None
 
 
+RESPONSE_DIGEST_MAX_DEPTH = 5
+RESPONSE_DIGEST_MAX_ITEMS = 40
+RESPONSE_DIGEST_TEXT_LIMIT = 2000
+RESPONSE_DIGEST_BINARY_MIN = 512
+
+
+def _response_digest_text(value: str) -> str:
+    if value.startswith("data:") and len(value) >= RESPONSE_DIGEST_BINARY_MIN:
+        return f"<base64 图片数据已省略，共 {len(value)} 字符>"
+    if len(value) >= RESPONSE_DIGEST_BINARY_MIN and re.fullmatch(r"[A-Za-z0-9+/=\r\n]+", value):
+        return f"<base64 数据已省略，共 {len(value)} 字符>"
+    if len(value) > RESPONSE_DIGEST_TEXT_LIMIT:
+        return f"{value[:RESPONSE_DIGEST_TEXT_LIMIT]}…（截断，共 {len(value)} 字符）"
+    return value
+
+
+def _response_digest_value(value: object, depth: int = 0) -> object:
+    if depth >= RESPONSE_DIGEST_MAX_DEPTH:
+        return "…"
+    if isinstance(value, dict):
+        return {str(key): _response_digest_value(item, depth + 1) for key, item in list(value.items())[:RESPONSE_DIGEST_MAX_ITEMS]}
+    if isinstance(value, (list, tuple)):
+        return [_response_digest_value(item, depth + 1) for item in list(value)[:RESPONSE_DIGEST_MAX_ITEMS]]
+    if isinstance(value, str):
+        return _response_digest_text(value)
+    return value
+
+
+def response_digest(result: object) -> dict[str, object] | None:
+    """脱敏响应摘要：省略 base64 媒体与超长文本，保留结构、计数与文本预览。"""
+    if not isinstance(result, dict):
+        return None
+    trimmed = {key: item for key, item in result.items() if not str(key).startswith("_")}
+    digest = _response_digest_value(trimmed, 0)
+    return digest if isinstance(digest, dict) and digest else None
+
+
 @dataclass
 class LoggedCall:
     identity: dict[str, object]
@@ -721,6 +758,9 @@ class LoggedCall:
         if self.request_shape:
             detail["request_shape"] = self.request_shape
         detail["request_meta"] = {**self.trace_metadata, "lifecycle": list(self.lifecycle)}
+        digest = response_digest(result)
+        if digest:
+            detail["response"] = digest
         if error:
             detail["error"] = error
         self.log_fields.update(extra or {})

@@ -1,12 +1,28 @@
 "use client";
 
 import { Alert, Button, Drawer, Spin, Tag } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+
+import { useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
 
 import { chatGptApiRequest, type ChatGptLogDetail, type ChatGptLogField, type ChatGptLogTimeline } from "@/services/api/chatgpt-api";
 import { ACCOUNT_OPERATION_PROGRESS_POLL_INTERVAL_MS } from "./use-account-operation-progress";
 
+function LogDetailResizeHandle({ resizing, onPointerDown }: { resizing: boolean; onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void }) {
+    return (
+        <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="拖动调整侧边栏宽度"
+            title="左右拖动调整宽度"
+            onPointerDown={onPointerDown}
+            className={"absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors hover:bg-cyan-400/30" + (resizing ? " bg-cyan-400/40" : "")}
+        />
+    );
+}
+
 export function ChatGptLogDetail({ id, onClose }: { id: string | null; onClose: () => void }) {
+    const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 420 });
     const [detail, setDetail] = useState<ChatGptLogDetail | null>(null);
     const [error, setError] = useState("");
     const [revision, setRevision] = useState(0);
@@ -41,7 +57,8 @@ export function ChatGptLogDetail({ id, onClose }: { id: string | null; onClose: 
     const timeline = current?.detail_presentation?.timeline;
 
     return (
-        <Drawer title="请求日志详情" open={Boolean(id)} onClose={onClose} width="min(640px, 100vw)" styles={{ body: { padding: 20 } }}>
+        <Drawer title="请求日志详情" open={Boolean(id)} onClose={onClose} width={drawerWidth} styles={{ body: { padding: 20, position: "relative" } }}>
+            <LogDetailResizeHandle resizing={drawerResizing} onPointerDown={onHandlePointerDown} />
             <div className="space-y-5 break-words">
                 {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setRevision((value) => value + 1)}>重新连接</Button>} /> : null}
                 {!current && !error ? <Spin description="读取日志详情" /> : null}
@@ -65,6 +82,7 @@ export function ChatGptLogDetail({ id, onClose }: { id: string | null; onClose: 
                         <DetailPreview title="错误详情" value={current.public_error || current.upstream_error} tone="error" />
                         <DetailPreview title="上游响应" value={current.upstream_text} />
                         <DetailPreview title="请求结构" value={current.request_shape} />
+                        <DetailPreview title="响应数据" value={current.response} />
                         <DetailPreview title="请求元数据" value={current.request_meta} />
                         <DetailPreview title="性能数据" value={current.timings_ms || current.perf || current.metrics || current.monitor} />
                     </>

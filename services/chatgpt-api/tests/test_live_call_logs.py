@@ -93,3 +93,21 @@ def test_completion_is_ingested_once_after_report_reads_running_record(tmp_path)
     assert metrics.summary()["totals"]["success"] == 1
     metrics.sync_from_log_service(log_service)
     assert metrics.summary()["totals"]["total"] == 1
+
+
+def test_image_call_records_sanitized_response_digest():
+    client = TestClient(create_app())
+    call = LoggedCall({"id": "fixture"}, "/v1/images/generations", "gpt-image-2.5", "文生图")
+    huge_b64 = "data:image/png;base64," + "Q" * 4096
+
+    def handler():
+        return {"data": [{"url": huge_b64}], "created": 1736400000, "_internal": "stripped"}
+
+    assert asyncio.run(call.run(handler)) is not None
+    detail = client.get("/api/logs/" + call.call_id, headers=HEADERS).json()
+    response = detail.get("response")
+    assert isinstance(response, dict) and response
+    first = response["data"][0]["url"]
+    assert first.startswith("<base64 图片数据已省略") and huge_b64 not in first
+    assert "_internal" not in response
+    assert response["created"] == 1736400000

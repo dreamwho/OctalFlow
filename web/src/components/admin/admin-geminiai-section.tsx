@@ -1,5 +1,6 @@
 "use client";
 
+import { LogDetailResizeHandle, useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
 import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
 import { BarChart3, ChevronRight, CircleUserRound, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
@@ -541,8 +542,10 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
 }
 
 function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | null; onClose: () => void }) {
+    const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 560, minWidth: 420 });
     return (
-        <Drawer title="请求详情" open={Boolean(log)} onClose={onClose} width={560} style={{ maxWidth: "100vw" }} styles={{ body: { padding: 16 } }}>
+        <Drawer title="请求详情" open={Boolean(log)} onClose={onClose} width={drawerWidth} style={{ maxWidth: "100vw" }} styles={{ body: { padding: 16, position: "relative" } }}>
+            <LogDetailResizeHandle resizing={drawerResizing} onPointerDown={onHandlePointerDown} />
             {log ? (
                 <div className="space-y-5">
                     <div className="flex flex-wrap items-center gap-2">

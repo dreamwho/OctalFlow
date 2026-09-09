@@ -1,11 +1,11 @@
 "use client";
 
 import { Alert, App, Button, Empty, Input, Tag } from "antd";
-import { FileText, RefreshCw, ShieldCheck, Upload, Wifi, WifiOff } from "lucide-react";
+import { FileText, Gauge, RefreshCw, ShieldCheck, Upload, Wifi, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
-import { getMagicProxy, importMagicProxySubscription, refreshMagicProxySubscription, type MagicProxyGroup, type MagicProxyNode, type MagicProxyState } from "@/services/api/magic-proxy";
+import { getMagicProxy, importMagicProxySubscription, refreshMagicProxySubscription, testMagicProxyAllNodes, testMagicProxyNode, type MagicProxyDelayResult, type MagicProxyGroup, type MagicProxyNode, type MagicProxyState } from "@/services/api/magic-proxy";
 
 export function AdminMagicProxySection() {
     const { message } = App.useApp();
@@ -16,6 +16,39 @@ export function AdminMagicProxySection() {
     const [loading, setLoading] = useState(true);
     const [action, setAction] = useState<"import" | "file-import" | "refresh" | "">("");
     const [error, setError] = useState("");
+    const [delayResults, setDelayResults] = useState<Record<string, MagicProxyDelayResult>>({});
+    const [testingNode, setTestingNode] = useState("");
+    const [testingAll, setTestingAll] = useState(false);
+
+    const runNodeDelayTest = async (node: string) => {
+        if (!node || testingAll || testingNode) return;
+        setTestingNode(node);
+        try {
+            const result = await testMagicProxyNode(node);
+            setDelayResults((prev) => ({ ...prev, [node]: result }));
+            if (result.error) message.warning(`${node}：${result.error}`);
+        } catch (testError) {
+            message.error(testError instanceof Error ? testError.message : "节点测速失败");
+        } finally {
+            setTestingNode("");
+        }
+    };
+
+    const runAllDelayTest = async () => {
+        if (testingAll || testingNode) return;
+        setTestingAll(true);
+        try {
+            const { results } = await testMagicProxyAllNodes();
+            setDelayResults((prev) => ({ ...prev, ...Object.fromEntries(results.map((item) => [item.name, item])) }));
+            const failed = results.filter((item) => item.error).length;
+            if (failed) message.warning(`测速完成：${results.length - failed} 个节点可用，${failed} 个失败`);
+            else message.success(`测速完成：${results.length} 个节点全部可用`);
+        } catch (testError) {
+            message.error(testError instanceof Error ? testError.message : "节点测速失败");
+        } finally {
+            setTestingAll(false);
+        }
+    };
 
     const loadState = useCallback(async () => {
         setLoading(true);
@@ -192,11 +225,31 @@ export function AdminMagicProxySection() {
             </Panel>
 
             <Panel>
-                <PanelHeader title="代理节点" description="节点列表仅显示名称、类型、存活状态和延迟；Provider 节点绑定请在 GeminiAIStudio 或 GeminiTools 页面完成。" />
+                <PanelHeader
+                    title="代理节点"
+                    description="节点列表仅显示名称、类型、存活状态和延迟；Provider 节点绑定请在 GeminiAIStudio 或 GeminiTools 页面完成。测速通过节点请求外部连通性检查地址，结果仅表示节点当前可用性。"
+                    actions={
+                        <Button
+                            icon={<Gauge className="size-4" />}
+                            loading={testingAll}
+                            disabled={loading || testingNode !== "" || !state?.nodes.length || !state?.runtimeAvailable}
+                            onClick={() => void runAllDelayTest()}
+                        >
+                            一键测速
+                        </Button>
+                    }
+                />
                 {state?.nodes.length ? (
                     <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3">
                         {state.nodes.map((node) => (
-                            <MagicProxyNodeCard key={`${node.type}-${node.name}`} node={node} />
+                            <MagicProxyNodeCard
+                                key={`${node.type}-${node.name}`}
+                                node={node}
+                                delayResult={delayResults[node.name]}
+                                testing={testingAll || testingNode === node.name}
+                                disabled={testingAll || (testingNode !== "" && testingNode !== node.name)}
+                                onTest={() => void runNodeDelayTest(node.name)}
+                            />
                         ))}
                     </div>
                 ) : (
@@ -240,8 +293,10 @@ function MagicProxyGroupCard({ group }: { group: MagicProxyGroup }) {
     );
 }
 
-function MagicProxyNodeCard({ node }: { node: MagicProxyNode }) {
+function MagicProxyNodeCard({ node, delayResult, testing, disabled, onTest }: { node: MagicProxyNode; delayResult?: MagicProxyDelayResult; testing?: boolean; disabled?: boolean; onTest?: () => void }) {
     const alive = node.alive;
+    const testedDelay = typeof delayResult?.delay === "number" ? `${delayResult.delay} ms` : "";
+    const testedError = delayResult?.error || "";
     return (
         <div className="min-w-0 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
             <div className="flex min-w-0 items-start justify-between gap-3">
@@ -256,7 +311,23 @@ function MagicProxyNodeCard({ node }: { node: MagicProxyNode }) {
                     {alive === true ? "存活" : alive === false ? "不可用" : "状态未知"}
                 </Tag>
             </div>
-            <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">延迟：{typeof node.delay === "number" ? `${node.delay} ms` : "未知"}</div>
+            <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+                <div className="min-w-0 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                    延迟：
+                    {testedError ? (
+                        <span className="text-red-600 dark:text-red-400">{testedError}</span>
+                    ) : testedDelay ? (
+                        <span className="font-medium text-emerald-600 dark:text-emerald-400">{testedDelay}</span>
+                    ) : (
+                        typeof node.delay === "number"
+                          ? `${node.delay} ms`
+                          : "未知"
+                    )}
+                </div>
+                <Button size="small" icon={<Gauge className="size-3.5" />} loading={testing} disabled={disabled || !onTest} onClick={onTest}>
+                    测速
+                </Button>
+            </div>
         </div>
     );
 }

@@ -88,6 +88,13 @@ describe("ChatGPT internal transport", () => {
             ["/integration/proxy-selection", '{"enabled":true,"mode":"magic","native_source":"manual"}'],
         ]);
     });
+    it("rejects enabling Magic without a saved binding and skips the runtime push", async () => {
+        const seen = await fixture();
+        magic.ensure.mockResolvedValue({ enabled: false });
+        await expect(updateChatGptProxySelection({ enabled: true, mode: "magic", native_source: "manual" })).rejects.toMatchObject({ status: 409, message: expect.stringContaining("保存魔法节点") });
+        expect(magic.ensure).toHaveBeenCalledTimes(1);
+        expect(seen.filter((item) => item.url === "/integration/proxy")).toHaveLength(0);
+    });
     it("rewrites internal media into signed bounded links, rejects tampering and expires links", async () => {
         const seen = await fixture();
         const rewritten = rewriteChatGptMedia({ data: [{ url: "http://runtime:80/images/result.png" }] }, "https://canvas.example") as { data: Array<{ url: string }> };

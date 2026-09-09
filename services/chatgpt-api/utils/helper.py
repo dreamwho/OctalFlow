@@ -18,7 +18,15 @@ from fastapi import HTTPException
 from services.proxy_service import proxy_settings
 from utils.log import logger
 
-BASE_IMAGE_MODELS = {"gpt-image-2", "codex-gpt-image-2"}
+GPT_IMAGE_25_IMAGE_MODELS = (
+    "gpt-image-2.5",
+    "gpt-image-2.5-flare",
+    "gpt-image-2.5-sunburst",
+    "gpt-image-2.5-exact",
+    "gpt-image-2.5-flare-exact",
+    "gpt-image-2.5-sunburst-exact",
+)
+BASE_IMAGE_MODELS = {"gpt-image-2", "codex-gpt-image-2", *GPT_IMAGE_25_IMAGE_MODELS}
 IMAGE_MODEL_PLAN_TYPES = ("plus", "team", "pro")
 CODEX_IMAGE_MODEL = "codex-gpt-image-2"
 PREFIXED_CODEX_IMAGE_MODELS = {

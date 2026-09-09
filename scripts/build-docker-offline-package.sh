@@ -207,6 +207,28 @@ done
 install -m 0755 "$REPO_ROOT/scripts/deploy-docker-offline.sh" "$PACKAGE_DIR/一键部署.sh"
 install -m 0644 "$REPO_ROOT/$COMPOSE_FILE" "$PACKAGE_DIR/$COMPOSE_FILE"
 install -m 0644 "$REPO_ROOT/.env.example" "$PACKAGE_DIR/.env.example"
+
+# GeminiTools OAuth 凭据只保存在本地 .env（不入库）；打包时注入部署包模板，
+# 由一键部署脚本种子到服务器 .env，避免每次更新都要手工补配置。
+seeded_oauth_keys=0
+seed_env_example_from_local_env() {
+    local key="$1" value
+    value="$(grep -E "^${key}=" "$REPO_ROOT/.env" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+    [[ -n "$value" ]] || return 0
+    awk -v key="$key" -v value="$value" '
+        $0 ~ "^"key"=" { print key "=" value; seeded = 1; next }
+        { print }
+        END { if (!seeded) print key "=" value }
+    ' "$PACKAGE_DIR/.env.example" > "$PACKAGE_DIR/.env.example.seed" && mv "$PACKAGE_DIR/.env.example.seed" "$PACKAGE_DIR/.env.example"
+    seeded_oauth_keys=1
+}
+seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_ID
+seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_SECRET
+seed_env_example_from_local_env OCTALAICANVAS_GEMINIAI_STUDIO_URL
+if [[ "$seeded_oauth_keys" == 1 ]]; then
+    chmod 0600 "$PACKAGE_DIR/.env.example"
+    printf '已将本地关键环境变量（OAuth/AIStudio等）注入部署包模板（部署时会自动种子到服务器 .env）\n'
+fi
 mkdir -p "$PACKAGE_DIR/docker/mihomo"
 install -m 0644 "$REPO_ROOT/docker/mihomo/bootstrap.yaml" "$PACKAGE_DIR/docker/mihomo/bootstrap.yaml"
 install -m 0644 "$REPO_ROOT/docker/mihomo/bootstrap-host.yaml" "$PACKAGE_DIR/docker/mihomo/bootstrap-host.yaml"

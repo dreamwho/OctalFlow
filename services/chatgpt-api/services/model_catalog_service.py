@@ -27,8 +27,19 @@ FALLBACK_CHAT_MODELS = [
     "gpt-5-mini",
 ]
 
+# gpt-image-2.5 家族：上游目录已公开列出的图片模型（flare/sunburst/exact 为风格与保真变体）
+GPT_IMAGE_25_IMAGE_MODELS = [
+    "gpt-image-2.5",
+    "gpt-image-2.5-flare",
+    "gpt-image-2.5-sunburst",
+    "gpt-image-2.5-exact",
+    "gpt-image-2.5-flare-exact",
+    "gpt-image-2.5-sunburst-exact",
+]
+
 FALLBACK_IMAGE_MODELS = [
     "gpt-image-2",
+    *GPT_IMAGE_25_IMAGE_MODELS,
 ]
 
 
@@ -87,7 +98,7 @@ def _image_models_from_accounts(accounts: list[dict[str, Any]]) -> list[str]:
     if not available_accounts:
         return []
 
-    models: list[str] = ["gpt-image-2"]
+    models: list[str] = ["gpt-image-2", *GPT_IMAGE_25_IMAGE_MODELS]
     codex_types = {
         normalized
         for account in available_accounts
@@ -144,7 +155,9 @@ class ModelCatalogService:
         high_resolution_models = [
             model
             for model in image_models
-            if model == CODEX_IMAGE_MODEL or model.endswith(f"-{CODEX_IMAGE_MODEL}")
+            if model in GPT_IMAGE_25_IMAGE_MODELS
+            or model == CODEX_IMAGE_MODEL
+            or model.endswith(f"-{CODEX_IMAGE_MODEL}")
         ]
         defaults = {
             "chat_model": "auto" if "auto" in chat_models else chat_models[0],

@@ -782,6 +782,7 @@ def build_call_detail(item: Mapping[str, Any]) -> dict[str, Any]:
         "request_text_full": _clean(detail.get("request_text_full")),
         "request_text_truncated": _bool(detail.get("request_text_truncated")),
         "request_shape": _record(detail.get("request_shape")),
+        "response": _record(detail.get("response")),
         "request_meta": _record(detail.get("request_meta")),
         "upstream_error": _clean(
             detail.get("upstream_error")

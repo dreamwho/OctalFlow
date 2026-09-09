@@ -55,6 +55,7 @@ export function ChatGptMagicProxyPanel({ proxyRuntime }: { proxyRuntime: ChatGpt
         return options;
     }, [node, state?.nodes]);
     const unavailableReason = !state?.configured ? "请先在通用魔法代理配置中导入订阅。" : !state.runtimeAvailable ? "魔法代理运行时当前不可用。" : !state.nodes.length ? "暂无可用魔法节点。" : "";
+    const magicSwitchDisabledReason = state && !state.bindings.chatgptApi?.node ? "请先在下方选择并保存魔法节点，保存后即可开启使用魔法代理。" : undefined;
 
     const saveNode = async () => {
         if (!node.trim() || saving) return;
@@ -102,7 +103,7 @@ export function ChatGptMagicProxyPanel({ proxyRuntime }: { proxyRuntime: ChatGpt
                 }
             />
             <div className="space-y-4 p-3 sm:p-5" data-chatgpt-magic-proxy>
-                <ChatGptProxyRuntimeControl controller={proxyRuntime} target="magic" />
+                <ChatGptProxyRuntimeControl controller={proxyRuntime} target="magic" disabledReason={magicSwitchDisabledReason} />
                 {error ? <Alert type="error" showIcon title={error} /> : null}
                 {loading && !state ? <Spin /> : null}
                 {state ? (

@@ -1,27 +1,25 @@
 "use client";
 
 import { Alert, App, Button, Checkbox, Empty, Input, Modal, Pagination, Popconfirm, Progress, Select, Space, Spin, Switch, Tabs, Tag } from "antd";
-import { ChevronRight, KeyRound, Plus, RefreshCw, Search, Upload } from "lucide-react";
+import { KeyRound, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import type { AdminDashboardController } from "@/components/admin/use-admin-dashboard-controller";
 import { getAdminSettings } from "@/services/api/admin-settings";
-import { chatGptApiRequest, getChatGptLogs, type ChatGptAccountPage, type ChatGptGateway, type ChatGptKey, type ChatGptLogStatus, type ChatGptLogSummary, type ChatGptModelCatalog } from "@/services/api/chatgpt-api";
+import { chatGptApiRequest, type ChatGptAccountPage, type ChatGptGateway, type ChatGptKey, type ChatGptModelCatalog } from "@/services/api/chatgpt-api";
 import { accountFilePayload, readAccountFiles, submitAccountImport, type AccountFileImport, type AccountImportPayload, type ImportProgress } from "../account-import";
 import { accountOperationOutcome, type AccountOperationResult } from "../account-operation-result";
-import { ChatGptIpwoPanel } from "./chatgpt-ipwo-panel";
 import { ChatGptMagicProxyPanel } from "./chatgpt-magic-proxy-panel";
 import { ChatGptProxyManager } from "./chatgpt-proxy-manager";
 import { ChatGptProxyRuntimeControl } from "./chatgpt-proxy-runtime-control";
 import { ChatGptStatisticsPanel } from "./chatgpt-statistics";
-import { ChatGptLogDetail } from "./chatgpt-log-detail";
-import { ACCOUNT_OPERATION_PROGRESS_POLL_INTERVAL_MS } from "./use-account-operation-progress";
 import { accountOperationCompletionNotice, accountOperationProgressPercent, type AccountOperationProgress, useAccountOperationProgress } from "./use-account-operation-progress";
+import { ChatGptRequestLogPanel } from "./chatgpt-request-log-panel";
 import { chatGptProxyRuntimeStatus, useChatGptProxyRuntime } from "./use-chatgpt-proxy-runtime";
 
-type ChatGptTab = "overview" | "statistics" | "gateway" | "proxy-management" | "ipwo" | "proxy" | "logs";
-type LoadTarget = "overview" | "gateway" | "logs";
+type ChatGptTab = "overview" | "statistics" | "gateway" | "proxy-management" | "proxy" | "logs";
+type LoadTarget = "overview" | "gateway";
 type AccountOperation = { label: string; progressId: string; progress?: AccountOperationProgress; followError?: string };
 type CreatedKey = { item: ChatGptKey; raw_key: string };
 type UpdatedKey = { item?: ChatGptKey | null };
@@ -55,16 +53,11 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
     const [selected, setSelected] = useState<string[]>([]);
     const [gateway, setGateway] = useState<ChatGptGateway>({ enabled: false });
     const [keys, setKeys] = useState<ChatGptKey[]>([]);
-    const [logs, setLogs] = useState<{ items: ChatGptLogSummary[]; total: number }>({ items: [], total: 0 });
     const [page, setPage] = useState(1);
-    const [logPage, setLogPage] = useState(1);
-    const [logDetailId, setLogDetailId] = useState<string | null>(null);
-    const [logKeyword, setLogKeyword] = useState("");
-    const [logStatus, setLogStatus] = useState<ChatGptLogStatus>("");
     const [keyword, setKeyword] = useState("");
     const [search, setSearch] = useState("");
-    const [loading, setLoading] = useState<Record<LoadTarget, boolean>>({ overview: false, gateway: false, logs: false });
-    const [errors, setErrors] = useState<Record<LoadTarget, string>>({ overview: "", gateway: "", logs: "" });
+    const [loading, setLoading] = useState<Record<LoadTarget, boolean>>({ overview: false, gateway: false });
+    const [errors, setErrors] = useState<Record<LoadTarget, string>>({ overview: "", gateway: "" });
     const [mutation, setMutation] = useState("");
     const [accountOperation, setAccountOperation] = useState<AccountOperation | null>(null);
     const accountOperationRef = useRef<AccountOperation | null>(null);
@@ -101,7 +94,7 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
     const [keyOpen, setKeyOpen] = useState(false);
     const [keyName, setKeyName] = useState("");
     const [rawKey, setRawKey] = useState("");
-    const loadRevisions = useRef<Record<LoadTarget, number>>({ overview: 0, gateway: 0, logs: 0 });
+    const loadRevisions = useRef<Record<LoadTarget, number>>({ overview: 0, gateway: 0 });
     const mutationPending = useRef(false);
     const modelSelectionLoaded = useRef(false);
     const selectedDirty = useRef(false);
@@ -157,24 +150,6 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
         }
     }, []);
 
-    const loadLogs = useCallback(
-        async (silent = false, pageOverride = logPage) => {
-            if (mutationPending.current) return;
-            const revision = ++loadRevisions.current.logs;
-            if (!silent) setLoading((current) => ({ ...current, logs: true }));
-            setErrors((current) => ({ ...current, logs: "" }));
-            try {
-                const nextLogs = await getChatGptLogs({ limit: 50, offset: (pageOverride - 1) * 50, search: logKeyword, status: logStatus || undefined });
-                if (revision === loadRevisions.current.logs) setLogs(nextLogs);
-            } catch (reason) {
-                if (revision === loadRevisions.current.logs) setErrors((current) => ({ ...current, logs: reason instanceof Error ? reason.message : "读取请求日志失败" }));
-            } finally {
-                if (revision === loadRevisions.current.logs) setLoading((current) => ({ ...current, logs: false }));
-            }
-        },
-        [logKeyword, logPage, logStatus],
-    );
-
     useEffect(() => {
         void loadOverview();
     }, [loadOverview]);
@@ -183,30 +158,10 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
         if (tab === "gateway" && !gatewayLoaded.current) void loadGateway();
     }, [loadGateway, tab]);
 
-    useEffect(() => {
-        if (tab !== "logs") {
-            setLogDetailId(null);
-            return;
-        }
-        let stopped = false;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const follow = async (silent = false) => {
-            if (!document.hidden) await loadLogs(silent);
-            if (!stopped) timer = setTimeout(() => void follow(true), ACCOUNT_OPERATION_PROGRESS_POLL_INTERVAL_MS);
-        };
-        void follow();
-        return () => {
-            stopped = true;
-            if (timer) clearTimeout(timer);
-            loadRevisions.current.logs += 1;
-        };
-    }, [loadLogs, tab]);
-
     useEffect(
         () => () => {
             loadRevisions.current.overview += 1;
             loadRevisions.current.gateway += 1;
-            loadRevisions.current.logs += 1;
         },
         [],
     );
@@ -343,9 +298,9 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
         onError: failAccountOperationFollow,
     });
 
-    const activeLoadTarget: LoadTarget | null = tab === "overview" || tab === "gateway" || tab === "logs" ? tab : null;
+    const activeLoadTarget: LoadTarget | null = tab === "overview" || tab === "gateway" ? tab : null;
     const activeError = activeLoadTarget ? errors[activeLoadTarget] : "";
-    const retryActiveLoad = activeLoadTarget === "overview" ? loadOverview : activeLoadTarget === "gateway" ? loadGateway : activeLoadTarget === "logs" ? loadLogs : null;
+    const retryActiveLoad = activeLoadTarget === "overview" ? loadOverview : activeLoadTarget === "gateway" ? loadGateway : null;
     const mutating = Boolean(mutation);
     const accountOperationPending = Boolean(accountOperation && !accountOperation.progress?.done);
     const accountOperationStatus = accountOperation?.followError ? "进度连接中断" : accountOperation?.progress?.status_label || (accountOperationPending ? "正在刷新" : "已结束");
@@ -397,7 +352,6 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                     { key: "statistics", label: <ChatGptApiTabLabel label="统计报表" compact="统计" /> },
                     { key: "gateway", label: <ChatGptApiTabLabel label="反代网关与 API 密钥" compact="网关与密钥" /> },
                     { key: "proxy-management", label: <ChatGptApiTabLabel label="代理管理" compact="代理" /> },
-                    { key: "ipwo", label: <ChatGptApiTabLabel label="IPWO 配置" compact="IPWO" /> },
                     { key: "proxy", label: <ChatGptApiTabLabel label="魔法代理" compact="魔法" /> },
                     { key: "logs", label: <ChatGptApiTabLabel label="请求日志" compact="日志" /> },
                 ]}
@@ -685,75 +639,8 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                 </div>
             ) : null}
 
-            {tab === "ipwo" ? (
-                <div data-chatgpt-api-tab-panel="ipwo" className="space-y-4">
-                    <ChatGptIpwoPanel controls={<ChatGptProxyRuntimeControl controller={proxyRuntime} target="ipwo" />} onSaved={proxyRuntime.refresh} />
-                </div>
-            ) : null}
+            {tab === "logs" ? <ChatGptRequestLogPanel /> : null}
 
-            <div data-chatgpt-api-tab-panel="logs" className={tab === "logs" ? "space-y-4" : "hidden"}>
-                <Panel>
-                    <PanelHeader
-                        title="请求日志"
-                        description="记录时间、接口、模型、账号、状态与耗时；点击整行查看完整请求详情和过程日志。"
-                        actions={
-                            <Space wrap size={6}>
-                                <Input
-                                    className="w-48"
-                                    allowClear
-                                    prefix={<Search className="size-3.5" />}
-                                    value={logKeyword}
-                                    placeholder="模型 / 账号 / 接口 / 错误"
-                                    onChange={(event) => setLogKeyword(event.target.value)}
-                                    onPressEnter={() => {
-                                        setLogPage(1);
-                                        void loadLogs(false, 1);
-                                    }}
-                                />
-                                <Select
-                                    className="w-28"
-                                    value={logStatus}
-                                    options={[
-                                        { value: "", label: "全部状态" },
-                                        { value: "success", label: "成功" },
-                                        { value: "failed", label: "失败" },
-                                        { value: "limited", label: "限流" },
-                                    ]}
-                                    onChange={(value: ChatGptLogStatus) => setLogStatus(value)}
-                                />
-                                <Button
-                                    loading={loading.logs}
-                                    disabled={mutating}
-                                    onClick={() => {
-                                        setLogPage(1);
-                                        void loadLogs(false, 1);
-                                    }}
-                                >
-                                    查询
-                                </Button>
-                            </Space>
-                        }
-                    />
-                    <div className="p-0">
-                        {logs.items.length ? (
-                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                                {logs.items.map((log) => (
-                                    <ChatGptLogRow key={log.id} log={log} onClick={() => setLogDetailId(log.id)} />
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="p-6">
-                                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无请求日志" />
-                            </div>
-                        )}
-                        <div className="p-3 sm:p-4">
-                            <Pagination current={logPage} pageSize={50} total={logs.total} showSizeChanger={false} onChange={setLogPage} />
-                        </div>
-                    </div>
-                </Panel>
-            </div>
-
-            <ChatGptLogDetail id={logDetailId} onClose={() => setLogDetailId(null)} />
             <Modal
                 title="导入 ChatGPT 账号"
                 open={importOpen}
@@ -897,77 +784,6 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
             </Modal>
         </div>
     );
-}
-
-function ChatGptLogRow({ log, onClick }: { log: ChatGptLogSummary; onClick: () => void }) {
-    const status = chatGptLogStatus(log);
-    const duration = log.presentation?.duration?.text || formatChatGptDuration(log.duration_ms);
-    const attempts = log.attempt_count && log.attempt_count > 1 ? `${log.attempt_count} 次尝试` : "";
-    const switches = log.switch_count ? `${log.switch_count} 次切换` : "";
-    return (
-        <button
-            type="button"
-            data-chatgpt-log-id={log.id}
-            aria-label={`查看请求日志：${log.model || "未命名模型"}`}
-            onClick={onClick}
-            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[160px_122px_minmax(0,1fr)_150px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
-        >
-            <div className="text-zinc-500">{formatChatGptTime(log.started_at || log.time)}</div>
-            <div>
-                <Tag color={status.color}>{log.status_code ? `${status.label} · ${log.status_code}` : status.label}</Tag>
-                <span className="uppercase text-zinc-500">OPENAI</span>
-            </div>
-            <div className="min-w-0">
-                <div className="truncate font-medium text-zinc-800 dark:text-zinc-200">{log.model || "未记录模型"}</div>
-                <div className="truncate text-zinc-500">
-                    {log.account_email || log.key_name || "站内调用"} · {log.endpoint || chatGptLogTypeLabel(log.type || log.business)}
-                    {log.public_error || log.summary ? ` · ${log.public_error || log.summary}` : ""}
-                </div>
-            </div>
-            <div className="text-zinc-500">
-                {duration}
-                {attempts ? ` · ${attempts}` : ""}
-                {switches ? ` · ${switches}` : ""}
-            </div>
-            <ChevronRight className="hidden size-4 justify-self-end text-zinc-400 sm:block" aria-hidden="true" />
-        </button>
-    );
-}
-
-function chatGptLogStatus(log: ChatGptLogSummary) {
-    const outcome = log.outcome || log.display_status || "";
-    if (log.presentation?.status?.label) return { label: log.presentation.status.label, color: chatGptStatusColor(log.presentation.status.tone, outcome) };
-    if (["queued", "running"].includes(outcome)) return { label: outcome === "queued" ? "排队中" : "运行中", color: "processing" as const };
-    if (outcome === "success" || ((log.status_code || 0) < 400 && !log.public_error)) return { label: "成功", color: "green" as const };
-    if (["rate_limited", "limited"].includes(outcome)) return { label: "限流", color: "gold" as const };
-    return { label: "失败", color: "red" as const };
-}
-
-function chatGptStatusColor(tone: string | undefined, outcome: string) {
-    if (tone === "success" || outcome === "success") return "green" as const;
-    if (tone === "warning" || ["rate_limited", "limited", "text_review", "partial_success"].includes(outcome)) return "gold" as const;
-    if (tone === "danger" || ["failed", "error", "fail"].includes(outcome)) return "red" as const;
-    if (tone === "info" || ["queued", "running"].includes(outcome)) return "processing" as const;
-    return "default" as const;
-}
-
-function chatGptLogTypeLabel(value?: string) {
-    const labels: Record<string, string> = { chat: "文本", responses: "Responses", messages: "Messages", image_generation: "图片生成", image_edit: "图片编辑", image_chat: "图片对话", search: "搜索", file: "文件" };
-    return labels[value || ""] || value || "API";
-}
-
-function formatChatGptDuration(value?: number) {
-    const milliseconds = Math.max(0, Number(value || 0));
-    if (milliseconds < 1000) return `${milliseconds}ms`;
-    if (milliseconds < 10000) return `${(milliseconds / 1000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}s`;
-    if (milliseconds < 60000) return `${(milliseconds / 1000).toFixed(1).replace(/\.0$/, "")}s`;
-    return `${(milliseconds / 60000).toFixed(1).replace(/\.0$/, "")}m`;
-}
-
-function formatChatGptTime(value?: string) {
-    if (!value) return "—";
-    const date = new Date(value);
-    return Number.isFinite(date.getTime()) ? date.toLocaleString("zh-CN", { hour12: false }) : value;
 }
 
 function ChatGptApiTabLabel({ label, compact, icon }: { label: string; compact: string; icon?: ReactNode }) {

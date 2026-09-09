@@ -25,11 +25,18 @@ export type AgentVideoGenerationCapabilityProfile = {
     durations: readonly GenerationDurationOption[];
     durationRange: { min: number; max: number };
     fixedRatio?: boolean;
+    allowCustomSize?: boolean;
 };
 
 export type AgentImageGenerationCapabilityProfile = {
     ratios: readonly GenerationRatioOption[];
     qualities: readonly GenerationQualityOption[];
+    /** false 时隐藏自定义像素尺寸入口（如仅支持固定尺寸档的上游） */
+    allowCustomSize?: boolean;
+    /** true 时尺寸只能在给定档位中选择，非法值自动回退智能 */
+    lockedRatios?: boolean;
+    /** 画质档非法时的默认值 */
+    defaultQuality?: string;
 };
 
 const agentImageRatios = [
@@ -51,7 +58,7 @@ const agentImageRatios = [
     { value: "3:1", label: "3:1", width: 26, height: 9 },
 ] as const satisfies readonly GenerationRatioOption[];
 
-const agentImageQualities = [
+export const agentImageQualities = [
     { value: "auto", label: "智能", shortLabel: "智能" },
     { value: "low", label: "1K", shortLabel: "1K" },
     { value: "medium", label: "2K", shortLabel: "2K" },
@@ -176,7 +183,7 @@ export function CompactAgentGenerationSettings({
             videoQualityOptions={videoCapabilities?.qualities}
             videoDurationOptions={videoCapabilities?.durations}
             videoDurationRange={videoCapabilities?.durationRange}
-            allowCustomSize={capability !== "video" || !videoCapabilities}
+            allowCustomSize={capability === "image" ? (imageCapabilities?.allowCustomSize ?? true) : (videoCapabilities?.allowCustomSize ?? !videoCapabilities)}
             allowCustomVideoQuality={!videoCapabilities}
             showPreferenceFields={Boolean(activeModel)}
             emptyPreferenceState={<p className="rounded-lg border border-dashed border-[#dce2e7] bg-[#fafbfc] px-3 py-5 text-center text-xs leading-5 text-[#7b8591] dark:border-[#3a424c] dark:bg-[#1c2026] dark:text-[#98a2ae]">请选择一个模型后查看可用的比例、清晰度和时长。</p>}
@@ -193,7 +200,7 @@ export function compactAgentPreferenceSummary(capability: AgentMediaCapability, 
         return isExactSize(video?.size) ? size : `${size} · ${video?.seconds || 5}秒`;
     }
     const image = preferences.image;
-    const size = image?.size && image.size !== "auto" ? image.size.replace("x", "×") : "智能";
+    const size = agentImageSizeLabel(image?.size);
     return isExactSize(image?.size) ? size : `${size} · ${image?.count || 1}张`;
 }
 
@@ -205,7 +212,7 @@ function agentPreferenceSummary(capability: AgentMediaCapability, preferences: C
         return size === "智能" && quality === "智能" ? "智能参数" : `${size} · ${quality} · ${video?.seconds || 5}秒`;
     }
     const image = preferences.image;
-    const size = image?.size && image.size !== "auto" ? image.size.replace("x", "×") : "智能";
+    const size = agentImageSizeLabel(image?.size);
     const quality = ({ high: "高", medium: "中", low: "低", auto: "智能" } as const)[image?.quality || "auto"];
     return size === "智能" && quality === "智能" && (image?.count || 1) === 1 ? "智能参数" : `${size} · ${quality}${(image?.count || 1) > 1 ? ` · ${image?.count}张` : ""}`;
 }
@@ -231,4 +238,8 @@ export function updateAgentGenerationPreferences(preferences: CreativeGeneration
 
 function isExactSize(value?: string) {
     return /^\d+x\d+$/i.test(value || "");
+}
+
+function agentImageSizeLabel(value?: string) {
+    return value && value !== "auto" ? value.replace("x", "×") : "智能";
 }

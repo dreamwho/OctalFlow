@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- [后台/请求日志] 请求日志详情抽屉支持拖动左缘调整宽度（GPTAPI、GeminiTools、GeminiAIStudio 三处一致）：向左拖动持续加宽以显示更多内容，宽度限制在视口内，拖动时禁用文本选择并有高亮反馈。
+
+- [GPTAPI/请求日志] 请求详情新增"响应数据"：成功调用会记录脱敏后的最终响应摘要（base64 图片数据与超长文本自动省略/截断，保留结构与文本预览），在请求日志详情中与请求结构并列展示，修复此前只能查看请求、看不到返回内容的问题。
+
+- [GPTAPI/模型目录] 图片模型目录新增 gpt-image-2.5 家族（gpt-image-2.5、-flare、-sunburst、-exact、-flare-exact、-sunburst-exact）：运行时目录与账号派生列表均归类为图片模型，管理员在 GPTAPI 模型目录中同步并保存后即可在图片能力中选用，并兼容 4K 增强。
+
+- [Canvas/Agent] Agent 创作参数面板按所选图片模型的渠道能力展示档位：GPTAPI（chatgpt-api）模型显示 智能/方形/竖版/横版 四档尺寸与 低/中/高 三档画质（默认低，隐藏自定义像素尺寸），非法值自动回退；画质即导出规格——低为上游原生档位直接交付，中/高在生成完成后由本地放大到 2K/4K。
+- [Canvas/GPTAPI] 图片生成配置弹层同步 GPTAPI 画质档位调整（低/中/高，默认低）：低按上游可接受的原生分辨率直接提交交付，中/高在生成完成后经本地 Lanczos 放大导出为 2K/4K 规格。
+
+- [Canvas/GPTAPI] 修复带参考图的文本生成（反推提示词等）报"请求体过大"：参考图发送前自动降采样压缩（长边 2048、JPEG 分级质量、多图总量 3.2MB 预算），低于系统代理与任务创建两处 4MB 上限；小图与无法解码时原样保留。GPTAPI 渠道图片模型尺寸档位收敛为上游认定的四档（智能、1024×1024、1024×1536、1536×1024），隐藏自定义像素尺寸；此前未发布的"4K 增强"（本地插值放大）功能整体移除，超分需求走图片放大（即梦超清）。
+
+- [GPTAPI/重试] 文本对话流失败自动换账号重试：上游图片工具错误、连接失败、上游服务器错误等可重试失败会在未输出内容时自动轮换到下一个可用账号（单请求上限 6 次尝试），全部账号尝试完毕才返回失败；鉴权失败维持原有标记与轮换处理，已输出内容的失败不重复生成。
+
+- [GPTAPI/模型白名单] gpt-image-2.5 家族（2.5 / flare / sunburst / exact / flare-exact / sunburst-exact）加入运行时图片模型白名单与高清清单，修复选择 2.5 模型生图报 400 "unsupported image model" 的问题（该报错来自运行时本地白名单，非 GPT 官方返回）。
+
+- [上游配置/IPWO] IPWO 升级为独立后台功能页（上游配置分组）：使用状态（作为 GPTAPI 原生代理来源的开关）、来源配置（脱敏 API 提取链接、协议、地区、超时）、连接测试（NDJSON 过程诊断）和请求日志（复用 GPTAPI 请求日志模型的关键词/状态筛选、分页列表与详情抽屉）；GPTAPI 页面移除原 IPWO Tab，请求日志 Tab 改用抽取的共享面板组件。
+
+- [上游/GeminiAIStudio] 修复部分账号图片/文本调用报"Ambiguous request for service '' and method '/GenerativeService.StreamGenerateContentPerUserQuota'"：AI Studio 灰度账号的浏览器抓包模板会命中 `*PerUserQuota` 方法变体，抓包时统一归一化为网关认定的标准方法名，重放与后台实测恢复正常。
+
+- [部署/GeminiTools] 离线包构建时自动把本地 `.env` 中的 `GEMINI_TOOLS_OAUTH_CLIENT_ID` / `GEMINI_TOOLS_OAUTH_CLIENT_SECRET` 注入包内 `.env.example`（权限 0600），一键部署检测到服务器 `.env` 缺失时自动种子，修复更新后 GeminiTools 因 OAuth 未配置导致授权与刷新 401 的问题。
+
+- [系统管理/魔法代理] 代理节点新增延迟测速：节点卡片支持单节点"测速"，工具栏支持"一键测速"（并发 4、单节点超时 5 秒，走 Mihomo 控制器 delay 接口），结果以毫秒延迟或失败原因展示，兼做节点连通性检查。
+
+- [GPTAPI/魔法代理] 修复魔法代理开关与节点保存的顺序冲突：未保存魔法节点时开关禁用并显示"先选择并保存魔法节点"引导，直接调用时服务端返回可执行的指引错误（不再推送空地址后报含糊的"魔法代理未配置"）；保存节点后开启开关即正常生效。
+
+- [Canvas/生图] 图片生成参数按渠道真实能力展示：GPT API（`chatgpt-api` 协议）模型的尺寸选项收敛为上游认定的三档固定尺寸（1024x1024、1024x1536、1536x1024）加智能，隐藏自定义像素输入，历史无效尺寸自动回退智能。生成结果取消落盘前自动重采样，不再放大、缩小或裁切，上游出什么就保存、展示、下载什么；超清放大改为用户显式操作。
+
 - [部署/ChatGPT API] ChatGPT API 内部运行时正式打入主应用镜像并接入离线部署：Dockerfile 新增 `python:3.13-slim` 构建阶段按 `uv.lock` 固定依赖生成 `.venv`，两套离线 Compose 新增 `chatgpt-api` 独立服务（宿主网络绑 127.0.0.1:8046 / bridge 绑 0.0.0.0 并按服务名互访），`main.py` 支持默认不变的 `--host` 参数，部署脚本自动生成 `OCTALAICANVAS_CHATGPT_API_KEY` 并校验长度；容器内已验证服务启动与 `/integration/health` 响应。
 
 - [上游/GeminiTools] Antigravity 内置 OAuth 客户端凭据不再写入源码，改为只从服务端环境变量 `GEMINI_TOOLS_OAUTH_CLIENT_ID` / `GEMINI_TOOLS_OAUTH_CLIENT_SECRET` 读取；未配置时授权入口返回明确错误，配置 `GEMINI_TOOLS_OAUTH_REDIRECT_URI` 时按自定义客户端回调。已有部署更新需在服务器 `.env` 补齐这两个变量。

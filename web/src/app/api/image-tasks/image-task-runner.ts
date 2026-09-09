@@ -2,6 +2,7 @@ import { generationModelId } from "@/lib/server/generation-channel";
 import { recordGenerationTaskLogResult } from "@/lib/server/generation-log-task-service";
 import type { ImageTask } from "@/lib/server/image-task-store";
 
+import { chatGptApiExportUpscaleLongEdge, isChatGptApiImageTaskConfig } from "./image-task-chatgpt";
 import { resolveResultSize } from "./image-task-size";
 
 export function stableMediaUrl(value?: string) {
@@ -14,9 +15,10 @@ export async function writeImageGenerationLog(task: ImageTask, status: "success"
     // A CLI upscale result must retain the upstream dimensions.  Never route it
     // through the normal workbench target-size resize path.
     const targetSize = task.kind === "upscale" ? undefined : resolveResultSize(task.config.quality, task.config.size || "auto");
+    const upscaleLongEdge = isChatGptApiImageTaskConfig(task.config) ? chatGptApiExportUpscaleLongEdge(task.config.quality) : undefined;
     const assets = results.flatMap((item) => {
         const resultUrl = typeof item === "string" ? item : item.remoteUrl || item.dataUrl || "";
-        return resultUrl ? [{ type: "image" as const, url: resultUrl, remoteUrl: typeof item === "string" ? undefined : item.remoteUrl, targetSize }] : [];
+        return resultUrl ? [{ type: "image" as const, url: resultUrl, remoteUrl: typeof item === "string" ? undefined : item.remoteUrl, targetSize, upscaleLongEdge }] : [];
     });
     return recordGenerationTaskLogResult({
         logId: task.generationLogId,

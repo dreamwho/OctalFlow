@@ -14,7 +14,7 @@ function selected(runtime: NonNullable<ChatGptProxyRuntimeController["runtime"]>
     return runtime.mode === (target === "magic" ? "magic" : "native") && (target === "magic" || runtime.native_source === target);
 }
 
-export function ChatGptProxyRuntimeControl({ controller, target }: { controller: ChatGptProxyRuntimeController; target: ChatGptProxyTarget }) {
+export function ChatGptProxyRuntimeControl({ controller, target, disabledReason }: { controller: ChatGptProxyRuntimeController; target: ChatGptProxyTarget; disabledReason?: string }) {
     const { runtime, loading, saving, error, save } = controller;
     const active = Boolean(runtime?.enabled && runtime && selected(runtime, target));
     const targetLabel = labels[target];
@@ -43,10 +43,17 @@ export function ChatGptProxyRuntimeControl({ controller, target }: { controller:
                     {loading && !runtime ? (
                         <Spin size="small" />
                     ) : (
-                        <Switch aria-label={targetLabel} checked={active} loading={saving} disabled={loading || saving || !runtime} onChange={(enabled) => void save(chatGptProxyRuntimeInput(target, enabled, runtime)).catch(() => undefined)} />
+                        <Switch
+                            aria-label={targetLabel}
+                            checked={active}
+                            loading={saving}
+                            disabled={loading || saving || !runtime || Boolean(disabledReason)}
+                            onChange={(enabled) => void save(chatGptProxyRuntimeInput(target, enabled, runtime)).catch(() => undefined)}
+                        />
                     )}
                 </div>
             </div>
+            {disabledReason ? <Alert type="info" showIcon title={disabledReason} /> : null}
             {error ? <Alert type="error" showIcon title={error} /> : null}
         </div>
     );

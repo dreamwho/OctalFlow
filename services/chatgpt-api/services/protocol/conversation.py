@@ -1099,11 +1099,21 @@ def text_backend() -> OpenAIBackendAPI:
     return backend
 
 
+TEXT_STREAM_RETRYABLE_FAILURE_CODES = {
+    "server_error",
+    "upstream_connection_failed",
+    "upstream_connection_timeout",
+    "upstream_unavailable",
+}
+TEXT_STREAM_MAX_ACCOUNT_ATTEMPTS = 6
+
+
 def stream_text_deltas(backend: OpenAIBackendAPI, request: ConversationRequest) -> Iterator[str]:
     attempted_tokens: set[str] = set()
     token = getattr(backend, "access_token", "")
     emitted = False
     auth_failures = 0
+    rotation_attempts = 0
     while True:
         if token and token in attempted_tokens:
             raise RuntimeError("no available text account")
@@ -1161,6 +1171,27 @@ def stream_text_deltas(backend: OpenAIBackendAPI, request: ConversationRequest) 
             if auth_failure and not emitted and auth_failures < 2:
                 token = account_service.get_text_access_token(attempted_tokens)
                 if token:
+                    continue
+            stream_failure = getattr(exc, "failure", None)
+            failure_code = str(getattr(stream_failure, "code", "") or "") or str(
+                classify_image_exception(exc).code or ""
+            )
+            if (
+                not emitted
+                and failure_code in TEXT_STREAM_RETRYABLE_FAILURE_CODES
+                and rotation_attempts < TEXT_STREAM_MAX_ACCOUNT_ATTEMPTS
+            ):
+                next_token = account_service.get_text_access_token(attempted_tokens)
+                if next_token:
+                    token = next_token
+                    rotation_attempts += 1
+                    logger.warning({
+                        "event": "text_stream_account_retry",
+                        "call_id": request.call_id,
+                        "model": request.model,
+                        "failure_code": failure_code,
+                        "attempt": rotation_attempts,
+                    })
                     continue
             if token and not getattr(exc, "account_email", ""):
                 setattr(exc, "account_email", _text_account_email(token))

@@ -6,7 +6,7 @@ import { ensureMediaFileExtension, mediaFileExtension } from "@/lib/media-file";
 import type { GenerationLogReferenceSnapshot, GenerationLogRequestSnapshot, GenerationLogSlotSnapshot, GenerationLogSnapshotParameters } from "@/lib/generation-log-snapshot";
 import { isPostgresDatabaseEnabled, type QueryExecutor } from "@/lib/server/database";
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
-import { normalizeGeneratedImageBytes } from "@/lib/server/generated-image-normalizer";
+import { normalizeGeneratedImageBytes, upscaleGeneratedImageBytes } from "@/lib/server/generated-image-normalizer";
 import { createDatedMediaPath, GENERATION_MEDIA_ROOT } from "@/lib/server/local-media-storage";
 import { deleteLocalMediaRegistrations, getLocalMediaRegistration, registerLocalMediaAsset } from "@/lib/server/local-media-registry";
 import { deleteExternalMediaObject, persistExternalMediaIfEnabled } from "@/lib/server/object-storage-service";
@@ -47,12 +47,12 @@ export function isGenerationStatus(value?: string): value is GenerationLogStatus
     return value === "pending" || value === "success" || value === "failed";
 }
 
-type GenerationAssetContext = { ownerUserId: string; source: string; conversationId?: string; taskId?: string; originalName?: string; targetSize?: string; assetIndex?: number; assetCount?: number };
+type GenerationAssetContext = { ownerUserId: string; source: string; conversationId?: string; taskId?: string; originalName?: string; targetSize?: string; upscaleLongEdge?: number; assetIndex?: number; assetCount?: number };
 
-export async function normalizeAssets(assets: Array<Partial<GenerationLogAsset> & { url?: string; targetSize?: string }>, context: GenerationAssetContext) {
+export async function normalizeAssets(assets: Array<Partial<GenerationLogAsset> & { url?: string; targetSize?: string; upscaleLongEdge?: number }>, context: GenerationAssetContext) {
     const normalized: GenerationLogAsset[] = [];
     for (const [assetIndex, asset] of assets.entries()) {
-        const assetContext = { ...context, targetSize: asset.targetSize, assetIndex, assetCount: assets.length };
+        const assetContext = { ...context, targetSize: asset.targetSize, upscaleLongEdge: asset.upscaleLongEdge, assetIndex, assetCount: assets.length };
         const type = asset.type === "video" ? "video" : "image";
         const sourceUrl = (asset.url || "").trim();
         const remoteUrl = normalizeRemoteUrl(asset.remoteUrl || (isRemoteAssetUrl(sourceUrl) ? sourceUrl : ""));
@@ -124,7 +124,15 @@ export async function isSafeRemoteAssetUrl(value: string) {
 }
 
 export async function writeAssetBytes(bytes: Buffer, mimeType: string, type: GenerationLogKind, context: GenerationAssetContext): Promise<GenerationLogAsset> {
-    const normalized: { bytes: Buffer; mimeType: string; width?: number; height?: number } = type === "image" ? await normalizeGeneratedImageBytes(bytes, mimeType, context.targetSize) : { bytes, mimeType };
+    let working: { bytes: Buffer; mimeType: string; width?: number; height?: number } = { bytes, mimeType };
+    if (type === "image") {
+        working = await normalizeGeneratedImageBytes(bytes, mimeType);
+        if (context.upscaleLongEdge) {
+            const upscaled = await upscaleGeneratedImageBytes(working.bytes, working.mimeType, context.upscaleLongEdge);
+            working = { ...upscaled };
+        }
+    }
+    const normalized = working;
     bytes = normalized.bytes;
     mimeType = normalized.mimeType;
     const extension = extensionFromMime(mimeType, type);

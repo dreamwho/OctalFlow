@@ -1,7 +1,5 @@
 import sharp, { type Metadata } from "sharp";
 
-import { parseImageDimensions } from "@/lib/image-size";
-
 // Keep the decode guard aligned with the existing local/object-media boundary.
 // This covers official 8K outputs without turning the limit into a model-size rule.
 export const MAX_GENERATED_IMAGE_INPUT_PIXELS = 100_000_000;
@@ -13,21 +11,24 @@ type NormalizedGeneratedImage = {
     height?: number;
 };
 
-export async function normalizeGeneratedImageBytes(bytes: Buffer, mimeType: string, targetSize?: string): Promise<NormalizedGeneratedImage> {
+// 上游返回的图片原样落盘，不做自动放大、缩小或裁切；需要超清放大时由用户显式操作。
+export async function normalizeGeneratedImageBytes(bytes: Buffer, mimeType: string): Promise<NormalizedGeneratedImage> {
     const metadata = await sharp(bytes, { failOn: "error", limitInputPixels: MAX_GENERATED_IMAGE_INPUT_PIXELS }).metadata();
-    const dimensions = orientedDimensions(metadata);
-    const target = targetSize ? parseImageDimensions(targetSize) : null;
-    if (!target) return { bytes, mimeType: imageMimeType(metadata.format, mimeType), ...dimensions };
-    assertTargetDimensions(target.width, target.height);
-    if (dimensions.width === target.width && dimensions.height === target.height) return { bytes, mimeType: imageMimeType(metadata.format, mimeType), ...dimensions };
+    return { bytes, mimeType: imageMimeType(metadata.format, mimeType), ...orientedDimensions(metadata) };
+}
 
-    const result = await sharp(bytes, { failOn: "error", limitInputPixels: MAX_GENERATED_IMAGE_INPUT_PIXELS }).rotate().resize(target.width, target.height, { fit: "cover", position: "centre" }).toBuffer({ resolveWithObject: true });
-    return {
-        bytes: result.data,
-        mimeType: imageMimeType(result.info.format, mimeType),
-        width: result.info.width,
-        height: result.info.height,
-    };
+// 仅用于 GPTAPI“中/高画质”的显式导出放大：Lanczos 放大到目标长边，不裁切、不改变宽高比；
+// 上游结果已不小于目标长边时原样保留。
+export async function upscaleGeneratedImageBytes(bytes: Buffer, mimeType: string, longEdge: number): Promise<NormalizedGeneratedImage> {
+    const image = sharp(bytes, { failOn: "error", limitInputPixels: MAX_GENERATED_IMAGE_INPUT_PIXELS });
+    const metadata = await image.metadata();
+    const currentLongEdge = Math.max(metadata.width || 0, metadata.height || 0);
+    if (!currentLongEdge || currentLongEdge >= longEdge) return { bytes, mimeType: imageMimeType(metadata.format, mimeType), ...orientedDimensions(metadata) };
+    const scale = longEdge / currentLongEdge;
+    const width = Math.max(1, Math.round((metadata.width || 1) * scale));
+    const height = Math.max(1, Math.round((metadata.height || 1) * scale));
+    const result = await image.clone().resize(width, height, { kernel: "lanczos3" }).toBuffer({ resolveWithObject: true });
+    return { bytes: result.data, mimeType: imageMimeType(result.info.format, mimeType), width, height };
 }
 
 function orientedDimensions(metadata: Metadata) {
@@ -38,12 +39,6 @@ function orientedDimensions(metadata: Metadata) {
         width: Number.isFinite(width) && Number(width) > 0 ? Number(width) : undefined,
         height: Number.isFinite(height) && Number(height) > 0 ? Number(height) : undefined,
     };
-}
-
-function assertTargetDimensions(width: number, height: number) {
-    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
-        throw new Error("目标图片尺寸无效");
-    }
 }
 
 function imageMimeType(format: string | undefined, fallback: string) {

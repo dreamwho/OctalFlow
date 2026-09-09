@@ -203,6 +203,7 @@ function normalizeTaskResultAssets(input: GenerationTaskLogResultInput, existing
         taskId: input.taskId,
         originalName: input.title,
         targetSize: input.asset?.targetSize,
+        upscaleLongEdge: input.asset?.upscaleLongEdge,
     });
 }
 

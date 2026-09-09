@@ -4,44 +4,46 @@ import { describe, expect, it } from "vitest";
 import { normalizeGeneratedImageBytes } from "./generated-image-normalizer";
 
 describe("generated image normalization", () => {
-    it("resizes an upstream image to the exact requested dimensions", async () => {
+    it("keeps the upstream image bytes untouched regardless of the requested target size", async () => {
         const source = await sharp({ create: { width: 1600, height: 900, channels: 3, background: "#7c8da5" } })
             .png()
             .toBuffer();
-        const result = await normalizeGeneratedImageBytes(source, "image/png", "1824x1024");
+        const result = await normalizeGeneratedImageBytes(source, "image/png");
 
-        expect(result).toMatchObject({ mimeType: "image/png", width: 1824, height: 1024 });
-        await expect(sharp(result.bytes).metadata()).resolves.toMatchObject({ format: "png", width: 1824, height: 1024 });
+        expect(result).toMatchObject({ mimeType: "image/png", width: 1600, height: 900 });
+        expect(result.bytes).toEqual(source);
+        await expect(sharp(result.bytes).metadata()).resolves.toMatchObject({ format: "png", width: 1600, height: 900 });
     });
 
-    it("restores a provider-safe image to a small exact requested size", async () => {
+    it("never upscales a small upstream image to a larger requested size", async () => {
         const source = await sharp({ create: { width: 672, height: 1008, channels: 3, background: "#9a6b4f" } })
             .png()
             .toBuffer();
-        const result = await normalizeGeneratedImageBytes(source, "image/png", "400x600");
+        const result = await normalizeGeneratedImageBytes(source, "image/png");
 
-        expect(result).toMatchObject({ mimeType: "image/png", width: 400, height: 600 });
-        await expect(sharp(result.bytes).metadata()).resolves.toMatchObject({ format: "png", width: 400, height: 600 });
+        expect(result).toMatchObject({ mimeType: "image/png", width: 672, height: 1008 });
+        expect(result.bytes).toEqual(source);
     });
 
-    it("keeps the upstream file unchanged when no exact target is configured", async () => {
+    it("normalizes provider jpeg mime types from the decoded image format", async () => {
         const source = await sharp({ create: { width: 1280, height: 720, channels: 3, background: "#506070" } })
             .jpeg({ quality: 92 })
             .toBuffer();
-        const result = await normalizeGeneratedImageBytes(source, "image/jpeg", "16:9");
+        const result = await normalizeGeneratedImageBytes(source, "image/png");
 
         expect(result).toMatchObject({ mimeType: "image/jpeg", width: 1280, height: 720 });
         expect(result.bytes).toEqual(source);
     });
 
-    it("keeps a large exact upstream image instead of applying a platform edge ceiling", async () => {
-        const source = await sharp({ create: { width: 1600, height: 900, channels: 3, background: "#203040" } })
+    it("reports decoded dimensions for provider webp images without altering bytes", async () => {
+        const source = await sharp({ create: { width: 800, height: 500, channels: 3, background: "#203040" } })
+            .rotate(90)
             .webp()
             .toBuffer();
-        const result = await normalizeGeneratedImageBytes(source, "image/webp", "4096x2304");
+        const result = await normalizeGeneratedImageBytes(source, "image/webp");
 
-        expect(result).toMatchObject({ width: 4096, height: 2304 });
-        await expect(sharp(result.bytes).metadata()).resolves.toMatchObject({ format: "webp", width: 4096, height: 2304 });
+        expect(result).toMatchObject({ width: 500, height: 800 });
+        expect(result.bytes).toEqual(source);
     });
 
     it("accepts an official 8K upscale result without resizing it", async () => {

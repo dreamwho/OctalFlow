@@ -185,6 +185,7 @@ class CallDetail(CallSummary):
     request_text_full: str
     request_text_truncated: bool
     request_shape: dict[str, Any] = Field(default_factory=dict)
+    response: dict[str, Any] = Field(default_factory=dict)
     request_meta: dict[str, Any] = Field(default_factory=dict)
     upstream_error: str
     upstream_text: str

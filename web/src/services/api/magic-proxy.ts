@@ -77,3 +77,17 @@ export const updateMagicProxyBinding = (input: MagicProxyBindingPatch) =>
     });
 
 export const saveMagicProxyBinding = updateMagicProxyBinding;
+
+export type MagicProxyDelayResult = { name: string; delay?: number; error?: string };
+
+export const testMagicProxyNode = (node: string) =>
+    request<MagicProxyDelayResult>("/api/admin/magic-proxy", {
+        method: "POST",
+        body: json({ node }),
+    });
+
+export const testMagicProxyAllNodes = () =>
+    request<{ results: MagicProxyDelayResult[] }>("/api/admin/magic-proxy", {
+        method: "POST",
+        body: json({}),
+    });

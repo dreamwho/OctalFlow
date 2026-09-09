@@ -353,6 +353,19 @@ ensure_env_value NEXT_PUBLIC_SITE_URL "${NEXT_PUBLIC_SITE_URL:-http://localhost:
 ensure_env_value OCTALAICANVAS_TRUSTED_PROXY_HOPS "${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}"
 ensure_env_value OCTALAICANVAS_GEMINIAI_API_KEY "${OCTALAICANVAS_GEMINIAI_API_KEY:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_CHATGPT_API_KEY "${OCTALAICANVAS_CHATGPT_API_KEY:-$(generate_token)}"
+# GeminiTools OAuth 凭据由打包机注入部署包 .env.example，服务器 .env 缺失时自动种子
+seed_env_from_example() {
+    local key="$1" value
+    value="$(read_env_value "$key")"
+    [[ -n "$value" ]] && return 0
+    value="$(grep -E "^${key}=" "$SCRIPT_DIR/.env.example" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+    [[ -n "$value" ]] && ensure_env_value "$key" "$value"
+    return 0
+}
+seed_env_from_example GEMINI_TOOLS_OAUTH_CLIENT_ID
+seed_env_from_example GEMINI_TOOLS_OAUTH_CLIENT_SECRET
+seed_env_from_example OCTALAICANVAS_GEMINIAI_STUDIO_URL
+ensure_env_value OCTALAICANVAS_CHATGPT_API_KEY "${OCTALAICANVAS_CHATGPT_API_KEY:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_MAGIC_PROXY_SECRET "${OCTALAICANVAS_MAGIC_PROXY_SECRET:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_ENCRYPTION_KEY "${OCTALAICANVAS_ENCRYPTION_KEY:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_INSTALL_TOKEN "${OCTALAICANVAS_INSTALL_TOKEN:-$(generate_token)}"

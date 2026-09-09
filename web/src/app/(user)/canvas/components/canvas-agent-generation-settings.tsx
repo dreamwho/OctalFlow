@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo } from "react";
 
-import { CompactAgentGenerationSettings, compactAgentPreferenceSummary, type AgentImageGenerationCapabilityProfile, type AgentVideoGenerationCapabilityProfile, updateAgentGenerationPreferences } from "@/components/agent/compact-agent-generation-settings";
+import { CompactAgentGenerationSettings, agentImageQualities, compactAgentPreferenceSummary, type AgentImageGenerationCapabilityProfile, type AgentVideoGenerationCapabilityProfile, updateAgentGenerationPreferences } from "@/components/agent/compact-agent-generation-settings";
 import type { CreativeAgentModelOption } from "@/components/agent/creative-agent-controls";
 import type { CreativeGenerationPreferences } from "@/lib/creative-runtime-contract";
-import { useConfigStore } from "@/stores/use-config-store";
+import { resolveModelChannel, useConfigStore } from "@/stores/use-config-store";
 
+import { isChatGptApiModelConfig } from "./canvas-image-settings-popover";
 import { canvasDreaminaImageProfile, canvasDreaminaVideoProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
 
 export function CanvasAgentGenerationSettings({
@@ -29,6 +30,19 @@ export function CanvasAgentGenerationSettings({
     const config = useConfigStore((state) => state.config);
     const imageProfile = useMemo(() => canvasAgentSelectedImageProfile(config, selectedModels), [config, selectedModels]);
     const videoProfile = useMemo(() => canvasAgentSelectedVideoProfile(config, selectedModels), [config, selectedModels]);
+
+    useEffect(() => {
+        if (!imageProfile?.lockedRatios || preferences.mode !== "image") return;
+        const size = preferences.image?.size || "auto";
+        const quality = preferences.image?.quality || "";
+        const sizeValid = size === "auto" || imageProfile.ratios.some((option) => option.value === size);
+        const qualityValid = imageProfile.qualities.some((option) => option.value === quality);
+        if (sizeValid && qualityValid) return;
+        onChange(updateAgentGenerationPreferences(preferences, "image", {
+            size: sizeValid ? size : "auto",
+            quality: qualityValid ? quality : imageProfile.defaultQuality || "auto",
+        }));
+    }, [imageProfile, onChange, preferences]);
 
     useEffect(() => {
         if (!videoProfile || preferences.mode !== "video") return;
@@ -60,11 +74,30 @@ export function selectSingleCanvasAgentModel(model: CreativeAgentModelOption, se
 export const canvasAgentCompactPreferenceSummary = compactAgentPreferenceSummary;
 export const updateCanvasAgentGenerationPreferences = updateAgentGenerationPreferences;
 
+const chatGptApiAgentImageProfile: AgentImageGenerationCapabilityProfile = {
+    ratios: [
+        { value: "auto", label: "智能", width: 18, height: 18 },
+        { value: "1024x1024", label: "方形", width: 18, height: 18 },
+        { value: "1024x1536", label: "竖版", width: 14, height: 21 },
+        { value: "1536x1024", label: "横版", width: 21, height: 14 },
+    ],
+    qualities: [
+        { value: "low", label: "低画质", shortLabel: "低" },
+        { value: "medium", label: "中画质（2K）", shortLabel: "中" },
+        { value: "high", label: "高画质（4K）", shortLabel: "高" },
+    ],
+    allowCustomSize: false,
+    lockedRatios: true,
+    defaultQuality: "low",
+};
+
 export function canvasAgentSelectedImageProfile(config: Parameters<typeof resolveCanvasDreaminaModelId>[0], selectedModels: CreativeAgentModelOption[]): AgentImageGenerationCapabilityProfile | undefined {
     const imageModel = selectedModels.find((model) => model.capability === "image");
     if (!imageModel) return undefined;
     const profile = canvasDreaminaImageProfile(resolveCanvasDreaminaModelId(config, imageModel.id));
-    return profile ? { ratios: profile.ratios, qualities: profile.qualities } : undefined;
+    if (profile) return { ratios: profile.ratios, qualities: profile.qualities };
+    if (isChatGptApiModelConfig(config, imageModel.id)) return chatGptApiAgentImageProfile;
+    return undefined;
 }
 
 export function canvasAgentSelectedVideoProfile(config: Parameters<typeof resolveCanvasDreaminaModelId>[0], selectedModels: CreativeAgentModelOption[]): AgentVideoGenerationCapabilityProfile | undefined {

@@ -181,7 +181,21 @@ export function buildNodeResponseMessages(context: NodeGenerationContext): AiTex
 
 export async function hydrateNodeGenerationContext(context: NodeGenerationContext) {
     const { imageToDataUrl } = await import("@/services/image-storage");
-    return { ...context, referenceImages: await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) }))) };
+    const { downscaleDataUrlForVision } = await import("@/lib/vision-image-encode");
+    let referenceImages = await Promise.all(
+        context.referenceImages.map(async (image) => ({ ...image, dataUrl: await downscaleDataUrlForVision(await imageToDataUrl(image)) })),
+    );
+    // 多张参考图叠加时仍可能超过请求体上限，按总预算逐级收紧重编码
+    const totalBudget = 3_200_000;
+    const stricterPasses = [
+        { maxLongEdge: 1280, maxBytes: 900_000 },
+        { maxLongEdge: 1024, maxBytes: 600_000 },
+    ];
+    for (const params of stricterPasses) {
+        if (referenceImages.reduce((sum, image) => sum + image.dataUrl.length, 0) <= totalBudget) break;
+        referenceImages = await Promise.all(referenceImages.map(async (image) => ({ ...image, dataUrl: await downscaleDataUrlForVision(image.dataUrl, params) })));
+    }
+    return { ...context, referenceImages };
 }
 
 function readNodeTextInput(node: CanvasNodeData) {

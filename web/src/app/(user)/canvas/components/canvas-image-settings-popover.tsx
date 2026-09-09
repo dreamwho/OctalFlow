@@ -3,11 +3,26 @@
 import { SlidersHorizontal } from "lucide-react";
 import { useEffect } from "react";
 
-import { CreativeGenerationPreferences, generationPreferenceSummary, type CreativeGenerationPreferencePatch, type GenerationQualityOption } from "@/components/creative-generation-preferences";
+import { CreativeGenerationPreferences, generationPreferenceSummary, type CreativeGenerationPreferencePatch, type GenerationQualityOption, type GenerationRatioOption } from "@/components/creative-generation-preferences";
 import type { CreativeGenerationPreferences as GenerationPreferences } from "@/lib/creative-runtime-contract";
 import { resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
 import { useCreativeComposerPopoverPlacement, type CreativeComposerPopoverPlacement } from "@/components/creative-composer-popover";
 import { canvasDreaminaImageProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
+
+const chatGptApiImageSizes: GenerationRatioOption[] = [
+    { value: "auto", label: "智能", width: 18, height: 18 },
+    { value: "1024x1024", label: "方形", width: 18, height: 18 },
+    { value: "1024x1536", label: "竖版", width: 14, height: 21 },
+    { value: "1536x1024", label: "横版", width: 21, height: 14 },
+];
+
+// GPTAPI 画质即导出规格：低 = 上游原生档位；中 = 放大到 2K；高 = 放大到 4K
+const chatGptApiImageQualities: GenerationQualityOption[] = [
+    { value: "low", label: "低画质", shortLabel: "低" },
+    { value: "medium", label: "中画质（2K）", shortLabel: "中" },
+    { value: "high", label: "高画质（4K）", shortLabel: "高" },
+];
+const CHATGPT_API_DEFAULT_QUALITY = "low";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -23,6 +38,7 @@ type CanvasImageSettingsPopoverProps = {
 export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChange, buttonClassName, placement = "topLeft", fixedSizeLabel, compactTriggerLabel, showTriggerChevron = true }: CanvasImageSettingsPopoverProps) {
     const responsivePlacement = useCreativeComposerPopoverPlacement(placement);
     const geminiAi = isGeminiAiImageConfig(config);
+    const chatGptApi = isChatGptApiImageConfig(config);
     const dreaminaModelId = resolveCanvasDreaminaModelId(config);
     const dreamina = canvasDreaminaImageProfile(dreaminaModelId);
     const allowCustomSize = !(dreaminaModelId === "dreamina-seedream-3-0" || dreaminaModelId === "dreamina-seedream-3-1") || config.quality !== "low";
@@ -44,12 +60,19 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             : generationPreferenceSummary("image", preferences);
 
     useEffect(() => {
+        if (!dreamina && chatGptApi) {
+            const size = config.size || "auto";
+            if (size !== "auto" && !chatGptApiImageSizes.some((option) => option.value === size)) onConfigChange("size", "auto");
+            const quality = config.quality || "";
+            if (!chatGptApiImageQualities.some((option) => option.value === quality)) onConfigChange("quality", CHATGPT_API_DEFAULT_QUALITY);
+            return;
+        }
         if (!dreamina) return;
         if (!dreamina.qualities.some((option) => option.value === config.quality)) onConfigChange("quality", dreamina.defaultQuality);
         const size = config.size || "auto";
         if (!/^\d+x\d+$/i.test(size) && !dreamina.ratios.some((option) => option.value === size)) onConfigChange("size", "auto");
         if (!allowCustomSize && /^\d+x\d+$/i.test(size)) onConfigChange("size", "auto");
-    }, [allowCustomSize, config.quality, config.size, dreamina, onConfigChange]);
+    }, [allowCustomSize, chatGptApi, config.quality, config.size, dreamina, onConfigChange]);
 
     return (
         <CreativeGenerationPreferences
@@ -66,9 +89,9 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             tabless
             fixedSizeLabel={fixedSizeLabel}
             imageQualityProfile={geminiAi ? "geminiai" : "default"}
-            ratioOptions={dreamina?.ratios}
-            imageQualityOptions={dreamina?.qualities}
-            allowCustomSize={allowCustomSize}
+            ratioOptions={chatGptApi ? chatGptApiImageSizes : dreamina?.ratios}
+            imageQualityOptions={chatGptApi ? chatGptApiImageQualities : dreamina?.qualities}
+            allowCustomSize={chatGptApi ? false : allowCustomSize}
             onOpenChange={onOpenChange}
             onChange={(patch) => applyImagePreferencePatch(patch, onConfigChange)}
         />
@@ -109,6 +132,19 @@ function imageQualityLabel(value?: string, geminiAi = false, options?: readonly 
 
 export function isGeminiAiImageConfig(config: AiConfig) {
     return resolveModelChannel(config, config.model).id === "geminiai";
+}
+
+export function isChatGptApiImageConfig(config: AiConfig) {
+    return isChatGptApiChannel(resolveModelChannel(config, config.model));
+}
+
+export function isChatGptApiModelConfig(config: AiConfig, modelId: string) {
+    return isChatGptApiChannel(resolveModelChannel(config, modelId));
+}
+
+function isChatGptApiChannel(channel: ReturnType<typeof resolveModelChannel>) {
+    // 老版本持久化的渠道条目可能没有 advancedConfig，用渠道 ID / 系统代理路径兜底识别
+    return channel.advancedConfig?.protocol === "chatgpt-api" || channel.id === "chatgpt-api" || (channel.baseUrl || "").includes("/api/ai/system/chatgpt-api");
 }
 
 function positiveInteger(value: unknown) {

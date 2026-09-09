@@ -87,6 +87,7 @@ export type ChatGptLogDetail = ChatGptLogSummary & {
     request_text_full?: string;
     request_text_truncated?: boolean;
     request_shape?: Record<string, unknown>;
+    response?: Record<string, unknown>;
     request_meta?: { lifecycle?: Array<{ time: string; status: string; message: string }>; [key: string]: unknown };
     upstream_error?: string;
     upstream_text?: string;

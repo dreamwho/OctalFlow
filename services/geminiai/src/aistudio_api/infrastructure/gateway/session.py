@@ -136,6 +136,11 @@ BOTGUARD_BOOTSTRAP_PROMPT = "say '1'"
 TEMPLATE_CAPTURE_PROMPT = "say 't'"
 
 
+def _normalize_generate_method_url(url: str) -> str:
+    """AI Studio 灰度会把请求切到 *PerUserQuota 变体，cloudcode 网关只认标准方法名。"""
+    return url.replace("GenerateContentPerUserQuota", "GenerateContent")
+
+
 def _clear_worker_event_loop() -> None:
     try:
         asyncio.set_event_loop(None)
@@ -748,7 +753,7 @@ class BrowserSession:
             body = request.post_data
             if not body:
                 return
-            captured["url"] = request.url
+            captured["url"] = _normalize_generate_method_url(request.url)
             captured["headers"] = dict(request.headers)
             captured["body"] = body
 
@@ -823,7 +828,7 @@ class BrowserSession:
             body = request.post_data
             if not body or len(body) <= 100:
                 return
-            captured["url"] = request.url
+            captured["url"] = _normalize_generate_method_url(request.url)
             captured["headers"] = dict(request.headers)
             captured["body"] = body
 

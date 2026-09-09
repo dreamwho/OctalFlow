@@ -113,8 +113,9 @@ async function syncChatGptMagicProxyAddress() {
         if (error instanceof MagicProxyError) throw new ChatGptApiError(error.message, error.status);
         throw error;
     });
-    if (binding.enabled && !binding.proxyUrl) throw new ChatGptApiError("ChatGPT 魔法代理缺少独立监听地址", 503);
-    await chatGptRuntimeJson("/integration/proxy", { method: "PATCH", body: JSON.stringify({ proxyUrl: binding.enabled ? binding.proxyUrl : null }) });
+    if (!binding.enabled) throw new ChatGptApiError("请先在“魔法代理”页签选择并保存魔法节点，再开启使用魔法代理", 409);
+    if (!binding.proxyUrl) throw new ChatGptApiError("ChatGPT 魔法代理缺少独立监听地址", 503);
+    await chatGptRuntimeJson("/integration/proxy", { method: "PATCH", body: JSON.stringify({ proxyUrl: binding.proxyUrl }) });
 }
 
 export async function getChatGptProxySelection() {

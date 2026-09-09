@@ -128,6 +128,54 @@ export async function importMagicProxySubscription(input: { url?: unknown; conte
     });
 }
 
+const DELAY_TEST_URL = "https://www.gstatic.com/generate_204";
+const DELAY_TEST_TIMEOUT_MS = 5000;
+const DELAY_TEST_CONCURRENCY = 4;
+
+export type MagicProxyDelayResult = { name: string; delay?: number; error?: string };
+
+export async function testMagicProxyNodeDelay(input: unknown): Promise<MagicProxyDelayResult> {
+    const name = optionalText(typeof input === "object" && input ? record(input).node : input);
+    if (!name) throw new MagicProxyError("请提供要测速的节点名称", 400);
+    const runtime = readRuntimeConfig();
+    if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
+    return { name, ...(await requestNodeDelay(runtime, name)) };
+}
+
+export async function testMagicProxyAllNodes(): Promise<{ results: MagicProxyDelayResult[] }> {
+    const runtime = readRuntimeConfig();
+    if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
+    const overview = await getMagicProxyOverview();
+    if (!overview.runtimeAvailable) throw new MagicProxyError("魔法代理运行时当前不可用，无法测速", 503);
+    const results = await mapWithLimit(overview.nodes.map((node) => node.name), DELAY_TEST_CONCURRENCY, async (name) => ({ name, ...(await requestNodeDelay(runtime, name)) }));
+    return { results };
+}
+
+async function requestNodeDelay(runtime: MihomoRuntimeConfig, name: string): Promise<{ delay?: number; error?: string }> {
+    try {
+        const response = await controllerRequest(runtime, `/proxies/${encodeURIComponent(name)}/delay?url=${encodeURIComponent(DELAY_TEST_URL)}&timeout=${DELAY_TEST_TIMEOUT_MS}`, { method: "GET" });
+        const payload = record(await response.json());
+        const delay = Number(payload.delay);
+        if (Number.isFinite(delay) && delay >= 0) return { delay };
+        return { error: "测速结果无效" };
+    } catch {
+        return { error: "测速超时或节点不可用" };
+    }
+}
+
+async function mapWithLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let cursor = 0;
+    const runners = Array.from({ length: Math.min(limit, items.length) || 0 }, async () => {
+        while (cursor < items.length) {
+            const current = cursor++;
+            results[current] = await worker(items[current]);
+        }
+    });
+    await Promise.all(runners);
+    return results;
+}
+
 export async function updateMagicProxyBinding(input: { provider?: unknown; enabled?: unknown; node?: unknown }) {
     const provider = magicProxyProvider(input.provider);
     if (!provider) throw new MagicProxyError("魔法代理服务标识无效", 400);

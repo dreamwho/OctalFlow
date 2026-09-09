@@ -56,7 +56,7 @@ export type GenerationLogInput = Partial<Pick<StoredGenerationLog, "id" | "taskI
     count?: number;
     successCount?: number;
     failCount?: number;
-    assets?: Array<Partial<GenerationLogAsset> & { url?: string; targetSize?: string }>;
+    assets?: Array<Partial<GenerationLogAsset> & { url?: string; targetSize?: string; upscaleLongEdge?: number }>;
     createdAt?: string | number;
     completedAt?: string | number;
 };
@@ -77,8 +77,8 @@ export type GenerationTaskLogResultInput = {
     model: string;
     summary: string;
     durationMs: number;
-    asset?: Partial<GenerationLogAsset> & { url?: string; targetSize?: string };
-    assets?: Array<Partial<GenerationLogAsset> & { url?: string; targetSize?: string }>;
+    asset?: Partial<GenerationLogAsset> & { url?: string; targetSize?: string; upscaleLongEdge?: number };
+    assets?: Array<Partial<GenerationLogAsset> & { url?: string; targetSize?: string; upscaleLongEdge?: number }>;
     error?: string;
     canRetry?: boolean;
     taskKind?: "generation" | "edit" | "upscale";
