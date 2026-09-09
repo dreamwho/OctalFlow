@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from aistudio_api.api.schemas import ImageRequest
 from aistudio_api.application.api_service import handle_image_edit, handle_image_generation
-from aistudio_api.domain.errors import AuthError
+from aistudio_api.domain.errors import AuthError, RequestError
 
 
 class _UnusedClient:
@@ -301,3 +301,83 @@ def test_image_permission_denial_rotates_across_the_account_pool(monkeypatch):
     assert exc.value.status_code == 403
     assert exc.value.detail["type"] == "account_access_denied"
     assert "页面原生通道未能使用当前账号" in exc.value.detail["message"]
+
+
+class _TransientImageClient:
+    def __init__(self, status=500):
+        self.calls = 0
+        self.status = status
+
+    async def generate_image(self, *args, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise RequestError(self.status, "Internal error encountered")
+
+        class _ImageOutput:
+            images = []
+            text = ""
+            usage = None
+
+        return _ImageOutput()
+
+
+def _patch_image_account_rotation(monkeypatch, switches):
+    from aistudio_api.application import api_service_openai
+
+    async def _noop(*args, **kwargs):
+        return None
+
+    async def _switch():
+        switches.append(True)
+        return True
+
+    monkeypatch.setattr(api_service_openai, "MAX_RETRIES", 3)
+    monkeypatch.setattr(api_service_openai, "require_busy_lock", lambda: asyncio.Semaphore(1))
+    monkeypatch.setattr(api_service_openai, "ensure_active_account", _noop)
+    monkeypatch.setattr(api_service_openai, "try_switch_account", _switch)
+    monkeypatch.setattr(api_service_openai, "record_rotator_event", lambda *args, **kwargs: None)
+
+
+def test_image_generation_retries_transient_upstream_error_with_account_switch(monkeypatch):
+    switches = []
+    _patch_image_account_rotation(monkeypatch, switches)
+
+    client = _TransientImageClient()
+    asyncio.run(handle_image_generation(ImageRequest(model="gemini-3-pro-image", prompt="hello"), client))
+
+    assert client.calls == 2
+    assert len(switches) == 1
+
+
+def test_image_edit_retries_transient_upstream_error_with_account_switch(monkeypatch):
+    switches = []
+    _patch_image_account_rotation(monkeypatch, switches)
+
+    client = _TransientImageClient()
+    asyncio.run(
+        handle_image_edit(
+            prompt="hello",
+            image_files=[],
+            mask_file=None,
+            model="gemini-3-pro-image",
+            n=1,
+            size="1024x1024",
+            client=client,
+        )
+    )
+
+    assert client.calls == 2
+    assert len(switches) == 1
+
+
+def test_image_generation_does_not_switch_account_for_non_transient_upstream_error(monkeypatch):
+    switches = []
+    _patch_image_account_rotation(monkeypatch, switches)
+
+    client = _TransientImageClient(status=400)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(handle_image_generation(ImageRequest(model="gemini-3-pro-image", prompt="hello"), client))
+
+    assert client.calls == 1
+    assert switches == []
+    assert exc.value.status_code == 500

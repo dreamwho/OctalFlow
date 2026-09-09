@@ -34,6 +34,8 @@ from aistudio_api.infrastructure.gateway.client import AIStudioClient
 from aistudio_api.infrastructure.gateway.model_defaults import resolve_model_defaults
 from aistudio_api.infrastructure.gateway.wire_types import AistudioContent, AistudioPart
 
+_RETRYABLE_IMAGE_REQUEST_STATUSES = frozenset({500, 502, 503, 504})
+
 
 async def handle_chat(req: ChatRequest, client: AIStudioClient):
     busy_lock = require_busy_lock()
@@ -193,6 +195,21 @@ async def handle_image_generation(req: ImageRequest, client: AIStudioClient):
                     logger.info("图片模型无账号权限，已切换账号，重试 %d/%d", attempt + 1, MAX_RETRIES)
                     continue
                 raise HTTPException(403, detail=account_access_denied_detail(req.model)) from exc
+            except RequestError as exc:
+                runtime_state.record(req.model, "errors")
+                last_error = exc
+                record_rotator_event("error")
+                if exc.status in _RETRYABLE_IMAGE_REQUEST_STATUSES and attempt < MAX_RETRIES - 1:
+                    if await try_switch_account():
+                        logger.warning(
+                            "Image 上游 HTTP %s，已切换账号，重试 %d/%d",
+                            exc.status,
+                            attempt + 1,
+                            MAX_RETRIES,
+                        )
+                        continue
+                    logger.warning("Image 上游 HTTP %s，当前没有可用的其他账号", exc.status)
+                raise HTTPException(500, detail={"message": str(exc), "type": "server_error"}) from exc
             except AistudioError as exc:
                 runtime_state.record(req.model, "errors")
                 record_rotator_event("error")
@@ -265,6 +282,21 @@ async def handle_image_edit(
                     logger.info("图片编辑模型无账号权限，已切换账号，重试 %d/%d", attempt + 1, MAX_RETRIES)
                     continue
                 raise HTTPException(403, detail=account_access_denied_detail(model)) from exc
+            except RequestError as exc:
+                runtime_state.record(model, "errors")
+                last_error = exc
+                record_rotator_event("error")
+                if exc.status in _RETRYABLE_IMAGE_REQUEST_STATUSES and attempt < MAX_RETRIES - 1:
+                    if await try_switch_account():
+                        logger.warning(
+                            "Image Edit 上游 HTTP %s，已切换账号，重试 %d/%d",
+                            exc.status,
+                            attempt + 1,
+                            MAX_RETRIES,
+                        )
+                        continue
+                    logger.warning("Image Edit 上游 HTTP %s，当前没有可用的其他账号", exc.status)
+                raise HTTPException(500, detail={"message": str(exc), "type": "server_error"}) from exc
             except AistudioError as exc:
                 runtime_state.record(model, "errors")
                 record_rotator_event("error")

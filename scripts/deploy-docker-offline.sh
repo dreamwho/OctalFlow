@@ -365,11 +365,23 @@ seed_env_from_example() {
 seed_env_from_example GEMINI_TOOLS_OAUTH_CLIENT_ID
 seed_env_from_example GEMINI_TOOLS_OAUTH_CLIENT_SECRET
 seed_env_from_example OCTALAICANVAS_GEMINIAI_STUDIO_URL
+seed_env_from_example OCTALAICANVAS_CHATGPT_API_PROXY_URL
+seed_env_from_example OCTALAICANVAS_ENCRYPTION_KEY
+seed_env_from_example OCTALAICANVAS_INSTALL_TOKEN
+seed_env_from_example OCTALAICANVAS_MAINTENANCE_TOKEN
+seed_env_from_example OCTALAICANVAS_WORKER_TOKEN
+seed_env_from_example OCTALAICANVAS_GEMINIAI_API_KEY
+seed_env_from_example OCTALAICANVAS_CHATGPT_API_KEY
+seed_env_from_example OCTALAICANVAS_MAGIC_PROXY_SECRET
+seed_env_from_example OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS
+seed_env_from_example OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS
+
 ensure_env_value OCTALAICANVAS_CHATGPT_API_KEY "${OCTALAICANVAS_CHATGPT_API_KEY:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_MAGIC_PROXY_SECRET "${OCTALAICANVAS_MAGIC_PROXY_SECRET:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_ENCRYPTION_KEY "${OCTALAICANVAS_ENCRYPTION_KEY:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_INSTALL_TOKEN "${OCTALAICANVAS_INSTALL_TOKEN:-$(generate_token)}"
 ensure_env_value OCTALAICANVAS_MAINTENANCE_TOKEN "${OCTALAICANVAS_MAINTENANCE_TOKEN:-$(generate_token)}"
+ensure_env_value OCTALAICANVAS_WORKER_TOKEN "${OCTALAICANVAS_WORKER_TOKEN:-$(generate_token)}"
 
 if [[ "$DATABASE_MODE" == external ]]; then
     database_url="$(read_env_value DATABASE_URL)"

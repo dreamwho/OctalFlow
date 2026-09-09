@@ -45,6 +45,8 @@ RUN --mount=type=cache,target=/pnpm/store pnpm install --frozen-lockfile --store
 COPY VERSION /app/VERSION
 COPY CHANGELOG.md /app/CHANGELOG.md
 COPY web ./
+COPY .env* /app/
+RUN if [ -f /app/.env ]; then cp -f /app/.env /app/web/.env; fi
 RUN --mount=type=cache,target=/app/web/.next/cache pnpm run typecheck && NEXT_SKIP_BUILD_TYPECHECK=1 pnpm run build
 RUN node scripts/build-local-data-migration.mjs
 RUN set -eux; \
@@ -100,10 +102,11 @@ COPY web/scripts/disaster-backup.mjs /app/web/scripts/disaster-backup.mjs
 COPY web/scripts/disaster-restore.mjs /app/web/scripts/disaster-restore.mjs
 COPY --from=web-build /app/web/scripts/local-data-migration.mjs /app/web/scripts/local-data-migration.mjs
 COPY web/scripts/restore-private-files.mjs web/scripts/restore-private-migration.mjs /app/web/scripts/
+COPY --from=web-build /app/web/.env* /app/web/
 
 RUN cd /app/web && node -e "require('sharp')"
 COPY docker/dreamina/version.json /app/web/.data/dreamina/version.json
-RUN mkdir -p /app/web/.data/dreamina && ln -s /app/web/.data/dreamina /home/node/.dreamina_cli && chown -R node:node /app/web
+RUN mkdir -p /app/web/.data/dreamina && ln -s /app/web/.data/dreamina /home/node/.dreamina_cli && chown -R node:node /app/web && chmod 0600 /app/web/.env* 2>/dev/null || true
 RUN install -d -o node -g node /app/web/.data/chatgpt-api
 
 EXPOSE 3000
