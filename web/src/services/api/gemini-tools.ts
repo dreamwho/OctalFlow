@@ -22,6 +22,7 @@ export type GeminiToolsLog = {
     id: string;
     createdAt: string;
     protocol: "openai" | "gemini" | "anthropic" | "admin-test";
+    method?: string;
     path: string;
     model: string;
     accountId?: string;
@@ -31,6 +32,12 @@ export type GeminiToolsLog = {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    imageRequestedCount?: number;
+    imageSucceededCount?: number;
+    imageFailedCount?: number;
+    clientIp?: string;
+    userAgent?: string;
+    headers?: Record<string, string>;
     error?: string;
     keyPrefix?: string;
     requestPreview?: string;
@@ -91,7 +98,7 @@ export const createGeminiToolsApiKey = (input: { name: string; expiresAt?: strin
 export const updateGeminiToolsApiKey = (keyId: string, patch: Partial<Pick<GeminiToolsApiKey, "name" | "status" | "expiresAt" | "allowedIps">>) =>
     request<GeminiToolsApiKey>(`/api/admin/gemini-tools/keys/${id(keyId)}`, { method: "PATCH", body: json(patch) });
 export const deleteGeminiToolsApiKey = (keyId: string) => request<{ deleted: true }>(`/api/admin/gemini-tools/keys/${id(keyId)}`, { method: "DELETE" });
-export const getGeminiToolsLogs = (params: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed" } = {}) => {
+export const getGeminiToolsLogs = (params: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; model?: string; accountId?: string; protocol?: string } = {}) => {
     const query = new URLSearchParams(
         Object.entries(params)
             .filter(([, value]) => value !== undefined && value !== "")

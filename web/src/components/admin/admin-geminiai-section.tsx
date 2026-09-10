@@ -3,7 +3,7 @@
 import { LogDetailResizeHandle, useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
 import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { BarChart3, ChevronRight, CircleUserRound, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { BarChart3, ChevronRight, CircleUserRound, Copy, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
@@ -62,6 +62,8 @@ export function AdminGeminiAiSection() {
     const [logKeyword, setLogKeyword] = useState("");
     const [logStatus, setLogStatus] = useState<"" | "success" | "failed">("");
     const [logCapability, setLogCapability] = useState<"" | "text" | "image" | "search">("");
+    const [logModel, setLogModel] = useState<string>("");
+    const [logAccountId, setLogAccountId] = useState<string>("");
     const [selectedLog, setSelectedLog] = useState<GeminiAiRequestLog | null>(null);
 
     const loadState = useCallback(async () => {
@@ -91,6 +93,8 @@ export function AdminGeminiAiSection() {
                         keyword: logKeyword || undefined,
                         status: logStatus || undefined,
                         capability: logCapability || undefined,
+                        model: logModel || undefined,
+                        accountId: logAccountId || undefined,
                     }),
                 );
             } catch (error) {
@@ -99,7 +103,7 @@ export function AdminGeminiAiSection() {
                 setLogsLoading(false);
             }
         },
-        [logCapability, logKeyword, logPageNumber, logStatus, message],
+        [logCapability, logKeyword, logModel, logAccountId, logPageNumber, logStatus, message],
     );
 
     useEffect(() => {
@@ -340,6 +344,10 @@ export function AdminGeminiAiSection() {
                     keyword={logKeywordDraft}
                     status={logStatus}
                     capability={logCapability}
+                    model={logModel}
+                    accountId={logAccountId}
+                    models={state?.models || []}
+                    accounts={state?.accounts || []}
                     onKeywordChange={setLogKeywordDraft}
                     onSearch={() => {
                         setLogPageNumber(1);
@@ -352,6 +360,14 @@ export function AdminGeminiAiSection() {
                     onCapabilityChange={(value) => {
                         setLogPageNumber(1);
                         setLogCapability(value);
+                    }}
+                    onModelChange={(value) => {
+                        setLogPageNumber(1);
+                        setLogModel(value);
+                    }}
+                    onAccountChange={(value) => {
+                        setLogPageNumber(1);
+                        setLogAccountId(value);
                     }}
                     onPageChange={setLogPageNumber}
                     onRefresh={() => void loadLogs()}
@@ -408,10 +424,16 @@ function GeminiAiRequestLogs({
     keyword,
     status,
     capability,
+    model,
+    accountId,
+    models,
+    accounts,
     onKeywordChange,
     onSearch,
     onStatusChange,
     onCapabilityChange,
+    onModelChange,
+    onAccountChange,
     onPageChange,
     onRefresh,
     onClear,
@@ -422,16 +444,44 @@ function GeminiAiRequestLogs({
     keyword: string;
     status: "" | "success" | "failed";
     capability: "" | "text" | "image" | "search";
+    model: string;
+    accountId: string;
+    models: GeminiAiModel[];
+    accounts: GeminiAiAccount[];
     onKeywordChange: (value: string) => void;
     onSearch: () => void;
     onStatusChange: (value: "" | "success" | "failed") => void;
     onCapabilityChange: (value: "" | "text" | "image" | "search") => void;
+    onModelChange: (value: string) => void;
+    onAccountChange: (value: string) => void;
     onPageChange: (page: number) => void;
     onRefresh: () => void;
     onClear: () => Promise<void>;
     onSelect: (log: GeminiAiRequestLog) => void;
 }) {
     const stats = page?.stats || { total: 0, success: 0, failed: 0, averageDurationMs: 0 };
+    const modelOptions = useMemo(() => {
+        const set = new Set<string>();
+        models.forEach((m) => {
+            if (m.name) set.add(m.name);
+        });
+        page?.items.forEach((item) => {
+            if (item.model) set.add(item.model);
+        });
+        return [{ value: "", label: "全部模型" }, ...Array.from(set).map((m) => ({ value: m, label: m }))];
+    }, [models, page?.items]);
+
+    const accountOptions = useMemo(() => {
+        const set = new Map<string, string>();
+        accounts.forEach((acc) => {
+            set.set(acc.id, acc.email || acc.id);
+        });
+        page?.items.forEach((item) => {
+            if (item.accountId) set.set(item.accountId, item.accountEmail || item.accountId);
+        });
+        return [{ value: "", label: "全部账号" }, ...Array.from(set.entries()).map(([id, label]) => ({ value: id, label }))];
+    }, [accounts, page?.items]);
+
     return (
         <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -457,7 +507,7 @@ function GeminiAiRequestLogs({
                         </Space>
                     }
                 />
-                <div className="grid gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800 sm:grid-cols-[minmax(0,1fr)_160px_160px_auto] sm:p-4">
+                <div className="grid gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800 sm:grid-cols-[minmax(0,1.2fr)_130px_130px_140px_140px_auto] sm:p-4">
                     <Input value={keyword} allowClear prefix={<Search className="size-4 text-zinc-400" />} placeholder="搜索模型、账号、路径或错误" onChange={(event) => onKeywordChange(event.target.value)} onPressEnter={onSearch} />
                     <Select
                         value={status}
@@ -477,6 +527,20 @@ function GeminiAiRequestLogs({
                             { value: "image", label: "图片" },
                             { value: "search", label: "Google 搜索" },
                         ]}
+                    />
+                    <Select
+                        value={model}
+                        onChange={onModelChange}
+                        options={modelOptions}
+                        showSearch
+                        placeholder="筛选模型"
+                    />
+                    <Select
+                        value={accountId}
+                        onChange={onAccountChange}
+                        options={accountOptions}
+                        showSearch
+                        placeholder="筛选账号"
                     />
                     <Button type="primary" onClick={onSearch}>
                         查询
@@ -510,31 +574,75 @@ function RequestMetric({ label, value, detail, tone = "neutral" }: { label: stri
     );
 }
 
+function buildCurlCommand(log: GeminiAiRequestLog): string {
+    const url = log.path.startsWith("http") ? log.path : `${typeof window !== "undefined" ? window.location.origin : ""}${log.path.startsWith("/") ? "" : "/"}${log.path}`;
+    const lines = [`curl -X ${log.method || "POST"} "${url}"`];
+    if (log.headers) {
+        for (const [k, v] of Object.entries(log.headers)) {
+            if (["authorization", "cookie"].includes(k.toLowerCase())) continue;
+            lines.push(`  -H "${k}: ${v.replace(/"/g, '\\"')}"`);
+        }
+    }
+    if (!log.headers?.["content-type"] && log.requestPreview) {
+        lines.push(`  -H "Content-Type: application/json"`);
+    }
+    if (log.requestPreview) {
+        lines.push(`  --data-raw '${log.requestPreview.replace(/'/g, "'\\''")}'`);
+    }
+    return lines.join(" \\\n");
+}
+
 function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onClick: () => void }) {
     const phase = log.phase || (log.statusCode < 400 ? "success" : "failed");
     const pending = phase === "queued" || phase === "running";
     const success = phase === "success";
+    const isLimited = log.statusCode === 429;
     return (
         <button
             type="button"
-            className="grid w-full min-w-0 gap-3 px-3 py-3 text-left transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 dark:hover:bg-zinc-900/70 sm:grid-cols-[120px_minmax(0,1fr)_minmax(150px,0.55fr)_100px_24px] sm:items-center sm:px-4"
+            className="grid w-full min-w-0 gap-3 px-3 py-3 text-left transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 dark:hover:bg-zinc-900/70 sm:grid-cols-[130px_minmax(0,1fr)_minmax(160px,0.55fr)_100px_24px] sm:items-center sm:px-4"
             onClick={onClick}
         >
-            <div className="flex items-center gap-2">
-                <Tag color={pending ? "processing" : success ? "success" : "error"} className="m-0">
-                    {pending ? (phase === "queued" ? "排队中" : "执行中") : success ? "成功" : "失败"}
+            <div className="flex flex-wrap items-center gap-1.5">
+                <Tag color={pending ? "processing" : isLimited ? "gold" : success ? "success" : "error"} className="m-0">
+                    {pending ? (phase === "queued" ? "排队中" : "执行中") : isLimited ? "限流" : success ? "成功" : "失败"}
                 </Tag>
-                {log.proxyEgress ? <Tag color="geekblue" className="m-0">{log.proxyEgress.mode === "magic" ? "魔法" : "通用"}</Tag> : null}
+                {log.proxyEgress ? (
+                    <Tag color="geekblue" className="m-0 text-[11px]">
+                        {log.proxyEgress.mode === "magic" ? "魔法" : "通用"}
+                    </Tag>
+                ) : null}
                 {!pending && log.statusCode > 0 ? <span className="text-xs text-zinc-500">{log.statusCode}</span> : null}
             </div>
             <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100" title={log.model}>
-                    {log.model}
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        {log.method || "POST"}
+                    </span>
+                    <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100" title={log.model}>
+                        {log.model}
+                    </span>
+                    {log.totalTokens ? (
+                        <Tag color="blue" className="m-0 text-[11px]">
+                            {log.totalTokens.toLocaleString()} Tokens
+                        </Tag>
+                    ) : null}
+                    {log.imageRequestedCount ? (
+                        <Tag color="purple" className="m-0 text-[11px]">
+                            生图 {log.imageSucceededCount || 0}/{log.imageRequestedCount}
+                        </Tag>
+                    ) : null}
                 </div>
-                <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-zinc-500 dark:text-zinc-400">
                     <span>{capabilityLabel(log.capability)}</span>
                     <span>·</span>
                     <span>{log.source === "runtime" ? "站内调用" : "后台实测"}</span>
+                    {log.proxyEgress?.address ? (
+                        <>
+                            <span>·</span>
+                            <span className="font-mono text-zinc-400">{log.proxyEgress.address}</span>
+                        </>
+                    ) : null}
                 </div>
             </div>
             <div className="min-w-0 text-xs text-zinc-500 dark:text-zinc-400">
@@ -542,7 +650,7 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
                     {log.accountEmail || "未识别实际账号"}
                 </div>
                 <div className="mt-0.5 truncate">{formatDate(log.createdAt)}</div>
-                {log.proxyEgress?.address ? <div className="mt-0.5 truncate text-zinc-400">{log.proxyEgress.address}</div> : log.proxyEgress?.node_name ? <div className="mt-0.5 truncate text-zinc-400">{log.proxyEgress.node_name}</div> : null}
+                {log.clientIp ? <div className="mt-0.5 truncate font-mono text-zinc-400">{log.clientIp}</div> : null}
             </div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400">{formatDuration(log.durationMs)}</div>
             <ChevronRight className="hidden size-4 text-zinc-400 sm:block" aria-hidden="true" />
@@ -551,19 +659,53 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
 }
 
 function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | null; onClose: () => void }) {
-    const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 560, minWidth: 420 });
+    const { message } = App.useApp();
+    const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 580, minWidth: 440 });
+
+    const copyText = (content: string | undefined, successTip: string) => {
+        if (!content) return;
+        void navigator.clipboard.writeText(content).then(() => {
+            message.success(successTip);
+        });
+    };
+
     return (
         <Drawer title="请求详情" open={Boolean(log)} onClose={onClose} width={drawerWidth} style={{ maxWidth: "100vw" }} styles={{ body: { padding: 16, position: "relative" } }}>
             <LogDetailResizeHandle resizing={drawerResizing} onPointerDown={onHandlePointerDown} />
             {log ? (
                 <div className="space-y-5">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Tag color={log.statusCode === 0 ? "processing" : log.statusCode < 400 ? "success" : "error"} className="m-0">
-                            {log.statusCode === 0 ? "执行中" : log.statusCode < 400 ? "请求成功" : "请求失败"}
-                        </Tag>
-                        <Tag className="m-0">{capabilityLabel(log.capability)}</Tag>
-                        <Tag className="m-0">{log.source === "runtime" ? "站内调用" : "后台实测"}</Tag>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Tag color={log.statusCode === 0 ? "processing" : log.statusCode < 400 ? "success" : "error"} className="m-0">
+                                {log.statusCode === 0 ? "执行中" : log.statusCode < 400 ? "请求成功" : "请求失败"}
+                            </Tag>
+                            <Tag className="m-0">{capabilityLabel(log.capability)}</Tag>
+                            <Tag className="m-0">{log.source === "runtime" ? "站内调用" : "后台实测"}</Tag>
+                            {log.proxyEgress ? (
+                                <Tag color="geekblue" className="m-0">
+                                    {log.proxyEgress.mode === "magic" ? "魔法代理" : "通用代理"} · {log.proxyEgress.address || log.proxyEgress.node_name}
+                                </Tag>
+                            ) : null}
+                        </div>
                     </div>
+
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white p-2.5 dark:border-zinc-800 dark:bg-zinc-950">
+                        <Button size="small" icon={<Copy className="size-3.5" />} onClick={() => copyText(buildCurlCommand(log), "cURL 命令已复制")}>
+                            复制 cURL
+                        </Button>
+                        <Button size="small" icon={<Copy className="size-3.5" />} disabled={!log.requestPreview} onClick={() => copyText(log.requestPreview, "请求体已复制")}>
+                            复制请求体
+                        </Button>
+                        <Button size="small" icon={<Copy className="size-3.5" />} disabled={!log.responsePreview} onClick={() => copyText(log.responsePreview, "响应体已复制")}>
+                            复制响应体
+                        </Button>
+                        {log.error ? (
+                            <Button size="small" danger icon={<Copy className="size-3.5" />} onClick={() => copyText(log.error, "错误信息已复制")}>
+                                复制错误
+                            </Button>
+                        ) : null}
+                    </div>
+
                     <div className="grid gap-x-4 gap-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/50 sm:grid-cols-2">
                         <DetailItem label="模型" value={log.model} />
                         <DetailItem label="实际账号" value={log.accountEmail || "未识别"} />
@@ -576,7 +718,21 @@ function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | 
                         <DetailItem label="状态码" value={String(log.statusCode)} />
                         <DetailItem label="耗时" value={formatDuration(log.durationMs)} />
                         <DetailItem label="请求时间" value={formatDate(log.createdAt)} />
-                        <DetailItem label="请求路径" value={`${log.method} ${log.path}`} />
+                        <DetailItem label="请求路径" value={`${log.method || "POST"} ${log.path}`} />
+                        {log.clientIp ? <DetailItem label="客户端 IP" value={log.clientIp} /> : null}
+                        {log.userAgent ? <DetailItem label="User-Agent" value={log.userAgent} /> : null}
+                        {log.totalTokens ? (
+                            <DetailItem
+                                label="Token 消耗"
+                                value={`总计 ${log.totalTokens.toLocaleString()} (输入 ${log.promptTokens || 0} / 输出 ${log.completionTokens || 0})`}
+                            />
+                        ) : null}
+                        {log.imageRequestedCount ? (
+                            <DetailItem
+                                label="生图张数"
+                                value={`请求 ${log.imageRequestedCount} 张 / 成功 ${log.imageSucceededCount || 0} 张 / 失败 ${log.imageFailedCount || 0} 张`}
+                            />
+                        ) : null}
                     </div>
                     {log.lifecycle?.length ? (
                         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">

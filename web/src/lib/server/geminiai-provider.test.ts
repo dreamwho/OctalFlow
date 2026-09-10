@@ -1,7 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ appendLog: vi.fn(), ensureMagicProxy: vi.fn() }));
-vi.mock("@/lib/server/geminiai-request-log-store", () => ({ appendGeminiAiRequestLog: mocks.appendLog }));
+const mocks = vi.hoisted(() => ({
+    appendLog: vi.fn(),
+    ensureMagicProxy: vi.fn(),
+    openedLogs: new Map<string, Record<string, unknown>>(),
+}));
+vi.mock("@/lib/server/geminiai-request-log-store", () => ({
+    appendGeminiAiRequestLog: mocks.appendLog,
+    openGeminiAiRequestLog: vi.fn((input) => {
+        const id = `log-open-${Date.now()}`;
+        mocks.openedLogs.set(id, input);
+        return Promise.resolve(id);
+    }),
+    markGeminiAiRequestLogRunning: vi.fn((id) => Promise.resolve({ id, phase: "running" })),
+    settleGeminiAiRequestLog: vi.fn((id, patch) => {
+        const opened = mocks.openedLogs.get(id) || {};
+        const combined = { ...opened, ...patch };
+        mocks.appendLog(combined);
+        return Promise.resolve({ id, ...combined });
+    }),
+}));
 vi.mock("@/lib/server/magic-proxy-service", () => ({
     ensureMagicProxyProvider: mocks.ensureMagicProxy,
     MagicProxyError: class MagicProxyError extends Error {

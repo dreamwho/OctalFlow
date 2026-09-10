@@ -11,12 +11,16 @@ export async function GET(request: Request) {
     try {
         const search = new URL(request.url).searchParams;
         const capability = search.get("capability");
+        const model = search.get("model")?.trim() || undefined;
+        const accountId = search.get("accountId")?.trim() || undefined;
         const data = await listGeminiAiRequestLogs({
             page: numberParam(search.get("page"), 1),
             pageSize: numberParam(search.get("pageSize"), 20),
             keyword: search.get("keyword") || undefined,
             status: search.get("status") === "success" || search.get("status") === "failed" ? (search.get("status") as "success" | "failed") : undefined,
             capability: capability === "text" || capability === "image" || capability === "search" ? (capability as GeminiAiRequestCapability) : undefined,
+            model,
+            accountId,
         });
         await auditGeminiAiAdminAction(request, access.user, "admin.geminiai.logs.view", { type: "geminiai_request_log" });
         return apiSuccess(data);

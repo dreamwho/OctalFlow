@@ -263,8 +263,14 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
     const protocol = context.protocol || protocolFromPath(normalizedPath);
     const model = text(body?.model, 200);
     if (!model) return Response.json({ error: { message: "缺少模型 ID" } }, { status: 400 });
+    const clientIp = extractClientIp(init.headers);
+    const userAgent = extractUserAgent(init.headers);
+    const headers = sanitizeLogHeaders(init.headers);
+    const method = (init.method || "POST").toUpperCase();
+
     const openLogId = await openGeminiToolsRequestLog({
         protocol,
+        method,
         path: normalizedPath,
         model,
         promptTokens: 0,
@@ -272,6 +278,9 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
         totalTokens: 0,
         ...(context.keyPrefix ? { keyPrefix: context.keyPrefix } : {}),
         requestPreview: previewRequest(body) || undefined,
+        ...(clientIp ? { clientIp } : {}),
+        ...(userAgent ? { userAgent } : {}),
+        ...(headers ? { headers } : {}),
     }).catch(() => "");
     if (openLogId) await markGeminiToolsRequestLogRunning(openLogId).catch(() => undefined);
     const egressNow = () => geminiToolsProxyEgress().catch(() => undefined);
@@ -299,6 +308,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                 (async () => {
                     const settlePayload = {
                         protocol,
+                        method,
                         path: normalizedPath,
                         model,
                         accountId: account.id,
@@ -312,6 +322,9 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                         requestPreview: previewRequest(body),
                         responsePreview: textFromNative(native).slice(0, 500),
                         proxyEgress: (await egressNow()) || undefined,
+                        ...(clientIp ? { clientIp } : {}),
+                        ...(userAgent ? { userAgent } : {}),
+                        ...(headers ? { headers } : {}),
                     } as const;
                     if (openLogId) return settleGeminiToolsRequestLog(openLogId, settlePayload).catch(() => undefined);
                     return appendGeminiToolsRequestLog(settlePayload);
@@ -339,23 +352,28 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             accountEmail: failedAccount?.email,
             proxyEgress: (await egressNow()) || undefined,
         }).catch(() => undefined);
+    } else {
+        await appendGeminiToolsRequestLog({
+            protocol,
+            method,
+            path: normalizedPath,
+            model,
+            accountId: failedAccount?.id,
+            accountEmail: failedAccount?.email,
+            statusCode: status,
+            durationMs: Date.now() - startedAt,
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            error: lastError?.message || "Google 上游请求失败",
+            keyPrefix: context.keyPrefix,
+            requestPreview: previewRequest(body),
+            proxyEgress: (await egressNow()) || undefined,
+            ...(clientIp ? { clientIp } : {}),
+            ...(userAgent ? { userAgent } : {}),
+            ...(headers ? { headers } : {}),
+        });
     }
-    await appendGeminiToolsRequestLog({
-        protocol,
-        path: normalizedPath,
-        model,
-        accountId: failedAccount?.id,
-        accountEmail: failedAccount?.email,
-        statusCode: status,
-        durationMs: Date.now() - startedAt,
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        error: lastError?.message || "Google 上游请求失败",
-        keyPrefix: context.keyPrefix,
-        requestPreview: previewRequest(body),
-        proxyEgress: (await geminiToolsProxyEgress().catch(() => undefined)) || undefined,
-    });
     return Response.json({ error: { message: lastError?.message || "Google 上游请求失败" } }, { status });
 }
 
@@ -767,6 +785,30 @@ function webOrigin(value: string) {
     } catch {
         return "";
     }
+}
+
+function extractClientIp(headers?: HeadersInit): string | undefined {
+    if (!headers) return undefined;
+    const h = new Headers(headers);
+    return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || undefined;
+}
+
+function extractUserAgent(headers?: HeadersInit): string | undefined {
+    if (!headers) return undefined;
+    const h = new Headers(headers);
+    return h.get("user-agent") || undefined;
+}
+
+function sanitizeLogHeaders(headers?: HeadersInit): Record<string, string> | undefined {
+    if (!headers) return undefined;
+    const h = new Headers(headers);
+    const result: Record<string, string> = {};
+    const safeKeys = ["content-type", "accept", "user-agent", "x-session-id", "origin", "referer"];
+    for (const key of safeKeys) {
+        const val = h.get(key);
+        if (val) result[key] = val;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function defaultChannel(): SystemModelChannel {

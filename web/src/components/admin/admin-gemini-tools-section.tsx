@@ -59,6 +59,9 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
     const [logs, setLogs] = useState<GeminiToolsLog[]>([]);
     const [logKeyword, setLogKeyword] = useState("");
     const [logStatus, setLogStatus] = useState<"" | "success" | "failed">("");
+    const [logProtocol, setLogProtocol] = useState<"" | "openai" | "gemini" | "anthropic">("");
+    const [logModel, setLogModel] = useState<string>("");
+    const [logAccountId, setLogAccountId] = useState<string>("");
     const [selectedLog, setSelectedLog] = useState<GeminiToolsLog | null>(null);
 
     const load = useCallback(async () => {
@@ -130,7 +133,14 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
     const loadLogs = async () => {
         setAction("logs");
         try {
-            const data = await getGeminiToolsLogs({ keyword: logKeyword, status: logStatus || undefined, pageSize: 50 });
+            const data = await getGeminiToolsLogs({
+                keyword: logKeyword,
+                status: logStatus || undefined,
+                protocol: logProtocol || undefined,
+                model: logModel || undefined,
+                accountId: logAccountId || undefined,
+                pageSize: 50,
+            });
             setLogs(data.items);
         } catch (logError) {
             message.error(logError instanceof Error ? logError.message : "读取请求日志失败");
@@ -177,6 +187,12 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
     const enabledAccounts = state?.accounts.filter((account) => account.status === "active" && account.proxyEnabled).length || 0;
     const availableModels = useMemo(() => (state?.models || []).filter((model) => model.available), [state?.models]);
     const modelOptions = useMemo(() => availableModels.map((model) => ({ label: model.name || model.id, value: model.id })), [availableModels]);
+    const accountOptions = useMemo(() => {
+        return (state?.accounts || []).map((account) => ({
+            label: account.email ? `${account.name} (${account.email})` : account.name,
+            value: account.id,
+        }));
+    }, [state?.accounts]);
 
     return (
         <div className="space-y-4">
@@ -417,9 +433,9 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                         actions={
                             <Space wrap size={6}>
                                 <Input
-                                    className="w-44"
+                                    className="w-40"
                                     allowClear
-                                    prefix={<Search className="size-3.5" />}
+                                    prefix={<Search className="size-3.5 text-zinc-400" />}
                                     value={logKeyword}
                                     placeholder="模型 / 账号 / 错误"
                                     onChange={(event: ChangeEvent<HTMLInputElement>) => setLogKeyword(event.target.value)}
@@ -429,17 +445,49 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                                     className="w-28"
                                     value={logStatus}
                                     options={[
-                                        { value: "", label: "全部" },
+                                        { value: "", label: "全部状态" },
                                         { value: "success", label: "成功" },
                                         { value: "failed", label: "失败" },
                                     ]}
                                     onChange={(value: "" | "success" | "failed") => setLogStatus(value)}
+                                />
+                                <Select
+                                    className="w-28"
+                                    value={logProtocol}
+                                    options={[
+                                        { value: "", label: "全部协议" },
+                                        { value: "openai", label: "OpenAI" },
+                                        { value: "gemini", label: "Gemini" },
+                                        { value: "anthropic", label: "Anthropic" },
+                                    ]}
+                                    onChange={(value: "" | "openai" | "gemini" | "anthropic") => setLogProtocol(value)}
+                                />
+                                <Select
+                                    className="w-36"
+                                    value={logModel}
+                                    allowClear
+                                    showSearch
+                                    placeholder="全部模型"
+                                    options={[{ value: "", label: "全部模型" }, ...modelOptions]}
+                                    onChange={(value: string) => setLogModel(value || "")}
+                                />
+                                <Select
+                                    className="w-36"
+                                    value={logAccountId}
+                                    allowClear
+                                    showSearch
+                                    placeholder="全部账号"
+                                    options={[{ value: "", label: "全部账号" }, ...accountOptions]}
+                                    onChange={(value: string) => setLogAccountId(value || "")}
                                 />
                                 <Button loading={action === "logs"} onClick={() => void loadLogs()}>
                                     查询
                                 </Button>
                                 <Popconfirm
                                     title="清空全部 GeminiTools 请求日志？"
+                                    description="该操作不可撤销，但不会影响账号和渠道配置。"
+                                    okText="清空"
+                                    cancelText="取消"
                                     onConfirm={() =>
                                         void run(
                                             "clear-logs",
@@ -451,7 +499,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                                         )
                                     }
                                 >
-                                    <Button danger icon={<Trash2 className="size-4" />}>
+                                    <Button danger icon={<Trash2 className="size-4" />} disabled={!logs.length}>
                                         清空
                                     </Button>
                                 </Popconfirm>
@@ -719,34 +767,76 @@ function KeyRow({ apiKey, busy, onToggle, onDelete }: { apiKey: GeminiToolsApiKe
     );
 }
 
+function buildToolsCurlCommand(log: GeminiToolsLog): string {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = log.path.startsWith("http") ? log.path : `${origin}${log.path.startsWith("/") ? "" : "/"}${log.path}`;
+    const lines = [`curl -X ${log.method || "POST"} "${url}"`];
+    if (log.headers) {
+        for (const [k, v] of Object.entries(log.headers)) {
+            if (["authorization", "cookie"].includes(k.toLowerCase())) continue;
+            lines.push(`  -H "${k}: ${v.replace(/"/g, '\\"')}"`);
+        }
+    }
+    if (!log.headers?.["content-type"] && log.requestPreview) {
+        lines.push(`  -H "Content-Type: application/json"`);
+    }
+    if (log.requestPreview) {
+        lines.push(`  --data-raw '${log.requestPreview.replace(/'/g, "'\\''")}'`);
+    }
+    return lines.join(" \\\n");
+}
+
 function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) {
     const phase = log.phase || (log.statusCode < 400 ? "success" : "failed");
     const pending = phase === "queued" || phase === "running";
     const success = phase === "success";
+    const method = log.method || "POST";
+    const hasImages = (log.imageRequestedCount || 0) > 0 || (log.imageSucceededCount || 0) > 0;
+
     return (
         <button
             type="button"
             data-gemini-tools-log-id={log.id}
             aria-label={`查看请求日志：${log.model}`}
             onClick={onClick}
-            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[150px_100px_minmax(0,1fr)_130px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
+            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[140px_120px_minmax(0,1fr)_140px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
         >
             <div className="text-zinc-500">{formatTime(log.createdAt)}</div>
-            <div>
-                <Tag color={pending ? "processing" : success ? "green" : "red"}>{pending ? (phase === "queued" ? "排队中" : "执行中") : log.statusCode}</Tag>
-                {log.proxyEgress ? <Tag color="geekblue" className="m-0">{log.proxyEgress.mode === "magic" ? "魔法" : "通用"}</Tag> : null}
-                <span className="uppercase text-zinc-500">{log.protocol}</span>
-                {log.proxyEgress?.address ? <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxyEgress.address}</span> : log.proxyEgress?.node_name ? <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxyEgress.node_name}</span> : null}
+            <div className="flex flex-wrap items-center gap-1.5">
+                <Tag className="m-0 font-mono text-[10px] uppercase">{method}</Tag>
+                <Tag color={pending ? "processing" : success ? "green" : "red"} className="m-0">
+                    {pending ? (phase === "queued" ? "排队中" : "执行中") : log.statusCode}
+                </Tag>
+                {log.proxyEgress ? (
+                    <Tag color="geekblue" className="m-0">
+                        {log.proxyEgress.mode === "magic" ? "魔法" : "通用"}
+                    </Tag>
+                ) : null}
             </div>
             <div className="min-w-0">
-                <div className="truncate font-medium text-zinc-800 dark:text-zinc-200">{log.model}</div>
-                <div className="truncate text-zinc-500">
-                    {log.accountEmail || "未分配账号"}
-                    {log.error ? ` · ${log.error}` : ""}
+                <div className="flex items-center gap-2">
+                    <span className="truncate font-medium text-zinc-800 dark:text-zinc-200" title={log.model}>{log.model}</span>
+                    <span className="rounded bg-zinc-100 px-1 py-0.5 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">{log.protocol}</span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-zinc-500 dark:text-zinc-400">
+                    <span className="truncate">{log.accountEmail || "未分配账号"}</span>
+                    {log.proxyEgress?.address ? <span>· 代理: {log.proxyEgress.address}</span> : null}
+                    {log.error ? <span className="text-red-500">· {log.error}</span> : null}
                 </div>
             </div>
-            <div className="text-zinc-500">
-                {log.durationMs} ms · {log.totalTokens} tokens
+            <div className="text-zinc-500 dark:text-zinc-400">
+                <div>{log.durationMs} ms</div>
+                <div className="mt-0.5 flex flex-wrap gap-1">
+                    {hasImages ? (
+                        <Tag color="cyan" className="m-0 text-[10px]">
+                            {log.imageSucceededCount || 0} 张生图
+                        </Tag>
+                    ) : log.totalTokens ? (
+                        <Tag color="blue" className="m-0 text-[10px]">
+                            {log.totalTokens} Tokens
+                        </Tag>
+                    ) : null}
+                </div>
             </div>
             <ChevronRight className="hidden size-4 justify-self-end text-zinc-400 sm:block" aria-hidden="true" />
         </button>
@@ -755,58 +845,140 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
 
 function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | null; onClose: () => void }) {
     const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 420 });
+    const { message: messageApi } = App.useApp();
     const success = log ? log.statusCode < 400 : false;
+
+    const copyToClipboard = (text: string | undefined, title: string) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            messageApi.success(`${title}已复制到剪贴板`);
+        }).catch(() => {
+            messageApi.error("复制失败");
+        });
+    };
+
     return (
         <Drawer title="请求日志详情" open={Boolean(log)} onClose={onClose} width={drawerWidth} styles={{ body: { padding: 20, position: "relative" } }}>
             <LogDetailResizeHandle resizing={drawerResizing} onPointerDown={onHandlePointerDown} />
             {log ? (
                 <div className="space-y-5">
+                    {/* Action buttons toolbar */}
+                    <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-3 dark:border-zinc-800">
+                        <Button
+                            size="small"
+                            icon={<Copy className="size-3.5" />}
+                            onClick={() => copyToClipboard(buildToolsCurlCommand(log), "cURL 命令")}
+                        >
+                            复制 cURL
+                        </Button>
+                        {log.requestPreview ? (
+                            <Button
+                                size="small"
+                                icon={<Copy className="size-3.5" />}
+                                onClick={() => copyToClipboard(log.requestPreview, "请求体")}
+                            >
+                                复制请求体
+                            </Button>
+                        ) : null}
+                        {log.responsePreview ? (
+                            <Button
+                                size="small"
+                                icon={<Copy className="size-3.5" />}
+                                onClick={() => copyToClipboard(log.responsePreview, "响应体")}
+                            >
+                                复制响应体
+                            </Button>
+                        ) : null}
+                        {log.error ? (
+                            <Button
+                                size="small"
+                                danger
+                                icon={<Copy className="size-3.5" />}
+                                onClick={() => copyToClipboard(log.error, "错误信息")}
+                            >
+                                复制错误
+                            </Button>
+                        ) : null}
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-2">
+                        <Tag className="m-0 font-mono text-xs uppercase">{log.method || "POST"}</Tag>
                         <Tag color={success ? "green" : "red"}>
                             {success ? "成功" : "失败"} · {log.statusCode}
                         </Tag>
+                        <Tag color="geekblue">{log.protocol.toUpperCase()}</Tag>
                         <span className="text-xs text-zinc-500">{formatTime(log.createdAt)}</span>
                     </div>
+
                     <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-3 text-sm">
-                        <dt className="text-zinc-500">协议</dt>
-                        <dd className="font-mono">{log.protocol}</dd>
+                        <dt className="text-zinc-500">模型</dt>
+                        <dd className="break-all font-medium text-zinc-900 dark:text-zinc-100">{log.model}</dd>
+
+                        <dt className="text-zinc-500">实际账号</dt>
+                        <dd className="break-all">{log.accountEmail || "未分配账号"}</dd>
+
+                        <dt className="text-zinc-500">请求路径</dt>
+                        <dd className="break-all font-mono text-xs text-zinc-700 dark:text-zinc-300">{log.path}</dd>
+
+                        {log.clientIp ? (
+                            <>
+                                <dt className="text-zinc-500">客户端 IP</dt>
+                                <dd className="font-mono text-xs">{log.clientIp}</dd>
+                            </>
+                        ) : null}
+
+                        {log.userAgent ? (
+                            <>
+                                <dt className="text-zinc-500">User Agent</dt>
+                                <dd className="break-all font-mono text-xs text-zinc-600 dark:text-zinc-400">{log.userAgent}</dd>
+                            </>
+                        ) : null}
+
                         {log.proxyEgress ? (
                             <>
                                 <dt className="text-zinc-500">代理出口</dt>
                                 <dd className="break-all">
-                                    {log.proxyEgress.mode === "magic" ? "魔法代理" : "通用代理"}
+                                    <span className="font-medium">{log.proxyEgress.mode === "magic" ? "魔法代理" : "通用代理"}</span>
                                     {log.proxyEgress.node_name ? ` · ${log.proxyEgress.node_name}` : ""}
                                     {log.proxyEgress.address ? ` · ${log.proxyEgress.address}` : ""}
                                 </dd>
                             </>
                         ) : null}
-                        <dt className="text-zinc-500">请求路径</dt>
-                        <dd className="break-all font-mono text-xs">{log.path}</dd>
-                        {log.lifecycle?.length ? (
-                            <div className="col-span-2 mt-1 space-y-1.5 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-                                <div className="text-xs font-medium text-zinc-600 dark:text-zinc-300">过程日志</div>
-                                {log.lifecycle.map((entry, index) => (
-                                    <div key={index} className="flex items-center gap-2 text-xs">
-                                        <span className={entry.phase === "queued" || entry.phase === "running" ? "text-amber-500" : entry.phase === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
-                                        <span className="text-zinc-400">{formatTime(log.createdAt)}</span>
-                                        <span className="text-zinc-600 dark:text-zinc-300">{entry.message}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : null}
-                        <dt className="text-zinc-500">模型</dt>
-                        <dd className="break-all">{log.model}</dd>
-                        <dt className="text-zinc-500">实际账号</dt>
-                        <dd className="break-all">{log.accountEmail || "未分配账号"}</dd>
-                        <dt className="text-zinc-500">API 密钥</dt>
-                        <dd>{log.keyPrefix || "站内调用"}</dd>
+
                         <dt className="text-zinc-500">耗时</dt>
                         <dd>{log.durationMs} ms</dd>
-                        <dt className="text-zinc-500">Token</dt>
+
+                        <dt className="text-zinc-500">Token 统计</dt>
                         <dd>
-                            输入 {log.promptTokens} · 输出 {log.completionTokens} · 合计 {log.totalTokens}
+                            输入 {log.promptTokens || 0} · 输出 {log.completionTokens || 0} · 合计 {log.totalTokens || 0}
                         </dd>
+
+                        {(log.imageRequestedCount || 0) > 0 || (log.imageSucceededCount || 0) > 0 ? (
+                            <>
+                                <dt className="text-zinc-500">生图统计</dt>
+                                <dd>
+                                    请求 {log.imageRequestedCount || 0} 张 · 成功 {log.imageSucceededCount || 0} 张 · 失败 {log.imageFailedCount || 0} 张
+                                </dd>
+                            </>
+                        ) : null}
+
+                        <dt className="text-zinc-500">API 密钥</dt>
+                        <dd>{log.keyPrefix || "站内调用"}</dd>
                     </dl>
+
+                    {log.lifecycle?.length ? (
+                        <div className="space-y-1.5 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+                            <div className="text-xs font-medium text-zinc-600 dark:text-zinc-300">过程日志</div>
+                            {log.lifecycle.map((entry, index) => (
+                                <div key={index} className="flex items-center gap-2 text-xs">
+                                    <span className={entry.phase === "queued" || entry.phase === "running" ? "text-amber-500" : entry.phase === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
+                                    <span className="text-zinc-400">{formatTime(log.createdAt)}</span>
+                                    <span className="text-zinc-600 dark:text-zinc-300">{entry.message}</span>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+
                     {log.error ? <LogPreview title="错误" value={log.error} tone="error" /> : null}
                     {log.requestPreview ? <LogPreview title="请求摘要" value={log.requestPreview} /> : null}
                     {log.responsePreview ? <LogPreview title="响应摘要" value={log.responsePreview} /> : null}

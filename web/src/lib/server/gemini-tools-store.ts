@@ -54,6 +54,7 @@ export type GeminiToolsRequestLog = {
     id: string;
     createdAt: string;
     protocol: "openai" | "gemini" | "anthropic" | "admin-test";
+    method?: string;
     path: string;
     model: string;
     accountId?: string;
@@ -63,6 +64,12 @@ export type GeminiToolsRequestLog = {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    imageRequestedCount?: number;
+    imageSucceededCount?: number;
+    imageFailedCount?: number;
+    clientIp?: string;
+    userAgent?: string;
+    headers?: Record<string, string>;
     error?: string;
     keyPrefix?: string;
     requestPreview?: string;
@@ -361,7 +368,24 @@ export async function markGeminiToolsRequestLogRunning(id: string) {
     });
 }
 
-export async function settleGeminiToolsRequestLog(id: string, settle: { statusCode: number; durationMs: number; error?: string; accountId?: string; accountEmail?: string; promptTokens?: number; completionTokens?: number; totalTokens?: number; responsePreview?: string; proxyEgress?: GeminiToolsRequestLog["proxyEgress"] }) {
+export async function settleGeminiToolsRequestLog(
+    id: string,
+    settle: {
+        statusCode: number;
+        durationMs: number;
+        error?: string;
+        accountId?: string;
+        accountEmail?: string;
+        promptTokens?: number;
+        completionTokens?: number;
+        totalTokens?: number;
+        imageRequestedCount?: number;
+        imageSucceededCount?: number;
+        imageFailedCount?: number;
+        responsePreview?: string;
+        proxyEgress?: GeminiToolsRequestLog["proxyEgress"];
+    },
+) {
     await patchGeminiToolsLog(id, (log) => {
         log.statusCode = settle.statusCode;
         log.durationMs = settle.durationMs;
@@ -371,6 +395,9 @@ export async function settleGeminiToolsRequestLog(id: string, settle: { statusCo
         if (settle.promptTokens !== undefined) log.promptTokens = settle.promptTokens;
         if (settle.completionTokens !== undefined) log.completionTokens = settle.completionTokens;
         if (settle.totalTokens !== undefined) log.totalTokens = settle.totalTokens;
+        if (settle.imageRequestedCount !== undefined) log.imageRequestedCount = settle.imageRequestedCount;
+        if (settle.imageSucceededCount !== undefined) log.imageSucceededCount = settle.imageSucceededCount;
+        if (settle.imageFailedCount !== undefined) log.imageFailedCount = settle.imageFailedCount;
         if (settle.responsePreview) log.responsePreview = settle.responsePreview;
         if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
         const failed = settle.statusCode >= 400 || Boolean(settle.error);
@@ -400,14 +427,37 @@ async function patchGeminiToolsLog(id: string, mutate: (log: GeminiToolsRequestL
     });
 }
 
-export async function listGeminiToolsRequestLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed" } = {}) {
+export async function listGeminiToolsRequestLogs(
+    input: {
+        page?: number;
+        pageSize?: number;
+        keyword?: string;
+        status?: "success" | "failed";
+        model?: string;
+        accountId?: string;
+        protocol?: string;
+    } = {},
+) {
     const page = Math.max(1, Math.floor(input.page || 1));
     const pageSize = Math.max(1, Math.min(100, Math.floor(input.pageSize || 20)));
     const keyword = input.keyword?.trim().toLowerCase() || "";
-    if (isPostgresDatabaseEnabled()) return (await postgresRepository()).listLogs({ page, pageSize, keyword: keyword || undefined, status: input.status });
+    if (isPostgresDatabaseEnabled()) {
+        return (await postgresRepository()).listLogs({
+            page,
+            pageSize,
+            keyword: keyword || undefined,
+            status: input.status,
+            model: input.model?.trim() || undefined,
+            accountId: input.accountId?.trim() || undefined,
+            protocol: input.protocol?.trim() || undefined,
+        });
+    }
     const items = (await readDatabase()).logs.filter((log) => {
         if (input.status === "success" && log.statusCode >= 400) return false;
         if (input.status === "failed" && log.statusCode < 400) return false;
+        if (input.model && log.model !== input.model) return false;
+        if (input.accountId && log.accountId !== input.accountId) return false;
+        if (input.protocol && log.protocol !== input.protocol) return false;
         return !keyword || [log.model, log.accountEmail, log.path, log.error, log.keyPrefix].filter(Boolean).join(" ").toLowerCase().includes(keyword);
     });
     return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize };
@@ -460,9 +510,18 @@ function publicApiKey(key: StoredGeminiToolsApiKey): GeminiToolsApiKey {
     return structuredClone(value);
 }
 
+let geminiToolsSchemaEnsured = false;
 async function postgresRepository() {
     await ensurePostgresSchema();
-    return new GeminiToolsRepository({ query: postgresQuery });
+    const repo = new GeminiToolsRepository({ query: postgresQuery });
+    if (!geminiToolsSchemaEnsured) {
+        geminiToolsSchemaEnsured = true;
+        await repo.ensureSchema().catch((error) => {
+            geminiToolsSchemaEnsured = false;
+            console.error("[gemini-tools-log] Failed to ensure schema:", error);
+        });
+    }
+    return repo;
 }
 
 function buildStoredAccount(

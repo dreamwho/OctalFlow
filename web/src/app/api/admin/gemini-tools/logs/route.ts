@@ -6,12 +6,18 @@ export async function GET(request: Request) {
     const access = await requireGeminiToolsAdmin();
     if ("error" in access) return access.error;
     const url = new URL(request.url);
+    const model = url.searchParams.get("model")?.trim() || undefined;
+    const accountId = url.searchParams.get("accountId")?.trim() || undefined;
+    const protocol = url.searchParams.get("protocol")?.trim() || undefined;
     return apiSuccess(
         await listGeminiToolsRequestLogs({
             page: Number(url.searchParams.get("page") || 1),
             pageSize: Number(url.searchParams.get("pageSize") || 20),
             keyword: url.searchParams.get("keyword") || undefined,
             status: url.searchParams.get("status") === "success" || url.searchParams.get("status") === "failed" ? (url.searchParams.get("status") as "success" | "failed") : undefined,
+            model,
+            accountId,
+            protocol,
         }),
     );
 }

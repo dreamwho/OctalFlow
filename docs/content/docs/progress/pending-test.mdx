@@ -7,6 +7,12 @@ description: OctalFlow 当前版本需要人工或真实环境确认的事项
 
 ## 上游渠道与部署
 
+- GeminiAIStudio 与 GeminiTools 请求日志已全量对齐 GPTAPI 标准：
+  - 数据持久层：双端数据表增加 `prompt_tokens`、`completion_tokens`、`total_tokens`、`image_requested_count`、`image_succeeded_count`、`image_failed_count`、`client_ip`、`user_agent`、`headers`、`method` 字段，完成 PostgreSQL 幂等 DDL 自动迁移与文件持久化适配；
+  - 采集与接口层：上游调用自动解析文本 Prompt/Completion Token 与生图成功/失败张数；安全脱敏捕获客户端 IP、User-Agent 与请求头；新增 `DELETE /api/admin/geminiai/logs` 清空接口，两端查询接口支持 `model`、`accountId` 以及 `protocol`（GeminiTools）精准多维联合过滤；
+  - 前端交互与详情抽屉：日志列表行增加 HTTP Method 标签、状态、Token 胶囊、生图统计与 `geekblue` 代理出口徽章；工具栏新增模型筛选、账号筛选、协议筛选与防误触清空 Popconfirm；详情抽屉配备 Action Toolbar（一键复制可执行 cURL、复制请求体、复制响应体、复制错误）与网络元信息/Token 消耗看板；
+  - 门禁回归：Vitest 测试全量通过，生产打包 `pnpm build` 顺利完成并重启生产服务，无头浏览器 E2E 实测接口鉴权、多条件过滤、列表徽章渲染、抽屉复制工具栏与清空 Popconfirm。待用户在浏览器后台刷新查看并体验。
+
 - GeminiAIStudio 生图失败已根治（两个独立缺陷）：① sidecar 浏览器在慢速住宅代理下用 networkidle 等待页面加载，30 秒超时直接失败——改为 domcontentloaded 为门槛（60 秒）+ 被动 networkidle 收敛（10 秒，超时不报错）；② 经系统代理路由的请求 body 为 ArrayBuffer，日志元数据提取不到模型名导致完全不写日志——已支持 ArrayBuffer/TypedArray 解码。E2E 实测（真实 IPWO 代理通道）：生图 200（31.5-62 秒）、日志含代理出口与结构化响应摘要（b64 自动省略为大小说明）。另一次 E2E 恰好验证失败路径：代理节点 TLS 瞬断时任务如实记录 failed 生命周期与完整错误。
 
 - GeminiTools 与 GeminiAIStudio 请求日志已复刻 GPTAPI 模式：提交请求即插入"排队中"记录（phase=queued + 生命周期首条"等待执行"），发起上游调用时更新为"执行中"，响应或异常时落定 success/failed 并追加生命周期（等待执行→执行中→调用完成/调用失败）；列表行状态标签实时反映 排队中/执行中/成功/失败，详情抽屉新增"过程日志"时间线（时间 + 状态点 + 消息）与"代理出口"字段；文件与 PostgreSQL 双存储均新增 phase/lifecycle 字段（含幂等 ALTER 迁移）。E2E 实测：成功请求生命周期 等待执行→执行中→调用完成，失败请求 等待执行→执行中→失败（含完整错误文本）；通用代理请求日志页聚合三来源正常。待用户验收日志从提交开始出现并随状态更新。

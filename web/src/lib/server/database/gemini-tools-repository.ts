@@ -4,6 +4,18 @@ import type { GeminiToolsGatewaySettings, GeminiToolsOAuthSession, GeminiToolsQu
 export class GeminiToolsRepository {
     constructor(private readonly db: QueryExecutor) {}
 
+    async ensureSchema() {
+        await this.db.query(`
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS image_requested_count integer DEFAULT 0;
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS image_succeeded_count integer DEFAULT 0;
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS image_failed_count integer DEFAULT 0;
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS client_ip varchar(128);
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS user_agent text;
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS method varchar(16) DEFAULT 'POST';
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS headers jsonb;
+        `).catch(() => undefined);
+    }
+
     async listAccounts(activeOnly = false) {
         const result = await this.db.query(`SELECT * FROM gemini_tools_accounts${activeOnly ? " WHERE status = 'active' AND proxy_enabled = true" : ""} ORDER BY priority DESC, last_used_at ASC NULLS FIRST, created_at ASC`);
         return result.rows.map(mapAccount);
@@ -168,8 +180,12 @@ export class GeminiToolsRepository {
 
     async appendLog(log: GeminiToolsRequestLog, maxLogs: number) {
         await this.db.query(
-            `INSERT INTO gemini_tools_request_logs (id,created_at,protocol,path,model,account_id,account_email,status_code,duration_ms,prompt_tokens,completion_tokens,total_tokens,error,key_prefix,request_preview,response_preview,phase,lifecycle)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+            `INSERT INTO gemini_tools_request_logs (
+                id,created_at,protocol,path,model,account_id,account_email,status_code,duration_ms,
+                prompt_tokens,completion_tokens,total_tokens,error,key_prefix,request_preview,response_preview,
+                phase,lifecycle,image_requested_count,image_succeeded_count,image_failed_count,client_ip,user_agent,method,headers
+             )
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25::jsonb)`,
             [
                 log.id,
                 new Date(log.createdAt),
@@ -189,6 +205,13 @@ export class GeminiToolsRepository {
                 log.responsePreview || null,
                 log.phase || "success",
                 JSON.stringify(log.lifecycle || []),
+                log.imageRequestedCount || 0,
+                log.imageSucceededCount || 0,
+                log.imageFailedCount || 0,
+                log.clientIp || null,
+                log.userAgent || null,
+                log.method || "POST",
+                log.headers ? JSON.stringify(log.headers) : null,
             ],
         );
         await this.db.query("DELETE FROM gemini_tools_request_logs WHERE id IN (SELECT id FROM gemini_tools_request_logs ORDER BY created_at DESC OFFSET $1)", [maxLogs]);
@@ -196,16 +219,53 @@ export class GeminiToolsRepository {
 
     async updateLog(log: GeminiToolsRequestLog) {
         await this.db.query(
-            `UPDATE gemini_tools_request_logs SET status_code=$2,duration_ms=$3,error=$4,account_id=$5,account_email=$6,prompt_tokens=$7,completion_tokens=$8,total_tokens=$9,response_preview=$10,phase=$11,lifecycle=$12 WHERE id=$1`,
-            [log.id, log.statusCode, log.durationMs, log.error || null, log.accountId || null, log.accountEmail || null, log.promptTokens, log.completionTokens, log.totalTokens, log.responsePreview || null, log.phase || "success", JSON.stringify(log.lifecycle || [])],
+            `UPDATE gemini_tools_request_logs SET
+                status_code=$2,duration_ms=$3,error=$4,account_id=$5,account_email=$6,
+                prompt_tokens=$7,completion_tokens=$8,total_tokens=$9,response_preview=$10,
+                phase=$11,lifecycle=$12,image_requested_count=$13,image_succeeded_count=$14,
+                image_failed_count=$15,client_ip=$16,user_agent=$17,method=$18,headers=$19::jsonb
+             WHERE id=$1`,
+            [
+                log.id,
+                log.statusCode,
+                log.durationMs,
+                log.error || null,
+                log.accountId || null,
+                log.accountEmail || null,
+                log.promptTokens,
+                log.completionTokens,
+                log.totalTokens,
+                log.responsePreview || null,
+                log.phase || "success",
+                JSON.stringify(log.lifecycle || []),
+                log.imageRequestedCount || 0,
+                log.imageSucceededCount || 0,
+                log.imageFailedCount || 0,
+                log.clientIp || null,
+                log.userAgent || null,
+                log.method || "POST",
+                log.headers ? JSON.stringify(log.headers) : null,
+            ],
         );
     }
 
-    async listLogs(input: { page: number; pageSize: number; keyword?: string; status?: "success" | "failed" }) {
+    async listLogs(input: { page: number; pageSize: number; keyword?: string; status?: "success" | "failed"; model?: string; accountId?: string; protocol?: string }) {
         const where: string[] = [];
         const values: unknown[] = [];
         if (input.status === "success") where.push("status_code < 400");
         if (input.status === "failed") where.push("status_code >= 400");
+        if (input.model) {
+            values.push(input.model);
+            where.push(`model = $${values.length}`);
+        }
+        if (input.accountId) {
+            values.push(input.accountId);
+            where.push(`account_id = $${values.length}`);
+        }
+        if (input.protocol) {
+            values.push(input.protocol);
+            where.push(`protocol = $${values.length}`);
+        }
         if (input.keyword) {
             values.push(`%${escapeLike(input.keyword.toLowerCase())}%`);
             const parameter = `$${values.length}`;
@@ -298,6 +358,13 @@ function mapLog(row: Record<string, unknown>): GeminiToolsRequestLog {
         ...(string(row.response_preview) ? { responsePreview: string(row.response_preview) } : {}),
         ...(string(row.phase) ? { phase: (["queued", "running", "failed"].includes(string(row.phase)) ? string(row.phase) : "success") as GeminiToolsRequestLog["phase"] } : {}),
         ...(row.lifecycle ? parseLifecycle(row.lifecycle) : {}),
+        imageRequestedCount: number(row.image_requested_count) || undefined,
+        imageSucceededCount: number(row.image_succeeded_count) || undefined,
+        imageFailedCount: number(row.image_failed_count) || undefined,
+        ...(string(row.client_ip) ? { clientIp: string(row.client_ip) } : {}),
+        ...(string(row.user_agent) ? { userAgent: string(row.user_agent) } : {}),
+        ...(string(row.method) ? { method: string(row.method) } : {}),
+        ...(row.headers && typeof row.headers === "object" ? { headers: row.headers as Record<string, string> } : {}),
     };
 }
 

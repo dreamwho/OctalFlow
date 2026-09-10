@@ -23,6 +23,15 @@ export type GeminiAiRequestLog = {
     accountEmail?: string;
     statusCode: number;
     durationMs: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    imageRequestedCount?: number;
+    imageSucceededCount?: number;
+    imageFailedCount?: number;
+    clientIp?: string;
+    userAgent?: string;
+    headers?: Record<string, string>;
     error?: string;
     requestPreview?: string;
     responsePreview?: string;
@@ -86,7 +95,26 @@ export async function markGeminiAiRequestLogRunning(id: string) {
 }
 
 /** Settle an open log with the final status/response. */
-export async function settleGeminiAiRequestLog(id: string, settle: { statusCode: number; durationMs: number; error?: string; responsePreview?: string; accountId?: string; accountEmail?: string; proxyEgress?: GeminiAiRequestLog["proxyEgress"] }) {
+export async function settleGeminiAiRequestLog(
+    id: string,
+    settle: {
+        statusCode: number;
+        durationMs: number;
+        error?: string;
+        responsePreview?: string;
+        accountId?: string;
+        accountEmail?: string;
+        promptTokens?: number;
+        completionTokens?: number;
+        totalTokens?: number;
+        imageRequestedCount?: number;
+        imageSucceededCount?: number;
+        imageFailedCount?: number;
+        clientIp?: string;
+        userAgent?: string;
+        proxyEgress?: GeminiAiRequestLog["proxyEgress"];
+    },
+) {
     await patchGeminiAiRequestLog(id, (log) => {
         log.statusCode = settle.statusCode;
         log.durationMs = settle.durationMs;
@@ -94,6 +122,14 @@ export async function settleGeminiAiRequestLog(id: string, settle: { statusCode:
         if (settle.responsePreview) log.responsePreview = settle.responsePreview;
         if (settle.accountId) log.accountId = settle.accountId;
         if (settle.accountEmail) log.accountEmail = settle.accountEmail;
+        if (settle.promptTokens !== undefined) log.promptTokens = settle.promptTokens;
+        if (settle.completionTokens !== undefined) log.completionTokens = settle.completionTokens;
+        if (settle.totalTokens !== undefined) log.totalTokens = settle.totalTokens;
+        if (settle.imageRequestedCount !== undefined) log.imageRequestedCount = settle.imageRequestedCount;
+        if (settle.imageSucceededCount !== undefined) log.imageSucceededCount = settle.imageSucceededCount;
+        if (settle.imageFailedCount !== undefined) log.imageFailedCount = settle.imageFailedCount;
+        if (settle.clientIp) log.clientIp = settle.clientIp;
+        if (settle.userAgent) log.userAgent = settle.userAgent;
         if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
         const failed = settle.statusCode >= 400 || Boolean(settle.error);
         log.phase = failed ? "failed" : "success";
@@ -135,13 +171,41 @@ export async function listGeminiAiProxyEgressLogsPage(input: { limit?: number; o
     return { items: matches.slice(offset, offset + limit), total: matches.length, has_more: offset + limit < matches.length };
 }
 
-export async function listGeminiAiRequestLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability } = {}) {
+export async function listGeminiAiRequestLogs(
+    input: {
+        page?: number;
+        pageSize?: number;
+        keyword?: string;
+        status?: "success" | "failed";
+        capability?: GeminiAiRequestCapability;
+        model?: string;
+        accountId?: string;
+    } = {},
+) {
     const page = Math.max(1, Math.floor(input.page || 1));
     const pageSize = Math.max(1, Math.min(100, Math.floor(input.pageSize || 20)));
     const keyword = input.keyword?.trim().toLowerCase() || "";
-    if (isPostgresDatabaseEnabled()) return (await postgresRepository()).list({ page, pageSize, keyword: keyword || undefined, status: input.status, capability: input.capability });
+    if (isPostgresDatabaseEnabled()) {
+        return (await postgresRepository()).list({
+            page,
+            pageSize,
+            keyword: keyword || undefined,
+            status: input.status,
+            capability: input.capability,
+            model: input.model?.trim() || undefined,
+            accountId: input.accountId?.trim() || undefined,
+        });
+    }
     const logs = (await readDatabase()).logs;
-    const items = logs.filter((log) => matches(log, { keyword, status: input.status, capability: input.capability }));
+    const items = logs.filter((log) =>
+        matches(log, {
+            keyword,
+            status: input.status,
+            capability: input.capability,
+            model: input.model?.trim() || undefined,
+            accountId: input.accountId?.trim() || undefined,
+        }),
+    );
     return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize, stats: requestStats(logs) };
 }
 
@@ -162,9 +226,18 @@ export function requestStats(logs: GeminiAiRequestLog[]): GeminiAiRequestStats {
     return { total, success, failed: total - success, averageDurationMs: total ? Math.round(duration / total) : 0 };
 }
 
+let schemaEnsured = false;
 async function postgresRepository() {
     await ensurePostgresSchema();
-    return new GeminiAiRequestLogRepository({ query: postgresQuery });
+    const repo = new GeminiAiRequestLogRepository({ query: postgresQuery });
+    if (!schemaEnsured) {
+        schemaEnsured = true;
+        await repo.ensureSchema().catch((error) => {
+            schemaEnsured = false;
+            console.error("[geminiai-log] Failed to ensure schema:", error);
+        });
+    }
+    return repo;
 }
 
 async function readDatabase() {
@@ -180,9 +253,14 @@ async function mutateDatabase(mutator: (database: GeminiAiRequestLogDatabase) =>
     });
 }
 
-function matches(log: GeminiAiRequestLog, input: { keyword: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability }) {
+function matches(
+    log: GeminiAiRequestLog,
+    input: { keyword: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability; model?: string; accountId?: string },
+) {
     if (input.status === "success" && log.statusCode >= 400) return false;
     if (input.status === "failed" && log.statusCode < 400) return false;
     if (input.capability && log.capability !== input.capability) return false;
+    if (input.model && log.model !== input.model) return false;
+    if (input.accountId && log.accountId !== input.accountId) return false;
     return !input.keyword || [log.model, log.accountEmail, log.path, log.error, log.requestPreview].filter(Boolean).join(" ").toLowerCase().includes(input.keyword);
 }

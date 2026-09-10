@@ -61,14 +61,18 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
 
 async function safeOpenLog(metadata: RequestLogMetadata) {
     try {
-        return await openGeminiAiRequestLog({
+        const openLogId = await openGeminiAiRequestLog({
             source: metadata.source,
             capability: metadata.capability,
             method: metadata.method,
             path: metadata.path,
             model: metadata.model,
             ...(metadata.requestPreview ? { requestPreview: metadata.requestPreview } : {}),
+            ...(metadata.clientIp ? { clientIp: metadata.clientIp } : {}),
+            ...(metadata.userAgent ? { userAgent: metadata.userAgent } : {}),
+            ...(metadata.headers ? { headers: metadata.headers } : {}),
         });
+        return openLogId || "";
     } catch (error) {
         console.error("Failed to open GeminiAIStudio request log", error);
         return "";
@@ -179,7 +183,37 @@ type RequestLogMetadata = {
     model: string;
     requestPreview?: string;
     proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
+    clientIp?: string;
+    userAgent?: string;
+    headers?: Record<string, string>;
 };
+
+function sanitizeLogHeaders(headers?: HeadersInit): Record<string, string> | undefined {
+    if (!headers) return undefined;
+    const h = new Headers(headers);
+    const result: Record<string, string> = {};
+    for (const [key, value] of h.entries()) {
+        const lower = key.toLowerCase();
+        if (lower === "authorization" || lower === "cookie" || lower === "set-cookie") {
+            result[key] = "[REDACTED]";
+        } else {
+            result[key] = value;
+        }
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function extractClientIp(headers?: HeadersInit): string | undefined {
+    if (!headers) return undefined;
+    const h = new Headers(headers);
+    return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || undefined;
+}
+
+function extractUserAgent(headers?: HeadersInit): string | undefined {
+    if (!headers) return undefined;
+    const h = new Headers(headers);
+    return h.get("user-agent") || undefined;
+}
 
 function requestLogMetadata(path: string, init: RequestInit, source?: GeminiAiRequestSource): RequestLogMetadata | null {
     const pathname = path.split("?")[0] || "";
@@ -197,6 +231,9 @@ function requestLogMetadata(path: string, init: RequestInit, source?: GeminiAiRe
         path: pathname,
         model,
         ...(body.preview ? { requestPreview: body.preview } : {}),
+        ...(extractClientIp(init.headers) ? { clientIp: extractClientIp(init.headers) } : {}),
+        ...(extractUserAgent(init.headers) ? { userAgent: extractUserAgent(init.headers) } : {}),
+        ...(sanitizeLogHeaders(init.headers) ? { headers: sanitizeLogHeaders(init.headers) } : {}),
     };
 }
 
@@ -253,11 +290,69 @@ function collectText(value: Record<string, unknown>) {
     return parts.join("\n").trim();
 }
 
+function extractResponseMetrics(value: unknown, capability: GeminiAiRequestCapability) {
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let totalTokens = 0;
+    let imageRequestedCount = 0;
+    let imageSucceededCount = 0;
+    let imageFailedCount = 0;
+
+    if (value && typeof value === "object") {
+        const obj = value as Record<string, unknown>;
+        if (obj.usage && typeof obj.usage === "object") {
+            const usage = obj.usage as Record<string, unknown>;
+            promptTokens = Number(usage.prompt_tokens) || 0;
+            completionTokens = Number(usage.completion_tokens) || 0;
+            totalTokens = Number(usage.total_tokens) || (promptTokens + completionTokens);
+        } else if (obj.usageMetadata && typeof obj.usageMetadata === "object") {
+            const usage = obj.usageMetadata as Record<string, unknown>;
+            promptTokens = Number(usage.promptTokenCount) || 0;
+            completionTokens = Number(usage.candidatesTokenCount) || 0;
+            totalTokens = Number(usage.totalTokenCount) || (promptTokens + completionTokens);
+        }
+
+        if (capability === "image") {
+            if (Array.isArray(obj.data)) {
+                imageRequestedCount = obj.data.length;
+                imageSucceededCount = obj.data.filter((item) => item && typeof item === "object" && Boolean((item as any).url || (item as any).b64_json)).length;
+                imageFailedCount = imageRequestedCount - imageSucceededCount;
+            } else if (Array.isArray(obj.images)) {
+                imageRequestedCount = obj.images.length;
+                imageSucceededCount = obj.images.filter((img) => Boolean(img)).length;
+                imageFailedCount = imageRequestedCount - imageSucceededCount;
+            }
+        }
+    }
+    return {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        imageRequestedCount,
+        imageSucceededCount,
+        imageFailedCount,
+    };
+}
+
+async function activeAccount(config: NonNullable<ReturnType<typeof readProviderConfig>>) {
+    try {
+        const response = await fetch(sidecarUrl(config.baseUrl, "/accounts/active"), {
+            headers: { authorization: `Bearer ${config.apiKey}` },
+            cache: "no-store",
+        });
+        if (!response.ok) return null;
+        const payload = (await response.json().catch(() => null)) as { id?: string; email?: string } | null;
+        return payload?.id || payload?.email ? { id: payload.id, email: payload.email } : null;
+    } catch {
+        return null;
+    }
+}
+
 async function recordRequestLog(config: NonNullable<ReturnType<typeof readProviderConfig>>, metadata: RequestLogMetadata, response: Response, startedAt: number, openLogId = "") {
     const responseAccountId = textValue(response.headers.get("x-aistudio-account-id"));
     const responseAccountEmail = textValue(response.headers.get("x-aistudio-account-email"));
     const account = responseAccountId || responseAccountEmail ? { id: responseAccountId, email: responseAccountEmail } : await activeAccount(config);
-    const responsePreview = await safeResponsePreview(response, metadata.capability);
+    const { preview: responsePreview, metrics } = await safeResponsePreviewAndMetrics(response, metadata.capability);
     const error = response.ok ? undefined : responsePreview || `上游返回 HTTP ${response.status}`;
     const settle: Parameters<typeof settleGeminiAiRequestLog>[1] = {
         statusCode: response.status,
@@ -267,6 +362,12 @@ async function recordRequestLog(config: NonNullable<ReturnType<typeof readProvid
         ...(account?.id ? { accountId: account.id } : {}),
         ...(account?.email ? { accountEmail: account.email } : {}),
         ...(metadata.proxyEgress ? { proxyEgress: metadata.proxyEgress satisfies GeminiAiRequestLog["proxyEgress"] } : {}),
+        ...(metrics.promptTokens ? { promptTokens: metrics.promptTokens } : {}),
+        ...(metrics.completionTokens ? { completionTokens: metrics.completionTokens } : {}),
+        ...(metrics.totalTokens ? { totalTokens: metrics.totalTokens } : {}),
+        ...(metrics.imageRequestedCount ? { imageRequestedCount: metrics.imageRequestedCount } : {}),
+        ...(metrics.imageSucceededCount ? { imageSucceededCount: metrics.imageSucceededCount } : {}),
+        ...(metrics.imageFailedCount ? { imageFailedCount: metrics.imageFailedCount } : {}),
     };
     if (openLogId) {
         try {
@@ -282,33 +383,30 @@ async function recordRequestLog(config: NonNullable<ReturnType<typeof readProvid
     });
 }
 
-async function activeAccount(config: NonNullable<ReturnType<typeof readProviderConfig>>) {
-    try {
-        await ensureMagicProxyProvider("geminiai");
-        const response = await fetch(sidecarUrl(config.baseUrl, "/accounts/active"), { headers: { authorization: `Bearer ${config.apiKey}` }, cache: "no-store", redirect: "error" });
-        if (!response.ok) return null;
-        const value = (await response.json()) as { id?: unknown; email?: unknown };
-        return { id: textValue(value.id), email: textValue(value.email) };
-    } catch {
-        return null;
+async function safeResponsePreviewAndMetrics(response: Response, capability: GeminiAiRequestCapability) {
+    if ((response.headers.get("content-type") || "").includes("text/event-stream")) {
+        return { preview: "流式响应内容未写入日志", metrics: extractResponseMetrics(null, capability) };
     }
-}
-
-async function safeResponsePreview(response: Response, capability: GeminiAiRequestCapability) {
-    if ((response.headers.get("content-type") || "").includes("text/event-stream")) return "流式响应内容未写入日志";
     try {
         const text = await response.clone().text();
-        if (!text) return "";
+        if (!text) return { preview: "", metrics: extractResponseMetrics(null, capability) };
         const value = JSON.parse(text) as Record<string, unknown>;
+        const metrics = extractResponseMetrics(value, capability);
         if (capability === "image") {
             const summarized = summarizeResponseValue(value);
             const rendered = JSON.stringify(summarized, null, 2);
-            return rendered.length > 4000 ? `${rendered.slice(0, 4000)}…（结构摘要已截断）` : rendered;
+            return {
+                preview: rendered.length > 4000 ? `${rendered.slice(0, 4000)}…（结构摘要已截断）` : rendered,
+                metrics,
+            };
         }
         const summary = collectText(value) || errorText(value) || text;
-        return truncate(summary);
+        return {
+            preview: truncate(summary),
+            metrics,
+        };
     } catch {
-        return "响应内容无法解析";
+        return { preview: "响应内容无法解析", metrics: extractResponseMetrics(null, capability) };
     }
 }
 

@@ -97,6 +97,15 @@ export type GeminiAiRequestLog = {
     proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
     phase?: "queued" | "running" | "success" | "failed";
     lifecycle?: Array<{ time: string; phase: "queued" | "running" | "success" | "failed"; message: string }>;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    imageRequestedCount?: number;
+    imageSucceededCount?: number;
+    imageFailedCount?: number;
+    clientIp?: string;
+    userAgent?: string;
+    headers?: Record<string, string>;
 };
 
 export type GeminiAiRequestStats = { total: number; success: number; failed: number; averageDurationMs: number };
@@ -178,13 +187,15 @@ export function getGeminiAiTestStatus(input: Pick<GeminiAiTestResult, "taskId" |
     return requestGeminiAi<GeminiAiTestResult>(`/api/admin/geminiai/test?taskId=${encodeURIComponent(input.taskId)}&channelId=${encodeURIComponent(input.channelId)}`);
 }
 
-export function getGeminiAiLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search" } = {}) {
+export function getGeminiAiLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search"; model?: string; accountId?: string } = {}) {
     const search = new URLSearchParams();
     if (input.page) search.set("page", String(input.page));
     if (input.pageSize) search.set("pageSize", String(input.pageSize));
     if (input.keyword?.trim()) search.set("keyword", input.keyword.trim());
     if (input.status) search.set("status", input.status);
     if (input.capability) search.set("capability", input.capability);
+    if (input.model?.trim()) search.set("model", input.model.trim());
+    if (input.accountId?.trim()) search.set("accountId", input.accountId.trim());
     return requestGeminiAi<GeminiAiLogPage>(`/api/admin/geminiai/logs${search.size ? `?${search}` : ""}`);
 }
 
