@@ -50,8 +50,15 @@ async function handle(request: Request, context: Context) {
     const user = await getCurrentUser();
     if (!user) return apiCompatError(401, "请先登录");
     if (!hasAdminPermission(user, "upstream.manage")) return apiCompatError(403, "需要上游配置管理权限");
-    const segments = (await context.params).path;
-    if (segments.some((part) => !/^[\w-]+$/.test(part))) return apiCompatError(404, "接口不存在");
+    const rawSegments = (await context.params).path;
+    const segments = rawSegments.map((part) => {
+        try {
+            return decodeURIComponent(part);
+        } catch {
+            return part;
+        }
+    });
+    if (segments.some((part) => !/^[\p{L}\p{N}_-]+$/u.test(part))) return apiCompatError(404, "接口不存在");
     const path = segments.join("/");
     try {
         let data: unknown;
@@ -93,8 +100,8 @@ async function handle(request: Request, context: Context) {
                     ? { path: `/api/auth/users/${segments[1]}`, methods: ["POST", "DELETE"] }
                     : /^accounts\/operations\/[\w-]+$/.test(path)
                       ? { path: `/api/${path}`, methods: ["GET"] }
-                      : /^proxies\/groups\/[\w-]+$/.test(path)
-                        ? { path: `/api/proxy/groups/${segments[2]}`, methods: ["DELETE"] }
+                        : /^proxies\/groups\/[\p{L}\p{N}_-]+$/u.test(path)
+                            ? { path: `/api/proxy/groups/${segments[2]}`, methods: ["DELETE"] }
                         : null);
             if (!route || !route.methods.includes(request.method)) return apiCompatError(404, "接口不存在");
             const body = request.method === "GET" ? undefined : await readRequestBodyText(request, 64 * 1024);

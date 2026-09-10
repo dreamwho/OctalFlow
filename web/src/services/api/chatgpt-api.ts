@@ -60,6 +60,7 @@ export type ChatGptLogSummary = {
     attempt_count?: number;
     switch_count?: number;
     recovered_after_switch?: boolean;
+    proxy_egress?: { mode?: string; group_id?: string; node_id?: string; node_name?: string; address?: string };
     presentation?: ChatGptLogPresentation;
 };
 export type ChatGptLogAttempt = {
@@ -127,7 +128,7 @@ export type ChatGptProxyRuntime = {
     ipwoConfigured: boolean;
 };
 export type ChatGptProxyRuntimePatch = Pick<ChatGptProxyRuntime, "enabled" | "mode" | "native_source">;
-export type ChatGptProxyReference = { mode: "direct" | "group" | "custom"; group_id?: string; url?: string };
+export type ChatGptProxyReference = { mode: "direct" | "group" | "node" | "custom"; group_id?: string; node_id?: string; url?: string };
 export type ChatGptProxyNode = { id: string; name: string; url: string; enabled: boolean; image_concurrency_limit: number; notes: string; health?: { state: string; latency_ms?: number | null; error?: string | null } };
 export type ChatGptProxyGroup = {
     id: string;

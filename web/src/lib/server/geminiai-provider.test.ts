@@ -150,7 +150,10 @@ describe("GeminiAI sidecar provider", () => {
         await geminiAiRuntimeRequest("/images/generations", { method: "POST", body: JSON.stringify({ model: "gemini-3-pro-image", prompt: "一只橘猫" }) });
 
         const log = mocks.appendLog.mock.calls[0]?.[0];
-        expect(log).toMatchObject({ capability: "image", responsePreview: "已返回图片结果（图片内容未写入日志）" });
+        const preview = String(log.responsePreview);
+        expect(log).toMatchObject({ capability: "image" });
+        expect(preview).toContain("base64 图片数据");
+        expect(preview).toContain('"data"');
         expect(JSON.stringify(log)).not.toContain("secret-image-base64");
     });
 });

@@ -206,7 +206,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                 items={[
                     { key: "overview", label: <GeminiToolsTabLabel label="账号与渠道" compact="账号" /> },
                     { key: "gateway", label: <GeminiToolsTabLabel label="反代网关与 API 密钥" compact="网关与密钥" /> },
-                    { key: "magic-proxy", label: <GeminiToolsTabLabel label="魔法代理" compact="魔法代理" /> },
+                    { key: "magic-proxy", label: <GeminiToolsTabLabel label="代理管理" compact="代理" /> },
                     {
                         key: "logs",
                         label: <GeminiToolsTabLabel label="请求日志" compact="日志" icon={<BarChart3 className="size-4" />} />,
@@ -720,7 +720,9 @@ function KeyRow({ apiKey, busy, onToggle, onDelete }: { apiKey: GeminiToolsApiKe
 }
 
 function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) {
-    const success = log.statusCode < 400;
+    const phase = log.phase || (log.statusCode < 400 ? "success" : "failed");
+    const pending = phase === "queued" || phase === "running";
+    const success = phase === "success";
     return (
         <button
             type="button"
@@ -731,8 +733,10 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
         >
             <div className="text-zinc-500">{formatTime(log.createdAt)}</div>
             <div>
-                <Tag color={success ? "green" : "red"}>{log.statusCode}</Tag>
+                <Tag color={pending ? "processing" : success ? "green" : "red"}>{pending ? (phase === "queued" ? "排队中" : "执行中") : log.statusCode}</Tag>
+                {log.proxyEgress ? <Tag color="geekblue" className="m-0">{log.proxyEgress.mode === "magic" ? "魔法" : "通用"}</Tag> : null}
                 <span className="uppercase text-zinc-500">{log.protocol}</span>
+                {log.proxyEgress?.address ? <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxyEgress.address}</span> : log.proxyEgress?.node_name ? <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxyEgress.node_name}</span> : null}
             </div>
             <div className="min-w-0">
                 <div className="truncate font-medium text-zinc-800 dark:text-zinc-200">{log.model}</div>
@@ -766,8 +770,30 @@ function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | n
                     <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-3 text-sm">
                         <dt className="text-zinc-500">协议</dt>
                         <dd className="font-mono">{log.protocol}</dd>
+                        {log.proxyEgress ? (
+                            <>
+                                <dt className="text-zinc-500">代理出口</dt>
+                                <dd className="break-all">
+                                    {log.proxyEgress.mode === "magic" ? "魔法代理" : "通用代理"}
+                                    {log.proxyEgress.node_name ? ` · ${log.proxyEgress.node_name}` : ""}
+                                    {log.proxyEgress.address ? ` · ${log.proxyEgress.address}` : ""}
+                                </dd>
+                            </>
+                        ) : null}
                         <dt className="text-zinc-500">请求路径</dt>
                         <dd className="break-all font-mono text-xs">{log.path}</dd>
+                        {log.lifecycle?.length ? (
+                            <div className="col-span-2 mt-1 space-y-1.5 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+                                <div className="text-xs font-medium text-zinc-600 dark:text-zinc-300">过程日志</div>
+                                {log.lifecycle.map((entry, index) => (
+                                    <div key={index} className="flex items-center gap-2 text-xs">
+                                        <span className={entry.phase === "queued" || entry.phase === "running" ? "text-amber-500" : entry.phase === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
+                                        <span className="text-zinc-400">{formatTime(log.createdAt)}</span>
+                                        <span className="text-zinc-600 dark:text-zinc-300">{entry.message}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
                         <dt className="text-zinc-500">模型</dt>
                         <dd className="break-all">{log.model}</dd>
                         <dt className="text-zinc-500">实际账号</dt>

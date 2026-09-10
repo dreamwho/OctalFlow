@@ -129,10 +129,36 @@ export async function importMagicProxySubscription(input: { url?: unknown; conte
 }
 
 const DELAY_TEST_URL = "https://www.gstatic.com/generate_204";
-const DELAY_TEST_TIMEOUT_MS = 5000;
-const DELAY_TEST_CONCURRENCY = 4;
+const DELAY_TEST_TIMEOUT_MS = 4000;
+const DELAY_TEST_CONCURRENCY = 16;
+const GOOGLE_TEST_URL = "https://www.google.com";
+const GOOGLE_TEST_TIMEOUT_MS = 6000;
 
 export type MagicProxyDelayResult = { name: string; delay?: number; error?: string };
+
+export type MagicProxyGoogleTestItem = {
+    service: MagicProxyProvider;
+    serviceTitle: string;
+    group: string;
+    activeNode: string;
+    enabled: boolean;
+    ok: boolean;
+    delay?: number;
+    error?: string;
+};
+
+export type MagicProxyGoogleTestReport = {
+    targetUrl: string;
+    testedAt: string;
+    overallOk: boolean;
+    items: MagicProxyGoogleTestItem[];
+};
+
+const SERVICE_TITLES: Record<MagicProxyProvider, string> = {
+    geminiai: "GeminiAIStudio (AIStudio 代理)",
+    geminiTools: "GeminiTools (OAuth 代理)",
+    chatgptApi: "ChatGPTAPI (逆向 API 代理)",
+};
 
 export async function testMagicProxyNodeDelay(input: unknown): Promise<MagicProxyDelayResult> {
     const name = optionalText(typeof input === "object" && input ? record(input).node : input);
@@ -149,6 +175,125 @@ export async function testMagicProxyAllNodes(): Promise<{ results: MagicProxyDel
     if (!overview.runtimeAvailable) throw new MagicProxyError("魔法代理运行时当前不可用，无法测速", 503);
     const results = await mapWithLimit(overview.nodes.map((node) => node.name), DELAY_TEST_CONCURRENCY, async (name) => ({ name, ...(await requestNodeDelay(runtime, name)) }));
     return { results };
+}
+
+export async function testMagicProxyGoogleAccess(input?: unknown): Promise<MagicProxyGoogleTestReport> {
+    const runtime = readRuntimeConfig();
+    if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
+    const overview = await getMagicProxyOverview();
+    if (!overview.runtimeAvailable) throw new MagicProxyError("魔法代理运行时当前不可用，无法测试", 503);
+
+    const specificNode = optionalText(typeof input === "object" && input ? record(input).node : "");
+    const testedAt = new Date().toISOString();
+
+    if (specificNode) {
+        let delay: number | undefined;
+        let error: string | undefined;
+        try {
+            const response = await controllerRequest(
+                runtime,
+                `/proxies/${encodeURIComponent(specificNode)}/delay?url=${encodeURIComponent(GOOGLE_TEST_URL)}&timeout=${GOOGLE_TEST_TIMEOUT_MS}`,
+                { method: "GET" },
+            );
+            const payload = record(await response.json());
+            const d = Number(payload.delay);
+            if (Number.isFinite(d) && d >= 0) {
+                delay = d;
+            } else {
+                error = "返回数据无效";
+            }
+        } catch {
+            error = `访问 Google 超时或节点阻断 (>${GOOGLE_TEST_TIMEOUT_MS}ms)`;
+        }
+        return {
+            targetUrl: GOOGLE_TEST_URL,
+            testedAt,
+            overallOk: typeof delay === "number",
+            items: [
+                {
+                    service: "geminiai",
+                    serviceTitle: `指定节点 [${specificNode}]`,
+                    group: specificNode,
+                    activeNode: specificNode,
+                    enabled: true,
+                    ok: typeof delay === "number",
+                    delay,
+                    error,
+                },
+            ],
+        };
+    }
+
+    const providers: MagicProxyProvider[] = ["geminiai", "geminiTools", "chatgptApi"];
+    const items: MagicProxyGoogleTestItem[] = [];
+
+    for (const provider of providers) {
+        const group = GROUP_NAMES[provider];
+        const binding = overview.bindings[provider];
+        const title = SERVICE_TITLES[provider] || provider;
+
+        let activeNode = "DIRECT";
+        try {
+            const groupInfoRes = await controllerRequest(runtime, `/proxies/${encodeURIComponent(group)}`, { method: "GET" });
+            const groupInfo = record(await groupInfoRes.json());
+            activeNode = optionalText(groupInfo.now) || "DIRECT";
+        } catch {
+            activeNode = binding?.node || "DIRECT";
+        }
+
+        const isEnabled = Boolean(binding?.enabled && activeNode !== "DIRECT");
+
+        if (!isEnabled || activeNode === "DIRECT") {
+            items.push({
+                service: provider,
+                serviceTitle: title,
+                group,
+                activeNode,
+                enabled: false,
+                ok: false,
+                error: "服务未启用代理或处于 DIRECT 直连状态，无法访问 Google",
+            });
+            continue;
+        }
+
+        let delay: number | undefined;
+        let error: string | undefined;
+        try {
+            const response = await controllerRequest(
+                runtime,
+                `/proxies/${encodeURIComponent(group)}/delay?url=${encodeURIComponent(GOOGLE_TEST_URL)}&timeout=${GOOGLE_TEST_TIMEOUT_MS}`,
+                { method: "GET" },
+            );
+            const payload = record(await response.json());
+            const d = Number(payload.delay);
+            if (Number.isFinite(d) && d >= 0) {
+                delay = d;
+            } else {
+                error = "返回数据无效";
+            }
+        } catch {
+            error = `访问 Google 超时或节点阻断 (>${GOOGLE_TEST_TIMEOUT_MS}ms)`;
+        }
+
+        items.push({
+            service: provider,
+            serviceTitle: title,
+            group,
+            activeNode,
+            enabled: true,
+            ok: typeof delay === "number",
+            delay,
+            error,
+        });
+    }
+
+    const overallOk = items.some((item) => item.enabled && item.ok);
+    return {
+        targetUrl: GOOGLE_TEST_URL,
+        testedAt,
+        overallOk,
+        items,
+    };
 }
 
 async function requestNodeDelay(runtime: MihomoRuntimeConfig, name: string): Promise<{ delay?: number; error?: string }> {
@@ -211,20 +356,81 @@ export async function updateMagicProxyBinding(input: { provider?: unknown; enabl
     });
 }
 
-export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Promise<{ enabled: boolean; proxyUrl?: string }> {
+export type MagicProxyEgressInfo = { mode: "magic" | "generic"; node_name?: string; address?: string };
+
+function proxyAddressFromUrl(value: string) {
+    try {
+        const url = new URL(value.trim());
+        return url.port ? `${url.hostname}:${url.port}` : url.hostname;
+    } catch {
+        return "";
+    }
+}
+
+export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Promise<{ enabled: boolean; proxyUrl?: string; egress?: MagicProxyEgressInfo }> {
     return withRuntimeLock(async () => {
         const settings = await readSettings();
-        if (!settings) return { enabled: false };
-        const binding = settings.bindings[provider];
+        const binding = settings?.bindings[provider];
+        const magicEnabled = binding?.enabled === true;
+        if (magicEnabled && !binding?.node) throw new MagicProxyError("魔法代理绑定缺少节点，请在服务设置中重新选择", 409);
+        if (!magicEnabled) {
+            const generic = await ensureGenericProxyEgress(provider);
+            if (generic.enabled) return generic;
+        }
+        if (!settings || !binding) return { enabled: false };
         const runtime = readRuntimeConfig();
         if (!runtime) {
-            if (binding.enabled) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
+            if (magicEnabled) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
             return { enabled: false };
         }
-        if (binding.enabled && !binding.node) throw new MagicProxyError("魔法代理绑定缺少节点，请在服务设置中重新选择", 409);
         await ensureMihomoGroupSelection(settings, runtime, provider);
-        return binding.enabled ? { enabled: true, ...(provider === "geminiai" ? {} : { proxyUrl: runtimeProxyUrl(runtime, provider) }) } : { enabled: false };
+        if (magicEnabled && provider === "geminiai") {
+            const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
+            await syncGeminiAiRuntimeProxy(runtimeProxyUrl(runtime, "geminiai"));
+        }
+        return magicEnabled
+            ? { enabled: true, egress: { mode: "magic", node_name: binding.node }, ...(provider === "geminiai" ? {} : { proxyUrl: runtimeProxyUrl(runtime, provider) }) }
+            : { enabled: false };
     });
+}
+
+/**
+ * Generic-proxy egress fallback: resolves a concrete proxy URL through the
+ * ChatGPT runtime (group targets reuse its capacity-aware node rotation).
+ * Only applies to providers whose outbound requests accept a proxy URL;
+ * GeminiAIStudio routes traffic through its browser session instead.
+ */
+async function ensureGenericProxyEgress(provider: MagicProxyProvider): Promise<{ enabled: boolean; proxyUrl?: string; egress?: MagicProxyEgressInfo }> {
+    // Generic egress depends only on the ChatGPT runtime (bindings + resolve-url),
+    // NOT on the Mihomo magic-proxy runtime being configured.
+    let chatGptRuntimeJson: <T>(path: string, init?: RequestInit) => Promise<T>;
+    let binding: { enabled?: boolean; target?: string } | undefined;
+    try {
+        ({ chatGptRuntimeJson } = await import("./chatgpt-api-service"));
+        const payload = await chatGptRuntimeJson<{ bindings?: Record<string, { enabled?: boolean; target?: string }> }>("/api/proxy/generic-bindings");
+        binding = payload?.bindings?.[provider];
+    } catch {
+        // ChatGPT runtime unavailable → no generic egress can be configured at all.
+        return { enabled: false };
+    }
+    if (!binding?.enabled || !binding.target) return { enabled: false };
+    if (provider === "geminiai" && binding.target.startsWith("group:")) {
+        throw new MagicProxyError("GeminiAIStudio 通用代理仅支持选择单个节点", 400);
+    }
+    if (binding.target.startsWith("group:")) {
+        const resolved = await chatGptRuntimeJson<{ proxy_url?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ group_id: binding.target.slice("group:".length) }) });
+        return resolved.proxy_url ? { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url) } } : { enabled: false };
+    }
+    if (binding.target.startsWith("node:")) {
+        const resolved = await chatGptRuntimeJson<{ proxy_url?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ node_id: binding.target.slice("node:".length) }) });
+        if (!resolved.proxy_url) return { enabled: false };
+        if (provider === "geminiai") {
+            const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
+            await syncGeminiAiRuntimeProxy(resolved.proxy_url);
+        }
+        return { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url) } };
+    }
+    return { enabled: false };
 }
 
 function publicImportResult(settings: DecodedMagicProxySettings) {
@@ -547,7 +753,7 @@ function requireRuntimeConfig() {
     return runtime;
 }
 
-function runtimeProxyUrl(runtime: MihomoRuntimeConfig, provider: Exclude<MagicProxyProvider, "geminiai">) {
+function runtimeProxyUrl(runtime: MihomoRuntimeConfig, provider: MagicProxyProvider) {
     const value = runtime.proxyUrls[provider];
     if (value) return value;
     if (provider === "chatgptApi") {

@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-ProxyReferenceMode = Literal["direct", "group", "custom"]
+ProxyReferenceMode = Literal["direct", "group", "node", "custom"]
 ProxyGroupStrategy = Literal["request_random", "time_window", "round_robin"]
 ProxyHealthState = Literal["unknown", "healthy", "unhealthy"]
 ProxyTestStatus = Literal["success", "partial", "failed"]
@@ -17,24 +17,36 @@ class ProxyReference(BaseModel):
 
     mode: ProxyReferenceMode
     group_id: str = ""
+    node_id: str = ""
     url: str = ""
 
     @model_validator(mode="after")
     def validate_reference(self) -> "ProxyReference":
         group_id = self.group_id.strip()
+        node_id = self.node_id.strip()
         url = self.url.strip()
         if self.mode == "direct":
             if group_id or url:
                 raise ValueError(f"{self.mode} proxy reference cannot include group_id or url")
+            if node_id:
+                raise ValueError(f"{self.mode} proxy reference cannot include node_id")
             return self
         if self.mode == "group":
             if not group_id:
                 raise ValueError("group proxy reference requires group_id")
-            if url:
-                raise ValueError("group proxy reference cannot include url")
+            if node_id or url:
+                raise ValueError("group proxy reference cannot include node_id or url")
+            return self
+        if self.mode == "node":
+            if not node_id:
+                raise ValueError("node proxy reference requires node_id")
+            if group_id or url:
+                raise ValueError("node proxy reference cannot include group_id or url")
             return self
         if group_id:
             raise ValueError("custom proxy reference cannot include group_id")
+        if node_id:
+            raise ValueError("custom proxy reference cannot include node_id")
         if not url:
             raise ValueError("custom proxy reference requires url")
         lower = url.lower()
@@ -51,12 +63,13 @@ class ProxyDefaultsRequest(BaseModel):
 class ProxyEffectiveReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    source: Literal["disabled", "direct", "group", "custom", "profile"]
+    source: Literal["disabled", "direct", "group", "node", "custom", "profile"]
     label: str
     configured: bool
     available: bool
     has_proxy: bool
     group_id: str = ""
+    node_id: str = ""
 
 
 class ProxyHealth(BaseModel):

@@ -138,7 +138,13 @@ export function ChatGptLogRow({ log, onClick }: { log: ChatGptLogSummary; onClic
             <div className="text-zinc-500">{formatChatGptTime(log.started_at || log.time)}</div>
             <div>
                 <Tag color={status.color}>{log.status_code ? `${status.label} · ${log.status_code}` : status.label}</Tag>
+                {log.proxy_egress ? (
+                    <Tag color="geekblue" className="m-0" aria-label={`经${log.proxy_egress.mode === "magic" ? "魔法代理" : "通用代理"}提交`}>
+                        {log.proxy_egress.mode === "magic" ? "魔法" : "通用"}
+                    </Tag>
+                ) : null}
                 <span className="uppercase text-zinc-500">OPENAI</span>
+                {log.proxy_egress?.address ? <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxy_egress.address}</span> : log.proxy_egress?.node_name ? <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxy_egress.node_name}</span> : null}
             </div>
             <div className="min-w-0">
                 <div className="truncate font-medium text-zinc-800 dark:text-zinc-200">{log.model || "未记录模型"}</div>

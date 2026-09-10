@@ -48,7 +48,7 @@ const loadRunningHubSection = () => import("@/app/admin/runninghub/components/ad
 const loadGeminiAiSection = () => import("./admin-geminiai-section").then((module) => module.AdminGeminiAiSection);
 const loadGeminiToolsSection = () => import("./admin-gemini-tools-section").then((module) => module.AdminGeminiToolsSection);
 const loadChatGptApiSection = () => import("@/app/admin/chatgpt-api/components/admin-chatgpt-api-section").then((module) => module.AdminChatGptApiSection);
-const loadIpwoSection = () => import("./admin-ipwo-section").then((module) => module.AdminIpwoSection);
+const loadGenericProxySection = () => import("./admin-generic-proxy-section").then((module) => module.AdminGenericProxySection);
 const loadDreaminaSection = () => import("./admin-dreamina-section").then((module) => module.AdminDreaminaSection);
 const loadSkillsSection = () => import("./admin-upstream-sections").then((module) => module.AdminSkillsSection);
 const loadAnnouncementsSection = () => import("./admin-content-sections").then((module) => module.AdminAnnouncementsSection);
@@ -82,7 +82,7 @@ const sectionLoaders: Partial<Record<AdminSectionKey, () => Promise<unknown>>> =
     geminiai: loadGeminiAiSection,
     geminiTools: loadGeminiToolsSection,
     chatgptApi: loadChatGptApiSection,
-    ipwo: loadIpwoSection,
+    genericProxy: loadGenericProxySection,
     dreamina: loadDreaminaSection,
     skills: loadSkillsSection,
     announcements: loadAnnouncementsSection,
@@ -112,11 +112,11 @@ const AdminPaymentsSection = dynamic(loadPaymentsSection, { loading: AdminSectio
 const AdminCdkSection = dynamic(loadCdkSection, { loading: AdminSectionLoading });
 const AdminChannelsSection = dynamic(loadChannelsSection, { loading: AdminSectionLoading });
 const AdminMagicProxySection = dynamic(loadMagicProxySection, { loading: AdminSectionLoading });
-const AdminIpwoSection = dynamic(loadIpwoSection, { loading: AdminSectionLoading });
 const AdminRunningHubSection = dynamic(loadRunningHubSection, { loading: AdminSectionLoading });
 const AdminGeminiAiSection = dynamic(loadGeminiAiSection, { loading: AdminSectionLoading });
 const AdminGeminiToolsSection = dynamic(loadGeminiToolsSection, { loading: AdminSectionLoading });
 const AdminChatGptApiSection = dynamic(loadChatGptApiSection, { loading: AdminSectionLoading });
+const AdminGenericProxySection = dynamic(loadGenericProxySection, { loading: AdminSectionLoading });
 const AdminDreaminaSection = dynamic(loadDreaminaSection, { loading: AdminSectionLoading });
 const AdminSkillsSection = dynamic(loadSkillsSection, { loading: AdminSectionLoading });
 const AdminAnnouncementsSection = dynamic(loadAnnouncementsSection, { loading: AdminSectionLoading });
@@ -275,7 +275,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "geminiai" ? <AdminGeminiAiSection /> : null}
                     {activeSection === "geminiTools" ? <AdminGeminiToolsSection controller={controller} /> : null}
                     {activeSection === "chatgptApi" ? <AdminChatGptApiSection controller={controller} /> : null}
-                    {activeSection === "ipwo" ? <AdminIpwoSection /> : null}
+                    {activeSection === "genericProxy" ? <AdminGenericProxySection /> : null}
                     {activeSection === "dreamina" ? <AdminDreaminaSection /> : null}
                     {activeSection === "skills" ? <AdminSkillsSection controller={controller} /> : null}
                     {activeSection === "cdk" ? <AdminCdkSection controller={controller} /> : null}

@@ -37,9 +37,10 @@ from services.proxy_management_service import (
     ProxyGroupInUseError,
     ProxySelectionUnavailableError,
     normalize_proxy_node_url,
+    proxy_group_error_text,
     proxy_management_service,
 )
-from services.proxy_service import test_proxy
+from services.proxy_service import ImageEgressDeadlineError, proxy_settings, test_proxy
 from services.settings_management_service import (
     SettingsRevisionConflictError,
     settings_management_service,
@@ -76,8 +77,9 @@ class SafeProxyReference(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    mode: Literal["direct", "group", "custom"]
+    mode: Literal["direct", "group", "node", "custom"]
     group_id: str = ""
+    node_id: str = ""
     url: str = ""
 
 
@@ -453,7 +455,7 @@ async def save_proxy_group(
     try:
         result = await run_in_threadpool(proxy_management_service.save_group, patch)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail={"error": "proxy group is invalid"}) from exc
+        raise HTTPException(status_code=400, detail={"error": proxy_group_error_text(exc)}) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail={"error": "proxy group could not be saved"}) from exc
     return _proxy_payload(_redact_proxy_group_mutation(result))
@@ -475,7 +477,7 @@ async def delete_proxy_group(
     except ProxyGroupInUseError as exc:
         raise HTTPException(status_code=409, detail={"error": "proxy group is in use"}) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail={"error": "proxy group is invalid"}) from exc
+        raise HTTPException(status_code=400, detail={"error": proxy_group_error_text(exc)}) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail={"error": "proxy group could not be deleted"}) from exc
     return _proxy_payload(result)
@@ -607,6 +609,84 @@ async def get_log_detail(
     if detail is None:
         raise HTTPException(status_code=404, detail={"error": "log not found"})
     return detail
+
+
+class GenericProxyBindingPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    enabled: bool
+    target: str = ""
+
+
+@router.get("/api/proxy/generic-bindings")
+async def get_generic_proxy_bindings(
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_admin(authorization)
+    return await run_in_threadpool(proxy_management_service.generic_proxy_bindings)
+
+
+@router.post("/api/proxy/generic-bindings")
+async def save_generic_proxy_binding(
+    body: GenericProxyBindingPatch,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_admin(authorization)
+    try:
+        return await run_in_threadpool(
+            proxy_management_service.save_generic_proxy_binding,
+            provider=body.provider,
+            enabled=body.enabled,
+            target=body.target,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": proxy_group_error_text(exc)}) from exc
+
+
+class ProxyEgressResolvePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group_id: str = ""
+    node_id: str = ""
+
+
+@router.post("/api/proxy/resolve-url")
+async def resolve_proxy_egress_url(
+    body: ProxyEgressResolvePatch,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_admin(authorization)
+    try:
+        proxy_url, group_id, node_id, image_concurrency_limit = await run_in_threadpool(
+            proxy_settings.resolve_egress_url,
+            body.group_id.strip(),
+            body.node_id.strip(),
+        )
+    except ImageEgressDeadlineError as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
+    except ValueError as exc:
+        text = str(exc)
+        if text.startswith("proxy group is unavailable: "):
+            detail = f"代理组不存在或没有可用节点：{text.removeprefix('proxy group is unavailable: ')}"
+        else:
+            detail = "代理出口不可用，请检查通用代理分组与节点"
+        raise HTTPException(status_code=409, detail={"error": detail}) from exc
+    return {"proxy_url": proxy_url, "group_id": group_id, "node_id": node_id, "image_concurrency_limit": image_concurrency_limit}
+
+
+@router.get("/api/generic-proxy/logs")
+async def get_generic_proxy_logs(
+    limit: int = Query(default=200, ge=1, le=20_000),
+    offset: int = Query(default=0, ge=0),
+    authorization: str | None = Header(default=None),
+):
+    _require_admin(authorization)
+    return await run_in_threadpool(
+        log_service.list_proxy_page,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/images/{image_path:path}", include_in_schema=False)

@@ -222,7 +222,7 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
         },
     )
     assert defaults.status_code == 200
-    assert defaults.json()["default_reference"] == {"mode": "custom", "group_id": "", "url": ""}
+    assert defaults.json()["default_reference"] == {"mode": "custom", "group_id": "", "node_id": "", "url": ""}
     assert MANUAL_PROXY_PASSWORD not in defaults.text
     selection = client.get("/integration/proxy-selection", headers=admin)
     assert selection.status_code == 200
@@ -237,7 +237,7 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
 
     proxy_view = client.get("/api/proxy/view", headers=admin)
     assert proxy_view.status_code == 200
-    assert proxy_view.json()["default_reference"] == {"mode": "custom", "group_id": "", "url": ""}
+    assert proxy_view.json()["default_reference"] == {"mode": "custom", "group_id": "", "node_id": "", "url": ""}
     assert MANUAL_PROXY_PASSWORD not in proxy_view.text
     preserved_defaults = client.post(
         "/api/proxy/defaults",

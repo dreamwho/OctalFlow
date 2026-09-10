@@ -247,6 +247,12 @@ class OpenAIBackendAPI:
             deadline_monotonic=deadline_monotonic,
         )
         try:
+            from services.log_service import current_call_id, register_call_egress
+
+            register_call_egress(current_call_id(), self.proxy_profile.egress_snapshot())
+        except Exception:
+            pass
+        try:
             self.session = requests.Session(**proxy_settings.build_session_kwargs_from_profile(
                 self.proxy_profile,
                 impersonate=self.fp["impersonate"],

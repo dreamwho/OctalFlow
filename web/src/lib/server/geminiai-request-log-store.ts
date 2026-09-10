@@ -9,6 +9,8 @@ const MAX_LOGS = 10_000;
 
 export type GeminiAiRequestCapability = "text" | "image" | "search";
 export type GeminiAiRequestSource = "runtime" | "admin-test";
+export type GeminiAiRequestLogPhase = "queued" | "running" | "success" | "failed";
+
 export type GeminiAiRequestLog = {
     id: string;
     createdAt: string;
@@ -24,6 +26,9 @@ export type GeminiAiRequestLog = {
     error?: string;
     requestPreview?: string;
     responsePreview?: string;
+    proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
+    phase?: GeminiAiRequestLogPhase;
+    lifecycle?: Array<{ time: string; phase: GeminiAiRequestLogPhase; message: string }>;
 };
 
 export type GeminiAiRequestStats = {
@@ -37,7 +42,7 @@ type GeminiAiRequestLogDatabase = { logs: GeminiAiRequestLog[] };
 const EMPTY_DB: GeminiAiRequestLogDatabase = { logs: [] };
 
 export async function appendGeminiAiRequestLog(input: Omit<GeminiAiRequestLog, "id" | "createdAt">) {
-    const log = { id: `geminiai-log-${randomUUID()}`, createdAt: new Date().toISOString(), ...input } satisfies GeminiAiRequestLog;
+    const log = { id: `geminiai-log-${randomUUID()}`, createdAt: new Date().toISOString(), phase: "success", ...input } satisfies GeminiAiRequestLog;
     if (isPostgresDatabaseEnabled()) {
         await (await postgresRepository()).append(log, MAX_LOGS);
         return log;
@@ -47,6 +52,87 @@ export async function appendGeminiAiRequestLog(input: Omit<GeminiAiRequestLog, "
         if (database.logs.length > MAX_LOGS) database.logs.length = MAX_LOGS;
     });
     return log;
+}
+
+/** Insert a placeholder row at submission time; returns the log id for later settlement. */
+export async function openGeminiAiRequestLog(input: Omit<GeminiAiRequestLog, "id" | "createdAt" | "statusCode" | "durationMs" | "phase" | "lifecycle">) {
+    const id = `geminiai-log-${randomUUID()}`;
+    const log = {
+        id,
+        createdAt: new Date().toISOString(),
+        statusCode: 0,
+        durationMs: 0,
+        phase: "queued",
+        lifecycle: [{ time: new Date().toISOString(), phase: "queued", message: "等待执行" }],
+        ...input,
+    } satisfies GeminiAiRequestLog;
+    if (isPostgresDatabaseEnabled()) {
+        await (await postgresRepository()).append(log, MAX_LOGS);
+        return id;
+    }
+    await mutateDatabase((database) => {
+        database.logs.unshift(log);
+        if (database.logs.length > MAX_LOGS) database.logs.length = MAX_LOGS;
+    });
+    return id;
+}
+
+/** Advance an open log to running. */
+export async function markGeminiAiRequestLogRunning(id: string) {
+    await patchGeminiAiRequestLog(id, (log) => {
+        log.phase = "running";
+        log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: "running", message: "执行中" }];
+    });
+}
+
+/** Settle an open log with the final status/response. */
+export async function settleGeminiAiRequestLog(id: string, settle: { statusCode: number; durationMs: number; error?: string; responsePreview?: string; accountId?: string; accountEmail?: string; proxyEgress?: GeminiAiRequestLog["proxyEgress"] }) {
+    await patchGeminiAiRequestLog(id, (log) => {
+        log.statusCode = settle.statusCode;
+        log.durationMs = settle.durationMs;
+        if (settle.error) log.error = settle.error;
+        if (settle.responsePreview) log.responsePreview = settle.responsePreview;
+        if (settle.accountId) log.accountId = settle.accountId;
+        if (settle.accountEmail) log.accountEmail = settle.accountEmail;
+        if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
+        const failed = settle.statusCode >= 400 || Boolean(settle.error);
+        log.phase = failed ? "failed" : "success";
+        log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: failed ? settle.error || `调用失败` : "调用完成" }];
+    });
+}
+
+async function patchGeminiAiRequestLog(id: string, mutate: (log: GeminiAiRequestLog) => void) {
+    if (isPostgresDatabaseEnabled()) {
+        const repository = await postgresRepository();
+        const existing = await repository.findById(id);
+        if (!existing) return;
+        mutate(existing);
+        await repository.update(existing);
+        return;
+    }
+    await mutateDatabase((database) => {
+        const target = database.logs.find((log) => log.id === id);
+        if (target) mutate(target);
+    });
+}
+
+export async function listGeminiAiProxyEgressLogsPage(input: { limit?: number; offset?: number } = {}) {
+    const limit = Math.max(1, Math.min(Math.floor(input.limit || 50), 200));
+    const offset = Math.max(0, Math.floor(input.offset || 0));
+    let logs: GeminiAiRequestLog[];
+    if (isPostgresDatabaseEnabled()) {
+        const repository = await postgresRepository();
+        logs = [];
+        for (let page = 1; page <= 5 && (page - 1) * 100 < MAX_LOGS; page += 1) {
+            const pageResult = await repository.list({ page, pageSize: 100 });
+            if (!pageResult.items.length) break;
+            logs.push(...pageResult.items);
+        }
+    } else {
+        logs = (await readDatabase()).logs;
+    }
+    const matches = logs.filter((log) => log.proxyEgress);
+    return { items: matches.slice(offset, offset + limit), total: matches.length, has_more: offset + limit < matches.length };
 }
 
 export async function listGeminiAiRequestLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability } = {}) {

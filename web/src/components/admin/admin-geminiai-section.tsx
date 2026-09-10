@@ -54,7 +54,7 @@ export function AdminGeminiAiSection() {
     const [cookieImportOpen, setCookieImportOpen] = useState(false);
     const [renamingAccount, setRenamingAccount] = useState<GeminiAiAccount | null>(null);
     const [modelTestOpen, setModelTestOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<"overview" | "logs">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "logs" | "proxy">("overview");
     const [logPage, setLogPage] = useState<GeminiAiLogPage | null>(null);
     const [logsLoading, setLogsLoading] = useState(false);
     const [logPageNumber, setLogPageNumber] = useState(1);
@@ -150,7 +150,6 @@ export function AdminGeminiAiSection() {
 
     return (
         <div className="space-y-4">
-            <MagicProxyBindingCard provider="geminiai" />
             {loadError ? (
                 <Alert
                     type="error"
@@ -165,8 +164,9 @@ export function AdminGeminiAiSection() {
                 />
             ) : null}
             <Tabs
+                className="max-sm:[&_.ant-tabs-nav-list]:w-full max-sm:[&_.ant-tabs-tab]:!m-0 max-sm:[&_.ant-tabs-tab]:min-w-0 max-sm:[&_.ant-tabs-tab]:flex-1 max-sm:[&_.ant-tabs-tab]:justify-center max-sm:[&_.ant-tabs-tab]:!px-1 max-sm:[&_.ant-tabs-tab-btn]:text-xs"
                 activeKey={activeTab}
-                onChange={(key) => setActiveTab(key as "overview" | "logs")}
+                onChange={(key) => setActiveTab(key as "overview" | "logs" | "proxy")}
                 items={[
                     { key: "overview", label: "账号与渠道" },
                     {
@@ -178,6 +178,7 @@ export function AdminGeminiAiSection() {
                             </span>
                         ),
                     },
+                    { key: "proxy", label: "代理管理" },
                 ]}
             />
             <div className={activeTab === "overview" ? "space-y-4" : "hidden"}>
@@ -365,6 +366,10 @@ export function AdminGeminiAiSection() {
                 />
             ) : null}
 
+            <div className={activeTab === "proxy" ? "space-y-4" : "hidden"}>
+                <MagicProxyBindingCard provider="geminiai" />
+            </div>
+
             <GeminiAiAuthorizationModal
                 open={loginOpen}
                 onClose={() => setLoginOpen(false)}
@@ -506,7 +511,9 @@ function RequestMetric({ label, value, detail, tone = "neutral" }: { label: stri
 }
 
 function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onClick: () => void }) {
-    const success = log.statusCode < 400;
+    const phase = log.phase || (log.statusCode < 400 ? "success" : "failed");
+    const pending = phase === "queued" || phase === "running";
+    const success = phase === "success";
     return (
         <button
             type="button"
@@ -514,10 +521,11 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
             onClick={onClick}
         >
             <div className="flex items-center gap-2">
-                <Tag color={success ? "success" : "error"} className="m-0">
-                    {success ? "成功" : "失败"}
+                <Tag color={pending ? "processing" : success ? "success" : "error"} className="m-0">
+                    {pending ? (phase === "queued" ? "排队中" : "执行中") : success ? "成功" : "失败"}
                 </Tag>
-                <span className="text-xs text-zinc-500">{log.statusCode}</span>
+                {log.proxyEgress ? <Tag color="geekblue" className="m-0">{log.proxyEgress.mode === "magic" ? "魔法" : "通用"}</Tag> : null}
+                {!pending && log.statusCode > 0 ? <span className="text-xs text-zinc-500">{log.statusCode}</span> : null}
             </div>
             <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100" title={log.model}>
@@ -534,6 +542,7 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
                     {log.accountEmail || "未识别实际账号"}
                 </div>
                 <div className="mt-0.5 truncate">{formatDate(log.createdAt)}</div>
+                {log.proxyEgress?.address ? <div className="mt-0.5 truncate text-zinc-400">{log.proxyEgress.address}</div> : log.proxyEgress?.node_name ? <div className="mt-0.5 truncate text-zinc-400">{log.proxyEgress.node_name}</div> : null}
             </div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400">{formatDuration(log.durationMs)}</div>
             <ChevronRight className="hidden size-4 text-zinc-400 sm:block" aria-hidden="true" />
@@ -549,8 +558,8 @@ function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | 
             {log ? (
                 <div className="space-y-5">
                     <div className="flex flex-wrap items-center gap-2">
-                        <Tag color={log.statusCode < 400 ? "success" : "error"} className="m-0">
-                            {log.statusCode < 400 ? "请求成功" : "请求失败"}
+                        <Tag color={log.statusCode === 0 ? "processing" : log.statusCode < 400 ? "success" : "error"} className="m-0">
+                            {log.statusCode === 0 ? "执行中" : log.statusCode < 400 ? "请求成功" : "请求失败"}
                         </Tag>
                         <Tag className="m-0">{capabilityLabel(log.capability)}</Tag>
                         <Tag className="m-0">{log.source === "runtime" ? "站内调用" : "后台实测"}</Tag>
@@ -558,11 +567,31 @@ function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | 
                     <div className="grid gap-x-4 gap-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/50 sm:grid-cols-2">
                         <DetailItem label="模型" value={log.model} />
                         <DetailItem label="实际账号" value={log.accountEmail || "未识别"} />
+                        {log.proxyEgress ? (
+                            <DetailItem
+                                label="代理出口"
+                                value={`${log.proxyEgress.mode === "magic" ? "魔法代理" : "通用代理"}${log.proxyEgress.node_name ? ` · ${log.proxyEgress.node_name}` : ""}${log.proxyEgress.address ? ` · ${log.proxyEgress.address}` : ""}`}
+                            />
+                        ) : null}
                         <DetailItem label="状态码" value={String(log.statusCode)} />
                         <DetailItem label="耗时" value={formatDuration(log.durationMs)} />
                         <DetailItem label="请求时间" value={formatDate(log.createdAt)} />
                         <DetailItem label="请求路径" value={`${log.method} ${log.path}`} />
                     </div>
+                    {log.lifecycle?.length ? (
+                        <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+                            <div className="mb-2 text-xs font-medium text-zinc-600 dark:text-zinc-300">过程日志</div>
+                            <div className="space-y-1.5">
+                                {log.lifecycle.map((entry, index) => (
+                                    <div key={index} className="flex items-center gap-2 text-xs">
+                                        <span className={entry.phase === "queued" || entry.phase === "running" ? "text-amber-500" : entry.phase === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
+                                        <span className="text-zinc-400">{formatDate(entry.time)}</span>
+                                        <span className="text-zinc-600 dark:text-zinc-300">{entry.message}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
                     {log.requestPreview ? <LogPreview title="请求摘要" content={log.requestPreview} /> : null}
                     {log.responsePreview ? <LogPreview title="响应摘要" content={log.responsePreview} /> : null}
                     {log.error ? <LogPreview title="错误信息" content={log.error} danger /> : null}

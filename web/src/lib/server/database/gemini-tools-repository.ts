@@ -168,8 +168,8 @@ export class GeminiToolsRepository {
 
     async appendLog(log: GeminiToolsRequestLog, maxLogs: number) {
         await this.db.query(
-            `INSERT INTO gemini_tools_request_logs (id,created_at,protocol,path,model,account_id,account_email,status_code,duration_ms,prompt_tokens,completion_tokens,total_tokens,error,key_prefix,request_preview,response_preview)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+            `INSERT INTO gemini_tools_request_logs (id,created_at,protocol,path,model,account_id,account_email,status_code,duration_ms,prompt_tokens,completion_tokens,total_tokens,error,key_prefix,request_preview,response_preview,phase,lifecycle)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
             [
                 log.id,
                 new Date(log.createdAt),
@@ -187,9 +187,18 @@ export class GeminiToolsRepository {
                 log.keyPrefix || null,
                 log.requestPreview || null,
                 log.responsePreview || null,
+                log.phase || "success",
+                JSON.stringify(log.lifecycle || []),
             ],
         );
         await this.db.query("DELETE FROM gemini_tools_request_logs WHERE id IN (SELECT id FROM gemini_tools_request_logs ORDER BY created_at DESC OFFSET $1)", [maxLogs]);
+    }
+
+    async updateLog(log: GeminiToolsRequestLog) {
+        await this.db.query(
+            `UPDATE gemini_tools_request_logs SET status_code=$2,duration_ms=$3,error=$4,account_id=$5,account_email=$6,prompt_tokens=$7,completion_tokens=$8,total_tokens=$9,response_preview=$10,phase=$11,lifecycle=$12 WHERE id=$1`,
+            [log.id, log.statusCode, log.durationMs, log.error || null, log.accountId || null, log.accountEmail || null, log.promptTokens, log.completionTokens, log.totalTokens, log.responsePreview || null, log.phase || "success", JSON.stringify(log.lifecycle || [])],
+        );
     }
 
     async listLogs(input: { page: number; pageSize: number; keyword?: string; status?: "success" | "failed" }) {
@@ -287,7 +296,19 @@ function mapLog(row: Record<string, unknown>): GeminiToolsRequestLog {
         ...(string(row.key_prefix) ? { keyPrefix: string(row.key_prefix) } : {}),
         ...(string(row.request_preview) ? { requestPreview: string(row.request_preview) } : {}),
         ...(string(row.response_preview) ? { responsePreview: string(row.response_preview) } : {}),
+        ...(string(row.phase) ? { phase: (["queued", "running", "failed"].includes(string(row.phase)) ? string(row.phase) : "success") as GeminiToolsRequestLog["phase"] } : {}),
+        ...(row.lifecycle ? parseLifecycle(row.lifecycle) : {}),
     };
+}
+
+function parseLifecycle(value: unknown): Pick<GeminiToolsRequestLog, "lifecycle"> {
+    try {
+        const parsed = typeof value === "string" ? JSON.parse(value) : value;
+        if (Array.isArray(parsed)) return { lifecycle: parsed as GeminiToolsRequestLog["lifecycle"] };
+    } catch {
+        // ignore malformed lifecycle payloads
+    }
+    return {};
 }
 function quotas(value: unknown): GeminiToolsQuota[] {
     return Array.isArray(value) ? (value as GeminiToolsQuota[]) : typeof value === "string" ? (safeArray(value) as GeminiToolsQuota[]) : [];

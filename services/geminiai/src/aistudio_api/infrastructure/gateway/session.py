@@ -170,6 +170,11 @@ class BrowserSession:
     async def ensure_context(self):
         return await self._run_sync(self._ensure_browser_sync)
 
+    async def restart(self):
+        """Close the live browser so the next ensure_context relaunches with
+        the current settings.proxy_url (used for runtime proxy switching)."""
+        await self._run_sync(self._close_sync)
+
     async def switch_auth(self, auth_file: str | None) -> None:
         await self._run_sync(self._switch_auth_sync, auth_file)
 
@@ -1298,7 +1303,14 @@ mw:((hash) => {
         for url in (settings.studio_url, AI_STUDIO_URL_FALLBACK):
             try:
                 _t0 = _t.time()
-                page.goto(url, wait_until="networkidle", timeout=30000)
+                # domcontentloaded is the load gate; behind slow residential
+                # proxies networkidle frequently exceeds 30s even when the page
+                # works, so settle passively afterwards instead of failing.
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10_000)
+                except Exception:
+                    pass
                 log.debug(f"[timing] goto {url} took {_t.time()-_t0:.1f}s")
                 # 检查是否被重定向到登录页
                 current_url = page.url or ""

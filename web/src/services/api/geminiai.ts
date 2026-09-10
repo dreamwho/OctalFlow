@@ -94,6 +94,9 @@ export type GeminiAiRequestLog = {
     error?: string;
     requestPreview?: string;
     responsePreview?: string;
+    proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
+    phase?: "queued" | "running" | "success" | "failed";
+    lifecycle?: Array<{ time: string; phase: "queued" | "running" | "success" | "failed"; message: string }>;
 };
 
 export type GeminiAiRequestStats = { total: number; success: number; failed: number; averageDurationMs: number };

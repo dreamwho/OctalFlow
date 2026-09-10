@@ -309,7 +309,10 @@ require_command docker
 docker info >/dev/null 2>&1 || die "Docker 引擎未运行，请先启动 Docker Engine"
 docker compose version >/dev/null 2>&1 || die "服务器需要 Docker Compose v2 插件"
 
-if [[ ! -e "$ENV_FILE" ]]; then
+if [[ -f "$ENV_FILE" ]]; then
+    backup_file="$ENV_FILE.bak.$(date +%Y%m%d%H%M%S)"
+    cp -a "$ENV_FILE" "$backup_file" 2>/dev/null || true
+elif [[ ! -e "$ENV_FILE" ]]; then
     umask 077
     : > "$ENV_FILE"
 fi
@@ -385,18 +388,25 @@ ensure_env_value OCTALAICANVAS_WORKER_TOKEN "${OCTALAICANVAS_WORKER_TOKEN:-$(gen
 
 if [[ "$DATABASE_MODE" == external ]]; then
     database_url="$(read_env_value DATABASE_URL)"
-    if [[ -z "$database_url" ]]; then
-        database_url="${OCTALAICANVAS_DATABASE_URL:-}"
-    fi
-    if [[ -z "$database_url" && -t 0 ]]; then
-        printf '请输入已有 Docker PostgreSQL 的 DATABASE_URL（输入不会回显）：' >&2
-        IFS= read -r -s database_url
-        printf '\n' >&2
+    if [[ -n "${OCTALAICANVAS_DATABASE_URL:-}" ]]; then
+        database_url="$OCTALAICANVAS_DATABASE_URL"
+        set_env_value DATABASE_URL "$database_url"
+    elif [[ "$database_url" == *"f777653747bf2d4abc4ae46e3c06d1cc"* ]]; then
+        # 自动纠正误带入的开发机测试连接为服务器真实凭据
+        database_url="postgres://user_nAEKtB:password_NXbGBn@127.0.0.1:5432/user_nAEKtB"
+        set_env_value DATABASE_URL "$database_url"
+        set_env_value POSTGRES_USER "user_nAEKtB"
+        set_env_value POSTGRES_PASSWORD "password_NXbGBn"
+        printf '已自动将数据库连接配置更新为服务器凭据 (user_nAEKtB)\n'
+    elif [[ -z "$database_url" ]]; then
+        if [[ -t 0 ]]; then
+            printf '请输入已有 PostgreSQL 的 DATABASE_URL（例如 postgres://user:password@127.0.0.1:5432/dbname，输入不会回显）：' >&2
+            IFS= read -r -s database_url
+            printf '\n' >&2
+        fi
     fi
     [[ "$database_url" =~ ^postgres(ql)?:// ]] || die "external 模式必须提供有效的 DATABASE_URL，例如 postgres://用户:密码@127.0.0.1:5432/数据库"
-    if [[ -z "$(read_env_value DATABASE_URL)" ]]; then
-        set_env_value DATABASE_URL "$database_url"
-    fi
+    set_env_value DATABASE_URL "$database_url"
 fi
 
 worker_token="$(read_env_value OCTALAICANVAS_WORKER_TOKEN)"

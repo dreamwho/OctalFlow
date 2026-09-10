@@ -122,6 +122,21 @@ class ProxyRuntimeProfile:
     def clearance_mode(self) -> str:
         return str(self.clearance.get("mode") or "none").strip().lower()
 
+    def egress_snapshot(self) -> dict[str, str]:
+        """Credential-free egress description for request logging (mode/group/node/address)."""
+        if not self.proxy_url:
+            return {}
+        parsed = urlparse(self.proxy_url)
+        host = (parsed.hostname or "").strip()
+        address = f"{host}:{parsed.port}" if host and parsed.port else host
+        return {
+            "mode": "magic" if str(self.proxy_source or "") == "magic" else "generic",
+            "group_id": self.proxy_group_id,
+            "node_id": self.proxy_node_id,
+            "node_name": self.proxy_node_name,
+            "address": address,
+        }
+
     @property
     def refresh_interval(self) -> int:
         try:
@@ -862,6 +877,22 @@ class ProxySettingsStore:
                 image_egress_reserved=selection.image_egress_reserved,
                 image_egress_wait_ms=selection.image_egress_wait_ms,
             )
+        if lower.startswith("node:"):
+            wanted_node = _clean(raw.split(":", 1)[1])
+            try:
+                url, group_id_value, node_id_value, image_limit = self.resolve_egress_url(node_id=wanted_node)
+            except ValueError as exc:
+                raise ProxyReferenceUnavailableError(str(exc)) from exc
+            return ResolvedProxyReference(
+                proxy_url=url,
+                source=f"{source}_node",
+                terminal=True,
+                egress_key=f"group:{group_id_value}:{node_id_value}",
+                egress_label=f"{source}_node",
+                proxy_group_id=group_id_value,
+                proxy_node_id=node_id_value,
+                image_concurrency_limit=image_limit,
+            )
         return ResolvedProxyReference(
             proxy_url=raw,
             source=source,
@@ -941,6 +972,33 @@ class ProxySettingsStore:
                         timeout=min(1.0, remaining) if remaining is not None else 1.0
                     )
         return ProxyGroupSelection()
+
+    def resolve_egress_url(self, group_id: str = "", node_id: str = "") -> tuple[str, str, str, int]:
+        """Resolve a concrete (proxy_url, group_id, node_id, image_concurrency_limit) for surface egress bindings.
+
+        With ``group_id`` the same capacity-aware rotation as upstream requests picks
+        the node; with ``node_id`` the exact enabled node is returned.
+        """
+        wanted_group = _clean(group_id)
+        wanted_node = _clean(node_id)
+        if wanted_group:
+            selection = self._resolve_proxy_group(wanted_group)
+            if not selection.proxy_url:
+                raise ValueError(f"proxy group is unavailable: {wanted_group}")
+            return selection.proxy_url, selection.group_id, selection.node_id, selection.image_concurrency_limit
+        if wanted_node:
+            for group in self._proxy_dict_list("proxy_groups"):
+                if not isinstance(group, dict) or group.get("enabled") is False:
+                    continue
+                group_id_value = _clean(group.get("id"))
+                for index, node in enumerate(node for node in group.get("nodes", []) if isinstance(node, dict)):
+                    if _clean(node.get("id")) != wanted_node or node.get("enabled", True) is False:
+                        continue
+                    url = _clean(node.get("url"))
+                    if url:
+                        node_id_value = _clean(node.get("id")) or f"node-{index + 1}"
+                        return url, group_id_value, node_id_value, proxy_node_image_concurrency_limit(node)
+        raise ValueError("proxy egress is unavailable")
 
     def _proxy_node_has_image_capacity(self, group_id: str, node: Mapping[str, object], index: int) -> bool:
         limit = proxy_node_image_concurrency_limit(node)

@@ -16,7 +16,7 @@ const mihomoProviderPath = "/root/.config/mihomo/runtime/subscription.yaml";
 
 export const composeProfiles = [
     { file: "docker-compose.yml", embeddedPostgres: true, image: "${OCTALAICANVAS_IMAGE:-ghcr.io/dreamwho/octalaicanvas:v0.0.6}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
-    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "postgres", "app", "generation-worker"] },
     {
         file: "docker-compose.offline-external-db.yml",
         embeddedPostgres: false,
@@ -26,7 +26,7 @@ export const composeProfiles = [
         internalOrigin: "http://127.0.0.1:${PORT:-8866}",
         trustedProxyHops: "${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}",
         workerOrigin: "http://127.0.0.1:${PORT:-8866}",
-        expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"],
+        expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "app", "generation-worker"],
     },
     { file: "docker-compose.local.yml", embeddedPostgres: true, image: "octalaicanvas:local", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
     {

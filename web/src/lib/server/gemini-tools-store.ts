@@ -67,6 +67,9 @@ export type GeminiToolsRequestLog = {
     keyPrefix?: string;
     requestPreview?: string;
     responsePreview?: string;
+    proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
+    phase?: "queued" | "running" | "success" | "failed";
+    lifecycle?: Array<{ time: string; phase: "queued" | "running" | "success" | "failed"; message: string }>;
 };
 
 export type GeminiToolsGatewaySettings = {
@@ -340,6 +343,63 @@ export async function appendGeminiToolsRequestLog(log: Omit<GeminiToolsRequestLo
     });
 }
 
+export async function openGeminiToolsRequestLog(log: Omit<GeminiToolsRequestLog, "id" | "createdAt" | "statusCode" | "durationMs" | "phase" | "lifecycle">) {
+    const id = `log-${randomUUID()}`;
+    const entry = { id, createdAt: new Date().toISOString(), statusCode: 0, durationMs: 0, phase: "queued" as const, lifecycle: [{ time: new Date().toISOString(), phase: "queued" as const, message: "等待执行" }], ...log } satisfies GeminiToolsRequestLog;
+    if (isPostgresDatabaseEnabled()) return void (await postgresRepository()).appendLog(entry, MAX_LOGS);
+    await mutateDatabase((db) => {
+        db.logs.unshift(entry);
+        if (db.logs.length > MAX_LOGS) db.logs.length = MAX_LOGS;
+    });
+    return id;
+}
+
+export async function markGeminiToolsRequestLogRunning(id: string) {
+    await patchGeminiToolsLog(id, (log) => {
+        log.phase = "running";
+        log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: "running", message: "执行中" }];
+    });
+}
+
+export async function settleGeminiToolsRequestLog(id: string, settle: { statusCode: number; durationMs: number; error?: string; accountId?: string; accountEmail?: string; promptTokens?: number; completionTokens?: number; totalTokens?: number; responsePreview?: string; proxyEgress?: GeminiToolsRequestLog["proxyEgress"] }) {
+    await patchGeminiToolsLog(id, (log) => {
+        log.statusCode = settle.statusCode;
+        log.durationMs = settle.durationMs;
+        if (settle.error) log.error = settle.error;
+        if (settle.accountId) log.accountId = settle.accountId;
+        if (settle.accountEmail) log.accountEmail = settle.accountEmail;
+        if (settle.promptTokens !== undefined) log.promptTokens = settle.promptTokens;
+        if (settle.completionTokens !== undefined) log.completionTokens = settle.completionTokens;
+        if (settle.totalTokens !== undefined) log.totalTokens = settle.totalTokens;
+        if (settle.responsePreview) log.responsePreview = settle.responsePreview;
+        if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
+        const failed = settle.statusCode >= 400 || Boolean(settle.error);
+        log.phase = failed ? "failed" : "success";
+        log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: failed ? settle.error || "调用失败" : "调用完成" }];
+    });
+}
+
+async function patchGeminiToolsLog(id: string, mutate: (log: GeminiToolsRequestLog) => void) {
+    if (isPostgresDatabaseEnabled()) {
+        const repository = await postgresRepository();
+        for (let page = 1; page <= 20; page += 1) {
+            const pageResult = await repository.listLogs({ page, pageSize: 100 });
+            const target = pageResult.items.find((log) => log.id === id);
+            if (target) {
+                mutate(target);
+                await repository.updateLog?.(target);
+                return;
+            }
+            if (!pageResult.items.length || pageResult.items.length < 100) break;
+        }
+        return;
+    }
+    await mutateDatabase((db) => {
+        const target = db.logs.find((log) => log.id === id);
+        if (target) mutate(target);
+    });
+}
+
 export async function listGeminiToolsRequestLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed" } = {}) {
     const page = Math.max(1, Math.floor(input.page || 1));
     const pageSize = Math.max(1, Math.min(100, Math.floor(input.pageSize || 20)));
@@ -351,6 +411,23 @@ export async function listGeminiToolsRequestLogs(input: { page?: number; pageSiz
         return !keyword || [log.model, log.accountEmail, log.path, log.error, log.keyPrefix].filter(Boolean).join(" ").toLowerCase().includes(keyword);
     });
     return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize };
+}
+
+export async function listGeminiToolsProxyEgressLogs(input: { limit?: number; offset?: number } = {}) {
+    const limit = Math.max(1, Math.min(Math.floor(input.limit || 50), 200));
+    const offset = Math.max(0, Math.floor(input.offset || 0));
+    if (isPostgresDatabaseEnabled()) {
+        const repository = await postgresRepository();
+        const collected: GeminiToolsRequestLog[] = [];
+        for (let page = 1; page <= 5 && collected.length < offset + limit; page += 1) {
+            const pageResult = await repository.listLogs({ page, pageSize: 100 });
+            if (!pageResult.items.length) break;
+            collected.push(...pageResult.items.filter((log) => log.proxyEgress));
+        }
+        return { items: collected.slice(offset, offset + limit), total: collected.length, has_more: offset + limit < collected.length };
+    }
+    const matches = (await readDatabase()).logs.filter((log) => log.proxyEgress);
+    return { items: matches.slice(offset, offset + limit), total: matches.length, has_more: offset + limit < matches.length };
 }
 
 export async function clearGeminiToolsRequestLogs() {

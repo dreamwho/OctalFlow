@@ -72,6 +72,11 @@ class AIStudioClient:
         if self._session is not None:
             await self._session.switch_auth(auth_file)
 
+    async def restart_browser_session(self) -> None:
+        """重启浏览器会话，使新的代理设置在下次启动时生效。"""
+        if self._session is not None:
+            await self._session.restart()
+
     def clear_snapshot_cache(self) -> None:
         """清除 snapshot 缓存。"""
         _snapshot_cache.clear()

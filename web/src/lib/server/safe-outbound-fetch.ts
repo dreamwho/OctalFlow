@@ -127,7 +127,9 @@ function dispatcherFor(url: URL, address: string, family: 4 | 6, proxyUrlOverrid
 function normalizeProxyUrl(value: string) {
     try {
         const url = new URL(value.trim());
-        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== "")) throw new Error("invalid proxy URL");
+        // Userinfo credentials are allowed: the runtime resolver returns authed
+        // residential-proxy URLs and undici turns them into Proxy-Authorization.
+        if (!["http:", "https:"].includes(url.protocol) || url.search || url.hash || (url.pathname !== "/" && url.pathname !== "")) throw new Error("invalid proxy URL");
         return url.toString();
     } catch {
         throw new UnsafeOutboundUrlError("请求级代理地址无效");

@@ -7,10 +7,13 @@ import { applyChannelProtocol, protocolModelConfig } from "@/lib/channel-protoco
 import { normalizeModelId } from "@/lib/model-capability";
 import { normalizeDefaultModelsConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
 import { resolvePublicRequestOrigin } from "@/lib/server/public-request-origin";
-import { ensureMagicProxyProvider } from "@/lib/server/magic-proxy-service";
+import { ensureMagicProxyProvider, type MagicProxyEgressInfo } from "@/lib/server/magic-proxy-service";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 import {
     appendGeminiToolsRequestLog,
+    markGeminiToolsRequestLogRunning,
+    openGeminiToolsRequestLog,
+    settleGeminiToolsRequestLog,
     consumeGeminiToolsOAuthSession,
     createGeminiToolsOAuthSession,
     getGeminiToolsGatewaySettings,
@@ -55,7 +58,7 @@ const OAUTH_SCOPES = [
 const CLOUD_CODE_ENDPOINTS = ["https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal", "https://daily-cloudcode-pa.googleapis.com/v1internal", "https://cloudcode-pa.googleapis.com/v1internal"];
 const MACHINE_ID = createHash("sha256").update(`${hostname()}|${platform()}|octalflow`).digest("hex");
 const SESSION_ID = randomUUID();
-const magicProxyRequestContext = new AsyncLocalStorage<{ proxyUrl?: Promise<string | undefined> }>();
+const magicProxyRequestContext = new AsyncLocalStorage<{ binding?: Promise<{ enabled: boolean; proxyUrl?: string; egress?: MagicProxyEgressInfo } | undefined> }>();
 
 export class GeminiToolsError extends Error {
     constructor(
@@ -260,6 +263,18 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
     const protocol = context.protocol || protocolFromPath(normalizedPath);
     const model = text(body?.model, 200);
     if (!model) return Response.json({ error: { message: "缺少模型 ID" } }, { status: 400 });
+    const openLogId = await openGeminiToolsRequestLog({
+        protocol,
+        path: normalizedPath,
+        model,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        ...(context.keyPrefix ? { keyPrefix: context.keyPrefix } : {}),
+        requestPreview: previewRequest(body) || undefined,
+    }).catch(() => "");
+    if (openLogId) await markGeminiToolsRequestLogRunning(openLogId).catch(() => undefined);
+    const egressNow = () => geminiToolsProxyEgress().catch(() => undefined);
     const availableModels = new Set(catalogFromAccounts(await listGeminiToolsAccounts()).map((item) => normalizeModelId(item.id)));
     if (!availableModels.has(normalizeModelId(model))) return Response.json({ error: { message: "模型不在当前 Google 账号额度目录中" } }, { status: 404 });
 
@@ -281,21 +296,26 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             const usage = usageFromNative(native);
             await Promise.all([
                 recordGeminiToolsAccountUsage(account.id, usage.totalTokens, false),
-                appendGeminiToolsRequestLog({
-                    protocol,
-                    path: normalizedPath,
-                    model,
-                    accountId: account.id,
-                    accountEmail: account.email,
-                    statusCode: 200,
-                    durationMs: Date.now() - startedAt,
-                    promptTokens: usage.promptTokens,
-                    completionTokens: usage.completionTokens,
-                    totalTokens: usage.totalTokens,
-                    keyPrefix: context.keyPrefix,
-                    requestPreview: previewRequest(body),
-                    responsePreview: textFromNative(native).slice(0, 500),
-                }),
+                (async () => {
+                    const settlePayload = {
+                        protocol,
+                        path: normalizedPath,
+                        model,
+                        accountId: account.id,
+                        accountEmail: account.email,
+                        statusCode: 200,
+                        durationMs: Date.now() - startedAt,
+                        promptTokens: usage.promptTokens,
+                        completionTokens: usage.completionTokens,
+                        totalTokens: usage.totalTokens,
+                        keyPrefix: context.keyPrefix,
+                        requestPreview: previewRequest(body),
+                        responsePreview: textFromNative(native).slice(0, 500),
+                        proxyEgress: (await egressNow()) || undefined,
+                    } as const;
+                    if (openLogId) return settleGeminiToolsRequestLog(openLogId, settlePayload).catch(() => undefined);
+                    return appendGeminiToolsRequestLog(settlePayload);
+                })(),
             ]);
             return streamingRequested(body) && protocol === "openai" ? openAiSseResponse(formatted as OpenAiResponse, usage.totalTokens) : Response.json(formatted, { headers: { "x-gemini-tools-total-tokens": String(usage.totalTokens) } });
         } catch (error) {
@@ -310,6 +330,16 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
         }
     }
     const status = lastError?.status || 502;
+    if (openLogId) {
+        await settleGeminiToolsRequestLog(openLogId, {
+            statusCode: status,
+            durationMs: Date.now() - startedAt,
+            error: lastError?.message || "Google 上游请求失败",
+            accountId: failedAccount?.id,
+            accountEmail: failedAccount?.email,
+            proxyEgress: (await egressNow()) || undefined,
+        }).catch(() => undefined);
+    }
     await appendGeminiToolsRequestLog({
         protocol,
         path: normalizedPath,
@@ -324,6 +354,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
         error: lastError?.message || "Google 上游请求失败",
         keyPrefix: context.keyPrefix,
         requestPreview: previewRequest(body),
+        proxyEgress: (await geminiToolsProxyEgress().catch(() => undefined)) || undefined,
     });
     return Response.json({ error: { message: lastError?.message || "Google 上游请求失败" } }, { status });
 }
@@ -492,11 +523,19 @@ async function withGeminiToolsMagicProxy<T>(callback: () => Promise<T>) {
     return magicProxyRequestContext.run({}, callback);
 }
 
-async function geminiToolsMagicProxyUrl() {
+async function geminiToolsProxyBinding() {
     const context = magicProxyRequestContext.getStore();
-    if (!context) return (await ensureMagicProxyProvider("geminiTools")).proxyUrl;
-    context.proxyUrl ??= ensureMagicProxyProvider("geminiTools").then((result) => result.proxyUrl);
-    return context.proxyUrl;
+    if (!context) return ensureMagicProxyProvider("geminiTools");
+    context.binding ??= ensureMagicProxyProvider("geminiTools");
+    return context.binding;
+}
+
+async function geminiToolsMagicProxyUrl() {
+    return (await geminiToolsProxyBinding())?.proxyUrl;
+}
+
+async function geminiToolsProxyEgress(): Promise<MagicProxyEgressInfo | undefined> {
+    return (await geminiToolsProxyBinding().catch(() => undefined))?.egress;
 }
 
 function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-test", body: Record<string, unknown>) {

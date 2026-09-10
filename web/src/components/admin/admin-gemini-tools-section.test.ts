@@ -26,7 +26,7 @@ describe("visibleGeminiToolsQuotas", () => {
 
         expect(markup).toContain("账号与渠道");
         expect(markup).toContain("反代网关与 API 密钥");
-        expect(markup).toContain("魔法代理");
+        expect(markup).toContain("代理管理");
         expect(markup).toContain("请求日志");
         expect(markup).toContain("max-sm:[&amp;_.ant-tabs-nav-list]:w-full");
         expect(markup).toContain("max-sm:[&amp;_.ant-tabs-tab]:flex-1");
@@ -36,7 +36,7 @@ describe("visibleGeminiToolsQuotas", () => {
         expect(markup).toMatch(/<div(?=[^>]*data-gemini-tools-tab-panel="logs")(?=[^>]*class="hidden")/);
         expect(markup.indexOf('data-gemini-tools-tab-panel="gateway"')).toBeLessThan(markup.indexOf(">反代与网关</h2>"));
         expect(markup.indexOf(">反代与网关</h2>")).toBeLessThan(markup.indexOf(">API 密钥</h2>"));
-        expect(markup.indexOf('data-gemini-tools-tab-panel="magic-proxy"')).toBeLessThan(markup.indexOf(">GeminiTools · 魔法代理</h2>"));
+        expect(markup.indexOf('data-gemini-tools-tab-panel="magic-proxy"')).toBeLessThan(markup.indexOf(">GeminiTools · 代理管理</h2>"));
     });
 
     it("keeps request-log loading attached to its tab selection", () => {

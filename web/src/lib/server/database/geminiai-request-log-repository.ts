@@ -6,11 +6,23 @@ export class GeminiAiRequestLogRepository {
 
     async append(log: GeminiAiRequestLog, maxLogs: number) {
         await this.database.query(
-            `INSERT INTO geminiai_request_logs (id,created_at,source,capability,method,path,model,account_id,account_email,status_code,duration_ms,error,request_preview,response_preview)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-            [log.id, new Date(log.createdAt), log.source, log.capability, log.method, log.path, log.model, log.accountId || null, log.accountEmail || null, log.statusCode, log.durationMs, log.error || null, log.requestPreview || null, log.responsePreview || null],
+            `INSERT INTO geminiai_request_logs (id,created_at,source,capability,method,path,model,account_id,account_email,status_code,duration_ms,error,request_preview,response_preview,phase,lifecycle)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+            [log.id, new Date(log.createdAt), log.source, log.capability, log.method, log.path, log.model, log.accountId || null, log.accountEmail || null, log.statusCode, log.durationMs, log.error || null, log.requestPreview || null, log.responsePreview || null, log.phase || "success", JSON.stringify(log.lifecycle || [])],
         );
         await this.database.query("DELETE FROM geminiai_request_logs WHERE id IN (SELECT id FROM geminiai_request_logs ORDER BY created_at DESC OFFSET $1)", [maxLogs]);
+    }
+
+    async update(log: GeminiAiRequestLog) {
+        await this.database.query(
+            `UPDATE geminiai_request_logs SET status_code=$2,duration_ms=$3,error=$4,response_preview=$5,account_id=$6,account_email=$7,phase=$8,lifecycle=$9 WHERE id=$1`,
+            [log.id, log.statusCode, log.durationMs, log.error || null, log.responsePreview || null, log.accountId || null, log.accountEmail || null, log.phase || "success", JSON.stringify(log.lifecycle || [])],
+        );
+    }
+
+    async findById(id: string) {
+        const result = await this.database.query("SELECT * FROM geminiai_request_logs WHERE id = $1", [id]);
+        return result.rows[0] ? mapLog(result.rows[0]) : null;
     }
 
     async list(input: { page: number; pageSize: number; keyword?: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability }) {
@@ -59,7 +71,23 @@ function mapLog(row: Record<string, unknown>): GeminiAiRequestLog {
         ...(string(row.error) ? { error: string(row.error) } : {}),
         ...(string(row.request_preview) ? { requestPreview: string(row.request_preview) } : {}),
         ...(string(row.response_preview) ? { responsePreview: string(row.response_preview) } : {}),
+        ...(string(row.phase) ? { phase: phase(row.phase) } : {}),
+        ...(Array.isArray(row.lifecycle) || typeof row.lifecycle === "string" ? parseLifecycle(row.lifecycle) : {}),
     };
+}
+
+function phase(value: unknown): GeminiAiRequestLog["phase"] {
+    return value === "queued" || value === "running" || value === "failed" ? value : "success";
+}
+
+function parseLifecycle(value: unknown): Pick<GeminiAiRequestLog, "lifecycle"> {
+    try {
+        const parsed = typeof value === "string" ? JSON.parse(value) : value;
+        if (Array.isArray(parsed)) return { lifecycle: parsed as GeminiAiRequestLog["lifecycle"] };
+    } catch {
+        // ignore malformed lifecycle payloads
+    }
+    return {};
 }
 
 function mapStats(row: Record<string, unknown> | undefined): GeminiAiRequestStats {

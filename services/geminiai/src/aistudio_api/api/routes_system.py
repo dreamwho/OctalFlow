@@ -9,6 +9,9 @@ from aistudio_api.application.api_service import health_response, stats_response
 from aistudio_api.application.api_service_common import account_request_lock
 from aistudio_api.api.response_models import HealthResponse, StatsResponse
 from aistudio_api.api.dependencies import get_runtime_state
+from aistudio_api.api.schemas import RuntimeProxyPayload
+from aistudio_api.config import settings
+from urllib.parse import urlparse
 
 public_router = APIRouter()
 protected_router = APIRouter()
@@ -17,6 +20,24 @@ protected_router = APIRouter()
 @public_router.get("/health", response_model=HealthResponse)
 async def health():
     return health_response()
+
+
+@protected_router.post("/runtime/proxy")
+async def set_runtime_proxy(payload: RuntimeProxyPayload, runtime_state=Depends(get_runtime_state)):
+    """Switch the browser-level proxy at runtime and restart the session.
+
+    An empty proxy_url switches back to direct connections.
+    """
+    raw = (payload.proxy_url or "").strip()
+    if raw:
+        parsed = urlparse(raw)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise HTTPException(status_code=400, detail="代理地址无效：需要 http(s)://host[:port]")
+    settings.proxy_url = raw or None
+    if runtime_state.client is None:
+        raise HTTPException(status_code=503, detail="浏览器会话尚未就绪")
+    await runtime_state.client.restart_browser_session()
+    return {"proxy_url": settings.proxy_url or ""}
 
 
 @protected_router.get("/stats", response_model=StatsResponse)

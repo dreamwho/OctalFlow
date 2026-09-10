@@ -487,6 +487,36 @@ def response_digest(result: object) -> dict[str, object] | None:
     return digest if isinstance(digest, dict) and digest else None
 
 
+_CALL_EGRESS_LOCAL = threading.local()
+_CALL_EGRESS_REGISTRY: dict[str, dict[str, str]] = {}
+_CALL_EGRESS_REGISTRY_LOCK = threading.Lock()
+
+
+def current_call_id() -> str:
+    """Call id bound to the worker thread currently executing an upstream request."""
+    return str(getattr(_CALL_EGRESS_LOCAL, "call_id", "") or "")
+
+
+def register_call_egress(call_id: str, meta: dict[str, str]) -> None:
+    """Attach an egress snapshot (no credentials) to the running call for log enrichment."""
+    normalized = str(call_id or "").strip()
+    if not normalized or not isinstance(meta, dict):
+        return
+    payload = {str(key): str(value).strip() for key, value in meta.items() if str(value or "").strip()}
+    if not payload:
+        return
+    with _CALL_EGRESS_REGISTRY_LOCK:
+        _CALL_EGRESS_REGISTRY[normalized] = payload
+        if len(_CALL_EGRESS_REGISTRY) > 512:
+            for stale in list(_CALL_EGRESS_REGISTRY)[: len(_CALL_EGRESS_REGISTRY) - 256]:
+                _CALL_EGRESS_REGISTRY.pop(stale, None)
+
+
+def pop_call_egress(call_id: str) -> dict[str, str]:
+    with _CALL_EGRESS_REGISTRY_LOCK:
+        return _CALL_EGRESS_REGISTRY.pop(str(call_id or "").strip(), None) or {}
+
+
 @dataclass
 class LoggedCall:
     identity: dict[str, object]
@@ -521,31 +551,35 @@ class LoggedCall:
         handler_submitted = time.perf_counter()
 
         def _call_handler():
-            self.log("执行中", status="running")
-            handler_started = time.perf_counter()
-            queue_ms = int((handler_started - handler_submitted) * 1000)
-            if trace_perf:
-                self.perf_timings["handler_queue_ms"] = queue_ms
-                realtime_monitor_service.stage(
-                    self.call_id,
-                    "handler_started",
-                    handler_queue_ms=queue_ms,
-                    endpoint=self.endpoint,
-                    model=self.model,
-                )
-            if trace_perf and queue_ms >= PERF_WAIT_WARN_MS:
-                logger.warning({
-                    "event": "api_handler_threadpool_wait_slow",
-                    "call_id": self.call_id,
-                    "endpoint": self.endpoint,
-                    "model": self.model,
-                    "queue_ms": queue_ms,
-                })
+            _CALL_EGRESS_LOCAL.call_id = self.call_id
             try:
-                return handler(*args)
-            finally:
+                self.log("执行中", status="running")
+                handler_started = time.perf_counter()
+                queue_ms = int((handler_started - handler_submitted) * 1000)
                 if trace_perf:
-                    self.perf_timings["handler_exec_ms"] = int((time.perf_counter() - handler_started) * 1000)
+                    self.perf_timings["handler_queue_ms"] = queue_ms
+                    realtime_monitor_service.stage(
+                        self.call_id,
+                        "handler_started",
+                        handler_queue_ms=queue_ms,
+                        endpoint=self.endpoint,
+                        model=self.model,
+                    )
+                if trace_perf and queue_ms >= PERF_WAIT_WARN_MS:
+                    logger.warning({
+                        "event": "api_handler_threadpool_wait_slow",
+                        "call_id": self.call_id,
+                        "endpoint": self.endpoint,
+                        "model": self.model,
+                        "queue_ms": queue_ms,
+                    })
+                try:
+                    return handler(*args)
+                finally:
+                    if trace_perf:
+                        self.perf_timings["handler_exec_ms"] = int((time.perf_counter() - handler_started) * 1000)
+            finally:
+                _CALL_EGRESS_LOCAL.call_id = ""
 
         try:
             result = await run_in_threadpool(_call_handler)
@@ -758,6 +792,9 @@ class LoggedCall:
         if self.request_shape:
             detail["request_shape"] = self.request_shape
         detail["request_meta"] = {**self.trace_metadata, "lifecycle": list(self.lifecycle)}
+        proxy_meta = pop_call_egress(self.call_id)
+        if proxy_meta:
+            detail["proxy_egress"] = proxy_meta
         digest = response_digest(result)
         if digest:
             detail["response"] = digest

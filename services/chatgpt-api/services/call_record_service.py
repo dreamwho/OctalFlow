@@ -225,6 +225,33 @@ class CallRecordService:
         item = self.repository.get(self._clean(log_id))
         return build_call_detail(item) if item is not None else None
 
+    def list_proxy_page(self, *, limit: int = 200, offset: int = 0) -> dict[str, Any]:
+        """Paginated calls whose egress resolved through a proxy (detail.proxy present)."""
+        safe_limit = max(1, min(int(limit or 200), 20000))
+        safe_offset = max(0, int(offset or 0))
+        matches: list[dict[str, Any]] = []
+        skipped = 0
+        total = 0
+        for item in self.iter_call_items_reverse():
+            if not isinstance(item, dict):
+                continue
+            detail = item.get("detail")
+            if not isinstance(detail, dict) or not (detail.get("proxy_egress") or detail.get("proxy")):
+                continue
+            total += 1
+            if skipped < safe_offset:
+                skipped += 1
+                continue
+            if len(matches) < safe_limit:
+                matches.append(item)
+        return {
+            "items": [build_call_summary(item) for item in matches],
+            "total": total,
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "has_more": safe_offset + len(matches) < total,
+        }
+
     def delete(self, ids: list[str]) -> dict[str, int]:
         return {"removed": self.repository.delete(ids, preserve_cursor=True)}
 

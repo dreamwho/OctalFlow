@@ -24,7 +24,7 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
         AISTUDIO_API_KEY: apiKey,
         AISTUDIO_ACCOUNTS_DIR: accountsDir,
         AISTUDIO_CONFIG_FILE: path.join(providerRoot, "config.yaml"),
-        AISTUDIO_DUMP_RAW_RESPONSE: "0",
+        AISTUDIO_DUMP_RAW_RESPONSE: source.AISTUDIO_DUMP_RAW_RESPONSE?.trim() || "0",
         AISTUDIO_HOST: "127.0.0.1",
         AISTUDIO_PORT: String(port),
         ...(source.OCTALAICANVAS_GEMINIAI_STUDIO_URL?.trim() ? { AISTUDIO_STUDIO_URL: source.OCTALAICANVAS_GEMINIAI_STUDIO_URL.trim() } : {}),

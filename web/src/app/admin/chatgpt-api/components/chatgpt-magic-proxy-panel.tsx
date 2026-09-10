@@ -13,7 +13,7 @@ function errorMessage(reason: unknown, fallback: string) {
     return reason instanceof Error ? reason.message : fallback;
 }
 
-export function ChatGptMagicProxyPanel({ proxyRuntime }: { proxyRuntime: ChatGptProxyRuntimeController }) {
+export function ChatGptMagicProxyPanel({ proxyRuntime, hideSourceSwitch = false }: { proxyRuntime: ChatGptProxyRuntimeController; hideSourceSwitch?: boolean }) {
     const { message } = App.useApp();
     const [state, setState] = useState<MagicProxyState | null>(null);
     const [node, setNode] = useState("");
@@ -103,7 +103,7 @@ export function ChatGptMagicProxyPanel({ proxyRuntime }: { proxyRuntime: ChatGpt
                 }
             />
             <div className="space-y-4 p-3 sm:p-5" data-chatgpt-magic-proxy>
-                <ChatGptProxyRuntimeControl controller={proxyRuntime} target="magic" disabledReason={magicSwitchDisabledReason} />
+                {hideSourceSwitch ? null : <ChatGptProxyRuntimeControl controller={proxyRuntime} target="magic" disabledReason={magicSwitchDisabledReason} />}
                 {error ? <Alert type="error" showIcon title={error} /> : null}
                 {loading && !state ? <Spin /> : null}
                 {state ? (

@@ -69,6 +69,11 @@ describe("ChatGPT internal transport", () => {
         await expect(chatGptRuntimeJson("/failure")).rejects.toMatchObject({ status: 403, message: "Bearer [redacted] denied" });
         expect(sanitizeChatGptAdminResult({ items: [{ access_token: "private", refresh_token: "private", status: "ok" }], raw_key: "secret" })).toEqual({ items: [{ status: "ok" }] });
         expect(sanitizeChatGptAdminResult({ raw_key: "created-once" }, true)).toEqual({ raw_key: "created-once" });
+        expect(
+            sanitizeChatGptAdminResult({
+                items: [{ id: "log-1", proxy: { address: "secret" }, proxy_egress: { mode: "generic", address: "us.ipwo.net:7878" } }],
+            }),
+        ).toEqual({ items: [{ id: "log-1", proxy_egress: { mode: "generic", address: "us.ipwo.net:7878" } }] });
         expect(sanitizeChatGptAdminResult({ message: 'upstream {"refresh_token":"private secret"}' })).not.toEqual(expect.objectContaining({ message: expect.stringContaining("private secret") }));
     });
     it("skips Magic outside an active Magic selection and validates selection before preparation", async () => {

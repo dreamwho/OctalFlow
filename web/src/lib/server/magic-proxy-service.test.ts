@@ -160,7 +160,7 @@ describe("magic proxy service", () => {
         mocks.controllerFetch.mockClear();
         const resolved = await ensureMagicProxyProvider("geminiTools");
 
-        expect(resolved).toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/" });
+        expect(resolved).toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/", egress: { mode: "magic", node_name: "Tokyo-01" } });
         expect(providerRefreshCalls()).toHaveLength(0);
         expect(selectionFor(GEMINI_TOOLS_GROUP)).toBe("Tokyo-01");
         expect(selectionFor(GEMINIAI_GROUP)).toBeUndefined();
@@ -184,7 +184,7 @@ describe("magic proxy service", () => {
         await updateMagicProxyBinding({ provider: "geminiTools", enabled: true, node: "Tokyo-01" });
 
         expect(controllerCalls(`/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}`, "PUT")).toHaveLength(0);
-        await expect(ensureMagicProxyProvider("geminiTools")).resolves.toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/" });
+        await expect(ensureMagicProxyProvider("geminiTools")).resolves.toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/", egress: { mode: "magic", node_name: "Tokyo-01" } });
         await expect(updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" })).rejects.toMatchObject({
             status: 503,
             message: expect.stringContaining("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT"),
@@ -217,7 +217,7 @@ describe("magic proxy service", () => {
         await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" });
         const resolved = await ensureMagicProxyProvider("chatgptApi");
 
-        expect(resolved).toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17892/" });
+        expect(resolved).toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17892/", egress: { mode: "magic", node_name: "Tokyo-01" } });
         expect(providerRefreshCalls()).toHaveLength(0);
         expect(selectionFor(CHATGPT_API_GROUP)).toBe("Tokyo-01");
         expect(selectionFor(GEMINIAI_GROUP)).toBeUndefined();

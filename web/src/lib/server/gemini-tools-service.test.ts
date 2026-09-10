@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth/store", () => ({ getAuthSettings: mocks.getAuthSettings, setAuthSettings: mocks.setAuthSettings }));
 vi.mock("@/lib/server/gemini-tools-store", () => ({
     appendGeminiToolsRequestLog: mocks.appendLog,
+    openGeminiToolsRequestLog: vi.fn(async () => ""),
+    markGeminiToolsRequestLogRunning: vi.fn(async () => undefined),
+    settleGeminiToolsRequestLog: vi.fn(async () => undefined),
     consumeGeminiToolsOAuthSession: vi.fn(),
     createGeminiToolsOAuthSession: mocks.createOAuthSession,
     getGeminiToolsGatewaySettings: mocks.getGateway,

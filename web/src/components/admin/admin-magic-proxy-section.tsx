@@ -1,10 +1,11 @@
 "use client";
 
 import { Alert, App, Button, Empty, Input, Tag } from "antd";
-import { FileText, Gauge, RefreshCw, ShieldCheck, Upload, Wifi, WifiOff } from "lucide-react";
+import { FileText, Gauge, Globe, RefreshCw, ShieldCheck, Terminal, Upload, Wifi, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { MagicProxyTestModal } from "@/components/admin/magic-proxy-test-modal";
 import { getMagicProxy, importMagicProxySubscription, refreshMagicProxySubscription, testMagicProxyAllNodes, testMagicProxyNode, type MagicProxyDelayResult, type MagicProxyGroup, type MagicProxyNode, type MagicProxyState } from "@/services/api/magic-proxy";
 
 export function AdminMagicProxySection() {
@@ -19,6 +20,9 @@ export function AdminMagicProxySection() {
     const [delayResults, setDelayResults] = useState<Record<string, MagicProxyDelayResult>>({});
     const [testingNode, setTestingNode] = useState("");
     const [testingAll, setTestingAll] = useState(false);
+    const [testModalOpen, setTestModalOpen] = useState(false);
+    const [testModalAutoStart, setTestModalAutoStart] = useState(false);
+    const [testModalGoogle, setTestModalGoogle] = useState(false);
 
     const runNodeDelayTest = async (node: string) => {
         if (!node || testingAll || testingNode) return;
@@ -229,14 +233,42 @@ export function AdminMagicProxySection() {
                     title="代理节点"
                     description="节点列表仅显示名称、类型、存活状态和延迟；Provider 节点绑定请在 GeminiAIStudio 或 GeminiTools 页面完成。测速通过节点请求外部连通性检查地址，结果仅表示节点当前可用性。"
                     actions={
-                        <Button
-                            icon={<Gauge className="size-4" />}
-                            loading={testingAll}
-                            disabled={loading || testingNode !== "" || !state?.nodes.length || !state?.runtimeAvailable}
-                            onClick={() => void runAllDelayTest()}
-                        >
-                            一键测速
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                icon={<Globe className="size-4 text-blue-500" />}
+                                disabled={loading || !state?.runtimeAvailable}
+                                onClick={() => {
+                                    setTestModalAutoStart(false);
+                                    setTestModalGoogle(true);
+                                    setTestModalOpen(true);
+                                }}
+                            >
+                                测试 Google 访问
+                            </Button>
+                            <Button
+                                icon={<Terminal className="size-4" />}
+                                disabled={loading || !state?.nodes.length}
+                                onClick={() => {
+                                    setTestModalAutoStart(false);
+                                    setTestModalGoogle(false);
+                                    setTestModalOpen(true);
+                                }}
+                            >
+                                测速监控
+                            </Button>
+                            <Button
+                                type="primary"
+                                icon={<Gauge className="size-4" />}
+                                disabled={loading || !state?.nodes.length || !state?.runtimeAvailable}
+                                onClick={() => {
+                                    setTestModalAutoStart(true);
+                                    setTestModalGoogle(false);
+                                    setTestModalOpen(true);
+                                }}
+                            >
+                                一键测速
+                            </Button>
+                        </div>
                     }
                 />
                 {state?.nodes.length ? (
@@ -256,6 +288,16 @@ export function AdminMagicProxySection() {
                     <Empty className="my-8" image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? "正在读取节点" : "暂无代理节点"} />
                 )}
             </Panel>
+
+            <MagicProxyTestModal
+                open={testModalOpen}
+                onClose={() => setTestModalOpen(false)}
+                nodes={state?.nodes || []}
+                delayResults={delayResults}
+                onDelayResultsChange={setDelayResults}
+                autoStart={testModalAutoStart}
+                initialTestGoogle={testModalGoogle}
+            />
         </div>
     );
 }

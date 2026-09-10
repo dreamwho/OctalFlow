@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, App, Button, Checkbox, Empty, Input, Modal, Pagination, Popconfirm, Progress, Select, Space, Spin, Switch, Tabs, Tag } from "antd";
+import { Alert, App, Button, Checkbox, Empty, Input, Modal, Pagination, Popconfirm, Progress, Segmented, Select, Space, Spin, Switch, Tabs, Tag } from "antd";
 import { KeyRound, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
@@ -18,7 +18,7 @@ import { accountOperationCompletionNotice, accountOperationProgressPercent, type
 import { ChatGptRequestLogPanel } from "./chatgpt-request-log-panel";
 import { chatGptProxyRuntimeStatus, useChatGptProxyRuntime } from "./use-chatgpt-proxy-runtime";
 
-type ChatGptTab = "overview" | "statistics" | "gateway" | "proxy-management" | "proxy" | "logs";
+type ChatGptTab = "overview" | "statistics" | "gateway" | "proxy" | "logs";
 type LoadTarget = "overview" | "gateway";
 type AccountOperation = { label: string; progressId: string; progress?: AccountOperationProgress; followError?: string };
 type CreatedKey = { item: ChatGptKey; raw_key: string };
@@ -319,29 +319,6 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
     return (
         <div className="min-w-0 space-y-4">
             <Alert type="warning" showIcon title="非官方 ChatGPT 接口" description="基于 chatgpt2api2 移植，通过本人授权的 ChatGPT 账号提供兼容 API。上游变化可能导致失败或账号受限，请勿导入重要账号。" />
-            <div data-chatgpt-proxy-runtime-master className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2.5 dark:border-zinc-800">
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">使用代理</span>
-                        <Tag color={proxyRuntime.runtime?.enabled ? "success" : "default"} className="m-0">
-                            {proxyRuntime.runtime?.enabled ? "已启用" : "已关闭"}
-                        </Tag>
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-zinc-500">{proxyRuntimeStatus}</p>
-                </div>
-                <Switch
-                    aria-label="使用代理"
-                    checked={proxyRuntime.runtime?.enabled === true}
-                    loading={proxyRuntime.saving}
-                    disabled={proxyRuntime.loading || proxyRuntime.saving || !proxyRuntime.runtime}
-                    onChange={(enabled) => {
-                        const runtime = proxyRuntime.runtime;
-                        if (!runtime) return;
-                        void proxyRuntime.save({ enabled, mode: runtime.mode, native_source: runtime.native_source }).catch(() => undefined);
-                    }}
-                />
-                {proxyRuntime.error ? <Alert className="w-full" type="error" showIcon title={proxyRuntime.error} /> : null}
-            </div>
             <Tabs
                 className="max-sm:[&_.ant-tabs-nav-list]:w-full max-sm:[&_.ant-tabs-tab]:!m-0 max-sm:[&_.ant-tabs-tab]:min-w-0 max-sm:[&_.ant-tabs-tab]:flex-1 max-sm:[&_.ant-tabs-tab]:justify-center max-sm:[&_.ant-tabs-tab]:!px-1 max-sm:[&_.ant-tabs-tab-btn]:text-xs"
                 activeKey={tab}
@@ -351,8 +328,7 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                     { key: "overview", label: <ChatGptApiTabLabel label="账号与渠道" compact="账号" /> },
                     { key: "statistics", label: <ChatGptApiTabLabel label="统计报表" compact="统计" /> },
                     { key: "gateway", label: <ChatGptApiTabLabel label="反代网关与 API 密钥" compact="网关与密钥" /> },
-                    { key: "proxy-management", label: <ChatGptApiTabLabel label="代理管理" compact="代理" /> },
-                    { key: "proxy", label: <ChatGptApiTabLabel label="魔法代理" compact="魔法" /> },
+                    { key: "proxy", label: <ChatGptApiTabLabel label="代理管理" compact="代理" /> },
                     { key: "logs", label: <ChatGptApiTabLabel label="请求日志" compact="日志" /> },
                 ]}
             />
@@ -629,13 +605,57 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
 
             {tab === "proxy" ? (
                 <div data-chatgpt-api-tab-panel="proxy" className="space-y-4">
-                    <ChatGptMagicProxyPanel proxyRuntime={proxyRuntime} />
-                </div>
-            ) : null}
-
-            {tab === "proxy-management" ? (
-                <div data-chatgpt-api-tab-panel="proxy-management" className="space-y-4">
-                    <ChatGptProxyManager proxyRuntime={proxyRuntime} />
+                    <div data-chatgpt-proxy-runtime-master className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2.5 dark:border-zinc-800">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-medium">启用代理</span>
+                                <Tag color={proxyRuntime.runtime?.enabled ? "success" : "default"} className="m-0">
+                                    {proxyRuntime.runtime?.enabled ? "已启用" : "已关闭"}
+                                </Tag>
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-zinc-500">{proxyRuntimeStatus}</p>
+                        </div>
+                        <Switch
+                            aria-label="使用代理"
+                            checked={proxyRuntime.runtime?.enabled === true}
+                            loading={proxyRuntime.saving}
+                            disabled={proxyRuntime.loading || proxyRuntime.saving || !proxyRuntime.runtime}
+                            onChange={(enabled) => {
+                                const runtime = proxyRuntime.runtime;
+                                if (!runtime) return;
+                                void proxyRuntime.save({ enabled, mode: runtime.mode, native_source: runtime.native_source }).catch(() => undefined);
+                            }}
+                        />
+                        {proxyRuntime.error ? <Alert className="w-full" type="error" showIcon title={proxyRuntime.error} /> : null}
+                    </div>
+                    {proxyRuntime.runtime ? (
+                        <>
+                            <Panel>
+                                <PanelHeader title="代理方式" description="选择当前使用的代理来源，下方仅显示所选方式的配置内容。" />
+                                <div className="p-3 sm:p-5">
+                                    <Segmented
+                                        aria-label="代理方式"
+                                        value={proxyRuntime.runtime.mode === "magic" ? "magic" : "generic"}
+                                        onChange={(value) => {
+                                            const runtime = proxyRuntime.runtime;
+                                            if (!runtime) return;
+                                            const nextMode = value === "magic" ? "magic" : "native";
+                                            void proxyRuntime.save({ enabled: true, mode: nextMode, native_source: nextMode === "magic" ? runtime.native_source || "manual" : "manual" }).catch(() => undefined);
+                                        }}
+                                        options={[
+                                            { value: "magic", label: "魔法代理" },
+                                            { value: "generic", label: "通用代理" },
+                                        ]}
+                                    />
+                                </div>
+                            </Panel>
+                            {proxyRuntime.runtime.mode === "magic" ? (
+                                <ChatGptMagicProxyPanel proxyRuntime={proxyRuntime} hideSourceSwitch />
+                            ) : (
+                                <ChatGptProxyManager proxyRuntime={proxyRuntime} showGroups={false} showSourceSwitch={false} title="通用代理出口" description="选择 GPTAPI 经通用代理提交时的默认出口与失败回退；代理分组与节点统一在「上游配置 → 通用代理」维护。" />
+                            )}
+                        </>
+                    ) : null}
                 </div>
             ) : null}
 

@@ -765,6 +765,16 @@ def build_call_summary(item: Mapping[str, Any], *, error_limit: int = _SUMMARY_E
         "switch_count": switch_count,
         "recovered_after_switch": switch_count > 0 and outcome in {"success", "partial_success"},
     }
+    detail_record = _detail(item)
+    proxy_meta = _record(detail_record.get("proxy_egress") or detail_record.get("proxy"))
+    if proxy_meta:
+        summary["proxy_egress"] = {
+            "mode": _clean(proxy_meta.get("mode")),
+            "group_id": _clean(proxy_meta.get("group_id")),
+            "node_id": _clean(proxy_meta.get("node_id")),
+            "node_name": _clean(proxy_meta.get("node_name")),
+            "address": _clean(proxy_meta.get("address")),
+        }
     summary["presentation"] = _build_presentation(summary, attempts)
     return summary
 

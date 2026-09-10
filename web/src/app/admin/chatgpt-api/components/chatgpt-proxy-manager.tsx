@@ -18,6 +18,7 @@ const newNode = (): ChatGptProxyNode => ({ id: "", name: "", url: "", enabled: t
 const newGroup = (): ChatGptProxyGroup => ({ id: "", name: "", enabled: true, strategy: "request_random", rotation_interval_minutes: 5, notes: "", nodes: [], can_delete: true, references: [] });
 
 function ReferenceEditor({ label, value, groups, onChange, optional = false }: { label: string; value: ChatGptProxyReference | null; groups: ChatGptProxyGroup[]; onChange: (value: ChatGptProxyReference | null) => void; optional?: boolean }) {
+    const nodeOptions = groups.flatMap((group) => group.nodes.filter((node) => node.enabled).map((node) => ({ value: node.id, label: `${node.name || node.id}（${group.name}）` })));
     return (
         <div className="space-y-2">
             <label className="text-sm font-medium">{label}</label>
@@ -25,10 +26,19 @@ function ReferenceEditor({ label, value, groups, onChange, optional = false }: {
                 className="w-full"
                 aria-label={label}
                 value={value?.mode || "disabled"}
-                onChange={(mode) => onChange(mode === "disabled" ? null : mode === "group" ? { mode, group_id: "" } : mode === "custom" ? { mode, url: "" } : { mode: "direct" })}
-                options={[...(optional ? [{ value: "disabled", label: "关闭回退" }] : []), { value: "direct", label: "直接连接" }, { value: "group", label: "已保存代理组" }, { value: "custom", label: "自定义出口" }]}
+                onChange={(mode) => onChange(mode === "disabled" ? null : mode === "group" ? { mode, group_id: "" } : mode === "node" ? { mode, node_id: nodeOptions[0]?.value || "" } : mode === "custom" ? { mode, url: "" } : { mode: "direct" })}
+                options={[...(optional ? [{ value: "disabled", label: "关闭回退" }] : []), { value: "direct", label: "直接连接" }, { value: "node", label: "代理节点" }, { value: "group", label: "已保存代理组" }, { value: "custom", label: "自定义出口" }]}
             />
-            {value?.mode === "group" ? (
+            {value?.mode === "node" ? (
+                <Select
+                    className="w-full"
+                    aria-label={`${label}节点`}
+                    placeholder={nodeOptions.length ? "选择代理节点" : "暂无可用节点，请在通用代理页面添加"}
+                    value={value.node_id || undefined}
+                    options={nodeOptions}
+                    onChange={(node_id) => onChange({ mode: "node", node_id })}
+                />
+            ) : value?.mode === "group" ? (
                 <Select
                     className="w-full"
                     aria-label={`${label}代理组`}
@@ -44,7 +54,17 @@ function ReferenceEditor({ label, value, groups, onChange, optional = false }: {
     );
 }
 
-export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptProxyRuntimeController }) {
+export type ProxyManagerRequest = <T,>(path: string, init?: RequestInit) => Promise<T>;
+
+export function ChatGptProxyManager({ proxyRuntime, request = chatGptApiRequest, showDefaults = true, showGroups = true, showSourceSwitch = true, title = "代理管理", description = "维护代理管理的已存出口与回退配置。它们不是额外代理模式：全局仅会使用代理管理或魔法代理。" }: {
+    proxyRuntime?: ChatGptProxyRuntimeController;
+    request?: ProxyManagerRequest;
+    showDefaults?: boolean;
+    showGroups?: boolean;
+    showSourceSwitch?: boolean;
+    title?: string;
+    description?: string;
+}) {
     const { message } = App.useApp();
     const [view, setView] = useState<ChatGptProxyView | null>(null);
     const [defaults, setDefaults] = useState<{ default_reference: ChatGptProxyReference; fallback_reference: ChatGptProxyReference | null }>({ default_reference: { mode: "direct" }, fallback_reference: null });
@@ -60,7 +80,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
     const loadRevision = useRef(0);
     const load = useCallback(async () => {
         const revision = ++loadRevision.current;
-        const result = await chatGptApiRequest<ChatGptProxyView>("proxies");
+        const result = await request<ChatGptProxyView>("proxies");
         if (!mounted.current || revision !== loadRevision.current) return;
         setView(result);
         setDefaults({ default_reference: result.default_reference, fallback_reference: result.fallback_reference });
@@ -98,7 +118,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
     };
     const updateNode = (index: number, patch: Partial<ChatGptProxyNode>) => setDraft((current) => current && { ...current, nodes: current.nodes.map((node, cursor) => (cursor === index ? { ...node, ...patch } : node)) });
     const testGroup = (id: string, nodeId?: string) =>
-        chatGptApiRequest<{ summary: { message: string }; results: Array<{ node_id: string; result: { ok: boolean; latency_ms: number; error?: string | null } }> }>("proxies/groups/test", json({ id, ...(nodeId ? { node_id: nodeId } : {}) }));
+        request<{ summary: { message: string }; results: Array<{ node_id: string; result: { ok: boolean; latency_ms: number; error?: string | null } }> }>("proxies/groups/test", json({ id, ...(nodeId ? { node_id: nodeId } : {}) }));
     const applyGroupTest = async (id: string, nodeId?: string) => {
         const outcome = await act(`test-${nodeId || id}`, () => testGroup(id, nodeId), false);
         if (!outcome.ok) return;
@@ -110,7 +130,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
         if (!draft) return;
         const group = draft;
         const outcome = await act("save", () =>
-            chatGptApiRequest(
+            request(
                 "proxies/groups",
                 json({
                     id: group.id,
@@ -133,7 +153,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
         const outcome = await act(
             "import",
             async () => {
-                const result = await chatGptApiRequest<{ nodes: Array<{ url: string; image_concurrency_limit: number }>; invalid_count: number; duplicate_count: number }>("proxies/nodes/import", json({ text: importText }));
+                const result = await request<{ nodes: Array<{ url: string; image_concurrency_limit: number }>; invalid_count: number; duplicate_count: number }>("proxies/nodes/import", json({ text: importText }));
                 if (result.invalid_count) throw new Error(`有 ${result.invalid_count} 行无效，请检查代理地址；未添加节点`);
                 return result;
             },
@@ -149,45 +169,53 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
     return (
         <Panel>
             <PanelHeader
-                title="代理管理"
-                description="维护代理管理的已存出口与回退配置。它们不是额外代理模式：全局仅会使用代理管理或魔法代理。"
+                title={title}
+                description={description}
                 actions={
                     <>
                         <Button loading={busy === "load"} disabled={Boolean(busy)} icon={<RefreshCw className="size-4" />} onClick={() => void act("load", load, false)}>
                             刷新代理
                         </Button>
-                        <Button type="primary" disabled={Boolean(busy)} icon={<Plus className="size-4" />} onClick={() => setDraft(newGroup())}>
-                            新建代理组
-                        </Button>
+                        {showGroups ? (
+                            <Button type="primary" disabled={Boolean(busy)} icon={<Plus className="size-4" />} onClick={() => setDraft(newGroup())}>
+                                新建代理组
+                            </Button>
+                        ) : null}
                     </>
                 }
             />
             <div className="space-y-4 p-3 sm:p-5" data-chatgpt-proxy-manager>
-                <ChatGptProxyRuntimeControl controller={proxyRuntime} target="manual" />
+                {showDefaults && showSourceSwitch && proxyRuntime ? <ChatGptProxyRuntimeControl controller={proxyRuntime} target="manual" /> : null}
                 {error ? <Alert type="error" showIcon title={error} /> : null}
                 {view ? (
                     <>
+                        {showDefaults ? (
                         <div className="grid gap-4 sm:grid-cols-2">
                             <ReferenceEditor label="默认出口" value={defaults.default_reference} groups={view.groups} onChange={(value) => setDefaults((current) => ({ ...current, default_reference: value || { mode: "direct" } }))} />
                             <ReferenceEditor label="失败回退" optional value={defaults.fallback_reference} groups={view.groups} onChange={(value) => setDefaults((current) => ({ ...current, fallback_reference: value }))} />
                         </div>
+                        ) : null}
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <span className="text-xs text-zinc-500">
                                 当前默认：{view.effective_default.label} · 回退：{view.effective_fallback.label}
                             </span>
-                            <Button
-                                type="primary"
-                                loading={busy === "defaults"}
-                                disabled={Boolean(busy)}
-                                onClick={() =>
-                                    void act("defaults", () => chatGptApiRequest("proxies/defaults", json(defaults))).then((outcome) => {
-                                        if (outcome.ok) message.success("代理出口已保存");
-                                    })
-                                }
-                            >
-                                保存出口
-                            </Button>
+                            {showDefaults ? (
+                                <Button
+                                    type="primary"
+                                    loading={busy === "defaults"}
+                                    disabled={Boolean(busy)}
+                                    onClick={() =>
+                                        void act("defaults", () => request("proxies/defaults", json(defaults))).then((outcome) => {
+                                            if (outcome.ok) message.success("代理出口已保存");
+                                        })
+                                    }
+                                >
+                                    保存出口
+                                </Button>
+                            ) : null}
                         </div>
+                        {showGroups ? (
+                        <>
                         <Input.Search aria-label="搜索代理组" placeholder="搜索代理组" value={search} onChange={(event) => setSearch(event.target.value)} />
                         {!view.groups.length ? (
                             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无代理组" />
@@ -208,7 +236,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
                                                     aria-label={`启用代理组 ${group.name}`}
                                                     checked={group.enabled}
                                                     disabled={Boolean(busy)}
-                                                    onChange={(enabled) => void act("group", () => chatGptApiRequest("proxies/groups", json({ id: group.id, enabled })))}
+                                                    onChange={(enabled) => void act("group", () => request("proxies/groups", json({ id: group.id, enabled })))}
                                                 />
                                                 <Button disabled={Boolean(busy)} onClick={() => setDraft({ ...group, nodes: group.nodes.map((node) => ({ ...node, url: "" })) })}>
                                                     编辑
@@ -216,7 +244,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
                                                 <Button disabled={Boolean(busy)} loading={busy === `test-${group.id}`} onClick={() => void applyGroupTest(group.id)}>
                                                     测试代理组
                                                 </Button>
-                                                <Popconfirm title="删除这个代理组？" okText="删除" cancelText="取消" onConfirm={() => act("delete", () => chatGptApiRequest(`proxies/groups/${encodeURIComponent(group.id)}`, { method: "DELETE" }))}>
+                                                <Popconfirm title="删除这个代理组？" okText="删除" cancelText="取消" onConfirm={() => act("delete", () => request(`proxies/groups/${encodeURIComponent(group.id)}`, { method: "DELETE" }))}>
                                                     <Button danger disabled={Boolean(busy) || !group.can_delete}>
                                                         删除
                                                     </Button>
@@ -243,6 +271,8 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
                                     </div>
                                 ))
                         )}
+                        </>
+                        ) : null}
                     </>
                 ) : null}
             </div>
@@ -273,7 +303,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
                             ) : null}
                         </div>
                         <Input aria-label="代理组备注" placeholder="备注" value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} />
-                        <p className="text-xs text-zinc-500">支持 HTTP、HTTPS、SOCKS5。已有节点地址不回显，留空保留；填写新地址则替换。图片并发 0 表示不限。</p>
+                        <p className="text-xs text-zinc-500">支持 HTTP、HTTPS、SOCKS5；地址可填 http://用户名:密码@主机:端口、socks5://… 或 主机:端口:用户名:密码（默认按 HTTP）。已有节点地址不回显，留空保留；填写新地址则替换。图片并发 0 表示不限。</p>
                         {draft.nodes.map((node, index) => (
                             <div key={node.id || index} className="space-y-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                                 <div className="flex items-center gap-2">
@@ -284,7 +314,7 @@ export function ChatGptProxyManager({ proxyRuntime }: { proxyRuntime: ChatGptPro
                                 <Input.Password
                                     aria-label={`节点 ${index + 1} 代理地址`}
                                     autoComplete="off"
-                                    placeholder={node.id ? "留空保留现有地址" : "http://用户名:密码@主机:端口"}
+                                    placeholder={node.id ? "留空保留现有地址" : "http://用户名:密码@主机:端口 或 主机:端口:用户名:密码"}
                                     value={node.url}
                                     onChange={(event) => updateNode(index, { url: event.target.value })}
                                 />

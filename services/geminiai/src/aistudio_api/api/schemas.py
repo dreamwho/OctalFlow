@@ -6,6 +6,10 @@ from pydantic import BaseModel
 from aistudio_api.config import DEFAULT_IMAGE_MODEL, DEFAULT_TEXT_MODEL
 
 
+class RuntimeProxyPayload(BaseModel):
+    proxy_url: str = ""
+
+
 class MessageContent(BaseModel):
     type: str
     text: Optional[str] = None

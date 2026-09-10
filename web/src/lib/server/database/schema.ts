@@ -281,9 +281,13 @@ CREATE TABLE IF NOT EXISTS gemini_tools_request_logs (
     key_prefix text,
     request_preview text,
     response_preview text,
+    phase text NOT NULL DEFAULT 'success',
+    lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb,
     CONSTRAINT gemini_tools_request_logs_protocol_check CHECK (protocol IN ('openai', 'gemini', 'anthropic', 'admin-test'))
 );
 CREATE INDEX IF NOT EXISTS gemini_tools_request_logs_created_idx ON gemini_tools_request_logs (created_at DESC);
+ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS phase text NOT NULL DEFAULT 'success';
+ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb;
 CREATE INDEX IF NOT EXISTS gemini_tools_request_logs_status_idx ON gemini_tools_request_logs (status_code, created_at DESC);
 CREATE INDEX IF NOT EXISTS gemini_tools_request_logs_model_idx ON gemini_tools_request_logs (model, created_at DESC);
 
@@ -302,12 +306,16 @@ CREATE TABLE IF NOT EXISTS geminiai_request_logs (
     error text,
     request_preview text,
     response_preview text,
+    phase text NOT NULL DEFAULT 'success',
+    lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb,
     CONSTRAINT geminiai_request_logs_source_check CHECK (source IN ('runtime', 'admin-test')),
     CONSTRAINT geminiai_request_logs_capability_check CHECK (capability IN ('text', 'image', 'search'))
 );
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_created_idx ON geminiai_request_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_status_idx ON geminiai_request_logs (status_code, created_at DESC);
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_model_idx ON geminiai_request_logs (model, created_at DESC);
+ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS phase text NOT NULL DEFAULT 'success';
+ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS dreamina_cli_account_state (
     id text PRIMARY KEY DEFAULT 'default',

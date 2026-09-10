@@ -10,17 +10,14 @@ function renderSection() {
 }
 
 describe("AdminChatGptApiSection", () => {
-    it("renders six accessible tabs and reuses the shared request log panel", () => {
+    it("renders five accessible tabs with the merged proxy management tab", () => {
         const markup = renderSection();
 
         expect(markup).toContain('aria-label="账号与渠道"');
         expect(markup).toContain('aria-label="反代网关与 API 密钥"');
-        expect(markup).toContain('aria-label="魔法代理"');
         expect(markup).toContain('aria-label="请求日志"');
         expect(markup).toContain('aria-label="统计报表"');
         expect(markup).toContain('aria-label="代理管理"');
-        expect(markup).toContain("data-chatgpt-proxy-runtime-master");
-        expect(markup).toContain('aria-label="使用代理"');
         expect(markup).toContain("max-sm:[&amp;_.ant-tabs-nav-list]:w-full");
         expect(markup).toContain("max-sm:[&amp;_.ant-tabs-tab]:flex-1");
         expect(markup).toMatch(/<div(?=[^>]*data-chatgpt-api-tab-panel="overview")(?=[^>]*class="space-y-4")/);

@@ -35,6 +35,9 @@ export type GeminiToolsLog = {
     keyPrefix?: string;
     requestPreview?: string;
     responsePreview?: string;
+    proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
+    phase?: "queued" | "running" | "success" | "failed";
+    lifecycle?: Array<{ time: string; phase: "queued" | "running" | "success" | "failed"; message: string }>;
 };
 export type GeminiToolsGateway = { enabled: boolean; strategy: "round_robin" | "priority"; sessionStickiness: boolean };
 export type GeminiToolsModel = { id: string; name: string; enabled: boolean; available: boolean };

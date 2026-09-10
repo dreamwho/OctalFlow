@@ -91,3 +91,27 @@ export const testMagicProxyAllNodes = () =>
         method: "POST",
         body: json({}),
     });
+
+export type MagicProxyGoogleTestItem = {
+    service: "geminiai" | "geminiTools" | "chatgptApi";
+    serviceTitle: string;
+    group: string;
+    activeNode: string;
+    enabled: boolean;
+    ok: boolean;
+    delay?: number;
+    error?: string;
+};
+
+export type MagicProxyGoogleTestReport = {
+    targetUrl: string;
+    testedAt: string;
+    overallOk: boolean;
+    items: MagicProxyGoogleTestItem[];
+};
+
+export const testMagicProxyGoogle = (node?: string) =>
+    request<MagicProxyGoogleTestReport>("/api/admin/magic-proxy", {
+        method: "POST",
+        body: json({ action: "testGoogle", node: node || undefined }),
+    });

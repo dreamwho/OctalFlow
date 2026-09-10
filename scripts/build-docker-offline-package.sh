@@ -235,15 +235,9 @@ seed_env_example_from_local_env OCTALAICANVAS_CHATGPT_API_KEY
 seed_env_example_from_local_env OCTALAICANVAS_MAGIC_PROXY_SECRET
 seed_env_example_from_local_env OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS
 seed_env_example_from_local_env OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS
-seed_env_example_from_local_env PORT
-seed_env_example_from_local_env NEXT_PUBLIC_SITE_URL
-if [[ -f "$REPO_ROOT/.env" ]]; then
-    install -m 0600 "$REPO_ROOT/.env" "$PACKAGE_DIR/.env"
-    printf '已将本地完整 .env 配置打入离线部署包（权限 0600）\n'
-fi
 if [[ "$seeded_oauth_keys" == 1 ]]; then
     chmod 0600 "$PACKAGE_DIR/.env.example"
-    printf '已将本地关键环境变量（OAuth/AIStudio/ChatGPT API代理等）注入部署包模板（部署时会自动种子到服务器 .env）\n'
+    printf '已将本地关键环境变量（OAuth/AIStudio/ChatGPT API代理/私网放行等）注入部署包模板（部署时会自动种子到服务器 .env）\n'
 fi
 mkdir -p "$PACKAGE_DIR/docker/mihomo"
 install -m 0644 "$REPO_ROOT/docker/mihomo/bootstrap.yaml" "$PACKAGE_DIR/docker/mihomo/bootstrap.yaml"

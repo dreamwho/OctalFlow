@@ -123,6 +123,16 @@ class CallDetailPresentation(RequestDetailPresentation):
     attempt_groups: list[AttemptGroupPresentation] = Field(default_factory=list)
 
 
+class ProxyEgressSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["magic", "generic"] = "generic"
+    group_id: str = ""
+    node_id: str = ""
+    node_name: str = ""
+    address: str = ""
+
+
 class CallSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -154,6 +164,7 @@ class CallSummary(BaseModel):
     attempt_count: int = Field(ge=0)
     switch_count: int = Field(ge=0)
     recovered_after_switch: bool
+    proxy_egress: ProxyEgressSnapshot | None = None
     presentation: CallPresentation
 
 

@@ -58,6 +58,14 @@ vi.mock("@/lib/server/magic-proxy-service", () => ({
     ensureMagicProxyProvider: mocks.ensureMagicProxy,
     MagicProxyError: class MagicProxyError extends Error {},
 }));
+vi.mock("@/lib/server/geminiai-request-log-store", () => ({
+    appendGeminiAiRequestLog: vi.fn(async () => ({})),
+    openGeminiAiRequestLog: vi.fn(async () => ""),
+    markGeminiAiRequestLogRunning: vi.fn(async () => undefined),
+    settleGeminiAiRequestLog: vi.fn(async () => undefined),
+    listGeminiAiProxyEgressLogsPage: vi.fn(async () => ({ items: [], total: 0, has_more: false })),
+    listGeminiAiRequestLogs: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, stats: { total: 0, success: 0, failed: 0, averageDurationMs: 0 } })),
+}));
 vi.mock("@/lib/server/security", () => ({
     checkMediaProxyRateLimit: mocks.checkMediaProxyRateLimit,
     isSafeOutboundUrl: mocks.safeUrl,
@@ -1088,7 +1096,7 @@ describe("GeminiAI provider-managed proxy", () => {
     });
 
     it("keeps the sidecar credential server-only while routing a real text runtime request", async () => {
-        const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ choices: [{ message: { content: "GeminiAI OK" } }] }));
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ choices: [{ message: { content: "GeminiAI OK" } }] }));
 
         const response = await POST(chatRequest({ model: "gemini-3.1-pro-preview", messages: [{ role: "user", content: "hello" }] }), textContext());
 

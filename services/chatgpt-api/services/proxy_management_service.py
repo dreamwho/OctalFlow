@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import re
 import threading
 from typing import Any, Callable, Iterable, Literal, Mapping, TypeVar
 from urllib.parse import urlparse
@@ -40,10 +41,13 @@ from services.proxy_service import (
     proxy_node_image_concurrency_limit,
     proxy_selection_from_configuration,
 )
+from services.proxy_service import _colon_proxy_to_url
 from services.storage.configuration_repository import proxy_configuration_repository
 
 
 PROXY_SCHEMA_VERSION = 1
+_GENERIC_PROXY_BINDING_PROVIDERS = {"geminiai", "geminiTools", "chatgptApi"}
+_GENERIC_PROXY_BINDING_TARGET_PATTERN = re.compile(r"^(?:node|group):[\w-]+$")
 _PROXY_GROUP_STRATEGIES = {"request_random", "time_window", "round_robin"}
 _PROXY_URL_SCHEMES = {"http", "https", "socks5", "socks5h"}
 _PROXY_NODE_IMPORT_MAX_LINES = 10_000
@@ -168,7 +172,10 @@ def _normalized_proxy_node_url(value: object) -> tuple[str, str]:
     if any(char.isspace() for char in raw):
         return "", "proxy node url cannot contain whitespace"
     if "://" not in raw:
-        return "", "proxy node url must start with http://, https://, socks5://, or socks5h://"
+        converted = _colon_proxy_to_url(raw)
+        if converted == raw:
+            return "", "proxy node url must start with http://, https://, socks5://, or socks5h://, or use host:port[:user:pass]"
+        raw = converted
 
     try:
         parsed = urlparse(raw)
@@ -233,6 +240,9 @@ def _proxy_import_error_text(error: str) -> str:
         "proxy node url must start with http://, https://, socks5://, or socks5h://": (
             "请填写以 http://、https://、socks5:// 或 socks5h:// 开头的地址"
         ),
+        "proxy node url must start with http://, https://, socks5://, or socks5h://, or use host:port[:user:pass]": (
+            "请填写以 http://、https://、socks5:// 或 socks5h:// 开头的地址，或使用 host:port:用户名:密码 格式"
+        ),
         "proxy node url has an invalid host or port": "代理主机或端口格式无效",
         "proxy node url uses an unsupported scheme": "仅支持 HTTP、HTTPS 和 SOCKS5 代理",
         "proxy node url requires a host": "缺少代理主机",
@@ -244,6 +254,27 @@ def _proxy_import_error_text(error: str) -> str:
         "proxy node url has an invalid internationalized host": "国际化域名格式无效",
     }
     return translations.get(error, error)
+
+
+_PROXY_GROUP_ERROR_TRANSLATIONS = {
+    "generic proxy binding provider is invalid": "通用代理来源标识无效",
+    "generic proxy binding target must be node:<id> or group:<id>": "通用代理出口必须选择代理节点或整组",
+    "proxy group already exists": "代理组已存在",
+    "proxy group id is required": "缺少代理组标识",
+    "unsupported proxy group strategy": "不支持的代理组轮换策略",
+    "proxy group requires at least one proxy node": "代理组至少需要保留一个节点",
+    "duplicate proxy node id": "节点标识重复",
+    "duplicate proxy node url": "节点地址重复",
+}
+
+
+def proxy_group_error_text(error: object) -> str:
+    """Translate a proxy group validation error into admin-facing Chinese text."""
+    text = _clean_text(error) or "proxy group is invalid"
+    prefix, sep, suffix = text.rpartition(": ")
+    if sep and suffix and not any(char.isspace() for char in suffix):
+        return f"{proxy_group_error_text(prefix)}（节点 {suffix}）"
+    return _PROXY_GROUP_ERROR_TRANSLATIONS.get(text) or _proxy_import_error_text(text)
 
 
 class ProxyManagementService:
@@ -325,6 +356,41 @@ class ProxyManagementService:
                 },
             })
         return self._proxy_selection_payload(updated)
+
+    def generic_proxy_bindings(self) -> dict[str, object]:
+        snapshot = self._snapshot()
+        raw = snapshot.get("generic_proxy_bindings")
+        raw = raw if isinstance(raw, dict) else {}
+        bindings: dict[str, object] = {}
+        for provider in sorted(_GENERIC_PROXY_BINDING_PROVIDERS):
+            value = raw.get(provider)
+            value = value if isinstance(value, dict) else {}
+            bindings[provider] = {
+                "enabled": value.get("enabled") is True,
+                "target": _clean_text(value.get("target")),
+            }
+        return {"bindings": bindings, "revision": self._revision(snapshot)}
+
+    def save_generic_proxy_binding(self, *, provider: object, enabled: object, target: object) -> dict[str, object]:
+        normalized_provider = _clean_text(provider)
+        if normalized_provider not in _GENERIC_PROXY_BINDING_PROVIDERS:
+            raise ValueError("generic proxy binding provider is invalid")
+        if not isinstance(enabled, bool):
+            raise ValueError("generic proxy binding enabled must be boolean")
+        normalized_target = _clean_text(target)
+        if enabled and not _GENERIC_PROXY_BINDING_TARGET_PATTERN.match(normalized_target):
+            raise ValueError("generic proxy binding target must be node:<id> or group:<id>")
+        with self._mutation_lock:
+            snapshot = self._snapshot()
+            raw = snapshot.get("generic_proxy_bindings")
+            raw = raw if isinstance(raw, dict) else {}
+            next_bindings = {key: dict(value) if isinstance(value, dict) else {} for key, value in raw.items()}
+            next_bindings[normalized_provider] = {
+                "enabled": enabled,
+                **({"target": normalized_target} if enabled else {}),
+            }
+            self._config.update({"generic_proxy_bindings": next_bindings})
+        return self.generic_proxy_bindings()
 
     def _proxy_selection_payload(self, snapshot: dict[str, Any]) -> dict[str, object]:
         selection = proxy_selection_from_configuration(snapshot)
@@ -587,8 +653,16 @@ class ProxyManagementService:
             if label not in labels:
                 labels.append(label)
 
-        append(self._configured_group_reference(snapshot.get("proxy")), "默认出口")
-        append(self._configured_group_reference(snapshot.get("fallback_proxy")), "备用出口")
+        for value, label in ((snapshot.get("proxy"), "默认出口"), (snapshot.get("fallback_proxy"), "备用出口")):
+            raw = _clean_text(value)
+            group_ref = self._configured_group_reference(raw)
+            if group_ref:
+                append(group_ref, label)
+                continue
+            if raw.lower().startswith("node:"):
+                located = self._locate_stored_node(snapshot, raw.split(":", 1)[1])
+                if located is not None:
+                    append(_clean_text(located[0].get("id")), label)
 
         account_groups = (
             self._account_group_provider()
@@ -898,6 +972,23 @@ class ProxyManagementService:
             })
         return nodes
 
+    def _locate_stored_node(self, snapshot: dict[str, Any], node_id: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        wanted = _clean_text(node_id)
+        if not wanted:
+            return None
+        for group in self._raw_dict_list(snapshot, "proxy_groups"):
+            if not _clean_text(group.get("id")) or group.get("enabled") is False:
+                continue
+            for node in group.get("nodes") or []:
+                if not isinstance(node, dict):
+                    continue
+                if _clean_text(node.get("id")) == wanted and node.get("enabled", True) is not False and _clean_text(node.get("url")):
+                    return group, node
+        return None
+
+    def _node_exists(self, snapshot: dict[str, Any], node_id: str) -> bool:
+        return self._locate_stored_node(snapshot, node_id) is not None
+
     @staticmethod
     def _parse_reference(value: object, *, empty_is_direct: bool) -> ProxyReference | None:
         raw = _clean_text(value)
@@ -910,6 +1001,11 @@ class ProxyManagementService:
             group_id = _group_reference_id(raw)
             if group_id:
                 return ProxyReference(mode="group", group_id=group_id)
+            return ProxyReference(mode="direct") if empty_is_direct else None
+        if lower.startswith("node:"):
+            node_id = _clean_text(raw.split(":", 1)[1])
+            if node_id:
+                return ProxyReference(mode="node", node_id=node_id)
             return ProxyReference(mode="direct") if empty_is_direct else None
         return ProxyReference(mode="custom", url=raw)
 
@@ -932,6 +1028,13 @@ class ProxyManagementService:
             if group_id not in group_ids:
                 raise ValueError("proxy group not found")
             return f"group:{group_id}"
+        if reference.mode == "node":
+            node_id = _clean_text(reference.node_id)
+            if not node_id:
+                raise ValueError("proxy node id is required")
+            if not self._node_exists(snapshot, node_id):
+                raise ValueError("proxy node not found")
+            return f"node:{node_id}"
         url = _clean_text(reference.url)
         if not url:
             raise ValueError("proxy url is required")
@@ -988,6 +1091,27 @@ class ProxyManagementService:
                 available=available,
                 has_proxy=available,
                 group_id=reference.group_id,
+            )
+        if reference.mode == "node":
+            located = self._locate_stored_node(snapshot, reference.node_id)
+            if located is None:
+                return ProxyEffectiveReference(
+                    source="node",
+                    label=f"代理节点 {reference.node_id}（不存在）",
+                    configured=True,
+                    available=False,
+                    has_proxy=False,
+                    node_id=reference.node_id,
+                )
+            group, node = located
+            return ProxyEffectiveReference(
+                source="node",
+                label=f"{_clean_text(group.get('name'))} · {_clean_text(node.get('name')) or _clean_text(node.get('id'))}",
+                configured=True,
+                available=True,
+                has_proxy=True,
+                group_id=_clean_text(group.get("id")),
+                node_id=_clean_text(node.get("id")),
             )
 
         raw = _clean_text(reference.url)
