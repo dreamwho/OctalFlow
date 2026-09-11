@@ -57,6 +57,52 @@ describe("system channel model capabilities", () => {
         });
     });
 
+    it("repairs a MiniMax channel saved with the generic auto protocol", () => {
+        const normalized = normalizeSystemChannel({
+            id: "minimax-audio",
+            name: "MiniMax 音频",
+            baseUrl: "https://api.minimaxi.cn",
+            apiKey: "saved-minimax-key",
+            apiFormat: "openai",
+            models: ["speech-2.8-hd"],
+            enabled: true,
+            advancedConfig: { protocol: "auto" },
+        } as never);
+
+        expect(normalized.advancedConfig?.protocol).toBe("minimax-audio");
+        expect(normalized.baseUrl).toBe("https://api.minimax.cn");
+        expect(normalized.apiKey).toBe("saved-minimax-key");
+        expect(normalized.models).toContain("music-2.5+");
+        expect(normalized.models).toContain("music-2.5");
+    });
+
+    it("keeps MiniMax voice feature switches across channel normalization", () => {
+        const normalized = normalizeSystemChannelAdvancedConfig({ protocol: "minimax-audio", minimaxVoiceCloneEnabled: false, minimaxVoiceDesignEnabled: false } as never);
+        expect(normalized).toMatchObject({ minimaxVoiceCloneEnabled: false, minimaxVoiceDesignEnabled: false });
+    });
+
+    it("repairs stale Bailian models before saving a MiniMax channel", () => {
+        const normalized = normalizeSystemChannel({
+            id: "minimax-audio",
+            name: "MiniMax 音频",
+            baseUrl: "https://api.minimaxi.com",
+            apiKey: "saved-minimax-key",
+            apiFormat: "openai",
+            models: ["qwen3-tts-vc-2026-01-22"],
+            enabled: true,
+            advancedConfig: { protocol: "minimax-audio", minimaxVoiceCloneEnabled: false, minimaxVoiceDesignEnabled: false },
+        } as never);
+
+        expect(normalized.models).not.toContain("qwen3-tts-vc-2026-01-22");
+        expect(normalized.models).toContain("speech-2.8-hd");
+    });
+
+    it("keeps the dedicated audio provider protocols across channel normalization", () => {
+        expect(normalizeSystemChannelAdvancedConfig({ protocol: "aliyun-bailian-audio" } as never)?.protocol).toBe("aliyun-bailian-audio");
+        expect(normalizeSystemChannelAdvancedConfig({ protocol: "tencent-tokenhub-music" } as never)?.protocol).toBe("tencent-tokenhub-music");
+        expect(normalizeSystemChannel({ id: "aliyun-bailian-audio", name: "阿里云百炼语音", baseUrl: "https://dashscope.aliyuncs.com/api/v1", apiKey: "secret", apiFormat: "openai", models: ["qwen-audio-3.0-tts-flash"], enabled: true, advancedConfig: { protocol: "auto" } as never }).advancedConfig?.protocol).toBe("aliyun-bailian-audio");
+    });
+
     it("normalizes supported capabilities and removes invalid entries", () => {
         const normalized = normalizeSystemChannelAdvancedConfig({
             protocol: "auto",

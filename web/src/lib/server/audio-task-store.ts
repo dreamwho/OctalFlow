@@ -15,8 +15,19 @@ export type AudioTaskConfig = {
     capabilityProfile?: LogicalModelCapabilityProfile;
     advancedConfig?: SystemChannelAdvancedConfig;
     voice?: string;
+    audioMode?: "tts" | "voice-design" | "voice-clone" | "music";
     format?: string;
     speed?: string;
+    volume?: string;
+    pitch?: string;
+    emotion?: string;
+    languageBoost?: string;
+    sampleRate?: string;
+    bitrate?: string;
+    channel?: string;
+    lyrics?: string;
+    isInstrumental?: boolean;
+    lyricsOptimizer?: boolean;
     instructions?: string;
 };
 export type AudioTask = GenerationTaskContext & {
@@ -35,6 +46,7 @@ export type AudioTask = GenerationTaskContext & {
     candidateConfigs?: AudioTaskConfig[];
     attempts?: GenerationAttempt[];
     attemptNo?: number;
+    miniMaxRequestLogId?: string;
 };
 
 export function createAudioTask(input: Omit<AudioTask, "id" | "status" | "createdAt" | "updatedAt">) {
@@ -46,7 +58,7 @@ export async function getAudioTask(id: string) {
     return getStoredGenerationTask<AudioTask>("audio", id);
 }
 
-export async function updateAudioTask(id: string, patch: Partial<Pick<AudioTask, "status" | "config" | "upstream" | "result" | "billing" | "error" | "candidateConfigs" | "attempts" | "attemptNo">>) {
+export async function updateAudioTask(id: string, patch: Partial<Pick<AudioTask, "status" | "config" | "upstream" | "result" | "billing" | "error" | "candidateConfigs" | "attempts" | "attemptNo" | "miniMaxRequestLogId">>) {
     return mutateStoredGenerationTask<AudioTask>("audio", id, GENERATION_TASK_RETENTION_MS, (task) => ({ ...task, ...patch }));
 }
 

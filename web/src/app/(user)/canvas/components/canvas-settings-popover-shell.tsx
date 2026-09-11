@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "antd";
 import { Settings2 } from "lucide-react";
 
 import { readVisualViewportBounds, resolveCreativeComposerPopoverViewportLayout } from "@/components/creative-composer-popover";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { canvasSelectionBorderStyle, canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 export type CanvasSettingsPopoverPlacement = "topLeft" | "top" | "topRight" | "bottomLeft" | "bottom" | "bottomRight";
@@ -14,25 +14,29 @@ type CanvasTheme = (typeof canvasThemes)[keyof typeof canvasThemes];
 
 type CanvasSettingsPopoverShellProps = {
     label: ReactNode;
-    children: (theme: CanvasTheme) => ReactNode;
+    children: (theme: CanvasTheme, close: () => void, openChildOverlay: () => void) => ReactNode;
     buttonClassName?: string;
     defaultButtonClassName: string;
     icon?: ReactNode;
     placement?: CanvasSettingsPopoverPlacement;
     onOpenChange?: (open: boolean) => void;
     buttonAriaLabel?: string;
+    panelWidth?: number;
 };
 
-export function CanvasSettingsPopoverShell({ label, children, buttonClassName, defaultButtonClassName, icon, placement = "topLeft", onOpenChange, buttonAriaLabel }: CanvasSettingsPopoverShellProps) {
+export function CanvasSettingsPopoverShell({ label, children, buttonClassName, defaultButtonClassName, icon, placement = "topLeft", onOpenChange, buttonAriaLabel, panelWidth = 340 }: CanvasSettingsPopoverShellProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
+    const [childOverlayOpen, setChildOverlayOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
-    const updateOpen = (nextOpen: boolean) => {
+    const updateOpen = useCallback((nextOpen: boolean) => {
         setOpen(nextOpen);
+        if (!nextOpen) setChildOverlayOpen(false);
         onOpenChange?.(nextOpen);
-    };
+    }, [onOpenChange]);
+    const openChildOverlay = useCallback(() => setChildOverlayOpen(true), []);
 
     useEffect(() => {
         if (!open) return;
@@ -41,10 +45,9 @@ export function CanvasSettingsPopoverShell({ label, children, buttonClassName, d
             const target = event.target;
             if (!(target instanceof Node)) return;
             if (buttonRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-            if (target instanceof Element && target.closest(".ant-select-dropdown")) return;
+            if (target instanceof Element && target.closest(".ant-select-dropdown, .ant-popover, .ant-modal-root, .ant-modal-wrap, .ant-modal-mask")) return;
             if (document.activeElement instanceof HTMLElement && panelRef.current?.contains(document.activeElement)) document.activeElement.blur();
-            setOpen(false);
-            onOpenChange?.(false);
+            updateOpen(false);
         };
 
         syncPosition();
@@ -56,7 +59,7 @@ export function CanvasSettingsPopoverShell({ label, children, buttonClassName, d
             window.removeEventListener("scroll", syncPosition, true);
             window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
         };
-    }, [onOpenChange, open]);
+    }, [open, updateOpen]);
 
     return (
         <>
@@ -76,8 +79,8 @@ export function CanvasSettingsPopoverShell({ label, children, buttonClassName, d
             </span>
             {open && buttonRect
                 ? createPortal(
-                      <SettingsPanel buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme}>
-                          {children(theme)}
+                      <SettingsPanel buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} panelWidth={panelWidth} childOverlayOpen={childOverlayOpen}>
+                          {children(theme, () => updateOpen(false), openChildOverlay)}
                       </SettingsPanel>,
                       document.body,
                   )
@@ -86,11 +89,11 @@ export function CanvasSettingsPopoverShell({ label, children, buttonClassName, d
     );
 }
 
-function SettingsPanel({ buttonRect, panelRef, placement, theme, children }: { buttonRect: DOMRect; panelRef: React.RefObject<HTMLDivElement | null>; placement: CanvasSettingsPopoverPlacement; theme: CanvasTheme; children: ReactNode }) {
+function SettingsPanel({ buttonRect, panelRef, placement, theme, panelWidth, childOverlayOpen, children }: { buttonRect: DOMRect; panelRef: React.RefObject<HTMLDivElement | null>; placement: CanvasSettingsPopoverPlacement; theme: CanvasTheme; panelWidth: number; childOverlayOpen: boolean; children: ReactNode }) {
     const gap = 8;
     const margin = 12;
     const viewport = readVisualViewportBounds();
-    const width = Math.min(340, viewport.right - viewport.left - margin * 2);
+    const width = Math.min(panelWidth, viewport.right - viewport.left - margin * 2);
     const alignRight = placement.endsWith("Right");
     const alignCenter = placement === "top" || placement === "bottom";
     const left = alignCenter ? buttonRect.left + buttonRect.width / 2 - width / 2 : alignRight ? buttonRect.right - width : buttonRect.left;
@@ -104,16 +107,17 @@ function SettingsPanel({ buttonRect, panelRef, placement, theme, children }: { b
         left: Math.max(viewport.left + margin, Math.min(viewport.right - width - margin, left)),
         ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap } : { top: buttonRect.bottom + gap }),
         maxHeight: layout.maxHeight,
-        background: theme.toolbar.panel,
         borderRadius: 16,
-        boxShadow: "0 18px 54px rgba(28, 25, 23, 0.16)",
+        ...canvasSelectionBorderStyle(theme.toolbar.panel),
         padding: 16,
         overflowY: "auto",
         color: theme.node.text,
+        visibility: childOverlayOpen ? "hidden" : "visible",
+        pointerEvents: childOverlayOpen ? "none" : "auto",
     } as const;
 
     return (
-        <div ref={panelRef} className="canvas-image-settings-popover" style={style} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+        <div ref={panelRef} className="canvas-image-settings-popover" aria-hidden={childOverlayOpen} style={style} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
             {children}
         </div>
     );

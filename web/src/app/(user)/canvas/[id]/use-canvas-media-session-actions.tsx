@@ -49,6 +49,23 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
         imageInputRef.current?.click();
     }, []);
 
+    const replaceAudioNodeFile = useCallback(async (nodeId: string, file: File) => {
+        if (!isAudioFile(file)) throw new Error("请选择 MP3、WAV、M4A、AAC、FLAC 或 OGG 音频文件");
+        const audio = await uploadMediaFile(file, "audio");
+        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
+        setNodes((prev) => prev.map((node) => node.id === nodeId ? {
+            ...node,
+            type: CanvasNodeType.Audio,
+            title: file.name,
+            position: { x: node.position.x + node.width / 2 - spec.width / 2, y: node.position.y + node.height / 2 - spec.height / 2 },
+            width: spec.width,
+            height: spec.height,
+            metadata: replaceCanvasNodeMediaMetadata(node.metadata, audioMetadata(audio)),
+        } : node));
+        setSelectedNodeIds(new Set([nodeId]));
+        setSelectedConnectionId(null);
+    }, [setNodes, setSelectedConnectionId, setSelectedNodeIds]);
+
     const handleImageInputChange = useCallback(
         async (event: ReactChangeEvent<HTMLInputElement>) => {
             const file = event.target.files?.[0];
@@ -64,25 +81,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
             try {
                 if (target?.nodeId) {
                     if (isAudioFile(file)) {
-                        const audio = await uploadMediaFile(file, "audio");
-                        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
-                        setNodes((prev) =>
-                            prev.map((node) =>
-                                node.id === target.nodeId
-                                    ? {
-                                          ...node,
-                                          type: CanvasNodeType.Audio,
-                                          title: file.name,
-                                          position: { x: node.position.x + node.width / 2 - spec.width / 2, y: node.position.y + node.height / 2 - spec.height / 2 },
-                                          width: spec.width,
-                                          height: spec.height,
-                                          metadata: replaceCanvasNodeMediaMetadata(node.metadata, audioMetadata(audio)),
-                                      }
-                                    : node,
-                            ),
-                        );
-                        setSelectedNodeIds(new Set([target.nodeId]));
-                        setSelectedConnectionId(null);
+                        await replaceAudioNodeFile(target.nodeId, file);
                         return;
                     }
                     if (file.type.startsWith("video/")) {
@@ -149,7 +148,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
                 event.target.value = "";
             }
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, nodesRef, screenToCanvas, size.height, size.width],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, nodesRef, replaceAudioNodeFile, screenToCanvas, size.height, size.width],
     );
 
     const handleDrop = useCallback(
@@ -208,6 +207,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
     }, []);
     return {
         handleUploadRequest,
+        replaceAudioNodeFile,
         handleImageInputChange,
         handleDrop,
         pasteAssistantMedia,

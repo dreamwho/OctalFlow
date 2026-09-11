@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { stat, unlink } from "node:fs/promises";
 import { basename, resolve, sep } from "node:path";
 
@@ -11,7 +12,7 @@ import { countLocalMediaReferences } from "@/lib/server/local-media-references";
 import { runImageVariantTaskOnce } from "@/lib/server/media-image-variant-cache";
 import { mediaContentDisposition, requestedImageVariant } from "@/lib/server/local-media-response";
 import { deleteLocalMediaRegistrations, listLocalMediaMigrationRegistrations, listMediaRegistrationsByExternalObjectKeys, registerLocalMediaAsset, type LocalMediaRegistration } from "@/lib/server/local-media-registry";
-import { deleteObjects, getObjectBytes, listObjects, objectExists, putObjectBytes, putObjectFile, signObjectRead, testObjectStorageConnection } from "@/lib/server/object-storage-client";
+import { deleteObject, deleteObjects, getObjectBytes, listObjects, objectExists, putObjectBytes, putObjectFile, signObjectRead, testObjectStorageConnection } from "@/lib/server/object-storage-client";
 import { assertObjectStorageConfigured, getObjectStorageRuntimeConfig, type ObjectStorageRuntimeConfig } from "@/lib/server/object-storage-config";
 
 const MAX_INPUT_PIXELS = 100_000_000;
@@ -19,6 +20,12 @@ const PREVIEW_MARKER = ".octalaicanvas-preview";
 const IMAGE_PREVIEW_READ_URL_TTL_SECONDS = 120;
 const IMAGE_ORIGINAL_READ_URL_TTL_SECONDS = 600;
 const STREAMING_MEDIA_READ_URL_TTL_SECONDS = 3600;
+
+export type TemporaryPublicObject = {
+    objectKey: string;
+    url: string;
+    cleanup: () => Promise<void>;
+};
 
 type ExternalMediaWriteInput = {
     registration: Omit<LocalMediaRegistration, "createdAt" | "storageProvider" | "externalStorageId" | "externalObjectKey" | "externalSyncedAt"> & { createdAt?: string };
@@ -43,6 +50,38 @@ export async function persistExternalMediaIfEnabled(input: ExternalMediaWriteInp
         });
     } catch (error) {
         await deleteObjects(config, [objectKey]).catch(() => undefined);
+        throw error;
+    }
+}
+
+/**
+ * Upload a short-lived public-read object for providers that cannot read local
+ * or private application URLs. This deliberately ignores the normal external
+ * storage write switch: the switch controls persisted media, not provider
+ * transport requirements.
+ */
+export async function createTemporaryPublicObject(input: { bytes: Buffer; contentType: string; originalName?: string; purpose: string }): Promise<TemporaryPublicObject | null> {
+    const config = await getObjectStorageRuntimeConfig();
+    if (!config.bucket || !config.accessKeyId || !config.secretAccessKey) return null;
+    assertObjectStorageConfigured(config);
+    const basePrefix = config.prefix ? `${config.prefix.replace(/\/+$/, "")}/` : "";
+    const objectKey = `${basePrefix}temporary/${safeObjectSegment(input.purpose)}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}${fileExtension(input.originalName, input.contentType)}`;
+    await putObjectBytes(config, {
+        key: objectKey,
+        bytes: input.bytes,
+        contentType: input.contentType,
+        metadata: { purpose: safeObjectSegment(input.purpose) },
+    });
+    try {
+        const url = await signObjectRead(config, {
+            key: objectKey,
+            contentType: input.contentType,
+            contentDisposition: mediaContentDisposition("inline", input.originalName || "reference-audio", input.contentType),
+            expiresIn: STREAMING_MEDIA_READ_URL_TTL_SECONDS,
+        });
+        return { objectKey, url, cleanup: () => deleteObject(config, objectKey) };
+    } catch (error) {
+        await deleteObject(config, objectKey).catch(() => undefined);
         throw error;
     }
 }
@@ -243,6 +282,17 @@ export async function migrateLocalMediaToObjectStorage(limit = 20): Promise<Obje
 
 function mediaObjectKey(config: ObjectStorageRuntimeConfig, scope: LocalMediaRegistration["scope"], storageKey: string) {
     return `${config.prefix}/media/${scope}/${storageKey.replace(/^\/+/, "")}`;
+}
+
+function safeObjectSegment(value: string) {
+    return value.trim().replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 80) || "temporary";
+}
+
+function fileExtension(originalName: string | undefined, contentType: string) {
+    const nameExtension = originalName?.match(/\.[a-z0-9]{1,8}$/i)?.[0].toLowerCase();
+    if (nameExtension) return nameExtension;
+    const mimeExtension = contentType.toLowerCase().split("/")[1]?.replace(/^x-/, "");
+    return mimeExtension ? `.${mimeExtension === "mpeg" ? "mp3" : mimeExtension}` : ".bin";
 }
 
 async function uploadMedia(config: ObjectStorageRuntimeConfig, objectKey: string, input: ExternalMediaWriteInput) {

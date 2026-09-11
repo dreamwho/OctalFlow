@@ -27,6 +27,8 @@ export async function prepareStandaloneAssets({ webRoot, distDir = ".next" }) {
     const targetStaticFiles = await listRelativeFiles(targetStatic);
     const targetPublicFiles = await listRelativeFiles(targetPublic);
     if (!targetStaticFiles.length) throw new Error(`Standalone static directory is empty: ${targetStatic}`);
+    const missingStaticFiles = sourceStaticFiles.filter((file) => !targetStaticFiles.includes(file));
+    if (missingStaticFiles.length) throw new Error(`Standalone static directory is incomplete: ${missingStaticFiles.join(", ")}`);
     const missingPublicFiles = sourcePublicFiles.filter((file) => !targetPublicFiles.includes(file));
     if (missingPublicFiles.length) throw new Error(`Standalone public directory is incomplete: ${missingPublicFiles.join(", ")}`);
 
@@ -117,7 +119,9 @@ async function assertFile(target, message) {
 async function copyDirectoryContents(source, target) {
     await mkdir(target, { recursive: true });
     const entries = await readdir(source, { withFileTypes: true });
-    await Promise.all(entries.map((entry) => cp(path.join(source, entry.name), path.join(target, entry.name), { recursive: true, force: true })));
+    for (const entry of entries) {
+        await cp(path.join(source, entry.name), path.join(target, entry.name), { recursive: true, force: true });
+    }
 }
 
 async function listRelativeFiles(root, current = root) {

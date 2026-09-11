@@ -293,6 +293,22 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
         if (shouldFailRequest(request, model)) return sendJson(response, model.includes("-fail") ? 400 : 503, { error: { message: "fixture audio failure" } });
         return sendBytes(response, 200, "audio/wav", createWave());
     }
+    if (request.method === "POST" && ["/services/audio/tts/SpeechSynthesizer", "/services/aigc/multimodal-generation/generation"].includes(path)) {
+        return sendJson(response, 200, { output: { audio: { url: `${url.origin}/media/fixture.wav` } } });
+    }
+    if (request.method === "POST" && path === "/wand/minimax-music/generation") {
+        return sendJson(response, 200, { base_resp: { status_code: 0, status_msg: "success" }, data: { audio: `${url.origin}/media/fixture.wav`, trace_id: "fixture-tokenhub" } });
+    }
+    if (request.method === "POST" && ["/t2a_v2", "/music_generation"].includes(path)) {
+        const model = requestedModel(body, request.headers["content-type"] || "");
+        if (shouldFailRequest(request, model)) return sendJson(response, model.includes("-fail") ? 400 : 503, { base_resp: { status_code: 1004, status_msg: "fixture MiniMax audio failure" } });
+        return sendJson(response, 200, { base_resp: { status_code: 0, status_msg: "success" }, data: { audio: createWave().toString("hex"), audio_url: `${url.origin}/media/fixture.wav` } });
+    }
+    if (request.method === "POST" && path === "/voice_design") return sendJson(response, 200, { base_resp: { status_code: 0, status_msg: "success" }, voice_id: "fixture-designed-voice", trial_audio: createWave().toString("hex") });
+    if (request.method === "POST" && path === "/files/upload") return sendJson(response, 200, { file: { file_id: 123456 } });
+    if (request.method === "POST" && path === "/voice_clone") return sendJson(response, 200, { base_resp: { status_code: 0, status_msg: "success" }, voice_id: "fixture-cloned-voice", demo_audio: createWave().toString("hex") });
+    if (request.method === "POST" && path === "/get_voice") return sendJson(response, 200, { base_resp: { status_code: 0, status_msg: "success" }, system_voice: [{ voice_id: "fixture-system-voice", voice_name: "Fixture 系统音色" }], voice_cloning: [], voice_generation: [] });
+    if (request.method === "POST" && path === "/delete_voice") return sendJson(response, 200, { base_resp: { status_code: 0, status_msg: "success" } });
     if (request.method === "POST" && path === "/custom/audio") return sendJson(response, 200, { data: { audio_url: `${url.origin}/media/fixture.wav` } });
     if (request.method === "GET" && path === "/media/fixture.wav") return sendBytes(response, 200, "audio/wav", createWave());
     if ((request.method === "POST" || request.method === "DELETE") && /\/(?:cancel|videos\/[^/]+)$/.test(path)) {

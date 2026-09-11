@@ -25,6 +25,9 @@ type SystemChannelProtocol =
     | "lingkeai"
     | "minimax-h3"
     | "minimax-h3-official"
+    | "minimax-audio"
+    | "tencent-tokenhub-music"
+    | "aliyun-bailian-audio"
     | "octalaicanvas-recommended"
     | "globalaiopc"
     | "seedance"
@@ -76,6 +79,9 @@ type SystemChannelAdvancedConfig = {
             supportsReferenceAudio?: boolean;
         }
     >;
+    minimaxVoiceCloneEnabled?: boolean;
+    minimaxVoiceDesignEnabled?: boolean;
+    minimaxMusicEnabled?: boolean;
 };
 
 type ModelChannel = {
@@ -110,9 +116,20 @@ export type AiConfig = {
     videoModel: string;
     textModel: string;
     audioModel: string;
+    audioMode: "tts" | "voice-design" | "voice-clone" | "music";
     audioVoice: string;
     audioFormat: string;
     audioSpeed: string;
+    audioVolume: string;
+    audioPitch: string;
+    audioEmotion: string;
+    audioLanguageBoost: string;
+    audioSampleRate: string;
+    audioBitrate: string;
+    audioChannel: string;
+    audioLyrics: string;
+    audioIsInstrumental: boolean;
+    audioLyricsOptimizer: boolean;
     audioInstructions: string;
     videoSeconds: string;
     vquality: string;
@@ -190,9 +207,20 @@ export const defaultConfig: AiConfig = {
     videoModel: "",
     textModel: "",
     audioModel: "",
+    audioMode: "tts",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
+    audioVolume: "1",
+    audioPitch: "0",
+    audioEmotion: "",
+    audioLanguageBoost: "",
+    audioSampleRate: "32000",
+    audioBitrate: "128000",
+    audioChannel: "1",
+    audioLyrics: "",
+    audioIsInstrumental: false,
+    audioLyricsOptimizer: true,
     audioInstructions: "",
     videoSeconds: "5",
     vquality: "720",
@@ -503,7 +531,12 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
     return {
         ...config,
         model,
-        modelId: logical?.id || value || config.model,
+        // Submit the logical model identity instead of a historical
+        // channel-scoped value such as `channel-id::speech-2.8-hd`.
+        // The server resolves the current highest-priority binding, so a
+        // channel removed or reordered by an administrator cannot capture a
+        // new Canvas request through stale node metadata.
+        modelId: logical?.id || model,
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.advancedConfig?.modelConfigs?.[normalizeModelId(model)]?.apiFormat || channel.apiFormat,

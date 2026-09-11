@@ -169,6 +169,19 @@ export function serializePublicSettings(settings: AuthSettings) {
                 models: channel.models,
                 enabled: channel.enabled,
                 hasApiKey: Boolean(channel.apiKey) || channel.advancedConfig?.authMode === "provider-managed",
+                ...publicAudioAdvancedConfig(channel.advancedConfig),
             })),
+    };
+}
+
+function publicAudioAdvancedConfig(config: AuthSettings["systemChannels"][number]["advancedConfig"]) {
+    if (config?.protocol !== "minimax-audio" && config?.protocol !== "aliyun-bailian-audio") return {};
+    return {
+        advancedConfig: {
+            protocol: config.protocol,
+            ...(typeof config.minimaxVoiceCloneEnabled === "boolean" ? { minimaxVoiceCloneEnabled: config.minimaxVoiceCloneEnabled } : {}),
+            ...(typeof config.minimaxVoiceDesignEnabled === "boolean" ? { minimaxVoiceDesignEnabled: config.minimaxVoiceDesignEnabled } : {}),
+            ...(typeof config.minimaxMusicEnabled === "boolean" ? { minimaxMusicEnabled: config.minimaxMusicEnabled } : {}),
+        },
     };
 }

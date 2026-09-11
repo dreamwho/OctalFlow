@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { mergeSystemChannelSecrets, serializeAdminSettingsForUser, systemChannelWebhookSecretValidationError } from "@/lib/server/admin-channel-config";
 import { auditActorFromRequest, safeRecordAuditLog } from "@/lib/server/audit-log-store";
 import { invalidatePublicSiteSettings } from "@/lib/server/site-metadata";
-import { channelProtocolValidationErrors } from "@/lib/channel-protocol-registry";
+import { applyChannelProtocol, channelProtocolValidationErrors } from "@/lib/channel-protocol-registry";
 import { hasAllAdminPermissions, hasAnyAdminPermission, type AdminPermission } from "@/lib/admin-permissions";
 
 export const runtime = "nodejs";
@@ -48,7 +48,10 @@ export async function PATCH(request: Request) {
         if (body.generationConcurrency && typeof body.generationConcurrency === "object") patch.generationConcurrency = body.generationConcurrency;
         if (body.generationDefaults && typeof body.generationDefaults === "object") patch.generationDefaults = body.generationDefaults;
         if (Array.isArray(body.systemChannels)) {
-            patch.systemChannels = mergeSystemChannelSecrets(body.systemChannels, currentSettings.systemChannels);
+            patch.systemChannels = mergeSystemChannelSecrets(body.systemChannels, currentSettings.systemChannels).map((channel) => {
+                const protocol = channel.advancedConfig?.protocol;
+                return protocol === "minimax-audio" || protocol === "aliyun-bailian-audio" || protocol === "tencent-tokenhub-music" ? applyChannelProtocol(channel, protocol) : channel;
+            });
             const webhookSecretError = patch.systemChannels.map(systemChannelWebhookSecretValidationError).find(Boolean);
             if (webhookSecretError) throw new AuthInputError(webhookSecretError);
         }

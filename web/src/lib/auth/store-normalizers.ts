@@ -758,6 +758,13 @@ export function normalizeSystemChannel(channel: Partial<SystemModelChannel>): Sy
     if (normalized.advancedConfig?.protocol === "yumeng") return applyChannelProtocol(normalized, "yumeng");
     if (normalized.advancedConfig?.protocol === "geminiai") return { ...normalized, name: "Gemini AI Studio" };
     if (normalized.advancedConfig?.protocol === "gemini-tools") return { ...applyChannelProtocol(normalized, "gemini-tools"), name: "Gemini Antigravity Tools" };
+    if (normalized.id === "minimax-audio" || normalized.advancedConfig?.protocol === "minimax-audio") {
+        const baseUrl = normalized.baseUrl.replace(/\/+$/, "");
+        const migrated = /^https:\/\/api\.minimaxi\.cn(?:\/v1)?$/i.test(baseUrl) ? { ...normalized, baseUrl: "https://api.minimax.cn" } : normalized;
+        return applyChannelProtocol(migrated, "minimax-audio");
+    }
+    if (normalized.id === "aliyun-bailian-audio" || normalized.advancedConfig?.protocol === "aliyun-bailian-audio") return applyChannelProtocol(normalized, "aliyun-bailian-audio");
+    if (normalized.id === "tencent-tokenhub-music" || normalized.advancedConfig?.protocol === "tencent-tokenhub-music") return applyChannelProtocol(normalized, "tencent-tokenhub-music");
     if (normalized.id === "chatgpt-api") {
         return {
             ...applyChannelProtocol({ ...normalized, name: "GPTAPI", baseUrl: "", apiKey: "", hasApiKey: false, clearApiKey: false }, "chatgpt-api"),

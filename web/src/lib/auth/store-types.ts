@@ -21,6 +21,9 @@ export type SystemChannelProtocol =
     | "lingkeai"
     | "minimax-h3"
     | "minimax-h3-official"
+    | "minimax-audio"
+    | "tencent-tokenhub-music"
+    | "aliyun-bailian-audio"
     | "octalaicanvas-recommended"
     | "globalaiopc"
     | "seedance"
@@ -83,6 +86,9 @@ export type SystemChannelAdvancedConfig = {
     modelCapabilities?: Record<string, LogicalModelCapability>;
     modelConfigs?: Record<string, SystemChannelModelConfig>;
     operationConfigs?: Partial<Record<LogicalModelCapability, SystemChannelModelConfig>>;
+    minimaxVoiceCloneEnabled?: boolean;
+    minimaxVoiceDesignEnabled?: boolean;
+    minimaxMusicEnabled?: boolean;
 };
 
 export type LegacyUserQuota = {

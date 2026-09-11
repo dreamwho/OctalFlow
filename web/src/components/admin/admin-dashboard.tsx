@@ -48,6 +48,9 @@ const loadRunningHubSection = () => import("@/app/admin/runninghub/components/ad
 const loadGeminiAiSection = () => import("./admin-geminiai-section").then((module) => module.AdminGeminiAiSection);
 const loadGeminiToolsSection = () => import("./admin-gemini-tools-section").then((module) => module.AdminGeminiToolsSection);
 const loadChatGptApiSection = () => import("@/app/admin/chatgpt-api/components/admin-chatgpt-api-section").then((module) => module.AdminChatGptApiSection);
+const loadMiniMaxSection = () => import("./admin-minimax-section").then((module) => module.AdminMiniMaxSection);
+const loadTencentMusicSection = () => import("./admin-tencent-tokenhub-music-section").then((module) => module.AdminTencentTokenHubMusicSection);
+const loadQwenAudioSection = () => import("./admin-qwen-audio-section").then((module) => module.AdminQwenAudioSection);
 const loadGenericProxySection = () => import("./admin-generic-proxy-section").then((module) => module.AdminGenericProxySection);
 const loadDreaminaSection = () => import("./admin-dreamina-section").then((module) => module.AdminDreaminaSection);
 const loadSkillsSection = () => import("./admin-upstream-sections").then((module) => module.AdminSkillsSection);
@@ -82,6 +85,9 @@ const sectionLoaders: Partial<Record<AdminSectionKey, () => Promise<unknown>>> =
     geminiai: loadGeminiAiSection,
     geminiTools: loadGeminiToolsSection,
     chatgptApi: loadChatGptApiSection,
+    minimax: loadMiniMaxSection,
+    tencentMusic: loadTencentMusicSection,
+    qwenAudio: loadQwenAudioSection,
     genericProxy: loadGenericProxySection,
     dreamina: loadDreaminaSection,
     skills: loadSkillsSection,
@@ -116,6 +122,9 @@ const AdminRunningHubSection = dynamic(loadRunningHubSection, { loading: AdminSe
 const AdminGeminiAiSection = dynamic(loadGeminiAiSection, { loading: AdminSectionLoading });
 const AdminGeminiToolsSection = dynamic(loadGeminiToolsSection, { loading: AdminSectionLoading });
 const AdminChatGptApiSection = dynamic(loadChatGptApiSection, { loading: AdminSectionLoading });
+const AdminMiniMaxSection = dynamic(loadMiniMaxSection, { loading: AdminSectionLoading });
+const AdminTencentMusicSection = dynamic(loadTencentMusicSection, { loading: AdminSectionLoading });
+const AdminQwenAudioSection = dynamic(loadQwenAudioSection, { loading: AdminSectionLoading });
 const AdminGenericProxySection = dynamic(loadGenericProxySection, { loading: AdminSectionLoading });
 const AdminDreaminaSection = dynamic(loadDreaminaSection, { loading: AdminSectionLoading });
 const AdminSkillsSection = dynamic(loadSkillsSection, { loading: AdminSectionLoading });
@@ -275,6 +284,9 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "geminiai" ? <AdminGeminiAiSection /> : null}
                     {activeSection === "geminiTools" ? <AdminGeminiToolsSection controller={controller} /> : null}
                     {activeSection === "chatgptApi" ? <AdminChatGptApiSection controller={controller} /> : null}
+                    {activeSection === "minimax" ? <AdminMiniMaxSection controller={controller} /> : null}
+                    {activeSection === "tencentMusic" ? <AdminTencentMusicSection controller={controller} /> : null}
+                    {activeSection === "qwenAudio" ? <AdminQwenAudioSection controller={controller} /> : null}
                     {activeSection === "genericProxy" ? <AdminGenericProxySection /> : null}
                     {activeSection === "dreamina" ? <AdminDreaminaSection /> : null}
                     {activeSection === "skills" ? <AdminSkillsSection controller={controller} /> : null}

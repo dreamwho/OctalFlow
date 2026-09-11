@@ -2,9 +2,9 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { BriefcaseBusiness, ChevronRight, CircleCheck, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, Settings2, Sparkles, Star, Video } from "lucide-react";
+import { BriefcaseBusiness, ChevronRight, CircleCheck, Globe2, Image as ImageIcon, ListChecks, Music2, Palette, RefreshCw, Settings2, Sparkles, Star, Upload, Video } from "lucide-react";
 
-import { canvasThemes } from "@/lib/canvas-theme";
+import { canvasSelectionFlowColors, canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
@@ -91,6 +91,7 @@ export type CanvasNodeProps = {
     onOpenPanel?: (node: CanvasNodeData) => void;
     onImageDimensions?: (nodeId: string, naturalWidth: number, naturalHeight: number) => void;
     onViewImage?: (node: CanvasNodeData) => void;
+    onUpload?: (node: CanvasNodeData) => void;
     onContextMenu: (event: React.MouseEvent, nodeId: string) => void;
 };
 
@@ -153,6 +154,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onOpenPanel,
     onImageDimensions,
     onViewImage,
+    onUpload,
     onContextMenu,
 }: CanvasNodeProps) {
     const themeMode = useThemeStore((state) => state.theme);
@@ -502,9 +504,9 @@ export const CanvasNode = React.memo(function CanvasNode({
                     <svg data-canvas-node-selection-flow aria-hidden="true" className="pointer-events-none absolute inset-0 z-20 size-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
                         <defs>
                             <linearGradient id={selectionFlowId} x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stopColor="#67e8f9" />
-                                <stop offset="48%" stopColor="#818cf8" />
-                                <stop offset="100%" stopColor="#c084fc" />
+                                <stop offset="0%" stopColor={canvasSelectionFlowColors.start} />
+                                <stop offset="48%" stopColor={canvasSelectionFlowColors.middle} />
+                                <stop offset="100%" stopColor={canvasSelectionFlowColors.end} />
                             </linearGradient>
                         </defs>
                         <rect x="0.8" y="0.8" width="98.4" height="98.4" rx={isConfig ? 4 : 3} fill="none" stroke={`url(#${selectionFlowId})`} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
@@ -545,8 +547,11 @@ export const CanvasNode = React.memo(function CanvasNode({
                         upscaleSourceUrl={upscaleSourceUrl}
                         onToggleBatch={() => onToggleBatch?.(data.id)}
                         onSetBatchPrimary={() => onSetBatchPrimary?.(data)}
+                        onUpload={onUpload}
                     />
                 </div>
+
+                {data.type === CanvasNodeType.Audio && onUpload ? <button type="button" data-canvas-no-drag className="absolute left-1/2 top-[-27px] z-40 inline-flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-1 text-[11px] shadow-sm transition hover:brightness-110" style={{ borderColor: theme.node.subtleBorder, background: theme.toolbar.panel, color: theme.node.text }} onClick={(event) => { event.stopPropagation(); onUpload(data); }}><Upload className="size-3" />上传</button> : null}
 
                 {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
 

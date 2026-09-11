@@ -187,8 +187,19 @@ export type CanvasNodeMetadata = {
     videoFrameExtraction?: CanvasVideoFrameExtraction;
     videoFrameExtractionError?: string;
     audioVoice?: string;
+    audioMode?: "tts" | "voice-design" | "voice-clone" | "music";
     audioFormat?: string;
     audioSpeed?: string;
+    audioVolume?: string;
+    audioPitch?: string;
+    audioEmotion?: string;
+    audioLanguageBoost?: string;
+    audioSampleRate?: string;
+    audioBitrate?: string;
+    audioChannel?: string;
+    audioLyrics?: string;
+    audioIsInstrumental?: boolean;
+    audioLyricsOptimizer?: boolean;
     audioInstructions?: string;
     cameraControl?: CameraControlOptions;
     cameraMotions?: Record<
@@ -245,6 +256,7 @@ export type CanvasNodeMetadata = {
     audioTask?: {
         id: string;
         model: string;
+        attemptNo?: number;
     };
 };
 

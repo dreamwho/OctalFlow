@@ -231,7 +231,7 @@ export function AdminExternalStorage() {
             <Panel>
                 <PanelHeader
                     title="外部存储配置"
-                    description="启用后新媒体直接写入 S3 兼容存储；关闭后新媒体恢复写入本机。"
+                    description="启用后新媒体直接写入 S3 兼容存储或阿里云 OSS；关闭后新媒体恢复写入本机。"
                     actions={
                         <>
                             <Tooltip title="检测连接">
@@ -247,6 +247,9 @@ export function AdminExternalStorage() {
                         </>
                     }
                 />
+                <div className="mx-4 mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+                    百炼公网音频模型可复用这里的 OSS 配置：填写 OSS Endpoint（例如 https://oss-cn-hangzhou.aliyuncs.com）、Region、Bucket 和 Access Key。即使关闭“外部存储”写入开关，只要配置完整且连接检测通过，音色复刻仍会使用 OSS 临时上传；提交完成或失败后会自动删除对象。
+                </div>
                 <Form<ObjectStorageSettingsUpdate> form={form} layout="vertical" requiredMark={false} disabled={loadingSettings} onFinish={save}>
                     <div className="px-4 py-5 sm:px-5 sm:py-6">
                         <div className="max-w-[1080px]">

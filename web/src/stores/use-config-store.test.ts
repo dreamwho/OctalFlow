@@ -125,6 +125,19 @@ describe("applyPublicSystemSettings", () => {
         expect(resolveModelRequestConfig(config, "image-plus")).toMatchObject({ model: "gpt-image-2", modelId: "image-plus", baseUrl: "/api/ai/system/channel-b" });
     });
 
+    it("does not submit a stale channel-scoped model identity", () => {
+        const config = applyPublicSystemSettings(defaultConfig, {
+            ...audioSettings,
+            systemChannels: [
+                ...audioSettings.systemChannels!,
+                { id: "legacy-audio", name: "旧渠道", baseUrl: "https://legacy.example.com", apiKey: "", apiFormat: "openai", models: ["speech-v1"], enabled: true, hasApiKey: true },
+            ],
+            logicalModels: [{ ...audioSettings.logicalModels![0], bindings: [{ ...audioSettings.logicalModels![0].bindings[0], channelId: "audio-channel", priority: 1 }, { id: "legacy-binding", channelId: "legacy-audio", upstreamModel: "speech-v1", enabled: true, priority: 2 }] }],
+        });
+
+        expect(resolveModelRequestConfig(config, "legacy-audio::speech-v1")).toMatchObject({ model: "speech-v1", modelId: "speech-v1" });
+    });
+
     it("keeps administrator ordering and hides picker-disabled models without falling back to raw channel models", () => {
         const settings = splitLogicalModelSettings();
         settings.logicalModels = [

@@ -62,12 +62,26 @@ function renderProviderRequest(template: string, values: TemplateValues, align?:
     try {
         parsed = JSON.parse(template);
     } catch {
-        throw new Error("高级请求模板必须是有效 JSON");
+        // Structured template values such as MiniMax's voice_setting/audio_setting
+        // are intentionally inserted as JSON objects instead of quoted strings.
+        // Keep the normal JSON template path untouched, then repair only an
+        // unquoted value immediately following a JSON property separator.
+        const prepared = template.replace(/(:\s*)\{\{\s*([\w.]+)\s*\}\}(\s*[,}])/g, (_match, prefix: string, key: string, suffix: string) => `${prefix}${JSON.stringify(values[key] ?? "")}${suffix}`);
+        try {
+            parsed = JSON.parse(prepared);
+        } catch {
+            throw new Error("高级请求模板必须是有效 JSON");
+        }
     }
     const rendered = renderTemplateValue(parsed, values);
     if (!rendered || typeof rendered !== "object" || Array.isArray(rendered)) throw new Error("高级请求模板必须是 JSON 对象");
     const normalized = align ? align(rendered as Record<string, unknown>, values) : rendered;
-    return pruneEmptyReferenceFields(normalized) as Record<string, unknown>;
+    const result = pruneEmptyReferenceFields(normalized) as Record<string, unknown>;
+    // MiniMax rejects an empty language_boost value instead of treating it as
+    // an omitted optional parameter. Keep the field when the user supplied a
+    // value, but remove the empty placeholder rendered by the protocol preset.
+    if (result.language_boost === "") delete result.language_boost;
+    return result;
 }
 
 export function readProviderString(value: unknown, configuredPath: string | undefined, fallbackKeys: string[]) {

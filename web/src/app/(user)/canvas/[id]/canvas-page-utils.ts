@@ -139,8 +139,19 @@ export function replaceCanvasNodeMediaMetadata(current: CanvasNodeMetadata | und
         videoFrameExtraction: undefined,
         videoFrameExtractionError: undefined,
         audioVoice: undefined,
+        audioMode: undefined,
         audioFormat: undefined,
         audioSpeed: undefined,
+        audioVolume: undefined,
+        audioPitch: undefined,
+        audioEmotion: undefined,
+        audioLanguageBoost: undefined,
+        audioSampleRate: undefined,
+        audioBitrate: undefined,
+        audioChannel: undefined,
+        audioLyrics: undefined,
+        audioIsInstrumental: undefined,
+        audioLyricsOptimizer: undefined,
         audioInstructions: undefined,
         cameraControl: undefined,
         panoramaProjection: undefined,
@@ -177,9 +188,20 @@ export function buildImageGenerationMetadata(type: CanvasImageGenerationType, co
 export function buildAudioGenerationMetadata(config: AiConfig): CanvasNodeMetadata {
     return {
         model: config.model,
+        audioMode: config.audioMode,
         audioVoice: config.audioVoice,
         audioFormat: config.audioFormat,
         audioSpeed: config.audioSpeed,
+        audioVolume: config.audioVolume,
+        audioPitch: config.audioPitch,
+        audioEmotion: config.audioEmotion,
+        audioLanguageBoost: config.audioLanguageBoost,
+        audioSampleRate: config.audioSampleRate,
+        audioBitrate: config.audioBitrate,
+        audioChannel: config.audioChannel,
+        audioLyrics: config.audioLyrics,
+        audioIsInstrumental: config.audioIsInstrumental,
+        audioLyricsOptimizer: config.audioLyricsOptimizer,
         audioInstructions: config.audioInstructions || "",
     };
 }
@@ -286,6 +308,7 @@ export function applyNodeConfigPatch(node: CanvasNodeData, patch: Partial<Canvas
 }
 
 export function normalizeCanvasConfigNodeLayout(node: CanvasNodeData) {
+    if (node.type === CanvasNodeType.Audio && node.height < NODE_DEFAULT_SIZE[CanvasNodeType.Audio].height) return { ...node, height: NODE_DEFAULT_SIZE[CanvasNodeType.Audio].height };
     if (node.type !== CanvasNodeType.Config) return node;
     if (isInteriorDesignNode(node.metadata)) {
         if (node.width === INTERIOR_DESIGN_NODE_SIZE.width && node.height === INTERIOR_DESIGN_NODE_SIZE.height) return node;
@@ -339,10 +362,21 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
         videoGenerateAudio: node?.metadata?.generateAudio || config.videoGenerateAudio || defaultConfig.videoGenerateAudio,
         videoWatermark: node?.metadata?.watermark || config.videoWatermark || defaultConfig.videoWatermark,
+        audioMode: node?.metadata?.audioMode || config.audioMode || defaultConfig.audioMode,
         audioVoice: node?.metadata?.audioVoice || config.audioVoice || defaultConfig.audioVoice,
         audioFormat: node?.metadata?.audioFormat || config.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node?.metadata?.audioSpeed || config.audioSpeed || defaultConfig.audioSpeed,
-        audioInstructions: node?.metadata?.audioInstructions || defaultConfig.audioInstructions,
+        audioVolume: node?.metadata?.audioVolume || config.audioVolume || defaultConfig.audioVolume,
+        audioPitch: node?.metadata?.audioPitch || config.audioPitch || defaultConfig.audioPitch,
+        audioEmotion: node?.metadata?.audioEmotion || config.audioEmotion || defaultConfig.audioEmotion,
+        audioLanguageBoost: node?.metadata?.audioLanguageBoost || config.audioLanguageBoost || defaultConfig.audioLanguageBoost,
+        audioSampleRate: node?.metadata?.audioSampleRate || config.audioSampleRate || defaultConfig.audioSampleRate,
+        audioBitrate: node?.metadata?.audioBitrate || config.audioBitrate || defaultConfig.audioBitrate,
+        audioChannel: node?.metadata?.audioChannel || config.audioChannel || defaultConfig.audioChannel,
+        audioLyrics: node?.metadata?.audioLyrics || config.audioLyrics || defaultConfig.audioLyrics,
+        audioIsInstrumental: node?.metadata?.audioIsInstrumental ?? config.audioIsInstrumental ?? defaultConfig.audioIsInstrumental,
+        audioLyricsOptimizer: node?.metadata?.audioLyricsOptimizer ?? config.audioLyricsOptimizer ?? defaultConfig.audioLyricsOptimizer,
+        audioInstructions: node?.metadata?.audioInstructions || config.audioInstructions || defaultConfig.audioInstructions,
         count: String(node?.metadata?.count || (mode === "image" ? config.canvasImageCount || config.count : config.count) || defaultConfig.count),
     };
 }
@@ -371,7 +405,7 @@ export function sourceNodeReferenceImages(node: CanvasNodeData | null) {
 }
 
 export function isAudioFile(file: File) {
-    return file.type.startsWith("audio/") || /\.(mp3|wav)$/i.test(file.name);
+    return file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(file.name);
 }
 
 export function isHiddenBatchChild(node: CanvasNodeData, nodes: CanvasNodeData[], collapsingBatchIds?: Set<string>) {

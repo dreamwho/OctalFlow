@@ -17,7 +17,7 @@ type RequestOptions = {
     clientRequestId?: string;
 };
 
-export type AudioGenerationTask = { id: string; status?: "pending" | "running" | "success" | "error" | "cancelled"; model: string };
+export type AudioGenerationTask = { id: string; status?: "pending" | "running" | "success" | "error" | "cancelled"; model: string; attemptNo?: number };
 
 type AudioTaskPayload = { task?: AudioGenerationTask & GenerationTaskExecutionState & { result?: { url: string; mimeType: string }; error?: string }; error?: string };
 
@@ -36,6 +36,7 @@ export async function createAudioGenerationTask(config: AiConfig, prompt: string
     const model = requestConfig.model.trim();
     if (!model) throw new Error("请先配置音频模型");
     const format = normalizeAudioFormatValue(config.audioFormat);
+    const audioMode = config.audioMode || "tts";
     const instructions = config.audioInstructions.trim();
     const response = await fetch("/api/audio-tasks", {
         method: "POST",
@@ -43,9 +44,20 @@ export async function createAudioGenerationTask(config: AiConfig, prompt: string
         body: JSON.stringify({
             config: {
                 model: requestConfig.modelId || requestConfig.model,
-                voice: normalizeAudioVoiceValue(config.audioVoice),
+                voice: audioMode === "tts" ? normalizeAudioVoiceValue(config.audioVoice) : "",
+                audioMode,
                 format,
                 speed: normalizeAudioSpeedValue(config.audioSpeed),
+                volume: config.audioVolume,
+                pitch: config.audioPitch,
+                emotion: config.audioEmotion,
+                languageBoost: config.audioLanguageBoost,
+                sampleRate: config.audioSampleRate,
+                bitrate: config.audioBitrate,
+                channel: config.audioChannel,
+                lyrics: config.audioLyrics,
+                isInstrumental: config.audioIsInstrumental,
+                lyricsOptimizer: config.audioLyricsOptimizer,
                 ...(instructions ? { instructions } : {}),
             },
             prompt,

@@ -31,6 +31,13 @@ describe("provider task config", () => {
         expect(buildProviderRequest(template, {}, { model: "video-v1", image: "", images: [] })).toEqual({ model: "video-v1", metadata: { label: "" } });
     });
 
+    it("omits MiniMax language_boost when it is empty", () => {
+        const template = '{"model":"{{model}}","language_boost":"{{language_boost}}"}';
+
+        expect(buildProviderRequest(template, {}, { model: "speech-2.8-hd", language_boost: "" })).toEqual({ model: "speech-2.8-hd" });
+        expect(buildProviderRequest(template, {}, { model: "speech-2.8-hd", language_boost: "Chinese" })).toEqual({ model: "speech-2.8-hd", language_boost: "Chinese" });
+    });
+
     it("fills detected video template examples with the current parameters and reference image", () => {
         const template = '{"model":"{{model}}","prompt":"{{prompt}}","duration":5,"ratio":"16:9","image":"https://...","images":["https://..."]}';
 

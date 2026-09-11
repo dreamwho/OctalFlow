@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { FileText, Link2, LoaderCircle, Maximize2, Minimize2, MoreHorizontal, Music2, Sparkles, X } from "lucide-react";
 import { Button, Modal, Popover, Tooltip } from "antd";
 
@@ -8,20 +8,22 @@ import { GenerationActionButton } from "@/components/generation-action-button";
 import { ModelPicker } from "@/components/model-picker";
 import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
 import { imagePreviewUrl } from "@/lib/media-image-url";
-import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { defaultConfig, modelOptionLabel, modelOptionName, resolveModelRequestConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { MINIMAX_SPEECH_MODELS } from "@/lib/minimax-audio";
+import { isQwenAudioModel, qwenDefaultAudioVoice } from "@/lib/qwen-audio";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasSkillSelector } from "./canvas-skill-selector";
-import { CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
+import { CanvasAudioModePicker, CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
 import { CanvasResourceMentionTextarea, insertTextAtSelection, referenceMentionLabel } from "./canvas-resource-mention-textarea";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasCameraControl } from "./canvas-camera-control";
 import { CanvasCameraMotionPicker } from "./canvas-camera-motion-picker";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasGenerationMode, type CanvasNodeData } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
-import { buildCanvasNodeConfig, canvasAudioConfigPatch, canvasVideoConfigPatch } from "../utils/canvas-node-config";
+import { buildCanvasNodeConfig, canvasAudioConfigPatch, canvasVideoConfigPatch, selectableCanvasAudioModels } from "../utils/canvas-node-config";
 import { PANORAMA_IMAGE_SIZE } from "../utils/canvas-panorama";
 import { cameraMotionPromptToken, type CanvasCameraMotionDefinitions, type CanvasCameraMotionSelection } from "../utils/canvas-camera-motion";
 import { agentSkillSupportsMode, listNodeAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
@@ -35,7 +37,7 @@ type CanvasNodePromptPanelProps = {
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
-    onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, skillIds?: string[]) => void | Promise<void>;
+    onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, skillIds?: string[], metadataOverrides?: Partial<CanvasNodeData["metadata"]>) => void | Promise<void>;
     onStop: (nodeId: string) => void;
     mentionReferences?: CanvasResourceReference[];
     onImageSettingsOpenChange?: (open: boolean) => void;
@@ -47,6 +49,16 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const mode = defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
+    const audioModelOptions = useMemo(() => (mode === "audio" ? selectableCanvasAudioModels(config, config.audioMode) : []), [config, mode]);
+    const unavailableAudioModes = useMemo(() => (mode === "audio" ? (["tts", "voice-clone", "voice-design", "music"] as const).filter((audioMode) => selectableCanvasAudioModels(config, audioMode).length === 0) : []), [config, mode]);
+
+    useEffect(() => {
+        if (mode !== "audio" || !audioModelOptions.length || audioModelOptions.some((model) => modelOptionName(model).toLowerCase() === modelOptionName(config.model).toLowerCase())) return;
+        const nextModel = audioModelOptions[0];
+        const nextUpstreamModel = modelOptionName(resolveModelRequestConfig(config, nextModel).model).trim();
+        onConfigChange(node.id, { model: nextModel, ...(isQwenAudioModel(nextUpstreamModel) ? { audioVoice: qwenDefaultAudioVoice(nextUpstreamModel) } : {}) });
+    }, [audioModelOptions, config, mode, node.id, onConfigChange]);
+
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = isCanvasImageNodeType(node.type) && Boolean(node.metadata?.content);
     const isPanorama = node.type === CanvasNodeType.Panorama;
@@ -176,10 +188,11 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
           : [];
     const optionalSkill = selectedSkills.length && selectedSkills.every((skill) => skill.promptMode === "optional") ? selectedSkills[0] : undefined;
     const missingRequiredReference = selectedSkills.some((skill) => skill.requiresReference) && visibleReferences.length === 0;
-    const canGenerate = Boolean(prompt.trim() || optionalSkill) && !missingRequiredReference;
+    const isAudioCreationMode = mode === "audio" && (config.audioMode === "voice-clone" || config.audioMode === "voice-design");
+    const canGenerate = Boolean(prompt.trim() || optionalSkill) && !missingRequiredReference && !isAudioCreationMode;
     const submit = () => {
         const text = prompt.trim();
-        if ((!text && !optionalSkill) || missingRequiredReference || isRunning) return false;
+        if ((!text && !optionalSkill) || missingRequiredReference || isAudioCreationMode || isRunning) return false;
         const executionSeed = text || optionalSkill?.promptHint || `按「${optionalSkill?.name || "所选 Skill"}」默认流程生成`;
         void onGenerate(node.id, mode, executionSeed, eligibleSelectedSkillIds);
         setPrompt("");
@@ -190,9 +203,29 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         if (submit()) setExpanded(false);
     };
 
+    const changeAudioMode = (audioMode: AiConfig["audioMode"]) => {
+        const availableModels = selectableCanvasAudioModels(config, audioMode);
+        const currentModelIsAvailable = availableModels.some((model) => modelOptionName(model).toLowerCase() === modelOptionName(config.model).toLowerCase());
+        const nextModel = currentModelIsAvailable ? config.model : availableModels[0];
+        const nextUpstreamModel = nextModel ? modelOptionName(resolveModelRequestConfig(config, nextModel).model).trim() : "";
+        onConfigChange(node.id, { audioMode, ...(nextModel && !currentModelIsAvailable ? { model: nextModel } : {}), ...(isQwenAudioModel(nextUpstreamModel) ? { audioVoice: qwenDefaultAudioVoice(nextUpstreamModel) } : {}) });
+    };
+
+    const changeAudioModel = (model: string) => {
+        const upstreamModel = modelOptionName(resolveModelRequestConfig(config, model).model).trim();
+        onConfigChange(node.id, { model, ...(isQwenAudioModel(upstreamModel) ? { audioVoice: qwenDefaultAudioVoice(upstreamModel) } : {}) });
+    };
+
+    const audioModelLabel = (model: string) => {
+        const upstreamModel = modelOptionName(resolveModelRequestConfig(config, model).model).trim();
+        if ((config.audioMode === "voice-clone" || config.audioMode === "voice-design") && MINIMAX_SPEECH_MODELS.includes(upstreamModel as (typeof MINIMAX_SPEECH_MODELS)[number])) return "MiniMax";
+        return modelOptionLabel(config, model);
+    };
+
     const renderModelAndSettings = () => (
         <>
-            <ModelPicker className="min-w-[8.5rem]" config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability={mode} onMissingConfig={() => openConfigDialog(true)} />
+            {mode === "audio" ? <CanvasAudioModePicker value={config.audioMode} disabledModes={unavailableAudioModes} onChange={changeAudioMode} /> : null}
+            <ModelPicker className="min-w-[8.5rem]" config={config} value={config.model} onChange={changeAudioModel} capability={mode} options={mode === "audio" ? audioModelOptions : undefined} getModelLabel={mode === "audio" ? audioModelLabel : undefined} onMissingConfig={() => openConfigDialog(true)} />
             {mode === "image" ? (
                 <>
                     <CanvasImageSettingsPopover
@@ -216,7 +249,17 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     />
                 </>
             ) : mode === "audio" ? (
-                <CanvasAudioSettingsPopover config={config} buttonClassName="canvas-composer-settings !h-7 !max-w-[13rem] !justify-start !rounded-lg !px-2.5" onConfigChange={(key, value) => onConfigChange(node.id, canvasAudioConfigPatch(key, value))} />
+                <CanvasAudioSettingsPopover
+                    config={config}
+                    buttonClassName="canvas-composer-settings !h-7 !max-w-[13rem] !justify-start !rounded-lg !px-2.5"
+                    onConfigChange={(key, value) => onConfigChange(node.id, canvasAudioConfigPatch(key, value))}
+                    sourceAudioUrl={node.type === CanvasNodeType.Audio ? node.metadata?.content : undefined}
+                    clonePromptText={prompt}
+                    onVoiceCloneComplete={(voiceId, promptText) => {
+                        onConfigChange(node.id, { audioVoice: voiceId, audioMode: "tts" });
+                        return onGenerate(node.id, "audio", promptText, [], { audioVoice: voiceId, audioMode: "tts" });
+                    }}
+                />
             ) : null}
         </>
     );

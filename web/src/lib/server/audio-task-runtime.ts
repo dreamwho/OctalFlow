@@ -1,4 +1,4 @@
-import { getAuthSettings, refundUserPoints } from "@/lib/auth/store";
+import { refundUserPoints } from "@/lib/auth/store";
 import { fileTypeFromBuffer } from "file-type";
 import { mediaTaskSource } from "@/lib/media-management-contract";
 import { audioTaskRefundIdempotencyKey, refundAudioTask } from "@/lib/server/audio-task-refund";
@@ -16,6 +16,8 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { GenerationSubmissionSafeFailure, GenerationSubmissionUncertainError, generationSubmissionResponseError, generationSubmissionUncertainError } from "@/lib/server/generation-submission-error";
 import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { appendMiniMaxRequestLog, saveMiniMaxMusicRecord, updateMiniMaxRequestLog } from "@/lib/server/minimax-audio-store";
+import { resolveAudioSampleRate } from "@/lib/server/audio-task-config";
 
 export type AudioUpstreamStep =
     | { state: "pending"; status: string; upstreamTaskId: string; createPath: string; pointsCost?: number; pointsRecordId?: string }
@@ -39,8 +41,33 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
         const candidate = { ...running, config, candidateConfigs: candidates.slice(index + 1), attempts, attemptNo: started.attempt.attemptNo, upstream: undefined, billing: undefined };
         await updateAudioTask(task.id, { config, candidateConfigs: candidate.candidateConfigs, attempts, attemptNo: candidate.attemptNo, upstream: undefined, billing: undefined });
         await scheduleGenerationTask("audio", task.id, { executionPhase: "submitting", nextPollAt: Date.now(), channelId: config.channelId, provider: config.advancedConfig?.protocol || config.apiFormat, lastUpstreamStatus: "submitting" });
+        const minimaxLog = config.advancedConfig?.protocol === "minimax-audio" || config.advancedConfig?.protocol === "aliyun-bailian-audio" || config.advancedConfig?.protocol === "tencent-tokenhub-music"
+            ? index === 0 && running.miniMaxRequestLogId
+                ? { id: running.miniMaxRequestLogId, createdAt: new Date(running.createdAt).toISOString() }
+                : await appendMiniMaxRequestLog({
+                      userId: task.userId,
+                      capability: config.audioMode === "music" || config.model.startsWith("music-") || config.model === "minimax-music-v3.0" ? "music" : "speech",
+                      method: "POST",
+                      path: config.advancedConfig?.createPath || (config.model.startsWith("music-") || config.model === "minimax-music-v3.0" ? "/v1/music_generation" : "/v1/t2a_v2"),
+                      model: config.model,
+                      statusCode: 0,
+                      durationMs: 0,
+                      phase: "running",
+                      requestPreview: JSON.stringify({ model: config.model, mode: config.audioMode || "tts" }),
+                      lifecycle: [{ at: new Date().toISOString(), phase: "running", message: config.advancedConfig?.protocol === "aliyun-bailian-audio" ? "已提交阿里云百炼音频请求" : config.advancedConfig?.protocol === "tencent-tokenhub-music" ? "已提交腾讯云 TokenHub 音乐请求" : "已提交 MiniMax 音频请求" }],
+                      provider: config.advancedConfig?.protocol === "aliyun-bailian-audio" ? "aliyun-bailian" : config.advancedConfig?.protocol === "tencent-tokenhub-music" ? "tencent-tokenhub" : "minimax",
+                  }).then((log) => {
+                      void updateAudioTask(task.id, { miniMaxRequestLogId: log.id });
+                      return log;
+                  }).catch(() => undefined)
+            : undefined;
 
+        let minimaxResponseStatus = 0;
         try {
+            const isQwen = config.advancedConfig?.protocol === "aliyun-bailian-audio";
+            const qwenRate = boundedNumber(config.speed, 0.5, 2, 1);
+            const qwenVolume = config.volume === "1" ? 50 : boundedNumber(config.volume, 0, 100, 50);
+            const qwenPitch = config.pitch === "0" ? 1 : boundedNumber(config.pitch, 0.5, 2, 1);
             const defaults = {
                 model: config.model,
                 input: candidate.prompt,
@@ -50,7 +77,28 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
                 response_format: config.format,
                 format: config.format,
                 speed: Number(config.speed) || 1,
-                ...(config.instructions ? { instructions: config.instructions } : {}),
+                rate: isQwen ? qwenRate : Number(config.speed) || 1,
+                volume: isQwen ? qwenVolume : Number(config.volume) || 1,
+                pitch: isQwen ? qwenPitch : Number(config.pitch) || 0,
+                voice_setting: {
+                    voice_id: config.voice,
+                    speed: Number(config.speed) || 1,
+                    vol: Number(config.volume) || 1,
+                    pitch: Number(config.pitch) || 0,
+                    ...(config.emotion ? { emotion: config.emotion } : {}),
+                },
+                audio_setting: {
+                    sample_rate: Number(resolveAudioSampleRate(config.sampleRate, config.advancedConfig?.protocol)),
+                    bitrate: Number(config.bitrate) || 128000,
+                    format: config.format || "mp3",
+                    channel: Number(config.channel) || 1,
+                },
+                sample_rate: Number(resolveAudioSampleRate(config.sampleRate, config.advancedConfig?.protocol)),
+                language_boost: config.languageBoost || "",
+                lyrics: config.lyrics || candidate.prompt,
+                is_instrumental: config.isInstrumental === true,
+                lyrics_optimizer: config.lyricsOptimizer !== false,
+                instructions: config.instructions || "",
             };
             let payload: Record<string, unknown>;
             try {
@@ -58,7 +106,10 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
             } catch (error) {
                 throw new GenerationSubmissionSafeFailure(error instanceof Error ? error.message : "音频请求模板无效");
             }
+            if (minimaxLog) await updateMiniMaxRequestLog(minimaxLog.id, { statusCode: 0, durationMs: Date.now() - new Date(minimaxLog.createdAt).getTime(), phase: "running", requestPreview: JSON.stringify({ model: config.model, mode: config.audioMode || "tts", request: payload }), lifecycle: [{ at: new Date().toISOString(), phase: "running", message: config.advancedConfig?.protocol === "tencent-tokenhub-music" ? "开始调用腾讯云 TokenHub 音乐接口" : config.advancedConfig?.protocol === "aliyun-bailian-audio" ? "开始调用阿里云百炼音频接口" : "开始调用 MiniMax 音频接口" }] });
             const { response, path } = await createAudioUpstream(candidate, origin, cookie, workerUserId, payload);
+            minimaxResponseStatus = response.status;
+            if (minimaxLog) await updateMiniMaxRequestLog(minimaxLog.id, { statusCode: response.status, durationMs: Date.now() - new Date(minimaxLog.createdAt).getTime(), phase: response.ok ? "running" : "failed", ...(response.ok ? {} : { error: `HTTP ${response.status}` }) });
             const billing = readBilling(response.headers);
             if (billing.pointsRecordId) await updateAudioTask(task.id, { billing: { pointsCost: billing.pointsCost ?? 0, pointsRecordId: billing.pointsRecordId, refunded: false } });
             const contentType = response.headers.get("content-type")?.split(";")[0].toLowerCase() || "";
@@ -66,6 +117,7 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
                 const completed = await persistAudioBytes(candidate, origin, Buffer.from(await response.arrayBuffer()), contentType);
                 if (completed?.status === "success") {
                     await markAudioAttemptSucceeded(candidate, billing);
+                    if (minimaxLog) await updateMiniMaxRequestLog(minimaxLog.id, { statusCode: response.status, durationMs: Date.now() - new Date(minimaxLog.createdAt).getTime(), phase: "success", responsePreview: "音频已返回并持久化", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音频已生成" }] });
                     return { state: "completed" };
                 }
                 return { state: "failed", status: completed?.status || "cancelled", error: completed?.error || "任务已取消" };
@@ -78,7 +130,21 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
                 throw new GenerationSubmissionUncertainError("音频接口返回了无效 JSON，创建结果待确认");
             }
             if (isProviderBusinessError(data)) throw new GenerationSubmissionSafeFailure(readProviderError(data) || "音频接口返回失败");
-            const directUrl = readProviderString(data, config.advancedConfig?.resultField, AUDIO_KEYS);
+            if (config.advancedConfig?.protocol === "minimax-audio") {
+                const statusCode = readProviderString(data, "base_resp.status_code", []);
+                if (statusCode && statusCode !== "0") throw new GenerationSubmissionSafeFailure(readProviderString(data, "base_resp.status_msg", []) || "MiniMax 音频接口返回失败");
+                const hexAudio = readProviderString(data, "data.audio", []);
+                if (isHexAudio(hexAudio)) {
+                    const completed = await persistAudioBytes(candidate, origin, Buffer.from(hexAudio, "hex"), mimeFromFormat(config.format || "mp3"), false);
+                    if (completed?.status === "success") {
+                        await markAudioAttemptSucceeded(candidate, billing);
+                        if (minimaxLog) await updateMiniMaxRequestLog(minimaxLog.id, { statusCode: response.status, durationMs: Date.now() - new Date(minimaxLog.createdAt).getTime(), phase: "success", responsePreview: "MiniMax 十六进制音频已解码并持久化", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "MiniMax 音频已完成" }] });
+                        return { state: "completed" };
+                    }
+                    return { state: "failed", status: completed?.status || "cancelled", error: completed?.error || "任务已取消" };
+                }
+            }
+            const directUrl = readProviderString(data, config.advancedConfig?.protocol === "aliyun-bailian-audio" ? "output.audio.url" : config.advancedConfig?.resultField, AUDIO_KEYS);
             if (directUrl) {
                 const submittedAt = Date.now();
                 await scheduleGenerationTask("audio", task.id, {
@@ -91,6 +157,19 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
                     resultPayload: { url: directUrl },
                 });
                 return { state: "result_ready", status: "completed", resultUrl: directUrl, ...billing };
+            }
+            const encodedAudio = readProviderString(data, "output.audio.data", []);
+            if (encodedAudio) {
+                const normalized = encodedAudio.replace(/^data:[^,]+,/, "").trim();
+                if (normalized && /^[A-Za-z0-9+/=\s]+$/.test(normalized)) {
+                    const completed = await persistAudioBytes(candidate, origin, Buffer.from(normalized, "base64"), mimeFromFormat(config.format || "mp3"), false);
+                    if (completed?.status === "success") {
+                        await markAudioAttemptSucceeded(candidate, billing);
+                        if (minimaxLog) await updateMiniMaxRequestLog(minimaxLog.id, { statusCode: response.status, durationMs: Date.now() - new Date(minimaxLog.createdAt).getTime(), phase: "success", responsePreview: "阿里云百炼音频数据已解码并持久化", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音频已生成" }] });
+                        return { state: "completed" };
+                    }
+                    return { state: "failed", status: completed?.status || "cancelled", error: completed?.error || "任务已取消" };
+                }
             }
             const id = readProviderString(data, undefined, ID_KEYS);
             if (!id) throw new GenerationSubmissionUncertainError("音频接口没有返回音频或任务 ID，创建结果待确认");
@@ -108,6 +187,7 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
             });
             return { state: "pending", status: "submitted", upstreamTaskId: id, createPath: path, ...billing };
         } catch (error) {
+            if (minimaxLog) await updateMiniMaxRequestLog(minimaxLog.id, { statusCode: minimaxResponseStatus || (error instanceof GenerationSubmissionSafeFailure ? error.status || 502 : 0), durationMs: Date.now() - new Date(minimaxLog.createdAt).getTime(), phase: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "MiniMax 音频请求失败", lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: error instanceof Error ? error.message.slice(0, 200) : "MiniMax 音频请求失败" }] }).catch(() => undefined);
             if (!(error instanceof GenerationSubmissionSafeFailure)) throw generationSubmissionUncertainError(error, "音频任务创建结果未知");
             latestError = error.message;
             attempts = finishGenerationAttempt(attempts, candidate.attemptNo, { status: "failed", error: latestError });
@@ -147,7 +227,7 @@ export async function queryAudioTaskUpstreamStep(task: AudioTask, origin: string
 export async function persistAudioTaskResult(task: AudioTask, origin: string, resultUrl: string, cookie = "", workerUserId = "") {
     if (/^data:audio\//i.test(resultUrl)) {
         const asset = await writePersistentMediaDataUrl(resultUrl, "audio", mediaContext(task));
-        return completeAudioTask(task, asset.url || `${origin}/api/reference-assets/${asset.token}`, resultUrl.slice(5, resultUrl.indexOf(";")) || mimeFromFormat(task.config.format || "mp3"));
+        return completeAudioTask(task, asset.url || `/api/reference-assets/${asset.token}`, resultUrl.slice(5, resultUrl.indexOf(";")) || mimeFromFormat(task.config.format || "mp3"));
     }
     const path = /^https?:\/\//i.test(resultUrl) ? `/_media?url=${encodeURIComponent(resultUrl)}` : `/${resultUrl.replace(/^\/+/, "")}`;
     const response = await providerFetch(task, origin, cookie, workerUserId, path, { signal: AbortSignal.timeout(resolveModelRequestTimeoutMs(task.config, "audio")) });
@@ -165,11 +245,28 @@ export async function markAudioTaskFailed(task: AudioTask, error: string) {
     }
     const attempts = finishGenerationAttempt(current.attempts || [], current.attemptNo || current.attempts?.at(-1)?.attemptNo || 1, { status: "failed", error, pointsCost: billing?.pointsCost, pointsRecordId: billing?.pointsRecordId });
     await updateAudioTask(current.id, { attempts, candidateConfigs: [], attemptNo: attempts.at(-1)?.attemptNo });
-    return transitionAudioTask(current, ["pending", "running"], { status: "error", error: error.slice(0, 500), config: { ...current.config, apiKey: "" }, billing: billing ? { ...billing, refunded: true } : undefined });
+    const failed = await transitionAudioTask(current, ["pending", "running"], { status: "error", error: error.slice(0, 500), config: { ...current.config, apiKey: "" }, billing: billing ? { ...billing, refunded: true } : undefined });
+    if (failed) {
+        await settleAudioRequestLog(failed, "failed", error);
+        await settleBailianAudioRecord(failed, { status: "failed", error: error.slice(0, 500) });
+    }
+    return failed;
+}
+
+async function settleAudioRequestLog(task: AudioTask, phase: "success" | "failed", message: string) {
+    if (!task.miniMaxRequestLogId) return;
+    await updateMiniMaxRequestLog(task.miniMaxRequestLogId, {
+        statusCode: phase === "success" ? 200 : 502,
+        durationMs: Math.max(0, Date.now() - task.createdAt),
+        phase,
+        ...(phase === "success" ? { responsePreview: message } : { error: message.slice(0, 500) }),
+        lifecycle: [{ at: new Date().toISOString(), phase, message: message.slice(0, 200) }],
+    }).catch(() => undefined);
 }
 
 async function createAudioUpstream(task: AudioTask, origin: string, cookie: string, workerUserId: string, payload: Record<string, unknown>) {
     let lastError = "";
+    let lastStatus = 0;
     const idempotencyKey = `audio-task:${task.id}:attempt:${task.attemptNo || 1}`;
     for (const path of resolvedProviderCreatePaths(task.config.advancedConfig, "audio", ["/audio/speech"])) {
         let response: Response;
@@ -190,10 +287,16 @@ async function createAudioUpstream(task: AudioTask, origin: string, cookie: stri
         }
         if (response.ok) return { response, path };
         lastError = readAudioError(await response.text(), response.status);
+        lastStatus = response.status;
         const responseError = generationSubmissionResponseError(response.status, lastError);
         if (responseError instanceof GenerationSubmissionUncertainError) throw responseError;
     }
-    throw new GenerationSubmissionSafeFailure(lastError || "没有可用的音频创建接口");
+    throw new GenerationSubmissionSafeFailure(lastError || "没有可用的音频创建接口", lastStatus);
+}
+
+function boundedNumber(value: unknown, min: number, max: number, fallback: number) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }
 
 async function refundAudioCandidate(task: AudioTask) {
@@ -203,7 +306,7 @@ async function refundAudioCandidate(task: AudioTask) {
     await refundUserPoints(task.userId, generationModelId(task.config), billing.pointsCost, "audio", 1, audioTaskRefundIdempotencyKey({ id: task.id, attemptNo: task.attemptNo }), billing.pointsRecordId);
 }
 
-async function persistAudioBytes(task: AudioTask, origin: string, bytes: Buffer, responseMime: string) {
+async function persistAudioBytes(task: AudioTask, origin: string, bytes: Buffer, responseMime: string, settleRequestLog = true) {
     if (!bytes.length || bytes.length > 30 * 1024 * 1024) throw new Error("音频结果为空或超过 30MB 限制");
     const detected = await fileTypeFromBuffer(bytes);
     const detectedMime = detected?.mime.startsWith("audio/") ? detected.mime : "";
@@ -211,7 +314,7 @@ async function persistAudioBytes(task: AudioTask, origin: string, bytes: Buffer,
     if (!detectedMime && (!declaredMime || looksLikeTextResponse(bytes))) throw new GenerationSubmissionSafeFailure("音频接口返回的不是有效音频文件");
     const mimeType = detectedMime || declaredMime || mimeFromFormat(task.config.format || "mp3");
     const asset = await writePersistentMediaDataUrl(`data:${mimeType};base64,${bytes.toString("base64")}`, "audio", mediaContext(task));
-    return completeAudioTask(task, asset.url || `${origin}/api/reference-assets/${asset.token}`, mimeType);
+    return completeAudioTask(task, asset.url || `/api/reference-assets/${asset.token}`, mimeType, settleRequestLog);
 }
 
 function looksLikeTextResponse(bytes: Buffer) {
@@ -219,7 +322,7 @@ function looksLikeTextResponse(bytes: Buffer) {
     return prefix.startsWith("<!doctype") || prefix.startsWith("<html") || prefix.startsWith("{") || prefix.startsWith("[");
 }
 
-async function completeAudioTask(task: AudioTask, url: string, mimeType: string) {
+async function completeAudioTask(task: AudioTask, url: string, mimeType: string, settleRequestLog = true) {
     const current = await getAudioTask(task.id);
     if (!current || current.status === "cancelled") {
         if (current?.status === "cancelled") await refundAudioTask(current);
@@ -231,13 +334,43 @@ async function completeAudioTask(task: AudioTask, url: string, mimeType: string)
         if (latest?.status === "cancelled") await refundAudioTask(latest);
         return latest;
     }
+    if (settleRequestLog) await settleAudioRequestLog(completed, "success", "音频结果已生成并持久化");
+    await settleBailianAudioRecord(completed, { status: "success", resultUrl: url, mimeType });
     await registerGenerationTaskAssetsForUser(completed.userId, {
         ...completed,
         taskId: completed.id,
         title: completed.prompt.slice(0, 80) || "生成音频",
         assets: [{ type: "audio", url, mimeType }],
     }).catch((error) => console.error("Creative audio asset registration failed", error));
+    if ((completed.config.advancedConfig?.protocol === "minimax-audio" && completed.config.model.startsWith("music-")) || (completed.config.advancedConfig?.protocol === "tencent-tokenhub-music" && completed.config.model === "minimax-music-v3.0")) {
+        await saveMiniMaxMusicRecord({ userId: completed.userId, name: completed.prompt.slice(0, 80) || "MiniMax 音乐", model: completed.config.model, prompt: completed.config.instructions || completed.prompt, lyrics: completed.config.lyrics || "", resultUrl: url, status: "success", metadata: { format: completed.config.format || "mp3", provider: completed.config.advancedConfig?.protocol === "tencent-tokenhub-music" ? "tencent-tokenhub" : "minimax" } }).catch((error) => console.error("MiniMax music record failed", error));
+    }
     return completed;
+}
+
+async function settleBailianAudioRecord(task: AudioTask, patch: { status: "success" | "failed"; resultUrl?: string; mimeType?: string; error?: string }) {
+    if (task.config.advancedConfig?.protocol !== "aliyun-bailian-audio") return;
+    try {
+        const store = await import("@/lib/server/minimax-audio-store");
+        if (typeof store.updateBailianAudioRecord !== "function") return;
+        const updated = await store.updateBailianAudioRecord(task.id, patch);
+        if (updated || typeof store.saveBailianAudioRecord !== "function") return;
+        await store.saveBailianAudioRecord({
+            taskId: task.id,
+            userId: task.userId,
+            model: task.config.model,
+            audioMode: task.config.audioMode || "tts",
+            prompt: task.config.instructions || "",
+            textContent: task.prompt,
+            voice: task.config.voice,
+            format: task.config.format,
+            sampleRate: task.config.sampleRate,
+            ...patch,
+            metadata: { source: task.source || "", recovered: true },
+        });
+    } catch (error) {
+        console.error("Bailian audio record update failed", error);
+    }
 }
 
 async function markAudioAttemptSucceeded(task: AudioTask, billing: { pointsCost?: number; pointsRecordId?: string }) {
@@ -298,3 +431,8 @@ const STATUS_KEYS = ["status", "state", "task_status", "taskStatus"];
 const AUDIO_KEYS = ["audio_url", "audioUrl", "media_url", "mediaUrl", "output_url", "outputUrl", "result_url", "resultUrl", "url", "uri"];
 const ERROR_KEYS = ["error_message", "errorMessage", "message", "msg", "error"];
 const FAILED = new Set(["failed", "failure", "error", "cancelled", "canceled", "expired"]);
+
+function isHexAudio(value: string) {
+    const normalized = value.trim();
+    return normalized.length >= 32 && normalized.length % 2 === 0 && /^[0-9a-f]+$/i.test(normalized);
+}

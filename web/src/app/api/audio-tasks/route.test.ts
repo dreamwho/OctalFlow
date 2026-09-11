@@ -45,6 +45,20 @@ vi.mock("@/lib/server/audio-task-store", () => ({
 import { POST } from "./route";
 
 describe("audio task model routing", () => {
+    it("rejects direct voice creation as a normal audio task", async () => {
+        const response = await POST(
+            new Request("http://localhost/api/audio-tasks", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ config: { audioMode: "voice-clone", model: "voice" }, prompt: "试听文本" }),
+            }),
+        );
+
+        expect(response.status).toBe(422);
+        expect((await response.json()).error).toContain("必须先完成音色创建");
+        expect(mocks.createAudioTask).not.toHaveBeenCalled();
+    });
+
     it("rejects a forged client model when the backend has no audio default", async () => {
         const response = await POST(
             new Request("http://localhost/api/audio-tasks", {

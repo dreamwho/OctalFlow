@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 
-import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, type ObjectIdentifier } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, type ObjectIdentifier } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { assertObjectStorageConfigured, type ObjectStorageRuntimeConfig } from "@/lib/server/object-storage-config";
@@ -78,7 +78,9 @@ export async function getObjectBytes(config: ObjectStorageRuntimeConfig, key: st
 export async function signObjectRead(config: ObjectStorageRuntimeConfig, input: { key: string; contentType?: string; contentDisposition?: string; expiresIn?: number }) {
     const client = createObjectStorageClient(config);
     try {
-        return await getSignedUrl(client, new GetObjectCommand({ Bucket: config.bucket, Key: input.key, ResponseContentType: input.contentType, ResponseContentDisposition: input.contentDisposition }), {
+        // Keep the object Content-Type written at upload time. Alibaba OSS
+        // rejects S3 presigned reads that override response-content-type.
+        return await getSignedUrl(client, new GetObjectCommand({ Bucket: config.bucket, Key: input.key, ResponseContentDisposition: input.contentDisposition }), {
             expiresIn: Math.max(60, Math.min(3600, input.expiresIn || 600)),
         });
     } finally {
@@ -116,6 +118,22 @@ export async function deleteObjects(config: ObjectStorageRuntimeConfig, keys: st
             const result = await client.send(new DeleteObjectsCommand({ Bucket: config.bucket, Delete: { Objects: objects, Quiet: true } }));
             if (result.Errors?.length) throw new Error(result.Errors.map((error) => `${error.Key || "对象"}: ${error.Message || error.Code || "删除失败"}`).join("；"));
         }
+    } finally {
+        client.destroy();
+    }
+}
+
+/**
+ * Delete one object without using the S3 multi-delete payload. Alibaba OSS
+ * requires Content-MD5 for DeleteObjects, while DeleteObject works with both
+ * Alibaba OSS and the other S3-compatible providers supported here.
+ */
+export async function deleteObject(config: ObjectStorageRuntimeConfig, key: string) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) return;
+    const client = createObjectStorageClient(config);
+    try {
+        await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: normalizedKey }));
     } finally {
         client.destroy();
     }

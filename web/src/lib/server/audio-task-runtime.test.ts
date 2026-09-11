@@ -125,6 +125,8 @@ describe("audio task runtime submission safety", () => {
                 voice: custom ? "nova" : "alloy",
                 format: "wav",
                 speed: custom ? "1.25" : "1",
+                pitch: "-1",
+                sampleRate: "32000",
                 advancedConfig,
             },
             candidateConfigs: [],
@@ -135,13 +137,22 @@ describe("audio task runtime submission safety", () => {
             if (custom) {
                 expect(result).toMatchObject({ state: "result_ready", resultUrl: expect.stringContaining("/media/fixture.wav") });
                 expect(JSON.parse(fixture.requests[0]?.body.toString("utf8") || "{}")).toEqual({ deployment: "custom-audio", content: "test", speaker: "nova", rate: 1.25 });
+            } else if (definition.id === "aliyun-bailian-audio" || definition.id === "tencent-tokenhub-music") {
+                expect(result).toMatchObject({ state: "result_ready", resultUrl: expect.stringContaining("/media/fixture.wav") });
+                if (definition.id === "aliyun-bailian-audio") expect(JSON.parse(fixture.requests[0]?.body.toString("utf8") || "{}")).toMatchObject({ input: { sample_rate: 24000, volume: 50, rate: 1, pitch: 1 } });
             } else {
                 expect(result).toEqual({ state: "completed" });
                 expect(state).toMatchObject({ status: "success", result: { url: "/api/reference-assets/fixture-audio.wav", mimeType: "audio/wav" } });
                 expect(mocks.writeMedia).toHaveBeenCalledWith(expect.stringMatching(/^data:audio\/wav;base64,UklGR/), "audio", expect.objectContaining({ ownerUserId: "user-one", taskId: "audio-one" }));
                 expect(mocks.register).toHaveBeenCalledOnce();
             }
-            expect(fixture.requests[0]).toMatchObject({ method: "POST", path: custom ? "/custom/audio" : "/audio/speech" });
+            expect(fixture.requests[0]).toMatchObject({ method: "POST", path: custom ? "/custom/audio" : definition.id === "minimax-audio" ? "/v1/t2a_v2" : definition.id === "aliyun-bailian-audio" ? "/services/audio/tts/SpeechSynthesizer" : definition.id === "tencent-tokenhub-music" ? "/v1/wand/minimax-music/generation" : "/audio/speech" });
+            if (definition.id === "minimax-audio") {
+                expect(JSON.parse(fixture.requests[0]?.body.toString("utf8") || "{}")).toMatchObject({ model: state.config.model, text: "test", voice_setting: { voice_id: "alloy" }, audio_setting: { sample_rate: 32000, format: "wav" } });
+            }
+            if (definition.id === "tencent-tokenhub-music") {
+                expect(JSON.parse(fixture.requests[0]?.body.toString("utf8") || "{}")).toMatchObject({ model: state.config.model, prompt: "test", output_format: "url" });
+            }
             expect(fixture.requests[0]?.headers.authorization).toBe("Bearer fixture-key");
             expect(fixture.requests[0]?.headers["idempotency-key"]).toBe("audio-task:audio-one:attempt:1");
             expect(fixture.requests[0]?.headers["x-client-request-id"]).toBe("audio-task:audio-one:attempt:1");
@@ -166,6 +177,14 @@ describe("audio task runtime submission safety", () => {
 
         await expect(createAudioTaskUpstreamStep(state, "http://internal")).rejects.toBeInstanceOf(GenerationSubmissionUncertainError);
         expect(state.config.channelId).toBe("channel-one");
+    });
+
+    it("keeps the provider HTTP status on a safe failure", async () => {
+        const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ message: "参数不受支持" }, { status: 422 }));
+        vi.stubGlobal("fetch", fetchMock);
+        state = { ...state, candidateConfigs: [] };
+
+        await expect(createAudioTaskUpstreamStep(state, "http://internal")).resolves.toMatchObject({ state: "failed", error: "参数不受支持" });
     });
 });
 

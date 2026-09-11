@@ -96,9 +96,10 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
     );
 
     const handleGenerateNode = useCallback(
-        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, skillIds: string[] = []) => {
+        async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, skillIds: string[] = [], metadataOverrides: Partial<CanvasNodeData["metadata"]> = {}) => {
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
-            const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
+            const generationSourceNode = sourceNode ? { ...sourceNode, metadata: { ...sourceNode.metadata, ...metadataOverrides } } : sourceNode;
+            const generationConfig = buildGenerationConfig(effectiveConfig, generationSourceNode, mode);
             const interiorDesignConfig = sourceNode?.type === CanvasNodeType.Config && isInteriorDesignNode(sourceNode.metadata);
             const runningHubInterior = interiorDesignConfig && Boolean(sourceNode.metadata?.runningHubAppId);
             if (interiorDesignConfig && !runningHubInterior && !isInteriorDesignModel(effectiveConfig, generationConfig.model)) {
@@ -441,7 +442,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                             conversationId: currentProject?.creativeConversationId,
                             surface: "canvas",
                             projectId,
-                            ...createFreshGenerationTaskContext("canvas-audio", [projectId, audioId]),
+                            ...createFreshGenerationTaskContext("canvas-audio", [projectId, audioId], ""),
                         });
                         setNodes((prev) => prev.map((node) => (node.id === audioId ? { ...node, metadata: { ...node.metadata, audioTask: task } } : node)));
                         await completeAudioTask(audioId, generationConfig, task, controller, effectivePrompt);
@@ -692,7 +693,8 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         conversationId: currentProject?.creativeConversationId,
                         surface: "canvas",
                         projectId,
-                        ...createFreshGenerationTaskContext("canvas-audio-retry", [projectId, node.id]),
+                        ...createFreshGenerationTaskContext("canvas-audio", [projectId, node.id], ""),
+                        attemptNo: (node.metadata?.audioTask?.attemptNo || 1) + 1,
                     });
                     setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, audioTask: task } } : item)));
                     await completeAudioTask(node.id, generationConfig, task, controller, prompt);

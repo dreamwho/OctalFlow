@@ -58,6 +58,7 @@ function publicTask(task: NonNullable<Awaited<ReturnType<typeof getAudioTask>>>)
         id: task.id,
         status: task.status,
         model: generationModelId(task.config),
+        attemptNo: task.attemptNo,
         result: task.result,
         error: task.error,
         billing: task.billing ? { pointsCost: task.billing.pointsCost, refunded: task.billing.refunded } : undefined,

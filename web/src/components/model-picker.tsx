@@ -17,9 +17,10 @@ type ModelPickerProps = {
     placeholder?: string;
     onMissingConfig?: () => void;
     options?: readonly string[];
+    getModelLabel?: (model: string) => string;
 };
 
-export function ModelPicker({ config, value, onChange, capability, className, fullWidth = false, placeholder = "选择模型", onMissingConfig, options: allowedOptions }: ModelPickerProps) {
+export function ModelPicker({ config, value, onChange, capability, className, fullWidth = false, placeholder = "选择模型", onMissingConfig, options: allowedOptions, getModelLabel }: ModelPickerProps) {
     const pickerId = useId();
     const [open, setOpen] = useState(false);
     const configuredOptions = useMemo(() => {
@@ -31,9 +32,10 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
     const current = !capability || !value || configuredOptions.includes(value) ? value || "" : "";
     const options = useMemo(() => {
         const currentOption = !capability || !value || configuredOptions.includes(value) ? value : "";
-        return Array.from(new Set([currentOption, ...configuredOptions].filter((model): model is string => Boolean(model))));
+        return Array.from(new Set((currentOption && !configuredOptions.includes(currentOption) ? [currentOption, ...configuredOptions] : configuredOptions).filter((model): model is string => Boolean(model))));
     }, [capability, configuredOptions, value]);
     const hasConfiguredOptions = configuredOptions.length > 0;
+    const labelForModel = (model: string) => getModelLabel?.(model) || modelOptionLabel(config, model);
 
     useEffect(() => {
         const closeOtherPicker = (event: Event) => {
@@ -67,10 +69,10 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
                 )}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
-                title={current ? modelOptionLabel(config, current) : placeholder}
+                title={current ? labelForModel(current) : placeholder}
             >
                 <ModelIcon model={current} />
-                <span className="canvas-model-picker-text min-w-0 flex-1 truncate text-left">{current ? modelOptionLabel(config, current) : placeholder}</span>
+                <span className="canvas-model-picker-text min-w-0 flex-1 truncate text-left">{current ? labelForModel(current) : placeholder}</span>
             </SelectTrigger>
             <SelectContent
                 data-canvas-no-zoom
@@ -84,8 +86,8 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
             >
                 {options.length ? (
                     options.map((model) => (
-                        <SelectItem key={model} value={model} textValue={modelOptionLabel(config, model)}>
-                            <ModelLabel config={config} model={model} />
+                        <SelectItem key={model} value={model} textValue={labelForModel(model)}>
+                            <ModelLabel config={config} model={model} getModelLabel={getModelLabel} />
                         </SelectItem>
                     ))
                 ) : (
@@ -104,23 +106,24 @@ function emptyModelLabel(config: AiConfig, capability?: ModelCapability) {
     return config.models.length ? `暂无匹配的${label}模型` : "请联系管理员在后台配置渠道和模型";
 }
 
-function ModelLabel({ config, model }: { config: AiConfig; model: string }) {
+function ModelLabel({ config, model, getModelLabel }: { config: AiConfig; model: string; getModelLabel?: (model: string) => string }) {
     return (
         <span className="flex min-w-0 items-center gap-2">
             <ModelIcon model={model} />
-            <span className="truncate">{modelOptionLabel(config, model)}</span>
+            <span className="truncate">{getModelLabel?.(model) || modelOptionLabel(config, model)}</span>
         </span>
     );
 }
 
 export function ModelIcon({ model }: { model: string }) {
     const icon = resolveModelIcon(modelOptionName(model));
-    return icon ? <img src={icon} alt="" className={cn("size-4 shrink-0", icon === "/icons/jimeng.svg" ? "" : "dark:invert")} /> : <Cpu className="size-4 shrink-0 opacity-70" />;
+    const colorIcon = icon === "/icons/jimeng.svg" || icon === "/icons/minimax.svg" || icon === "/icons/qwen.svg";
+    return icon ? <img src={icon} alt="" className={cn("size-4 shrink-0", colorIcon ? "" : "dark:invert")} /> : <Cpu className="size-4 shrink-0 opacity-70" />;
 }
 
 export function resolveModelIcon(model: string) {
     const name = model.toLowerCase();
-    if (name.includes("minimax") || name.includes("hailuo") || name.includes("海螺")) return "/icons/minimax.svg";
+    if (name.includes("minimax") || name.includes("hailuo") || name.includes("海螺") || /(?:^|[-_ ])(?:speech|music)-/i.test(name)) return "/icons/minimax.svg";
     if (name.includes("seedance") || name.includes("seedream") || name.includes("dreamina") || name.includes("jimeng") || name.includes("即梦")) return "/icons/jimeng.svg";
     if (name.includes("claude") || name.includes("anthropic")) return "/icons/claude.svg";
     if (name.includes("gemini") || name.includes("google")) return "/icons/gemini.svg";
@@ -128,5 +131,6 @@ export function resolveModelIcon(model: string) {
     if (name.includes("grok")) return "/icons/grok.svg";
     if (name.includes("deepseek")) return "/icons/deepseek.svg";
     if (name.includes("glm")) return "/icons/glm.svg";
+    if (name.includes("qwen") || name.includes("aliyun") || name.includes("bailian") || name.includes("cosyvoice")) return "/icons/qwen.svg";
     return "";
 }

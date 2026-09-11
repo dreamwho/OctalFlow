@@ -5,8 +5,10 @@ import { AudioLines, ChevronDown, ImageIcon, Lightbulb, Maximize2, Sparkles, Vid
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { audioFormatLabel, audioFormatOptions, audioVoiceLabel, audioVoiceOptions } from "@/lib/audio-generation";
+import { canvasSelectionBorderStyle, canvasThemes } from "@/lib/canvas-theme";
 import type { CreativeGenerationPreferences } from "@/lib/creative-runtime-contract";
 import { cn } from "@/lib/utils";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 import { creativeComposerPopoverOverflow, readVisualViewportBounds, resolveCreativeComposerPopoverViewportLayout, type CreativeComposerPopoverPlacement } from "./creative-composer-popover";
 import { creativeComposerToolButtonClass } from "./creative-composer-styles";
@@ -176,6 +178,7 @@ export function CreativeGenerationPreferences({
     onCapabilityChange?: (capability: MediaCapability) => void;
     onChange: (patch: CreativeGenerationPreferencePatch) => void;
 }) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [open, setOpen] = useState(false);
     const [panelMaxHeight, setPanelMaxHeight] = useState<number>();
     const [adaptivePlacement, setAdaptivePlacement] = useState(placement);
@@ -231,7 +234,7 @@ export function CreativeGenerationPreferences({
                 onOpenChange?.(nextOpen);
             }}
             classNames={{ container: "border border-[#d9e4ee] dark:border-[#4d6478]" }}
-            styles={{ container: { padding: compact ? 6 : 8, borderRadius: compact ? 14 : 16 } }}
+            styles={{ container: { ...canvasSelectionBorderStyle(theme.toolbar.panel), padding: compact ? 6 : 8, borderRadius: compact ? 14 : 16 } }}
             content={
                 <div
                     ref={panelRef}

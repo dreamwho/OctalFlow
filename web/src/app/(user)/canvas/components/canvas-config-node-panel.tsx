@@ -187,7 +187,7 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
                 ) : mode === "audio" ? (
                     <CanvasAudioSettingsPopover
                         config={config}
-                        placement="topRight"
+                        placement="top"
                         buttonClassName="canvas-compact-control !h-9 !w-full !justify-start !rounded-none !border-0 !bg-transparent !px-2.5 !shadow-none"
                         onConfigChange={(key, value) => onConfigChange(node.id, canvasAudioConfigPatch(key, value))}
                     />

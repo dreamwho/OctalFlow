@@ -1,6 +1,23 @@
 export type CanvasColorTheme = "light" | "dark";
 export type CanvasBackgroundMode = "dots" | "lines" | "blank";
 
+export const canvasSelectionFlowColors = {
+    start: "#67e8f9",
+    middle: "#818cf8",
+    end: "#c084fc",
+} as const;
+
+export const canvasSelectionGradient = `linear-gradient(90deg, ${canvasSelectionFlowColors.start} 0%, ${canvasSelectionFlowColors.middle} 48%, ${canvasSelectionFlowColors.end} 100%)`;
+export const canvasSelectionGlow = "0 0 18px rgba(129,140,248,.3), 0 0 32px rgba(192,132,252,.16)";
+
+export function canvasSelectionBorderStyle(panelBackground: string) {
+    return {
+        border: "1px solid transparent",
+        background: `linear-gradient(${panelBackground}, ${panelBackground}) padding-box, ${canvasSelectionGradient} border-box`,
+        boxShadow: canvasSelectionGlow,
+    };
+}
+
 export const canvasThemes = {
     light: {
         canvas: {
@@ -96,7 +113,7 @@ export const canvasThemes = {
             actionDangerText: "#ffffff",
         },
         toolbar: {
-            panel: "rgba(10,12,16,.96)",
+            panel: "rgba(23,26,32,.98)",
             border: "#303642",
             item: "#e5e7eb",
             itemHover: "#1f2937",

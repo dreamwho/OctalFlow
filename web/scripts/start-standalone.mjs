@@ -16,6 +16,7 @@ const chatGptApi = localChatGptApiRuntime({ repoRoot, webRoot, environment: gemi
 const runtime = generationRuntimeEnvironment({
     allowEphemeralToken: true,
     environment: {
+        ...process.env,
         ...chatGptApi.environment,
         PORT: process.env.PORT || "3333",
         HOSTNAME: process.env.HOSTNAME || "0.0.0.0",

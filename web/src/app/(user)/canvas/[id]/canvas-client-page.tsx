@@ -23,6 +23,7 @@ import { CanvasNodeUpscaleDialog } from "../components/canvas-node-upscale-dialo
 import { CanvasNodeUpscalePanel } from "../components/canvas-node-upscale-panel";
 import { CanvasStoryboardDialog } from "../components/canvas-storyboard-dialog";
 import { CanvasVideoFrameCaptureDialog } from "../components/canvas-video-frame-capture-dialog";
+import { CanvasAudioUploadDialog } from "../components/canvas-audio-upload-dialog";
 import { CanvasImageComparison } from "../components/canvas-image-comparison";
 import { CanvasToolbar } from "../components/canvas-toolbar";
 import { CanvasTopBar } from "../components/canvas-top-bar";
@@ -65,6 +66,7 @@ function OctalaicanvasCanvasPage() {
     const [depthSourceNodeIds, setDepthSourceNodeIds] = useState<Set<string>>(new Set());
     const [analysisSourceNodeIds, setAnalysisSourceNodeIds] = useState<Set<string>>(new Set());
     const [interiorDesignTarget, setInteriorDesignTarget] = useState<{ mode: "source" | "config"; nodeId: string } | null>(null);
+    const [audioUploadNodeId, setAudioUploadNodeId] = useState<string | null>(null);
     const controller = useCanvasPageController();
     const {
         message,
@@ -266,6 +268,7 @@ function OctalaicanvasCanvasPage() {
         generateCharacterThreeViewNode,
         handleFontSizeChange,
         handleUploadRequest,
+        replaceAudioNodeFile,
         handleImageInputChange,
         handleDrop,
         pasteAssistantMedia,
@@ -668,6 +671,7 @@ function OctalaicanvasCanvasPage() {
                         },
                         onImageDimensions: handleImageDimensions,
                         onViewImage: (node) => setPreviewNodeId(node.id),
+                        onUpload: (node) => node.type === CanvasNodeType.Audio ? setAudioUploadNodeId(node.id) : handleUploadRequest(node.id),
                     }}
                     getNodeViewProps={(node) => ({
                         editRequestNonce: editingNodeId === node.id ? editRequestNonce : 0,
@@ -811,7 +815,7 @@ function OctalaicanvasCanvasPage() {
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
                     onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
                     onGenerateImage={generateImageFromTextNode}
-                    onUpload={(node) => handleUploadRequest(node.id)}
+                    onUpload={(node) => node.type === CanvasNodeType.Audio ? setAudioUploadNodeId(node.id) : handleUploadRequest(node.id)}
                     onDownload={downloadNodeImage}
                     onSaveAsset={(node) => void saveNodeAsset(node).catch((error) => message.error(error instanceof Error ? error.message : "素材保存失败"))}
                     onMaskEdit={(node) => setMaskEditNodeId(node.id)}
@@ -942,6 +946,8 @@ function OctalaicanvasCanvasPage() {
                     onClose={() => setCaptureFrameNodeId(null)}
                     onAddFrame={addCapturedFrameNode}
                 />
+
+                <CanvasAudioUploadDialog open={Boolean(audioUploadNodeId)} nodeId={audioUploadNodeId} onClose={() => setAudioUploadNodeId(null)} onUpload={(nodeId, file) => replaceAudioNodeFile(nodeId, file)} />
 
                 <input ref={imageInputRef} type="file" accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 

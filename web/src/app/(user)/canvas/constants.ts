@@ -23,7 +23,7 @@ export const NODE_DEFAULT_SIZE = {
     [CanvasNodeType.Config]: { width: 340, height: CANVAS_CONFIG_NODE_HEIGHT.collapsed, title: "生成配置" },
     [CanvasNodeType.Video]: { width: 420, height: 236, title: "视频生成" },
     [CanvasNodeType.VideoRemake]: { width: 380, height: 224, title: "一键视频复刻" },
-    [CanvasNodeType.Audio]: { width: 340, height: 120, title: "音频" },
+    [CanvasNodeType.Audio]: { width: 340, height: 210, title: "音频" },
     [CanvasNodeType.Brief]: { width: 380, height: 280, title: "创作简报" },
     [CanvasNodeType.Task]: { width: 340, height: 210, title: "Agent 任务" },
     [CanvasNodeType.BrandKit]: { width: 340, height: 240, title: "品牌规范" },

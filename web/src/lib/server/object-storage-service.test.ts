@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     assertConfigured: vi.fn(),
     putBytes: vi.fn(),
     putFile: vi.fn(),
+    deleteObject: vi.fn(),
     deleteObjects: vi.fn(),
     objectExists: vi.fn(),
     getBytes: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@/lib/server/object-storage-config", () => ({
 vi.mock("@/lib/server/object-storage-client", () => ({
     putObjectBytes: mocks.putBytes,
     putObjectFile: mocks.putFile,
+    deleteObject: mocks.deleteObject,
     deleteObjects: mocks.deleteObjects,
     objectExists: mocks.objectExists,
     getObjectBytes: mocks.getBytes,
@@ -45,7 +47,7 @@ vi.mock("@/lib/server/local-media-registry", () => ({
 }));
 vi.mock("@/lib/server/local-media-references", () => ({ countLocalMediaReferences: mocks.references }));
 
-import { createExternalMediaReadUrl, createExternalStorageImagePreviewUrl, deleteExternalStorageFiles, listExternalStorageFiles, migrateLocalMediaToObjectStorage, persistExternalMediaIfEnabled } from "./object-storage-service";
+import { createExternalMediaReadUrl, createTemporaryPublicObject, createExternalStorageImagePreviewUrl, deleteExternalStorageFiles, listExternalStorageFiles, migrateLocalMediaToObjectStorage, persistExternalMediaIfEnabled } from "./object-storage-service";
 
 const config = {
     id: "default" as const,
@@ -84,6 +86,7 @@ describe("object storage media service", () => {
         mocks.signRead.mockResolvedValue("https://oss.example.com/signed");
         mocks.objectExists.mockResolvedValue(true);
         mocks.deleteObjects.mockResolvedValue(undefined);
+        mocks.deleteObject.mockResolvedValue(undefined);
     });
 
     afterAll(async () => {
@@ -96,6 +99,26 @@ describe("object storage media service", () => {
         await expect(persistExternalMediaIfEnabled({ registration, bytes: Buffer.from("data") })).resolves.toBeNull();
         expect(mocks.putBytes).not.toHaveBeenCalled();
         expect(mocks.register).not.toHaveBeenCalled();
+    });
+
+    it("uploads temporary provider media even when persisted external storage is disabled", async () => {
+        mocks.config.mockResolvedValue({ ...config, enabled: false });
+
+        const object = await createTemporaryPublicObject({ bytes: Buffer.from("audio"), contentType: "audio/mpeg", originalName: "nini.mp3", purpose: "qwen-voice-clone" });
+
+        expect(object).toMatchObject({ url: "https://oss.example.com/signed" });
+        expect(object?.objectKey).toMatch(/^octalaicanvas\/temporary\/qwen-voice-clone\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]+\.mp3$/);
+        expect(mocks.putBytes).toHaveBeenCalledWith(expect.objectContaining({ ...config, enabled: false }), expect.objectContaining({ contentType: "audio/mpeg", bytes: Buffer.from("audio"), metadata: { purpose: "qwen-voice-clone" } }));
+
+        await object?.cleanup();
+        expect(mocks.deleteObject).toHaveBeenCalledWith(expect.objectContaining({ ...config, enabled: false }), object?.objectKey);
+    });
+
+    it("returns no temporary provider object when OSS credentials are incomplete", async () => {
+        mocks.config.mockResolvedValue({ ...config, bucket: "", accessKeyId: "" });
+
+        await expect(createTemporaryPublicObject({ bytes: Buffer.from("audio"), contentType: "audio/mpeg", purpose: "qwen-voice-clone" })).resolves.toBeNull();
+        expect(mocks.putBytes).not.toHaveBeenCalled();
     });
 
     it("uploads and registers object media, rolling the object back when registration fails", async () => {

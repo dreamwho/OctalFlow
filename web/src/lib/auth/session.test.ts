@@ -155,6 +155,46 @@ describe("serializePublicSettings", () => {
         expect(JSON.stringify(result)).not.toContain("127.0.0.1:18080");
         expect(JSON.stringify(result)).not.toContain("provider-managed");
     });
+
+    it("publishes only safe audio feature switches to the browser", () => {
+        const settings: AuthSettings = structuredClone(DEFAULT_SETTINGS);
+        settings.systemChannels = [
+            {
+                id: "minimax-audio",
+                name: "MiniMax 音频",
+                baseUrl: "https://api.minimaxi.com",
+                apiKey: "provider-secret",
+                apiFormat: "openai",
+                models: ["speech-2.8-hd"],
+                enabled: true,
+                advancedConfig: {
+                    protocol: "minimax-audio",
+                    minimaxVoiceCloneEnabled: false,
+                    minimaxVoiceDesignEnabled: false,
+                    authHeader: "X-Secret-Key",
+                    textModel: "",
+                    imageModel: "",
+                    videoModel: "",
+                    createPath: "/private/create",
+                    queryPath: "/private/query",
+                    requestTemplate: "secret",
+                    resultField: "result",
+                    statusField: "status",
+                    durationRange: "",
+                    referenceRule: "",
+                    supportsReferenceImage: false,
+                    supportsReferenceVideo: false,
+                    supportsReferenceAudio: false,
+                },
+            },
+        ];
+
+        const result = serializePublicSettings(settings);
+        expect(result.systemChannels[0]?.advancedConfig).toEqual({ protocol: "minimax-audio", minimaxVoiceCloneEnabled: false, minimaxVoiceDesignEnabled: false });
+        expect(JSON.stringify(result)).not.toContain("provider-secret");
+        expect(JSON.stringify(result)).not.toContain("private/create");
+        expect(JSON.stringify(result)).not.toContain("X-Secret-Key");
+    });
 });
 
 describe("session cookie security", () => {

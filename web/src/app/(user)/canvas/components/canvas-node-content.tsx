@@ -40,6 +40,7 @@ export type NodeContentRendererProps = {
     onSetBatchPrimary?: () => void;
     onImageDimensions?: (nodeId: string, naturalWidth: number, naturalHeight: number) => void;
     upscaleSourceUrl?: string;
+    onUpload?: (node: CanvasNodeData) => void;
 };
 
 export function NodeContent(props: NodeContentRendererProps) {
@@ -474,17 +475,21 @@ export function PanoramaNodeContent({ node, theme }: NodeContentRendererProps) {
     return <CanvasPanoramaViewer src={node.metadata.content} alt={node.title || "全景图"} />;
 }
 
-export function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
+export function AudioNodeContent({ node, theme, onUpload }: NodeContentRendererProps) {
     if (!node.metadata?.content)
         return (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2" style={{ color: theme.node.placeholder }}>
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4" style={{ color: theme.node.placeholder }}>
                 <Music2 className="size-7 opacity-35" />
                 <span className="text-sm">空音频节点</span>
+                {onUpload ? <button type="button" data-canvas-no-drag className="rounded-full border px-2.5 py-1 text-xs transition hover:brightness-110" style={{ borderColor: theme.node.subtleBorder, background: theme.node.subtleSurface, color: theme.node.text }} onClick={() => onUpload(node)}>上传音频</button> : null}
             </div>
         );
     return (
-        <div className="flex h-full w-full flex-col justify-center gap-3 px-4" style={{ background: theme.node.fill, color: theme.node.text }}>
-            <audio src={node.metadata.content} controls className="w-full" data-canvas-no-zoom />
+        <div className="flex h-full min-w-0 w-full flex-col items-center justify-center gap-3 overflow-hidden px-4" style={{ background: theme.node.fill, color: theme.node.text }}>
+            <div className="min-w-0 w-full max-w-full overflow-hidden rounded-full" data-canvas-no-drag>
+                <audio src={node.metadata.content} controls preload="metadata" aria-label="音频播放" className="block h-12 min-w-0 w-full max-w-full" style={{ minWidth: 0, maxWidth: "100%" }} data-canvas-no-zoom />
+            </div>
+            {onUpload ? <button type="button" data-canvas-no-drag className="self-center rounded-full border px-2.5 py-1 text-xs transition hover:brightness-110" style={{ borderColor: theme.node.subtleBorder, background: theme.node.subtleSurface, color: theme.node.text }} onClick={() => onUpload(node)}>替换音频</button> : null}
         </div>
     );
 }

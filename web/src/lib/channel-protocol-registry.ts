@@ -4,6 +4,8 @@ import { MINIMAX_H3_MODELS } from "@/lib/minimax-h3";
 import { MINIMAX_H3_OFFICIAL_MODELS } from "@/lib/minimax-h3-official";
 import { SEEDANCE_SPECIAL_MODELS } from "@/lib/seedance-special";
 import { normalizeYumengModelCenterBaseUrl, YUMENG_DEFAULT_IMAGE_OPERATION, YUMENG_DEFAULT_VIDEO_OPERATION, YUMENG_MODEL_CENTER_BASE_URL, YUMENG_MODEL_CENTER_MODELS } from "@/lib/yumeng-model-center";
+import { MINIMAX_MUSIC_MODELS, MINIMAX_SPEECH_MODELS, TOKENHUB_MUSIC_MODELS } from "@/lib/minimax-audio";
+import { QWEN_AUDIO_MODELS } from "@/lib/qwen-audio";
 
 type ProtocolOperation = Omit<SystemChannelModelConfig, "capability" | "source" | "protocol" | "apiFormat"> & {
     capability: LogicalModelCapability;
@@ -48,6 +50,44 @@ const openAiOperations: ChannelProtocolDefinition["operations"] = {
         supportsReferenceImage: true,
     },
     audio: { capability: "audio", createPath: "/audio/speech", requestTemplate: '{"model":"{{model}}","input":"{{prompt}}","voice":"alloy","response_format":"mp3"}', resultField: "binary" },
+};
+
+const minimaxSpeechOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/v1/t2a_v2",
+    requestTemplate:
+        '{"model":"{{model}}","text":"{{text}}","stream":false,"voice_setting":{{voice_setting}},"audio_setting":{{audio_setting}},"language_boost":"{{language_boost}}","subtitle_enable":false}',
+    resultField: "data.audio",
+};
+
+const minimaxMusicOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/v1/music_generation",
+    requestTemplate:
+        '{"model":"{{model}}","prompt":"{{prompt}}","lyrics":"{{lyrics}}","stream":false,"output_format":"hex","audio_setting":{{audio_setting}},"lyrics_optimizer":{{lyrics_optimizer}},"is_instrumental":{{is_instrumental}},"aigc_watermark":false}',
+    resultField: "data.audio",
+};
+
+const tokenHubMusicOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/v1/wand/minimax-music/generation",
+    requestTemplate:
+        '{"model":"{{model}}","prompt":"{{prompt}}","lyrics":"{{lyrics}}","output_format":"url","audio_setting":{{audio_setting}},"lyrics_optimizer":{{lyrics_optimizer}},"is_instrumental":{{is_instrumental}}}',
+    resultField: "data.audio",
+};
+
+const qwenSpeechOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/services/audio/tts/SpeechSynthesizer",
+    requestTemplate: '{"model":"{{model}}","input":{"text":"{{text}}","voice":"{{voice}}","format":"{{format}}","sample_rate":{{sample_rate}},"volume":{{volume}},"rate":{{rate}},"pitch":{{pitch}},"instruction":"{{instructions}}"}}',
+    resultField: "output.audio.url / output.audio.data",
+};
+
+const qwenTtsOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/services/aigc/multimodal-generation/generation",
+    requestTemplate: '{"model":"{{model}}","input":{"text":"{{text}}","voice":"{{voice}}"}}',
+    resultField: "output.audio.url / output.audio.data",
 };
 
 const geminiToolsTextOperation: ProtocolOperation = {
@@ -401,6 +441,48 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
         strict: true,
     },
     {
+        id: "minimax-audio",
+        label: "MiniMax 音频 / 音乐",
+        description: "MiniMax 官方语音合成、音色设计、音色复刻和音乐生成接口。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://api.minimaxi.com",
+        modelCatalogPaths: [],
+        capabilities: ["audio"],
+        operations: { audio: minimaxSpeechOperation },
+        builtInModels: [
+            ...MINIMAX_SPEECH_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: minimaxSpeechOperation })),
+            ...MINIMAX_MUSIC_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: minimaxMusicOperation })),
+        ],
+        strict: true,
+    },
+    {
+        id: "aliyun-bailian-audio",
+        label: "阿里云百炼语音",
+        description: "阿里云百炼 Qwen-Audio-TTS、CosyVoice 和 Qwen-TTS 音色复刻/设计接口。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://dashscope.aliyuncs.com/api/v1",
+        modelCatalogPaths: [],
+        capabilities: ["audio"],
+        operations: { audio: qwenSpeechOperation },
+        builtInModels: QWEN_AUDIO_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: /^qwen3-tts-/i.test(id) ? qwenTtsOperation : qwenSpeechOperation })),
+        strict: true,
+    },
+    {
+        id: "tencent-tokenhub-music",
+        label: "腾讯云 TokenHub 音乐",
+        description: "通过腾讯云 TokenHub 调用 MiniMax Music v3.0 音乐生成接口。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://tokenhub.tencentmaas.com",
+        modelCatalogPaths: [],
+        capabilities: ["audio"],
+        operations: { audio: tokenHubMusicOperation },
+        builtInModels: TOKENHUB_MUSIC_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: tokenHubMusicOperation })),
+        strict: true,
+    },
+    {
         id: "octalaicanvas-recommended",
         label: "OctalFlow 推荐",
         description: "OctalFlow 推荐的 JSON 异步视频协议，支持多模态参考素材与持久结果地址。",
@@ -525,7 +607,7 @@ export function resolveChannelModelAdvancedConfig(config: SystemChannelAdvancedC
     if (!config) return undefined;
     const modelConfig = resolveChannelModelConfig(config, model);
     if (!modelConfig) return config;
-    const { capability: _capability, apiFormat: _apiFormat, ...modelAdvanced } = modelConfig;
+    const modelAdvanced = Object.fromEntries(Object.entries(modelConfig).filter(([key]) => key !== "capability" && key !== "apiFormat"));
     return { ...config, ...modelAdvanced };
 }
 
@@ -533,7 +615,13 @@ export function applyChannelProtocol(channel: SystemModelChannel, protocol: Syst
     const definition = channelProtocolDefinition(protocol);
     const advanced = channel.advancedConfig || emptyAdvancedConfig();
     const builtInModels = definition.builtInModels?.map((item) => item.id) || [];
-    const models = builtInModels.length ? builtInModels : channel.models;
+    const isAlreadyConfigured = advanced.protocol === protocol;
+    const configuredModels = channel.models.filter((model) => builtInModels.some((builtInModel) => normalizeModelId(builtInModel) === normalizeModelId(model)));
+    const models = builtInModels.length
+        ? isAlreadyConfigured
+            ? channel.models.length === 0 || configuredModels.length ? configuredModels : builtInModels
+            : builtInModels
+        : channel.models;
     const modelConfigs = { ...(advanced.modelConfigs || {}) };
     const modelCapabilities = { ...(advanced.modelCapabilities || {}) };
     const operationConfigs = definition.strict

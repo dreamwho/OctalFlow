@@ -199,6 +199,12 @@ CREATE TABLE IF NOT EXISTS magic_proxy_settings (
 );
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_enabled boolean NOT NULL DEFAULT false;
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_node text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS geminiai_mode text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS geminiai_chained_config jsonb;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS gemini_tools_mode text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS gemini_tools_chained_config jsonb;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_mode text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_chained_config jsonb;
 INSERT INTO magic_proxy_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS gemini_tools_accounts (
@@ -316,6 +322,99 @@ CREATE INDEX IF NOT EXISTS geminiai_request_logs_status_idx ON geminiai_request_
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_model_idx ON geminiai_request_logs (model, created_at DESC);
 ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS phase text NOT NULL DEFAULT 'success';
 ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS minimax_voices (
+    id text PRIMARY KEY,
+    user_id text,
+    provider text NOT NULL DEFAULT 'minimax',
+    remote_voice_id text NOT NULL,
+    name text NOT NULL,
+    voice_name text NOT NULL DEFAULT '',
+    description text NOT NULL DEFAULT '',
+    provider_created_time text NOT NULL DEFAULT '',
+    category text NOT NULL DEFAULT '其他',
+    voice_type text NOT NULL,
+    visible boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT minimax_voices_type_check CHECK (voice_type IN ('system', 'voice_cloning', 'voice_generation'))
+);
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'minimax';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS voice_name text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS provider_created_time text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT '其他';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS scene text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS voice_param text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS feature text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS age text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS gender text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS language text NOT NULL DEFAULT '';
+ALTER TABLE minimax_voices ADD COLUMN IF NOT EXISTS preview_url text NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS minimax_voices_user_remote_idx ON minimax_voices (coalesce(user_id, ''), remote_voice_id);
+CREATE INDEX IF NOT EXISTS minimax_voices_user_visible_idx ON minimax_voices (user_id, visible, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS minimax_music_records (
+    id text PRIMARY KEY,
+    user_id text NOT NULL,
+    name text NOT NULL,
+    model text NOT NULL,
+    prompt text NOT NULL DEFAULT '',
+    lyrics text NOT NULL DEFAULT '',
+    result_url text,
+    status text NOT NULL DEFAULT 'success',
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT minimax_music_records_status_check CHECK (status IN ('pending', 'success', 'failed'))
+);
+CREATE INDEX IF NOT EXISTS minimax_music_records_user_created_idx ON minimax_music_records (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS aliyun_bailian_audio_records (
+    id text PRIMARY KEY,
+    task_id text NOT NULL UNIQUE,
+    user_id text NOT NULL,
+    model text NOT NULL,
+    audio_mode text NOT NULL DEFAULT 'tts',
+    prompt text NOT NULL DEFAULT '',
+    text_content text NOT NULL DEFAULT '',
+    voice text,
+    format text,
+    sample_rate text,
+    result_url text,
+    mime_type text,
+    status text NOT NULL DEFAULT 'pending',
+    error text,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT aliyun_bailian_audio_records_status_check CHECK (status IN ('pending', 'success', 'failed'))
+);
+CREATE INDEX IF NOT EXISTS aliyun_bailian_audio_records_created_idx ON aliyun_bailian_audio_records (created_at DESC);
+CREATE INDEX IF NOT EXISTS aliyun_bailian_audio_records_user_created_idx ON aliyun_bailian_audio_records (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS minimax_request_logs (
+    id text PRIMARY KEY,
+    user_id text,
+    provider text NOT NULL DEFAULT 'minimax',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    capability text NOT NULL,
+    method text NOT NULL DEFAULT 'POST',
+    path text NOT NULL,
+    model text NOT NULL,
+    status_code integer NOT NULL DEFAULT 0,
+    duration_ms integer NOT NULL DEFAULT 0,
+    error text,
+    request_preview text,
+    response_preview text,
+    phase text NOT NULL DEFAULT 'success',
+    lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb
+);
+ALTER TABLE minimax_request_logs ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'minimax';
+CREATE INDEX IF NOT EXISTS minimax_request_logs_created_idx ON minimax_request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS minimax_request_logs_user_idx ON minimax_request_logs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS minimax_request_logs_model_idx ON minimax_request_logs (model, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS dreamina_cli_account_state (
     id text PRIMARY KEY DEFAULT 'default',

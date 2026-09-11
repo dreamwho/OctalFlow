@@ -24,7 +24,7 @@ export const audioFormatOptions = [
 ];
 
 export function normalizeAudioVoiceValue(value: string) {
-    return audioVoiceOptions.some((item) => item.value === value) ? value : "alloy";
+    return String(value || "").trim() || "alloy";
 }
 
 export function normalizeAudioFormatValue(value: string) {

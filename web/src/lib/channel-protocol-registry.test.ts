@@ -45,6 +45,9 @@ describe("channel protocol registry", () => {
             "lingkeai",
             "minimax-h3",
             "minimax-h3-official",
+            "minimax-audio",
+            "aliyun-bailian-audio",
+            "tencent-tokenhub-music",
             "custom",
             "compatible",
             "auto",
@@ -255,6 +258,13 @@ describe("channel protocol registry", () => {
     it("classifies opaque models from strict single-capability protocol catalogs", () => {
         expect(applyChannelProtocol({ ...channel, models: ["opaque"] }, "seedance").advancedConfig?.modelCapabilities?.opaque).toBe("video");
         expect(applyChannelProtocol({ ...channel, models: ["opaque"] }, "stable-diffusion").advancedConfig?.modelCapabilities?.opaque).toBe("image");
+    });
+
+    it("preserves an administrator's selected strict-protocol models", () => {
+        const initial = applyChannelProtocol({ ...channel, id: "minimax-audio" }, "minimax-audio");
+        const configured = applyChannelProtocol({ ...initial, models: ["speech-2.8-hd"] }, "minimax-audio");
+        expect(configured.models).toEqual(["speech-2.8-hd"]);
+        expect(applyChannelProtocol({ ...configured, models: [] }, "minimax-audio").models).toEqual([]);
     });
 
     it("supports keyless Stable Diffusion channels without an authorization header", () => {

@@ -31,3 +31,7 @@ IPWO 源设置使用独立 Tab 与 `/integration/ipwo` 契约；来源开关通�
 原生 Provider 使用独立的 `chatgpt-api/chatgpt2api.db` SQLite 数据库，不把其账号或统计全表读入应用 PostgreSQL。统计沿用源项目的 `dashboard_metric_state`（投影检查点）、`dashboard_metric_hourly`（小时结果与切换汇总）和 `dashboard_metric_model_hourly`（模型成功量与耗时）三张表，按 24 小时、7 天、30 天窗口读取聚合结果。
 
 `proxy_configuration` 保存加密后的默认出口、失败回退、代理组与节点配置；沿用源项目 repository 和引用约束，编辑已存在节点时不要求重新返回或输入代理密码。`proxy-selection` 的单一 `{enabled, mode, native_source}` 策略与 URL 同步状态属于同一 ChatGPT 代理设置契约，但 URL 同步不改变选择；不应在 Magic 关闭时隐式写回 native 默认值。备份恢复必须同时保留 Provider 数据目录与原加密密钥。
+
+## MiniMax 音频
+
+`octalaicanvas_minimax_voices` 保存用户创建的 MiniMax 或阿里云百炼音色本地映射（系统音色不落用户表）；`provider` 区分供应商，`user_id` 为空的记录仅供后台同步使用，前台个人音色查询必须按当前用户过滤。音色表保存 `model`、`voice_name`、`description`、`provider_created_time`、可人工调整的 `category` 以及百炼目录的 `scene`、`voice_param`、`feature`、`age`、`gender`、`language`、`preview_url` 字段；新同步音色的默认分类由名称、介绍或特征派生，管理员可在后台调整，前端按模型过滤，禁止跨模型混用音色。`octalaicanvas_minimax_music_records` 保存音乐生成的用户记录，`aliyun_bailian_audio_records` 保存百炼语音任务的提交用户、提示词、文本、模型、音色、结果地址、状态和时间，供后台音频管理分页试听；`octalaicanvas_minimax_request_logs` 通过 `provider` 区分 MiniMax、阿里云百炼与腾讯云 TokenHub，并保存从提交、上游响应到完成/失败的请求过程日志。API Key 继续只存于系统模型渠道的加密字段，音色、音频和音乐结果不在浏览器本地持久化。
