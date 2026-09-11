@@ -284,7 +284,6 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
     for invalid_selection in (
         None,
         {"enabled": True, "mode": "invalid", "native_source": "manual"},
-        {"enabled": True, "mode": "chained", "native_source": "manual"},
         {"enabled": True, "mode": "native", "native_source": "manual", "extra": True},
     ):
         invalid = client.patch(

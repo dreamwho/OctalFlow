@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { App } from "antd";
 
+import { safeRandomUUID } from "@/lib/uuid";
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "./utils/canvas-agent-ops";
 
 type CanvasAgentConnection = { endpoint: string; token: string };
@@ -15,7 +16,7 @@ export function useCanvasLocalAgentBridge({ snapshot, onApplyOps }: { snapshot: 
     const snapshotRef = useRef(snapshot);
     const applyOpsRef = useRef(onApplyOps);
     const notifiedRef = useRef(false);
-    const clientIdRef = useRef(typeof crypto === "undefined" ? `${Date.now()}` : crypto.randomUUID());
+    const clientIdRef = useRef(safeRandomUUID());
     snapshotRef.current = snapshot;
     applyOpsRef.current = onApplyOps;
 

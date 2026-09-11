@@ -29,7 +29,7 @@ DEFAULT_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT = 30
 MAX_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT = 10000
 MAGIC_PROXY_OVERRIDE_KEY = "octalaicanvas_magic_proxy_override"
 PROXY_SELECTION_KEY = "octalaicanvas_proxy_selection"
-PROXY_SELECTION_MODES = {"native", "magic"}
+PROXY_SELECTION_MODES = {"native", "magic", "chained"}
 PROXY_SELECTION_NATIVE_SOURCES = {"manual", "ipwo"}
 PROXY_NODE_IMAGE_CONCURRENCY_FIELDS = (
     "image_concurrency_limit",
@@ -53,6 +53,7 @@ class ProxySelection:
     enabled: bool = False
     mode: str = "native"
     native_source: str = "manual"
+    chained_config: Mapping[str, Any] | None = None
 
     @property
     def is_valid(self) -> bool:
@@ -68,11 +69,13 @@ def proxy_selection_from_configuration(
     raw = configuration.get(PROXY_SELECTION_KEY)
     if not isinstance(raw, Mapping):
         return ProxySelection()
-    mode = str(raw.get("mode") or "native").strip().lower()
+    chained_raw = raw.get("chained_config")
+    chained_config = dict(chained_raw) if isinstance(chained_raw, Mapping) else None
     return ProxySelection(
         enabled=raw.get("enabled") is True,
-        mode=mode if mode in PROXY_SELECTION_MODES else "native",
+        mode=str(raw.get("mode") or "native").strip().lower(),
         native_source=str(raw.get("native_source") or "manual").strip().lower(),
+        chained_config=chained_config,
     )
 
 
@@ -334,15 +337,15 @@ class ProxySettingsStore:
         image_egress_reserved = False
         image_egress_wait_ms = 0
 
-        if selection.mode == "magic":
+        if selection.mode in {"magic", "chained"}:
             magic_proxy = _clean(proxy_configuration.get(MAGIC_PROXY_OVERRIDE_KEY))
             if not magic_proxy:
                 raise ProxyReferenceUnavailableError(
-                    "魔法代理未配置"
+                    "魔法代理未配置" if selection.mode == "magic" else "链式代理未配置（魔法代理未就绪）"
                 )
             resolved = self._resolve_proxy_reference(
                 magic_proxy,
-                source="magic",
+                source="chained" if selection.mode == "chained" else "magic",
                 terminal_when_unresolved=True,
                 reserve_image_egress=reserve_image_egress,
                 deadline_monotonic=deadline_monotonic,

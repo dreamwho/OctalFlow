@@ -10,6 +10,7 @@ import { CREATIVE_UPLOAD_ACCEPT, CREATIVE_UPLOAD_MAX_BYTES, isCreativeUploadMime
 import type { CreateOverviewAsset } from "@/lib/create-workbench-overview";
 import type { CreativeAsset, CreativeGenerationMode, CreativeGenerationPreferences, CreativeMessage } from "@/lib/creative-runtime-contract";
 import { cn } from "@/lib/utils";
+import { safeRandomUUID } from "@/lib/uuid";
 import type { VideoReferenceRole } from "@/lib/video-reference-contract";
 import { useCreativeAgentModels } from "@/hooks/use-creative-agent-options";
 import { listAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
@@ -281,7 +282,7 @@ export default function CreatePage() {
         optimizingRef.current = true;
         setOptimizingPrompt(true);
         try {
-            const optimized = await optimizePrompt({ requestId: `prompt-${crypto.randomUUID()}`, prompt: source, mode: creationMode, skillIds: selectedSkillIds });
+            const optimized = await optimizePrompt({ requestId: `prompt-${safeRandomUUID()}`, prompt: source, mode: creationMode, skillIds: selectedSkillIds });
             if (promptRevisionRef.current !== revision) {
                 message.info("输入内容已变化，未覆盖当前提示词");
                 return;

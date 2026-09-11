@@ -47,6 +47,8 @@ from services.settings_management_service import (
 )
 
 
+from contracts.proxy import ProxyChainedConfig
+
 GATEWAY_SETTING = "octalaicanvas_gateway_enabled"
 REDACTED_PROXY_AUTH = "__OCTAL_PROXY_AUTH_REDACTED__"
 router = APIRouter()
@@ -68,8 +70,9 @@ class ProxySelectionPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
-    mode: Literal["native", "magic"]
+    mode: Literal["native", "magic", "chained"]
     native_source: Literal["manual", "ipwo"]
+    chained_config: ProxyChainedConfig | None = None
 
 
 class SafeProxyReference(BaseModel):
@@ -102,6 +105,7 @@ class ProxyGroupTestPatch(BaseModel):
     id: str = ""
     node_id: str = ""
     url: str = ""
+    chained: bool = False
 
 
 class SafeSettingsPatch(BaseModel):
@@ -396,6 +400,7 @@ async def patch_proxy_selection(
             enabled=selection.enabled,
             mode=selection.mode,
             native_source=selection.native_source,
+            chained_config=selection.chained_config.model_dump() if selection.chained_config else None,
         )
     except ProxySelectionUnavailableError as exc:
         raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
@@ -528,6 +533,10 @@ async def test_proxy_group(
             raise HTTPException(status_code=422, detail={"error": "proxy url is invalid"}) from exc
         result = await run_in_threadpool(test_proxy, candidate)
         return _proxy_payload(proxy_management_service.group_test_response([("", result)]))
+
+    if body.chained:
+        result = await run_in_threadpool(test_proxy, "")
+        return _proxy_payload(proxy_management_service.group_test_response([(body.node_id or "chained", result)]))
 
     group_id = _proxy_group_id(body.id)
     if not group_id:

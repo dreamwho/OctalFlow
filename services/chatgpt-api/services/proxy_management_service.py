@@ -329,6 +329,7 @@ class ProxyManagementService:
         enabled: object,
         mode: object,
         native_source: object,
+        chained_config: object = None,
     ) -> dict[str, object]:
         normalized_mode = _clean_text(mode).lower()
         normalized_source = _clean_text(native_source).lower()
@@ -339,9 +340,16 @@ class ProxyManagementService:
         if normalized_source not in PROXY_SELECTION_NATIVE_SOURCES:
             raise ValueError("proxy selection native source is invalid")
 
+        parsed_chained_config: dict[str, Any] | None = None
+        if isinstance(chained_config, dict):
+            parsed_chained_config = {
+                "hop_magic_node_name": _clean_text(chained_config.get("hop_magic_node_name")),
+                "landing_generic_node_id": _clean_text(chained_config.get("landing_generic_node_id")),
+            }
+
         with self._mutation_lock:
             snapshot = self._snapshot()
-            if enabled and normalized_mode == "magic" and not _clean_text(
+            if enabled and normalized_mode in {"magic", "chained"} and not _clean_text(
                 snapshot.get(MAGIC_PROXY_OVERRIDE_KEY)
             ):
                 raise ProxySelectionUnavailableError("魔法代理未配置")
@@ -352,6 +360,8 @@ class ProxyManagementService:
                 "mode": normalized_mode,
                 "native_source": normalized_source,
             }
+            if parsed_chained_config is not None:
+                selection_record["chained_config"] = parsed_chained_config
             updated = self._config.update({
                 PROXY_SELECTION_KEY: selection_record,
             })
@@ -405,6 +415,8 @@ class ProxyManagementService:
             "magicConfigured": bool(_clean_text(snapshot.get(MAGIC_PROXY_OVERRIDE_KEY))),
             "ipwoConfigured": self._ipwo_proxy_configured(),
         }
+        if selection.chained_config is not None:
+            payload["chained_config"] = selection.chained_config
         return payload
 
     @staticmethod

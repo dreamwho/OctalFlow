@@ -12,11 +12,12 @@ function isAbortError(reason: unknown) {
     return reason instanceof DOMException && reason.name === "AbortError";
 }
 
-export type ChatGptProxyTarget = "manual" | "ipwo" | "magic";
+export type ChatGptProxyTarget = "manual" | "ipwo" | "magic" | "chained";
 
 export const chatGptProxyModeOptions: Array<{ value: ChatGptProxyRuntimeMode; label: string }> = [
     { value: "native", label: "通用代理" },
     { value: "magic", label: "魔法代理" },
+    { value: "chained", label: "链式代理" },
 ];
 
 export function chatGptProxyModeLabel(mode: ChatGptProxyRuntimeMode) {
@@ -29,6 +30,12 @@ export function chatGptProxyNativeSourceLabel(source: ChatGptProxyNativeSource) 
 
 export function chatGptProxyRuntimeStatus(runtime: ChatGptProxyRuntime) {
     if (!runtime.enabled) return "全局代理已关闭：所有请求均不使用代理。";
+    if (runtime.mode === "chained") {
+        const hop = runtime.chained_config?.hop_magic_node_name;
+        const landing = runtime.chained_config?.landing_generic_node_id;
+        if (hop && landing) return `当前使用链式代理：跳板 [${hop}] ➔ 落地出口 [${landing}]。`;
+        return "当前已选择链式代理，但跳板或落地节点尚未选择完毕；运行时会拒绝请求。";
+    }
     if (runtime.mode === "magic") return runtime.magicConfigured ? "当前使用魔法代理。" : "当前已选择魔法代理，但当前配置不可用；运行时会拒绝请求。";
     if (runtime.native_source === "ipwo") return runtime.ipwoConfigured ? "当前使用代理管理中的 IPWO 来源。" : "当前已选择代理管理中的 IPWO 来源，但当前配置不可用；运行时会拒绝请求。";
     return "当前使用代理管理中的手动配置。";
@@ -37,8 +44,9 @@ export function chatGptProxyRuntimeStatus(runtime: ChatGptProxyRuntime) {
 export function chatGptProxyRuntimeInput(target: ChatGptProxyTarget, enabled: boolean, runtime: ChatGptProxyRuntime | null): ChatGptProxyRuntimePatch {
     return {
         enabled,
-        mode: target === "magic" ? "magic" : "native",
-        native_source: target === "magic" ? runtime?.native_source || "manual" : target,
+        mode: target === "chained" ? "chained" : target === "magic" ? "magic" : "native",
+        native_source: target === "magic" || target === "chained" ? runtime?.native_source || "manual" : target,
+        ...(target === "chained" ? { chained_config: runtime?.chained_config || { hop_magic_node_name: "", landing_generic_node_id: "" } } : {}),
     };
 }
 

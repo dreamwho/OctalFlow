@@ -6,6 +6,7 @@ import { useCallback, useEffect } from "react";
 import { createFreshGenerationTaskContext } from "@/lib/generation-request-context";
 import { resolveImageRequestSize } from "@/lib/image-size";
 import { readImageMeta } from "@/lib/image-utils";
+import { safeRandomUUID } from "@/lib/uuid";
 import { createAudioGenerationTask } from "@/services/api/audio";
 import { resumeImageGenerationTask } from "@/services/api/image";
 import { isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
@@ -116,7 +117,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             let plannedPrompt = interiorDesignConfig ? sourceNode.metadata?.executionPrompt?.trim() || prompt.trim() : mode === "video" ? applyCameraMotionPrompt(userPrompt, sourceNode?.metadata?.cameraMotions) : userPrompt;
             if (skillIds.length && (mode === "image" || mode === "video")) {
                 try {
-                    plannedPrompt = await optimizePrompt({ requestId: `canvas-skill-${crypto.randomUUID()}`, prompt: userPrompt, mode, skillIds });
+                    plannedPrompt = await optimizePrompt({ requestId: `canvas-skill-${safeRandomUUID()}`, prompt: userPrompt, mode, skillIds });
                 } catch (error) {
                     message.error(error instanceof Error ? error.message : "Skill 提示词优化失败");
                     setRunningNodeId(null);

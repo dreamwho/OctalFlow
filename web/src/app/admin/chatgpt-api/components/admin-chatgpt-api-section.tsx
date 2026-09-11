@@ -10,6 +10,7 @@ import { getAdminSettings } from "@/services/api/admin-settings";
 import { chatGptApiRequest, type ChatGptAccountPage, type ChatGptGateway, type ChatGptKey, type ChatGptModelCatalog } from "@/services/api/chatgpt-api";
 import { accountFilePayload, readAccountFiles, submitAccountImport, type AccountFileImport, type AccountImportPayload, type ImportProgress } from "../account-import";
 import { accountOperationOutcome, type AccountOperationResult } from "../account-operation-result";
+import { ChatGptChainedProxyPanel } from "./chatgpt-chained-proxy-panel";
 import { ChatGptMagicProxyPanel } from "./chatgpt-magic-proxy-panel";
 import { ChatGptProxyManager } from "./chatgpt-proxy-manager";
 import { ChatGptProxyRuntimeControl } from "./chatgpt-proxy-runtime-control";
@@ -635,28 +636,32 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                                 <div className="p-3 sm:p-5">
                                     <Segmented
                                         aria-label="代理方式"
-                                        value={proxyRuntime.runtime.mode === "magic" ? "magic" : "generic"}
+                                        value={proxyRuntime.runtime.mode === "magic" ? "magic" : proxyRuntime.runtime.mode === "chained" ? "chained" : "generic"}
                                         onChange={(value) => {
                                             const runtime = proxyRuntime.runtime;
                                             if (!runtime) return;
-                                            const nextMode = value === "magic" ? "magic" : "native";
+                                            const nextMode = value === "magic" ? "magic" : value === "chained" ? "chained" : "native";
                                             void proxyRuntime.save({
                                                 enabled: true,
                                                 mode: nextMode,
                                                 native_source: nextMode === "magic" ? runtime.native_source || "manual" : "manual",
+                                                ...(nextMode === "chained" && runtime.chained_config ? { chained_config: runtime.chained_config } : {}),
                                             }).catch(() => undefined);
                                         }}
                                         options={[
-                                            { value: "generic", label: "代理管理" },
+                                            { value: "generic", label: "通用代理" },
                                             { value: "magic", label: "魔法代理" },
+                                            { value: "chained", label: "链式代理" },
                                         ]}
                                     />
                                 </div>
                             </Panel>
                             {proxyRuntime.runtime.mode === "magic" ? (
                                 <ChatGptMagicProxyPanel proxyRuntime={proxyRuntime} hideSourceSwitch />
+                            ) : proxyRuntime.runtime.mode === "chained" ? (
+                                <ChatGptChainedProxyPanel proxyRuntime={proxyRuntime} />
                             ) : (
-                                <ChatGptProxyManager proxyRuntime={proxyRuntime} showGroups={false} showSourceSwitch={false} title="代理管理出口" description="选择 GPTAPI 经代理管理提交时的默认出口与失败回退；代理分组与节点统一在「上游配置 → 代理管理」维护。" />
+                                <ChatGptProxyManager proxyRuntime={proxyRuntime} showGroups={false} showSourceSwitch={false} title="通用代理出口" description="选择 GPTAPI 经通用代理提交时的默认出口与失败回退；代理分组与节点统一在「上游配置 → 通用代理」维护。" />
                             )}
                         </>
                     ) : null}

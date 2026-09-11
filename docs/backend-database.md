@@ -34,4 +34,4 @@ IPWO 源设置使用独立 Tab 与 `/integration/ipwo` 契约；来源开关通�
 
 ## MiniMax 音频
 
-`octalaicanvas_minimax_voices` 保存用户创建的 MiniMax 或阿里云百炼音色本地映射（系统音色不落用户表）；`provider` 区分供应商，`user_id` 为空的记录仅供后台同步使用，前台个人音色查询必须按当前用户过滤。音色表保存 `model`、`voice_name`、`description`、`provider_created_time`、可人工调整的 `category` 以及百炼目录的 `scene`、`voice_param`、`feature`、`age`、`gender`、`language`、`preview_url` 字段；新同步音色的默认分类由名称、介绍或特征派生，管理员可在后台调整，前端按模型过滤，禁止跨模型混用音色。`octalaicanvas_minimax_music_records` 保存音乐生成的用户记录，`aliyun_bailian_audio_records` 保存百炼语音任务的提交用户、提示词、文本、模型、音色、结果地址、状态和时间，供后台音频管理分页试听；`octalaicanvas_minimax_request_logs` 通过 `provider` 区分 MiniMax、阿里云百炼与腾讯云 TokenHub，并保存从提交、上游响应到完成/失败的请求过程日志。API Key 继续只存于系统模型渠道的加密字段，音色、音频和音乐结果不在浏览器本地持久化。
+`octalaicanvas_minimax_voices` 保存用户创建的 MiniMax 或阿里云百炼音色本地映射（系统音色不落用户表）；`provider` 区分供应商，`user_id` 为空的记录仅供后台同步使用，前台个人音色查询必须按当前用户过滤。音色表同时保存供应商 `voice_name`、`description` 和 `provider_created_time`，分类由名称与介绍实时派生，不把分类规则固化成供应商字段。`octalaicanvas_minimax_music_records` 保存音乐生成的用户记录，`octalaicanvas_minimax_request_logs` 通过 `provider` 区分 MiniMax、阿里云百炼与腾讯云 TokenHub，并保存从提交、上游响应到完成/失败的请求过程日志。API Key 继续只存于系统模型渠道的加密字段，音色和音乐结果不在浏览器本地持久化。

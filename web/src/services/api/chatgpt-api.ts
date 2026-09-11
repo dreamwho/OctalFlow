@@ -118,7 +118,7 @@ export type ChatGptLogPage = {
     facets?: { statuses?: Record<string, number>; endpoints?: Record<string, number>; models?: Record<string, number>; accounts?: Record<string, number> };
     stats?: { total?: number; success?: number; text_review?: number; failed?: number; limited?: number; image?: number };
 };
-export type ChatGptProxyRuntimeMode = "native" | "magic";
+export type ChatGptProxyRuntimeMode = "native" | "magic" | "chained";
 export type ChatGptProxyNativeSource = "manual" | "ipwo";
 export type ChatGptProxyRuntime = {
     enabled: boolean;
@@ -126,6 +126,10 @@ export type ChatGptProxyRuntime = {
     native_source: ChatGptProxyNativeSource;
     magicConfigured: boolean;
     ipwoConfigured: boolean;
+    chained_config?: {
+        hop_magic_node_name: string;
+        landing_generic_node_id: string;
+    };
 };
 export type ChatGptProxyRuntimePatch = Partial<ChatGptProxyRuntime>;
 export type ChatGptProxyProbe = {
@@ -251,13 +255,13 @@ export type ChatGptProxyNodeTestResult = {
     details?: { target_url?: string };
 };
 
-export async function testChatGptProxyNode(groupId: string, nodeId: string, timeoutMs = 15_000) {
+export async function testChatGptProxyNode(groupId: string, nodeId: string, timeoutMs = 15_000, chained = false) {
     const payload = await chatGptApiRequest<{ results?: Array<{ node_id?: string; result?: { ok?: boolean; latency_ms?: number; error?: string; status?: number } }> }>("proxies/groups/test", {
         method: "POST",
-        body: JSON.stringify({ id: groupId, node_id: nodeId }),
+        body: JSON.stringify({ id: groupId, node_id: nodeId, chained }),
         signal: AbortSignal.timeout(Math.max(1_000, timeoutMs)),
     });
-    const row = payload.results?.find((item) => item.node_id === nodeId)?.result || payload.results?.[0]?.result;
+    const row = payload.results?.find((item) => item.node_id === (chained ? (nodeId || "chained") : nodeId))?.result || payload.results?.[0]?.result;
     return {
         result: {
             status: row?.ok ? "passed" : "failed",

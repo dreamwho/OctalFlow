@@ -17,13 +17,17 @@ export class ChatGptApiError extends Error {
 
 export type ChatGptProxySelection = {
     enabled: boolean;
-    mode: "native" | "magic";
+    mode: "native" | "magic" | "chained";
     native_source: "manual" | "ipwo";
+    chained_config?: {
+        hop_magic_node_name: string;
+        landing_generic_node_id: string;
+    };
     magicConfigured: boolean;
     ipwoConfigured: boolean;
 };
 
-export type ChatGptProxySelectionPatch = Pick<ChatGptProxySelection, "enabled" | "mode" | "native_source">;
+export type ChatGptProxySelectionPatch = Pick<ChatGptProxySelection, "enabled" | "mode" | "native_source" | "chained_config">;
 
 const dispatcher = new Agent({ headersTimeout: GENERATION_TRANSPORT_TIMEOUT_MS, bodyTimeout: GENERATION_TRANSPORT_TIMEOUT_MS });
 export function getChatGptRuntimeConfig() {
@@ -101,20 +105,31 @@ export function sanitizeChatGptAdminResult(value: unknown, allowCreatedKey = fal
 function normalizeChatGptProxySelectionPatch(input: unknown): ChatGptProxySelectionPatch {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new ChatGptApiError("代理选择参数无效", 400);
     const value = input as Record<string, unknown>;
-    if (Object.keys(value).some((key) => !["enabled", "mode", "native_source"].includes(key))) {
+    if (Object.keys(value).some((key) => !["enabled", "mode", "native_source", "chained_config"].includes(key))) {
         throw new ChatGptApiError("代理选择参数无效", 400);
     }
     if (
         typeof value.enabled !== "boolean" ||
-        (value.mode !== "native" && value.mode !== "magic") ||
+        (value.mode !== "native" && value.mode !== "magic" && value.mode !== "chained") ||
         (value.native_source !== "manual" && value.native_source !== "ipwo")
     ) {
         throw new ChatGptApiError("代理选择参数无效", 400);
+    }
+    let chained_config: ChatGptProxySelectionPatch["chained_config"] = undefined;
+    if (value.mode === "chained") {
+        const config = (value.chained_config as Record<string, unknown> | null | undefined) || {};
+        const hop = typeof config.hop_magic_node_name === "string" ? config.hop_magic_node_name.trim() : "";
+        const landing = typeof config.landing_generic_node_id === "string" ? config.landing_generic_node_id.trim() : "";
+        chained_config = {
+            hop_magic_node_name: hop,
+            landing_generic_node_id: landing,
+        };
     }
     return {
         enabled: value.enabled,
         mode: value.mode,
         native_source: value.native_source,
+        ...(chained_config ? { chained_config } : {}),
     };
 }
 
@@ -143,11 +158,24 @@ export async function resolveGenericProxyNodeUrl(nodeId: string): Promise<string
     return resolved?.url || "";
 }
 
+export async function prepareChatGptChainedProxySelection(chainedConfig: { hop_magic_node_name: string; landing_generic_node_id: string }) {
+    await syncChatGptMagicProxyAddress();
+    const url = await resolveGenericProxyNodeUrl(chainedConfig.landing_generic_node_id);
+    if (!url) throw new ChatGptApiError("指定的通用代理落地节点无效或未包含有效地址", 400);
+    const { syncMihomoChainedProxy } = await import("@/lib/server/magic-proxy-service");
+    await syncMihomoChainedProxy({
+        hopNode: chainedConfig.hop_magic_node_name,
+        landingProxyUrl: url,
+    });
+}
+
 export async function syncChatGptMagicProxy() {
     const selection = await getChatGptProxySelection();
     if (!selection.enabled) return;
     if (selection.mode === "magic") {
         await syncChatGptMagicProxyAddress();
+    } else if (selection.mode === "chained" && selection.chained_config) {
+        await prepareChatGptChainedProxySelection(selection.chained_config).catch(() => undefined);
     }
 }
 
@@ -155,6 +183,15 @@ export async function updateChatGptProxySelection(input: unknown) {
     const selection = normalizeChatGptProxySelectionPatch(input);
     if (selection.enabled && selection.mode === "magic") {
         await prepareChatGptMagicProxySelection();
+        const { syncMihomoChainedProxy } = await import("@/lib/server/magic-proxy-service");
+        await syncMihomoChainedProxy({});
+    } else if (selection.enabled && selection.mode === "chained" && selection.chained_config) {
+        if (selection.chained_config.hop_magic_node_name && selection.chained_config.landing_generic_node_id) {
+            await prepareChatGptChainedProxySelection(selection.chained_config);
+        }
+    } else {
+        const { syncMihomoChainedProxy } = await import("@/lib/server/magic-proxy-service");
+        await syncMihomoChainedProxy({}).catch(() => undefined);
     }
     return chatGptRuntimeJson<ChatGptProxySelection>("/integration/proxy-selection", {
         method: "PATCH",

@@ -315,11 +315,7 @@ function extractResponseMetrics(value: unknown, capability: GeminiAiRequestCapab
         if (capability === "image") {
             if (Array.isArray(obj.data)) {
                 imageRequestedCount = obj.data.length;
-                imageSucceededCount = obj.data.filter((item) => {
-                    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
-                    const image = item as Record<string, unknown>;
-                    return Boolean(image.url || image.b64_json);
-                }).length;
+                imageSucceededCount = obj.data.filter((item) => item && typeof item === "object" && Boolean((item as any).url || (item as any).b64_json)).length;
                 imageFailedCount = imageRequestedCount - imageSucceededCount;
             } else if (Array.isArray(obj.images)) {
                 imageRequestedCount = obj.images.length;

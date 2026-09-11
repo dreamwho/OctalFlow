@@ -8,10 +8,11 @@ const labels: Record<ChatGptProxyTarget, string> = {
     manual: "使用代理管理",
     ipwo: "使用IPWO代理",
     magic: "使用魔法代理",
+    chained: "使用链式代理",
 };
 
 function selected(runtime: NonNullable<ChatGptProxyRuntimeController["runtime"]>, target: ChatGptProxyTarget) {
-    return runtime.mode === (target === "magic" ? "magic" : "native") && (target === "magic" || runtime.native_source === target);
+    return runtime.mode === (target === "magic" ? "magic" : target === "chained" ? "chained" : "native") && (target === "magic" || target === "chained" || runtime.native_source === target);
 }
 
 export function ChatGptProxyRuntimeControl({ controller, target, disabledReason }: { controller: ChatGptProxyRuntimeController; target: ChatGptProxyTarget; disabledReason?: string }) {

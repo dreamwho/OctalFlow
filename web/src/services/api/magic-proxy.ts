@@ -14,10 +14,16 @@ export type MagicProxyGroup = {
     all: string[];
 };
 
+export type MagicProxyChainedConfig = {
+    hop_node: string;
+    landing_node_id: string;
+};
+
 export type MagicProxyBinding = {
     enabled: boolean;
     node?: string;
-    mode?: "magic";
+    mode?: "magic" | "chained";
+    chained_config?: MagicProxyChainedConfig;
 };
 
 export type MagicProxyState = {
@@ -34,7 +40,8 @@ export type MagicProxyBindingPatch = {
     provider: MagicProxyProvider;
     enabled: boolean;
     node?: string;
-    mode?: "magic";
+    mode?: "magic" | "chained";
+    chained_config?: MagicProxyChainedConfig;
 };
 
 export type MagicProxySubscriptionImport = { url?: string; content?: string };
