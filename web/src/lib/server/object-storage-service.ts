@@ -81,7 +81,7 @@ export async function createTemporaryPublicObject(input: { bytes: Buffer; conten
         });
         return { objectKey, url, cleanup: () => deleteObject(config, objectKey) };
     } catch (error) {
-        await deleteObject(config, objectKey).catch(() => undefined);
+        await deleteObject(config, objectKey).catch((cleanupError) => console.error("Temporary object cleanup after failed signing failed", { objectKey, error: cleanupError }));
         throw error;
     }
 }

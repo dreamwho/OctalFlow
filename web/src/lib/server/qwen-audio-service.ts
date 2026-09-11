@@ -1,5 +1,5 @@
 import { getAuthSettings } from "@/lib/auth/store";
-import { QWEN_AUDIO_MODELS, isQwenVoiceDesignModel } from "@/lib/qwen-audio";
+import { QWEN_AUDIO_MODELS, isQwenVoiceCloneModel, isQwenVoiceDesignModel } from "@/lib/qwen-audio";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 
 type QwenChannel = { id: string; baseUrl: string; apiKey: string; models: string[] };
@@ -10,8 +10,8 @@ export function isQwenAudioChannel(channel: { id?: string; advancedConfig?: { pr
 
 export function qwenVoiceOperation(model: string, mode: "clone" | "design") {
     if (!QWEN_AUDIO_MODELS.includes(model as (typeof QWEN_AUDIO_MODELS)[number])) throw new Error("未启用的阿里云百炼音色模型");
-    if (mode === "clone" && isQwenVoiceDesignModel(model)) throw new Error("该模型仅支持音色设计");
-    if (mode === "design" && !isQwenVoiceDesignModel(model)) throw new Error("该模型仅支持音色复刻");
+    if (mode === "clone" && !isQwenVoiceCloneModel(model)) throw new Error("该模型不支持音色复刻");
+    if (mode === "design" && !isQwenVoiceDesignModel(model)) throw new Error("该模型不支持音色设计");
     return model.startsWith("qwen3-tts-") ? "qwen" : "enrollment";
 }
 

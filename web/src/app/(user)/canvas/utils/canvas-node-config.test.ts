@@ -105,6 +105,19 @@ describe("selectableCanvasAudioModels", () => {
         expect(selectableCanvasAudioModels(audioConfig, "music")).toEqual(["minimax-music-v3.0"]);
     });
 
+    it("offers cosyvoice-v3.5-plus for both voice cloning and voice design", () => {
+        const cosyConfig = {
+            ...defaultConfig,
+            models: ["cosyvoice-v3-plus", "cosyvoice-v3.5-plus"],
+            audioModels: ["cosyvoice-v3-plus", "cosyvoice-v3.5-plus"],
+            channels: [{ id: "aliyun-bailian-audio", name: "阿里云百炼语音", baseUrl: "/api/ai/system/aliyun-bailian-audio", apiKey: "system", apiFormat: "openai" as const, models: ["cosyvoice-v3-plus", "cosyvoice-v3.5-plus"], advancedConfig: { protocol: "aliyun-bailian-audio" as const } as never }],
+        } as AiConfig;
+
+        expect(selectableCanvasAudioModels(cosyConfig, "voice-clone")).toEqual(["cosyvoice-v3-plus", "cosyvoice-v3.5-plus"]);
+        expect(selectableCanvasAudioModels(cosyConfig, "voice-design")).toEqual(["cosyvoice-v3.5-plus"]);
+        expect(selectableCanvasAudioModels(cosyConfig, "tts")).toEqual(["cosyvoice-v3-plus", "cosyvoice-v3.5-plus"]);
+    });
+
     it("hides MiniMax voice features when the channel switch is disabled", () => {
         const audioConfig = {
             ...defaultConfig,

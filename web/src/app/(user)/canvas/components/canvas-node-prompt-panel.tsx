@@ -254,11 +254,6 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     buttonClassName="canvas-composer-settings !h-7 !max-w-[13rem] !justify-start !rounded-lg !px-2.5"
                     onConfigChange={(key, value) => onConfigChange(node.id, canvasAudioConfigPatch(key, value))}
                     sourceAudioUrl={node.type === CanvasNodeType.Audio ? node.metadata?.content : undefined}
-                    clonePromptText={prompt}
-                    onVoiceCloneComplete={(voiceId, promptText) => {
-                        onConfigChange(node.id, { audioVoice: voiceId, audioMode: "tts" });
-                        return onGenerate(node.id, "audio", promptText, [], { audioVoice: voiceId, audioMode: "tts" });
-                    }}
                 />
             ) : null}
         </>
@@ -376,8 +371,8 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         style={{ background: "transparent", color: theme.node.text, fontSize: 14, lineHeight: "24px", letterSpacing: "normal" }}
                         placeholder={
                             selectedSkills.length
-                                ? selectedSkills[0].promptHint || promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama)
-                                : `${promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama)}${mode === "image" || mode === "video" ? "，输入 / 选择 Skill" : ""}`
+                                ? selectedSkills[0].promptHint || promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama, config.audioMode)
+                                : `${promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama, config.audioMode)}${mode === "image" || mode === "video" ? "，输入 / 选择 Skill" : ""}`
                         }
                     />
                     <div className="pointer-events-none absolute bottom-0 right-1 text-[10px] tabular-nums opacity-30">{prompt.length}/1000</div>
@@ -440,7 +435,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                             aria-label="提示词编辑器"
                             className="thin-scrollbar h-[min(52vh,26rem)] min-h-64 w-full resize-none border-0 px-4 py-3 text-sm leading-6 outline-none"
                             style={{ background: theme.node.fill, color: theme.node.text, fontSize: 14, lineHeight: "24px", letterSpacing: "normal" }}
-                            placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama)}
+                            placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama, config.audioMode)}
                         />
                     </div>
                     <div className="mt-3 flex items-center justify-end gap-2">
@@ -497,9 +492,14 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
     return node.type === CanvasNodeType.Panorama ? { ...config, size: PANORAMA_IMAGE_SIZE } : config;
 }
 
-function promptPlaceholder(mode: CanvasNodeGenerationMode, hasImageContent: boolean, hasTextContent: boolean, isPanorama: boolean) {
+function promptPlaceholder(mode: CanvasNodeGenerationMode, hasImageContent: boolean, hasTextContent: boolean, isPanorama: boolean, audioMode?: AiConfig["audioMode"]) {
     if (mode === "video") return "描述要生成的视频内容";
-    if (mode === "audio") return "描述要生成的音频内容";
+    if (mode === "audio") {
+        if (audioMode === "voice-clone") return "请填写复刻之后需要输出的文字文案";
+        if (audioMode === "voice-design") return "完成音色设计后，在此填写要输出的文字文案";
+        if (audioMode === "music") return "描述要生成的音乐内容";
+        return "描述要生成的音频内容";
+    }
     if (isPanorama) return hasImageContent ? "描述要如何调整这个全景环境" : "描述要生成的 360° 全景环境";
     if (mode === "image") return hasImageContent ? "请输入你想要把这张图修改成什么" : "描述要生成的图片内容";
     return hasTextContent ? "请输入你想要将本段文本修改成什么" : "请输入你想要生成的文本内容";

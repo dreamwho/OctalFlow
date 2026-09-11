@@ -24,17 +24,20 @@ export async function GET() {
     });
 }
 
+/** MiniMax voice_design requires preview_text; the UI no longer asks for it, so a fixed sample is synthesized during design. */
+const DEFAULT_VOICE_DESIGN_PREVIEW_TEXT = "你好，这是一段用于试听新音色的默认文本。";
+
 export async function POST(request: Request) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
-    const parsed = await readJsonBodyResult<{ kind?: string; name?: string; prompt?: string; previewText?: string; voiceId?: string }>(request, 64 * 1024);
+    const parsed = await readJsonBodyResult<{ kind?: string; name?: string; prompt?: string; description?: string; previewText?: string; voiceId?: string }>(request, 64 * 1024);
     if (!parsed.ok) return NextResponse.json({ error: parsed.message }, { status: parsed.status });
     const body = parsed.data;
     if (body.kind !== "design") return NextResponse.json({ error: "音色复刻请使用文件上传接口" }, { status: 400 });
     if (!(await isMiniMaxVoiceFeatureEnabled("voice-design"))) return NextResponse.json({ error: "MiniMax 音色设计已在控制台关闭，请改用阿里云百炼模型" }, { status: 403 });
     const prompt = String(body.prompt || "").trim();
-    const previewText = String(body.previewText || "").trim();
-    if (!prompt || !previewText) return NextResponse.json({ error: "音色设计需要填写描述和试听文本" }, { status: 400 });
+    const previewText = String(body.previewText || "").trim() || DEFAULT_VOICE_DESIGN_PREVIEW_TEXT;
+    if (!prompt) return NextResponse.json({ error: "音色设计需要填写音色提示词" }, { status: 400 });
     const log = await appendMiniMaxRequestLog({ userId: user.id, capability: "voice", method: "POST", path: "/v1/voice_design", model: "voice-design", statusCode: 0, durationMs: 0, phase: "queued", requestPreview: JSON.stringify({ mode: "voice-design" }), lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "音色设计请求已提交" }] }).catch(() => undefined);
     const startedAt = Date.now();
     if (log) await updateMiniMaxRequestLog(log.id, { statusCode: 0, durationMs: 0, phase: "running", lifecycle: [{ at: new Date().toISOString(), phase: "running", message: "正在调用 MiniMax 音色设计接口" }] }).catch(() => undefined);
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error }, { status: response.status || 502 });
         }
         const name = String(body.name || "我的音色").trim().slice(0, 80) || "我的音色";
-        const description = String(body.prompt || "").trim().slice(0, 500);
+        const description = String(body.description || "").trim().slice(0, 500) || prompt.slice(0, 500);
         const voice = await saveMiniMaxVoice({ userId: user.id, remoteVoiceId: voiceId, name, voiceName: name, description, providerCreatedTime: "", voiceType: "voice_generation", visible: true, category: "其他" });
         if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "success", responsePreview: "MiniMax 音色设计完成并已保存", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色设计完成" }] }).catch(() => undefined);
         return NextResponse.json({ voice });

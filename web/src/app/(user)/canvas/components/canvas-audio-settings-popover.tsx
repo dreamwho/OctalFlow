@@ -32,24 +32,22 @@ type CanvasAudioSettingsPopoverProps = {
     buttonClassName?: string;
     placement?: CanvasSettingsPopoverPlacement;
     sourceAudioUrl?: string;
-    clonePromptText?: string;
-    onVoiceCloneComplete?: (voiceId: string, promptText: string) => void | Promise<void>;
 };
 
 const AUDIO_MODE_OPTIONS = [
-    { value: "voice-clone", label: "音色复刻", description: "用音频复刻音色并生成语音", icon: <Mic2 className="size-3.5" /> },
     { value: "tts", label: "文转语音", description: "将文字转换为语音", icon: <Sparkles className="size-3.5" /> },
-    { value: "voice-design", label: "音色设计", description: "设计并试听全新音色", icon: <WandSparkles className="size-3.5" /> },
+    { value: "voice-clone", label: "音色复刻", description: "上传音频复刻音色，再填写文案生成语音", icon: <Mic2 className="size-3.5" /> },
+    { value: "voice-design", label: "音色设计", description: "按音色提示词设计全新音色", icon: <WandSparkles className="size-3.5" /> },
     { value: "music", label: "音乐设计", description: "根据风格生成音乐", icon: <Music2 className="size-3.5" /> },
 ] as const;
 type CanvasAudioMode = (typeof AUDIO_MODE_OPTIONS)[number]["value"];
 
 export function CanvasAudioModePicker({ value, onChange, disabledModes = [] }: { value?: CanvasAudioMode; onChange: (value: CanvasAudioMode) => void; disabledModes?: string[] }) {
-    const active = AUDIO_MODE_OPTIONS.find((item) => item.value === (value || "tts")) || AUDIO_MODE_OPTIONS[1];
+    const active = AUDIO_MODE_OPTIONS.find((item) => item.value === (value || "tts")) || AUDIO_MODE_OPTIONS[0];
     return <span className="block w-[7.2rem] shrink-0 [&_.ant-select]:w-full" data-canvas-no-drag onMouseDown={(event) => event.stopPropagation()}><Select size="small" value={active.value} options={AUDIO_MODE_OPTIONS.map(({ value: optionValue, label, description }) => ({ value: optionValue, label, description, disabled: disabledModes.includes(optionValue) }))} onChange={onChange} optionRender={(option) => <div className="py-0.5"><div className="font-medium">{option.data.label}{option.data.disabled ? "（已关闭）" : ""}</div><div className="text-[11px] opacity-60">{option.data.description}</div></div>} prefix={<span className="text-current">{active.icon}</span>} /></span>;
 }
 
-export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClassName, placement = "top", sourceAudioUrl, clonePromptText, onVoiceCloneComplete }: CanvasAudioSettingsPopoverProps) {
+export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClassName, placement = "top", sourceAudioUrl }: CanvasAudioSettingsPopoverProps) {
     const [voiceNames, setVoiceNames] = useState<Record<string, string>>({});
     const requestConfig = resolveModelRequestConfig(config, config.model);
     const currentModel = modelOptionName(requestConfig.model).trim();
@@ -80,7 +78,7 @@ export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClass
             placement={placement}
             panelWidth={720}
         >
-            {(theme, close, openChildOverlay) => <AudioSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} showTitle={false} showModeSelector={false} className="space-y-4" sourceAudioUrl={sourceAudioUrl} clonePromptText={clonePromptText} onVoiceCloneComplete={onVoiceCloneComplete} autoOpenVoiceModal={config.audioMode === "voice-clone"} onVoiceModalOpen={openChildOverlay} onVoiceModalClose={close} />}
+            {(theme, close, openChildOverlay) => <AudioSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} showTitle={false} showModeSelector={false} className="space-y-4" sourceAudioUrl={sourceAudioUrl} autoOpenVoiceModal={config.audioMode === "voice-clone" || config.audioMode === "voice-design"} onVoiceModalOpen={openChildOverlay} onVoiceModalClose={close} />}
         </CanvasSettingsPopoverShell>
     );
 }

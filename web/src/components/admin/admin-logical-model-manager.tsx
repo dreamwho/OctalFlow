@@ -137,7 +137,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                         <Input allowClear value={query} prefix={<Search className="size-4 text-stone-400" />} placeholder="搜索模型昵称、ID 或上游模型" onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} />
                         <Select value={capabilityFilter} options={[{ label: "全部能力", value: "all" }, ...capabilityOptions]} onChange={(value: LogicalModelCapability | "all") => setCapabilityFilter(value)} />
                     </div>
-                    <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
+                    <div className="space-y-2">
                         {visibleModels.map((model) => {
                             const resolved = resolveLogicalModelConfig(logicalModels, channels, model.capability, model.id);
                             const isDefault = Object.values(defaultModels).some((value) => value.toLowerCase() === model.id.toLowerCase());

@@ -63,20 +63,17 @@ type AudioSettingsPanelProps = {
     showModeSelector?: boolean;
     className?: string;
     sourceAudioUrl?: string;
-    clonePromptText?: string;
-    onVoiceCloneComplete?: (voiceId: string, promptText: string) => void | Promise<void>;
     autoOpenVoiceModal?: boolean;
     onVoiceModalOpen?: () => void;
     onVoiceModalClose?: () => void;
 };
 
-export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = true, showModeSelector = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", sourceAudioUrl = "", clonePromptText = "", onVoiceCloneComplete, autoOpenVoiceModal = false, onVoiceModalOpen, onVoiceModalClose }: AudioSettingsPanelProps) {
+export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = true, showModeSelector = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5", sourceAudioUrl = "", autoOpenVoiceModal = false, onVoiceModalOpen, onVoiceModalClose }: AudioSettingsPanelProps) {
     const [miniMaxVoices, setMiniMaxVoices] = useState<{ system: MiniMaxVoiceOption[]; personal: MiniMaxVoiceOption[] }>({ system: [], personal: [] });
     const [voiceModalOpen, setVoiceModalOpen] = useState(false);
     const [voiceName, setVoiceName] = useState("");
     const [voiceDescription, setVoiceDescription] = useState("");
     const [voicePrompt, setVoicePrompt] = useState("");
-    const [voicePreviewText, setVoicePreviewText] = useState("");
     const [voiceFile, setVoiceFile] = useState<File | null>(null);
     const voiceFileInputRef = useRef<HTMLInputElement>(null);
     const [voiceSaving, setVoiceSaving] = useState(false);
@@ -162,23 +159,22 @@ export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = 
                     cloneFile = new File([blob], "canvas-audio.wav", { type: blob.type || "audio/wav" });
                 }
             }
-            const promptText = clonePromptText.trim() || config.audioInstructions.trim();
-            if (clone && (!cloneFile || !promptText)) throw new Error("音色复刻必须同时提供参考音频并填写提示词面板内容");
-            if (!clone && (!voicePrompt.trim() || !voicePreviewText.trim())) throw new Error("音色设计需要填写音色描述和试听文本");
+            if (clone && !cloneFile) throw new Error("音色复刻需要先上传参考音频");
+            if (!clone && !voicePrompt.trim()) throw new Error("音色设计需要填写音色提示词");
             const response = clone
                 ? await fetch(isQwen ? "/api/qwen-audio/voices/clone" : "/api/minimax/voices/clone", (() => {
                       const body = new FormData();
                       body.set("file", cloneFile!);
-                      body.set("promptText", promptText);
                       body.set("name", voiceName.trim() || "我的复刻音色");
                       body.set("description", voiceDescription.trim());
                       if (isQwen) body.set("model", requestConfig.model);
                       return { method: "POST", body };
                   })())
-                : await fetch(isQwen ? "/api/qwen-audio/voices" : "/api/minimax/voices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "design", model: requestConfig.model, name: voiceName.trim() || "我的设计音色", prompt: voicePrompt, previewText: voicePreviewText }) });
+                : await fetch(isQwen ? "/api/qwen-audio/voices" : "/api/minimax/voices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "design", model: requestConfig.model, name: voiceName.trim() || "我的设计音色", prompt: voicePrompt, description: voiceDescription.trim() }) });
             const payload = (await response.json().catch(() => ({}))) as { voice?: { remoteVoiceId: string; name: string; voiceName?: string; description?: string }; error?: string };
             if (!response.ok || !payload.voice) throw new Error(payload.error || "创建 MiniMax 音色失败");
             onConfigChange("audioVoice", payload.voice.remoteVoiceId);
+            onConfigChange("audioMode", "tts");
             const createdVoiceName = payload.voice.voiceName || payload.voice.name;
             const description = payload.voice.description || voiceDescription.trim();
             const option = { value: payload.voice.remoteVoiceId, label: createdVoiceName, voiceName: createdVoiceName, description, category: classifyMiniMaxVoice(createdVoiceName, description) };
@@ -186,7 +182,6 @@ export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = 
             setVoiceModalOpen(false);
             setVoiceFile(null);
             onVoiceModalClose?.();
-            if (clone) void onVoiceCloneComplete?.(payload.voice.remoteVoiceId, promptText);
         } catch (reason) {
             setVoiceError(reason instanceof Error ? reason.message : `创建${isQwen ? "百炼" : "MiniMax"}音色失败`);
         } finally {
@@ -264,7 +259,7 @@ export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = 
                     </>
                 ) : config.audioMode === "voice-clone" || config.audioMode === "voice-design" ? autoOpenVoiceModal ? null : (
                     <div className="space-y-2 rounded-xl border px-3 py-2.5 text-xs" style={{ borderColor: theme.node.stroke, color: theme.node.muted }}>
-                        <div>{config.audioMode === "voice-clone" ? "上传音频并在提示词框输入试听文本后复刻音色" : "点击下方按钮创建音色，描述和试听文本在弹出层中填写"}</div>
+                        <div>{config.audioMode === "voice-clone" ? "上传参考音频创建复刻音色，然后在提示词面板填写要输出的文字并生成" : "点击下方按钮创建音色，名称、介绍和音色提示词在弹出层中填写"}</div>
                         {isVoiceProvider && (isQwen || (config.audioMode === "voice-clone" ? requestConfig.advancedConfig?.minimaxVoiceCloneEnabled !== false : requestConfig.advancedConfig?.minimaxVoiceDesignEnabled !== false)) ? <Button size="small" type="link" className="!px-0" onClick={openVoiceModal}>{config.audioMode === "voice-clone" ? "复刻新音色" : "设计新音色"}</Button> : null}
                     </div>
                 ) : isMiniMax ? (
@@ -350,7 +345,7 @@ export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = 
             >
                 <div className="flex flex-col gap-4 pt-1">
                     <Input value={voiceName} placeholder="前端显示名称" onChange={(event) => setVoiceName(event.target.value)} />
-                    {config.audioMode === "voice-clone" ? <div className="flex flex-col gap-4"><Input.TextArea className="!min-h-20" value={voiceDescription} maxLength={500} showCount placeholder="音色介绍（仅保存到当前项目后台，不会发送到上游）" onChange={(event) => setVoiceDescription(event.target.value)} /><div className="flex cursor-pointer flex-col gap-3 rounded-xl border border-dashed p-4" onClick={() => voiceFileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={handleVoiceDrop} onPaste={handleVoicePaste} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") voiceFileInputRef.current?.click(); }} role="button" tabIndex={0}><div className="text-sm font-medium">参考音频</div><div className="text-xs text-stone-500">将音频拖到这里，或点击区域后粘贴，也可以选择文件。支持 MP3、M4A、WAV，最大 20MB。</div><div className="flex flex-wrap items-center gap-2"><Button onClick={(event) => { event.stopPropagation(); voiceFileInputRef.current?.click(); }}>选择文件</Button><span className="max-w-full truncate text-xs text-stone-600 dark:text-stone-300">{voiceFile?.name || (sourceAudioUrl ? "将使用当前音频节点文件" : "未选择文件")}</span></div><input ref={voiceFileInputRef} className="hidden" type="file" accept="audio/*,.mp3,.m4a,.wav" onChange={(event) => setSelectedVoiceFile(event.target.files?.[0])} /></div><div className="text-xs text-stone-500">提示词面板中的文字会作为复刻后的试听文本，创建音色后自动执行文转语音。</div></div> : <div className="flex flex-col gap-4"><Input.TextArea className="!min-h-24" value={voicePrompt} placeholder="描述想要的音色，例如：温暖、成熟、纪录片旁白" onChange={(event) => setVoicePrompt(event.target.value)} /><Input.TextArea className="!min-h-24" value={voicePreviewText} placeholder="输入用于试听的文本" onChange={(event) => setVoicePreviewText(event.target.value)} /></div>}
+                    {config.audioMode === "voice-clone" ? <div className="flex flex-col gap-4"><Input.TextArea className="!min-h-20" value={voiceDescription} maxLength={500} showCount placeholder="音色介绍（仅保存到当前项目后台，不会发送到上游）" onChange={(event) => setVoiceDescription(event.target.value)} /><div className="flex cursor-pointer flex-col gap-3 rounded-xl border border-dashed p-4" onClick={() => voiceFileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={handleVoiceDrop} onPaste={handleVoicePaste} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") voiceFileInputRef.current?.click(); }} role="button" tabIndex={0}><div className="text-sm font-medium">参考音频</div><div className="text-xs text-stone-500">将音频拖到这里，或点击区域后粘贴，也可以选择文件。支持 MP3、M4A、WAV，最大 20MB。</div><div className="flex flex-wrap items-center gap-2"><Button onClick={(event) => { event.stopPropagation(); voiceFileInputRef.current?.click(); }}>选择文件</Button><span className="max-w-full truncate text-xs text-stone-600 dark:text-stone-300">{voiceFile?.name || (sourceAudioUrl ? "将使用当前音频节点文件" : "未选择文件")}</span></div><input ref={voiceFileInputRef} className="hidden" type="file" accept="audio/*,.mp3,.m4a,.wav" onChange={(event) => setSelectedVoiceFile(event.target.files?.[0])} /></div><div className="text-xs text-stone-500">上传参考音频创建音色后，回到提示词面板填写要输出的文字文案，点击生成即可用该音色合成语音。</div></div> : <div className="flex flex-col gap-4"><Input.TextArea className="!min-h-20" value={voiceDescription} maxLength={500} showCount placeholder="音色介绍（仅保存到当前项目后台，方便辨识音色类型，不会发送到上游）" onChange={(event) => setVoiceDescription(event.target.value)} /><Input.TextArea className="!min-h-24" value={voicePrompt} placeholder="音色提示词：描述想要的音色，例如温暖、成熟、纪录片旁白；内容越具体，音色效果越稳定" onChange={(event) => setVoicePrompt(event.target.value)} /></div>}
                     {voiceError ? <div className="text-sm text-red-500">{voiceError}</div> : null}
                 </div>
             </Modal>

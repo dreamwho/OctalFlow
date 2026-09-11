@@ -33,6 +33,7 @@
     filter: hue-rotate(58deg) saturate(.9) contrast(1.1) brightness(.78) blur(1px);
     height: 112%;
     left: -6%;
+    max-width: none;
     object-fit: cover;
     opacity: .5;
     position: absolute;

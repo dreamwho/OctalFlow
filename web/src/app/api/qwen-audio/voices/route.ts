@@ -40,17 +40,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ system, personal });
 }
 
+/** The upstream voice-design APIs require preview_text; the UI no longer asks for it, so a fixed sample is synthesized during design. */
+const DEFAULT_VOICE_DESIGN_PREVIEW_TEXT = "你好，这是一段用于试听新音色的默认文本。";
+
 export async function POST(request: Request) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
-    const parsed = await readJsonBodyResult<{ kind?: string; model?: string; name?: string; prompt?: string; previewText?: string }>(request, 64 * 1024);
+    const parsed = await readJsonBodyResult<{ kind?: string; model?: string; name?: string; prompt?: string; description?: string; previewText?: string }>(request, 64 * 1024);
     if (!parsed.ok) return NextResponse.json({ error: parsed.message }, { status: parsed.status });
     const body = parsed.data;
     const model = String(body.model || "").trim();
     const prompt = String(body.prompt || "").trim();
-    const previewText = String(body.previewText || "").trim();
+    const previewText = String(body.previewText || "").trim() || DEFAULT_VOICE_DESIGN_PREVIEW_TEXT;
     if (!model || !QWEN_AUDIO_MODELS.includes(model as (typeof QWEN_AUDIO_MODELS)[number])) return NextResponse.json({ error: "请选择已启用的阿里云百炼模型" }, { status: 400 });
-    if (body.kind !== "design" || !prompt || !previewText) return NextResponse.json({ error: "阿里云百炼音色设计需要填写描述和试听文本" }, { status: 400 });
+    if (body.kind !== "design" || !prompt) return NextResponse.json({ error: "阿里云百炼音色设计需要填写音色提示词" }, { status: 400 });
     const log = await appendMiniMaxRequestLog({ provider: "aliyun-bailian", userId: user.id, capability: "voice", method: "POST", path: "/services/audio/tts/customization", model, statusCode: 0, durationMs: 0, phase: "queued", requestPreview: JSON.stringify({ mode: "voice-design", model }), lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "阿里云百炼音色设计请求已提交" }] }).catch(() => undefined);
     const startedAt = Date.now();
     let statusCode = 0;
@@ -74,7 +77,8 @@ export async function POST(request: Request) {
             throw new Error(error);
         }
         const name = safeName(body.name) || "我的百炼设计音色";
-        const voice = await saveMiniMaxVoice({ provider: "aliyun-bailian", userId: user.id, remoteVoiceId: voiceId, model, name, voiceName: name, description: prompt.slice(0, 500), providerCreatedTime: qwenVoiceCreatedAt(result), scene: "个人创建", feature: classifyMiniMaxVoice(name, prompt), voiceType: "voice_generation", visible: true, category: classifyMiniMaxVoice(name, prompt) });
+        const description = String(body.description || "").trim().slice(0, 500) || prompt.slice(0, 500);
+        const voice = await saveMiniMaxVoice({ provider: "aliyun-bailian", userId: user.id, remoteVoiceId: voiceId, model, name, voiceName: name, description, providerCreatedTime: qwenVoiceCreatedAt(result), scene: "个人创建", feature: classifyMiniMaxVoice(name, description), voiceType: "voice_generation", visible: true, category: classifyMiniMaxVoice(name, description) });
         if (log) await updateMiniMaxRequestLog(log.id, { statusCode: response.status, durationMs: Date.now() - startedAt, phase: "success", responsePreview: "阿里云百炼设计音色已创建并保存", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色设计完成" }] });
         return NextResponse.json({ voice });
     } catch (error) {

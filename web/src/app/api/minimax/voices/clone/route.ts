@@ -16,10 +16,9 @@ export async function POST(request: Request) {
         const bytes = await readRequestBodyBytes(request, 20 * 1024 * 1024 + 64 * 1024);
         const form = await new Response(bytes, { headers: { "content-type": contentType } }).formData();
         const file = form.get("file");
-        const promptText = String(form.get("promptText") || "").trim();
         const name = String(form.get("name") || "我的复刻音色").trim().slice(0, 80) || "我的复刻音色";
         const description = String(form.get("description") || "").trim().slice(0, 500);
-        if (!(file instanceof File) || !file.size || !promptText) return NextResponse.json({ error: "音色复刻需要音频文件和试听文本" }, { status: 400 });
+        if (!(file instanceof File) || !file.size) return NextResponse.json({ error: "音色复刻需要音频文件" }, { status: 400 });
         if (!(await isMiniMaxVoiceFeatureEnabled("voice-clone"))) return NextResponse.json({ error: "MiniMax 音色复刻已在控制台关闭，请改用阿里云百炼模型" }, { status: 403 });
         if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "复刻音频不能超过 20MB" }, { status: 400 });
 

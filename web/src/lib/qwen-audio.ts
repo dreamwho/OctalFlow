@@ -1,6 +1,7 @@
 export const QWEN_AUDIO_VOICE_CLONE_MODELS = [
     "qwen-audio-3.0-tts-flash",
     "cosyvoice-v3-plus",
+    "cosyvoice-v3.5-plus",
     "qwen3-tts-vc-2026-01-22",
 ] as const;
 

@@ -26,13 +26,12 @@ export async function POST(request: Request) {
         const form = await new Response(bytes, { headers: { "content-type": contentType } }).formData();
         const file = form.get("file");
         const model = String(form.get("model") || "").trim();
-        const promptText = String(form.get("promptText") || "").trim();
         const name = String(form.get("name") || "我的百炼复刻音色").trim().slice(0, 80) || "我的百炼复刻音色";
         const description = String(form.get("description") || "").trim().slice(0, 500);
-        if (!(file instanceof File) || !file.size || !model || !promptText) return NextResponse.json({ error: "音色复刻需要模型、音频文件和提示词文本" }, { status: 400 });
+        if (!(file instanceof File) || !file.size || !model) return NextResponse.json({ error: "音色复刻需要模型和音频文件" }, { status: 400 });
         if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "复刻音频不能超过 20MB" }, { status: 400 });
         if (!QWEN_AUDIO_MODELS.includes(model as (typeof QWEN_AUDIO_MODELS)[number])) return NextResponse.json({ error: "请选择已启用的阿里云百炼模型" }, { status: 400 });
-        const log = await appendMiniMaxRequestLog({ provider: "aliyun-bailian", userId: user.id, capability: "voice", method: "POST", path: "/services/audio/tts/customization", model, statusCode: 0, durationMs: 0, phase: "queued", requestPreview: JSON.stringify({ mode: "voice-cloning", model }), lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "阿里云百炼音色复刻请求已提交" }] }).catch(() => undefined);
+        const log = await appendMiniMaxRequestLog({ provider: "aliyun-bailian", userId: user.id, capability: "voice", method: "POST", path: "/services/audio/tts/customization", model, statusCode: 0, durationMs: 0, phase: "queued", requestPreview: JSON.stringify({ mode: "voice-cloning", model, audio: { name: file.name, bytes: file.size, contentType: file.type || "audio/mpeg" } }), lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "阿里云百炼音色复刻请求已提交" }] }).catch(() => undefined);
         const startedAt = Date.now();
         let statusCode = 0;
         let providerAttempted = false;
@@ -62,13 +61,12 @@ export async function POST(request: Request) {
             const contentType = file.type || "audio/mpeg";
             const audio = `data:${contentType};base64,${audioBytes.toString("base64")}`;
             const publicAudio = operation === "qwen" ? undefined : await (async () => {
-                await recordLifecycle("running", "正在将临时参考音频上传至配置的阿里云 OSS（不受外部存储开关影响）");
-                const resource = await persistPublicAudioUrl(audioBytes, contentType, user.id, file.name, request);
+                await recordLifecycle("running", "正在准备可公网读取的临时参考音频（不受外部存储开关影响）");
+                const resource = await persistPublicAudioUrl(audioBytes, contentType, user.id, file.name, request, (message) => recordLifecycle("running", message));
                 temporaryAudioCleanup = resource.cleanup;
                 temporaryAudioCleanupLabel = resource.storage === "oss" ? `临时 OSS 对象 ${resource.storageKey}` : "站内临时参考音频";
-                await recordLifecycle("running", `${temporaryAudioCleanupLabel}已生成短时签名公网地址`);
                 await assertProviderReadableAudioUrl(resource.url);
-                await recordLifecycle("running", "已验证百炼可读取临时公网音频地址");
+                await recordLifecycle("running", `已验证百炼可读取${temporaryAudioCleanupLabel}的公网音频地址`);
                 return resource;
             })();
             const payload = operation === "qwen"
@@ -132,9 +130,22 @@ function safePrefix(value: string) {
     return safeName(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 10) || "octalvoice";
 }
 
-async function persistPublicAudioUrl(bytes: Buffer, contentType: string, userId: string, originalName: string, request: Request) {
-    const temporaryObject = await createTemporaryPublicObject({ bytes, contentType, originalName, purpose: "qwen-voice-clone" });
-    if (temporaryObject) return { url: temporaryObject.url, storageKey: temporaryObject.objectKey, storage: "oss" as const, cleanup: temporaryObject.cleanup };
+async function persistPublicAudioUrl(bytes: Buffer, contentType: string, userId: string, originalName: string, request: Request, onStage?: (message: string) => Promise<void> | void) {
+    const notify = (message: string) => Promise.resolve(onStage?.(message)).catch(() => undefined);
+    const sizeLabel = `${Math.ceil(bytes.length / 1024)} KB`;
+    const uploadStartedAt = Date.now();
+    let temporaryObject: Awaited<ReturnType<typeof createTemporaryPublicObject>>;
+    try {
+        temporaryObject = await createTemporaryPublicObject({ bytes, contentType, originalName, purpose: "qwen-voice-clone" });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`临时参考音频上传对象存储失败（耗时 ${Date.now() - uploadStartedAt} ms）：${message}`);
+    }
+    if (temporaryObject) {
+        await notify(`临时参考音频已上传至对象存储并生成短时签名地址：key=${temporaryObject.objectKey}，大小 ${sizeLabel}，耗时 ${Date.now() - uploadStartedAt} ms`);
+        return { url: temporaryObject.url, storageKey: temporaryObject.objectKey, storage: "oss" as const, cleanup: temporaryObject.cleanup };
+    }
+    await notify(`未配置对象存储，改用站内临时参考音频（大小 ${sizeLabel}，复刻结束后删除）`);
 
     const dataUrl = `data:${contentType};base64,${bytes.toString("base64")}`;
     const asset = await writeReferenceMediaDataUrl(dataUrl, "audio", { ownerUserId: userId, source: "qwen-voice-clone", originalName, maxBytes: 20 * 1024 * 1024 });
@@ -155,6 +166,7 @@ async function persistPublicAudioUrl(bytes: Buffer, contentType: string, userId:
             url = createSignedReferenceAssetUrl(asset.token, origin);
         }
         if (!url) throw new Error("无法生成音色复刻所需的公网音频地址；可配置公网站点地址，或在后台“外部存储”中配置并检测阿里云 OSS");
+        await notify(`站内临时参考音频已登记并生成签名公网地址：storageKey=${asset.token}`);
         return { url, storageKey: asset.token, storage: "site" as const, cleanup: async () => { await deleteLocalMediaAssetsByStorageKeys([asset.token], "reference"); } };
     } catch (error) {
         await deleteLocalMediaAssetsByStorageKeys([asset.token], "reference").catch((cleanupError) => console.error("Qwen voice clone public audio cleanup failed", cleanupError));
