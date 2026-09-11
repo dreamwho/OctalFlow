@@ -33,6 +33,7 @@ services:
       dockerfile: Dockerfile
     container_name: octalaicanvas-geminiai
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       AISTUDIO_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
       AISTUDIO_ACCOUNTS_DIR: /data/accounts
       AISTUDIO_CONFIG_FILE: /app/config.yaml
@@ -66,6 +67,7 @@ services:
     image: postgres:16.6-alpine
     container_name: octalaicanvas-postgres
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       POSTGRES_DB: ${POSTGRES_DB:-octalaicanvas}
       POSTGRES_USER: ${POSTGRES_USER:-octalaicanvas}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中配置 POSTGRES_PASSWORD}
@@ -93,6 +95,7 @@ services:
       - octalaicanvas-data:/app/web/.data
       - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       NEXT_TELEMETRY_DISABLED: "1"
       OCTALAICANVAS_DATA_DIR: /app/web/.data
       OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:3000

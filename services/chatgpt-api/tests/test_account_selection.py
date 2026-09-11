@@ -111,3 +111,28 @@ def test_image_selection_applies_model_plan_filter_before_remote_preflight(
 
     assert selector.get_available_access_token(plan_type="pro") == "token-b"
     assert checked == ["token-b"]
+
+
+def test_image_selection_checks_all_candidates_without_a_fixed_attempt_cap(
+    selector: AccountService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for index in range(2, 22):
+        token = f"token-{index}"
+        selector._accounts[token] = _account(token)
+    checked: list[str] = []
+
+    def remote_info(token: str, _event: str, *, image_scope: bool = False) -> dict:
+        assert image_scope is True
+        checked.append(token)
+        account = dict(selector._accounts[token])
+        account.update(status="限流", image_quota_unknown=False, quota=0)
+        if token == "token-21":
+            account.update(status="正常", quota=1)
+        return account
+
+    monkeypatch.setattr(selector, "fetch_remote_info", remote_info)
+
+    assert selector.get_available_access_token() == "token-21"
+    assert len(checked) == len(selector._accounts)
+    assert set(checked) == set(selector._accounts)

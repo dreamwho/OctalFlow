@@ -640,11 +640,15 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                                             const runtime = proxyRuntime.runtime;
                                             if (!runtime) return;
                                             const nextMode = value === "magic" ? "magic" : "native";
-                                            void proxyRuntime.save({ enabled: true, mode: nextMode, native_source: nextMode === "magic" ? runtime.native_source || "manual" : "manual" }).catch(() => undefined);
+                                            void proxyRuntime.save({
+                                                enabled: true,
+                                                mode: nextMode,
+                                                native_source: nextMode === "magic" ? runtime.native_source || "manual" : "manual",
+                                            }).catch(() => undefined);
                                         }}
                                         options={[
+                                            { value: "generic", label: "代理管理" },
                                             { value: "magic", label: "魔法代理" },
-                                            { value: "generic", label: "通用代理" },
                                         ]}
                                     />
                                 </div>
@@ -652,7 +656,7 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                             {proxyRuntime.runtime.mode === "magic" ? (
                                 <ChatGptMagicProxyPanel proxyRuntime={proxyRuntime} hideSourceSwitch />
                             ) : (
-                                <ChatGptProxyManager proxyRuntime={proxyRuntime} showGroups={false} showSourceSwitch={false} title="通用代理出口" description="选择 GPTAPI 经通用代理提交时的默认出口与失败回退；代理分组与节点统一在「上游配置 → 通用代理」维护。" />
+                                <ChatGptProxyManager proxyRuntime={proxyRuntime} showGroups={false} showSourceSwitch={false} title="代理管理出口" description="选择 GPTAPI 经代理管理提交时的默认出口与失败回退；代理分组与节点统一在「上游配置 → 代理管理」维护。" />
                             )}
                         </>
                     ) : null}

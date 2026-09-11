@@ -45,6 +45,6 @@ describe("MagicProxyRepository", () => {
 
         expect(query.mock.calls[0]?.[0]).toContain("INSERT INTO magic_proxy_settings");
         expect(query.mock.calls[0]?.[0]).toContain("ON CONFLICT (id) DO UPDATE");
-        expect(query.mock.calls[0]?.[1]).toEqual(["cipher:subscription", "cipher:nodes", false, null, true, "Tokyo-01", false, null, new Date(updatedAt)]);
+        expect(query.mock.calls[0]?.[1]).toEqual(["cipher:subscription", "cipher:nodes", false, null, "magic", null, true, "Tokyo-01", "magic", null, false, null, "magic", null, new Date(updatedAt)]);
     });
 });

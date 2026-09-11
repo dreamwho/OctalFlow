@@ -101,11 +101,21 @@ export function sanitizeChatGptAdminResult(value: unknown, allowCreatedKey = fal
 function normalizeChatGptProxySelectionPatch(input: unknown): ChatGptProxySelectionPatch {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new ChatGptApiError("代理选择参数无效", 400);
     const value = input as Record<string, unknown>;
-    if (Object.keys(value).some((key) => !["enabled", "mode", "native_source"].includes(key))) throw new ChatGptApiError("代理选择参数无效", 400);
-    if (typeof value.enabled !== "boolean" || (value.mode !== "native" && value.mode !== "magic") || (value.native_source !== "manual" && value.native_source !== "ipwo")) {
+    if (Object.keys(value).some((key) => !["enabled", "mode", "native_source"].includes(key))) {
         throw new ChatGptApiError("代理选择参数无效", 400);
     }
-    return { enabled: value.enabled, mode: value.mode, native_source: value.native_source };
+    if (
+        typeof value.enabled !== "boolean" ||
+        (value.mode !== "native" && value.mode !== "magic") ||
+        (value.native_source !== "manual" && value.native_source !== "ipwo")
+    ) {
+        throw new ChatGptApiError("代理选择参数无效", 400);
+    }
+    return {
+        enabled: value.enabled,
+        mode: value.mode,
+        native_source: value.native_source,
+    };
 }
 
 async function syncChatGptMagicProxyAddress() {
@@ -126,15 +136,26 @@ export async function prepareChatGptMagicProxySelection() {
     await syncChatGptMagicProxyAddress();
 }
 
+export async function resolveGenericProxyNodeUrl(nodeId: string): Promise<string> {
+    const resolved = await chatGptRuntimeJson<{ url: string }>(
+        `/integration/proxy/resolve-node/${encodeURIComponent(nodeId)}`,
+    );
+    return resolved?.url || "";
+}
+
 export async function syncChatGptMagicProxy() {
     const selection = await getChatGptProxySelection();
-    if (!selection.enabled || selection.mode !== "magic") return;
-    await syncChatGptMagicProxyAddress();
+    if (!selection.enabled) return;
+    if (selection.mode === "magic") {
+        await syncChatGptMagicProxyAddress();
+    }
 }
 
 export async function updateChatGptProxySelection(input: unknown) {
     const selection = normalizeChatGptProxySelectionPatch(input);
-    if (selection.enabled && selection.mode === "magic") await prepareChatGptMagicProxySelection();
+    if (selection.enabled && selection.mode === "magic") {
+        await prepareChatGptMagicProxySelection();
+    }
     return chatGptRuntimeJson<ChatGptProxySelection>("/integration/proxy-selection", {
         method: "PATCH",
         body: JSON.stringify(selection),

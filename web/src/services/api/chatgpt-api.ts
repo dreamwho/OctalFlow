@@ -127,9 +127,60 @@ export type ChatGptProxyRuntime = {
     magicConfigured: boolean;
     ipwoConfigured: boolean;
 };
-export type ChatGptProxyRuntimePatch = Pick<ChatGptProxyRuntime, "enabled" | "mode" | "native_source">;
+export type ChatGptProxyRuntimePatch = Partial<ChatGptProxyRuntime>;
+export type ChatGptProxyProbe = {
+    id: string;
+    name: string;
+    url: string;
+    ok: boolean;
+    status_code: number;
+    latency_ms: number;
+    error?: string | null;
+    egress_ip?: string | null;
+    loc?: string | null;
+};
+
+export type ChatGptProxyDiagnostics = {
+    proxy?: {
+        scheme?: string;
+        host?: string;
+        port?: number;
+        has_auth?: boolean;
+        username_masked?: string | null;
+    };
+    server_context?: {
+        server_public_ip?: string | null;
+        server_os?: string;
+    };
+    dns?: {
+        ok: boolean;
+        latency_ms: number;
+        resolved_ips?: string[];
+        error?: string | null;
+    };
+    tcp?: {
+        ok: boolean;
+        latency_ms: number;
+        error?: string | null;
+    };
+    probes?: ChatGptProxyProbe[];
+    analysis?: {
+        stage?: string;
+        title?: string;
+        summary?: string;
+        suggestions?: string[];
+    };
+};
+
+export type ChatGptProxyHealth = {
+    state: "healthy" | "unhealthy" | "unknown" | string;
+    latency_ms?: number | null;
+    error?: string | null;
+    diagnostics?: ChatGptProxyDiagnostics | null;
+};
+
 export type ChatGptProxyReference = { mode: "direct" | "group" | "node" | "custom"; group_id?: string; node_id?: string; url?: string };
-export type ChatGptProxyNode = { id: string; name: string; url: string; enabled: boolean; image_concurrency_limit: number; notes: string; health?: { state: string; latency_ms?: number | null; error?: string | null } };
+export type ChatGptProxyNode = { id: string; name: string; url: string; enabled: boolean; image_concurrency_limit: number; notes: string; health?: ChatGptProxyHealth };
 export type ChatGptProxyGroup = {
     id: string;
     name: string;
@@ -192,3 +243,27 @@ export const getChatGptLogs = (params: { limit?: number; offset?: number; search
 export const getChatGptProxyRuntime = (init?: RequestInit) => chatGptApiRequest<ChatGptProxyRuntime>("proxy-selection", init);
 
 export const updateChatGptProxyRuntime = (input: ChatGptProxyRuntimePatch, init?: RequestInit) => chatGptApiRequest<ChatGptProxyRuntime>("proxy-selection", { ...init, method: "PATCH", body: JSON.stringify(input) });
+
+export type ChatGptProxyNodeTestResult = {
+    status: "passed" | "failed";
+    latency_ms: number;
+    error_message?: string;
+    details?: { target_url?: string };
+};
+
+export async function testChatGptProxyNode(groupId: string, nodeId: string, timeoutMs = 15_000) {
+    const payload = await chatGptApiRequest<{ results?: Array<{ node_id?: string; result?: { ok?: boolean; latency_ms?: number; error?: string; status?: number } }> }>("proxies/groups/test", {
+        method: "POST",
+        body: JSON.stringify({ id: groupId, node_id: nodeId }),
+        signal: AbortSignal.timeout(Math.max(1_000, timeoutMs)),
+    });
+    const row = payload.results?.find((item) => item.node_id === nodeId)?.result || payload.results?.[0]?.result;
+    return {
+        result: {
+            status: row?.ok ? "passed" : "failed",
+            latency_ms: Number(row?.latency_ms || 0),
+            ...(row?.error ? { error_message: row.error } : {}),
+            details: { target_url: nodeId },
+        } satisfies ChatGptProxyNodeTestResult,
+    };
+}

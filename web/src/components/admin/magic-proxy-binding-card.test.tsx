@@ -23,7 +23,7 @@ describe("magic proxy provider binding card", () => {
         expect(source).toContain("启用代理");
         expect(source).toContain("代理方式");
         expect(source).toContain("魔法节点");
-        expect(source).toContain("通用代理出口（节点或整组）");
+        expect(source).toContain("代理管理出口（节点或整组）");
         expect(source).toContain("GeminiTools 账号列表中的账号启用开关仍保持原有含义");
         expect(source).toContain('provider === "geminiTools"');
         expect(source).toContain("启用魔法代理前请选择代理节点");

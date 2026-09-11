@@ -185,15 +185,7 @@ export function AdminDreaminaSection() {
                 onChange={(key) => setActiveTab(key as "overview" | "logs")}
                 items={[
                     { key: "overview", label: "账号与模型" },
-                    {
-                        key: "logs",
-                        label: (
-                            <span className="inline-flex items-center gap-1.5">
-                                <BarChart3 className="size-4" />
-                                请求日志
-                            </span>
-                        ),
-                    },
+                    { key: "logs", label: "请求日志" },
                 ]}
             />
 

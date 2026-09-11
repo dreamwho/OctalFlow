@@ -5,7 +5,7 @@ description: 当前项目后续值得处理的事项
 
 # TODO
 
-- ChatGPT API 额度自动进度、日志、统计、代理管理与托管协议/逻辑模型接入已转入最终测试记录。代理方式只有 native（移植代理管理）与 magic（魔法代理）两种；`GET/PATCH /integration/proxy-selection` 请求体持久 `enabled`、`mode` 和 native 内部 `native_source`，默认 `false/native/manual`，响应另含 `magicConfigured`/`ipwoConfigured` 两个布尔配置状态位。关闭总开关强制直连，开启时只能一种方式；`native_source` 只在 native 内选择 manual 或 ipwo，URL 同步与 mode 切换分离，关闭 Magic 不自动恢复 native。root 已报告 Web `617` 个测试文件、`2978` 项通过、`10` 项跳过，以及 typecheck/lint/build 通过；真实双进程 HTTP 与首轮 Playwright 已通过，第二轮 IPWO 手机日志截图验收正在进行。Python 全 tests 仍由 Turing 修复 fixture 身份串扰，不能将单轮 `2972` 或 IPWO fixture-only `20 passed` 当作最终 Python 全量结论。
+- ChatGPT API 额度自动进度、日志、统计、代理管理与托管协议/逻辑模型接入已转入最终测试记录。代理方式只有 native（移植代理管理）与 magic（魔法代理）两种；`GET/PATCH /integration/proxy-selection` 请求体持久 `enabled`、`mode` 和 native 内部 `native_source`，默认 `false/native/manual`，响应另含 `magicConfigured`/`ipwoConfigured` 两个布尔配置状态位。关闭总开关强制直连，开启时只能一种方式；`native_source` 只在 native 内选择 manual 或 ipwo，URL 同步与 mode 切换分离，关闭 Magic 不自动恢复 native。当前 Web 全量为 `622` 个测试文件通过、`4` 个按环境跳过，`3019` 项通过、`10` 项跳过，TypeScript、Lint、生产构建通过；Python 本轮针对运行时契约与代理诊断的测试为 `8 passed`，不能将定向 Python 结果当作全量 Python 结论。
 - IPWO 的 URL 源设置、独立 Tab/来源开关、脱敏读取/保存和固定阶段 NDJSON 测试流已写入运行时契约；`timeout_seconds` 接受任意正整数、默认 10，不设 10–30 上限。Fake-IP 兼容走现有 TUN 而非 DoH，仅允许已验证的 `ipwo.net` HTTPS 443 使用 `198.18.0.0/15`，Curl 保持 `verify=True` 并固定该解析；其他私有/保留 DNS 拒绝，返回代理 IP 必须 public/global，且 `198.18/15` 不得用于返回的代理 endpoint。最新 fixture-only 回归为 `20 passed`，使用 session-level frozen runtime fixture 且不覆盖进程 runtime env，无 schema 变化、未调用真实上游。root 真实双进程 HTTP 已验证配置安全保存、不回显、不自动启用；第二轮 IPWO 手机日志截图验收正在进行。Python 全 tests 的 fixture 身份串扰由 Turing 修复，专项结果不替代全量测试。
 - ChatGPT API 文件导入已接入 CPA/Sub2API 格式识别与去重；后续由用户确认真实账号导入后的账号状态，并另行授权文本/图片与代理出口验证，以及私有运行时数据的备份恢复验证。真实上游未调用，Docker 镜像与部署方式保持不变。
 

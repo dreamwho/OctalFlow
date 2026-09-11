@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -216,6 +216,8 @@ class ProxyTestResult(BaseModel):
     error: str | None = None
     proxy_source: str = "input"
     has_proxy: bool
+    target_warning: str | None = None
+    diagnostics: dict[str, Any] | None = None
 
 
 class ProxyNodeTestResult(BaseModel):
@@ -236,6 +238,13 @@ class ProxyTestSummary(BaseModel):
     max_latency_ms: int = Field(ge=0)
     label: str
     message: str
+
+
+class ProxyChainedConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hop_magic_node_name: str = ""
+    landing_generic_node_id: str = ""
 
 
 class ProxyGroupTestResponse(BaseModel):

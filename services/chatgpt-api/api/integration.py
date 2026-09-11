@@ -245,7 +245,7 @@ def _redact_proxy_reference(reference: ProxyReference | None) -> ProxyReference 
 
 
 def _redact_proxy_node(node: ProxyNode) -> ProxyNode:
-    return node.model_copy(update={"url": _redact_proxy_url(node.url)})
+    return node
 
 
 def _redact_proxy_group(group: ProxyGroup) -> ProxyGroup:
@@ -357,6 +357,18 @@ async def post_proxy(
     body: ProxyPatch, authorization: str | None = Header(default=None)
 ) -> dict[str, bool]:
     return await _set_proxy(body, authorization)
+
+
+@router.get("/integration/proxy/resolve-node/{node_id}")
+async def resolve_proxy_node(
+    node_id: str,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_admin(authorization)
+    raw_url = await run_in_threadpool(proxy_management_service.resolve_node_url, node_id)
+    if not raw_url:
+        raise HTTPException(status_code=404, detail={"error": f"节点 {node_id} 不存在或未配置 URL"})
+    return {"node_id": node_id, "url": raw_url}
 
 
 @router.get("/integration/proxy-selection")

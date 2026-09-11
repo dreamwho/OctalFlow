@@ -321,10 +321,18 @@ async function mapWithLimit<T, R>(items: T[], limit: number, worker: (item: T) =
     return results;
 }
 
-export async function updateMagicProxyBinding(input: { provider?: unknown; enabled?: unknown; node?: unknown }) {
+export async function updateMagicProxyBinding(input: {
+    provider?: unknown;
+    enabled?: unknown;
+    node?: unknown;
+    mode?: unknown;
+    chained_config?: unknown;
+}) {
     const provider = magicProxyProvider(input.provider);
     if (!provider) throw new MagicProxyError("魔法代理服务标识无效", 400);
-    if (typeof input.enabled !== "boolean") throw new MagicProxyError("请明确指定是否启用魔法代理", 400);
+    if (typeof input.enabled !== "boolean") throw new MagicProxyError("请明确指定是否启用代理", 400);
+
+    const mode = input.mode === "chained" ? "chained" : "magic";
 
     return withRuntimeLock(async () => {
         const settings = await readSettings();
@@ -332,21 +340,54 @@ export async function updateMagicProxyBinding(input: { provider?: unknown; enabl
         const nodeNames = new Set(settings.nodes.map((node) => node.name));
         const current = settings.bindings[provider];
         const nextNode = Object.prototype.hasOwnProperty.call(input, "node") ? bindingNode(input.node) : current.node;
-        if (nextNode && !nodeNames.has(nextNode)) throw new MagicProxyError("所选节点不在当前订阅中", 422);
-        if (input.enabled && !nextNode) throw new MagicProxyError("启用魔法代理前请选择当前订阅中的节点", 422);
+
+        if (mode === "magic") {
+            if (nextNode && !nodeNames.has(nextNode)) throw new MagicProxyError("所选节点不在当前订阅中", 422);
+            if (input.enabled && !nextNode) throw new MagicProxyError("启用魔法代理前请选择当前订阅中的节点", 422);
+        }
+
+        let chainedConfig: { hop_node: string; landing_node_id: string } | undefined = undefined;
+        if (mode === "chained") {
+            const rawConfig = input.chained_config as Record<string, unknown> | null | undefined;
+            const hop = typeof rawConfig?.hop_node === "string" ? rawConfig.hop_node.trim() : "";
+            const landing = typeof rawConfig?.landing_node_id === "string" ? rawConfig.landing_node_id.trim() : "";
+            chainedConfig = { hop_node: hop, landing_node_id: landing };
+        }
 
         const next: DecodedMagicProxySettings = {
             ...settings,
             bindings: {
                 ...settings.bindings,
-                [provider]: { enabled: input.enabled, ...(nextNode ? { node: nextNode } : {}) },
+                [provider]: {
+                    enabled: input.enabled,
+                    ...(mode === "chained" ? { mode: "chained" as const } : {}),
+                    ...(nextNode ? { node: nextNode } : {}),
+                    ...(chainedConfig ? { chained_config: chainedConfig } : {}),
+                },
             },
             updatedAt: new Date().toISOString(),
         };
+
         const runtime = requireRuntimeConfig();
-        if (input.enabled && provider === "chatgptApi") runtimeProxyUrl(runtime, provider);
         try {
-            await ensureMihomoGroupSelection(next, runtime, provider);
+            if (mode === "chained") {
+                if (chainedConfig?.hop_node && chainedConfig?.landing_node_id) {
+                    const { resolveGenericProxyNodeUrl } = await import("./chatgpt-api-service");
+                    const landingProxyUrl = await resolveGenericProxyNodeUrl(chainedConfig.landing_node_id);
+                    if (landingProxyUrl) {
+                        await syncMihomoChainedProxyInternal({
+                            hopNode: chainedConfig.hop_node,
+                            landingProxyUrl,
+                            provider,
+                        });
+                    }
+                }
+            } else {
+                if (current.mode === "chained") {
+                    await syncMihomoChainedProxyInternal({ provider });
+                }
+                await ensureMihomoGroupSelection(next, runtime, provider);
+            }
             await saveSettings(encodeSettings(next));
         } catch (error) {
             await ensureMihomoGroupSelection(settings, runtime, provider).catch(() => undefined);
@@ -356,7 +397,7 @@ export async function updateMagicProxyBinding(input: { provider?: unknown; enabl
     });
 }
 
-export type MagicProxyEgressInfo = { mode: "magic" | "generic"; node_name?: string; address?: string };
+export type MagicProxyEgressInfo = { mode: "magic" | "generic" | "chained"; node_name?: string; address?: string };
 
 function proxyAddressFromUrl(value: string) {
     try {
@@ -370,27 +411,55 @@ function proxyAddressFromUrl(value: string) {
 export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Promise<{ enabled: boolean; proxyUrl?: string; egress?: MagicProxyEgressInfo }> {
     return withRuntimeLock(async () => {
         const settings = await readSettings();
-        const binding = settings?.bindings[provider];
-        const magicEnabled = binding?.enabled === true;
-        if (magicEnabled && !binding?.node) throw new MagicProxyError("魔法代理绑定缺少节点，请在服务设置中重新选择", 409);
-        if (!magicEnabled) {
+        if (!settings) {
             const generic = await ensureGenericProxyEgress(provider);
             if (generic.enabled) return generic;
-        }
-        if (!settings || !binding) return { enabled: false };
-        const runtime = readRuntimeConfig();
-        if (!runtime) {
-            if (magicEnabled) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
             return { enabled: false };
         }
+        const binding = settings.bindings[provider];
+        const isChained = binding?.mode === "chained";
+        const isMagic = !isChained && binding?.enabled === true;
+        const isEnabled = binding?.enabled === true;
+
+        if (isMagic && !binding?.node) throw new MagicProxyError("魔法代理绑定缺少节点，请在服务设置中重新选择", 409);
+        if (!isEnabled) {
+            const generic = await ensureGenericProxyEgress(provider);
+            if (generic.enabled) return generic;
+            return { enabled: false };
+        }
+
+        const runtime = readRuntimeConfig();
+        if (!runtime) {
+            if (isEnabled) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
+            return { enabled: false };
+        }
+
+        if (isChained) {
+            if (provider === "geminiai") {
+                const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
+                await syncGeminiAiRuntimeProxy(runtimeProxyUrl(runtime, "geminiai"));
+            }
+            return {
+                enabled: true,
+                proxyUrl: runtimeProxyUrl(runtime, provider),
+                egress: {
+                    mode: "chained",
+                    node_name: `链式代理(${binding?.chained_config?.hop_node || "未选跳板"} ➔ ${binding?.chained_config?.landing_node_id || "未选落地"})`,
+                },
+            };
+        }
+
         await ensureMihomoGroupSelection(settings, runtime, provider);
-        if (magicEnabled && provider === "geminiai") {
+        if (isMagic && provider === "geminiai") {
             const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
             await syncGeminiAiRuntimeProxy(runtimeProxyUrl(runtime, "geminiai"));
         }
-        return magicEnabled
-            ? { enabled: true, egress: { mode: "magic", node_name: binding.node }, ...(provider === "geminiai" ? {} : { proxyUrl: runtimeProxyUrl(runtime, provider) }) }
-            : { enabled: false };
+
+        return {
+            enabled: true,
+            proxyUrl: runtimeProxyUrl(runtime, provider),
+            egress: { mode: "magic", node_name: binding?.node },
+        };
     });
 }
 
@@ -567,6 +636,18 @@ function normalizeBindings(value: MagicProxyBindings | undefined, names: Set<str
 
 function normalizedBinding(value: MagicProxyBinding | undefined, names: Set<string>): MagicProxyBinding {
     const node = optionalText(value?.node);
+    const isChained = value?.mode === "chained";
+    if (isChained) {
+        const chained = value?.chained_config;
+        const hop = optionalText(chained?.hop_node);
+        const landing = optionalText(chained?.landing_node_id);
+        return {
+            enabled: value?.enabled === true,
+            mode: "chained",
+            ...(node ? { node } : {}),
+            ...(hop || landing ? { chained_config: { hop_node: hop, landing_node_id: landing } } : {}),
+        };
+    }
     if (!node || !names.has(node)) return { enabled: false };
     return { enabled: value?.enabled === true, node };
 }
@@ -625,6 +706,77 @@ async function writeMihomoProviderFile(providerFile: string, nodes: MagicProxyNo
     } finally {
         await unlink(temporaryFile).catch(() => undefined);
     }
+}
+
+export function getChainedExitNodeName(provider: MagicProxyProvider = "chatgptApi") {
+    return provider === "chatgptApi" ? "OctalFlow-Chained-Exit" : `OctalFlow-Chained-Exit-${provider}`;
+}
+
+export const CHAINED_EXIT_NODE_NAME = "OctalFlow-Chained-Exit";
+
+async function syncMihomoChainedProxyInternal(input: {
+    hopNode?: string;
+    landingProxyUrl?: string;
+    provider?: MagicProxyProvider;
+}) {
+    const settings = await readSettings();
+    if (!settings) return;
+    const runtime = requireRuntimeConfig();
+    const provider = input.provider || "chatgptApi";
+    const groupName = GROUP_NAMES[provider];
+    const chainedNodeName = getChainedExitNodeName(provider);
+
+    const baseNodes = settings.nodes.filter((node) => node.name !== chainedNodeName);
+
+    const hopNode = input.hopNode?.trim();
+    const landingUrl = input.landingProxyUrl?.trim();
+
+    if (!hopNode || !landingUrl) {
+        await writeMihomoProviderFile(runtime.providerFile, baseNodes);
+        await controllerRequest(runtime, PROVIDER_ENDPOINT, { method: "PUT" }).catch(() => undefined);
+        const binding = settings.bindings[provider];
+        const targetNode = binding?.enabled && binding?.node ? binding.node : "DIRECT";
+        await selectMihomoProxy(runtime, groupName, targetNode).catch(() => undefined);
+        return;
+    }
+
+    let parsed: URL;
+    try {
+        parsed = new URL(landingUrl.includes("://") ? landingUrl : `http://${landingUrl}`);
+    } catch {
+        return;
+    }
+
+    const isSocks = parsed.protocol.startsWith("socks");
+    const nodeType = isSocks ? "socks5" : "http";
+    const port = Number(parsed.port) || (isSocks ? 1080 : 80);
+
+    const chainedNode: MagicProxyNode = {
+        name: chainedNodeName,
+        type: nodeType,
+        server: parsed.hostname,
+        port,
+        ...(parsed.username ? { username: decodeURIComponent(parsed.username) } : {}),
+        ...(parsed.password ? { password: decodeURIComponent(parsed.password) } : {}),
+        "dialer-proxy": hopNode,
+    };
+
+    const mergedNodes = [...baseNodes, chainedNode];
+    await writeMihomoProviderFile(runtime.providerFile, mergedNodes);
+    const reloadRes = await controllerRequest(runtime, PROVIDER_ENDPOINT, { method: "PUT" });
+    await reloadRes.body?.cancel().catch(() => undefined);
+
+    await selectMihomoProxy(runtime, groupName, chainedNodeName);
+}
+
+export async function syncMihomoChainedProxy(input: {
+    hopNode?: string;
+    landingProxyUrl?: string;
+    provider?: MagicProxyProvider;
+}) {
+    return withRuntimeLock(async () => {
+        return syncMihomoChainedProxyInternal(input);
+    });
 }
 
 async function selectMihomoProxy(runtime: MihomoRuntimeConfig, group: string, node: string) {
@@ -846,7 +998,16 @@ function storedBindings(value: unknown): MagicProxyBindings {
 function storedBinding(value: unknown): MagicProxyBinding {
     const binding = record(value);
     const node = optionalText(binding.node);
-    return { enabled: binding.enabled === true, ...(node ? { node } : {}) };
+    const isChained = binding.mode === "chained";
+    const chained = record(binding.chained_config);
+    const hop = optionalText(chained.hop_node);
+    const landing = optionalText(chained.landing_node_id);
+    return {
+        enabled: binding.enabled === true,
+        ...(isChained ? { mode: "chained" as const } : {}),
+        ...(node ? { node } : {}),
+        ...(hop || landing ? { chained_config: { hop_node: hop, landing_node_id: landing } } : {}),
+    };
 }
 
 async function postgresRepository() {
@@ -892,7 +1053,16 @@ function magicProxyProvider(value: unknown): MagicProxyProvider | null {
 }
 
 function cloneBinding(value: MagicProxyBinding): MagicProxyBinding {
-    return { enabled: value.enabled === true, ...(optionalText(value.node) ? { node: optionalText(value.node) } : {}) };
+    const node = optionalText(value.node);
+    const isChained = value.mode === "chained";
+    const hop = optionalText(value.chained_config?.hop_node);
+    const landing = optionalText(value.chained_config?.landing_node_id);
+    return {
+        enabled: value.enabled === true,
+        ...(isChained ? { mode: "chained" as const } : {}),
+        ...(node ? { node } : {}),
+        ...(hop || landing ? { chained_config: { hop_node: hop, landing_node_id: landing } } : {}),
+    };
 }
 
 function cloneBindings(value: MagicProxyBindings): MagicProxyBindings {

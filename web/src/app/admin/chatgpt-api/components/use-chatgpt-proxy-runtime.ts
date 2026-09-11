@@ -15,12 +15,12 @@ function isAbortError(reason: unknown) {
 export type ChatGptProxyTarget = "manual" | "ipwo" | "magic";
 
 export const chatGptProxyModeOptions: Array<{ value: ChatGptProxyRuntimeMode; label: string }> = [
-    { value: "native", label: "代理管理" },
+    { value: "native", label: "通用代理" },
     { value: "magic", label: "魔法代理" },
 ];
 
 export function chatGptProxyModeLabel(mode: ChatGptProxyRuntimeMode) {
-    return chatGptProxyModeOptions.find((item) => item.value === mode)?.label || "代理管理";
+    return chatGptProxyModeOptions.find((item) => item.value === mode)?.label || "通用代理";
 }
 
 export function chatGptProxyNativeSourceLabel(source: ChatGptProxyNativeSource) {

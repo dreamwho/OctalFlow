@@ -5,6 +5,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONPATH=/app/src \
+    TZ=Asia/Shanghai \
     AISTUDIO_PORT=8080 \
     AISTUDIO_HOST=0.0.0.0 \
     AISTUDIO_ACCOUNTS_DIR=/data/accounts \
@@ -15,6 +16,7 @@ ENV PYTHONUNBUFFERED=1 \
     CLOAKBROWSER_AUTO_UPDATE=false
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
     ca-certificates \
     fonts-liberation \
     fonts-freefont-ttf \
@@ -54,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxshmfence1 \
     libxss1 \
     libxtst6 \
+    && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo "Asia/Shanghai" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 10001 geminiai \

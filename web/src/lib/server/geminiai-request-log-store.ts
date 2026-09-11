@@ -35,7 +35,7 @@ export type GeminiAiRequestLog = {
     error?: string;
     requestPreview?: string;
     responsePreview?: string;
-    proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
+    proxyEgress?: { mode: "magic" | "generic" | "chained"; node_name?: string; address?: string };
     phase?: GeminiAiRequestLogPhase;
     lifecycle?: Array<{ time: string; phase: GeminiAiRequestLogPhase; message: string }>;
 };

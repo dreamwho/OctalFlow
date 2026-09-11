@@ -40,6 +40,7 @@ services:
         "8080",
       ]
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       AISTUDIO_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
       AISTUDIO_ACCOUNTS_DIR: /data/accounts
       AISTUDIO_CONFIG_FILE: /app/config.yaml
@@ -75,6 +76,7 @@ services:
     working_dir: /app/services/chatgpt-api
     command: ["/app/services/chatgpt-api/.venv/bin/python", "main.py", "--port", "8046"]
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       OCTALAICANVAS_CHATGPT_API_KEY: ${OCTALAICANVAS_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
       OCTALAICANVAS_ENCRYPTION_KEY: ${OCTALAICANVAS_ENCRYPTION_KEY:?请在 .env 中配置 OCTALAICANVAS_ENCRYPTION_KEY}
       OCTALAICANVAS_CHATGPT_DATA_DIR: /app/web/.data/chatgpt-api
@@ -105,6 +107,7 @@ services:
       - octalaicanvas-data:/app/web/.data
       - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       NEXT_TELEMETRY_DISABLED: "1"
       HOSTNAME: ${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}
       PORT: ${PORT:-8866}

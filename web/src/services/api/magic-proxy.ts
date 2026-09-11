@@ -17,6 +17,7 @@ export type MagicProxyGroup = {
 export type MagicProxyBinding = {
     enabled: boolean;
     node?: string;
+    mode?: "magic";
 };
 
 export type MagicProxyState = {
@@ -33,6 +34,7 @@ export type MagicProxyBindingPatch = {
     provider: MagicProxyProvider;
     enabled: boolean;
     node?: string;
+    mode?: "magic";
 };
 
 export type MagicProxySubscriptionImport = { url?: string; content?: string };

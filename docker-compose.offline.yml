@@ -32,6 +32,7 @@ services:
     image: ${OCTALAICANVAS_GEMINIAI_IMAGE:-octalaicanvas-geminiai:offline}
     container_name: octalaicanvas-geminiai
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       AISTUDIO_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
       AISTUDIO_ACCOUNTS_DIR: /data/accounts
       AISTUDIO_CONFIG_FILE: /app/config.yaml
@@ -76,6 +77,7 @@ services:
         "8046",
       ]
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       OCTALAICANVAS_CHATGPT_API_KEY: ${OCTALAICANVAS_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
       OCTALAICANVAS_ENCRYPTION_KEY: ${OCTALAICANVAS_ENCRYPTION_KEY:?请在 .env 中配置 OCTALAICANVAS_ENCRYPTION_KEY}
       OCTALAICANVAS_CHATGPT_DATA_DIR: /app/web/.data/chatgpt-api
@@ -100,6 +102,7 @@ services:
     image: ${OCTALAICANVAS_POSTGRES_IMAGE:-postgres:16.6-alpine}
     container_name: octalaicanvas-postgres
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       POSTGRES_DB: ${POSTGRES_DB:-octalaicanvas}
       POSTGRES_USER: ${POSTGRES_USER:-octalaicanvas}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中配置 POSTGRES_PASSWORD}
@@ -128,6 +131,7 @@ services:
       - octalaicanvas-data:/app/web/.data
       - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       NEXT_TELEMETRY_DISABLED: "1"
       OCTALAICANVAS_DATA_DIR: /app/web/.data
       OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:3000

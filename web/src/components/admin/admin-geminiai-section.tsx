@@ -173,15 +173,7 @@ export function AdminGeminiAiSection() {
                 onChange={(key) => setActiveTab(key as "overview" | "logs" | "proxy")}
                 items={[
                     { key: "overview", label: "账号与渠道" },
-                    {
-                        key: "logs",
-                        label: (
-                            <span className="inline-flex items-center gap-1.5">
-                                <BarChart3 className="size-4" />
-                                请求日志
-                            </span>
-                        ),
-                    },
+                    { key: "logs", label: "请求日志" },
                     { key: "proxy", label: "代理管理" },
                 ]}
             />

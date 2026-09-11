@@ -5,8 +5,20 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
-import { getMagicProxy, updateMagicProxyBinding, type MagicProxyNode, type MagicProxyProvider, type MagicProxyState } from "@/services/api/magic-proxy";
-import { genericProxyRequest, getGenericProxyBindings, saveGenericProxyBinding, type ChatGptProxyView, type GenericProxyBindings } from "@/services/api/generic-proxy";
+import {
+    getMagicProxy,
+    updateMagicProxyBinding,
+    type MagicProxyNode,
+    type MagicProxyProvider,
+    type MagicProxyState,
+} from "@/services/api/magic-proxy";
+import {
+    genericProxyRequest,
+    getGenericProxyBindings,
+    saveGenericProxyBinding,
+    type ChatGptProxyView,
+    type GenericProxyBindings,
+} from "@/services/api/generic-proxy";
 
 const providerLabels: Record<MagicProxyProvider, string> = {
     geminiai: "GeminiAIStudio",
@@ -47,8 +59,17 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
             setGenericView(nextGenericView);
             const magicBinding = nextState.bindings?.[provider];
             const genericBinding = nextGeneric?.bindings?.[provider];
-            setEnabled(magicBinding?.enabled === true || genericBinding?.enabled === true);
-            setSource(genericBinding?.enabled === true ? "generic" : "magic");
+            if (genericBinding?.enabled === true) {
+                setSource("generic");
+                setEnabled(true);
+            } else if (magicBinding?.enabled === true) {
+                setSource("magic");
+                setEnabled(true);
+            } else {
+                setSource("magic");
+                setEnabled(false);
+            }
+
             setNode(magicBinding?.node || "");
             setTarget(genericBinding?.target || "");
         } catch (loadError) {
@@ -66,30 +87,39 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         const options: Array<{ value: string; label: string }> = [];
         for (const group of genericView?.groups || []) {
             if (provider !== "geminiai") options.push({ value: `group:${group.id}`, label: `整组 · ${group.name}（${group.nodes.length} 个节点自动切换）` });
-            for (const node of group.nodes) {
-                options.push({ value: `node:${node.id}`, label: `节点 · ${node.name || node.id}（${group.name}）` });
+            for (const item of group.nodes) {
+                options.push({ value: `node:${item.id}`, label: `节点 · ${item.name || item.id}（${group.name}）` });
             }
         }
         if (target && !options.some((option) => option.value === target)) options.unshift({ value: target, label: `${target} · 当前绑定` });
         return options;
     }, [genericView, provider, target]);
 
+    const nodes = state?.nodes || [];
+
     const persistSourceSwitch = (nextSource: ProxySource) => {
-        // Switching the viewed source is a local choice; the source is activated
-        // when its node/target is selected or the master switch is turned on.
+        // 允许直接切入对应视图进行配置，不作前置报错阻断
         setSource(nextSource);
     };
 
-    const persist = async (nextEnabled: boolean, nextSource: ProxySource, overrides: { node?: string; target?: string } = {}) => {
+    const persist = async (
+        nextEnabled: boolean,
+        nextSource: ProxySource,
+        overrides: { node?: string; target?: string } = {}
+    ) => {
         const effectiveNode = overrides.node ?? node;
         const effectiveTarget = overrides.target ?? target;
-        const validationMessage = magicProxyBindingValidationMessage(nextEnabled && nextSource === "magic", effectiveNode);
-        if (validationMessage) {
-            message.error(validationMessage);
-            return;
+
+        if (nextEnabled && nextSource === "magic") {
+            const validationMessage = magicProxyBindingValidationMessage(true, effectiveNode);
+            if (validationMessage) {
+                message.error(validationMessage);
+                return;
+            }
         }
+
         if (nextEnabled && nextSource === "generic" && !effectiveTarget) {
-            message.error("启用通用代理前请先选择代理节点或整组，选择后自动生效");
+            message.error("启用代理管理前请先选择代理节点或整组，选择后自动生效");
             return;
         }
 
@@ -102,8 +132,8 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                 await updateMagicProxyBinding({ provider, enabled: false }).catch(() => undefined);
                 await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
             } else if (nextSource === "magic") {
-                await updateMagicProxyBinding({ provider, enabled: true, node: effectiveNode });
-                await saveGenericProxyBinding({ provider, enabled: false });
+                await updateMagicProxyBinding({ provider, enabled: true, mode: "magic", node: effectiveNode });
+                await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
             } else {
                 await updateMagicProxyBinding({ provider, enabled: false }).catch(() => undefined);
                 await saveGenericProxyBinding({ provider, enabled: true, target: effectiveTarget });
@@ -121,12 +151,12 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         }
     };
 
-    const nodes = state?.nodes || [];
     const nodeOptions = useMemo(() => {
         const options = nodes.map((item: MagicProxyNode) => ({ value: item.name, label: `${item.name} · ${item.type}` }));
         if (node && !options.some((option) => option.value === node)) options.unshift({ value: node, label: `${node} · 当前绑定` });
         return options;
     }, [node, nodes]);
+
     const configured = state?.configured === true;
     const runtimeAvailable = state?.runtimeAvailable === true;
     const magicUnavailableReason = !configured ? "请先在魔法代理页面导入订阅" : !runtimeAvailable ? "魔法代理运行时当前不可用" : !nodes.length ? "暂无可用代理节点" : "";
@@ -134,7 +164,6 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
     const description = provider === "geminiTools" ? "仅控制当前 Provider 是否使用代理及其出口来源；GeminiTools 账号列表中的账号启用开关仍保持原有含义。" : "仅控制当前 Provider 是否使用代理及其出口来源。";
 
     const magicActive = enabled && source === "magic";
-
     return (
         <Panel>
             <PanelHeader
@@ -156,7 +185,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                 {enabled ? "已启用" : "未启用"}
                             </Tag>
                         </div>
-                        <p className="mt-1.5 text-xs leading-5 text-zinc-500 dark:text-zinc-400">选择代理方式后仅显示所选方式的配置内容；选择节点或整组即启用该方式。</p>
+                        <p className="mt-1.5 text-xs leading-5 text-zinc-500 dark:text-zinc-400">选择代理方式后仅显示所选方式的配置内容；配置并保存后立即生效。</p>
                     </div>
                     <div className="shrink-0 pt-0.5">
                         <Switch
@@ -166,12 +195,16 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                             loading={saving}
                             onChange={(checked) => {
                                 if (checked) {
-                                    if (source === "magic" ? node : target) {
-                                        void persist(true, source, source === "magic" ? { node } : { target });
+                                    if (source === "magic" && node) {
+                                        void persist(true, "magic", { node });
+                                        return;
+                                    }
+                                    if (source === "generic" && target) {
+                                        void persist(true, "generic", { target });
                                         return;
                                     }
                                     setEnabled(true);
-                                    message.info("请选择代理方式与出口，选择后自动启用");
+                                    message.info("请选择并保存代理出口，保存后自动生效");
                                     return;
                                 }
                                 void persist(false, source);
@@ -179,74 +212,72 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                         />
                     </div>
                 </div>
-                {(
-                    <>
-                        <div className="min-w-0">
-                            <label htmlFor={`proxy-source-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                                代理方式
-                            </label>
-                            <Segmented
-                                id={`proxy-source-${provider}`}
-                                aria-label="代理方式"
-                                value={source}
-                                disabled={saving}
-                                onChange={(value) => persistSourceSwitch(value as ProxySource)}
-                                options={[
-                                    { value: "magic", label: "魔法代理" },
-                                    { value: "generic", label: "通用代理" },
-                                ]}
+
+                <div className="min-w-0">
+                    <label htmlFor={`proxy-source-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                        代理方式
+                    </label>
+                    <Segmented
+                        id={`proxy-source-${provider}`}
+                        aria-label="代理方式"
+                        value={source}
+                        disabled={saving}
+                        onChange={(value) => persistSourceSwitch(value as ProxySource)}
+                        options={[
+                            { value: "magic", label: "魔法代理" },
+                            { value: "generic", label: "代理管理" },
+                        ]}
+                    />
+                </div>
+
+                {source === "magic" ? (
+                    <div className="min-w-0">
+                        <label htmlFor={`magic-proxy-node-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                            魔法节点
+                        </label>
+                        <div className="min-w-0 sm:max-w-sm">
+                            <Select
+                                id={`magic-proxy-node-${provider}`}
+                                aria-label="魔法节点"
+                                className="w-full"
+                                value={node || undefined}
+                                placeholder={magicUnavailableReason || "请选择魔法节点"}
+                                options={nodeOptions}
+                                disabled={loading || saving || !configured || !runtimeAvailable || !nodes.length}
+                                onChange={(value: string) => {
+                                    setNode(value);
+                                    void persist(true, "magic", { node: value });
+                                }}
                             />
                         </div>
-                        {source === "magic" ? (
-                            <div className="min-w-0">
-                                <label htmlFor={`magic-proxy-node-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                                    魔法节点
-                                </label>
-                                <div className="min-w-0 sm:max-w-sm">
-                                    <Select
-                                        id={`magic-proxy-node-${provider}`}
-                                        aria-label="魔法节点"
-                                        className="w-full"
-                                        value={node || undefined}
-                                        placeholder={magicUnavailableReason || "请选择魔法节点"}
-                                        options={nodeOptions}
-                                        disabled={loading || saving || !configured || !runtimeAvailable || !nodes.length}
-                                        onChange={(value: string) => {
-                                            setNode(value);
-                                            void persist(true, "magic", { node: value });
-                                        }}
-                                    />
-                                </div>
-                                {magicActive && node ? <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">当前节点已保存，立即生效。</div> : null}
-                            </div>
+                        {magicActive && node ? <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">当前节点已保存，立即生效。</div> : null}
+                    </div>
+                ) : (
+                    <div className="min-w-0">
+                        <label htmlFor={`generic-proxy-target-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                            代理管理出口（节点或整组）
+                        </label>
+                        <div className="min-w-0 sm:max-w-md">
+                            <Select
+                                id={`generic-proxy-target-${provider}`}
+                                aria-label="通用代理出口"
+                                className="w-full"
+                                value={target || undefined}
+                                placeholder={genericUnavailableReason || "选择节点或整组"}
+                                options={genericOptions}
+                                disabled={loading || saving || Boolean(genericUnavailableReason)}
+                                onChange={(value: string) => {
+                                    setTarget(value);
+                                    void persist(true, "generic", { target: value });
+                                }}
+                            />
+                        </div>
+                        {enabled && source === "generic" && target ? (
+                            <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">当前出口已保存，立即生效；整组选择时每次请求按容量随机切换节点，单节点固定出口。</div>
                         ) : (
-                            <div className="min-w-0">
-                                <label htmlFor={`generic-proxy-target-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                                    通用代理出口（节点或整组）
-                                </label>
-                                <div className="min-w-0 sm:max-w-md">
-                                    <Select
-                                        id={`generic-proxy-target-${provider}`}
-                                        aria-label="通用代理出口"
-                                        className="w-full"
-                                        value={target || undefined}
-                                        placeholder={genericUnavailableReason || "选择节点或整组"}
-                                        options={genericOptions}
-                                        disabled={loading || saving || Boolean(genericUnavailableReason)}
-                                        onChange={(value: string) => {
-                                            setTarget(value);
-                                            void persist(true, "generic", { target: value });
-                                        }}
-                                    />
-                                </div>
-                                {enabled && source === "generic" && target ? (
-                                    <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">当前出口已保存，立即生效；整组选择时每次请求按容量随机切换节点，单节点固定出口。</div>
-                                ) : source === "generic" ? (
-                                    <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">选择节点或整组后自动启用通用代理{provider === "geminiai" ? "；GeminiAIStudio 浏览器会话将随出口切换自动重启" : ""}。</div>
-                                ) : null}
-                            </div>
+                            <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">选择节点或整组后自动启用代理管理{provider === "geminiai" ? "；GeminiAIStudio 浏览器会话将随出口切换自动重启" : ""}。</div>
                         )}
-                    </>
+                    </div>
                 )}
             </div>
         </Panel>

@@ -2002,7 +2002,7 @@ class AccountService:
         """从候选池中获取一个可用的图片生图 token。
 
         基于本地缓存做初筛，然后通过 fetch_remote_info 做远程验证（token 有效性、配额等）。
-        限制最大尝试次数防止 token rotation 导致无限循环。
+        每个候选 token 在本次选择中最多预检一次；候选耗尽后由获取函数返回明确的选择错误。
         """
         self._refresh_accounts_snapshot_if_stale()
         if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
@@ -2010,14 +2010,13 @@ class AccountService:
                 "deadline_exceeded",
                 "image request deadline exceeded before account selection",
             )
-        max_attempts = 20  # 防止无限循环
         externally_excluded = set(excluded_tokens or set())
         attempted_tokens: set[str] = set()
         # 控制流只保留两个出口，但最终是否能说“额度耗尽”必须谨慎：
         # 只要出现过非额度类失败，就说明不能断言全部账号都耗尽，应返回可重试的 unavailable。
         saw_remote_quota_exhausted = False
         saw_unavailable_failure = False
-        for _attempt in range(max_attempts):
+        while True:
             try:
                 access_token = self._acquire_next_candidate_token(
                     excluded_tokens=externally_excluded | attempted_tokens,

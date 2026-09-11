@@ -62,6 +62,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+ENV TZ=Asia/Shanghai
 ENV OCTALAICANVAS_DATA_DIR=/app/web/.data
 ENV OCTALAICANVAS_INTERNAL_ORIGIN=http://127.0.0.1:3000
 ENV NODE_OPTIONS=--max-old-space-size=384
@@ -72,7 +73,9 @@ ENV OCTALAICANVAS_VIDEO_DEPTH_MODEL=/opt/video-depth-model
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg fonts-noto-cjk postgresql-client python3 libgomp1 libsqlite3-0 libbz2-1.0 libreadline8 libffi8 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata ca-certificates ffmpeg fonts-noto-cjk postgresql-client python3 libgomp1 libsqlite3-0 libbz2-1.0 libreadline8 libffi8 \
+    && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo "Asia/Shanghai" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/web/scripts
 COPY --from=depth-build /opt/video-depth /opt/video-depth
 COPY --from=depth-build /opt/video-depth-model /opt/video-depth-model

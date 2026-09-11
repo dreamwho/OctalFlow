@@ -225,7 +225,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                     { key: "magic-proxy", label: <GeminiToolsTabLabel label="代理管理" compact="代理" /> },
                     {
                         key: "logs",
-                        label: <GeminiToolsTabLabel label="请求日志" compact="日志" icon={<BarChart3 className="size-4" />} />,
+                        label: <GeminiToolsTabLabel label="请求日志" compact="日志" />,
                     },
                 ]}
             />

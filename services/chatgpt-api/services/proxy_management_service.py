@@ -171,11 +171,10 @@ def _normalized_proxy_node_url(value: object) -> tuple[str, str]:
         return "", "proxy node url is required"
     if any(char.isspace() for char in raw):
         return "", "proxy node url cannot contain whitespace"
-    if "://" not in raw:
-        converted = _colon_proxy_to_url(raw)
-        if converted == raw:
-            return "", "proxy node url must start with http://, https://, socks5://, or socks5h://, or use host:port[:user:pass]"
-        raw = converted
+    converted = _colon_proxy_to_url(raw)
+    if not converted.startswith(("http://", "https://", "socks5://", "socks5h://")):
+        return "", "proxy node url must start with http://, https://, socks5://, or socks5h://, or use host:port[:user:pass]"
+    raw = converted
 
     try:
         parsed = urlparse(raw)
@@ -327,7 +326,7 @@ class ProxyManagementService:
     def save_proxy_selection(
         self,
         *,
-        enabled: bool,
+        enabled: object,
         mode: object,
         native_source: object,
     ) -> dict[str, object]:
@@ -348,12 +347,13 @@ class ProxyManagementService:
                 raise ProxySelectionUnavailableError("魔法代理未配置")
             if enabled and normalized_mode == "native" and normalized_source == "ipwo":
                 self._require_ipwo_proxy()
+            selection_record: dict[str, Any] = {
+                "enabled": enabled,
+                "mode": normalized_mode,
+                "native_source": normalized_source,
+            }
             updated = self._config.update({
-                PROXY_SELECTION_KEY: {
-                    "enabled": enabled,
-                    "mode": normalized_mode,
-                    "native_source": normalized_source,
-                },
+                PROXY_SELECTION_KEY: selection_record,
             })
         return self._proxy_selection_payload(updated)
 
@@ -394,7 +394,7 @@ class ProxyManagementService:
 
     def _proxy_selection_payload(self, snapshot: dict[str, Any]) -> dict[str, object]:
         selection = proxy_selection_from_configuration(snapshot)
-        return {
+        payload: dict[str, object] = {
             "enabled": selection.enabled,
             "mode": selection.mode if selection.mode in PROXY_SELECTION_MODES else "native",
             "native_source": (
@@ -405,6 +405,7 @@ class ProxyManagementService:
             "magicConfigured": bool(_clean_text(snapshot.get(MAGIC_PROXY_OVERRIDE_KEY))),
             "ipwoConfigured": self._ipwo_proxy_configured(),
         }
+        return payload
 
     @staticmethod
     def _ipwo_proxy_configured() -> bool:
@@ -985,6 +986,14 @@ class ProxyManagementService:
                 if _clean_text(node.get("id")) == wanted and node.get("enabled", True) is not False and _clean_text(node.get("url")):
                     return group, node
         return None
+
+    def resolve_node_url(self, node_id: str) -> str:
+        snapshot = self._snapshot()
+        located = self._locate_stored_node(snapshot, node_id)
+        if located is not None:
+            _, node = located
+            return _clean_text(node.get("url"))
+        return ""
 
     def _node_exists(self, snapshot: dict[str, Any], node_id: str) -> bool:
         return self._locate_stored_node(snapshot, node_id) is not None

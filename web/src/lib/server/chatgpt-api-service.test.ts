@@ -6,9 +6,9 @@ const magic = vi.hoisted(() => {
             super(message);
         }
     }
-    return { ensure: vi.fn(), MagicProxyError: FixtureMagicProxyError };
+    return { ensure: vi.fn(), syncMihomoChainedProxy: vi.fn(), MagicProxyError: FixtureMagicProxyError };
 });
-vi.mock("@/lib/server/magic-proxy-service", () => ({ ensureMagicProxyProvider: magic.ensure, MagicProxyError: magic.MagicProxyError }));
+vi.mock("@/lib/server/magic-proxy-service", () => ({ ensureMagicProxyProvider: magic.ensure, syncMihomoChainedProxy: magic.syncMihomoChainedProxy, MagicProxyError: magic.MagicProxyError }));
 import { chatGptRuntimeJson, chatGptRuntimeRequest, readChatGptSignedMedia, rewriteChatGptMedia, rewriteChatGptStream, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection } from "./chatgpt-api-service";
 import { resolveSafeOutboundTarget } from "./outbound-url-security";
 

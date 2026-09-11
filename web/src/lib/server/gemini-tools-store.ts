@@ -74,7 +74,7 @@ export type GeminiToolsRequestLog = {
     keyPrefix?: string;
     requestPreview?: string;
     responsePreview?: string;
-    proxyEgress?: { mode: "magic" | "generic"; node_name?: string; address?: string };
+    proxyEgress?: { mode: "magic" | "generic" | "chained"; node_name?: string; address?: string };
     phase?: "queued" | "running" | "success" | "failed";
     lifecycle?: Array<{ time: string; phase: "queued" | "running" | "success" | "failed"; message: string }>;
 };
