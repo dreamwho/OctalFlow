@@ -18,7 +18,7 @@ COPY services/video-depth/download_model.py ./download_model.py
 RUN OCTALAICANVAS_VIDEO_DEPTH_MODEL=/opt/video-depth-model /opt/video-depth/bin/python download_model.py \
     && /opt/video-depth/bin/python -c "from transformers import AutoImageProcessor, AutoModelForDepthEstimation; p='/opt/video-depth-model'; AutoImageProcessor.from_pretrained(p, local_files_only=True); AutoModelForDepthEstimation.from_pretrained(p, local_files_only=True)"
 
-FROM python:3.13-slim-bookworm AS chatgpt-build
+FROM python:3.14-slim-bookworm AS chatgpt-build
 WORKDIR /app/services/chatgpt-api
 COPY services/chatgpt-api/pyproject.toml services/chatgpt-api/uv.lock ./
 RUN pip install --no-cache-dir uv \
