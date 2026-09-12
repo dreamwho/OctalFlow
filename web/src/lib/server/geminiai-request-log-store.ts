@@ -8,7 +8,7 @@ const FILE_NAME = "geminiai-request-logs.json";
 const MAX_LOGS = 10_000;
 
 export type GeminiAiRequestCapability = "text" | "image" | "search";
-export type GeminiAiRequestSource = "runtime" | "admin-test";
+export type GeminiAiRequestSource = "runtime" | "admin-test" | "external";
 export type GeminiAiRequestLogPhase = "queued" | "running" | "success" | "failed";
 export type GeminiAiRequestLifecyclePhase = "queued" | "routing" | "auth" | "upstream" | "response" | "running" | "success" | "failed";
 
@@ -192,6 +192,7 @@ export async function listGeminiAiRequestLogs(
         keyword?: string;
         status?: "success" | "failed";
         capability?: GeminiAiRequestCapability;
+        source?: GeminiAiRequestSource;
         model?: string;
         accountId?: string;
     } = {},
@@ -206,6 +207,7 @@ export async function listGeminiAiRequestLogs(
             keyword: keyword || undefined,
             status: input.status,
             capability: input.capability,
+            source: input.source,
             model: input.model?.trim() || undefined,
             accountId: input.accountId?.trim() || undefined,
         });
@@ -216,6 +218,7 @@ export async function listGeminiAiRequestLogs(
             keyword,
             status: input.status,
             capability: input.capability,
+            source: input.source,
             model: input.model?.trim() || undefined,
             accountId: input.accountId?.trim() || undefined,
         }),
@@ -269,11 +272,12 @@ async function mutateDatabase(mutator: (database: GeminiAiRequestLogDatabase) =>
 
 function matches(
     log: GeminiAiRequestLog,
-    input: { keyword: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability; model?: string; accountId?: string },
+    input: { keyword: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability; source?: GeminiAiRequestSource; model?: string; accountId?: string },
 ) {
     if (input.status === "success" && log.statusCode >= 400) return false;
     if (input.status === "failed" && log.statusCode < 400) return false;
     if (input.capability && log.capability !== input.capability) return false;
+    if (input.source && log.source !== input.source) return false;
     if (input.model && log.model !== input.model) return false;
     if (input.accountId && log.accountId !== input.accountId) return false;
     return !input.keyword || [log.model, log.accountEmail, log.path, log.error, log.requestPreview].filter(Boolean).join(" ").toLowerCase().includes(input.keyword);

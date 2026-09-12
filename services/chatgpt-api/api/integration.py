@@ -71,7 +71,7 @@ class ProxySelectionPatch(BaseModel):
 
     enabled: bool
     mode: Literal["native", "magic", "chained"]
-    native_source: Literal["manual", "ipwo"]
+    native_source: Literal["manual", "ipwo"] = "manual"
     chained_config: ProxyChainedConfig | None = None
 
 

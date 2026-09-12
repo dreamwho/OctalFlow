@@ -348,8 +348,8 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
             <div data-gemini-tools-tab-panel="gateway" className={activeTab === "gateway" ? "grid gap-4 xl:grid-cols-2" : "hidden"}>
                 <Panel>
                     <PanelHeader
-                        title="反代与网关"
-                        description="站内渠道由逻辑模型路由；外部兼容 OpenAI Chat 和 Anthropic Messages。"
+                        title="反代网关"
+                        description="对外提供标准 OpenAI 兼容接口；外部调用必须使用下方创建的 API 密钥。"
                         actions={
                             <Button type="primary" loading={action === "gateway"} onClick={() => void run("gateway", () => saveGeminiToolsGateway(gateway), "网关设置已保存")}>
                                 保存网关
@@ -376,16 +376,20 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                         </SettingRow>
                         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs leading-6 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
                             <div>
-                                <strong>OpenAI：</strong>
-                                <code>/api/gemini-tools/v1/chat/completions</code>
+                                <strong>Base URL：</strong>
+                                <code>{typeof window !== "undefined" ? window.location.origin : ""}/api/gemini-tools/v1</code>
+                            </div>
+                            <div>
+                                <strong>OpenAI 文本：</strong>
+                                <code>chat/completions</code>
                             </div>
                             <div>
                                 <strong>Anthropic：</strong>
-                                <code>/api/gemini-tools/v1/messages</code>
+                                <code>messages</code>
                             </div>
                             <div>
                                 <strong>模型目录：</strong>
-                                <code>/api/gemini-tools/v1/models</code>
+                                <code>models</code>
                             </div>
                         </div>
                     </div>
@@ -786,6 +790,16 @@ function buildToolsCurlCommand(log: GeminiToolsLog): string {
     return lines.join(" \\\n");
 }
 
+function geminiToolsSourceLabel(log: GeminiToolsLog) {
+    if (log.keyPrefix) return "外部 API";
+    return log.protocol === "admin-test" ? "后台实测" : "站内调用";
+}
+
+function geminiToolsSourceTagColor(log: GeminiToolsLog) {
+    if (log.keyPrefix) return "orange";
+    return log.protocol === "admin-test" ? "purple" : "blue";
+}
+
 function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) {
     const phase = log.phase || (log.statusCode < 400 ? "success" : "failed");
     const pending = phase === "queued" || phase === "running";
@@ -806,6 +820,9 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
                 <Tag className="m-0 font-mono text-[10px] uppercase">{method}</Tag>
                 <Tag color={pending ? "processing" : success ? "green" : "red"} className="m-0">
                     {pending ? (phase === "queued" ? "排队中" : "执行中") : log.statusCode}
+                </Tag>
+                <Tag color={geminiToolsSourceTagColor(log)} className="m-0 text-[11px]">
+                    {geminiToolsSourceLabel(log)}
                 </Tag>
                 {log.proxyEgress ? (
                     <Tag color="geekblue" className="m-0 font-medium">
@@ -979,6 +996,11 @@ function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | n
                             <dt className="text-zinc-500">协议类型</dt>
                             <dd>
                                 <Tag color="geekblue" className="font-mono text-xs uppercase">{log.protocol}</Tag>
+                            </dd>
+
+                            <dt className="text-zinc-500">调用来源</dt>
+                            <dd>
+                                <Tag color={geminiToolsSourceTagColor(log)} className="text-xs">{geminiToolsSourceLabel(log)}</Tag>
                             </dd>
 
                             <dt className="text-zinc-500">请求路径</dt>

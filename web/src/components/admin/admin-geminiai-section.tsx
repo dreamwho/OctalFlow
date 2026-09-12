@@ -1,16 +1,18 @@
 "use client";
 
 import { LogDetailResizeHandle, useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
-import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Tabs, Tag } from "antd";
+import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Switch, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { BarChart3, ChevronRight, CircleUserRound, Clock, Copy, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
-import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, ChevronRight, CircleUserRound, Clock, Copy, KeyRound, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import {
     activateGeminiAiAccount,
     clearGeminiAiLogs,
+    createGeminiAiApiKey,
     deleteGeminiAiAccount,
+    deleteGeminiAiApiKey,
     getGeminiAiAccountLoginStatus,
     getGeminiAiAdminState,
     getGeminiAiLogs,
@@ -20,10 +22,13 @@ import {
     syncGeminiAiModels,
     testGeminiAiModel,
     updateGeminiAiAccount,
+    updateGeminiAiApiKey,
+    updateGeminiAiGateway,
     updateGeminiAiModels,
     updateGeminiAiRotation,
     type GeminiAiAccount,
     type GeminiAiAdminState,
+    type GeminiAiApiKey,
     type GeminiAiCapability,
     type GeminiAiModel,
     type GeminiAiLogPage,
@@ -36,6 +41,8 @@ import { geminiAiAccountUsage, geminiAiModelCapabilities, geminiAiModelLabel, ge
 import { MagicProxyBindingCard } from "./magic-proxy-binding-card";
 
 type GeminiAiCookieImportValues = { name?: string; email?: string; cookies: string };
+type GeminiAiKeyDraft = { name: string; expiresAt: string; allowedIps: string };
+type GeminiAiTab = "overview" | "gateway" | "logs" | "proxy";
 const GEMINIAI_IMAGE_TEST_RATIOS = ["auto", "1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9"] as const;
 const GEMINIAI_IMAGE_TEST_QUALITIES = [
     { value: "4K", label: "高（4K）" },
@@ -54,7 +61,11 @@ export function AdminGeminiAiSection() {
     const [cookieImportOpen, setCookieImportOpen] = useState(false);
     const [renamingAccount, setRenamingAccount] = useState<GeminiAiAccount | null>(null);
     const [modelTestOpen, setModelTestOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<"overview" | "logs" | "proxy">("overview");
+    const [activeTab, setActiveTab] = useState<GeminiAiTab>("overview");
+    const [keyOpen, setKeyOpen] = useState(false);
+    const [keyDraft, setKeyDraft] = useState<GeminiAiKeyDraft>({ name: "外部调用密钥", expiresAt: "", allowedIps: "" });
+    const [rawKey, setRawKey] = useState("");
+    const [gatewaySaving, setGatewaySaving] = useState(false);
     const [logPage, setLogPage] = useState<GeminiAiLogPage | null>(null);
     const [logsLoading, setLogsLoading] = useState(false);
     const [logPageNumber, setLogPageNumber] = useState(1);
@@ -62,6 +73,7 @@ export function AdminGeminiAiSection() {
     const [logKeyword, setLogKeyword] = useState("");
     const [logStatus, setLogStatus] = useState<"" | "success" | "failed">("");
     const [logCapability, setLogCapability] = useState<"" | "text" | "image" | "search">("");
+    const [logSource, setLogSource] = useState<"" | "runtime" | "admin-test" | "external">("");
     const [logModel, setLogModel] = useState<string>("");
     const [logAccountId, setLogAccountId] = useState<string>("");
     const [selectedLog, setSelectedLog] = useState<GeminiAiRequestLog | null>(null);
@@ -93,6 +105,7 @@ export function AdminGeminiAiSection() {
                         keyword: logKeyword || undefined,
                         status: logStatus || undefined,
                         capability: logCapability || undefined,
+                        source: logSource || undefined,
                         model: logModel || undefined,
                         accountId: logAccountId || undefined,
                     }),
@@ -103,7 +116,7 @@ export function AdminGeminiAiSection() {
                 setLogsLoading(false);
             }
         },
-        [logCapability, logKeyword, logModel, logAccountId, logPageNumber, logStatus, message],
+        [logCapability, logKeyword, logModel, logAccountId, logPageNumber, logSource, logStatus, message],
     );
 
     useEffect(() => {
@@ -150,6 +163,54 @@ export function AdminGeminiAiSection() {
         }
     };
 
+    const saveGateway = async (enabled: boolean) => {
+        setGatewaySaving(true);
+        try {
+            await updateGeminiAiGateway({ enabled });
+            await loadState();
+            message.success(enabled ? "网关已启用" : "网关已停用");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "保存网关设置失败");
+        } finally {
+            setGatewaySaving(false);
+        }
+    };
+
+    const runKeyAction = async (keyId: string, work: () => Promise<unknown>, successMessage: string) => {
+        setAccountActionId(keyId);
+        try {
+            await work();
+            await loadState();
+            message.success(successMessage);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "密钥操作失败");
+        } finally {
+            setAccountActionId("");
+        }
+    };
+
+    const createKey = async () => {
+        setAccountActionId("key-create");
+        try {
+            const data = await createGeminiAiApiKey({
+                name: keyDraft.name,
+                ...(keyDraft.expiresAt ? { expiresAt: new Date(keyDraft.expiresAt).toISOString() } : {}),
+                allowedIps: keyDraft.allowedIps
+                    .split(/\r?\n|,/)
+                    .map((value) => value.trim())
+                    .filter(Boolean),
+            });
+            setRawKey(data.rawKey);
+            setKeyOpen(false);
+            await loadState();
+            message.success("API 密钥已创建");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "创建 API 密钥失败");
+        } finally {
+            setAccountActionId("");
+        }
+    };
+
     const channels = state?.channels || (state?.channel ? [state.channel] : []);
 
     return (
@@ -170,11 +231,12 @@ export function AdminGeminiAiSection() {
             <Tabs
                 className="max-sm:[&_.ant-tabs-nav-list]:w-full max-sm:[&_.ant-tabs-tab]:!m-0 max-sm:[&_.ant-tabs-tab]:min-w-0 max-sm:[&_.ant-tabs-tab]:flex-1 max-sm:[&_.ant-tabs-tab]:justify-center max-sm:[&_.ant-tabs-tab]:!px-1 max-sm:[&_.ant-tabs-tab-btn]:text-xs"
                 activeKey={activeTab}
-                onChange={(key) => setActiveTab(key as "overview" | "logs" | "proxy")}
+                onChange={(key) => setActiveTab(key as GeminiAiTab)}
                 items={[
-                    { key: "overview", label: "账号与渠道" },
-                    { key: "logs", label: "请求日志" },
-                    { key: "proxy", label: "代理管理" },
+                    { key: "overview", label: <GeminiAiTabLabel label="账号与渠道" compact="账号" /> },
+                    { key: "gateway", label: <GeminiAiTabLabel label="反代网关与 API 密钥" compact="网关与密钥" /> },
+                    { key: "logs", label: <GeminiAiTabLabel label="请求日志" compact="日志" /> },
+                    { key: "proxy", label: <GeminiAiTabLabel label="代理管理" compact="代理" /> },
                 ]}
             />
             <div className={activeTab === "overview" ? "space-y-4" : "hidden"}>
@@ -329,6 +391,61 @@ export function AdminGeminiAiSection() {
                 </div>
             </div>
 
+            <div data-geminiai-tab-panel="gateway" className={activeTab === "gateway" ? "grid gap-4 xl:grid-cols-2" : "hidden"}>
+                <Panel>
+                    <PanelHeader
+                        title="反代网关"
+                        description="对外提供标准 OpenAI 兼容接口；外部调用必须使用下方创建的 API 密钥。"
+                        actions={
+                            <Button icon={<RefreshCw className="size-4" />} loading={loading} disabled={gatewaySaving} onClick={() => void loadState()}>
+                                刷新配置
+                            </Button>
+                        }
+                    />
+                    <div className="space-y-3 p-3 sm:p-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <span>启用网关</span>
+                            <Switch aria-label="启用 GeminiAIStudio 网关" checked={Boolean(state?.gateway.enabled)} disabled={gatewaySaving || loading} onChange={(enabled) => void saveGateway(enabled)} />
+                        </div>
+                        <div className="break-all text-xs leading-6 text-zinc-500 dark:text-zinc-400">
+                            Base URL：<code>{typeof window !== "undefined" ? window.location.origin : ""}/api/geminiai/v1</code>
+                            <br />
+                            文本：chat/completions
+                            <br />
+                            图片：images/generations · images/edits
+                            <br />
+                            模型：models
+                        </div>
+                    </div>
+                </Panel>
+                <Panel>
+                    <PanelHeader
+                        title="API 密钥"
+                        description="明文仅创建时显示一次，关闭窗口后不再回显。"
+                        actions={
+                            <Button type="primary" icon={<KeyRound className="size-4" />} disabled={loading} onClick={() => setKeyOpen(true)}>
+                                创建密钥
+                            </Button>
+                        }
+                    />
+                    <div className="space-y-2 p-3 sm:p-4">
+                        {state?.apiKeys.length ? (
+                            state.apiKeys.map((key) => (
+                                <GeminiAiKeyRow
+                                    key={key.id}
+                                    apiKey={key}
+                                    busy={accountActionId === key.id}
+                                    onToggle={(enabled) => void runKeyAction(key.id, () => updateGeminiAiApiKey(key.id, { status: enabled ? "active" : "disabled" }), enabled ? "密钥已启用" : "密钥已停用")}
+                                    onDelete={() => void runKeyAction(key.id, () => deleteGeminiAiApiKey(key.id), "API 密钥已删除")}
+                                />
+                            ))
+                        ) : (
+                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未创建 API 密钥" />
+                        )}
+                    </div>
+                </Panel>
+            </div>
+
             {activeTab === "logs" ? (
                 <GeminiAiRequestLogs
                     page={logPage}
@@ -336,6 +453,7 @@ export function AdminGeminiAiSection() {
                     keyword={logKeywordDraft}
                     status={logStatus}
                     capability={logCapability}
+                    source={logSource}
                     model={logModel}
                     accountId={logAccountId}
                     models={state?.models || []}
@@ -352,6 +470,10 @@ export function AdminGeminiAiSection() {
                     onCapabilityChange={(value) => {
                         setLogPageNumber(1);
                         setLogCapability(value);
+                    }}
+                    onSourceChange={(value) => {
+                        setLogPageNumber(1);
+                        setLogSource(value);
                     }}
                     onModelChange={(value) => {
                         setLogPageNumber(1);
@@ -405,6 +527,49 @@ export function AdminGeminiAiSection() {
                 }}
             />
             <GeminiAiModelTestDialog state={state} open={modelTestOpen} onClose={() => setModelTestOpen(false)} />
+            <Modal
+                title="创建 GeminiAIStudio API 密钥"
+                open={keyOpen}
+                centered
+                okText="创建"
+                cancelText="取消"
+                confirmLoading={accountActionId === "key-create"}
+                onCancel={() => setKeyOpen(false)}
+                onOk={() => void createKey()}
+                width="min(520px, calc(100vw - 32px))"
+            >
+                <div className="space-y-4 pt-2">
+                    <Field label="密钥名称">
+                        <Input value={keyDraft.name} onChange={(event: ChangeEvent<HTMLInputElement>) => setKeyDraft((current) => ({ ...current, name: event.target.value }))} />
+                    </Field>
+                    <Field label="过期时间（可选）">
+                        <Input type="datetime-local" value={keyDraft.expiresAt} onChange={(event: ChangeEvent<HTMLInputElement>) => setKeyDraft((current) => ({ ...current, expiresAt: event.target.value }))} />
+                    </Field>
+                    <Field label="允许 IP / IPv4 CIDR（每行一个，可选）">
+                        <Input.TextArea rows={4} placeholder={"127.0.0.1\n10.0.0.0/24"} value={keyDraft.allowedIps} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setKeyDraft((current) => ({ ...current, allowedIps: event.target.value }))} />
+                    </Field>
+                </div>
+            </Modal>
+            <Modal
+                title="请立即保存 API 密钥"
+                open={Boolean(rawKey)}
+                centered
+                width="min(520px, calc(100vw - 32px))"
+                onCancel={() => setRawKey("")}
+                footer={
+                    <Button type="primary" onClick={() => setRawKey("")}>
+                        已保存，关闭
+                    </Button>
+                }
+            >
+                <Alert type="warning" showIcon message="明文只显示本次" description="关闭后无法再次查看，只能删除并创建新密钥。" />
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <code className="min-w-0 flex-1 break-all text-xs">{rawKey}</code>
+                    <Button icon={<Copy className="size-4" />} onClick={() => void navigator.clipboard.writeText(rawKey).then(() => message.success("密钥已复制"))}>
+                        复制
+                    </Button>
+                </div>
+            </Modal>
             <GeminiAiRequestLogDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
         </div>
     );
@@ -416,6 +581,7 @@ function GeminiAiRequestLogs({
     keyword,
     status,
     capability,
+    source,
     model,
     accountId,
     models,
@@ -424,6 +590,7 @@ function GeminiAiRequestLogs({
     onSearch,
     onStatusChange,
     onCapabilityChange,
+    onSourceChange,
     onModelChange,
     onAccountChange,
     onPageChange,
@@ -436,6 +603,7 @@ function GeminiAiRequestLogs({
     keyword: string;
     status: "" | "success" | "failed";
     capability: "" | "text" | "image" | "search";
+    source: "" | "runtime" | "admin-test" | "external";
     model: string;
     accountId: string;
     models: GeminiAiModel[];
@@ -444,6 +612,7 @@ function GeminiAiRequestLogs({
     onSearch: () => void;
     onStatusChange: (value: "" | "success" | "failed") => void;
     onCapabilityChange: (value: "" | "text" | "image" | "search") => void;
+    onSourceChange: (value: "" | "runtime" | "admin-test" | "external") => void;
     onModelChange: (value: string) => void;
     onAccountChange: (value: string) => void;
     onPageChange: (page: number) => void;
@@ -499,7 +668,7 @@ function GeminiAiRequestLogs({
                         </Space>
                     }
                 />
-                <div className="grid gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800 sm:grid-cols-[minmax(0,1.2fr)_130px_130px_140px_140px_auto] sm:p-4">
+                <div className="grid gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800 sm:grid-cols-[minmax(0,1.2fr)_120px_120px_130px_130px_140px_auto] sm:p-4">
                     <Input value={keyword} allowClear prefix={<Search className="size-4 text-zinc-400" />} placeholder="搜索模型、账号、路径或错误" onChange={(event) => onKeywordChange(event.target.value)} onPressEnter={onSearch} />
                     <Select
                         value={status}
@@ -518,6 +687,16 @@ function GeminiAiRequestLogs({
                             { value: "text", label: "文本" },
                             { value: "image", label: "图片" },
                             { value: "search", label: "Google 搜索" },
+                        ]}
+                    />
+                    <Select
+                        value={source}
+                        onChange={onSourceChange}
+                        options={[
+                            { value: "", label: "全部来源" },
+                            { value: "external", label: "外部 API" },
+                            { value: "runtime", label: "站内调用" },
+                            { value: "admin-test", label: "后台实测" },
                         ]}
                     />
                     <Select
@@ -599,6 +778,9 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
                 <Tag color={pending ? "processing" : isLimited ? "gold" : success ? "success" : "error"} className="m-0">
                     {pending ? (phase === "queued" ? "排队中" : "执行中") : isLimited ? "限流" : success ? "成功" : "失败"}
                 </Tag>
+                <Tag color={geminiAiSourceTagColor(log.source)} className="m-0 text-[11px]">
+                    {geminiAiSourceLabel(log.source)}
+                </Tag>
                 {log.proxyEgress ? (
                     <Tag color="geekblue" className="m-0 font-medium text-[11px]">
                         {log.proxyEgress.mode === "magic"
@@ -634,7 +816,13 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
                 <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-zinc-500 dark:text-zinc-400">
                     <span>{capabilityLabel(log.capability)}</span>
                     <span>·</span>
-                    <span>{log.source === "runtime" ? "站内调用" : "后台实测"}</span>
+                    <span>{geminiAiSourceLabel(log.source)}</span>
+                    {log.clientIp ? (
+                        <>
+                            <span>·</span>
+                            <span className="font-mono">{log.clientIp}</span>
+                        </>
+                    ) : null}
                     {log.proxyEgress?.address ? (
                         <>
                             <span>·</span>
@@ -759,7 +947,7 @@ function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | 
                             <DetailItem label="模型 ID" value={log.model} />
                             <DetailItem label="实际账号" value={log.accountEmail || "未识别实际账号"} />
                             <DetailItem label="能力类型" value={capabilityLabel(log.capability)} />
-                            <DetailItem label="调用来源" value={log.source === "runtime" ? "站内调用" : "后台实测"} />
+                            <DetailItem label="调用来源" value={geminiAiSourceLabel(log.source)} />
                             {log.proxyEgress ? (
                                 <DetailItem
                                     label="代理出口"
@@ -924,6 +1112,57 @@ function AccountStatusTag({ status }: { status?: string }) {
         <Tag color={color} className="m-0">
             {geminiAiStatusText(status)}
         </Tag>
+    );
+}
+
+function GeminiAiTabLabel({ label, compact }: { label: string; compact: string }) {
+    return (
+        <span aria-label={label} className="inline-flex min-w-0 items-center justify-center gap-1.5">
+            <span className="sm:hidden">{compact}</span>
+            <span className="hidden sm:inline">{label}</span>
+        </span>
+    );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">{label}</span>
+            {children}
+        </label>
+    );
+}
+
+function geminiAiSourceLabel(source: GeminiAiRequestLog["source"]) {
+    return source === "external" ? "外部 API" : source === "admin-test" ? "后台实测" : "站内调用";
+}
+
+function geminiAiSourceTagColor(source: GeminiAiRequestLog["source"]) {
+    return source === "external" ? "orange" : source === "admin-test" ? "purple" : "blue";
+}
+
+function GeminiAiKeyRow({ apiKey, busy, onToggle, onDelete }: { apiKey: GeminiAiApiKey; busy: boolean; onToggle: (enabled: boolean) => void; onDelete: () => void }) {
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+            <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 break-all text-sm font-medium text-zinc-950 dark:text-zinc-100">{apiKey.name}</span>
+                    <Tag className="m-0 font-mono text-[11px]">{apiKey.prefix}…</Tag>
+                </div>
+                <div className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                    请求 {apiKey.requestCount} · {apiKey.expiresAt ? `到期 ${formatDate(apiKey.expiresAt)}` : "长期有效"}
+                    {apiKey.allowedIps.length ? ` · ${apiKey.allowedIps.length} 条 IP 规则` : ""}
+                </div>
+            </div>
+            <Space wrap size={6}>
+                <Switch size="small" aria-label={"启用密钥 " + apiKey.name} checked={apiKey.status === "active"} loading={busy} onChange={onToggle} />
+                <Popconfirm title="删除该 API 密钥？" okText="删除" cancelText="取消" onConfirm={onDelete}>
+                    <Button size="small" danger icon={<Trash2 className="size-3.5" />} disabled={busy}>
+                        删除
+                    </Button>
+                </Popconfirm>
+            </Space>
+        </div>
     );
 }
 

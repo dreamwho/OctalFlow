@@ -7,6 +7,23 @@ description: OctalFlow 当前版本需要人工或真实环境确认的事项
 
 ## 上游渠道与部署
 
+- 修复 GPT API 链式代理保存报「代理选择参数无效」：
+  - 根因：前端在保存链式代理配置（mode="chained"）时未传递原生通用代理模式专用的 `native_source` 参数，后端 Python `ProxySelectionPatch` 模型将其设为无默认值的必填项，且 Next.js 服务端 `normalizeChatGptProxySelectionPatch` 缺少对非 native 模式的自动规范化兜底，触发 400 校验阻断；
+  - 修复：Python 端点模型为 `native_source` 增加默认值 `="manual"`，Next.js 服务端在 `chained` 与 `magic` 模式自动填补 `"manual"`，前端链式代理面板在提交时显式注入 `native_source`；
+  - 验证：单元测试通过，重新构建 `octalaicanvas-app:offline` 镜像并全量打包至离线更新包 `本次修改需上传文件_20260912/归档.zip`，待用户解压更新并验证链式代理保存与启用。
+
+- 修复离线部署一键部署脚本镜像归档数量校验逻辑：
+  - 根因：`一键部署.sh` 脚本原先按旧两容器模式统计 `images/` 下归档数量，新架构包含 `magic-proxy.tar`（共 3 个归档）导致部署时误报数量不一致；
+  - 修复：部署脚本与清单 `manifest.env` 严格同步镜像数量判定逻辑，支持 3 镜像体系完整校验与热重载。
+
+
+- GeminiAIStudio 反代网关与 API 密钥体系已参照 GPTAPI 落地，待用户验收：
+  - 外部接口：`/api/geminiai/v1/models`、`/v1/chat/completions`、`/v1/images/generations`、`/v1/images/edits` 提供标准 OpenAI 兼容接口，支持 `Authorization: Bearer` 与 `x-api-key` 两种鉴权头；
+  - 密钥管理：后台 GeminiAIStudio 分区新增「反代网关与 API 密钥」页签，支持网关启用开关、Base URL 与端点展示、创建/启用停用/删除密钥（密钥仅哈希落库，明文仅创建时显示一次，可选过期时间与 IPv4/IPv4-CIDR 白名单）；网关关闭时外部调用返回 503，密钥缺失/无效返回 401；
+  - 请求日志：外部提交的请求以 `source=external` 落库（含客户端 IP、User-Agent、脱敏请求头），日志行与详情显示 外部 API/站内调用/后台实测 来源标签，日志页新增「全部来源」筛选；PostgreSQL `geminiai_request_logs.source` 约束已扩展并含幂等迁移；
+  - 回归：隔离生产环境实测——UI 创建密钥（明文弹窗一次性）、无密钥 401、错误密钥 401、有效密钥 `models` 200（返回 sidecar 目录 13 个模型）、外部 chat 请求失败路径正确落库为 external 来源；GeminiTools 外部 `models` 200、`chat` 无账号时快速业务失败并记录 `keyPrefix`；390px 两分区 4 个页签单行展示且无横向溢出。
+- GeminiTools 网关页签对齐 GPTAPI：标题改为「反代网关」并补充完整 Base URL（`/api/gemini-tools/v1`）与 OpenAI/Anthropic/模型端点摘要；请求日志行与详情新增来源标签（携带密钥前缀=外部 API、admin-test=后台实测、其余=站内调用），待用户在真实外部调用中验收标签显示。
+
 - GeminiAIStudio 与 GeminiTools 请求日志已全量对齐 GPTAPI 标准：
   - 数据持久层：双端数据表增加 `prompt_tokens`、`completion_tokens`、`total_tokens`、`image_requested_count`、`image_succeeded_count`、`image_failed_count`、`client_ip`、`user_agent`、`headers`、`method` 字段，完成 PostgreSQL 幂等 DDL 自动迁移与文件持久化适配；
   - 采集与接口层：上游调用自动解析文本 Prompt/Completion Token 与生图成功/失败张数；安全脱敏捕获客户端 IP、User-Agent 与请求头；新增 `DELETE /api/admin/geminiai/logs` 清空接口，两端查询接口支持 `model`、`accountId` 以及 `protocol`（GeminiTools）精准多维联合过滤；

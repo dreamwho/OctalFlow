@@ -1,6 +1,6 @@
 import { apiSuccess } from "@/app/api/_shared/api-response";
 import { auditGeminiAiAdminAction, auditGeminiAiAdminFailure, geminiAiRouteError, requireGeminiAiAdmin } from "@/lib/server/geminiai-admin";
-import { clearGeminiAiRequestLogs, listGeminiAiRequestLogs, type GeminiAiRequestCapability } from "@/lib/server/geminiai-request-log-store";
+import { clearGeminiAiRequestLogs, listGeminiAiRequestLogs, type GeminiAiRequestCapability, type GeminiAiRequestSource } from "@/lib/server/geminiai-request-log-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     try {
         const search = new URL(request.url).searchParams;
         const capability = search.get("capability");
+        const source = search.get("source");
         const model = search.get("model")?.trim() || undefined;
         const accountId = search.get("accountId")?.trim() || undefined;
         const data = await listGeminiAiRequestLogs({
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
             keyword: search.get("keyword") || undefined,
             status: search.get("status") === "success" || search.get("status") === "failed" ? (search.get("status") as "success" | "failed") : undefined,
             capability: capability === "text" || capability === "image" || capability === "search" ? (capability as GeminiAiRequestCapability) : undefined,
+            source: source === "runtime" || source === "admin-test" || source === "external" ? (source as GeminiAiRequestSource) : undefined,
             model,
             accountId,
         });

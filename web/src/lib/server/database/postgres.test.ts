@@ -143,7 +143,7 @@ describe("PostgreSQL schema lifecycle", () => {
         expect(ddl).toContain("task_type = 'agent' AND status = 'success' AND execution_phase IN ('review_pending', 'reviewing')");
 
         const tableNames = [...ddl.matchAll(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z][a-z0-9_]*)/gi)].map((match) => match[1]).sort();
-        expect(tableNames).toHaveLength(76);
+        expect(tableNames).toHaveLength(78);
         expect(tableNames.every((name) => name.startsWith("octalaicanvas_"))).toBe(true);
         expect(tableNames).not.toContain("octalaicanvas_check_ins");
         expect(ddl).toContain("DROP TABLE IF EXISTS octalaicanvas_check_ins");

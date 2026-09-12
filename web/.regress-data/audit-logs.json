@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "logs": [
+    {
+      "id": "8025b8b9-7e36-47dd-9b30-bba12b26db5d",
+      "action": "admin.generic_proxy.get",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ZCode/3.11.2 Chrome/146.0.7680.80 Electron/41.0.3 Safari/537.36"
+      },
+      "target": {
+        "type": "generic_proxy",
+        "id": "proxies"
+      },
+      "createdAt": "2026-09-12T05:43:05.023Z"
+    },
+    {
+      "id": "4ba17be3-678d-4bbe-b75e-36440d74c4ee",
+      "action": "admin.generic_proxy.get",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ZCode/3.11.2 Chrome/146.0.7680.80 Electron/41.0.3 Safari/537.36"
+      },
+      "target": {
+        "type": "generic_proxy",
+        "id": "proxy/generic-bindings"
+      },
+      "createdAt": "2026-09-12T05:43:05.019Z"
+    },
+    {
+      "id": "cf1089ec-c4c6-4380-8be1-221bfde90a98",
+      "action": "admin.gemini_tools.view",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ZCode/3.11.2 Chrome/146.0.7680.80 Electron/41.0.3 Safari/537.36"
+      },
+      "target": {
+        "type": "gemini_tools_gateway",
+        "id": "primary"
+      },
+      "createdAt": "2026-09-12T05:43:05.000Z"
+    },
+    {
+      "id": "862f6c99-e334-429f-b652-427f0aacc3aa",
+      "action": "admin.magic_proxy.view",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ZCode/3.11.2 Chrome/146.0.7680.80 Electron/41.0.3 Safari/537.36"
+      },
+      "target": {
+        "type": "magic_proxy",
+        "id": "default"
+      },
+      "createdAt": "2026-09-12T05:43:04.999Z"
+    },
+    {
+      "id": "f3cc7e81-17a7-42ee-829a-aa21eb96f4e0",
+      "action": "auth.login",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ZCode/3.11.2 Chrome/146.0.7680.80 Electron/41.0.3 Safari/537.36"
+      },
+      "target": {
+        "type": "user",
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "label": "e2e_admin"
+      },
+      "createdAt": "2026-09-12T05:43:04.621Z"
+    },
+    {
+      "id": "e04562c9-b73f-43cd-a076-68095716650c",
+      "action": "admin.geminiai.logs.view",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "curl/8.7.1"
+      },
+      "target": {
+        "type": "geminiai_request_log"
+      },
+      "createdAt": "2026-09-12T05:42:24.812Z"
+    },
+    {
+      "id": "050a25ec-fc02-448d-af1a-b5bc83cdbff0",
+      "action": "admin.geminiai.gateway.update",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "curl/8.7.1"
+      },
+      "target": {
+        "type": "geminiai_gateway",
+        "id": "primary"
+      },
+      "createdAt": "2026-09-12T05:42:01.414Z"
+    },
+    {
+      "id": "22f07719-1468-4bc1-9ae2-79be2fd06ffe",
+      "action": "admin.geminiai.gateway.update",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "curl/8.7.1"
+      },
+      "target": {
+        "type": "geminiai_gateway",
+        "id": "primary"
+      },
+      "createdAt": "2026-09-12T05:42:01.392Z"
+    },
+    {
+      "id": "9bc85cfc-f4ac-4173-a45a-759fc1d97a5e",
+      "action": "admin.gemini_tools.key.create",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "curl/8.7.1"
+      },
+      "target": {
+        "type": "api_key",
+        "id": "key-f6b3e496-6c56-435b-8ccb-48eecc42d8eb",
+        "label": "API测试主密钥"
+      },
+      "createdAt": "2026-09-12T05:41:08.684Z"
+    },
+    {
+      "id": "20e45e7e-1f75-4618-b509-8c3949f0347d",
+      "action": "admin.geminiai.key.create",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "curl/8.7.1"
+      },
+      "target": {
+        "type": "api_key",
+        "id": "key-efa75c67-6cf6-40fb-b378-330250da8353",
+        "label": "过期密钥"
+      },
+      "createdAt": "2026-09-12T05:41:08.672Z"
+    },
+    {
+      "id": "7effaf54-8c22-4d8b-be87-cd5494b70540",
+      "action": "admin.geminiai.key.create",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "curl/8.7.1"
+      },
+      "target": {
+        "type": "api_key",
+        "id": "key-d34c21a1-73fb-4ae2-ba81-e39cc4c1bd7a",
+        "label": "IP限制密钥"
+      },
+      "createdAt": "2026-09-12T05:41:08.657Z"
+    },
+    {
+      "id": "2af314a1-6af2-4b6c-a4cd-8418db2f2e98",
+      "action": "admin.geminiai.key.create",
+      "status": "success",
+      "actor": {
+        "id": "b3d56171-feed-4b6c-94e6-007c2967fbc0",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "curl/8.7.1"
+      },
+      "target": {
+        "type": "api_key",
+        "id": "key-186d6e53-b0e3-4191-b264-a8fbda0fbf30",
+        "label": "API测试主密钥"
+      },
+      "createdAt": "2026-09-12T05:40:46.687Z"
+    }
+  ]
+}

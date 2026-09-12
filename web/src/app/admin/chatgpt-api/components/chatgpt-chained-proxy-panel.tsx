@@ -41,7 +41,7 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
             ]);
             if (!mounted.current) return;
             setMagicState(nextMagic);
-            const groups = genericData?.groups || (genericData as any)?.proxy_groups || [];
+            const groups = genericData?.groups || (genericData as { proxy_groups?: ChatGptProxyGroup[] } | null)?.proxy_groups || [];
             setGenericGroups(groups);
 
             const currentHop = proxyRuntime.runtime?.chained_config?.hop_magic_node_name || nextMagic?.bindings.chatgptApi?.node || "";
@@ -110,6 +110,7 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
             await proxyRuntime.save({
                 enabled: true,
                 mode: "chained",
+                native_source: proxyRuntime.runtime?.native_source || "manual",
                 chained_config: {
                     hop_magic_node_name: hopNode.trim(),
                     landing_generic_node_id: landingNodeId.trim(),

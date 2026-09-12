@@ -1,0 +1,41 @@
+{
+  "apiKeys": [
+    {
+      "id": "key-186d6e53-b0e3-4191-b264-a8fbda0fbf30",
+      "name": "API测试主密钥",
+      "prefix": "oct_gai_0ZNFm-",
+      "hash": "b711159979cab5b779d4912cf759e0936efcf37f3bedb4b02c9b4802e17d4fa9",
+      "status": "active",
+      "allowedIps": [],
+      "requestCount": 5,
+      "createdAt": "2026-09-12T05:40:46.686Z",
+      "lastUsedAt": "2026-09-12T05:42:16.768Z"
+    },
+    {
+      "id": "key-d34c21a1-73fb-4ae2-ba81-e39cc4c1bd7a",
+      "name": "IP限制密钥",
+      "prefix": "oct_gai_lKbN8N",
+      "hash": "b1a28c8996a0595ac6fa054d488a1b7c2a544165c08f4bb88d1709a19563b701",
+      "status": "active",
+      "allowedIps": [
+        "10.9.9.9"
+      ],
+      "requestCount": 0,
+      "createdAt": "2026-09-12T05:41:08.655Z"
+    },
+    {
+      "id": "key-efa75c67-6cf6-40fb-b378-330250da8353",
+      "name": "过期密钥",
+      "prefix": "oct_gai_KakXln",
+      "hash": "0f78f47a426c08a30ad67133643ed0f296593d5cb16855f14d8bf56cc4f1859d",
+      "status": "active",
+      "expiresAt": "2026-09-12T04:41:08.000Z",
+      "allowedIps": [],
+      "requestCount": 0,
+      "createdAt": "2026-09-12T05:41:08.671Z"
+    }
+  ],
+  "gateway": {
+    "enabled": true
+  }
+}

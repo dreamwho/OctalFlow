@@ -1,4 +1,4 @@
-import type { GeminiAiRequestCapability, GeminiAiRequestLog, GeminiAiRequestStats } from "@/lib/server/geminiai-request-log-store";
+import type { GeminiAiRequestCapability, GeminiAiRequestLog, GeminiAiRequestSource, GeminiAiRequestStats } from "@/lib/server/geminiai-request-log-store";
 import type { QueryExecutor } from "./postgres";
 
 export class GeminiAiRequestLogRepository {
@@ -146,7 +146,7 @@ export class GeminiAiRequestLogRepository {
         return result.rows[0] ? mapLog(result.rows[0]) : null;
     }
 
-    async list(input: { page: number; pageSize: number; keyword?: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability; model?: string; accountId?: string }) {
+    async list(input: { page: number; pageSize: number; keyword?: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability; source?: GeminiAiRequestSource; model?: string; accountId?: string }) {
         const where: string[] = [];
         const values: unknown[] = [];
         if (input.status === "success") where.push("status_code < 400");
@@ -154,6 +154,10 @@ export class GeminiAiRequestLogRepository {
         if (input.capability) {
             values.push(input.capability);
             where.push(`capability = $${values.length}`);
+        }
+        if (input.source) {
+            values.push(input.source);
+            where.push(`source = $${values.length}`);
         }
         if (input.model) {
             values.push(input.model);
@@ -188,7 +192,7 @@ function mapLog(row: Record<string, unknown>): GeminiAiRequestLog {
     return {
         id: string(row.id),
         createdAt: date(row.created_at),
-        source: row.source === "admin-test" ? "admin-test" : "runtime",
+        source: row.source === "admin-test" ? "admin-test" : row.source === "external" ? "external" : "runtime",
         capability: capability(row.capability),
         method: string(row.method) || "POST",
         path: string(row.path),

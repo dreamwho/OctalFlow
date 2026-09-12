@@ -1,0 +1,55 @@
+{
+  "logs": [
+    {
+      "id": "geminiai-log-90d20f21-8aa4-4bf5-8051-4acc1993130e",
+      "createdAt": "2026-09-12T05:42:16.769Z",
+      "statusCode": 502,
+      "durationMs": 8006,
+      "phase": "failed",
+      "lifecycle": [
+        {
+          "phase": "queued",
+          "message": "接收到 GeminiAIStudio 请求并建立调用上下文",
+          "time": "2026-09-12T05:42:16.769Z",
+          "durationMs": 0,
+          "detail": "来源: external, 能力: text, 方法: POST, 路径: /v1/chat/completions, 模型: gemini-2.5-pro"
+        },
+        {
+          "phase": "routing",
+          "message": "使用直接连接 (Direct)",
+          "time": "2026-09-12T05:42:16.776Z",
+          "durationMs": 8,
+          "detail": "未配置代理出口，直接连接 sidecar / Google 官方网关"
+        },
+        {
+          "phase": "upstream",
+          "message": "向 GeminiAI sidecar 发起实际请求",
+          "time": "2026-09-12T05:42:16.777Z",
+          "durationMs": 8,
+          "detail": "目标地址: http://127.0.0.1:18080/v1/chat/completions, 认证: Bearer Token 授权"
+        },
+        {
+          "phase": "failed",
+          "message": "",
+          "time": "2026-09-12T05:42:24.775Z",
+          "durationMs": 8006,
+          "detail": "ResponseAborted: "
+        }
+      ],
+      "source": "external",
+      "capability": "text",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "model": "gemini-2.5-pro",
+      "requestPreview": "API矩阵测试",
+      "clientIp": "unknown",
+      "userAgent": "api-matrix-test/1.0",
+      "headers": {
+        "accept": "*/*",
+        "content-type": "application/json",
+        "user-agent": "api-matrix-test/1.0",
+        "x-forwarded-for": "unknown"
+      }
+    }
+  ]
+}

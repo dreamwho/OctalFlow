@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- [GPTAPI/链式代理] 修复链式代理保存报「代理选择参数无效」：服务端入参清洗补齐非 native 模式的 `native_source` 默认值，Python 后端 `ProxySelectionPatch` 增加默认值，前端显式注入 `native_source`；
+- [部署/离线镜像] 修复离线一键部署脚本镜像数量校验误判：支持 3 容器架构（app/geminiai/magic-proxy）动态清单核验与镜像更新；
+
+- [GeminiAIStudio/网关] 参照 GPTAPI 新增对外反代网关与 API 密钥体系：新外部路由 `/api/geminiai/v1/{models,chat/completions,images/generations,images/edits}` 提供标准 OpenAI 兼容接口（Bearer/x-api-key 鉴权，密钥哈希存储、可选过期时间与 IP 白名单），后台分区新增「反代网关与 API 密钥」页签（网关开关 + Base URL 展示 + 密钥管理，明文仅创建时显示一次）；请求日志新增 external 来源并支持来源筛选，日志行与详情显示 外部 API/站内调用/后台实测 来源标签。
+- [GeminiTools/网关] 网关页签对齐 GPTAPI 展示（「反代网关」卡片 + 完整 Base URL 与端点摘要）；请求日志行与详情新增来源标签：携带 API 密钥前缀的调用显示「外部 API」，后台实测显示「后台实测」，其余为「站内调用」。
+
 - [GPTAPI/请求日志] 修复经代理日志导致请求日志列表与详情 500：调用日志响应模型补充 proxy 出口快照字段，列表、详情与通用代理请求日志恢复正常。
 
 - [GPTAPI/通用代理] 通用代理出口支持直接选择单个节点：默认出口与失败回退新增"代理节点"模式（按 分组·节点 列出全部启用节点），出口引用契约新增 node 模式并贯通运行时解析、请求日志快照、出口解析接口与分组引用保护。

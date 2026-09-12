@@ -34,8 +34,8 @@ describe("visibleGeminiToolsQuotas", () => {
         expect(markup).toMatch(/<div(?=[^>]*data-gemini-tools-tab-panel="gateway")(?=[^>]*class="hidden")/);
         expect(markup).toMatch(/<div(?=[^>]*data-gemini-tools-tab-panel="magic-proxy")(?=[^>]*class="hidden")/);
         expect(markup).toMatch(/<div(?=[^>]*data-gemini-tools-tab-panel="logs")(?=[^>]*class="hidden")/);
-        expect(markup.indexOf('data-gemini-tools-tab-panel="gateway"')).toBeLessThan(markup.indexOf(">反代与网关</h2>"));
-        expect(markup.indexOf(">反代与网关</h2>")).toBeLessThan(markup.indexOf(">API 密钥</h2>"));
+        expect(markup.indexOf('data-gemini-tools-tab-panel="gateway"')).toBeLessThan(markup.indexOf(">反代网关</h2>"));
+        expect(markup.indexOf(">反代网关</h2>")).toBeLessThan(markup.indexOf(">API 密钥</h2>"));
         expect(markup.indexOf('data-gemini-tools-tab-panel="magic-proxy"')).toBeLessThan(markup.indexOf(">GeminiTools · 代理管理</h2>"));
     });
 

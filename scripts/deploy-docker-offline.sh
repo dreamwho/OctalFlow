@@ -107,6 +107,60 @@ verify_image_archive_platform() {
     printf '%s' "$config_json" | grep -Eq "\"architecture\"[[:space:]]*:[[:space:]]*\"${architecture}\"" || die "镜像归档架构与 ${platform} 不一致：$(basename "$archive")"
 }
 
+resolve_expected_image_archives() {
+    local -a archives=()
+    local line
+
+    # 优先从 SHA256SUMS 中动态匹配已声明的 images/*.tar 镜像归档
+    if [[ -f "$CHECKSUM_FILE" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ ^[0-9a-f]{64}\ \ (images/[^/]+\.tar)$ ]]; then
+                archives+=("${BASH_REMATCH[1]}")
+            fi
+        done < "$CHECKSUM_FILE"
+    fi
+
+    # 若 SHA256SUMS 未包含镜像归档，则结合 manifest.env 与数据库模式动态构建
+    if [[ "${#archives[@]}" -eq 0 ]]; then
+        archives=(images/app.tar images/geminiai.tar)
+        if grep -q '^OCTALAICANVAS_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/magic-proxy.tar" ]]; then
+            archives+=(images/magic-proxy.tar)
+        fi
+        if [[ "$DATABASE_MODE" == "embedded" ]] || grep -q '^OCTALAICANVAS_POSTGRES_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/postgres.tar" ]]; then
+            archives+=(images/postgres.tar)
+        fi
+    fi
+
+    printf '%s\n' "${archives[@]}"
+}
+
+verify_image_archives() {
+    local -a actual_archives=()
+    local image_count expected_image_count
+    local archive archive_path expected_archive expected_path
+
+    [[ -d "$SCRIPT_DIR/images" && ! -L "$SCRIPT_DIR/images" ]] || die "images 目录无效"
+    shopt -s nullglob
+    actual_archives=("$SCRIPT_DIR"/images/*.tar)
+    shopt -u nullglob
+
+    image_count="${#actual_archives[@]}"
+    expected_image_count="${#IMAGE_ARCHIVES[@]}"
+    [[ "$image_count" -eq "$expected_image_count" ]] || die "images/ 下的镜像归档数量与清单不一致"
+
+    for archive in "${actual_archives[@]}"; do
+        archive_path="images/$(basename "$archive")"
+        expected_archive=0
+        for expected_path in "${IMAGE_ARCHIVES[@]}"; do
+            [[ "$archive_path" == "$expected_path" ]] && expected_archive=1
+        done
+        [[ "$expected_archive" -eq 1 ]] || die "images/ 下包含未声明的镜像归档：$(basename "$archive")"
+    done
+    for archive_path in "${IMAGE_ARCHIVES[@]}"; do
+        verify_image_archive_platform "$SCRIPT_DIR/$archive_path" "$PACKAGE_PLATFORM"
+    done
+}
+
 decode_env_value() {
     local raw="$1"
     local inner result="" character next_character
@@ -236,7 +290,10 @@ elif [[ -e "$SCRIPT_DIR/private-migration" ]]; then
 fi
 APP_IMAGE="$(read_manifest_value OCTALAICANVAS_IMAGE)"
 GEMINIAI_IMAGE="$(read_manifest_value OCTALAICANVAS_GEMINIAI_IMAGE)"
-MAGIC_PROXY_IMAGE="$(read_manifest_value OCTALAICANVAS_MAGIC_PROXY_IMAGE)"
+MAGIC_PROXY_IMAGE=""
+if grep -q '^OCTALAICANVAS_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
+    MAGIC_PROXY_IMAGE="$(read_manifest_value OCTALAICANVAS_MAGIC_PROXY_IMAGE)"
+fi
 COMPOSE_FILE="$(read_manifest_value OCTALAICANVAS_COMPOSE_FILE)"
 validate_platform "$PACKAGE_PLATFORM"
 
@@ -244,15 +301,19 @@ case "$DATABASE_MODE" in
     embedded)
         EXPECTED_COMPOSE_FILE="docker-compose.offline.yml"
         POSTGRES_IMAGE="$(read_manifest_value OCTALAICANVAS_POSTGRES_IMAGE)"
-        IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/magic-proxy.tar images/postgres.tar)
         ;;
     external)
         EXPECTED_COMPOSE_FILE="docker-compose.offline-external-db.yml"
-        IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/magic-proxy.tar)
         ;;
     *) die "部署包数据库模式无效：$DATABASE_MODE" ;;
 esac
 [[ "$COMPOSE_FILE" == "$EXPECTED_COMPOSE_FILE" ]] || die "镜像清单 Compose 文件与数据库模式不匹配"
+
+IMAGE_ARCHIVES=()
+while IFS= read -r item || [[ -n "$item" ]]; do
+    [[ -n "$item" ]] && IMAGE_ARCHIVES+=("$item")
+done < <(resolve_expected_image_archives)
+expected_image_count="${#IMAGE_ARCHIVES[@]}"
 
 PACKAGE_STATIC_FILES=(
     README.md
@@ -284,22 +345,7 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
 fi
 
 if [[ "$SKIP_IMAGE_CHECK" != "1" ]]; then
-    [[ -d "$SCRIPT_DIR/images" && ! -L "$SCRIPT_DIR/images" ]] || die "images 目录无效"
-    shopt -s nullglob
-    actual_archives=("$SCRIPT_DIR"/images/*.tar)
-    shopt -u nullglob
-    [[ "${#actual_archives[@]}" -eq "${#IMAGE_ARCHIVES[@]}" ]] || die "images/ 下的镜像归档数量与清单不一致"
-    for archive in "${actual_archives[@]}"; do
-        archive_path="images/$(basename "$archive")"
-        expected_archive=0
-        for expected_path in "${IMAGE_ARCHIVES[@]}"; do
-            [[ "$archive_path" == "$expected_path" ]] && expected_archive=1
-        done
-        [[ "$expected_archive" -eq 1 ]] || die "images/ 下包含未声明的镜像归档：$(basename "$archive")"
-    done
-    for archive_path in "${IMAGE_ARCHIVES[@]}"; do
-        verify_image_archive_platform "$SCRIPT_DIR/$archive_path" "$PACKAGE_PLATFORM"
-    done
+    verify_image_archives
 fi
 
 [[ "$(uname -s)" == Linux ]] || die "离线 Docker 包只能部署到 Linux 服务器"
@@ -454,7 +500,9 @@ fi
 
 docker image inspect "$APP_IMAGE" >/dev/null 2>&1 || die "主应用镜像未加载：$APP_IMAGE"
 docker image inspect "$GEMINIAI_IMAGE" >/dev/null 2>&1 || die "GeminiAI 镜像未加载：$GEMINIAI_IMAGE"
-docker image inspect "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || die "Mihomo 镜像未加载：$MAGIC_PROXY_IMAGE"
+if [[ -n "$MAGIC_PROXY_IMAGE" ]]; then
+    docker image inspect "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || die "Mihomo 镜像未加载：$MAGIC_PROXY_IMAGE"
+fi
 if [[ "$DATABASE_MODE" == embedded ]]; then
     docker image inspect "$POSTGRES_IMAGE" >/dev/null 2>&1 || die "PostgreSQL 镜像未加载：$POSTGRES_IMAGE"
 fi

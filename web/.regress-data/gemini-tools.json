@@ -1,0 +1,113 @@
+{
+  "accounts": [],
+  "oauthSessions": [],
+  "apiKeys": [
+    {
+      "id": "key-f6b3e496-6c56-435b-8ccb-48eecc42d8eb",
+      "name": "API测试主密钥",
+      "prefix": "oct_gat_z8OT9B",
+      "hash": "631486818f11ee2c35efd5f3fb789838af0148c92cb679966cbaceb326fa7dd4",
+      "status": "active",
+      "allowedIps": [],
+      "requestCount": 3,
+      "totalTokens": 0,
+      "createdAt": "2026-09-12T05:41:08.683Z",
+      "lastUsedAt": "2026-09-12T05:42:16.768Z"
+    }
+  ],
+  "logs": [
+    {
+      "id": "log-d15f273a-bc21-4459-9bbf-31af84e4b63a",
+      "createdAt": "2026-09-12T05:42:16.769Z",
+      "statusCode": 404,
+      "durationMs": 12,
+      "phase": "failed",
+      "lifecycle": [
+        {
+          "phase": "queued",
+          "message": "接收到 API 请求并建立上下文",
+          "time": "2026-09-12T05:42:16.769Z",
+          "durationMs": 0,
+          "detail": "协议: OPENAI, 方法: POST, 路径: /v1/chat/completions, 模型: gemini-3.7-flash"
+        },
+        {
+          "phase": "routing",
+          "message": "使用直接连接 (Direct)",
+          "time": "2026-09-12T05:42:16.780Z",
+          "durationMs": 11,
+          "detail": "未配置代理出口，直连 Google 官方服务"
+        },
+        {
+          "phase": "failed",
+          "message": "模型不在当前 Google 账号额度目录中",
+          "time": "2026-09-12T05:42:16.781Z",
+          "durationMs": 12,
+          "detail": "请求模型: gemini-3.7-flash"
+        }
+      ],
+      "protocol": "openai",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "model": "gemini-3.7-flash",
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0,
+      "keyPrefix": "oct_gat_z8OT9B",
+      "requestPreview": "test",
+      "headers": {
+        "content-type": "application/json",
+        "accept": "*/*"
+      },
+      "error": "模型不在当前 Google 账号额度目录中"
+    },
+    {
+      "id": "log-e52036c4-328c-4b76-8648-a836ee1af279",
+      "createdAt": "2026-09-12T05:41:40.898Z",
+      "statusCode": 404,
+      "durationMs": 42,
+      "phase": "failed",
+      "lifecycle": [
+        {
+          "phase": "queued",
+          "message": "接收到 API 请求并建立上下文",
+          "time": "2026-09-12T05:41:40.897Z",
+          "durationMs": 0,
+          "detail": "协议: OPENAI, 方法: POST, 路径: /v1/chat/completions, 模型: gemini-3.7-flash"
+        },
+        {
+          "phase": "routing",
+          "message": "使用直接连接 (Direct)",
+          "time": "2026-09-12T05:41:40.938Z",
+          "durationMs": 41,
+          "detail": "未配置代理出口，直连 Google 官方服务"
+        },
+        {
+          "phase": "failed",
+          "message": "模型不在当前 Google 账号额度目录中",
+          "time": "2026-09-12T05:41:40.939Z",
+          "durationMs": 42,
+          "detail": "请求模型: gemini-3.7-flash"
+        }
+      ],
+      "protocol": "openai",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "model": "gemini-3.7-flash",
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0,
+      "keyPrefix": "oct_gat_z8OT9B",
+      "requestPreview": "test",
+      "headers": {
+        "content-type": "application/json",
+        "accept": "*/*"
+      },
+      "error": "模型不在当前 Google 账号额度目录中"
+    }
+  ],
+  "gateway": {
+    "enabled": true,
+    "strategy": "round_robin",
+    "sessionStickiness": false
+  }
+}

@@ -108,10 +108,11 @@ function normalizeChatGptProxySelectionPatch(input: unknown): ChatGptProxySelect
     if (Object.keys(value).some((key) => !["enabled", "mode", "native_source", "chained_config"].includes(key))) {
         throw new ChatGptApiError("代理选择参数无效", 400);
     }
+    const nativeSource = value.native_source === "ipwo" ? "ipwo" : "manual";
     if (
         typeof value.enabled !== "boolean" ||
         (value.mode !== "native" && value.mode !== "magic" && value.mode !== "chained") ||
-        (value.native_source !== "manual" && value.native_source !== "ipwo")
+        (value.native_source !== undefined && value.native_source !== "manual" && value.native_source !== "ipwo")
     ) {
         throw new ChatGptApiError("代理选择参数无效", 400);
     }
@@ -128,7 +129,7 @@ function normalizeChatGptProxySelectionPatch(input: unknown): ChatGptProxySelect
     return {
         enabled: value.enabled,
         mode: value.mode,
-        native_source: value.native_source,
+        native_source: nativeSource,
         ...(chained_config ? { chained_config } : {}),
     };
 }

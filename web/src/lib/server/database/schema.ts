@@ -316,7 +316,7 @@ CREATE TABLE IF NOT EXISTS geminiai_request_logs (
     response_preview text,
     phase text NOT NULL DEFAULT 'success',
     lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb,
-    CONSTRAINT geminiai_request_logs_source_check CHECK (source IN ('runtime', 'admin-test')),
+    CONSTRAINT geminiai_request_logs_source_check CHECK (source IN ('runtime', 'admin-test', 'external')),
     CONSTRAINT geminiai_request_logs_capability_check CHECK (capability IN ('text', 'image', 'search'))
 );
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_created_idx ON geminiai_request_logs (created_at DESC);
@@ -324,6 +324,32 @@ CREATE INDEX IF NOT EXISTS geminiai_request_logs_status_idx ON geminiai_request_
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_model_idx ON geminiai_request_logs (model, created_at DESC);
 ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS phase text NOT NULL DEFAULT 'success';
 ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE geminiai_request_logs DROP CONSTRAINT IF EXISTS geminiai_request_logs_source_check;
+ALTER TABLE geminiai_request_logs ADD CONSTRAINT geminiai_request_logs_source_check CHECK (source IN ('runtime', 'admin-test', 'external'));
+
+CREATE TABLE IF NOT EXISTS geminiai_api_keys (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    prefix text NOT NULL,
+    key_hash text NOT NULL UNIQUE,
+    status text NOT NULL DEFAULT 'active',
+    expires_at timestamptz,
+    allowed_ips jsonb NOT NULL DEFAULT '[]'::jsonb,
+    request_count bigint NOT NULL DEFAULT 0,
+    last_used_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT geminiai_api_keys_status_check CHECK (status IN ('active', 'disabled'))
+);
+CREATE INDEX IF NOT EXISTS geminiai_api_keys_status_idx ON geminiai_api_keys (status, expires_at);
+
+CREATE TABLE IF NOT EXISTS geminiai_gateway_settings (
+    id text PRIMARY KEY DEFAULT 'default',
+    enabled boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT geminiai_gateway_singleton CHECK (id = 'default')
+);
+INSERT INTO geminiai_gateway_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS minimax_voices (
     id text PRIMARY KEY,

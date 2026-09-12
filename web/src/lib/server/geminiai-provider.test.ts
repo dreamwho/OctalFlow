@@ -76,10 +76,42 @@ describe("GeminiAI sidecar provider", () => {
         vi.stubGlobal("fetch", fetchMock);
 
         await geminiAiRuntimeRequest("/chat/completions", { method: "POST" });
+        await geminiAiRuntimeRequest("/models", { method: "GET" });
         await expect(geminiAiRuntimeRequest("/accounts", { method: "GET" })).rejects.toBeInstanceOf(GeminiAiProviderError);
 
-        expect(fetchMock.mock.calls).toHaveLength(1);
+        expect(fetchMock.mock.calls).toHaveLength(2);
         expect(fetchMock.mock.calls[0]?.[0]).toBe("http://geminiai.test/v1/chat/completions");
+        expect(fetchMock.mock.calls[1]?.[0]).toBe("http://geminiai.test/v1/models");
+    });
+
+    it("records external gateway requests with the external source and caller metadata", async () => {
+        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(Response.json({ choices: [{ message: { content: "外部结果" } }] }))
+            .mockResolvedValueOnce(Response.json({ id: "account-one", email: "owner@example.com" }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        await geminiAiRuntimeRequest(
+            "/v1/chat/completions",
+            {
+                method: "POST",
+                headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.7", "user-agent": "external-client/1.0" },
+                body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "你好" }] }),
+            },
+            { logSource: "external" },
+        );
+
+        expect(mocks.appendLog).toHaveBeenCalledWith(
+            expect.objectContaining({
+                source: "external",
+                capability: "text",
+                model: "gemini-2.5-pro",
+                clientIp: "203.0.113.7",
+                userAgent: "external-client/1.0",
+            }),
+        );
     });
 
     it("applies the GeminiAIStudio runtime group before sending traffic to the sidecar", async () => {

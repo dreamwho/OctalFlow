@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
     providerHealth: vi.fn(),
     inlineRemoteImageResult: vi.fn(),
     writePersistentMediaDataUrl: vi.fn(),
+    gatewaySettings: vi.fn(),
+    listApiKeys: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/store", () => ({ getAuthSettings: mocks.getAuthSettings, setAuthSettings: mocks.setAuthSettings }));
@@ -39,6 +41,10 @@ vi.mock("@/lib/server/geminiai-provider", () => {
 });
 vi.mock("@/app/api/image-tasks/image-task-support", () => ({ inlineRemoteImageResult: mocks.inlineRemoteImageResult }));
 vi.mock("@/lib/server/reference-asset-store", () => ({ writePersistentMediaDataUrl: mocks.writePersistentMediaDataUrl }));
+vi.mock("@/lib/server/geminiai-gateway-store", () => ({
+    getGeminiAiGatewaySettings: mocks.gatewaySettings,
+    listGeminiAiApiKeys: mocks.listApiKeys,
+}));
 
 import { getGeminiAiLoginStatus, getGeminiAiOverview, listGeminiAiCatalog, listGeminiAiAccounts, runGeminiAiImageTest, runGeminiAiSearchTest, runGeminiAiTextTest, saveGeminiAiModelSelection, setGeminiAiRotation } from "./geminiai-service";
 
@@ -54,6 +60,8 @@ describe("GeminiAI service", () => {
         mocks.getAuthSettings.mockResolvedValue(structuredClone(emptySettings));
         mocks.providerConfigured.mockReturnValue(true);
         mocks.providerHealth.mockResolvedValue(true);
+        mocks.gatewaySettings.mockResolvedValue({ enabled: true });
+        mocks.listApiKeys.mockResolvedValue([]);
         mocks.synchronizeLogicalModelsWithChannels.mockReturnValue([{ id: "geminiai-text", capability: "text", enabled: true, bindings: [] }]);
         mocks.normalizeDefaultModelsConfig.mockReturnValue({ textModel: "geminiai-text" });
         mocks.writePersistentMediaDataUrl.mockImplementation(async (_data: unknown, _kind: unknown, metadata: { originalName: string }) => ({ url: `/media/${metadata.originalName}`, token: `token-${metadata.originalName}` }));

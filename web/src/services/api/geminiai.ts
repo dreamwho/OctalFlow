@@ -46,6 +46,8 @@ export type GeminiAiAdminState = {
     models: GeminiAiModel[];
     channel?: GeminiAiChannel;
     channels?: GeminiAiChannel[];
+    gateway: GeminiAiGatewaySettings;
+    apiKeys: GeminiAiApiKey[];
 };
 
 export type GeminiAiLoginSession = {
@@ -82,7 +84,7 @@ export type GeminiAiTestResult = {
 export type GeminiAiRequestLog = {
     id: string;
     createdAt: string;
-    source: "runtime" | "admin-test";
+    source: "runtime" | "admin-test" | "external";
     capability: "text" | "image" | "search";
     method: string;
     path: string;
@@ -116,6 +118,8 @@ export type GeminiAiRequestLog = {
 
 export type GeminiAiRequestStats = { total: number; success: number; failed: number; averageDurationMs: number };
 export type GeminiAiLogPage = { items: GeminiAiRequestLog[]; total: number; page: number; pageSize: number; stats: GeminiAiRequestStats };
+export type GeminiAiGatewaySettings = { enabled: boolean };
+export type GeminiAiApiKey = { id: string; name: string; prefix: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
 
 type ApiEnvelope<T> = { code?: number; data?: T; msg?: string; error?: string };
 
@@ -193,13 +197,14 @@ export function getGeminiAiTestStatus(input: Pick<GeminiAiTestResult, "taskId" |
     return requestGeminiAi<GeminiAiTestResult>(`/api/admin/geminiai/test?taskId=${encodeURIComponent(input.taskId)}&channelId=${encodeURIComponent(input.channelId)}`);
 }
 
-export function getGeminiAiLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search"; model?: string; accountId?: string } = {}) {
+export function getGeminiAiLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search"; source?: "runtime" | "admin-test" | "external"; model?: string; accountId?: string } = {}) {
     const search = new URLSearchParams();
     if (input.page) search.set("page", String(input.page));
     if (input.pageSize) search.set("pageSize", String(input.pageSize));
     if (input.keyword?.trim()) search.set("keyword", input.keyword.trim());
     if (input.status) search.set("status", input.status);
     if (input.capability) search.set("capability", input.capability);
+    if (input.source) search.set("source", input.source);
     if (input.model?.trim()) search.set("model", input.model.trim());
     if (input.accountId?.trim()) search.set("accountId", input.accountId.trim());
     return requestGeminiAi<GeminiAiLogPage>(`/api/admin/geminiai/logs${search.size ? `?${search}` : ""}`);
@@ -207,4 +212,20 @@ export function getGeminiAiLogs(input: { page?: number; pageSize?: number; keywo
 
 export function clearGeminiAiLogs() {
     return requestGeminiAi<{ deletedCount: number }>("/api/admin/geminiai/logs", { method: "DELETE" });
+}
+
+export function updateGeminiAiGateway(gateway: Partial<GeminiAiGatewaySettings>) {
+    return requestGeminiAi<GeminiAiGatewaySettings>("/api/admin/geminiai/gateway", { method: "PATCH", body: jsonBody(gateway) });
+}
+
+export function createGeminiAiApiKey(input: { name: string; expiresAt?: string; allowedIps?: string[] }) {
+    return requestGeminiAi<{ key: GeminiAiApiKey; rawKey: string }>("/api/admin/geminiai/keys", { method: "POST", body: jsonBody(input) });
+}
+
+export function updateGeminiAiApiKey(keyId: string, patch: Partial<Pick<GeminiAiApiKey, "name" | "status" | "expiresAt" | "allowedIps">>) {
+    return requestGeminiAi<GeminiAiApiKey>(`/api/admin/geminiai/keys/${encodeURIComponent(keyId)}`, { method: "PATCH", body: jsonBody(patch) });
+}
+
+export function deleteGeminiAiApiKey(keyId: string) {
+    return requestGeminiAi<{ deleted: true }>(`/api/admin/geminiai/keys/${encodeURIComponent(keyId)}`, { method: "DELETE" });
 }

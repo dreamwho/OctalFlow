@@ -47,7 +47,9 @@ OctalFlow 的 PostgreSQL 真实表名统一使用项目名前缀 `octalaicanvas_
 - `octalaicanvas_gemini_tools_api_keys`：外部 GeminiTools 网关密钥摘要、前缀、状态、过期时间、IP 白名单和用量；数据库只保存 SHA-256 摘要，不保存可再次回显的明文。
 - `octalaicanvas_gemini_tools_gateway_settings`：Gemini Antigravity Tools 内置网关的启停、账号调度与会话粘性单例设置。
 - `octalaicanvas_gemini_tools_request_logs`：GeminiTools 的协议、模型、实际账号、状态、耗时、Token 和脱敏预览；列表使用服务端条件、分页和索引查询，不读取整表再筛选。
-- `octalaicanvas_geminiai_request_logs`：GeminiAIStudio 的运行时或后台实测请求记录，保存能力、模型、实际账号、状态、耗时与脱敏预览；列表使用服务端条件、分页和聚合统计查询。
+- `octalaicanvas_geminiai_request_logs`：GeminiAIStudio 的运行时、外部网关或后台实测请求记录（`source` 为 `runtime`/`external`/`admin-test`），保存能力、模型、实际账号、状态、耗时与脱敏预览；列表使用服务端条件、分页和聚合统计查询，支持按 `source` 精准过滤。
+- `octalaicanvas_geminiai_api_keys`：外部 GeminiAIStudio 网关密钥摘要、前缀、状态、过期时间、IP 白名单和用量；数据库只保存 SHA-256 摘要，不保存可再次回显的明文。
+- `octalaicanvas_geminiai_gateway_settings`：GeminiAIStudio 外部网关的启用/停用单例设置（`id = 'default'`）。
 - `octalaicanvas_dreamina_cli_account_state`：部署服务账号的即梦 CLI 已观测版本、授权状态、会员等级、积分余额与提交租约快照；不保存 CLI OAuth 凭证、设备码、执行路径或原始命令输出。
 - `octalaicanvas_dreamina_cli_request_logs`：即梦 CLI 的提交、查询、下载和账户刷新审计，保存命令、模型、状态、耗时及提交响应中的官方 `credit_count`；旧版余额差记录仍可读取，提示词正文、素材路径、token、stdout/stderr 均不写入。列表按服务端分页和索引查询，累计/本周/本月/本年积分由 PostgreSQL 按 `created_at` 范围聚合，并按 `submit_id` 去重。
 - `octalaicanvas_runninghub_settings`：RunningHub 单例配置，保存启用状态、HTTPS API 地址、加密后的 API Key 与算力实例类型；管理接口只返回密钥是否已配置，不回传明文。

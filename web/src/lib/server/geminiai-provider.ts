@@ -1,7 +1,7 @@
 import { appendGeminiAiRequestLog, markGeminiAiRequestLogRunning, openGeminiAiRequestLog, settleGeminiAiRequestLog, type GeminiAiRequestCapability, type GeminiAiRequestSource, type GeminiAiRequestLog, type GeminiAiRequestLifecycleEntry } from "@/lib/server/geminiai-request-log-store";
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
 
-const GEMINIAI_REQUEST_PATHS = new Set(["/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
+const GEMINIAI_REQUEST_PATHS = new Set(["/v1/models", "/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
 
 export const GEMINIAI_PROTOCOL = "geminiai" as const;
 export const GEMINIAI_CHANNEL_ID = "geminiai";
@@ -157,10 +157,10 @@ export async function syncGeminiAiRuntimeProxy(proxyUrl: string) {
     lastSyncedGeminiAiProxy = desired;
 }
 
-export async function geminiAiRuntimeRequest(path: string, init: RequestInit = {}) {
+export async function geminiAiRuntimeRequest(path: string, init: RequestInit = {}, options: { logSource?: GeminiAiRequestSource } = {}) {
     const normalizedPath = normalizeRuntimePath(path);
     if (!normalizedPath) throw new GeminiAiProviderError("GeminiAI 不支持该运行时接口", 404);
-    return geminiAiSidecarRequest(normalizedPath, init, { logSource: "runtime" });
+    return geminiAiSidecarRequest(normalizedPath, init, { logSource: options.logSource || "runtime" });
 }
 
 export function isGeminiAiRuntimePath(path: string) {
@@ -358,7 +358,10 @@ function extractResponseMetrics(value: unknown, capability: GeminiAiRequestCapab
         if (capability === "image") {
             if (Array.isArray(obj.data)) {
                 imageRequestedCount = obj.data.length;
-                imageSucceededCount = obj.data.filter((item) => item && typeof item === "object" && Boolean((item as any).url || (item as any).b64_json)).length;
+                imageSucceededCount = obj.data.filter((item) => {
+                    const entry = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+                    return Boolean(entry && (entry.url || entry.b64_json));
+                }).length;
                 imageFailedCount = imageRequestedCount - imageSucceededCount;
             } else if (Array.isArray(obj.images)) {
                 imageRequestedCount = obj.images.length;

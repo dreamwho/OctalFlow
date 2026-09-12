@@ -4,6 +4,7 @@ import { applyChannelProtocol, channelConnectionReady, protocolModelConfig } fro
 import { normalizeModelId } from "@/lib/model-capability";
 import { synchronizeLogicalModelsWithChannels, normalizeDefaultModelsConfig, channelModelCapability } from "@/lib/model-routing-config";
 import { parseModelCatalog } from "@/lib/server/admin-model-catalog";
+import { type GeminiAiApiKey, type GeminiAiGatewaySettings, getGeminiAiGatewaySettings, listGeminiAiApiKeys } from "@/lib/server/geminiai-gateway-store";
 import { GEMINIAI_CHANNEL_ID, GEMINIAI_CHANNEL_NAME, GEMINIAI_PROTOCOL, GeminiAiProviderError, geminiAiHealth, geminiAiProviderConfigured, geminiAiSidecarRequest } from "@/lib/server/geminiai-provider";
 import { writePersistentMediaDataUrl } from "@/lib/server/reference-asset-store";
 import type { ResolvedLogicalModel } from "@/lib/server/logical-model-router";
@@ -38,6 +39,7 @@ export async function getGeminiAiOverview() {
     const channel = geminiAiChannel(settings);
     const savedModels = configuredGeminiAiModels(channel);
     const configured = geminiAiProviderConfigured();
+    const [gateway, apiKeys] = await Promise.all([getGeminiAiGatewaySettings(), listGeminiAiApiKeys()]);
     if (!configured) {
         return overviewData({
             configured: false,
@@ -49,6 +51,8 @@ export async function getGeminiAiOverview() {
             models: savedModels,
             channel,
             settings,
+            gateway,
+            apiKeys,
         });
     }
 
@@ -69,6 +73,8 @@ export async function getGeminiAiOverview() {
         models: mergeCatalogModels(catalogResult, savedModels),
         channel,
         settings,
+        gateway,
+        apiKeys,
     });
 }
 
@@ -335,6 +341,8 @@ function overviewData(input: {
     models: GeminiAiCatalogModel[];
     channel: SystemModelChannel | undefined;
     settings: AuthSettings;
+    gateway: GeminiAiGatewaySettings;
+    apiKeys: GeminiAiApiKey[];
 }) {
     return {
         configured: input.configured,
@@ -346,6 +354,8 @@ function overviewData(input: {
         models: [...input.models, ...resolveSavedGeminiVideoCandidates(input.settings)],
         channels: input.channel ? [publicChannel(input.channel)] : [],
         ...(input.channel ? { channel: publicChannel(input.channel) } : {}),
+        gateway: input.gateway,
+        apiKeys: input.apiKeys,
     };
 }
 
