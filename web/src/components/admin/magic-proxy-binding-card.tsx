@@ -345,7 +345,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                 ) : source === "generic" ? (
                     <div className="min-w-0">
                         <label htmlFor={`generic-proxy-target-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                            通用代理出口（节点或整组）
+                            代理管理出口（节点或整组）
                         </label>
                         <div className="min-w-0 sm:max-w-md">
                             <Select

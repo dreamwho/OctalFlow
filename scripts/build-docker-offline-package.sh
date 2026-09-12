@@ -15,6 +15,48 @@ DATABASE_MODE="${OCTALAICANVAS_DATABASE_MODE:-external}"
 PRIVATE_MIGRATION_DIR="${OCTALAICANVAS_PRIVATE_MIGRATION_DIR:-}"
 PRIVATE_MIGRATION=0
 PRIVATE_MIGRATION_FILES=()
+REUSE_IMAGES="${OCTALAICANVAS_REUSE_IMAGES:-0}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build-app-image)
+            # 兼容指示标志，默认行为即构建镜像
+            shift
+            ;;
+        --reuse-images)
+            REUSE_IMAGES=1
+            shift
+            ;;
+        --database-mode)
+            [[ $# -ge 2 ]] || die "缺少 --database-mode 参数值"
+            DATABASE_MODE="$2"
+            shift 2
+            ;;
+        --platform)
+            [[ $# -ge 2 ]] || die "缺少 --platform 参数值"
+            PLATFORM="$2"
+            shift 2
+            ;;
+        --date)
+            [[ $# -ge 2 ]] || die "缺少 --date 参数值"
+            PACKAGE_DATE="$2"
+            if [[ "$PACKAGE_DIR" == "$REPO_ROOT/待上传文件_"* ]]; then
+                PACKAGE_DIR="$REPO_ROOT/待上传文件_$PACKAGE_DATE"
+            else
+                PACKAGE_DIR="$REPO_ROOT/本次修改需上传文件_$PACKAGE_DATE"
+            fi
+            shift 2
+            ;;
+        --package-dir)
+            [[ $# -ge 2 ]] || die "缺少 --package-dir 参数值"
+            PACKAGE_DIR="$2"
+            shift 2
+            ;;
+        *)
+            die "未知参数：$1"
+            ;;
+    esac
+done
 
 die() {
     printf '错误：%s\n' "$*" >&2
@@ -137,8 +179,8 @@ fi
 validate_platform "$PLATFORM"
 
 case "$PACKAGE_DIR" in
-    "$REPO_ROOT"/本次修改需上传文件_*) ;;
-    *) die "部署包目录必须位于项目根目录且以 本次修改需上传文件_ 开头：$PACKAGE_DIR" ;;
+    "$REPO_ROOT"/本次修改需上传文件_*|"$REPO_ROOT"/待上传文件_*) ;;
+    *) die "部署包目录必须位于项目根目录且以 待上传文件_ 或 本次修改需上传文件_ 开头：$PACKAGE_DIR" ;;
 esac
 
 require_command docker
@@ -152,48 +194,53 @@ docker compose version >/dev/null 2>&1 || die "当前 Docker 未提供 Compose v
 VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
 [[ -n "$VERSION" ]] || die "VERSION 为空"
 
-archive_existing_package
-mkdir -p "$PACKAGE_DIR/images"
-
-printf '构建主应用镜像：%s（平台 %s）\n' "$APP_IMAGE" "$PLATFORM"
-docker buildx build \
-    --platform "$PLATFORM" \
-    --tag "$APP_IMAGE" \
-    --load \
-    --progress "$BUILD_PROGRESS" \
-    "$REPO_ROOT"
-
-printf '构建 GeminiAI 镜像：%s（平台 %s）\n' "$GEMINIAI_IMAGE" "$PLATFORM"
-docker buildx build \
-    --platform "$PLATFORM" \
-    --tag "$GEMINIAI_IMAGE" \
-    --load \
-    --progress "$BUILD_PROGRESS" \
-    "$REPO_ROOT/services/geminiai"
-
-printf '拉取 Mihomo 镜像（不重新构建）：%s（平台 %s）\n' "$MAGIC_PROXY_IMAGE" "$PLATFORM"
-docker pull --platform "$PLATFORM" "$MAGIC_PROXY_IMAGE"
-
-if [[ "$DATABASE_MODE" == embedded ]]; then
-    printf '拉取 PostgreSQL 基础镜像：%s（平台 %s）\n' "$POSTGRES_IMAGE" "$PLATFORM"
-    docker pull --platform "$PLATFORM" "$POSTGRES_IMAGE"
-fi
-
-if [[ "$DATABASE_MODE" == embedded ]]; then
-    docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+if [[ "$REUSE_IMAGES" == 1 && -d "$PACKAGE_DIR/images" ]]; then
+    printf '模式：复用已存在镜像归档并更新配置与脚本：%s\n' "$PACKAGE_DIR/images"
+    mkdir -p "$PACKAGE_DIR/images"
 else
-    docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
-fi
+    archive_existing_package
+    mkdir -p "$PACKAGE_DIR/images"
 
-printf '导出主应用镜像归档\n'
-docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/app.tar" "$APP_IMAGE"
-printf '导出 GeminiAI 镜像归档\n'
-docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/geminiai.tar" "$GEMINIAI_IMAGE"
-printf '导出 Mihomo 镜像归档\n'
-docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/magic-proxy.tar" "$MAGIC_PROXY_IMAGE"
-if [[ "$DATABASE_MODE" == embedded ]]; then
-    printf '导出 PostgreSQL 镜像归档\n'
-    docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/postgres.tar" "$POSTGRES_IMAGE"
+    printf '构建主应用镜像：%s（平台 %s）\n' "$APP_IMAGE" "$PLATFORM"
+    docker buildx build \
+        --platform "$PLATFORM" \
+        --tag "$APP_IMAGE" \
+        --load \
+        --progress "$BUILD_PROGRESS" \
+        "$REPO_ROOT"
+
+    printf '构建 GeminiAI 镜像：%s（平台 %s）\n' "$GEMINIAI_IMAGE" "$PLATFORM"
+    docker buildx build \
+        --platform "$PLATFORM" \
+        --tag "$GEMINIAI_IMAGE" \
+        --load \
+        --progress "$BUILD_PROGRESS" \
+        "$REPO_ROOT/services/geminiai"
+
+    printf '拉取 Mihomo 镜像（不重新构建）：%s（平台 %s）\n' "$MAGIC_PROXY_IMAGE" "$PLATFORM"
+    docker pull --platform "$PLATFORM" "$MAGIC_PROXY_IMAGE"
+
+    if [[ "$DATABASE_MODE" == embedded ]]; then
+        printf '拉取 PostgreSQL 基础镜像：%s（平台 %s）\n' "$POSTGRES_IMAGE" "$PLATFORM"
+        docker pull --platform "$PLATFORM" "$POSTGRES_IMAGE"
+    fi
+
+    if [[ "$DATABASE_MODE" == embedded ]]; then
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+    else
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+    fi
+
+    printf '导出主应用镜像归档\n'
+    docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/app.tar" "$APP_IMAGE"
+    printf '导出 GeminiAI 镜像归档\n'
+    docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/geminiai.tar" "$GEMINIAI_IMAGE"
+    printf '导出 Mihomo 镜像归档\n'
+    docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/magic-proxy.tar" "$MAGIC_PROXY_IMAGE"
+    if [[ "$DATABASE_MODE" == embedded ]]; then
+        printf '导出 PostgreSQL 镜像归档\n'
+        docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/postgres.tar" "$POSTGRES_IMAGE"
+    fi
 fi
 
 IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/magic-proxy.tar)

@@ -577,18 +577,44 @@ export function ChatGptProxyManager({ proxyRuntime, request = chatGptApiRequest,
                                 当前默认：{view.effective_default.label} · 回退：{view.effective_fallback.label}
                             </span>
                             {showDefaults ? (
-                                <Button
-                                    type="primary"
-                                    loading={busy === "defaults"}
-                                    disabled={Boolean(busy)}
-                                    onClick={() =>
-                                        void act("defaults", () => request("proxies/defaults", json(defaults))).then((outcome) => {
-                                            if (outcome.ok) message.success("代理出口已保存");
-                                        })
-                                    }
-                                >
-                                    保存出口
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    {proxyRuntime && (proxyRuntime.runtime?.mode !== "native" || !proxyRuntime.runtime?.enabled) ? (
+                                        <Button
+                                            loading={busy === "defaults" || proxyRuntime.saving}
+                                            disabled={Boolean(busy) || proxyRuntime.saving}
+                                            onClick={() =>
+                                                void act("defaults", async () => {
+                                                    await proxyRuntime.save({ enabled: true, mode: "native", native_source: "manual" });
+                                                }).then(() => {
+                                                    message.success("已切换并启用通用代理");
+                                                })
+                                            }
+                                        >
+                                            启用通用代理
+                                        </Button>
+                                    ) : null}
+                                    <Button
+                                        type="primary"
+                                        loading={busy === "defaults" || proxyRuntime?.saving}
+                                        disabled={Boolean(busy) || proxyRuntime?.saving}
+                                        onClick={() =>
+                                            void act("defaults", async () => {
+                                                const outcome = await request("proxies/defaults", json(defaults));
+                                                if (proxyRuntime && (proxyRuntime.runtime?.mode !== "native" || !proxyRuntime.runtime?.enabled)) {
+                                                    await proxyRuntime.save({ enabled: true, mode: "native", native_source: "manual" });
+                                                }
+                                                return outcome;
+                                            }).then((outcome) => {
+                                                if (outcome?.ok) message.success("代理出口已保存并启用通用代理");
+                                            })
+                                        }
+                                    >
+                                        保存出口
+                                    </Button>
+                                    {proxyRuntime?.runtime?.mode === "native" && proxyRuntime?.runtime?.enabled ? (
+                                        <Tag color="processing" className="m-0">当前已生效</Tag>
+                                    ) : null}
+                                </div>
                             ) : null}
                         </div>
                         {showGroups ? (

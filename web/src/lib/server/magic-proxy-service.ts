@@ -349,8 +349,12 @@ export async function updateMagicProxyBinding(input: {
         let chainedConfig: { hop_node: string; landing_node_id: string } | undefined = undefined;
         if (mode === "chained") {
             const rawConfig = input.chained_config as Record<string, unknown> | null | undefined;
-            const hop = typeof rawConfig?.hop_node === "string" ? rawConfig.hop_node.trim() : "";
+            let hop = typeof rawConfig?.hop_node === "string" ? rawConfig.hop_node.trim() : "";
             const landing = typeof rawConfig?.landing_node_id === "string" ? rawConfig.landing_node_id.trim() : "";
+            if (hop && settings.nodes.length) {
+                const resolved = resolveHopNodeName(hop, settings.nodes);
+                if (resolved) hop = resolved;
+            }
             chainedConfig = { hop_node: hop, landing_node_id: landing };
         }
 
@@ -435,6 +439,8 @@ export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Pr
         }
 
         if (isChained) {
+            const chainedNodeName = getChainedExitNodeName(provider);
+            await selectMihomoProxy(runtime, GROUP_NAMES[provider], chainedNodeName).catch(() => undefined);
             if (provider === "geminiai") {
                 const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
                 await syncGeminiAiRuntimeProxy(runtimeProxyUrl(runtime, "geminiai"));
@@ -512,18 +518,56 @@ function publicImportResult(settings: DecodedMagicProxySettings) {
 }
 
 async function fetchSubscriptionNodes(subscriptionUrl: string) {
-    let response: Response;
-    try {
-        response = await fetchSafeOutbound(subscriptionUrl, { cache: "no-store", redirect: "follow", headers: { accept: "application/yaml, text/yaml, text/plain, */*" } }, { allowProxyFakeIpSpace: true });
-    } catch (error) {
-        if (error instanceof UnsafeOutboundUrlError) throw new MagicProxyError("订阅地址不允许访问，请使用可公开访问的 HTTPS Clash YAML 地址", 422);
-        throw new MagicProxyError("订阅获取失败，请确认地址和访问权限", 502);
+    const userAgents = [
+        "clash.meta",
+        "ClashforWindows/0.20.39",
+        "ClashMeta/1.18.0 Mihomo/1.18.0",
+    ];
+    let lastError: Error | null = null;
+    let response: Response | null = null;
+
+    for (const ua of userAgents) {
+        try {
+            const res = await fetchSafeOutbound(
+                subscriptionUrl,
+                {
+                    cache: "no-store",
+                    redirect: "follow",
+                    headers: {
+                        accept: "application/yaml, text/yaml, text/plain, */*",
+                        "user-agent": ua,
+                    },
+                    signal: AbortSignal.timeout(15000),
+                },
+                { allowProxyFakeIpSpace: true }
+            );
+            if (res.ok) {
+                response = res;
+                break;
+            }
+            await res.body?.cancel().catch(() => undefined);
+            if (res.status === 401 || res.status === 403) {
+                throw new MagicProxyError(`订阅服务器拒绝访问（HTTP ${res.status}），请使用服务器可直接访问的 Clash YAML 直链，不能使用需要浏览器验证的网页链接`, 502);
+            }
+            response = res;
+            break;
+        } catch (error) {
+            if (error instanceof MagicProxyError) throw error;
+            if (error instanceof UnsafeOutboundUrlError) throw new MagicProxyError("订阅地址不允许访问，请使用可公开访问的 HTTPS Clash YAML 地址", 422);
+            if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout") || error.message.includes("aborted"))) {
+                throw new MagicProxyError("获取订阅内容超时（15秒），请检查订阅链接是否畅通，或直接使用「文件导入」粘贴订阅内容", 504);
+            }
+            lastError = error instanceof Error ? error : new Error(String(error));
+        }
     }
-    if (!response.ok) {
-        const status = response.status;
-        await response.body?.cancel().catch(() => undefined);
-        if (status === 401 || status === 403) throw new MagicProxyError(`订阅服务器拒绝访问（HTTP ${status}），请使用服务器可直接访问的 Clash YAML 直链，不能使用需要浏览器验证的网页链接`, 502);
-        throw new MagicProxyError(`订阅获取失败（HTTP ${status}），请确认地址和访问权限`, 502);
+
+    if (!response || !response.ok) {
+        if (lastError instanceof MagicProxyError) throw lastError;
+        const status = response?.status;
+        if (status === 401 || status === 403) {
+            throw new MagicProxyError(`订阅服务器拒绝访问（HTTP ${status}），请在右侧使用「YAML / 文本文件导入」粘贴内容`, 502);
+        }
+        throw new MagicProxyError(`订阅获取失败${status ? `（HTTP ${status}）` : ""}，请确认地址和访问权限，或使用「文件导入」粘贴订阅内容`, 502);
     }
     const raw = await readBoundedSubscriptionText(response, magicProxySubscriptionMaxBytes());
     return parseSubscriptionNodes(raw);
@@ -626,21 +670,60 @@ function normalizeSubscriptionUrl(value: string) {
     return url.toString();
 }
 
-function normalizeBindings(value: MagicProxyBindings | undefined, names: Set<string>): MagicProxyBindings {
+export function cleanNodeName(name: string): string {
+    return name
+        // 清理 emoji / 国旗等代理名称常见装饰符号
+        .replace(/[\uD83C-\uDBFF\uDC00-\uDFFF]+/g, "")
+        .replace(/[\u2600-\u27BF\uFE00-\uFE0F\u200D]/g, "")
+        .replace(/[\[\]【】()（）|·_\-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+export function resolveHopNodeName(rawHop: string, availableNodes: Array<{ name: string }>): string | null {
+    const hop = rawHop?.trim();
+    if (!hop || !availableNodes || availableNodes.length === 0) return null;
+
+    // 1. 完全精确匹配
+    const exact = availableNodes.find((n) => n.name === hop);
+    if (exact) return exact.name;
+
+    // 2. 剥离 emoji、国旗、方括号符号后的标准匹配 (如 "🇭🇰 香港 01" 对比 "香港 01")
+    const cleanedHop = cleanNodeName(hop).toLowerCase();
+    if (cleanedHop) {
+        const cleanedMatch = availableNodes.find((n) => cleanNodeName(n.name).toLowerCase() === cleanedHop);
+        if (cleanedMatch) return cleanedMatch.name;
+
+        // 3. 子串包含匹配 (如 "香港 01" 对比 "香港 01 专线" 或 vice versa)
+        const inclusionMatch = availableNodes.find((n) => {
+            const cleanedCandidate = cleanNodeName(n.name).toLowerCase();
+            return (cleanedCandidate && cleanedCandidate.includes(cleanedHop)) || (cleanedHop && cleanedHop.includes(cleanedCandidate));
+        });
+        if (inclusionMatch) return inclusionMatch.name;
+    }
+
+    return null;
+}
+
+function normalizeBindings(value: MagicProxyBindings | undefined, names: Set<string>, allNodes?: MagicProxyNode[]): MagicProxyBindings {
     return {
-        geminiai: normalizedBinding(value?.geminiai, names),
-        geminiTools: normalizedBinding(value?.geminiTools, names),
-        chatgptApi: normalizedBinding(value?.chatgptApi, names),
+        geminiai: normalizedBinding(value?.geminiai, names, allNodes),
+        geminiTools: normalizedBinding(value?.geminiTools, names, allNodes),
+        chatgptApi: normalizedBinding(value?.chatgptApi, names, allNodes),
     };
 }
 
-function normalizedBinding(value: MagicProxyBinding | undefined, names: Set<string>): MagicProxyBinding {
+function normalizedBinding(value: MagicProxyBinding | undefined, names: Set<string>, allNodes?: MagicProxyNode[]): MagicProxyBinding {
     const node = optionalText(value?.node);
     const isChained = value?.mode === "chained";
     if (isChained) {
         const chained = value?.chained_config;
-        const hop = optionalText(chained?.hop_node);
+        let hop = optionalText(chained?.hop_node);
         const landing = optionalText(chained?.landing_node_id);
+        if (hop && allNodes?.length) {
+            const resolved = resolveHopNodeName(hop, allNodes);
+            if (resolved) hop = resolved;
+        }
         return {
             enabled: value?.enabled === true,
             mode: "chained",
@@ -728,7 +811,9 @@ async function syncMihomoChainedProxyInternal(input: {
 
     const baseNodes = settings.nodes.filter((node) => node.name !== chainedNodeName);
 
-    const hopNode = input.hopNode?.trim();
+    const rawHop = input.hopNode?.trim() || "";
+    const resolvedHop = rawHop ? resolveHopNodeName(rawHop, baseNodes) : null;
+    const hopNode = resolvedHop || (baseNodes.length > 0 ? baseNodes[0].name : "");
     const landingUrl = input.landingProxyUrl?.trim();
 
     if (!hopNode || !landingUrl) {
@@ -853,6 +938,7 @@ async function controllerRequest(runtime: MihomoRuntimeConfig, path: string, ini
     try {
         response = await fetch(controllerEndpoint(runtime.controllerUrl, path), {
             ...init,
+            signal: init.signal || AbortSignal.timeout(10000),
             headers: { authorization: `Bearer ${runtime.secret}`, ...init.headers },
             cache: "no-store",
             redirect: "error",
@@ -949,7 +1035,7 @@ async function readSettings(): Promise<DecodedMagicProxySettings | null> {
         return {
             subscriptionUrl,
             nodes,
-            bindings: normalizeBindings(stored.bindings, new Set(nodes.map((node) => node.name))),
+            bindings: normalizeBindings(stored.bindings, new Set(nodes.map((node) => node.name)), nodes),
             updatedAt: stored.updatedAt,
         };
     } catch (error) {

@@ -50,6 +50,16 @@ export type GeminiToolsApiKey = {
     createdAt: string;
 };
 
+export type GeminiToolsLifecyclePhase = "queued" | "routing" | "auth" | "upstream" | "response" | "running" | "success" | "failed";
+
+export type GeminiToolsLifecycleEntry = {
+    time: string;
+    phase: GeminiToolsLifecyclePhase;
+    message: string;
+    detail?: string;
+    durationMs?: number;
+};
+
 export type GeminiToolsRequestLog = {
     id: string;
     createdAt: string;
@@ -76,7 +86,7 @@ export type GeminiToolsRequestLog = {
     responsePreview?: string;
     proxyEgress?: { mode: "magic" | "generic" | "chained"; node_name?: string; address?: string };
     phase?: "queued" | "running" | "success" | "failed";
-    lifecycle?: Array<{ time: string; phase: "queued" | "running" | "success" | "failed"; message: string }>;
+    lifecycle?: GeminiToolsLifecycleEntry[];
 };
 
 export type GeminiToolsGatewaySettings = {
@@ -353,7 +363,10 @@ export async function appendGeminiToolsRequestLog(log: Omit<GeminiToolsRequestLo
 export async function openGeminiToolsRequestLog(log: Omit<GeminiToolsRequestLog, "id" | "createdAt" | "statusCode" | "durationMs" | "phase" | "lifecycle">) {
     const id = `log-${randomUUID()}`;
     const entry = { id, createdAt: new Date().toISOString(), statusCode: 0, durationMs: 0, phase: "queued" as const, lifecycle: [{ time: new Date().toISOString(), phase: "queued" as const, message: "等待执行" }], ...log } satisfies GeminiToolsRequestLog;
-    if (isPostgresDatabaseEnabled()) return void (await postgresRepository()).appendLog(entry, MAX_LOGS);
+    if (isPostgresDatabaseEnabled()) {
+        await (await postgresRepository()).appendLog(entry, MAX_LOGS);
+        return id;
+    }
     await mutateDatabase((db) => {
         db.logs.unshift(entry);
         if (db.logs.length > MAX_LOGS) db.logs.length = MAX_LOGS;
@@ -384,6 +397,7 @@ export async function settleGeminiToolsRequestLog(
         imageFailedCount?: number;
         responsePreview?: string;
         proxyEgress?: GeminiToolsRequestLog["proxyEgress"];
+        lifecycle?: GeminiToolsLifecycleEntry[];
     },
 ) {
     await patchGeminiToolsLog(id, (log) => {
@@ -402,19 +416,29 @@ export async function settleGeminiToolsRequestLog(
         if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
         const failed = settle.statusCode >= 400 || Boolean(settle.error);
         log.phase = failed ? "failed" : "success";
-        log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: failed ? settle.error || "调用失败" : "调用完成" }];
+        if (settle.lifecycle && settle.lifecycle.length > 0) {
+            log.lifecycle = settle.lifecycle;
+        } else {
+            log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: failed ? settle.error || "调用失败" : "调用完成" }];
+        }
     });
 }
 
 async function patchGeminiToolsLog(id: string, mutate: (log: GeminiToolsRequestLog) => void) {
     if (isPostgresDatabaseEnabled()) {
         const repository = await postgresRepository();
-        for (let page = 1; page <= 20; page += 1) {
+        const target = await repository.findById?.(id);
+        if (target) {
+            mutate(target);
+            await repository.updateLog?.(target);
+            return;
+        }
+        for (let page = 1; page <= 5; page += 1) {
             const pageResult = await repository.listLogs({ page, pageSize: 100 });
-            const target = pageResult.items.find((log) => log.id === id);
-            if (target) {
-                mutate(target);
-                await repository.updateLog?.(target);
+            const item = pageResult.items.find((log) => log.id === id);
+            if (item) {
+                mutate(item);
+                await repository.updateLog?.(item);
                 return;
             }
             if (!pageResult.items.length || pageResult.items.length < 100) break;

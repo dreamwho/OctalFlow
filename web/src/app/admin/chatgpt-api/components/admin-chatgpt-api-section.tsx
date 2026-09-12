@@ -48,6 +48,18 @@ function accountImportPayload(value: string) {
 export function AdminChatGptApiSection({ controller }: { controller: AdminDashboardController }) {
     const { message } = App.useApp();
     const proxyRuntime = useChatGptProxyRuntime();
+    type ChatGptProxyTab = "generic" | "magic" | "chained";
+    const activeRuntimeMode = proxyRuntime.runtime?.mode;
+    const currentEffectiveTab: ChatGptProxyTab = activeRuntimeMode === "magic" ? "magic" : activeRuntimeMode === "chained" ? "chained" : "generic";
+    const [selectedProxyTab, setSelectedProxyTab] = useState<ChatGptProxyTab>(currentEffectiveTab);
+    const userSelectedTabRef = useRef(false);
+
+    useEffect(() => {
+        if (activeRuntimeMode && !userSelectedTabRef.current) {
+            setSelectedProxyTab(activeRuntimeMode === "magic" ? "magic" : activeRuntimeMode === "chained" ? "chained" : "generic");
+        }
+    }, [activeRuntimeMode]);
+
     const [tab, setTab] = useState<ChatGptTab>("overview");
     const [accounts, setAccounts] = useState<ChatGptAccountPage>({ items: [], total: 0 });
     const [catalog, setCatalog] = useState<ChatGptModelCatalog | null>(null);
@@ -632,37 +644,44 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                     {proxyRuntime.runtime ? (
                         <>
                             <Panel>
-                                <PanelHeader title="代理方式" description="选择当前使用的代理来源，下方仅显示所选方式的配置内容。" />
+                                <PanelHeader title="代理方式" description="选择当前使用的代理来源，下方仅显示所选方式的配置内容；配置并保存后生效。" />
                                 <div className="p-3 sm:p-5">
-                                    <Segmented
-                                        aria-label="代理方式"
-                                        value={proxyRuntime.runtime.mode === "magic" ? "magic" : proxyRuntime.runtime.mode === "chained" ? "chained" : "generic"}
-                                        onChange={(value) => {
-                                            const runtime = proxyRuntime.runtime;
-                                            if (!runtime) return;
-                                            const nextMode = value === "magic" ? "magic" : value === "chained" ? "chained" : "native";
-                                            void proxyRuntime.save({
-                                                enabled: true,
-                                                mode: nextMode,
-                                                native_source: nextMode === "magic" ? runtime.native_source || "manual" : "manual",
-                                                ...(nextMode === "chained" && runtime.chained_config ? { chained_config: runtime.chained_config } : {}),
-                                            }).catch(() => undefined);
-                                        }}
-                                        options={[
-                                            { value: "generic", label: "通用代理" },
-                                            { value: "magic", label: "魔法代理" },
-                                            { value: "chained", label: "链式代理" },
-                                        ]}
-                                    />
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                                            当前生效模式：
+                                            <Tag color={proxyRuntime.runtime.enabled ? "success" : "default"} className="ml-1.5">
+                                                {proxyRuntime.runtime.enabled
+                                                    ? proxyRuntime.runtime.mode === "magic"
+                                                        ? "魔法代理"
+                                                        : proxyRuntime.runtime.mode === "chained"
+                                                          ? "链式代理"
+                                                          : "通用代理"
+                                                    : "未启用"}
+                                            </Tag>
+                                        </span>
+                                        <Segmented
+                                            aria-label="代理方式"
+                                            value={selectedProxyTab}
+                                            onChange={(value) => {
+                                                userSelectedTabRef.current = true;
+                                                setSelectedProxyTab(value as ChatGptProxyTab);
+                                            }}
+                                            options={[
+                                                { value: "generic", label: "通用代理" },
+                                                { value: "magic", label: "魔法代理" },
+                                                { value: "chained", label: "链式代理" },
+                                            ]}
+                                        />
+                                    </div>
                                 </div>
                             </Panel>
-                            {proxyRuntime.runtime.mode === "magic" ? (
-                                <ChatGptMagicProxyPanel proxyRuntime={proxyRuntime} hideSourceSwitch />
-                            ) : proxyRuntime.runtime.mode === "chained" ? (
-                                <ChatGptChainedProxyPanel proxyRuntime={proxyRuntime} />
-                            ) : (
-                                <ChatGptProxyManager proxyRuntime={proxyRuntime} showGroups={false} showSourceSwitch={false} title="通用代理出口" description="选择 GPTAPI 经通用代理提交时的默认出口与失败回退；代理分组与节点统一在「上游配置 → 通用代理」维护。" />
-                            )}
+                        {selectedProxyTab === "magic" ? (
+                            <ChatGptMagicProxyPanel proxyRuntime={proxyRuntime} hideSourceSwitch />
+                        ) : selectedProxyTab === "chained" ? (
+                            <ChatGptChainedProxyPanel proxyRuntime={proxyRuntime} />
+                        ) : (
+                            <ChatGptProxyManager proxyRuntime={proxyRuntime} showGroups={true} showSourceSwitch={false} title="通用代理出口与节点" description="选择 GPTAPI 经通用代理提交时的默认出口与失败回退，并可直接查看、维护与测试代理分组与节点。" />
+                        )}
                         </>
                     ) : null}
                 </div>

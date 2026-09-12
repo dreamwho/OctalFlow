@@ -13,6 +13,7 @@ export class GeminiToolsRepository {
             ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS user_agent text;
             ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS method varchar(16) DEFAULT 'POST';
             ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS headers jsonb;
+            ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS proxy_egress jsonb;
         `).catch(() => undefined);
     }
 
@@ -183,9 +184,9 @@ export class GeminiToolsRepository {
             `INSERT INTO gemini_tools_request_logs (
                 id,created_at,protocol,path,model,account_id,account_email,status_code,duration_ms,
                 prompt_tokens,completion_tokens,total_tokens,error,key_prefix,request_preview,response_preview,
-                phase,lifecycle,image_requested_count,image_succeeded_count,image_failed_count,client_ip,user_agent,method,headers
+                phase,lifecycle,image_requested_count,image_succeeded_count,image_failed_count,client_ip,user_agent,method,headers,proxy_egress
              )
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25::jsonb)`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25::jsonb,$26::jsonb)`,
             [
                 log.id,
                 new Date(log.createdAt),
@@ -212,6 +213,7 @@ export class GeminiToolsRepository {
                 log.userAgent || null,
                 log.method || "POST",
                 log.headers ? JSON.stringify(log.headers) : null,
+                log.proxyEgress ? JSON.stringify(log.proxyEgress) : null,
             ],
         );
         await this.db.query("DELETE FROM gemini_tools_request_logs WHERE id IN (SELECT id FROM gemini_tools_request_logs ORDER BY created_at DESC OFFSET $1)", [maxLogs]);
@@ -223,7 +225,8 @@ export class GeminiToolsRepository {
                 status_code=$2,duration_ms=$3,error=$4,account_id=$5,account_email=$6,
                 prompt_tokens=$7,completion_tokens=$8,total_tokens=$9,response_preview=$10,
                 phase=$11,lifecycle=$12,image_requested_count=$13,image_succeeded_count=$14,
-                image_failed_count=$15,client_ip=$16,user_agent=$17,method=$18,headers=$19::jsonb
+                image_failed_count=$15,client_ip=$16,user_agent=$17,method=$18,headers=$19::jsonb,
+                proxy_egress=$20::jsonb
              WHERE id=$1`,
             [
                 log.id,
@@ -245,6 +248,7 @@ export class GeminiToolsRepository {
                 log.userAgent || null,
                 log.method || "POST",
                 log.headers ? JSON.stringify(log.headers) : null,
+                log.proxyEgress ? JSON.stringify(log.proxyEgress) : null,
             ],
         );
     }
@@ -278,6 +282,11 @@ export class GeminiToolsRepository {
         values.push(input.pageSize, (input.page - 1) * input.pageSize);
         const result = await this.db.query(`SELECT * FROM gemini_tools_request_logs${condition} ORDER BY created_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
         return { items: result.rows.map(mapLog), total: number(count.rows[0]?.total), page: input.page, pageSize: input.pageSize };
+    }
+
+    async findById(id: string) {
+        const result = await this.db.query("SELECT * FROM gemini_tools_request_logs WHERE id = $1", [id]);
+        return result.rows[0] ? mapLog(result.rows[0]) : null;
     }
 
     async clearLogs() {
@@ -365,6 +374,7 @@ function mapLog(row: Record<string, unknown>): GeminiToolsRequestLog {
         ...(string(row.user_agent) ? { userAgent: string(row.user_agent) } : {}),
         ...(string(row.method) ? { method: string(row.method) } : {}),
         ...(row.headers && typeof row.headers === "object" ? { headers: row.headers as Record<string, string> } : {}),
+        ...(row.proxy_egress && typeof row.proxy_egress === "object" ? { proxyEgress: row.proxy_egress as GeminiToolsRequestLog["proxyEgress"] } : {}),
     };
 }
 

@@ -3,7 +3,7 @@
 import { LogDetailResizeHandle, useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
 import { Alert, App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Modal, Popconfirm, Progress, Select, Space, Switch, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { BarChart3, Check, ChevronRight, CircleUserRound, Copy, KeyRound, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { BarChart3, Check, ChevronRight, CircleUserRound, Clock, Copy, KeyRound, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
@@ -799,7 +799,7 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
             data-gemini-tools-log-id={log.id}
             aria-label={`查看请求日志：${log.model}`}
             onClick={onClick}
-            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[140px_120px_minmax(0,1fr)_140px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
+            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[140px_160px_minmax(0,1fr)_140px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
         >
             <div className="text-zinc-500">{formatTime(log.createdAt)}</div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -808,10 +808,16 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
                     {pending ? (phase === "queued" ? "排队中" : "执行中") : log.statusCode}
                 </Tag>
                 {log.proxyEgress ? (
-                    <Tag color="geekblue" className="m-0">
-                        {log.proxyEgress.mode === "magic" ? "魔法" : "通用"}
+                    <Tag color="geekblue" className="m-0 font-medium">
+                        {log.proxyEgress.mode === "magic"
+                            ? `魔法·${log.proxyEgress.node_name || "订阅"}`
+                            : log.proxyEgress.mode === "chained"
+                            ? `链式·${log.proxyEgress.node_name || "节点"}`
+                            : `通用·${log.proxyEgress.node_name || "直出"}`}
                     </Tag>
-                ) : null}
+                ) : (
+                    <Tag className="m-0 text-zinc-400">直连</Tag>
+                )}
             </div>
             <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -820,7 +826,7 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-zinc-500 dark:text-zinc-400">
                     <span className="truncate">{log.accountEmail || "未分配账号"}</span>
-                    {log.proxyEgress?.address ? <span>· 代理: {log.proxyEgress.address}</span> : null}
+                    {log.proxyEgress?.address ? <span>· 出口: {log.proxyEgress.address}</span> : null}
                     {log.error ? <span className="text-red-500">· {log.error}</span> : null}
                 </div>
             </div>
@@ -846,7 +852,8 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
 function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | null; onClose: () => void }) {
     const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 420 });
     const { message: messageApi } = App.useApp();
-    const success = log ? log.statusCode < 400 : false;
+    const success = log ? log.statusCode < 400 && !log.error : false;
+    const pending = log ? log.phase === "queued" || log.phase === "running" : false;
 
     const copyToClipboard = (text: string | undefined, title: string) => {
         if (!text) return;
@@ -858,10 +865,26 @@ function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | n
     };
 
     return (
-        <Drawer title="请求日志详情" open={Boolean(log)} onClose={onClose} width={drawerWidth} styles={{ body: { padding: 20, position: "relative" } }}>
+        <Drawer
+            title="请求日志详情"
+            open={Boolean(log)}
+            onClose={onClose}
+            width={drawerWidth}
+            styles={{ body: { padding: 20, position: "relative" } }}
+            extra={
+                log ? (
+                    <Space size="small">
+                        <Tag className="m-0 font-mono text-xs uppercase">{log.method || "POST"}</Tag>
+                        <Tag color={pending ? "processing" : success ? "green" : "red"}>
+                            {pending ? (log.phase === "queued" ? "排队中" : "执行中") : success ? "成功" : "失败"} · {log.statusCode || 0}
+                        </Tag>
+                    </Space>
+                ) : null
+            }
+        >
             <LogDetailResizeHandle resizing={drawerResizing} onPointerDown={onHandlePointerDown} />
             {log ? (
-                <div className="space-y-5">
+                <div className="space-y-6">
                     {/* Action buttons toolbar */}
                     <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-3 dark:border-zinc-800">
                         <Button
@@ -901,91 +924,194 @@ function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | n
                         ) : null}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Tag className="m-0 font-mono text-xs uppercase">{log.method || "POST"}</Tag>
-                        <Tag color={success ? "green" : "red"}>
-                            {success ? "成功" : "失败"} · {log.statusCode}
-                        </Tag>
-                        <Tag color="geekblue">{log.protocol.toUpperCase()}</Tag>
-                        <span className="text-xs text-zinc-500">{formatTime(log.createdAt)}</span>
+                    {/* Quick Highlights Summary Cards */}
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+                            <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                                <Clock className="size-3.5 text-zinc-400" />
+                                <span>耗时</span>
+                            </div>
+                            <div className="mt-1 font-mono text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                                {log.durationMs} <span className="text-xs font-normal text-zinc-500">ms</span>
+                            </div>
+                        </div>
+
+                        <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+                            <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                                <BarChart3 className="size-3.5 text-zinc-400" />
+                                <span>Token 消耗</span>
+                            </div>
+                            <div className="mt-1 font-mono text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                                {log.totalTokens?.toLocaleString() || 0}
+                            </div>
+                        </div>
+
+                        <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+                            <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                                <CircleUserRound className="size-3.5 text-zinc-400" />
+                                <span>Google 账号</span>
+                            </div>
+                            <div className="mt-1 truncate text-xs font-medium text-zinc-900 dark:text-zinc-100" title={log.accountEmail || "未分配"}>
+                                {log.accountEmail || "未分配账号"}
+                            </div>
+                        </div>
+
+                        <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+                            <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                                <Network className="size-3.5 text-zinc-400" />
+                                <span>代理出口</span>
+                            </div>
+                            <div className="mt-1 truncate text-xs font-medium text-zinc-900 dark:text-zinc-100" title={log.proxyEgress?.node_name || log.proxyEgress?.address || "直连"}>
+                                {log.proxyEgress
+                                    ? `${log.proxyEgress.mode === "magic" ? "魔法" : log.proxyEgress.mode === "chained" ? "链式" : "通用"}: ${log.proxyEgress.node_name || log.proxyEgress.address || "已配置"}`
+                                    : "直接连接"}
+                            </div>
+                        </div>
                     </div>
 
-                    <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-3 text-sm">
-                        <dt className="text-zinc-500">模型</dt>
-                        <dd className="break-all font-medium text-zinc-900 dark:text-zinc-100">{log.model}</dd>
+                    {/* Metadata Overview Fields */}
+                    <section>
+                        <h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">请求基本信息</h3>
+                        <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2.5 rounded-lg border border-zinc-200 p-3.5 text-sm dark:border-zinc-800">
+                            <dt className="text-zinc-500">模型 ID</dt>
+                            <dd className="break-all font-mono font-medium text-zinc-900 dark:text-zinc-100">{log.model}</dd>
 
-                        <dt className="text-zinc-500">实际账号</dt>
-                        <dd className="break-all">{log.accountEmail || "未分配账号"}</dd>
+                            <dt className="text-zinc-500">协议类型</dt>
+                            <dd>
+                                <Tag color="geekblue" className="font-mono text-xs uppercase">{log.protocol}</Tag>
+                            </dd>
 
-                        <dt className="text-zinc-500">请求路径</dt>
-                        <dd className="break-all font-mono text-xs text-zinc-700 dark:text-zinc-300">{log.path}</dd>
+                            <dt className="text-zinc-500">请求路径</dt>
+                            <dd className="break-all font-mono text-xs text-zinc-700 dark:text-zinc-300">{log.path}</dd>
 
-                        {log.clientIp ? (
-                            <>
-                                <dt className="text-zinc-500">客户端 IP</dt>
-                                <dd className="font-mono text-xs">{log.clientIp}</dd>
-                            </>
-                        ) : null}
+                            {log.clientIp ? (
+                                <>
+                                    <dt className="text-zinc-500">客户端 IP</dt>
+                                    <dd className="font-mono text-xs text-zinc-700 dark:text-zinc-300">{log.clientIp}</dd>
+                                </>
+                            ) : null}
 
-                        {log.userAgent ? (
-                            <>
-                                <dt className="text-zinc-500">User Agent</dt>
-                                <dd className="break-all font-mono text-xs text-zinc-600 dark:text-zinc-400">{log.userAgent}</dd>
-                            </>
-                        ) : null}
+                            {log.userAgent ? (
+                                <>
+                                    <dt className="text-zinc-500">User Agent</dt>
+                                    <dd className="break-all font-mono text-xs text-zinc-600 dark:text-zinc-400">{log.userAgent}</dd>
+                                </>
+                            ) : null}
 
-                        {log.proxyEgress ? (
-                            <>
-                                <dt className="text-zinc-500">代理出口</dt>
-                                <dd className="break-all">
-                                    <span className="font-medium">{log.proxyEgress.mode === "magic" ? "魔法代理" : "通用代理"}</span>
-                                    {log.proxyEgress.node_name ? ` · ${log.proxyEgress.node_name}` : ""}
-                                    {log.proxyEgress.address ? ` · ${log.proxyEgress.address}` : ""}
-                                </dd>
-                            </>
-                        ) : null}
+                            <dt className="text-zinc-500">API 凭据</dt>
+                            <dd className="text-xs text-zinc-700 dark:text-zinc-300">{log.keyPrefix ? `前缀 [${log.keyPrefix}...]` : "站内系统默认权限"}</dd>
 
-                        <dt className="text-zinc-500">耗时</dt>
-                        <dd>{log.durationMs} ms</dd>
+                            <dt className="text-zinc-500">Token 细节</dt>
+                            <dd className="text-xs text-zinc-600 dark:text-zinc-400">
+                                提示词 (Prompt): <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">{log.promptTokens || 0}</span> · 生成 (Completion): <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">{log.completionTokens || 0}</span> · 总计: <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">{log.totalTokens || 0}</span>
+                            </dd>
 
-                        <dt className="text-zinc-500">Token 统计</dt>
-                        <dd>
-                            输入 {log.promptTokens || 0} · 输出 {log.completionTokens || 0} · 合计 {log.totalTokens || 0}
-                        </dd>
+                            {(log.imageRequestedCount || 0) > 0 || (log.imageSucceededCount || 0) > 0 ? (
+                                <>
+                                    <dt className="text-zinc-500">生图任务</dt>
+                                    <dd className="text-xs text-zinc-600 dark:text-zinc-400">
+                                        请求: {log.imageRequestedCount || 0} 张 · 成功: {log.imageSucceededCount || 0} 张 · 失败: {log.imageFailedCount || 0} 张
+                                    </dd>
+                                </>
+                            ) : null}
 
-                        {(log.imageRequestedCount || 0) > 0 || (log.imageSucceededCount || 0) > 0 ? (
-                            <>
-                                <dt className="text-zinc-500">生图统计</dt>
-                                <dd>
-                                    请求 {log.imageRequestedCount || 0} 张 · 成功 {log.imageSucceededCount || 0} 张 · 失败 {log.imageFailedCount || 0} 张
-                                </dd>
-                            </>
-                        ) : null}
+                            <dt className="text-zinc-500">发起时间</dt>
+                            <dd className="text-xs text-zinc-600 dark:text-zinc-400">{formatTimeWithMs(log.createdAt)}</dd>
+                        </dl>
+                    </section>
 
-                        <dt className="text-zinc-500">API 密钥</dt>
-                        <dd>{log.keyPrefix || "站内调用"}</dd>
-                    </dl>
-
-                    {log.lifecycle?.length ? (
-                        <div className="space-y-1.5 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-                            <div className="text-xs font-medium text-zinc-600 dark:text-zinc-300">过程日志</div>
-                            {log.lifecycle.map((entry, index) => (
-                                <div key={index} className="flex items-center gap-2 text-xs">
-                                    <span className={entry.phase === "queued" || entry.phase === "running" ? "text-amber-500" : entry.phase === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
-                                    <span className="text-zinc-400">{formatTime(log.createdAt)}</span>
-                                    <span className="text-zinc-600 dark:text-zinc-300">{entry.message}</span>
-                                </div>
-                            ))}
+                    {/* Rich Chronological Lifecycle Process Log Timeline */}
+                    <section>
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">过程日志与时序</h3>
+                            <span className="text-xs text-zinc-500">
+                                共 {log.lifecycle?.length || 1} 个执行阶段 · 总历时 {log.durationMs}ms
+                            </span>
                         </div>
-                    ) : null}
+                        {log.lifecycle?.length ? (
+                            <div className="space-y-2 rounded-lg border border-zinc-200 p-3.5 dark:border-zinc-800">
+                                {log.lifecycle.map((entry, index) => {
+                                    const isPhaseSuccess = entry.phase === "success";
+                                    const isPhaseFailed = entry.phase === "failed";
+                                    const isPhaseProgress = entry.phase === "queued" || entry.phase === "running" || entry.phase === "upstream" || entry.phase === "routing" || entry.phase === "auth";
+                                    return (
+                                        <div key={index} className="flex items-start gap-3 text-xs">
+                                            <span className={`mt-0.5 shrink-0 text-sm ${isPhaseSuccess ? "text-emerald-500" : isPhaseFailed ? "text-rose-500" : isPhaseProgress ? "text-blue-500" : "text-amber-500"}`}>
+                                                {isPhaseSuccess ? "✓" : isPhaseFailed ? "✕" : "●"}
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="font-mono text-zinc-400 dark:text-zinc-500">{formatTimeWithMs(entry.time)}</span>
+                                                    {entry.durationMs !== undefined ? (
+                                                        <Tag className="m-0 border-0 bg-zinc-100 text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                                                            +{entry.durationMs}ms
+                                                        </Tag>
+                                                    ) : null}
+                                                    <Tag color={phaseTagColor(entry.phase)} className="m-0 text-[10px] uppercase">
+                                                        {phaseLabel(entry.phase)}
+                                                    </Tag>
+                                                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{entry.message}</span>
+                                                </div>
+                                                {entry.detail ? (
+                                                    <div className="mt-1 break-all rounded bg-zinc-50 p-2 font-mono text-[11px] leading-relaxed text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
+                                                        {entry.detail}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="rounded-lg border border-dashed border-zinc-200 p-4 text-center text-xs text-zinc-500 dark:border-zinc-800">
+                                未记录详细阶段日志
+                            </div>
+                        )}
+                    </section>
 
-                    {log.error ? <LogPreview title="错误" value={log.error} tone="error" /> : null}
-                    {log.requestPreview ? <LogPreview title="请求摘要" value={log.requestPreview} /> : null}
-                    {log.responsePreview ? <LogPreview title="响应摘要" value={log.responsePreview} /> : null}
+                    {log.error ? <LogPreview title="错误信息" value={log.error} tone="error" /> : null}
+                    {log.requestPreview ? <LogPreview title="请求内容" value={log.requestPreview} /> : null}
+                    {log.responsePreview ? <LogPreview title="响应内容" value={log.responsePreview} /> : null}
                 </div>
             ) : null}
         </Drawer>
     );
+}
+
+function phaseTagColor(phase: string) {
+    switch (phase) {
+        case "queued": return "default";
+        case "routing": return "purple";
+        case "auth": return "cyan";
+        case "upstream": return "geekblue";
+        case "response": return "blue";
+        case "running": return "processing";
+        case "success": return "success";
+        case "failed": return "error";
+        default: return "default";
+    }
+}
+
+function phaseLabel(phase: string) {
+    switch (phase) {
+        case "queued": return "排队";
+        case "routing": return "路由";
+        case "auth": return "认证";
+        case "upstream": return "上游";
+        case "response": return "响应";
+        case "running": return "执行";
+        case "success": return "完成";
+        case "failed": return "异常";
+        default: return phase;
+    }
+}
+
+function formatTimeWithMs(value: string) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return value;
+    const timeStr = date.toLocaleString("zh-CN", { hour12: false });
+    const ms = String(date.getMilliseconds()).padStart(3, "0");
+    return `${timeStr}.${ms}`;
 }
 
 function LogPreview({ title, value, tone }: { title: string; value: string; tone?: "error" }) {

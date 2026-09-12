@@ -6,7 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { getMagicProxy, type MagicProxyState } from "@/services/api/magic-proxy";
-import { chatGptApiRequest, testChatGptProxyNode, type ChatGptProxyGroup, type ChatGptProxyNodeTestResult, type ChatGptProxyReference } from "@/services/api/chatgpt-api";
+import { getChatGptProxies, testChatGptProxyNode, type ChatGptProxyGroup, type ChatGptProxyNodeTestResult, type ChatGptProxyReference, type ChatGptProxyView } from "@/services/api/chatgpt-api";
+import { genericProxyRequest } from "@/services/api/generic-proxy";
 import type { ChatGptProxyRuntimeController } from "./use-chatgpt-proxy-runtime";
 
 const { Text } = Typography;
@@ -36,11 +37,12 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
         try {
             const [nextMagic, genericData] = await Promise.all([
                 getMagicProxy().catch(() => null),
-                chatGptApiRequest<{ proxy_groups?: ChatGptProxyGroup[] }>("proxy/groups").catch(() => ({ proxy_groups: [] })),
+                getChatGptProxies().catch(() => genericProxyRequest<ChatGptProxyView>("proxies").catch(() => null)),
             ]);
             if (!mounted.current) return;
             setMagicState(nextMagic);
-            setGenericGroups(genericData.proxy_groups || []);
+            const groups = genericData?.groups || (genericData as any)?.proxy_groups || [];
+            setGenericGroups(groups);
 
             const currentHop = proxyRuntime.runtime?.chained_config?.hop_magic_node_name || nextMagic?.bindings.chatgptApi?.node || "";
             const currentLanding = proxyRuntime.runtime?.chained_config?.landing_generic_node_id || "";
@@ -78,9 +80,11 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
         const options: Array<{ value: string; label: string }> = [];
         for (const group of genericGroups) {
             for (const node of group.nodes || []) {
+                const nodeName = node.name || node.id;
+                const nodeAddress = node.url || "";
                 options.push({
                     value: node.id,
-                    label: `${node.name || node.id} · ${node.url} [${group.name}]`,
+                    label: nodeAddress ? `${nodeName} · ${nodeAddress} [${group.name}]` : `${nodeName} [${group.name}]`,
                 });
             }
         }

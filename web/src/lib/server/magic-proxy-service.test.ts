@@ -42,7 +42,7 @@ vi.mock("@/lib/server/secret-crypto", () => ({
     decryptSecretValue: (value: string) => (value.startsWith("enc:") ? Buffer.from(value.slice(4), "base64url").toString("utf8") : value),
 }));
 
-import { ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, updateMagicProxyBinding } from "./magic-proxy-service";
+import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, resolveHopNodeName, updateMagicProxyBinding } from "./magic-proxy-service";
 import { UnsafeOutboundUrlError } from "@/lib/server/safe-outbound-fetch";
 
 const SUBSCRIPTION_URL = "https://subscription.example/clash.yaml?token=private-token";
@@ -468,6 +468,45 @@ describe("magic proxy service", () => {
         const overview = await getMagicProxyOverview();
         expect(overview.nodes).toEqual([expect.objectContaining({ name: "Tokyo-01", type: "trojan" })]);
         expect(overview.bindings.geminiTools).toEqual({ enabled: true, node: "Tokyo-01" });
+    });
+
+    describe("resolveHopNodeName and cleanNodeName", () => {
+        it("strips emojis, regional indicator flags, and special brackets", () => {
+            expect(cleanNodeName("🇭🇰 香港 01")).toBe("香港 01");
+            expect(cleanNodeName("🇯🇵 日本 02 [专线]")).toBe("日本 02 专线");
+            expect(cleanNodeName("🇺🇸 美国 01 【高防】")).toBe("美国 01 高防");
+            expect(cleanNodeName("  Singapore 01  ")).toBe("Singapore 01");
+        });
+
+        it("resolves exact matches", () => {
+            const nodes = [{ name: "香港 01" }, { name: "日本 01" }];
+            expect(resolveHopNodeName("香港 01", nodes)).toBe("香港 01");
+            expect(resolveHopNodeName("日本 01", nodes)).toBe("日本 01");
+        });
+
+        it("resolves hop node names with emoji flags to clean node names", () => {
+            const nodes = [{ name: "香港 01" }, { name: "日本 01" }];
+            expect(resolveHopNodeName("🇭🇰 香港 01", nodes)).toBe("香港 01");
+            expect(resolveHopNodeName("🇯🇵 日本 01", nodes)).toBe("日本 01");
+        });
+
+        it("resolves clean hop node names to candidate node names that include emoji flags", () => {
+            const nodes = [{ name: "🇭🇰 香港 01" }, { name: "🇯🇵 日本 01" }];
+            expect(resolveHopNodeName("香港 01", nodes)).toBe("🇭🇰 香港 01");
+            expect(resolveHopNodeName("日本 01", nodes)).toBe("🇯🇵 日本 01");
+        });
+
+        it("resolves substring and bracket variants", () => {
+            const nodes = [{ name: "香港 01 [专线]" }];
+            expect(resolveHopNodeName("香港 01", nodes)).toBe("香港 01 [专线]");
+            expect(resolveHopNodeName("🇭🇰 香港 01", nodes)).toBe("香港 01 [专线]");
+        });
+
+        it("returns null when no candidate node matches", () => {
+            const nodes = [{ name: "香港 01" }];
+            expect(resolveHopNodeName("台湾 01", nodes)).toBeNull();
+            expect(resolveHopNodeName("", nodes)).toBeNull();
+        });
     });
 });
 

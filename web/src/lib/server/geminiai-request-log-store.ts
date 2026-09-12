@@ -10,6 +10,15 @@ const MAX_LOGS = 10_000;
 export type GeminiAiRequestCapability = "text" | "image" | "search";
 export type GeminiAiRequestSource = "runtime" | "admin-test";
 export type GeminiAiRequestLogPhase = "queued" | "running" | "success" | "failed";
+export type GeminiAiRequestLifecyclePhase = "queued" | "routing" | "auth" | "upstream" | "response" | "running" | "success" | "failed";
+
+export type GeminiAiRequestLifecycleEntry = {
+    time: string;
+    phase: GeminiAiRequestLifecyclePhase;
+    message: string;
+    detail?: string;
+    durationMs?: number;
+};
 
 export type GeminiAiRequestLog = {
     id: string;
@@ -37,7 +46,7 @@ export type GeminiAiRequestLog = {
     responsePreview?: string;
     proxyEgress?: { mode: "magic" | "generic" | "chained"; node_name?: string; address?: string };
     phase?: GeminiAiRequestLogPhase;
-    lifecycle?: Array<{ time: string; phase: GeminiAiRequestLogPhase; message: string }>;
+    lifecycle?: GeminiAiRequestLifecycleEntry[];
 };
 
 export type GeminiAiRequestStats = {
@@ -113,6 +122,7 @@ export async function settleGeminiAiRequestLog(
         clientIp?: string;
         userAgent?: string;
         proxyEgress?: GeminiAiRequestLog["proxyEgress"];
+        lifecycle?: GeminiAiRequestLifecycleEntry[];
     },
 ) {
     await patchGeminiAiRequestLog(id, (log) => {
@@ -133,7 +143,11 @@ export async function settleGeminiAiRequestLog(
         if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
         const failed = settle.statusCode >= 400 || Boolean(settle.error);
         log.phase = failed ? "failed" : "success";
-        log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: failed ? settle.error || `调用失败` : "调用完成" }];
+        if (settle.lifecycle && settle.lifecycle.length > 0) {
+            log.lifecycle = settle.lifecycle;
+        } else {
+            log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: failed ? settle.error || `调用失败` : "调用完成" }];
+        }
     });
 }
 

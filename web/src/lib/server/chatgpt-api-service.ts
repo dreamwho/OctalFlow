@@ -185,9 +185,11 @@ export async function updateChatGptProxySelection(input: unknown) {
         await prepareChatGptMagicProxySelection();
         const { syncMihomoChainedProxy } = await import("@/lib/server/magic-proxy-service");
         await syncMihomoChainedProxy({});
-    } else if (selection.enabled && selection.mode === "chained" && selection.chained_config) {
-        if (selection.chained_config.hop_magic_node_name && selection.chained_config.landing_generic_node_id) {
+    } else if (selection.enabled && selection.mode === "chained") {
+        if (selection.chained_config?.hop_magic_node_name && selection.chained_config?.landing_generic_node_id) {
             await prepareChatGptChainedProxySelection(selection.chained_config);
+        } else {
+            throw new ChatGptApiError("请先在“链式代理”配置中选择跳板节点与落地出口，再开启使用链式代理", 400);
         }
     } else {
         const { syncMihomoChainedProxy } = await import("@/lib/server/magic-proxy-service");

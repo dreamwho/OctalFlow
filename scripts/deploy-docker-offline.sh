@@ -60,7 +60,7 @@ verify_checksum_path() {
     [[ -f "$file_path" && ! -L "$file_path" ]] || die "部署包缺少常规文件：$relative_path"
     expected="$(checksum_expected_for_path "$relative_path")"
     actual="$(checksum_file "$file_path")"
-    [[ "$actual" == "$expected" ]] || die "SHA-256 校验失败：$relative_path"
+    [[ "$actual" == "$expected" ]] || die "SHA-256 校验失败：$relative_path (预期: $expected, 实际: $actual)"
 }
 
 read_manifest_value() {
@@ -264,9 +264,17 @@ PACKAGE_STATIC_FILES=(
     docker/mihomo/bootstrap-host.yaml
     docker/mihomo/entrypoint.sh
 )
-for package_file in "${PACKAGE_STATIC_FILES[@]}" "${IMAGE_ARCHIVES[@]}"; do
+SKIP_IMAGE_CHECK="${OCTALAICANVAS_SKIP_IMAGE_CHECK:-0}"
+for package_file in "${PACKAGE_STATIC_FILES[@]}"; do
     verify_checksum_path "$package_file"
 done
+if [[ "$SKIP_IMAGE_CHECK" == "1" ]]; then
+    printf '提示：已指定 OCTALAICANVAS_SKIP_IMAGE_CHECK=1，跳过镜像归档文件的 SHA-256 校验与平台架构检查。\n'
+else
+    for package_file in "${IMAGE_ARCHIVES[@]}"; do
+        verify_checksum_path "$package_file"
+    done
+fi
 if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     [[ ! -L "$SCRIPT_DIR/private-migration" ]] || die "私有迁移目录不能是符号链接"
     verify_checksum_path private-migration/manifest.json
@@ -275,22 +283,24 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     chmod 0600 "$SCRIPT_DIR/private-migration/private.env"
 fi
 
-[[ -d "$SCRIPT_DIR/images" && ! -L "$SCRIPT_DIR/images" ]] || die "images 目录无效"
-shopt -s nullglob
-actual_archives=("$SCRIPT_DIR"/images/*.tar)
-shopt -u nullglob
-[[ "${#actual_archives[@]}" -eq "${#IMAGE_ARCHIVES[@]}" ]] || die "images/ 下的镜像归档数量与清单不一致"
-for archive in "${actual_archives[@]}"; do
-    archive_path="images/$(basename "$archive")"
-    expected_archive=0
-    for expected_path in "${IMAGE_ARCHIVES[@]}"; do
-        [[ "$archive_path" == "$expected_path" ]] && expected_archive=1
+if [[ "$SKIP_IMAGE_CHECK" != "1" ]]; then
+    [[ -d "$SCRIPT_DIR/images" && ! -L "$SCRIPT_DIR/images" ]] || die "images 目录无效"
+    shopt -s nullglob
+    actual_archives=("$SCRIPT_DIR"/images/*.tar)
+    shopt -u nullglob
+    [[ "${#actual_archives[@]}" -eq "${#IMAGE_ARCHIVES[@]}" ]] || die "images/ 下的镜像归档数量与清单不一致"
+    for archive in "${actual_archives[@]}"; do
+        archive_path="images/$(basename "$archive")"
+        expected_archive=0
+        for expected_path in "${IMAGE_ARCHIVES[@]}"; do
+            [[ "$archive_path" == "$expected_path" ]] && expected_archive=1
+        done
+        [[ "$expected_archive" -eq 1 ]] || die "images/ 下包含未声明的镜像归档：$(basename "$archive")"
     done
-    [[ "$expected_archive" -eq 1 ]] || die "images/ 下包含未声明的镜像归档：$(basename "$archive")"
-done
-for archive_path in "${IMAGE_ARCHIVES[@]}"; do
-    verify_image_archive_platform "$SCRIPT_DIR/$archive_path" "$PACKAGE_PLATFORM"
-done
+    for archive_path in "${IMAGE_ARCHIVES[@]}"; do
+        verify_image_archive_platform "$SCRIPT_DIR/$archive_path" "$PACKAGE_PLATFORM"
+    done
+fi
 
 [[ "$(uname -s)" == Linux ]] || die "离线 Docker 包只能部署到 Linux 服务器"
 case "$(uname -m)" in
@@ -337,21 +347,27 @@ ensure_env_value OCTALAICANVAS_DATABASE_PROVIDER postgres
 ensure_env_value OCTALAICANVAS_DATA_DIR /app/web/.data
 ensure_env_value OCTALAICANVAS_BIND_ADDRESS "${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}"
 ensure_env_value OCTALAICANVAS_COOKIE_SECURE "${OCTALAICANVAS_COOKIE_SECURE:-0}"
-if [[ "$DATABASE_MODE" == external ]]; then
-    app_port="$(read_env_value PORT)"
-    if [[ -n "${OCTALAICANVAS_PORT:-}" ]]; then
-        app_port="$OCTALAICANVAS_PORT"
-    fi
-    app_port="${app_port:-8866}"
-    validate_port "$app_port"
-    set_env_value PORT "$app_port"
-    export PORT="$app_port"
-    set_env_value OCTALAICANVAS_INTERNAL_ORIGIN "http://127.0.0.1:$app_port"
-    install_port="$app_port"
-else
-    ensure_env_value OCTALAICANVAS_INTERNAL_ORIGIN http://127.0.0.1:3000
-    install_port=3000
+app_port="${OCTALAICANVAS_PORT:-}"
+if [[ -z "$app_port" ]]; then
+    app_port="$(read_env_value OCTALAICANVAS_PORT)"
 fi
+if [[ -z "$app_port" ]]; then
+    app_port="$(read_env_value PORT)"
+fi
+if [[ -z "$app_port" ]]; then
+    if [[ "$DATABASE_MODE" == external ]]; then
+        app_port=8866
+    else
+        app_port=3000
+    fi
+fi
+validate_port "$app_port"
+set_env_value PORT "$app_port"
+export PORT="$app_port"
+set_env_value OCTALAICANVAS_PORT "$app_port"
+export OCTALAICANVAS_PORT="$app_port"
+set_env_value OCTALAICANVAS_INTERNAL_ORIGIN "http://127.0.0.1:$app_port"
+install_port="$app_port"
 ensure_env_value NEXT_PUBLIC_SITE_URL "${NEXT_PUBLIC_SITE_URL:-http://localhost:$install_port}"
 ensure_env_value OCTALAICANVAS_TRUSTED_PROXY_HOPS "${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}"
 ensure_env_value OCTALAICANVAS_GEMINIAI_API_KEY "${OCTALAICANVAS_GEMINIAI_API_KEY:-$(generate_token)}"
@@ -426,16 +442,21 @@ for key in OCTALAICANVAS_INSTALL_TOKEN OCTALAICANVAS_MAINTENANCE_TOKEN OCTALAICA
     [[ "${#value}" -ge 32 ]] || die "$key 至少需要 32 个字符"
 done
 
-for archive_path in "${IMAGE_ARCHIVES[@]}"; do
-    printf '加载镜像：%s\n' "$(basename "$archive_path")"
-    docker load --input "$SCRIPT_DIR/$archive_path"
-done
+SKIP_IMAGE_LOAD="${OCTALAICANVAS_SKIP_IMAGE_LOAD:-$SKIP_IMAGE_CHECK}"
+if [[ "$SKIP_IMAGE_LOAD" == "1" ]]; then
+    printf '提示：已指定跳过镜像归档导入，直接复用 Docker 引擎中已有镜像并校验...\n'
+else
+    for archive_path in "${IMAGE_ARCHIVES[@]}"; do
+        printf '加载镜像：%s\n' "$(basename "$archive_path")"
+        docker load --input "$SCRIPT_DIR/$archive_path"
+    done
+fi
 
-docker image inspect "$APP_IMAGE" >/dev/null 2>&1 || die "主应用镜像未加载"
-docker image inspect "$GEMINIAI_IMAGE" >/dev/null 2>&1 || die "GeminiAI 镜像未加载"
-docker image inspect "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || die "Mihomo 镜像未加载"
+docker image inspect "$APP_IMAGE" >/dev/null 2>&1 || die "主应用镜像未加载：$APP_IMAGE"
+docker image inspect "$GEMINIAI_IMAGE" >/dev/null 2>&1 || die "GeminiAI 镜像未加载：$GEMINIAI_IMAGE"
+docker image inspect "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || die "Mihomo 镜像未加载：$MAGIC_PROXY_IMAGE"
 if [[ "$DATABASE_MODE" == embedded ]]; then
-    docker image inspect "$POSTGRES_IMAGE" >/dev/null 2>&1 || die "PostgreSQL 镜像未加载"
+    docker image inspect "$POSTGRES_IMAGE" >/dev/null 2>&1 || die "PostgreSQL 镜像未加载：$POSTGRES_IMAGE"
 fi
 
 compose_diagnostics() {

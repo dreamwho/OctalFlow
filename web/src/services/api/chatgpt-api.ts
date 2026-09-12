@@ -248,6 +248,8 @@ export const getChatGptProxyRuntime = (init?: RequestInit) => chatGptApiRequest<
 
 export const updateChatGptProxyRuntime = (input: ChatGptProxyRuntimePatch, init?: RequestInit) => chatGptApiRequest<ChatGptProxyRuntime>("proxy-selection", { ...init, method: "PATCH", body: JSON.stringify(input) });
 
+export const getChatGptProxies = (init?: RequestInit) => chatGptApiRequest<ChatGptProxyView>("proxies", init);
+
 export type ChatGptProxyNodeTestResult = {
     status: "passed" | "failed";
     latency_ms: number;

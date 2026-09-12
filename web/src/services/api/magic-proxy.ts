@@ -89,16 +89,18 @@ export const saveMagicProxyBinding = updateMagicProxyBinding;
 
 export type MagicProxyDelayResult = { name: string; delay?: number; error?: string };
 
-export const testMagicProxyNode = (node: string) =>
+export const testMagicProxyNode = (node: string, signal?: AbortSignal) =>
     request<MagicProxyDelayResult>("/api/admin/magic-proxy", {
         method: "POST",
         body: json({ node }),
+        signal,
     });
 
-export const testMagicProxyAllNodes = () =>
+export const testMagicProxyAllNodes = (signal?: AbortSignal) =>
     request<{ results: MagicProxyDelayResult[] }>("/api/admin/magic-proxy", {
         method: "POST",
         body: json({}),
+        signal,
     });
 
 export type MagicProxyGoogleTestItem = {
@@ -119,8 +121,9 @@ export type MagicProxyGoogleTestReport = {
     items: MagicProxyGoogleTestItem[];
 };
 
-export const testMagicProxyGoogle = (node?: string) =>
+export const testMagicProxyGoogle = (node?: string, signal?: AbortSignal) =>
     request<MagicProxyGoogleTestReport>("/api/admin/magic-proxy", {
         method: "POST",
         body: json({ action: "testGoogle", node: node || undefined }),
+        signal,
     });

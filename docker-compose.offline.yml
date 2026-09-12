@@ -126,15 +126,16 @@ services:
     env_file:
       - .env
     ports:
-      - "${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}:3000:3000"
+      - "${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}:${OCTALAICANVAS_PORT:-${PORT:-3000}}:${PORT:-3000}"
     volumes:
       - octalaicanvas-data:/app/web/.data
       - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+      PORT: ${PORT:-3000}
       NEXT_TELEMETRY_DISABLED: "1"
       OCTALAICANVAS_DATA_DIR: /app/web/.data
-      OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:3000
+      OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:${PORT:-3000}
       OCTALAICANVAS_DATABASE_PROVIDER: postgres
       DATABASE_URL: postgres://${POSTGRES_USER:-octalaicanvas}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-octalaicanvas}
       OCTALAICANVAS_DATABASE_POOL_MAX: ${OCTALAICANVAS_DATABASE_POOL_MAX:-10}
@@ -173,7 +174,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/health/live').then(async live=>{if(!live.ok)throw new Error('live');const ready=await fetch('http://127.0.0.1:3000/api/health/ready');const body=await ready.json();if(!body?.data?.database?.healthy)throw new Error('database')}).catch(()=>process.exit(1))",
+          "const p=process.env.PORT||3000;fetch('http://127.0.0.1:'+p+'/api/health/live').then(async live=>{if(!live.ok)throw new Error('live');const ready=await fetch('http://127.0.0.1:'+p+'/api/health/ready');const body=await ready.json();if(!body?.data?.database?.healthy)throw new Error('database')}).catch(()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 10s

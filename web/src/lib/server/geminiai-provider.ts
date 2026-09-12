@@ -1,4 +1,4 @@
-import { appendGeminiAiRequestLog, markGeminiAiRequestLogRunning, openGeminiAiRequestLog, settleGeminiAiRequestLog, type GeminiAiRequestCapability, type GeminiAiRequestSource, type GeminiAiRequestLog } from "@/lib/server/geminiai-request-log-store";
+import { appendGeminiAiRequestLog, markGeminiAiRequestLogRunning, openGeminiAiRequestLog, settleGeminiAiRequestLog, type GeminiAiRequestCapability, type GeminiAiRequestSource, type GeminiAiRequestLog, type GeminiAiRequestLifecycleEntry } from "@/lib/server/geminiai-request-log-store";
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
 
 const GEMINIAI_REQUEST_PATHS = new Set(["/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
@@ -37,21 +37,63 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
 
     const metadata = requestLogMetadata(normalizedPath, init, options.logSource);
     const startedAt = Date.now();
-    const openLogId = metadata ? await safeOpenLog(metadata) : "";
+    const lifecycle: GeminiAiRequestLifecycleEntry[] = [
+        {
+            phase: "queued",
+            message: "接收到 GeminiAIStudio 请求并建立调用上下文",
+            time: new Date(startedAt).toISOString(),
+            durationMs: 0,
+            detail: `来源: ${options.logSource || "admin-test"}, 能力: ${metadata?.capability || "text"}, 方法: ${(init.method || "GET").toUpperCase()}, 路径: ${normalizedPath}${metadata?.model ? `, 模型: ${metadata.model}` : ""}`,
+        },
+    ];
+    const openLogId = metadata ? await safeOpenLog(metadata, lifecycle) : "";
     try {
-        if (openLogId) await markGeminiAiRequestLogRunning(openLogId);
         const binding = await ensureMagicProxyProvider("geminiai");
         if (metadata && binding.egress) metadata.proxyEgress = binding.egress;
+        lifecycle.push({
+            phase: "routing",
+            message: binding.egress ? "代理出口路由绑定完成" : "使用直接连接 (Direct)",
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: binding.egress
+                ? `模式: ${binding.egress.mode === "magic" ? "魔法代理" : binding.egress.mode === "chained" ? "链式代理" : "通用代理"}, 节点: ${binding.egress.node_name || binding.egress.address || "默认出口"}`
+                : "未配置代理出口，直接连接 sidecar / Google 官方网关",
+        });
+
+        lifecycle.push({
+            phase: "upstream",
+            message: "向 GeminiAI sidecar 发起实际请求",
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: `目标地址: ${sidecarUrl(config.baseUrl, normalizedPath)}, 认证: ${options.unauthenticated ? "未鉴权请求" : "Bearer Token 授权"}`,
+        });
+
         const response = await fetch(sidecarUrl(config.baseUrl, normalizedPath), {
             ...init,
             headers,
             cache: "no-store",
             redirect: "error",
         });
-        if (metadata) await recordRequestLog(config, metadata, response, startedAt, openLogId);
+
+        lifecycle.push({
+            phase: "response",
+            message: `收到上游响应 HTTP ${response.status}`,
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: `状态码: ${response.status}, Content-Type: ${response.headers.get("content-type") || "未知"}`,
+        });
+
+        if (metadata) await recordRequestLog(config, metadata, response, startedAt, openLogId, lifecycle);
         return response;
     } catch (error) {
-        if (metadata) await safeSettleError(openLogId, metadata, error, startedAt);
+        lifecycle.push({
+            phase: "failed",
+            message: providerErrorMessage(error),
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: error instanceof Error ? error.stack || error.message : String(error),
+        });
+        if (metadata) await safeSettleError(openLogId, metadata, error, startedAt, lifecycle);
         if (error instanceof GeminiAiProviderError) throw error;
         if (error instanceof MagicProxyError) throw new GeminiAiProviderError(error.message, error.status);
         if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) throw new GeminiAiProviderError("GeminiAI 服务请求超时", 504);
@@ -59,7 +101,7 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
     }
 }
 
-async function safeOpenLog(metadata: RequestLogMetadata) {
+async function safeOpenLog(metadata: RequestLogMetadata, lifecycle?: GeminiAiRequestLifecycleEntry[]) {
     try {
         const openLogId = await openGeminiAiRequestLog({
             source: metadata.source,
@@ -71,6 +113,7 @@ async function safeOpenLog(metadata: RequestLogMetadata) {
             ...(metadata.clientIp ? { clientIp: metadata.clientIp } : {}),
             ...(metadata.userAgent ? { userAgent: metadata.userAgent } : {}),
             ...(metadata.headers ? { headers: metadata.headers } : {}),
+            ...(lifecycle ? { lifecycle } : {}),
         });
         return openLogId || "";
     } catch (error) {
@@ -79,18 +122,18 @@ async function safeOpenLog(metadata: RequestLogMetadata) {
     }
 }
 
-async function safeSettleError(openLogId: string, metadata: RequestLogMetadata, error: unknown, startedAt: number) {
+async function safeSettleError(openLogId: string, metadata: RequestLogMetadata, error: unknown, startedAt: number, lifecycle?: GeminiAiRequestLifecycleEntry[]) {
     const message = providerErrorMessage(error);
     const statusCode = error instanceof GeminiAiProviderError ? error.status : 502;
     if (openLogId) {
         try {
-            await settleGeminiAiRequestLog(openLogId, { statusCode, durationMs: Date.now() - startedAt, error: message });
+            await settleGeminiAiRequestLog(openLogId, { statusCode, durationMs: Date.now() - startedAt, error: message, lifecycle });
             return;
         } catch (persistError) {
             console.error("Failed to settle GeminiAIStudio request log", persistError);
         }
     }
-    await safeAppendRequestLog({ ...metadata, statusCode, durationMs: Date.now() - startedAt, error: message });
+    await safeAppendRequestLog({ ...metadata, statusCode, durationMs: Date.now() - startedAt, error: message, lifecycle });
 }
 
 let lastSyncedGeminiAiProxy: string | undefined;
@@ -348,12 +391,25 @@ async function activeAccount(config: NonNullable<ReturnType<typeof readProviderC
     }
 }
 
-async function recordRequestLog(config: NonNullable<ReturnType<typeof readProviderConfig>>, metadata: RequestLogMetadata, response: Response, startedAt: number, openLogId = "") {
+async function recordRequestLog(config: NonNullable<ReturnType<typeof readProviderConfig>>, metadata: RequestLogMetadata, response: Response, startedAt: number, openLogId = "", lifecycle?: GeminiAiRequestLifecycleEntry[]) {
     const responseAccountId = textValue(response.headers.get("x-aistudio-account-id"));
     const responseAccountEmail = textValue(response.headers.get("x-aistudio-account-email"));
     const account = responseAccountId || responseAccountEmail ? { id: responseAccountId, email: responseAccountEmail } : await activeAccount(config);
     const { preview: responsePreview, metrics } = await safeResponsePreviewAndMetrics(response, metadata.capability);
     const error = response.ok ? undefined : responsePreview || `上游返回 HTTP ${response.status}`;
+
+    if (lifecycle) {
+        lifecycle.push({
+            phase: response.ok ? "success" : "failed",
+            message: response.ok ? "请求处理完成并成功交付客户端" : `上游调用异常: ${error || "HTTP " + response.status}`,
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: response.ok
+                ? `总耗时: ${Date.now() - startedAt}ms, 消耗 Tokens: ${metrics.totalTokens || 0}${account?.email ? `, 账号: ${account.email}` : ""}`
+                : `错误详情: ${error || "上游未返回成功响应"}`,
+        });
+    }
+
     const settle: Parameters<typeof settleGeminiAiRequestLog>[1] = {
         statusCode: response.status,
         durationMs: Date.now() - startedAt,
@@ -368,6 +424,7 @@ async function recordRequestLog(config: NonNullable<ReturnType<typeof readProvid
         ...(metrics.imageRequestedCount ? { imageRequestedCount: metrics.imageRequestedCount } : {}),
         ...(metrics.imageSucceededCount ? { imageSucceededCount: metrics.imageSucceededCount } : {}),
         ...(metrics.imageFailedCount ? { imageFailedCount: metrics.imageFailedCount } : {}),
+        ...(lifecycle ? { lifecycle } : {}),
     };
     if (openLogId) {
         try {

@@ -167,7 +167,7 @@ export function AdminGenericProxySection() {
                 className="max-sm:[&_.ant-tabs-nav-list]:w-full max-sm:[&_.ant-tabs-tab]:!m-0 max-sm:[&_.ant-tabs-tab]:min-w-0 max-sm:[&_.ant-tabs-tab]:flex-1 max-sm:[&_.ant-tabs-tab]:justify-center max-sm:[&_.ant-tabs-tab]:!px-1 max-sm:[&_.ant-tabs-tab-btn]:text-xs"
                 defaultActiveKey="management"
                 items={[
-                    { key: "management", label: "代理管理", children: <ChatGptProxyManager request={genericProxyRequest} showDefaults={false} title="通用代理" description="维护通用代理分组与节点：分组内节点按容量随机切换，节点可配置图片并发上限。" /> },
+                    { key: "management", label: "代理管理", children: <ChatGptProxyManager request={genericProxyRequest} showDefaults={true} title="通用代理" description="维护通用代理默认出口、代理分组与节点：分组内节点按容量随机切换，节点可配置图片并发上限。" /> },
                     { key: "logs", label: "请求日志", children: <ProxyRequestLogs /> },
                 ]}
             />

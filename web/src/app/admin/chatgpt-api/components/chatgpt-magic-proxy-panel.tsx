@@ -67,14 +67,18 @@ export function ChatGptMagicProxyPanel({ proxyRuntime, hideSourceSwitch = false 
             setState(nextState);
             setNode(nextState.bindings.chatgptApi?.node || node.trim());
             try {
-                await proxyRuntime.refresh();
+                await proxyRuntime.save({
+                    enabled: true,
+                    mode: "magic",
+                    native_source: "manual",
+                });
             } catch (reason) {
-                const notice = `魔法节点已保存，但总控状态刷新失败：${errorMessage(reason, "读取失败")}`;
+                const notice = `魔法节点已保存，但启用魔法代理模式失败：${errorMessage(reason, "保存失败")}`;
                 setError(notice);
                 message.warning(notice);
                 return;
             }
-            message.success("魔法节点已保存");
+            message.success("魔法节点已保存并生效");
         } catch (reason) {
             const nextError = errorMessage(reason, "保存魔法节点失败");
             if (mounted.current) {
@@ -125,12 +129,15 @@ export function ChatGptMagicProxyPanel({ proxyRuntime, hideSourceSwitch = false 
                             />
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <Button type="primary" loading={saving} disabled={loading || saving || Boolean(unavailableReason) || !node.trim()} onClick={() => void saveNode()}>
-                                保存魔法节点
+                            <Button type="primary" loading={saving || proxyRuntime.saving} disabled={loading || saving || proxyRuntime.saving || Boolean(unavailableReason) || !node.trim()} onClick={() => void saveNode()}>
+                                保存并启用魔法代理
                             </Button>
                             <Tag color={state.bindings.chatgptApi?.node ? "success" : "default"} className="m-0">
-                                {state.bindings.chatgptApi?.node ? "已保存节点" : "尚未保存节点"}
+                                {state.bindings.chatgptApi?.node ? `已绑定节点: ${state.bindings.chatgptApi.node}` : "尚未保存节点"}
                             </Tag>
+                            {proxyRuntime.runtime?.mode === "magic" && proxyRuntime.runtime?.enabled ? (
+                                <Tag color="processing" className="m-0">当前已生效</Tag>
+                            ) : null}
                         </div>
                     </>
                 ) : null}

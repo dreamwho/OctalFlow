@@ -23,6 +23,14 @@ export function AdminMagicProxySection() {
     const [testModalOpen, setTestModalOpen] = useState(false);
     const [testModalAutoStart, setTestModalAutoStart] = useState(false);
     const [testModalGoogle, setTestModalGoogle] = useState(false);
+    const [testModalSingleNode, setTestModalSingleNode] = useState<string | null>(null);
+
+    const openNodeTestModal = (nodeName: string) => {
+        setTestModalSingleNode(nodeName);
+        setTestModalAutoStart(true);
+        setTestModalGoogle(false);
+        setTestModalOpen(true);
+    };
 
     const runNodeDelayTest = async (node: string) => {
         if (!node || testingAll || testingNode) return;
@@ -238,6 +246,7 @@ export function AdminMagicProxySection() {
                                 icon={<Globe className="size-4 text-blue-500" />}
                                 disabled={loading || !state?.runtimeAvailable}
                                 onClick={() => {
+                                    setTestModalSingleNode(null);
                                     setTestModalAutoStart(false);
                                     setTestModalGoogle(true);
                                     setTestModalOpen(true);
@@ -249,6 +258,7 @@ export function AdminMagicProxySection() {
                                 icon={<Terminal className="size-4" />}
                                 disabled={loading || !state?.nodes.length}
                                 onClick={() => {
+                                    setTestModalSingleNode(null);
                                     setTestModalAutoStart(false);
                                     setTestModalGoogle(false);
                                     setTestModalOpen(true);
@@ -261,6 +271,7 @@ export function AdminMagicProxySection() {
                                 icon={<Gauge className="size-4" />}
                                 disabled={loading || !state?.nodes.length || !state?.runtimeAvailable}
                                 onClick={() => {
+                                    setTestModalSingleNode(null);
                                     setTestModalAutoStart(true);
                                     setTestModalGoogle(false);
                                     setTestModalOpen(true);
@@ -280,7 +291,7 @@ export function AdminMagicProxySection() {
                                 delayResult={delayResults[node.name]}
                                 testing={testingAll || testingNode === node.name}
                                 disabled={testingAll || (testingNode !== "" && testingNode !== node.name)}
-                                onTest={() => void runNodeDelayTest(node.name)}
+                                onTest={() => openNodeTestModal(node.name)}
                             />
                         ))}
                     </div>
@@ -291,12 +302,17 @@ export function AdminMagicProxySection() {
 
             <MagicProxyTestModal
                 open={testModalOpen}
-                onClose={() => setTestModalOpen(false)}
+                onClose={() => {
+                    setTestModalOpen(false);
+                    setTestModalSingleNode(null);
+                }}
                 nodes={state?.nodes || []}
                 delayResults={delayResults}
                 onDelayResultsChange={setDelayResults}
                 autoStart={testModalAutoStart}
                 initialTestGoogle={testModalGoogle}
+                targetSingleNode={testModalSingleNode}
+                onTargetSingleNodeChange={setTestModalSingleNode}
             />
         </div>
     );

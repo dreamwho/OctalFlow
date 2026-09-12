@@ -25,6 +25,7 @@ import {
     recordGeminiToolsAccountUsage,
     type GeminiToolsPrivateAccount,
     type GeminiToolsQuota,
+    type GeminiToolsLifecycleEntry,
     updateGeminiToolsAccount,
     updateGeminiToolsAccountCredentials,
     upsertGeminiToolsAccount,
@@ -284,14 +285,71 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
     }).catch(() => "");
     if (openLogId) await markGeminiToolsRequestLogRunning(openLogId).catch(() => undefined);
     const egressNow = () => geminiToolsProxyEgress().catch(() => undefined);
+    const egress = await egressNow();
+
+    const lifecycle: GeminiToolsLifecycleEntry[] = [
+        {
+            phase: "queued",
+            message: "接收到 API 请求并建立上下文",
+            time: new Date(startedAt).toISOString(),
+            durationMs: 0,
+            detail: `协议: ${protocol.toUpperCase()}, 方法: ${method}, 路径: ${normalizedPath}, 模型: ${model}`,
+        },
+        {
+            phase: "routing",
+            message: egress ? "代理出口路由绑定完成" : "使用直接连接 (Direct)",
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: egress
+                ? `模式: ${egress.mode === "magic" ? "魔法代理" : egress.mode === "chained" ? "链式代理" : "通用代理"}, 节点: ${egress.node_name || egress.address || "默认出口"}`
+                : "未配置代理出口，直连 Google 官方服务",
+        },
+    ];
+
     const availableModels = new Set(catalogFromAccounts(await listGeminiToolsAccounts()).map((item) => normalizeModelId(item.id)));
-    if (!availableModels.has(normalizeModelId(model))) return Response.json({ error: { message: "模型不在当前 Google 账号额度目录中" } }, { status: 404 });
+    if (!availableModels.has(normalizeModelId(model))) {
+        lifecycle.push({
+            phase: "failed",
+            message: "模型不在当前 Google 账号额度目录中",
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: `请求模型: ${model}`,
+        });
+        if (openLogId) {
+            await settleGeminiToolsRequestLog(openLogId, {
+                statusCode: 404,
+                durationMs: Date.now() - startedAt,
+                error: "模型不在当前 Google 账号额度目录中",
+                proxyEgress: egress,
+                lifecycle,
+            }).catch(() => undefined);
+        }
+        return Response.json({ error: { message: "模型不在当前 Google 账号额度目录中" } }, { status: 404 });
+    }
 
     const candidates = await listGeminiToolsCandidateAccounts();
     const modelAccounts = candidates.filter((account) => account.quotas.some((quota) => normalizeModelId(quota.model) === normalizeModelId(model)));
     const withQuota = modelAccounts.filter((account) => account.quotas.some((quota) => normalizeModelId(quota.model) === normalizeModelId(model) && (quota.remainingPercent === undefined || quota.remainingPercent > 0)));
     const accounts = stickyAccounts(withQuota.length ? withQuota : modelAccounts, gateway.sessionStickiness ? sessionKey(init, body, context.keyPrefix) : "");
-    if (!accounts.length) return Response.json({ error: { message: "没有可用于反代的 Google 账号" } }, { status: 503 });
+    if (!accounts.length) {
+        lifecycle.push({
+            phase: "failed",
+            message: "没有可用于调用的 Google 账号",
+            time: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            detail: "无可用或具有额度的候选账号",
+        });
+        if (openLogId) {
+            await settleGeminiToolsRequestLog(openLogId, {
+                statusCode: 503,
+                durationMs: Date.now() - startedAt,
+                error: "没有可用于反代的 Google 账号",
+                proxyEgress: egress,
+                lifecycle,
+            }).catch(() => undefined);
+        }
+        return Response.json({ error: { message: "没有可用于反代的 Google 账号" } }, { status: 503 });
+    }
     let lastError: GeminiToolsError | null = null;
     let failedAccount: Pick<GeminiToolsPrivateAccount, "id" | "email"> | null = null;
     for (const account of accounts) {
@@ -299,10 +357,46 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             const token = await validAccessToken(account);
             const project = account.projectId ? { projectId: account.projectId, planType: account.planType } : await loadCodeAssist(token.accessToken);
             if (!account.projectId) await updateGeminiToolsAccountCredentials(account.id, { ...token, projectId: project.projectId, planType: project.planType });
+            
+            lifecycle.push({
+                phase: "auth",
+                message: `验证账号 [${account.email || account.id}] 凭据与额度`,
+                time: new Date().toISOString(),
+                durationMs: Date.now() - startedAt,
+                detail: `账号: ${account.email || account.id}, 项目: ${project.projectId || "-"}, 方案: ${project.planType || "standard"}`,
+            });
+
             const nativePayload = protocolRequest(protocol, body || {});
+            const upstreamStart = Date.now();
+            lifecycle.push({
+                phase: "upstream",
+                message: "调用 Google Cloud Code 语言模型生成接口",
+                time: new Date(upstreamStart).toISOString(),
+                durationMs: upstreamStart - startedAt,
+                detail: `模型: ${model}, 项目: ${project.projectId}, 载荷大小: ${JSON.stringify(nativePayload).length} 字节`,
+            });
+
             const native = await cloudCodeGenerate(token.accessToken, project.projectId, model, nativePayload);
+            const responseEnd = Date.now();
+            lifecycle.push({
+                phase: "response",
+                message: "收到 Google Cloud Code 接口响应 (HTTP 200)",
+                time: new Date(responseEnd).toISOString(),
+                durationMs: responseEnd - startedAt,
+                detail: `上游调用耗时: ${responseEnd - upstreamStart}ms, 响应数据接收正常`,
+            });
+
             const formatted = protocolResponse(protocol, native, model);
             const usage = usageFromNative(native);
+            const finishAt = Date.now();
+            lifecycle.push({
+                phase: "success",
+                message: "协议格式转换与 Token 统计完成",
+                time: new Date(finishAt).toISOString(),
+                durationMs: finishAt - startedAt,
+                detail: `Token 消耗: ${usage.totalTokens} (Prompt: ${usage.promptTokens}, Completion: ${usage.completionTokens}), 总耗时: ${finishAt - startedAt}ms`,
+            });
+
             await Promise.all([
                 recordGeminiToolsAccountUsage(account.id, usage.totalTokens, false),
                 (async () => {
@@ -314,14 +408,15 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                         accountId: account.id,
                         accountEmail: account.email,
                         statusCode: 200,
-                        durationMs: Date.now() - startedAt,
+                        durationMs: finishAt - startedAt,
                         promptTokens: usage.promptTokens,
                         completionTokens: usage.completionTokens,
                         totalTokens: usage.totalTokens,
                         keyPrefix: context.keyPrefix,
                         requestPreview: previewRequest(body),
                         responsePreview: textFromNative(native).slice(0, 500),
-                        proxyEgress: (await egressNow()) || undefined,
+                        proxyEgress: egress,
+                        lifecycle,
                         ...(clientIp ? { clientIp } : {}),
                         ...(userAgent ? { userAgent } : {}),
                         ...(headers ? { headers } : {}),
@@ -334,6 +429,13 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
         } catch (error) {
             lastError = error instanceof GeminiToolsError ? error : new GeminiToolsError(error instanceof Error ? error.message : "Google 上游请求失败");
             failedAccount = { id: account.id, email: account.email };
+            lifecycle.push({
+                phase: "failed",
+                message: `账号 [${account.email || account.id}] 处理失败: ${lastError.message}`,
+                time: new Date().toISOString(),
+                durationMs: Date.now() - startedAt,
+                detail: `状态码: ${lastError.status || 500}, 异常原因: ${lastError.message}`,
+            });
             await recordGeminiToolsAccountUsage(account.id, 0, true);
             if (isDefiniteGoogleAuthFailure(lastError)) await updateGeminiToolsAccount(account.id, { status: "invalid" });
             // Do not replay a generation after an ambiguous upstream or
@@ -350,7 +452,8 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             error: lastError?.message || "Google 上游请求失败",
             accountId: failedAccount?.id,
             accountEmail: failedAccount?.email,
-            proxyEgress: (await egressNow()) || undefined,
+            proxyEgress: egress,
+            lifecycle,
         }).catch(() => undefined);
     } else {
         await appendGeminiToolsRequestLog({
@@ -368,7 +471,8 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             error: lastError?.message || "Google 上游请求失败",
             keyPrefix: context.keyPrefix,
             requestPreview: previewRequest(body),
-            proxyEgress: (await egressNow()) || undefined,
+            proxyEgress: egress,
+            lifecycle,
             ...(clientIp ? { clientIp } : {}),
             ...(userAgent ? { userAgent } : {}),
             ...(headers ? { headers } : {}),

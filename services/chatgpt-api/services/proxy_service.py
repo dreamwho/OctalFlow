@@ -475,6 +475,33 @@ class ProxySettingsStore:
                 image_concurrency_limit = resolved.image_concurrency_limit
                 image_egress_reserved = resolved.image_egress_reserved
                 image_egress_wait_ms = resolved.image_egress_wait_ms
+            else:
+                # 自动兜底：当未显式选择单节点或分组，但存在已启用的通用代理分组时，自动路由到第一个可用分组
+                raw_groups = proxy_configuration.get("proxy_groups") or []
+                if isinstance(raw_groups, list):
+                    for grp in raw_groups:
+                        if isinstance(grp, dict) and grp.get("enabled", True) is not False:
+                            grp_id = _clean(grp.get("id"))
+                            nodes = grp.get("nodes") or []
+                            if grp_id and any(isinstance(n, dict) and n.get("enabled", True) is not False for n in nodes):
+                                resolved = self._resolve_proxy_reference(
+                                    f"group:{grp_id}",
+                                    source="auto_group",
+                                    terminal_when_unresolved=False,
+                                    reserve_image_egress=reserve_image_egress,
+                                    deadline_monotonic=deadline_monotonic,
+                                )
+                                if resolved.proxy_url:
+                                    selected_proxy, source, terminal = resolved.proxy_url, resolved.source, resolved.terminal
+                                    egress_key = resolved.egress_key
+                                    egress_label = resolved.egress_label
+                                    proxy_group_id = resolved.proxy_group_id
+                                    proxy_node_id = resolved.proxy_node_id
+                                    proxy_node_name = resolved.proxy_node_name
+                                    image_concurrency_limit = resolved.image_concurrency_limit
+                                    image_egress_reserved = resolved.image_egress_reserved
+                                    image_egress_wait_ms = resolved.image_egress_wait_ms
+                                    break
 
         return ProxyRuntimeProfile(
             proxy_url=normalize_proxy_url(selected_proxy),
