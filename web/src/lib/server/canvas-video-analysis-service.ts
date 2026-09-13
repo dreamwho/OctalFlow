@@ -41,7 +41,7 @@ export async function analyzeCanvasVideo(input: CanvasVideoAnalysisInput): Promi
     const candidates = resolveLogicalModelCandidates(settings, "text", model).filter((candidate) => supportsNativeVideo(candidate) || supportsFrameEvidence(candidate));
     if (!candidates.length) throw new CanvasVideoOperationError("视频分析逻辑模型必须启用原生视频输入或参考图片能力", 503);
 
-    const workdir = await mkdtemp(join(tmpdir(), "octalaicanvas-video-analysis-"));
+    const workdir = await mkdtemp(join(tmpdir(), "dreamyo-video-analysis-"));
     try {
         const sourcePath = await materializeCanvasVideoSource(source, workdir);
         const probe = await probeCanvasVideoSource(sourcePath);
@@ -293,7 +293,7 @@ export function formatCanvasVideoAnalysis(analysis: CanvasVideoAnalysis, duratio
 }
 
 function pointsRemaining(headers: Headers) {
-    const value = Number(headers.get("x-octalaicanvas-points-remaining"));
+    const value = Number(headers.get("x-dreamyo-points-remaining"));
     return Number.isFinite(value) ? { pointsRemaining: value } : {};
 }
 

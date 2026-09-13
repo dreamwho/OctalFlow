@@ -9,9 +9,9 @@ describe("GeminiAIStudio gateway store", () => {
     let directory = "";
 
     beforeEach(async () => {
-        directory = await mkdtemp(join(tmpdir(), "octal-geminiai-gateway-"));
-        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
-        vi.stubEnv("OCTALAICANVAS_DATA_DIR", directory);
+        directory = await mkdtemp(join(tmpdir(), "dreamyo-geminiai-gateway-"));
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
     });
 
     afterEach(async () => {

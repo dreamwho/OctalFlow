@@ -35,8 +35,8 @@ const config: PaymentRuntimeConfig = {
     saved: { providers: {} },
     providers: {},
     valuesByEnvName: {
-        OCTALAICANVAS_STRIPE_SECRET_KEY: "sk_test_secret",
-        OCTALAICANVAS_STRIPE_API_BASE: "https://stripe.test",
+        DREAMYO_STRIPE_SECRET_KEY: "sk_test_secret",
+        DREAMYO_STRIPE_API_BASE: "https://stripe.test",
     },
 };
 
@@ -56,7 +56,7 @@ describe("payment checkout providers", () => {
         expect(fetchMock).toHaveBeenCalledWith(
             "https://stripe.test/v1/checkout/sessions",
             expect.objectContaining({
-                headers: expect.objectContaining({ "Idempotency-Key": "octalaicanvas-checkout-order-one" }),
+                headers: expect.objectContaining({ "Idempotency-Key": "dreamyo-checkout-order-one" }),
             }),
         );
     });
@@ -166,11 +166,11 @@ function alipayConfig(mode = "official"): PaymentRuntimeConfig {
         saved: { providers: {} },
         providers: { alipay: { enabled: true, saved: true } },
         valuesByEnvName: {
-            OCTALAICANVAS_ALIPAY_MODE: mode,
-            OCTALAICANVAS_ALIPAY_APP_ID: "2026000000000000",
-            OCTALAICANVAS_ALIPAY_PRIVATE_KEY: alipayPrivateKey,
-            OCTALAICANVAS_ALIPAY_PUBLIC_KEY: alipayPublicKey,
-            OCTALAICANVAS_ALIPAY_GATEWAY_URL: "https://alipay.test/gateway.do",
+            DREAMYO_ALIPAY_MODE: mode,
+            DREAMYO_ALIPAY_APP_ID: "2026000000000000",
+            DREAMYO_ALIPAY_PRIVATE_KEY: alipayPrivateKey,
+            DREAMYO_ALIPAY_PUBLIC_KEY: alipayPublicKey,
+            DREAMYO_ALIPAY_GATEWAY_URL: "https://alipay.test/gateway.do",
         },
     };
 }

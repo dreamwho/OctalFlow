@@ -6,7 +6,7 @@ import { GalleryView } from "@/app/gallery/gallery-view";
 type CommunitySearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export const metadata: Metadata = {
-    title: "作品广场",
+    title: "作品广场 | dreamyo",
     robots: { index: false, follow: false },
 };
 

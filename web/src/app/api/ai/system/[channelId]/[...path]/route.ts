@@ -317,7 +317,7 @@ async function proxyChatGptApiCatalogRequest(request: Request, runtimePath: stri
 function chatGptApiRuntimeHeaders(headers?: HeadersInit) {
     const runtimeHeaders = new Headers(headers);
     // This value is created only on a server-authorized system dispatch and is never relayed from the browser request.
-    runtimeHeaders.set("x-octal-internal-dispatch", "1");
+    runtimeHeaders.set("x-dreamyo-internal-dispatch", "1");
     return runtimeHeaders;
 }
 
@@ -757,16 +757,16 @@ function responseHeaders(headers: Headers, pointsResult?: Awaited<ReturnType<typ
         const value = headers.get(key);
         if (value) nextHeaders.set(key, value);
     });
-    if (upstreamUrl) nextHeaders.set("x-octalaicanvas-upstream-url", upstreamUrl);
+    if (upstreamUrl) nextHeaders.set("x-dreamyo-upstream-url", upstreamUrl);
     if (pointsResult) {
-        nextHeaders.set("x-octalaicanvas-points-cost", String(pointsResult.cost));
-        nextHeaders.set("x-octalaicanvas-points-remaining", String(pointsResult.remaining));
-        nextHeaders.set("x-octalaicanvas-points-permanent", String(pointsResult.permanentRemaining));
-        nextHeaders.set("x-octalaicanvas-points-daily", String(pointsResult.dailyRemaining));
-        nextHeaders.set("x-octalaicanvas-points-daily-expires-at", pointsResult.dailyExpiresAt);
-        if (pointsResult.recordId) nextHeaders.set("x-octalaicanvas-points-record-id", pointsResult.recordId);
+        nextHeaders.set("x-dreamyo-points-cost", String(pointsResult.cost));
+        nextHeaders.set("x-dreamyo-points-remaining", String(pointsResult.remaining));
+        nextHeaders.set("x-dreamyo-points-permanent", String(pointsResult.permanentRemaining));
+        nextHeaders.set("x-dreamyo-points-daily", String(pointsResult.dailyRemaining));
+        nextHeaders.set("x-dreamyo-points-daily-expires-at", pointsResult.dailyExpiresAt);
+        if (pointsResult.recordId) nextHeaders.set("x-dreamyo-points-record-id", pointsResult.recordId);
     } else if (typeof refundedPointsRemaining === "number") {
-        nextHeaders.set("x-octalaicanvas-points-remaining", String(refundedPointsRemaining));
+        nextHeaders.set("x-dreamyo-points-remaining", String(refundedPointsRemaining));
     }
     return nextHeaders;
 }

@@ -3,17 +3,17 @@ set -eu
 
 umask 077
 
-secret=${OCTALAICANVAS_MAGIC_PROXY_SECRET-}
+secret=${DREAMYO_MAGIC_PROXY_SECRET-}
 if [ "${#secret}" -lt 32 ]; then
-    printf '%s\n' 'OCTALAICANVAS_MAGIC_PROXY_SECRET must contain at least 32 characters' >&2
+    printf '%s\n' 'DREAMYO_MAGIC_PROXY_SECRET must contain at least 32 characters' >&2
     exit 1
 fi
 
-listen_host=${OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST-}
+listen_host=${DREAMYO_MAGIC_PROXY_LISTEN_HOST-}
 case "$listen_host" in
     0.0.0.0|127.0.0.1) ;;
     *)
-        printf '%s\n' 'OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST must be 0.0.0.0 or 127.0.0.1' >&2
+        printf '%s\n' 'DREAMYO_MAGIC_PROXY_LISTEN_HOST must be 0.0.0.0 or 127.0.0.1' >&2
         exit 1
         ;;
 esac
@@ -34,4 +34,4 @@ fi
 chmod 600 "$provider_file"
 chown 1000:1000 "$runtime_dir" "$provider_file"
 
-exec /mihomo -secret "$OCTALAICANVAS_MAGIC_PROXY_SECRET" -ext-ctl "$OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST:9090"
+exec /mihomo -secret "$DREAMYO_MAGIC_PROXY_SECRET" -ext-ctl "$DREAMYO_MAGIC_PROXY_LISTEN_HOST:9090"

@@ -117,7 +117,7 @@ describe("GeminiTools embedded provider route", () => {
         expect(response.status).toBe(200);
         expect(mocks.geminiToolsRuntime).toHaveBeenCalledWith("/chat/completions", expect.objectContaining({ method: "POST" }));
         expect(mocks.safeUrl).not.toHaveBeenCalled();
-        expect(response.headers.get("x-octalaicanvas-upstream-url")).toBeNull();
+        expect(response.headers.get("x-dreamyo-upstream-url")).toBeNull();
     });
 
     it("forwards Retry-After from a provider rate limit", async () => {
@@ -176,10 +176,10 @@ describe("GPTAPI embedded provider route", () => {
         expect(mocks.chatGptSyncMagicProxy).toHaveBeenCalledTimes(1);
         expect(mocks.chatGptRuntime).toHaveBeenCalledWith("/v1/chat/completions", expect.objectContaining({ method: "POST" }));
         const runtimeHeaders = new Headers(mocks.chatGptRuntime.mock.calls[0]?.[1]?.headers);
-        expect(runtimeHeaders.get("x-octal-internal-dispatch")).toBe("1");
+        expect(runtimeHeaders.get("x-dreamyo-internal-dispatch")).toBe("1");
         expect(runtimeHeaders.get("authorization")).toBeNull();
         expect(mocks.safeUrl).not.toHaveBeenCalled();
-        expect(response.headers.get("x-octalaicanvas-upstream-url")).toBeNull();
+        expect(response.headers.get("x-dreamyo-upstream-url")).toBeNull();
     });
 
     it("serves the exact runtime model catalog without requiring a synthetic logical-model request", async () => {
@@ -192,7 +192,7 @@ describe("GPTAPI embedded provider route", () => {
         expect(response.status).toBe(200);
         expect(mocks.chatGptRuntime).toHaveBeenCalledWith("/v1/models", expect.objectContaining({ method: "GET" }));
         expect(mocks.chatGptSyncMagicProxy).not.toHaveBeenCalled();
-        expect(new Headers(mocks.chatGptRuntime.mock.calls[0]?.[1]?.headers).get("x-octal-internal-dispatch")).toBe("1");
+        expect(new Headers(mocks.chatGptRuntime.mock.calls[0]?.[1]?.headers).get("x-dreamyo-internal-dispatch")).toBe("1");
         await expect(response.json()).resolves.toEqual({ object: "list", data: [{ id: "gpt-5.6" }, { id: "gpt-image-1" }] });
     });
 
@@ -475,7 +475,7 @@ describe("GlobalAiOpc native text proxy", () => {
         const createRequest = () =>
             new Request("http://localhost/api/ai/system/channel-one/chat/completions", {
                 method: "POST",
-                headers: { "content-type": "application/json", "x-octalaicanvas-logical-model": "writer", "x-octalaicanvas-points-idempotency-key": "forged-client-key" },
+                headers: { "content-type": "application/json", "x-dreamyo-logical-model": "writer", "x-dreamyo-points-idempotency-key": "forged-client-key" },
                 body: JSON.stringify({ model: "vendor-text", messages: [{ role: "user", content: "hello" }] }),
             });
 
@@ -674,8 +674,8 @@ describe("Stable Diffusion proxy", () => {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
-                    "x-octalaicanvas-logical-model": "image-local",
-                    "x-octalaicanvas-upstream-model": "sdxl",
+                    "x-dreamyo-logical-model": "image-local",
+                    "x-dreamyo-upstream-model": "sdxl",
                 },
                 body: JSON.stringify({ prompt: "test", width: 1024, height: 1024 }),
             }),
@@ -688,7 +688,7 @@ describe("Stable Diffusion proxy", () => {
     });
 });
 
-describe("OctalAICanvas recommended video proxy", () => {
+describe("dreamyo recommended video proxy", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
@@ -697,7 +697,7 @@ describe("OctalAICanvas recommended video proxy", () => {
         mocks.taskAccess.mockReset().mockResolvedValue(true);
         mocks.getAuthSettings.mockResolvedValue({
             generationPointMultipliers: {},
-            logicalModels: [logicalModel("octalaicanvas-video", "video", "Seedance 2.0-fast-720p")],
+            logicalModels: [logicalModel("dreamyo-video", "video", "Seedance 2.0-fast-720p")],
             systemChannels: [
                 {
                     id: "channel-one",
@@ -707,14 +707,14 @@ describe("OctalAICanvas recommended video proxy", () => {
                     apiFormat: "openai",
                     models: ["Seedance 2.0-fast-720p"],
                     advancedConfig: {
-                        protocol: "octalaicanvas-recommended",
+                        protocol: "dreamyo-recommended",
                         createPath: "/v1/videos/generations",
                         imageToVideoPath: "/v1/videos/generations",
                         queryPath: "/v1/videos/generations/:task_id",
                         modelConfigs: {
                             "seedance 2.0-fast-720p": {
                                 capability: "video",
-                                protocol: "octalaicanvas-recommended",
+                                protocol: "dreamyo-recommended",
                                 createPath: "/v1/videos/generations",
                                 queryPath: "/v1/videos/generations/:task_id",
                             },
@@ -730,7 +730,7 @@ describe("OctalAICanvas recommended video proxy", () => {
             .spyOn(globalThis, "fetch")
             .mockResolvedValueOnce(Response.json({ id: "video-one", task_id: "video-one", status: "queued" }))
             .mockResolvedValueOnce(Response.json({ id: "video-one", status: "completed", metadata: { url: "https://new.aiym.ink/v1/video-media/video-one.mp4" } }));
-        const headers = { "content-type": "application/json", ...systemModelHeaders("octalaicanvas-video", "Seedance 2.0-fast-720p") };
+        const headers = { "content-type": "application/json", ...systemModelHeaders("dreamyo-video", "Seedance 2.0-fast-720p") };
         const createResponse = await POST(
             new Request("http://localhost/api/ai/system/channel-one/v1/videos/generations", {
                 method: "POST",
@@ -999,8 +999,8 @@ describe("custom protocol model routing", () => {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
-                    "x-octalaicanvas-logical-model": "image-tool",
-                    "x-octalaicanvas-upstream-model": "engine-one",
+                    "x-dreamyo-logical-model": "image-tool",
+                    "x-dreamyo-upstream-model": "engine-one",
                 },
                 body: JSON.stringify({ engine: "engine-one", prompt: "test" }),
             }),
@@ -1064,8 +1064,8 @@ describe("system proxy authorization", () => {
 describe("GeminiAI provider-managed proxy", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "test-sidecar-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "test-sidecar-key");
         mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
         mocks.refundUserPoints.mockReset();
         mocks.safeUrl.mockReset().mockResolvedValue(true);
@@ -1104,7 +1104,7 @@ describe("GeminiAI provider-managed proxy", () => {
         expect(fetchMock.mock.calls[0]?.[0]).toBe("http://geminiai.test/v1/chat/completions");
         expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Bearer test-sidecar-key");
         expect(mocks.safeUrl).not.toHaveBeenCalled();
-        expect(response.headers.get("x-octalaicanvas-upstream-url")).toBeNull();
+        expect(response.headers.get("x-dreamyo-upstream-url")).toBeNull();
     });
 });
 
@@ -1125,7 +1125,7 @@ function logicalModel(id: string, capability: "text" | "image" | "video" | "audi
 }
 
 function systemModelHeaders(logicalModelId: string, upstreamModel: string) {
-    return { "x-octalaicanvas-logical-model": logicalModelId, "x-octalaicanvas-upstream-model": upstreamModel };
+    return { "x-dreamyo-logical-model": logicalModelId, "x-dreamyo-upstream-model": upstreamModel };
 }
 
 function pngBytes() {

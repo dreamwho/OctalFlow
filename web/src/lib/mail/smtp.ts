@@ -197,7 +197,7 @@ function dotStuff(value: string) {
 }
 
 function smtpDomain(email: string) {
-    return email.split("@")[1] || "octalaicanvas.local";
+    return email.split("@")[1] || "dreamyo.local";
 }
 
 function isEmail(value: string) {

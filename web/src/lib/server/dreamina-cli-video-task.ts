@@ -150,7 +150,7 @@ export async function queryDreaminaCliVideoTask(task: VideoTask, options: { runn
 
 export function isDreaminaCliPersistedResultUrl(value: string) {
     try {
-        const pathname = new URL(value, "https://octalflow.invalid").pathname;
+        const pathname = new URL(value, "https://dreamyo.invalid").pathname;
         return /^\/api\/reference-assets\/permanent\/(?:\d{4}\/\d{2}\/\d{2}\/)?videos\/[^/]+$/i.test(pathname);
     } catch {
         return false;
@@ -233,7 +233,7 @@ function normalizeReferenceSource(value: string, origin: string) {
         throw new DreaminaCliVideoTaskError("即梦 CLI 不接受客户端本地路径，只能使用已授权参考素材地址");
     let url: URL;
     try {
-        url = new URL(raw, origin || "https://octalflow.invalid");
+        url = new URL(raw, origin || "https://dreamyo.invalid");
     } catch {
         throw new DreaminaCliVideoTaskError("即梦 CLI 参考素材地址无效");
     }
@@ -249,8 +249,8 @@ function normalizeReferenceSource(value: string, origin: string) {
 
 function isGenerationAssetUrl(value: string, origin: string) {
     try {
-        const url = new URL(value, origin || "https://octalflow.invalid");
-        return url.origin === new URL(origin || "https://octalflow.invalid").origin && url.pathname.startsWith("/api/generation-log-assets/");
+        const url = new URL(value, origin || "https://dreamyo.invalid");
+        return url.origin === new URL(origin || "https://dreamyo.invalid").origin && url.pathname.startsWith("/api/generation-log-assets/");
     } catch {
         return false;
     }
@@ -298,7 +298,7 @@ function videoMimeType(path: string) {
 }
 
 function usableCookie(value: string) {
-    return value && !value.startsWith("octalaicanvas-worker-v1.") ? value : undefined;
+    return value && !value.startsWith("dreamyo-worker-v1.") ? value : undefined;
 }
 
 function safeError(error: unknown) {

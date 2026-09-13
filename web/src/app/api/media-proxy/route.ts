@@ -71,7 +71,7 @@ async function fetchMedia(target: URL, method: "GET" | "HEAD", range: string | n
             {
                 method,
                 headers: {
-                    "User-Agent": "OCTALAICANVAS-Media-Proxy/0.0.6",
+                    "User-Agent": "DREAMYO-Media-Proxy/0.0.6",
                     ...(range ? { Range: range } : {}),
                 },
                 cache: "no-store",

@@ -1,9 +1,10 @@
 "use client";
 
-import { Film, LoaderCircle, Maximize2, Pause, Play, RotateCw, Volume2, VolumeX } from "lucide-react";
+import { LoaderCircle, Maximize2, Pause, Play, RotateCw, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
 import type { CreativeAsset, CreativeMessage } from "@/lib/creative-runtime-contract";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { cn } from "@/lib/utils";
 
@@ -80,7 +81,7 @@ export function CreativeVideoResult({
                                 <img src={posterUrl} alt="" loading="lazy" className="size-full object-cover" />
                             ) : (
                                 <span className="grid size-full place-items-center text-white/70" aria-label={video.title || `生成视频 ${index + 1}`}>
-                                    <Film className="size-5" />
+                                    <DreamyoIcon name="video" size={24} />
                                 </span>
                             )}
                             <span className="absolute inset-0 grid place-items-center bg-black/10" aria-hidden>
@@ -271,8 +272,8 @@ function VideoControls({ resolution, playback }: { resolution?: string; playback
                 value={Math.min(playback.currentTime, Math.max(playback.safeDuration, 0.01))}
                 onChange={(event) => playback.seekTo(Number(event.currentTarget.value))}
                 aria-label="视频播放进度"
-                className="octaflow-media-range h-[5px] min-w-8 flex-1"
-                style={{ "--octa-range-progress": `${playback.progress}%` } as CSSProperties}
+                className="dreamyo-media-range h-[5px] min-w-8 flex-1"
+                style={{ "--dreamyo-range-progress": `${playback.progress}%` } as CSSProperties}
             />
             {resolution ? <span className="hidden shrink-0 text-[11px] font-semibold @min-[280px]:inline">{resolution}</span> : null}
             <button type="button" className="grid size-7 shrink-0 place-items-center rounded-md hover:bg-white/10" onClick={() => playback.setMuted((value) => !value)} aria-label={playback.muted ? "打开声音" : "静音"}>

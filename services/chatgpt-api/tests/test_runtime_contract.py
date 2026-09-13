@@ -20,7 +20,7 @@ GROUP_PROXY_PASSWORD = "fixture-group-proxy-password-never-network"
 
 
 def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, monkeypatch):
-    data_dir = Path(os.environ["OCTALAICANVAS_CHATGPT_DATA_DIR"])
+    data_dir = Path(os.environ["DREAMYO_CHATGPT_DATA_DIR"])
     assert data_dir == runtime_data_dir
     monkeypatch.setenv("DATABASE_URL", "postgresql://must-not-be-used.invalid/parent")
     monkeypatch.delenv("CHATGPT2API_AUTH_KEY", raising=False)
@@ -37,7 +37,7 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
 
     app = create_app()
     client = TestClient(app)
-    transport = {"x-octal-runtime-key": RUNTIME_KEY}
+    transport = {"x-dreamyo-runtime-key": RUNTIME_KEY}
     admin = {**transport, "authorization": f"Bearer {RUNTIME_KEY}"}
 
     assert client.get("/integration/health").status_code == 401
@@ -93,15 +93,15 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
     ).json() == {"enabled": False}
     assert client.get("/v1/models", headers=user_headers).status_code == 503
     assert client.get(
-        "/v1/models", headers={"x-octal-internal-dispatch": "1"}
+        "/v1/models", headers={"x-dreamyo-internal-dispatch": "1"}
     ).status_code == 401
     assert client.get(
         "/v1/models",
-        headers={**user_headers, "x-octal-internal-dispatch": "1"},
+        headers={**user_headers, "x-dreamyo-internal-dispatch": "1"},
     ).status_code == 503
     internal_models = client.get(
         "/v1/models",
-        headers={**admin, "x-octal-internal-dispatch": "1"},
+        headers={**admin, "x-dreamyo-internal-dispatch": "1"},
     )
     assert internal_models.status_code == 200
     assert client.patch(
@@ -462,6 +462,24 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
     assert preserved_node.json()["group"]["nodes"][0]["url"] == group_proxy
     assert proxy_settings.get_profile(proxy="group:fixture-group").proxy_url == group_proxy
 
+    generic_binding = client.post(
+        "/api/proxy/generic-bindings",
+        headers=admin,
+        json={"provider": "chatgptApi", "enabled": True, "target": "node:fixture-node"},
+    )
+    assert generic_binding.status_code == 200
+    binding_selection = client.get("/integration/proxy-selection", headers=admin).json()
+    assert binding_selection["enabled"] is True
+    assert binding_selection["mode"] == "native"
+    assert binding_selection["native_source"] == "manual"
+    assert proxy_settings.get_profile().proxy_url == group_proxy
+    assert client.post(
+        "/api/proxy/generic-bindings",
+        headers=admin,
+        json={"provider": "chatgptApi", "enabled": False, "target": ""},
+    ).status_code == 200
+    assert proxy_settings.get_profile().proxy_url == manual_proxy
+
     import_proxy = f"http://import-user:fixture-import-password-never-network@127.0.0.1:8083"
     imported_nodes = client.post(
         "/api/proxy/nodes/import",
@@ -653,13 +671,13 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
         encrypted_proxy = connection.execute(
             "SELECT data FROM proxy_configuration"
         ).fetchone()[0]
-    assert access_token.startswith("octalaicanvas-account:v1:")
-    assert encrypted_account.startswith("octalaicanvas-secret:v1:")
-    assert encrypted_user_key.startswith("octalaicanvas-secret:v1:")
+    assert access_token.startswith("dreamyo-account:v1:")
+    assert encrypted_account.startswith("dreamyo-secret:v1:")
+    assert encrypted_user_key.startswith("dreamyo-secret:v1:")
     proxy_envelope = json.loads(encrypted_proxy)
-    assert set(proxy_envelope) == {"_octalaicanvas_encrypted_v1"}
-    assert proxy_envelope["_octalaicanvas_encrypted_v1"].startswith(
-        "octalaicanvas-secret:v1:"
+    assert set(proxy_envelope) == {"_dreamyo_encrypted_v1"}
+    assert proxy_envelope["_dreamyo_encrypted_v1"].startswith(
+        "dreamyo-secret:v1:"
     )
     assert client.post(
         "/integration/proxy", headers=admin, json={"proxyUrl": None}
@@ -667,7 +685,7 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
 
 
 def test_runtime_key_and_public_base_url_validation(monkeypatch):
-    monkeypatch.setenv("OCTALAICANVAS_CHATGPT_API_KEY", "too-short")
+    monkeypatch.setenv("DREAMYO_CHATGPT_API_KEY", "too-short")
 
     from services.internal_runtime import _normalize_public_base_url, runtime_key
 

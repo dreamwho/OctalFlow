@@ -46,7 +46,7 @@ export async function POST(request: Request) {
             }
             if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "running", lifecycle: [{ at: new Date().toISOString(), phase: "running", message: "音频上传完成，正在创建复刻音色" }] }).catch(() => undefined);
 
-            const voiceId = `octal_${user.id.slice(0, 8)}_${Date.now().toString(36)}`;
+            const voiceId = `dreamyo_${user.id.slice(0, 8)}_${Date.now().toString(36)}`;
             const cloneResponse = await requestMiniMax("/v1/voice_clone", {
                 method: "POST",
                 // The uploaded voice_clone file is the source audio. `clone_prompt` is

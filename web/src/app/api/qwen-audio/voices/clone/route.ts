@@ -123,11 +123,11 @@ export async function POST(request: Request) {
 }
 
 function safeName(value: string) {
-    return value.replace(/[^\p{L}\p{N}_-]/gu, "_").slice(0, 16) || "octal_voice";
+    return value.replace(/[^\p{L}\p{N}_-]/gu, "_").slice(0, 16) || "dreamyo_voice";
 }
 
 function safePrefix(value: string) {
-    return safeName(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 10) || "octalvoice";
+    return safeName(value).replace(/[^A-Za-z0-9]/g, "").slice(0, 10) || "dreamyovoice";
 }
 
 async function persistPublicAudioUrl(bytes: Buffer, contentType: string, userId: string, originalName: string, request: Request, onStage?: (message: string) => Promise<void> | void) {

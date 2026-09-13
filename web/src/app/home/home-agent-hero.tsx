@@ -1,26 +1,27 @@
 "use client";
 
 import { App, Popover } from "antd";
-import { AudioLines, Box, Boxes, Check, ChevronDown, Film, Image as ImageIcon, Paperclip, PenLine, Plus, Send, Sparkles, Video, WandSparkles } from "lucide-react";
+import { Box, Boxes, Check, ChevronDown, Paperclip, PenLine, Plus, Send, WandSparkles, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { useCreateDraftAttachmentsStore } from "@/app/(user)/create/use-create-draft-attachments-store";
 import { useCreativeAgentModels } from "@/hooks/use-creative-agent-options";
+import { DreamyoIcon, type DreamyoIconName } from "@/components/ui/dreamyo-icon";
 import { CREATIVE_UPLOAD_MAX_BYTES } from "@/lib/creative-upload";
 import { listAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
 import { HOME_CREATION_MODES, type HomeCreationMode } from "./home-data";
 import { useHomeActions } from "./home-actions";
 import styles from "./home-agent-hero.module.css";
 
-const MODE_ICONS = { agent: Sparkles, image: ImageIcon, video: Video, audio: AudioLines } as const;
+const MODE_ICONS = { agent: "magic", image: "image", video: "video", audio: "audio" } as const satisfies Record<HomeCreationMode, DreamyoIconName>;
 const MODEL_CAPABILITIES = ["image", "video", "audio"] as const;
 type ModelCapability = (typeof MODEL_CAPABILITIES)[number];
 type SkillCategory = "all" | "image" | "video" | "canvas" | "drama" | "edit";
 
-const shortcuts: Array<{ label: string; detail: string; icon: typeof Sparkles; mode?: HomeCreationMode; path?: string }> = [
+const shortcuts: Array<{ label: string; detail: string; icon?: LucideIcon; DreamyoIcon?: Extract<DreamyoIconName, "image" | "video">; mode?: HomeCreationMode; path?: string }> = [
     { label: "爆款复刻", detail: "复刻结构与节奏", icon: Boxes, mode: "video" },
-    { label: "图片生成", detail: "从想法生成作品", icon: ImageIcon, mode: "image" },
-    { label: "视频生成", detail: "文字生成动态影像", icon: Film, mode: "video" },
+    { label: "图片生成", detail: "从想法生成作品", DreamyoIcon: "image", mode: "image" },
+    { label: "视频生成", detail: "文字生成动态影像", DreamyoIcon: "video", mode: "video" },
     { label: "智能画布", detail: "无限画布，自由创作", icon: PenLine, path: "/canvas" },
 ];
 
@@ -134,7 +135,7 @@ export function HomeAgentHero() {
     return (
         <section className={styles.hero} aria-labelledby="home-hero-title" onPointerMove={trackPointer} onPointerLeave={resetPointer}>
             <div ref={motionRef} className={styles.motionStage} data-testid="home-agent-halo" aria-hidden="true">
-                <video className={styles.motionVideo} src="/brand/octaflow-particle-infinity.mp4" autoPlay muted loop playsInline preload="auto" />
+                <video className={styles.motionVideo} src="/brand/dreamyo/particle-infinity.mp4" autoPlay muted loop playsInline preload="auto" />
                 <span data-halo-ring className={styles.motionVeil} />
                 <span data-halo-ring className={styles.motionBloom} />
                 <span data-halo-ring className={styles.motionLeft} />
@@ -142,7 +143,7 @@ export function HomeAgentHero() {
             </div>
 
             <div className={styles.heroContent}>
-                <p className={styles.eyebrow}>OCTALFLOW · AI CREATIVE SPACE</p>
+                <p className={styles.eyebrow}>DREAMYO · AI CREATIVE SPACE</p>
                 <h1 id="home-hero-title" className={styles.heroTitle}>把灵感，变成作品</h1>
                 <p className={styles.heroSubtitle}>从一个想法开始，让 AI 帮你完成创作。</p>
 
@@ -212,7 +213,7 @@ export function HomeAgentHero() {
                                                                     aria-pressed={selected}
                                                                     onClick={() => setSelectedSkillIds((current) => (selected ? current.filter((id) => id !== skill.id) : [...current, skill.id].slice(0, 8)))}
                                                                 >
-                                                                    {skill.previewImageUrl ? <img src={skill.previewImageUrl} alt="" loading="lazy" /> : <span className={styles.pickerItemIcon}><WandSparkles aria-hidden="true" /></span>}
+                                                                    {skill.previewImageUrl ? <img src={skill.previewImageUrl} alt="" loading="lazy" /> : <span className={styles.pickerItemIcon}><DreamyoIcon name="magic" size={22} /></span>}
                                                                     <span className={styles.pickerItemCopy}><strong>{skill.name}</strong><small>{skill.description}</small></span>
                                                                     <span className={styles.pickerItemAction}>{selected ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}</span>
                                                                 </button>
@@ -254,7 +255,7 @@ export function HomeAgentHero() {
                                                     </div>
                                                     <div className={styles.pickerList}>
                                                         <button type="button" className={!selectedModelId ? styles.pickerItemSelected : undefined} aria-pressed={!selectedModelId} onClick={() => setSelectedModelId("")}>
-                                                            <span className={styles.pickerItemIcon}><Sparkles aria-hidden="true" /></span>
+                                                            <span className={styles.pickerItemIcon}><DreamyoIcon name="magic" size={22} /></span>
                                                             <span className={styles.pickerItemCopy}><strong>智能规划</strong><small>根据需求自动选择最合适的模型与参数</small></span>
                                                             <span className={styles.pickerItemAction}>{!selectedModelId ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}</span>
                                                         </button>
@@ -284,10 +285,9 @@ export function HomeAgentHero() {
                             <div className={styles.rightControls}>
                                 <div className={styles.modeGroup} aria-label="创作模式">
                                     {HOME_CREATION_MODES.map((item) => {
-                                        const Icon = MODE_ICONS[item.id];
                                         return (
                                             <button key={item.id} type="button" aria-pressed={mode === item.id} aria-label={item.label} className={mode === item.id ? styles.modeActive : undefined} onClick={() => setMode(item.id)}>
-                                                <Icon aria-hidden="true" /><span>{item.label}</span>
+                                                <DreamyoIcon name={MODE_ICONS[item.id]} size={20} /><span>{item.label}</span>
                                             </button>
                                         );
                                     })}
@@ -305,7 +305,7 @@ export function HomeAgentHero() {
                         const Icon = shortcut.icon;
                         return (
                             <button key={shortcut.label} type="button" onClick={() => activateShortcut(shortcut)}>
-                                <span className={styles.shortcutIcon}><Icon aria-hidden="true" /></span>
+                                <span className={styles.shortcutIcon}>{shortcut.DreamyoIcon ? <DreamyoIcon name={shortcut.DreamyoIcon} size={22} /> : Icon ? <Icon aria-hidden="true" /> : null}</span>
                                 <span><strong>{shortcut.label}</strong><small>{shortcut.detail}</small></span>
                             </button>
                         );
@@ -321,9 +321,7 @@ function HomeLoginPrompt({ onLogin }: { onLogin: () => void }) {
 }
 
 function HomeModelIcon({ capability }: { capability: ModelCapability }) {
-    if (capability === "video") return <Film aria-hidden="true" />;
-    if (capability === "audio") return <AudioLines aria-hidden="true" />;
-    return <Sparkles aria-hidden="true" />;
+    return <DreamyoIcon name={capability} size={22} />;
 }
 
 function homeSkillCategories(skills: AgentSkillSummary[]) {

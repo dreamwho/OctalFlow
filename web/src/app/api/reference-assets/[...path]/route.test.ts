@@ -83,7 +83,7 @@ describe("reference asset access", () => {
 
     it("passes an unsigned internal staging request to session resolution", async () => {
         mocks.getCurrentUser.mockResolvedValue({ id: "owner", role: "user" });
-        const request = new Request("http://localhost/api/reference-assets/permanent/2026/07/20/images/file.png", { headers: { authorization: "Bearer worker-token", "x-octalaicanvas-worker-user-id": "owner" } });
+        const request = new Request("http://localhost/api/reference-assets/permanent/2026/07/20/images/file.png", { headers: { authorization: "Bearer worker-token", "x-dreamyo-worker-user-id": "owner" } });
 
         await GET(request, context);
 

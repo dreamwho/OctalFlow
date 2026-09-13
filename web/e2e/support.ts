@@ -2,13 +2,13 @@ import type { APIRequestContext } from "@playwright/test";
 
 export const E2E_ADMIN = {
     username: "e2e_admin",
-    password: "OctalaicanvasE2E!2026",
+    password: "dreamyoE2E!2026",
     displayName: "E2E 管理员",
-    installToken: "octalaicanvas-e2e-install-token-32chars",
+    installToken: "dreamyo-e2e-install-token-32chars",
 };
 
-export const E2E_PROTOCOL_ORIGIN = `http://127.0.0.1:${Number(process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_PORT || 4010)}`;
-export const E2E_PAYMENT_WEBHOOK_SECRET = "octalaicanvas-e2e-payply-webhook-secret";
+export const E2E_PROTOCOL_ORIGIN = `http://127.0.0.1:${Number(process.env.DREAMYO_PROTOCOL_FIXTURE_PORT || 4010)}`;
+export const E2E_PAYMENT_WEBHOOK_SECRET = "dreamyo-e2e-payply-webhook-secret";
 
 const models = ["e2e-text", "e2e-text-fallback", "e2e-text-fail", "e2e-image", "e2e-image-fallback", "e2e-video", "e2e-video-fallback", "e2e-video-slow", "e2e-audio", "e2e-audio-fallback"];
 
@@ -64,7 +64,13 @@ export function e2eSettingsPatch() {
     const modelConfigs = Object.fromEntries(models.map((model) => [model, operations[modelCapabilities[model] as keyof typeof operations]]));
     return {
         systemChannels: [channel("e2e-primary", "E2E 主渠道", "e2e-primary-secret", modelCapabilities, modelConfigs), channel("e2e-backup", "E2E 备用渠道", "e2e-backup-secret", modelCapabilities, modelConfigs)],
-        logicalModels: [],
+        logicalModels: models.map((model, index) => ({
+            id: model,
+            name: model,
+            capability: modelCapabilities[model],
+            enabled: true,
+            bindings: [{ id: `e2e-primary:${model}`, channelId: "e2e-primary", upstreamModel: model, enabled: true, priority: index + 1 }],
+        })),
         defaultModels: { textModel: "e2e-text", imageModel: "e2e-image", videoModel: "e2e-video", audioModel: "e2e-audio" },
         modelPointCosts: Object.fromEntries(models.map((model) => [model, 0])),
         generationConcurrency: { agent: 2, image: 2, video: 2, audio: 2, text: 2, render: 1 },

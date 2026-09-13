@@ -9,7 +9,7 @@ from api.app import create_app
 from services.log_service import LoggedCall, log_service
 from services.dashboard_metrics_service import DashboardMetricsService
 
-HEADERS = {"x-octal-runtime-key": "fixture-runtime-key-0123456789abcdef", "authorization": "Bearer fixture-runtime-key-0123456789abcdef"}
+HEADERS = {"x-dreamyo-runtime-key": "fixture-runtime-key-0123456789abcdef", "authorization": "Bearer fixture-runtime-key-0123456789abcdef"}
 
 
 @pytest.fixture(autouse=True)

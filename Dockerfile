@@ -3,7 +3,7 @@
 FROM node:22-bookworm-slim AS dreamina-build
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
-ADD --checksum=sha256:78e49e845b70b17c42015f9214a295564c9bf9048f8a5745429c18566c270ff3 https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_linux_amd64 /usr/local/bin/dreamina
+ADD --checksum=sha256:8f0bc9b19c80a4d9056912bbb41947289f762e321a6158b3c1320b1d562fb527 https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_linux_amd64 /usr/local/bin/dreamina
 RUN chmod 0755 /usr/local/bin/dreamina && dreamina --version
 
 FROM node:22-bookworm-slim AS depth-build
@@ -15,7 +15,7 @@ RUN python3 -m venv /opt/video-depth \
     && /opt/video-depth/bin/pip install --no-cache-dir --no-deps torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu \
     && /opt/video-depth/bin/pip install --no-cache-dir -r requirements.txt
 COPY services/video-depth/download_model.py ./download_model.py
-RUN OCTALAICANVAS_VIDEO_DEPTH_MODEL=/opt/video-depth-model /opt/video-depth/bin/python download_model.py \
+RUN DREAMYO_VIDEO_DEPTH_MODEL=/opt/video-depth-model /opt/video-depth/bin/python download_model.py \
     && /opt/video-depth/bin/python -c "from transformers import AutoImageProcessor, AutoModelForDepthEstimation; p='/opt/video-depth-model'; AutoImageProcessor.from_pretrained(p, local_files_only=True); AutoModelForDepthEstimation.from_pretrained(p, local_files_only=True)"
 
 FROM python:3.13-slim-bookworm AS chatgpt-build
@@ -63,13 +63,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV TZ=Asia/Shanghai
-ENV OCTALAICANVAS_DATA_DIR=/app/web/.data
-ENV OCTALAICANVAS_INTERNAL_ORIGIN=http://127.0.0.1:3000
+ENV DREAMYO_DATA_DIR=/app/web/.data
+ENV DREAMYO_INTERNAL_ORIGIN=http://127.0.0.1:3000
 ENV NODE_OPTIONS=--max-old-space-size=384
 ENV UV_THREADPOOL_SIZE=2
-ENV OCTALAICANVAS_VIDEO_DEPTH_PYTHON=/opt/video-depth/bin/python
-ENV OCTALAICANVAS_VIDEO_DEPTH_SCRIPT=/app/services/video-depth/infer_depth_frames.py
-ENV OCTALAICANVAS_VIDEO_DEPTH_MODEL=/opt/video-depth-model
+ENV DREAMYO_VIDEO_DEPTH_PYTHON=/opt/video-depth/bin/python
+ENV DREAMYO_VIDEO_DEPTH_SCRIPT=/app/services/video-depth/infer_depth_frames.py
+ENV DREAMYO_VIDEO_DEPTH_MODEL=/opt/video-depth-model
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 

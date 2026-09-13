@@ -31,7 +31,7 @@ const FILES = new Set([
     "geminiai-request-logs.json",
     "dreamina-cli.json",
 ]);
-const RECEIPT_TABLE = "octalaicanvas_private_migration_receipts";
+const RECEIPT_TABLE = "dreamyo_private_migration_receipts";
 
 export async function readMigrationSource(input: string) {
     const files: Record<string, unknown> = {};
@@ -59,7 +59,7 @@ export async function readMigrationSource(input: string) {
 }
 
 export async function migrateLocalData(input: { directory: string; sourceId: string; check?: boolean }) {
-    if (!input.sourceId || !process.env.DATABASE_URL || !process.env.OCTALAICANVAS_ENCRYPTION_KEY) throw new Error("迁移缺少快照 ID、PostgreSQL 配置或原加密密钥");
+    if (!input.sourceId || !process.env.DATABASE_URL || !process.env.DREAMYO_ENCRYPTION_KEY) throw new Error("迁移缺少快照 ID、PostgreSQL 配置或原加密密钥");
     const source = await readMigrationSource(input.directory);
     const auth = normalizeDb(source.files["auth.json"] as Partial<AuthDatabase>);
     if (!auth.users.some((user) => user.role === "admin")) throw new Error("本地快照没有管理员，无法作为免安装迁移包");
@@ -68,7 +68,7 @@ export async function migrateLocalData(input: { directory: string; sourceId: str
     const quarantinedMedia = media?.assets.filter((asset) => !userIds.has(String(asset.ownerUserId))) || [];
     const importFiles = media ? { ...source.files, "local-media-assets.json": { ...media, assets: media.assets.filter((asset) => userIds.has(String(asset.ownerUserId))) } } : source.files;
     return withPostgresTransaction(async (client) => {
-        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["octalaicanvas-private-data-migration"]);
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["dreamyo-private-data-migration"]);
         const exists = await client.query("SELECT to_regclass($1) AS relation", [`public.${RECEIPT_TABLE}`]);
         if (exists.rows[0]?.relation) {
             const receipt = await client.query(`SELECT source_id, source_digest, counts FROM ${RECEIPT_TABLE}`);
@@ -113,9 +113,9 @@ export async function migrateLocalData(input: { directory: string; sourceId: str
 }
 
 async function assertEmptyTarget(client: QueryExecutor) {
-    const tables = await client.query<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE schemaname='public' AND starts_with(tablename, 'octalaicanvas_')");
+    const tables = await client.query<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE schemaname='public' AND starts_with(tablename, 'dreamyo_')");
     for (const { tablename } of tables.rows) {
-        if (tablename === "octalaicanvas_schema_migrations") continue;
+        if (tablename === "dreamyo_schema_migrations") continue;
         const quoted = `"${tablename.replaceAll('"', '""')}"`;
         const result = await client.query(`SELECT EXISTS (SELECT 1 FROM ${quoted}) AS occupied`);
         if (result.rows[0]?.occupied) throw new Error("目标 PostgreSQL 已有项目数据或初始化配置，拒绝自动覆盖，请使用空的专用数据库");

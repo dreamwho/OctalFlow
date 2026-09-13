@@ -35,9 +35,9 @@ describe("updatePostgresAuthSettings", () => {
             title: "新站点",
             socials: {
                 ...DEFAULT_SETTINGS.site.socials,
-                telegram: { enabled: true, label: "Telegram", url: "https://t.me/octalaicanvas_group" },
-                x: { enabled: true, label: "X", url: "https://x.com/octalaicanvas" },
-                instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/octalaicanvas.pro" },
+                telegram: { enabled: true, label: "Telegram", url: "https://t.me/dreamyo_group" },
+                x: { enabled: true, label: "X", url: "https://x.com/dreamyo" },
+                instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/dreamyo.pro" },
             },
         };
 

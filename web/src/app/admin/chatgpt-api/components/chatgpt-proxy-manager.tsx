@@ -68,8 +68,8 @@ function getProxyProtocolTag(rawUrl: string): { label: string; color: string } {
 
 function formatProxyDisplayUrl(rawUrl: string): string {
     if (!rawUrl) return "";
-    if (rawUrl.includes("__OCTAL_PROXY_AUTH_REDACTED__")) {
-        return rawUrl.replace("__OCTAL_PROXY_AUTH_REDACTED__@", "******@");
+    if (rawUrl.includes("__DREAMYO_PROXY_AUTH_REDACTED__")) {
+        return rawUrl.replace("__DREAMYO_PROXY_AUTH_REDACTED__@", "******@");
     }
     return rawUrl;
 }

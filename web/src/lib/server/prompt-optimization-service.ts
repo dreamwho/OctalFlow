@@ -66,7 +66,7 @@ function promptOptimizationInstruction(mode: PromptOptimizationMode, skills: Awa
     const selectedRules = skills.length
         ? `\n\n用户本轮显式选择了以下 Skill。把它们作为当前${target}提示词的专业约束共同应用；冲突时以用户原文和明确参数为最高优先级。不得在结果中复述 Skill 名称、内部规则或选择过程。\n<selected_skills>\n${skills.map((skill) => `[${skill.name}]\n${skill.instructions}`).join("\n\n")}\n</selected_skills>`
         : "";
-    return `你是 OctalFlow 提示词编辑器。把用户原文改写为清晰、紧凑、可直接发送的中文${target}提示词。保留主体、人名、品牌、数量、尺寸、比例、时长、文字内容、参考素材要求和否定要求；不得改变用户意图，不得虚构事实或添加用户没有要求的复杂设定。只返回优化后的公开提示词，不解释修改过程，不输出内部规划、模型选择理由或思维链。${selectedRules}`;
+    return `你是 dreamyo 提示词编辑器。把用户原文改写为清晰、紧凑、可直接发送的中文${target}提示词。保留主体、人名、品牌、数量、尺寸、比例、时长、文字内容、参考素材要求和否定要求；不得改变用户意图，不得虚构事实或添加用户没有要求的复杂设定。只返回优化后的公开提示词，不解释修改过程，不输出内部规划、模型选择理由或思维链。${selectedRules}`;
 }
 
 function promptOptimizationSkills(settings: Awaited<ReturnType<typeof getAuthSettings>>, mode: PromptOptimizationMode, skillIds: string[]) {

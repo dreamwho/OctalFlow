@@ -88,7 +88,7 @@ export function normalizeObjectStoragePrefix(value: unknown) {
         .map((segment) => segment.trim())
         .filter(Boolean);
     if (segments.some((segment) => segment === "." || segment === "..")) throw new Error("对象路径前缀不合法");
-    return segments.join("/") || "octalaicanvas";
+    return segments.join("/") || "dreamyo";
 }
 
 function toRuntimeConfig(stored: StoredObjectStorageSettings): ObjectStorageRuntimeConfig {

@@ -23,10 +23,10 @@ from services.storage.configuration_repository import (
 )
 
 
-IPWO_API_URL_KEY = "octalaicanvas_ipwo_api_url"
-IPWO_PROTOCOL_KEY = "octalaicanvas_ipwo_protocol"
-IPWO_REGIONS_KEY = "octalaicanvas_ipwo_regions"
-IPWO_TIMEOUT_SECONDS_KEY = "octalaicanvas_ipwo_timeout_seconds"
+IPWO_API_URL_KEY = "dreamyo_ipwo_api_url"
+IPWO_PROTOCOL_KEY = "dreamyo_ipwo_protocol"
+IPWO_REGIONS_KEY = "dreamyo_ipwo_regions"
+IPWO_TIMEOUT_SECONDS_KEY = "dreamyo_ipwo_timeout_seconds"
 IPWO_PROTOCOLS = ("http", "socks5")
 DEFAULT_TIMEOUT_SECONDS = 10
 IPINFO_DIAGNOSTIC_URL = "https://ipinfo.io/json"

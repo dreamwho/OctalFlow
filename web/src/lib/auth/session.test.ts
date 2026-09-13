@@ -6,8 +6,8 @@ import type { AuthSettings } from "./store-types";
 import { serializePublicSettings, setSessionCookie } from "./session";
 
 afterEach(() => {
-    delete process.env.OCTALAICANVAS_COOKIE_SECURE;
-    delete process.env.OCTALAICANVAS_TRUSTED_PROXY_HOPS;
+    delete process.env.DREAMYO_COOKIE_SECURE;
+    delete process.env.DREAMYO_TRUSTED_PROXY_HOPS;
 });
 
 describe("serializePublicSettings", () => {
@@ -79,9 +79,9 @@ describe("serializePublicSettings", () => {
         ];
         settings.site.socials = {
             email: { enabled: true, label: "邮箱", url: "mailto:owner@example.com" },
-            telegram: { enabled: true, label: "Telegram", url: "https://t.me/octalaicanvas_group" },
-            x: { enabled: true, label: "X", url: "https://x.com/octalaicanvas" },
-            instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/octalaicanvas.pro" },
+            telegram: { enabled: true, label: "Telegram", url: "https://t.me/dreamyo_group" },
+            x: { enabled: true, label: "X", url: "https://x.com/dreamyo" },
+            instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/dreamyo.pro" },
         };
 
         const result = serializePublicSettings(settings);
@@ -206,7 +206,7 @@ describe("session cookie security", () => {
     });
 
     it("uses Secure behind a configured HTTPS reverse proxy", () => {
-        process.env.OCTALAICANVAS_TRUSTED_PROXY_HOPS = "1";
+        process.env.DREAMYO_TRUSTED_PROXY_HOPS = "1";
         const response = NextResponse.json({ ok: true });
         setSessionCookie(response, "session", new Request("http://localhost", { headers: { "x-forwarded-proto": "https" } }));
 

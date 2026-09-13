@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { AuthForm } from "@/components/auth/auth-form";
 import { getAuthSettings } from "@/lib/auth/store";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getInstallStatus } from "@/lib/server/install-status";
+
+export const metadata: Metadata = { title: "注册 | dreamyo" };
 
 type RegisterPageProps = {
     searchParams?: Promise<Record<string, string | string[] | undefined>>;

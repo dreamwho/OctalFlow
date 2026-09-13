@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { getInstallStatus } from "@/lib/server/install-status";
@@ -6,6 +7,7 @@ import { InstallScrollUnlock } from "./install-scroll-unlock";
 import { InstallWizard } from "./install-wizard";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "安装向导 | dreamyo" };
 
 export default async function InstallPage() {
     const [install, site] = await Promise.all([getInstallStatus(), getPublicSiteSettings()]);

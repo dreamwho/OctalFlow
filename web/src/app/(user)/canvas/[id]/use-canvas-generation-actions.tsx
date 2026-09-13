@@ -8,7 +8,7 @@ import { resolveImageRequestSize } from "@/lib/image-size";
 import { readImageMeta } from "@/lib/image-utils";
 import { safeRandomUUID } from "@/lib/uuid";
 import { createAudioGenerationTask } from "@/services/api/audio";
-import { resumeImageGenerationTask } from "@/services/api/image";
+import { getImageGenerationTask, resumeImageGenerationTask } from "@/services/api/image";
 import { isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
 import { createTextGenerationTask } from "@/services/api/text";
 import { createServerVideoGenerationTask } from "@/services/api/video";
@@ -31,6 +31,7 @@ import { canvasVideoReferenceMetadata, resolveCanvasVideoGenerationReferences, r
 import { NODE_STATUS_ERROR, NODE_STATUS_IDLE, NODE_STATUS_LOADING, NODE_STATUS_NEEDS_REVIEW, NODE_STATUS_SUCCESS, VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, createCanvasNode } from "./canvas-page-elements";
 import { classifyCanvasVideoTaskFailure } from "./canvas-video-task-recovery";
 import { hasCanvasGenerationTask, pauseCanvasGenerationReview, resumeCanvasGenerationReview } from "./canvas-generation-review";
+import { applyCanvasImageTaskResults } from "./canvas-image-task-results";
 import {
     buildAudioGenerationMetadata,
     buildGenerationConfig,
@@ -43,6 +44,7 @@ import {
     resolveMetadataReferences,
     sourceNodeReferenceImages,
     uploadCanvasImage,
+    uploadGeneratedCanvasImage,
 } from "./canvas-page-utils";
 
 import type { CanvasInteractions } from "./use-canvas-interactions";
@@ -570,13 +572,56 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
     }, [handleGenerateNode]);
 
     const handleRetryNode = useCallback(
-        async (node: CanvasNodeData) => {
-            if (node.metadata?.status === NODE_STATUS_NEEDS_REVIEW && hasCanvasGenerationTask(node)) {
+        async (node: CanvasNodeData, options?: { forceNew?: boolean }) => {
+            if (!options?.forceNew && node.metadata?.status === NODE_STATUS_NEEDS_REVIEW && hasCanvasGenerationTask(node)) {
                 if (node.metadata.imageTask) {
                     try {
-                        await resumeImageGenerationTask(node.metadata.imageTask.id);
+                        const currentTask = await getImageGenerationTask(node.metadata.imageTask.id);
+                        const rawResults = currentTask.result?.results?.length
+                            ? currentTask.result.results
+                            : currentTask.result
+                              ? [currentTask.result]
+                              : [];
+                        if (currentTask.status === "success" && rawResults.length > 0) {
+                            const uploaded = await Promise.all(
+                                rawResults.map((image) => uploadGeneratedCanvasImage(image.dataUrl || "", image.remoteUrl || "", image.serverUrl || "")),
+                            );
+                            setNodes((prev) =>
+                                applyCanvasImageTaskResults(prev, {
+                                    nodeId: node.id,
+                                    taskId: currentTask.id,
+                                    images: uploaded.map((image) => ({ width: image.width, height: image.height, metadata: imageMetadata(image) })),
+                                    prompt: node.metadata?.prompt,
+                                    model: currentTask.model || node.metadata?.model || effectiveConfig.imageModel || effectiveConfig.model || "",
+                                    size: node.metadata?.size,
+                                }),
+                            );
+                            message.success("任务已在后台完成，已成功恢复生成的图片结果！");
+                            return;
+                        }
+                        if (currentTask.status === "error") {
+                            setNodes((prev) =>
+                                prev.map((item) =>
+                                    item.id === node.id
+                                        ? {
+                                              ...item,
+                                              metadata: {
+                                                  ...item.metadata,
+                                                  status: NODE_STATUS_ERROR,
+                                                  errorDetails: currentTask.error || "任务执行失败",
+                                              },
+                                          }
+                                        : item,
+                                ),
+                            );
+                            message.error(currentTask.error || "任务已失败，可点击再次生成");
+                            return;
+                        }
+                        if (currentTask.needsReview) {
+                            await resumeImageGenerationTask(node.metadata.imageTask.id);
+                        }
                     } catch (error) {
-                        message.error(error instanceof Error ? error.message : "检查图片任务失败");
+                        message.warning(error instanceof Error ? error.message : "检查图片任务失败，可点击再次生成");
                         return;
                     }
                 }

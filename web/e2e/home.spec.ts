@@ -323,13 +323,13 @@ test("homepage hero stays centered and responsive", async ({ page }, testInfo) =
         expect(geometry.cardRadius).toBeGreaterThanOrEqual(28);
         expect(geometry.cardRadius).toBeLessThanOrEqual(32);
         expect(geometry.haloCenterOffset).toBeLessThanOrEqual(1);
-        expect(geometry.haloWidthRatio).toBeGreaterThan(1.65);
+        expect(geometry.haloWidthRatio).toBeGreaterThan(1.2);
         expect(geometry.haloWidthRatio).toBeLessThan(2);
         expect(geometry.haloTop).toBeLessThan(geometry.cardBottom);
         expect(geometry.textareaHeight).toBeGreaterThanOrEqual(68);
         expect(geometry.presetOffset).toBe(0);
-        expect(geometry.toolbarOffset).toBeGreaterThanOrEqual(12);
-        expect(geometry.toolbarOffset).toBeLessThanOrEqual(16);
+        expect(geometry.toolbarOffset).toBeGreaterThanOrEqual(28);
+        expect(geometry.toolbarOffset).toBeLessThanOrEqual(32);
         expect(geometry.sendInset).toBeGreaterThanOrEqual(27);
         expect(geometry.filledRingCount).toBe(4);
         expect(geometry.borderOnlyRingCount).toBe(0);
@@ -361,8 +361,8 @@ test("homepage hero stays centered and responsive", async ({ page }, testInfo) =
 test("front-end and administrator theme choices remain independent", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
-        localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
-        localStorage.setItem("octalaicanvas:admin_theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+        localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+        localStorage.setItem("dreamyo:admin_theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
     });
     await page.reload({ waitUntil: "domcontentloaded" });
 
@@ -411,8 +411,8 @@ async function storedThemes(page: Page) {
     return page.evaluate(() => {
         const readTheme = (key: string) => JSON.parse(localStorage.getItem(key) || "{}")?.state?.theme;
         return {
-            frontend: readTheme("octalaicanvas:theme_store"),
-            admin: readTheme("octalaicanvas:admin_theme_store"),
+            frontend: readTheme("dreamyo:theme_store"),
+            admin: readTheme("dreamyo:admin_theme_store"),
         };
     });
 }

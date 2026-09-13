@@ -79,7 +79,7 @@ function termsSections(siteTitle: string) {
 export async function generateMetadata(): Promise<Metadata> {
     const site = await getPublicSiteSettings();
     return {
-        title: "服务条款",
+        title: "服务条款 | dreamyo",
         description: `了解使用 ${site.title} 账号、AI 创作、用户内容、积分支付、退款、公开发布与账号注销的规则。`,
         alternates: { canonical: "/terms" },
     };

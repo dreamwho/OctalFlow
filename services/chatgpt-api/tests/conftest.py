@@ -16,19 +16,19 @@ from pathlib import Path
 import pytest
 
 
-_TEST_DATA_DIR = Path(tempfile.mkdtemp(prefix="octalaicanvas-chatgpt-api-tests-"))
+_TEST_DATA_DIR = Path(tempfile.mkdtemp(prefix="dreamyo-chatgpt-api-tests-"))
 _TEST_RUNTIME_KEY = "fixture-runtime-key-0123456789abcdef"
 _TEST_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 os.environ.update({
-    "OCTALAICANVAS_CHATGPT_DATA_DIR": str(_TEST_DATA_DIR),
-    "OCTALAICANVAS_CHATGPT_API_KEY": _TEST_RUNTIME_KEY,
-    "OCTALAICANVAS_ENCRYPTION_KEY": _TEST_ENCRYPTION_KEY,
+    "DREAMYO_CHATGPT_DATA_DIR": str(_TEST_DATA_DIR),
+    "DREAMYO_CHATGPT_API_KEY": _TEST_RUNTIME_KEY,
+    "DREAMYO_ENCRYPTION_KEY": _TEST_ENCRYPTION_KEY,
 })
 for _name in (
     "CHATGPT2API_AUTH_KEY",
     "CHATGPT2API_BASE_URL",
-    "OCTALAICANVAS_CHATGPT_PUBLIC_BASE_URL",
+    "DREAMYO_CHATGPT_PUBLIC_BASE_URL",
     "DATABASE_URL",
     "HTTP_PROXY",
     "HTTPS_PROXY",

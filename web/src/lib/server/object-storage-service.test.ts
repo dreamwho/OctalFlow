@@ -55,7 +55,7 @@ const config = {
     endpoint: "https://oss.example.com",
     region: "auto",
     bucket: "media",
-    prefix: "octalaicanvas",
+    prefix: "dreamyo",
     accessKeyId: "access",
     secretAccessKey: "secret",
     forcePathStyle: false,
@@ -107,7 +107,7 @@ describe("object storage media service", () => {
         const object = await createTemporaryPublicObject({ bytes: Buffer.from("audio"), contentType: "audio/mpeg", originalName: "nini.mp3", purpose: "qwen-voice-clone" });
 
         expect(object).toMatchObject({ url: "https://oss.example.com/signed" });
-        expect(object?.objectKey).toMatch(/^octalaicanvas\/temporary\/qwen-voice-clone\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]+\.mp3$/);
+        expect(object?.objectKey).toMatch(/^dreamyo\/temporary\/qwen-voice-clone\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]+\.mp3$/);
         expect(mocks.putBytes).toHaveBeenCalledWith(expect.objectContaining({ ...config, enabled: false }), expect.objectContaining({ contentType: "audio/mpeg", bytes: Buffer.from("audio"), metadata: { purpose: "qwen-voice-clone" } }));
 
         await object?.cleanup();
@@ -122,7 +122,7 @@ describe("object storage media service", () => {
     });
 
     it("uploads and registers object media, rolling the object back when registration fails", async () => {
-        const objectKey = `octalaicanvas/media/reference/${registration.storageKey}`;
+        const objectKey = `dreamyo/media/reference/${registration.storageKey}`;
         await persistExternalMediaIfEnabled({ registration, bytes: Buffer.from("data") });
         expect(mocks.putBytes).toHaveBeenCalledWith(config, expect.objectContaining({ key: objectKey, contentType: "image/png" }));
         expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ storageProvider: "object", externalObjectKey: objectKey }));
@@ -134,7 +134,7 @@ describe("object storage media service", () => {
 
     it("continues signing existing object media after the write switch is disabled", async () => {
         mocks.config.mockResolvedValue({ ...config, enabled: false });
-        const objectRegistration = { ...registration, originalName: "生成结果", storageProvider: "object" as const, externalStorageId: "default", externalObjectKey: "octalaicanvas/media/reference/file.png" };
+        const objectRegistration = { ...registration, originalName: "生成结果", storageProvider: "object" as const, externalStorageId: "default", externalObjectKey: "dreamyo/media/reference/file.png" };
 
         const url = await createExternalMediaReadUrl(new Request("http://localhost/media?download=original"), objectRegistration);
 
@@ -144,28 +144,28 @@ describe("object storage media service", () => {
     });
 
     it("uses a bounded WebP object variant for image previews", async () => {
-        const objectRegistration = { ...registration, storageProvider: "object" as const, externalStorageId: "default", externalObjectKey: "octalaicanvas/media/reference/file.png" };
+        const objectRegistration = { ...registration, storageProvider: "object" as const, externalStorageId: "default", externalObjectKey: "dreamyo/media/reference/file.png" };
 
         await createExternalMediaReadUrl(new Request("http://localhost/media?format=webp&width=320"), objectRegistration);
 
-        expect(mocks.objectExists).toHaveBeenCalledWith(config, "octalaicanvas/media/reference/file.png.octalaicanvas-preview/webp-320.webp");
+        expect(mocks.objectExists).toHaveBeenCalledWith(config, "dreamyo/media/reference/file.png.dreamyo-preview/webp-320.webp");
         expect(mocks.getBytes).not.toHaveBeenCalled();
         expect(mocks.signRead).toHaveBeenCalledWith(config, expect.objectContaining({ contentType: "image/webp", expiresIn: 120 }));
     });
 
     it("serves administrator object previews as bounded WebP variants only", async () => {
-        const imageKey = "octalaicanvas/media/reference/file.png";
+        const imageKey = "dreamyo/media/reference/file.png";
 
         await expect(createExternalStorageImagePreviewUrl(imageKey, "500")).resolves.toBe("https://oss.example.com/signed");
 
-        expect(mocks.objectExists).toHaveBeenCalledWith(config, `${imageKey}.octalaicanvas-preview/webp-640.webp`);
-        expect(mocks.signRead).toHaveBeenCalledWith(config, expect.objectContaining({ key: `${imageKey}.octalaicanvas-preview/webp-640.webp`, contentType: "image/webp", contentDisposition: expect.stringContaining("file.webp") }));
+        expect(mocks.objectExists).toHaveBeenCalledWith(config, `${imageKey}.dreamyo-preview/webp-640.webp`);
+        expect(mocks.signRead).toHaveBeenCalledWith(config, expect.objectContaining({ key: `${imageKey}.dreamyo-preview/webp-640.webp`, contentType: "image/webp", contentDisposition: expect.stringContaining("file.webp") }));
         await expect(createExternalStorageImagePreviewUrl("outside-prefix/file.png", 256)).resolves.toBeNull();
-        await expect(createExternalStorageImagePreviewUrl("octalaicanvas/files/archive.zip", 256)).resolves.toBeNull();
+        await expect(createExternalStorageImagePreviewUrl("dreamyo/files/archive.zip", 256)).resolves.toBeNull();
     });
 
     it("keeps streaming media urls valid long enough for playback and seeking", async () => {
-        const videoRegistration = { ...registration, type: "video" as const, mimeType: "video/mp4", storageProvider: "object" as const, externalStorageId: "default", externalObjectKey: "octalaicanvas/media/reference/video.mp4" };
+        const videoRegistration = { ...registration, type: "video" as const, mimeType: "video/mp4", storageProvider: "object" as const, externalStorageId: "default", externalObjectKey: "dreamyo/media/reference/video.mp4" };
 
         await createExternalMediaReadUrl(new Request("http://localhost/media"), videoRegistration);
 
@@ -173,8 +173,8 @@ describe("object storage media service", () => {
     });
 
     it("blocks deletion of referenced objects and deletes unregistered objects", async () => {
-        const protectedKey = "octalaicanvas/media/reference/protected.png";
-        const freeKey = "octalaicanvas/media/reference/free.png";
+        const protectedKey = "dreamyo/media/reference/protected.png";
+        const freeKey = "dreamyo/media/reference/free.png";
         mocks.listByObjectKeys.mockResolvedValue([{ ...registration, storageProvider: "object", externalObjectKey: protectedKey }]);
         mocks.references.mockResolvedValue(new Map([[registration.storageKey, 2]]));
 
@@ -186,8 +186,8 @@ describe("object storage media service", () => {
     });
 
     it("classifies attachments and fills a filtered page across object cursors", async () => {
-        const attachmentKey = "octalaicanvas/files/archive.zip";
-        const imageKey = "octalaicanvas/media/reference/permanent/2026/07/24/images/drama.png";
+        const attachmentKey = "dreamyo/files/archive.zip";
+        const imageKey = "dreamyo/media/reference/permanent/2026/07/24/images/drama.png";
         mocks.listObjects.mockResolvedValueOnce({ items: [{ key: attachmentKey, bytes: 8 }], nextCursor: "next" }).mockResolvedValueOnce({ items: [{ key: imageKey, bytes: 4 }], nextCursor: undefined });
         mocks.listByObjectKeys.mockImplementation(async (keys: string[]) => (keys.includes(imageKey) ? [{ ...registration, source: "drama-render", storageProvider: "object", externalObjectKey: imageKey }] : []));
 

@@ -16,7 +16,7 @@ const roots: string[] = [];
 beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("DATABASE_URL", "postgres://fixture:fixture@127.0.0.1/fixture");
-    vi.stubEnv("OCTALAICANVAS_ENCRYPTION_KEY", "a".repeat(64));
+    vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
     mocks.query.mockResolvedValue({ rows: [] });
 });
 afterEach(async () => {
@@ -24,7 +24,7 @@ afterEach(async () => {
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 async function source(tasks: unknown[] = []) {
-    const directory = await mkdtemp(path.join(tmpdir(), "octal-migration-core-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "dreamyo-migration-core-"));
     roots.push(directory);
     await writeFile(path.join(directory, "auth.json"), JSON.stringify({ users: [{ id: "admin", role: "admin", username: "fixture", passwordHash: "preserved-fixture-hash" }] }));
     await writeFile(path.join(directory, "generation-tasks.json"), JSON.stringify(tasks));
@@ -49,7 +49,7 @@ it("preflight on empty target never writes schema or business data", async () =>
 });
 it("refuses a populated database before any import", async () => {
     const directory = await source();
-    mocks.query.mockImplementation(async (sql: string) => ({ rows: sql.includes("pg_tables") ? [{ tablename: "octalaicanvas_users" }] : sql.includes("SELECT EXISTS") ? [{ occupied: true }] : [] }));
+    mocks.query.mockImplementation(async (sql: string) => ({ rows: sql.includes("pg_tables") ? [{ tablename: "dreamyo_users" }] : sql.includes("SELECT EXISTS") ? [{ occupied: true }] : [] }));
     await expect(migrateLocalData({ directory, sourceId: "fixture" })).rejects.toThrow("拒绝自动覆盖");
     expect(mocks.restore).not.toHaveBeenCalled();
 });

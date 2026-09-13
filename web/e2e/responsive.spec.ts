@@ -418,7 +418,7 @@ test("creative composer controls return to a neutral palette after selection", a
     await page.goto("/create", { waitUntil: "domcontentloaded" });
     await verifyNeutralControls("creative composer neutral controls light");
 
-    await page.evaluate(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
+    await page.evaluate(() => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);
     await verifyNeutralControls("creative composer neutral controls dark");
@@ -441,7 +441,7 @@ test("creative composer optimizes the current prompt without sending it", async 
     await page.goto("/create", { waitUntil: "domcontentloaded" });
     await waitForCreativeComposerReady(page);
 
-    const input = page.getByRole("textbox", { name: "输入你的创作想法、脚本或画面要求" });
+    const input = page.getByRole("textbox", { name: /输入创作要求|输入你的创作想法/ });
     const optimize = page.getByRole("button", { name: "优化提示词" });
     await expect(optimize).toBeDisabled();
     await input.fill("做个国风人物海报");
@@ -473,7 +473,7 @@ test("creative composer ignores an optimization response after the user sends", 
         await page.goto("/create", { waitUntil: "domcontentloaded" });
         await waitForCreativeComposerReady(page);
 
-        const input = page.getByRole("textbox", { name: "输入你的创作想法、脚本或画面要求" });
+        const input = page.getByRole("textbox", { name: /输入创作要求|输入你的创作想法/ });
         await input.fill("直接发送当前提示词");
         await page.getByRole("button", { name: "优化提示词" }).click();
         const send = page.getByRole("button", { name: "发送" });
@@ -509,7 +509,7 @@ test("Agent generation inputs apply immediately and reveal video frame slots", a
     const countInput = preferencePopover.getByRole("textbox", { name: "自定义生成数量" });
     await countInput.fill("6");
     await expect(countInput).toHaveValue("6");
-    if (process.env.OCTALAICANVAS_VISUAL_CAPTURE === "1") {
+    if (process.env.DREAMYO_VISUAL_CAPTURE === "1") {
         const screenshotPath = testInfo.outputPath(`agent-immediate-parameters-${testInfo.project.name}.png`);
         await page.screenshot({ path: screenshotPath });
         await testInfo.attach("Agent 即时尺寸与数量", { path: screenshotPath, contentType: "image/png" });
@@ -542,7 +542,7 @@ test("Agent generation inputs apply immediately and reveal video frame slots", a
     const [frameRect, framePopoverRect] = await Promise.all([firstFrame.evaluate((element) => element.getBoundingClientRect().toJSON()), framePopover.evaluate((element) => element.getBoundingClientRect().toJSON())]);
     expect(framePopoverRect.top, "new Agent frame picker should open below its slot").toBeGreaterThanOrEqual(frameRect.bottom - 1);
     await expectNoHorizontalOverflow(page, `${testInfo.project.name} Agent immediate inputs and video frames`);
-    if (process.env.OCTALAICANVAS_VISUAL_CAPTURE === "1") {
+    if (process.env.DREAMYO_VISUAL_CAPTURE === "1") {
         const screenshotPath = testInfo.outputPath(`agent-immediate-inputs-${testInfo.project.name}.png`);
         await page.screenshot({ path: screenshotPath });
         await testInfo.attach("Agent 即时参数与首尾帧", { path: screenshotPath, contentType: "image/png" });
@@ -573,7 +573,7 @@ test("creative composer renders uploaded images as thumbnails instead of filenam
     await expect(page).toHaveURL(/\/create$/);
     const inputRow = page.getByTestId("creative-composer-input-row");
     const previewSlot = page.getByLabel(`已上传图片 ${fileName}`);
-    const textarea = page.getByRole("textbox", { name: "输入你的创作想法、脚本或画面要求" });
+    const textarea = page.getByRole("textbox", { name: /输入创作要求|输入你的创作想法/ });
     await expect
         .poll(async () => {
             const [previewRect, textareaRect, rowRect] = await Promise.all([
@@ -685,7 +685,7 @@ test("creative conversation keeps successful media rounds copy-only", async ({ p
     expect(groupRect.width).toBeGreaterThanOrEqual(primaryRect.width - 2);
     expect(groupRect.width).toBeLessThanOrEqual(352);
     expect(requestRect.bottom, JSON.stringify({ requestBottom: requestRect.bottom, groupTop: groupRect.top })).toBeLessThanOrEqual(groupRect.top + 1);
-    if (process.env.OCTALAICANVAS_VISUAL_CAPTURE === "1") {
+    if (process.env.DREAMYO_VISUAL_CAPTURE === "1") {
         await page.getByTestId("creative-conversation-scroll").evaluate((element) => element.scrollTo({ top: Math.max(0, element.scrollHeight - element.clientHeight - 230) }));
         await expect(page.locator(".creative-composer")).toHaveAttribute("data-compact", "true");
         const screenshotPath = testInfo.outputPath(`creative-media-single-${testInfo.project.name}.png`);
@@ -733,13 +733,13 @@ test("creative conversation keeps successful media rounds copy-only", async ({ p
     await expect(details).toContainText("高画质");
     await page.keyboard.press("Escape");
 
-    await page.evaluate(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
+    await page.evaluate(() => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expect(round).toBeVisible();
     await expect(round.getByLabel("本轮创作参数")).toContainText("e2e-image-model");
     await expectNoHorizontalOverflow(page, `${testInfo.project.name} creative media round dark`);
-    if (process.env.OCTALAICANVAS_VISUAL_CAPTURE === "1") {
+    if (process.env.DREAMYO_VISUAL_CAPTURE === "1") {
         const screenshotPath = testInfo.outputPath(`creative-media-single-dark-${testInfo.project.name}.png`);
         await round.screenshot({ path: screenshotPath });
         await testInfo.attach("深色单结果创作记录", { path: screenshotPath, contentType: "image/png" });
@@ -791,7 +791,7 @@ test("creative conversation uses the shared switcher only for multiple media res
     else expect(Math.abs(switcherWidth - primaryWidth)).toBeLessThanOrEqual(2);
     await expectNoHorizontalOverflow(page, `${testInfo.project.name} four media results`);
 
-    if (process.env.OCTALAICANVAS_VISUAL_CAPTURE === "1") {
+    if (process.env.DREAMYO_VISUAL_CAPTURE === "1") {
         await page.getByTestId("creative-conversation-scroll").evaluate((element) => element.scrollTo({ top: Math.max(0, element.scrollHeight - element.clientHeight - 230) }));
         const screenshotPath = testInfo.outputPath(`creative-media-four-${testInfo.project.name}.png`);
         await page.screenshot({ path: screenshotPath });
@@ -914,7 +914,7 @@ test("creative video first and last frame controls support upload, removal and r
     await expect(composer.getByText(lastFileName, { exact: true })).toHaveCount(0);
     await expectNoHorizontalOverflow(page, `${testInfo.project.name} creative video frames light`);
 
-    await page.evaluate(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
+    await page.evaluate(() => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);
     await selectFirstLastMode();
@@ -985,7 +985,7 @@ test("Agent text assets with emoji remain visible after hydration and refresh", 
     expect(await markdown.evaluate((element) => getComputedStyle(element).fontFamily)).toContain("Segoe UI Emoji");
     await expectNoHorizontalOverflow(page, "Agent emoji article");
 
-    await page.evaluate(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
+    await page.evaluate(() => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expect(page.getByRole("region", { name: "文本产物：夏日新品推文" })).toContainText("今天也要保持好心情 😊❤️🚀");
@@ -1155,7 +1155,7 @@ test("creative workspaces remain usable without horizontal overflow in light and
             await expect(page.getByRole("button", { name: "打开项目 Agent", exact: true })).toBeVisible();
         }
         if (route === canvasRoute) {
-            await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+            await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(245, 248, 255)");
             if ((page.viewportSize()?.width || 0) <= 768) {
                 await page.getByRole("button", { name: "打开 Agent", exact: true }).click();
                 const agentPanel = page.getByLabel("Canvas Agent 对话面板");
@@ -1184,13 +1184,13 @@ test("creative workspaces remain usable without horizontal overflow in light and
     }
 
     await page.addInitScript(() => {
-        localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 }));
+        localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 }));
     });
     await page.goto("/create", { waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expectNoHorizontalOverflow(page, "/create dark");
     await page.goto(canvasRoute, { waitUntil: "domcontentloaded" });
-    await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(9, 11, 16)");
+    await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(6, 19, 38)");
     await expectNoHorizontalOverflow(page, `${canvasRoute} dark`);
     await page.goto(dramaRoute, { waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);

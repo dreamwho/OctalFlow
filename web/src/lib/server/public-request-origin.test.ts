@@ -26,11 +26,11 @@ describe("resolvePublicRequestOrigin", () => {
 
     it("uses forwarded host and protocol only behind a trusted proxy", () => {
         vi.stubEnv("NEXT_PUBLIC_SITE_URL", "http://127.0.0.1:3000");
-        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "1");
+        vi.stubEnv("DREAMYO_TRUSTED_PROXY_HOPS", "1");
         const request = new Request("http://127.0.0.1:3000/api/referrals", {
-            headers: { host: "127.0.0.1:3000", "x-forwarded-host": "octalaicanvas.example.com", "x-forwarded-proto": "https" },
+            headers: { host: "127.0.0.1:3000", "x-forwarded-host": "dreamyo.example.com", "x-forwarded-proto": "https" },
         });
 
-        expect(resolvePublicRequestOrigin(request)).toBe("https://octalaicanvas.example.com");
+        expect(resolvePublicRequestOrigin(request)).toBe("https://dreamyo.example.com");
     });
 });

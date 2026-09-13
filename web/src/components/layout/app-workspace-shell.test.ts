@@ -18,7 +18,7 @@ describe("workspace sidebar", () => {
         expect(shell).toContain("const [sidebarExpanded, setSidebarExpanded] = useState(true)");
         expect(shell).toContain("expanded={sidebarExpanded}");
         expect(sidebar).toContain('expanded ? "w-[156px]" : "w-[60px]"');
-        expect(sidebar).toContain("octaflow-selection-surface");
+        expect(sidebar).toContain("dreamyo-selection-surface");
         expect(sidebar).toContain("hide-scrollbar min-h-0 flex-1 overflow-y-auto");
         expect(sidebar).not.toContain("thin-scrollbar min-h-0 flex-1 overflow-y-auto");
         expect(sidebar).toContain('<CircleHelp className="size-[17px] shrink-0" />');

@@ -27,8 +27,8 @@ FlareSolverrRequestMethod = Callable[[str, bytes, dict[str, str], float], bytes]
 
 DEFAULT_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT = 30
 MAX_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT = 10000
-MAGIC_PROXY_OVERRIDE_KEY = "octalaicanvas_magic_proxy_override"
-PROXY_SELECTION_KEY = "octalaicanvas_proxy_selection"
+MAGIC_PROXY_OVERRIDE_KEY = "dreamyo_magic_proxy_override"
+PROXY_SELECTION_KEY = "dreamyo_proxy_selection"
 PROXY_SELECTION_MODES = {"native", "magic", "chained"}
 PROXY_SELECTION_NATIVE_SOURCES = {"manual", "ipwo"}
 PROXY_NODE_IMAGE_CONCURRENCY_FIELDS = (
@@ -376,6 +376,25 @@ class ProxySettingsStore:
             image_concurrency_limit = resolved.image_concurrency_limit
             image_egress_reserved = resolved.image_egress_reserved
             image_egress_wait_ms = resolved.image_egress_wait_ms
+        elif selection.native_source == "manual":
+            binding_reference = self._generic_binding_reference()
+            if binding_reference:
+                resolved = self._resolve_proxy_reference(
+                    binding_reference,
+                    source="generic",
+                    terminal_when_unresolved=True,
+                    reserve_image_egress=reserve_image_egress,
+                    deadline_monotonic=deadline_monotonic,
+                )
+                selected_proxy, source, terminal = resolved.proxy_url, resolved.source, resolved.terminal
+                egress_key = resolved.egress_key
+                egress_label = resolved.egress_label
+                proxy_group_id = resolved.proxy_group_id
+                proxy_node_id = resolved.proxy_node_id
+                proxy_node_name = resolved.proxy_node_name
+                image_concurrency_limit = resolved.image_concurrency_limit
+                image_egress_reserved = resolved.image_egress_reserved
+                image_egress_wait_ms = resolved.image_egress_wait_ms
 
         account_proxy = _clean((account or {}).get("proxy") if isinstance(account, dict) else "")
         if not selected_proxy and not terminal and account_proxy:
@@ -521,6 +540,20 @@ class ProxySettingsStore:
             reset_session_status_codes=_status_codes_tuple(runtime.get("reset_session_status_codes")),
             clearance=clearance,
         )
+
+    @staticmethod
+    def _generic_binding_reference() -> str:
+        """Provider-level generic egress bound on the admin proxy card (node:<id> / group:<id>)."""
+        try:
+            from services.proxy_management_service import proxy_management_service
+
+            bindings = proxy_management_service.generic_proxy_bindings()
+        except Exception:
+            return ""
+        binding = (bindings.get("bindings") or {}).get("chatgptApi")
+        if isinstance(binding, dict) and binding.get("enabled") is True:
+            return _clean(binding.get("target"))
+        return ""
 
     def get_fallback_proxy_reference(self) -> str:
         selection = self.get_proxy_selection()

@@ -27,7 +27,7 @@ function remakeSkill(id: string, name: string, description: string, genreRules: 
         defaultConfig: { vquality: "720", videoSeconds: 15, remakeMaxSegmentSeconds: VIDEO_REMAKE_MAX_SEGMENT_SECONDS, remakeCompose: true },
         keywords,
         sourceVersion: "1.0.0",
-        license: "OctalFlow Built-in",
+        license: "dreamyo Built-in",
     };
 }
 

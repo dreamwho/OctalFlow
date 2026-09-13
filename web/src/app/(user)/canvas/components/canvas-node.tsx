@@ -7,6 +7,7 @@ import { BriefcaseBusiness, ChevronRight, CircleCheck, Globe2, Image as ImageIco
 import { canvasSelectionFlowColors, canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasNodeData, type Position } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
@@ -33,6 +34,9 @@ const NODE_TITLE_ICON: Partial<Record<CanvasNodeType, typeof Video>> = {
 };
 
 function NodeTitleIcon({ type, size }: { type: CanvasNodeType; size: number }) {
+    if (type === CanvasNodeType.Image || type === CanvasNodeType.Panorama) return <DreamyoIcon name="image" size={size} />;
+    if (type === CanvasNodeType.Video) return <DreamyoIcon name="video" size={size} />;
+    if (type === CanvasNodeType.Audio) return <DreamyoIcon name="audio" size={size} />;
     const Icon = NODE_TITLE_ICON[type];
     return Icon ? <Icon className="shrink-0" style={{ width: size, height: size }} /> : null;
 }
@@ -87,6 +91,7 @@ export type CanvasNodeProps = {
     onToggleBatch?: (nodeId: string) => void;
     onSetBatchPrimary?: (node: CanvasNodeData) => void;
     onRetry?: (node: CanvasNodeData) => void;
+    onRegenerate?: (node: CanvasNodeData) => void;
     onGenerateImage?: (node: CanvasNodeData) => void;
     onOpenPanel?: (node: CanvasNodeData) => void;
     onImageDimensions?: (nodeId: string, naturalWidth: number, naturalHeight: number) => void;
@@ -150,6 +155,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onToggleBatch,
     onSetBatchPrimary,
     onRetry,
+    onRegenerate,
     onGenerateImage,
     onOpenPanel,
     onImageDimensions,
@@ -542,6 +548,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onStartEditing={() => setIsEditingContent(true)}
                         onStopEditing={() => setIsEditingContent(false)}
                         onRetry={onRetry}
+                        onRegenerate={onRegenerate}
                         onGenerateImage={onGenerateImage}
                         onImageDimensions={onImageDimensions}
                         upscaleSourceUrl={upscaleSourceUrl}

@@ -11,7 +11,7 @@ from huggingface_hub import snapshot_download
 
 snapshot_download(
     repo_id="depth-anything/Depth-Anything-V2-Small-hf",
-    revision=os.environ.get("OCTALAICANVAS_VIDEO_DEPTH_MODEL_REVISION", "5426e4f0f36572d16453bbda7a8389317b1bef99"),
-    local_dir=os.environ.get("OCTALAICANVAS_VIDEO_DEPTH_MODEL", str(Path(__file__).resolve().parent / "models" / "depth-anything-v2-small-hf")),
+    revision=os.environ.get("DREAMYO_VIDEO_DEPTH_MODEL_REVISION", "5426e4f0f36572d16453bbda7a8389317b1bef99"),
+    local_dir=os.environ.get("DREAMYO_VIDEO_DEPTH_MODEL", str(Path(__file__).resolve().parent / "models" / "depth-anything-v2-small-hf")),
     allow_patterns=["config.json", "preprocessor_config.json", "model.safetensors", "README.md", "LICENSE"],
 )

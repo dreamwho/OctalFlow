@@ -35,7 +35,7 @@ const EXCLUDED_NAMES = new Set([
   "SingletonSocket",
 ]);
 const PRIVATE_ENV_KEYS = [
-  "OCTALAICANVAS_ENCRYPTION_KEY",
+  "DREAMYO_ENCRYPTION_KEY",
   "GEMINI_TOOLS_OAUTH_CLIENT_ID",
   "GEMINI_TOOLS_OAUTH_CLIENT_SECRET",
   "GEMINI_TOOLS_OAUTH_REDIRECT_URI",
@@ -57,14 +57,14 @@ async function main() {
       "用法：node --env-file=web/.env.local scripts/export-private-migration.mjs --output <新目录> --confirm-offline [--source <测试目录>]",
     );
 
-  const encryptionKey = process.env.OCTALAICANVAS_ENCRYPTION_KEY?.trim() || "";
+  const encryptionKey = process.env.DREAMYO_ENCRYPTION_KEY?.trim() || "";
   if (!encryptionKey)
     throw new Error(
-      "缺少 OCTALAICANVAS_ENCRYPTION_KEY；请使用 node --env-file=web/.env.local 运行",
+      "缺少 DREAMYO_ENCRYPTION_KEY；请使用 node --env-file=web/.env.local 运行",
     );
   if (!isValidEncryptionKey(encryptionKey))
     throw new Error(
-      "OCTALAICANVAS_ENCRYPTION_KEY 必须是 64 位十六进制或 32 字节 Base64",
+      "DREAMYO_ENCRYPTION_KEY 必须是 64 位十六进制或 32 字节 Base64",
     );
 
   const source = path.resolve(options.source || DEFAULT_SOURCE);
@@ -323,7 +323,7 @@ function parseArguments(argumentsList) {
 function buildPrivateEnv(encryptionKey) {
   const lines = [
     "# 仅供本次 FILE -> PostgreSQL 私有数据迁移使用。",
-    `OCTALAICANVAS_ENCRYPTION_KEY=${dotenvLiteral(encryptionKey)}`,
+    `DREAMYO_ENCRYPTION_KEY=${dotenvLiteral(encryptionKey)}`,
   ];
   for (const key of PRIVATE_ENV_KEYS.slice(1)) {
     const value = process.env[key];

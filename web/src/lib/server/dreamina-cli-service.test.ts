@@ -13,9 +13,9 @@ describe("Dreamina CLI service", () => {
     let directory = "";
 
     beforeEach(async () => {
-        directory = await mkdtemp(join(tmpdir(), "octal-dreamina-service-"));
-        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
-        vi.stubEnv("OCTALAICANVAS_DATA_DIR", directory);
+        directory = await mkdtemp(join(tmpdir(), "dreamyo-dreamina-service-"));
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
     });
 
     afterEach(async () => {
@@ -35,7 +35,7 @@ describe("Dreamina CLI service", () => {
     });
 
     it("refreshes only through an injected server runner and persists a safe snapshot", async () => {
-        vi.stubEnv("OCTALAICANVAS_DREAMINA_CLI_PATH", process.execPath);
+        vi.stubEnv("DREAMYO_DREAMINA_CLI_PATH", process.execPath);
         const runner = vi.fn().mockImplementation(async (_executable: string, args: readonly string[]) => {
             if (args[0] === "version") return { stdout: '{"version":"673dd28-dirty","commit":"673dd28"}', stderr: "", exitCode: 0 };
             if (args[0] === "user_credit") return { stdout: '{"total_credit":5401,"user_id":"109589671187480","vip_level":"maestro"}', stderr: "", exitCode: 0 };

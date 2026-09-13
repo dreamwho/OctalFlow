@@ -87,7 +87,7 @@ export function videoRemakeStoryboardFrames(assets: CreativeAsset[]) {
 
 export async function analyzeVideoRemakeSource(asset: CreativeAsset, origin: string, cookie: string, signal?: AbortSignal): Promise<VideoRemakeSourceAnalysis> {
     const local = asset.storageKind === "local" && asset.storageKey ? await readReferenceAsset(asset.storageKey) : null;
-    const workdir = local ? undefined : await mkdtemp(join(tmpdir(), "octaflow-source-analysis-"));
+    const workdir = local ? undefined : await mkdtemp(join(tmpdir(), "dreamyo-source-analysis-"));
     try {
         const sourcePath = local?.filePath || join(workdir!, "source-video");
         if (!local) await downloadSource(asset.serverUrl || asset.remoteUrl || "", sourcePath, origin, cookie, signal);
@@ -116,7 +116,7 @@ export async function analyzeVideoRemakeSource(asset: CreativeAsset, origin: str
 async function extractStoryboardFrames(sourcePath: string, outputDir: string, durationSeconds: number, signal?: AbortSignal) {
     const configured = Number(process.env.VIDEO_REMAKE_STORYBOARD_FRAME_LIMIT);
     const limit = Number.isSafeInteger(configured) && configured >= 2 && configured <= 12 ? configured : 8;
-    const frameDir = await mkdtemp(join(outputDir, "octaflow-frames-"));
+    const frameDir = await mkdtemp(join(outputDir, "dreamyo-frames-"));
     try {
         const interval = Math.max(0.5, durationSeconds / limit);
         await runFfmpeg(["-hide_banner", "-i", sourcePath, "-vf", `fps=1/${interval},scale=640:-2:force_original_aspect_ratio=decrease`, "-frames:v", String(limit), "-q:v", "3", join(frameDir, "frame-%02d.jpg")], { timeoutMs: 3 * 60_000, signal });

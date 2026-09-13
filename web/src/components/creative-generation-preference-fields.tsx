@@ -26,7 +26,7 @@ export function VideoQualityField({ value, options, allowCustom = true, onChange
                     className={cn(
                         "grid min-w-0 grid-cols-[1fr_auto] items-center rounded-lg border px-2 transition",
                         customSelected
-                            ? "octaflow-selection-surface"
+                            ? "dreamyo-selection-surface"
                             : "border-[#dce2e7] bg-white text-[#687481] focus-within:border-[#7da6ba] focus-within:ring-2 focus-within:ring-[#7da6ba]/15 dark:border-[#3e4650] dark:bg-[#181b20] dark:text-[#a6afb9]",
                     )}
                 >
@@ -148,7 +148,7 @@ function OptionButton({ selected, label, ariaLabel, onClick }: { selected: boole
             className={cn(
                 "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
                 selected
-                    ? "octaflow-selection-surface font-semibold"
+                    ? "dreamyo-selection-surface font-semibold"
                     : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
             )}
             onClick={onClick}

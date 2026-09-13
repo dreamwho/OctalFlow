@@ -49,12 +49,12 @@ export default function CanvasPage() {
 
     if (!mounted) return <CanvasRefreshShell />;
 
-    return <OctalaicanvasCanvasPage />;
+    return <DreamyoCanvasPage />;
 }
 
 import { useCanvasPageController } from "./use-canvas-page-controller";
 
-function OctalaicanvasCanvasPage() {
+function DreamyoCanvasPage() {
     const [nodeCreatePosition, setNodeCreatePosition] = useState<Position | null>(null);
     const [interactionMode, setInteractionMode] = useState<CanvasInteractionMode>("pan");
     const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
@@ -486,7 +486,7 @@ function OctalaicanvasCanvasPage() {
         [depthSourceNodeIds, message, nodes, nodesRef, setConnections, setNodes, setSelectedConnectionId, setSelectedNodeIds],
     );
     const retryCanvasNode = useCallback(
-        (node: (typeof nodes)[number]) => {
+        (node: (typeof nodes)[number], options?: { forceNew?: boolean }) => {
             if (node.metadata?.derivedVideoOperation === "depth" || (node.title === "深度提取" && node.metadata?.status === NODE_STATUS_ERROR)) {
                 const sourceNodeId = node.metadata?.derivedFromNodeId || connectionsRef.current.find((connection) => connection.toNodeId === node.id)?.fromNodeId;
                 const sourceNode = nodesRef.current.find((item) => item.id === sourceNodeId);
@@ -494,7 +494,7 @@ function OctalaicanvasCanvasPage() {
                 void extractVideoDepth(sourceNode, node);
                 return;
             }
-            void handleRetryNode(node);
+            void handleRetryNode(node, options);
         },
         [connectionsRef, extractVideoDepth, handleRetryNode, message, nodesRef],
     );
@@ -663,6 +663,7 @@ function OctalaicanvasCanvasPage() {
                         onToggleBatch: toggleBatchExpanded,
                         onSetBatchPrimary: setBatchPrimary,
                         onRetry: retryCanvasNode,
+                        onRegenerate: (node) => retryCanvasNode(node, { forceNew: true }),
                         onGenerateImage: generateImageFromTextNode,
                         onOpenPanel: (node) => {
                             setSelectedNodeIds(new Set([node.id]));

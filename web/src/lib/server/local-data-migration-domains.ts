@@ -166,7 +166,7 @@ async function importCreativeRuntime(client: QueryExecutor, file: JsonRecord, fi
         );
     }
     if (events.length) {
-        await client.query("SELECT setval(pg_get_serial_sequence(current_schema() || '.octalaicanvas_creative_run_events', 'id'), (SELECT MAX(id) FROM creative_run_events), true)");
+        await client.query("SELECT setval(pg_get_serial_sequence(current_schema() || '.dreamyo_creative_run_events', 'id'), (SELECT MAX(id) FROM creative_run_events), true)");
     }
 
     return { creativeConversations: conversations.length, creativeMessages: messages.length, creativeAssets: assets.length, creativeRunEvents: events.length };

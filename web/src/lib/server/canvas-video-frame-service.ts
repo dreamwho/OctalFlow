@@ -42,7 +42,7 @@ export function extractCanvasVideoFrames(input: ExtractCanvasVideoFramesInput): 
 async function extractCanvasVideoFramesOnce(input: ExtractCanvasVideoFramesInput): Promise<CanvasVideoFrameResult> {
     const source = await authorizeCanvasVideoSource(input);
 
-    const workdir = await mkdtemp(join(tmpdir(), "octalaicanvas-video-frame-"));
+    const workdir = await mkdtemp(join(tmpdir(), "dreamyo-video-frame-"));
     try {
         const sourcePath = await materializeCanvasVideoSource(source, workdir);
         const probe = await probeCanvasVideoSource(sourcePath);

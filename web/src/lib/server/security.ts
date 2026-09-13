@@ -40,11 +40,11 @@ const publicMediaResourceRateLimit: RateLimitConfig = { maxRequests: 2400, windo
 const publicMediaIpRateLimit: RateLimitConfig = { maxRequests: 240, windowMs: 60 * 1000 };
 
 const globalSecurityStore = globalThis as typeof globalThis & {
-    __octalaicanvasProRateLimits?: Map<string, { count: number; resetAt: number }>;
-    __octalaicanvasProRateLimitCleanupAt?: number;
+    __dreamyoProRateLimits?: Map<string, { count: number; resetAt: number }>;
+    __dreamyoProRateLimitCleanupAt?: number;
 };
 
-const rateLimits = (globalSecurityStore.__octalaicanvasProRateLimits ??= new Map<string, { count: number; resetAt: number }>());
+const rateLimits = (globalSecurityStore.__dreamyoProRateLimits ??= new Map<string, { count: number; resetAt: number }>());
 
 export function getClientIp(request: Request) {
     const trustedProxyHops = getTrustedProxyHops();
@@ -163,9 +163,9 @@ async function checkPostgresRateLimit(key: string, config: RateLimitConfig) {
 }
 
 async function cleanupExpiredPostgresRateLimits(now: number) {
-    const lastCleanupAt = globalSecurityStore.__octalaicanvasProRateLimitCleanupAt || 0;
+    const lastCleanupAt = globalSecurityStore.__dreamyoProRateLimitCleanupAt || 0;
     if (now - lastCleanupAt < 5 * 60_000) return;
-    globalSecurityStore.__octalaicanvasProRateLimitCleanupAt = now;
+    globalSecurityStore.__dreamyoProRateLimitCleanupAt = now;
     await postgresQuery(
         `DELETE FROM rate_limits
          WHERE ctid IN (

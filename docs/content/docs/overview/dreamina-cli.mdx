@@ -1,6 +1,6 @@
 ---
 title: 即梦 CLI 命令与集成参考
-description: 即梦官方 CLI 的模型矩阵、参数约束、异步任务与 OctalFlow 集成规则
+description: 即梦官方 CLI 的模型矩阵、参数约束、异步任务与 dreamyo 集成规则
 ---
 
 # 即梦 CLI 命令与集成参考
@@ -17,10 +17,10 @@ dreamina query_result --submit_id=<提交 ID> --download_dir=<绝对目录>
 ```
 
 - `login` 使用 OAuth Device Flow；无头环境可用 `dreamina login --headless`，再执行 `dreamina login checklogin --device_code=<设备码>`。
-- `user_credit` 返回 `total_credit`、`user_id`、`user_name` 和 `vip_level`。OctalFlow 只在管理员页展示脱敏用户 ID。
-- 八个生成命令均为异步提交。OctalFlow 固定传入 `--poll=0`，保存 `submit_id`，由 Generation Worker 通过 `query_result` 恢复查询并下载结果。
+- `user_credit` 返回 `total_credit`、`user_id`、`user_name` 和 `vip_level`。dreamyo 只在管理员页展示脱敏用户 ID。
+- 八个生成命令均为异步提交。dreamyo 固定传入 `--poll=0`，保存 `submit_id`，由 Generation Worker 通过 `query_result` 恢复查询并下载结果。
 - `list_task` 支持 `--gen_status`、`--gen_task_type`、`--limit`、`--offset`、`--submit_id`，用于查看当前登录账号已保存的任务。
-- 当前 CLI **没有取消生成任务的命令**。`dreamina cancel -h` 返回 `unknown command "cancel" for "dreamina"`；`session delete` 只删除会话容器并把历史移回默认会话，不会取消生成任务。因此 OctalFlow 不向即梦任务声明上游取消能力：用户停止本地等待后，已提交任务仍可能继续消耗积分并在上游完成。
+- 当前 CLI **没有取消生成任务的命令**。`dreamina cancel -h` 返回 `unknown command "cancel" for "dreamina"`；`session delete` 只删除会话容器并把历史移回默认会话，不会取消生成任务。因此 dreamyo 不向即梦任务声明上游取消能力：用户停止本地等待后，已提交任务仍可能继续消耗积分并在上游完成。
 
 ### 登录、退出与无头授权
 
@@ -60,7 +60,7 @@ dreamina query_result --submit_id=<提交 ID> --download_dir=<绝对目录>
 | `fail_reason`          | 明确失败原因；CLI 即使退出码为 0，也可能同时返回 `gen_status=fail`      |
 | `queue_info`           | 上游排队信息，仅用于状态展示，不据此自行增加固定轮询或超时常数          |
 
-`query_result` 的 JSON 与本地已下载文件是最终依据。成功响应可能返回多份媒体，OctalFlow 会全部登记和保留；不能只读取首份结果。
+`query_result` 的 JSON 与本地已下载文件是最终依据。成功响应可能返回多份媒体，dreamyo 会全部登记和保留；不能只读取首份结果。
 
 ### 会话管理
 
@@ -132,7 +132,7 @@ dreamina image2image \
 dreamina image_upscale --image=./input.png --resolution_type=4k --poll=0
 ```
 
-只接受一张本地图片，`resolution_type` 仅允许 2K、4K、8K。4K 和 8K 需要 VIP。OctalFlow 将它作为 Canvas“放大分辨率”的独立引擎，不作为普通生图逻辑模型。
+只接受一张本地图片，`resolution_type` 仅允许 2K、4K、8K。4K 和 8K 需要 VIP。dreamyo 将它作为 Canvas“放大分辨率”的独立引擎，不作为普通生图逻辑模型。
 
 ## 视频模型矩阵
 
@@ -238,7 +238,7 @@ dreamina multimodal2video \
 - Seedance 2.0 系列至少需要一张图片或一个视频；图片最多 9、视频最多 3、音频最多 3，总素材最多 12，单个及总视频/音频时长 2–15 秒。
 - Seedance 2.5 允许纯音频；图片最多 30、视频最多 10、音频最多 10，总素材最多 50，单个及总视频/音频时长 2–30 秒。
 
-## OctalFlow 中的模型启用与参数联动
+## dreamyo 中的模型启用与参数联动
 
 1. 在 `管理员后台 → 上游配置 → 即梦 CLI` 点击“刷新状态”。只有 CLI 已安装且账号授权有效时，才能新启用模型；授权失效时仍可清空已启用模型。
 2. 模型配置页可分别启用 Seedream 3.0/3.1/4.0/4.1/4.5/4.6/4.7/5.0/5.0 Pro，以及 Seedance 1.0 Fast/1.5 Pro/2.0 系列/2.5。
@@ -247,13 +247,13 @@ dreamina multimodal2video \
 5. `image_upscale` 和固定模型的 `multiframe2video` 是操作型能力，必须单独启用；前者只在图片放大弹层显示，后者只在多图视频路径使用。
 6. “调用统计”默认显示累计官方积分消耗，也可切换本周、本月和本年；自然周期按系统时区（默认 `Asia/Shanghai`）计算，同一 `submit_id` 在提交与查询日志中只累计一次。
 
-OctalFlow 使用固定参数构造器和 `execFile` 执行 CLI，不接受浏览器传入子命令或任意 argv，不读取 CLI 的 OAuth 凭据文件，也不把本地路径、提示词、设备码或原始 stdout/stderr 写入管理员日志。
+dreamyo 使用固定参数构造器和 `execFile` 执行 CLI，不接受浏览器传入子命令或任意 argv，不读取 CLI 的 OAuth 凭据文件，也不把本地路径、提示词、设备码或原始 stdout/stderr 写入管理员日志。
 
 ## 积分记录规则
 
 优先级如下：
 
-1. 2026-08-31 的真实 `text2image` 提交响应包含 `credit_count`，实测值与账号余额变化一致。OctalFlow 直接把它记录为官方逐单积分，不再为每条任务调用两次 `user_credit`。
+1. 2026-08-31 的真实 `text2image` 提交响应包含 `credit_count`，实测值与账号余额变化一致。dreamyo 直接把它记录为官方逐单积分，不再为每条任务调用两次 `user_credit`。
 2. `user_credit` 只在管理员点击“刷新状态”时同步账号余额、授权和会员快照；它不是逐单积分来源。
 3. 旧版本留下的余额差观测仍可读取并明确标记来源；新提交若缺少 `credit_count`，日志只标记为不可用，不使用过期余额猜测成本。
 4. CLI 返回已提交但响应无法解析时，任务进入 `needs_review`，禁止自动重试、渠道回退或自动退还平台积分，避免重复扣费。
@@ -278,7 +278,7 @@ OctalFlow 使用固定参数构造器和 `execFile` 执行 CLI，不接受浏览
 | `multiframe2video` | 固定模型 / 720P / 2 秒                | 成功，960×960 / 2.208 秒       | 4              |
 | `multimodal2video` | Seedance 2.0 Fast / 720P / 4:3 / 4 秒 | 高峰期明确拒绝，未创建计费任务 | 无             |
 
-`frames2video` 成功结果还通过 `query_result --download_dir` 下载为 3,024,145 字节的本地 MP4，验证了 OctalFlow 读取本地结果路径的契约。`query_result` 偶尔会暂时返回 `get_history_by_ids failed: ret=1015`；这是只读查询的可重试错误，Generation Worker 会延后再查，不会把已接收任务误判为 `needs_review` 或重复提交。
+`frames2video` 成功结果还通过 `query_result --download_dir` 下载为 3,024,145 字节的本地 MP4，验证了 dreamyo 读取本地结果路径的契约。`query_result` 偶尔会暂时返回 `get_history_by_ids failed: ret=1015`；这是只读查询的可重试错误，Generation Worker 会延后再查，不会把已接收任务误判为 `needs_review` 或重复提交。
 
 本轮没有调用 `seedance2.0_vip`、`seedance2.0fast_vip` 或 `seedance2.5`。VIP 模型只验证了参数目录和权限约束，没有产生真实视频费用。
 

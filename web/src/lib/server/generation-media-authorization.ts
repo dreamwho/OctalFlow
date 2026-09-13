@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import type { GenerationTaskType } from "@/lib/server/generation-task-store";
 
-const HEADER = "x-octalaicanvas-media-authorization";
+const HEADER = "x-dreamyo-media-authorization";
 const TOKEN_VERSION = 1;
 const TOKEN_TTL_MS = 10 * 60_000;
 
@@ -54,11 +54,11 @@ export function readGenerationMediaClaim(request: Request, expected: { userId: s
 }
 
 function signature(payload: string) {
-    return createHmac("sha256", signingSecret()).update(`octalaicanvas-media-v1:${payload}`).digest("base64url");
+    return createHmac("sha256", signingSecret()).update(`dreamyo-media-v1:${payload}`).digest("base64url");
 }
 
 function signingSecret() {
-    const secret = process.env.OCTALAICANVAS_ENCRYPTION_KEY?.trim() || "";
+    const secret = process.env.DREAMYO_ENCRYPTION_KEY?.trim() || "";
     if (secret.length < 32) throw new Error("生成媒体授权需要有效的服务端加密密钥");
     return secret;
 }

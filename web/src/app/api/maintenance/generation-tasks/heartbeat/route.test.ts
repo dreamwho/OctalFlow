@@ -55,7 +55,7 @@ function request(workerId = "") {
         method: "POST",
         headers: {
             authorization: "Bearer test-token",
-            ...(workerId ? { "x-octalaicanvas-worker-id": workerId } : {}),
+            ...(workerId ? { "x-dreamyo-worker-id": workerId } : {}),
         },
     });
 }

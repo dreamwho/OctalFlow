@@ -1,7 +1,7 @@
 "use client";
 
 import { App, Button, Dropdown, Popover, Tooltip } from "antd";
-import { Check, Clapperboard, Clock3, Copy, Download, ExternalLink, FileAudio2, Film, Info, Link2, MoreHorizontal, PanelsTopLeft, RotateCw } from "lucide-react";
+import { Check, Clapperboard, Clock3, Copy, Download, ExternalLink, Film, Info, Link2, MoreHorizontal, PanelsTopLeft, RotateCw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -10,6 +10,7 @@ import { AgentMarkdown } from "@/components/agent/agent-markdown";
 import { AgentMessageActions } from "@/components/agent/agent-message-actions";
 import { formatAgentArtifactText, formatAgentMessageText, friendlyAgentError } from "@/components/agent/agent-message-format";
 import { AgentMediaPreview } from "@/components/agent/agent-media-preview";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { useCreativeAgentModels } from "@/hooks/use-creative-agent-options";
@@ -350,8 +351,8 @@ function CreativeRoundReferenceStrip({ assets }: { assets: CreativeAsset[] }) {
                         title={asset.title}
                     >
                         {asset.type === "image" ? <img src={imagePreviewUrl(url, 192)} alt={asset.title || "参考图"} loading="lazy" className="size-full object-cover" /> : null}
-                        {asset.type === "video" ? <Film className="size-5" aria-hidden /> : null}
-                        {asset.type === "audio" ? <FileAudio2 className="size-5" aria-hidden /> : null}
+                        {asset.type === "video" ? <DreamyoIcon name="video" size={24} /> : null}
+                        {asset.type === "audio" ? <DreamyoIcon name="audio" size={24} /> : null}
                         <span className="absolute left-1 top-1 rounded-sm bg-black/68 px-1 py-0.5 text-[9px] font-medium leading-none text-white">{label}</span>
                     </div>
                 );

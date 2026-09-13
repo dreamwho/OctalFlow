@@ -194,7 +194,7 @@ def test_ipwo_configuration_is_encrypted_in_proxy_repository(runtime_env, tmp_pa
     assert API_URL.encode() not in database_bytes
     with sqlite3.connect(database_path) as connection:
         stored = connection.execute("SELECT data FROM proxy_configuration").fetchone()[0]
-    assert "octalaicanvas-secret:v1:" in stored
+    assert "dreamyo-secret:v1:" in stored
     dispose_database_engine(database_url)
 
 

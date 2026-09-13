@@ -22,7 +22,7 @@ import { createFirstAdmin, createUser } from "./store";
 describe("first administrator creation", () => {
     beforeEach(() => {
         memory.value = undefined;
-        vi.stubEnv("OCTALAICANVAS_INSTALL_TOKEN", TOKEN);
+        vi.stubEnv("DREAMYO_INSTALL_TOKEN", TOKEN);
     });
 
     afterEach(() => {

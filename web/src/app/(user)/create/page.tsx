@@ -663,11 +663,11 @@ export default function CreatePage() {
                         ) : (
                             <div className={studioStyles.landing}>
                                 <div className={studioStyles.landingBackdrop} aria-hidden="true">
-                                    <video src="/brand/octaflow-particle-infinity.mp4" autoPlay muted loop playsInline preload="auto" />
+                                    <video src="/brand/dreamyo/particle-infinity.mp4" autoPlay muted loop playsInline preload="auto" />
                                     <span />
                                 </div>
                                 <div className={studioStyles.landingHero}>
-                                    <div className={studioStyles.landingEyebrow}><span /> OCTAFLOW CREATIVE OS</div>
+                                    <div className={studioStyles.landingEyebrow}><span /> DREAMYO CREATIVE OS</div>
                                     <h1 className={studioStyles.landingTitle}>从灵感，<span>到完整作品</span></h1>
                                     <p className={studioStyles.landingSubtitle}>在 {siteTitle} 描述你的想法，Agent 会完成规划、选模与生成。</p>
                                     <div className={studioStyles.landingComposer}>{composer}</div>

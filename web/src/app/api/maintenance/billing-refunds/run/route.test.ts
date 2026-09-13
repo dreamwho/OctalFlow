@@ -42,5 +42,5 @@ describe("billing refund maintenance route", () => {
 });
 
 function request() {
-    return new Request("http://localhost/api/maintenance/billing-refunds/run", { method: "POST", headers: { "x-octalaicanvas-worker-id": "e2e-worker" } });
+    return new Request("http://localhost/api/maintenance/billing-refunds/run", { method: "POST", headers: { "x-dreamyo-worker-id": "e2e-worker" } });
 }

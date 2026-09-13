@@ -90,7 +90,7 @@ export type BailianAudioRecordInput = Omit<BailianAudioRecord, "id" | "createdAt
 type MiniMaxLocalState = { voices: MiniMaxVoice[]; logs: MiniMaxRequestLog[]; music: MiniMaxMusicRecord[]; audio: BailianAudioRecord[] };
 type MiniMaxChannel = { baseUrl: string; apiKey: string };
 
-const localStatePath = path.join(process.env.OCTALAICANVAS_DATA_DIR?.trim() || path.join(process.cwd(), ".data"), "minimax-audio.json");
+const localStatePath = path.join(process.env.DREAMYO_DATA_DIR?.trim() || path.join(process.cwd(), ".data"), "minimax-audio.json");
 let localStatePromise: Promise<MiniMaxLocalState> | undefined;
 let localWriteQueue = Promise.resolve();
 

@@ -31,8 +31,8 @@ export type ChatGptProxySelectionPatch = Pick<ChatGptProxySelection, "enabled" |
 
 const dispatcher = new Agent({ headersTimeout: GENERATION_TRANSPORT_TIMEOUT_MS, bodyTimeout: GENERATION_TRANSPORT_TIMEOUT_MS });
 export function getChatGptRuntimeConfig() {
-    const value = process.env.OCTALAICANVAS_CHATGPT_API_URL?.trim();
-    const apiKey = process.env.OCTALAICANVAS_CHATGPT_API_KEY?.trim() || "";
+    const value = process.env.DREAMYO_CHATGPT_API_URL?.trim();
+    const apiKey = process.env.DREAMYO_CHATGPT_API_KEY?.trim() || "";
     if (!value || apiKey.length < 32) throw new ChatGptApiError("ChatGPT 运行时未就绪，请运行 services/chatgpt-api/setup.sh 安装环境后重启 pnpm start，或配置内部运行时地址与服务密钥", 503);
     const baseUrl = new URL(value);
     if (!["http:", "https:"].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash || baseUrl.pathname !== "/") throw new ChatGptApiError("ChatGPT 内部运行时地址配置无效", 503);
@@ -52,7 +52,7 @@ export async function chatGptRuntimeRequest(path: string, init: RequestInit = {}
     )
         throw new ChatGptApiError("运行时请求路径无效", 400);
     const headers = new Headers(init.headers);
-    headers.set("x-octal-runtime-key", apiKey);
+    headers.set("x-dreamyo-runtime-key", apiKey);
     headers.set("authorization", `Bearer ${clientKey ?? apiKey}`);
     try {
         return (await undiciFetch(new URL(path, baseUrl), {
@@ -84,7 +84,7 @@ export function chatGptErrorMessage(payload: unknown) {
 }
 
 export function redactChatGptText(value: string) {
-    const key = process.env.OCTALAICANVAS_CHATGPT_API_KEY;
+    const key = process.env.DREAMYO_CHATGPT_API_KEY;
     return (key ? value.split(key).join("[redacted]") : value)
         .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
         .replace(/\b(?:access_token|refresh_token|api_key|password|secret)["']?\s*[=:]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}]+)/gi, "credential=[redacted]")
@@ -150,6 +150,22 @@ export async function getChatGptProxySelection() {
 
 export async function prepareChatGptMagicProxySelection() {
     await syncChatGptMagicProxyAddress();
+}
+
+export async function syncChatGptApiRuntimeProxy(proxyUrl?: string, mode?: "magic" | "generic" | "chained") {
+    if (!proxyUrl) {
+        await chatGptRuntimeJson("/integration/proxy", { method: "PATCH", body: JSON.stringify({ proxyUrl: null }) }).catch(() => undefined);
+        await chatGptRuntimeJson("/integration/proxy-selection", { method: "PATCH", body: JSON.stringify({ enabled: false, mode: "native" }) }).catch(() => undefined);
+        return;
+    }
+    await chatGptRuntimeJson("/integration/proxy", { method: "PATCH", body: JSON.stringify({ proxyUrl }) }).catch(() => undefined);
+    await chatGptRuntimeJson("/integration/proxy-selection", {
+        method: "PATCH",
+        body: JSON.stringify({
+            enabled: true,
+            mode: mode === "generic" ? "native" : "magic",
+        }),
+    }).catch(() => undefined);
 }
 
 export async function resolveGenericProxyNodeUrl(nodeId: string): Promise<string> {
@@ -256,7 +272,7 @@ export async function readChatGptSignedMedia(path: string, url: URL, signal: Abo
     if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new ChatGptApiError("媒体签名无效", 403);
     // A verified result link is delivery, not a new public gateway call.
     // Managed generation must remain downloadable with the public gateway off.
-    const response = await chatGptRuntimeRequest(path, { signal, headers: { "x-octal-internal-dispatch": "1" } });
+    const response = await chatGptRuntimeRequest(path, { signal, headers: { "x-dreamyo-internal-dispatch": "1" } });
     return new Response(limitMediaResponseBody(response.body, MAX_MEDIA_PROXY_BYTES), {
         status: response.status,
         headers: { "content-type": response.headers.get("content-type") || "application/octet-stream", "cache-control": "private, no-store", "x-content-type-options": "nosniff" },

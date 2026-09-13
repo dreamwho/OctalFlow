@@ -1,6 +1,6 @@
-export const APP_STORAGE_NAME = "octalaicanvas";
-export const APP_EXPORT_ID = "octalaicanvas-canvas";
-const APP_STORAGE_PREFIX = "octalaicanvas";
+export const APP_STORAGE_NAME = "dreamyo";
+export const APP_EXPORT_ID = "dreamyo-canvas";
+const APP_STORAGE_PREFIX = "dreamyo";
 
 export function appStorageKey(name: string) {
     return `${APP_STORAGE_PREFIX}:${name}`;

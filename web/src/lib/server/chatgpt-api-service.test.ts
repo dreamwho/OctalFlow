@@ -28,9 +28,9 @@ async function fixture() {
         const chunks: Buffer[] = [];
         request.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
         request.on("end", () => {
-            seen.push({ url: request.url || "", key: String(request.headers["x-octal-runtime-key"]), authorization: request.headers.authorization || "", body: Buffer.concat(chunks).toString("utf8") });
+            seen.push({ url: request.url || "", key: String(request.headers["x-dreamyo-runtime-key"]), authorization: request.headers.authorization || "", body: Buffer.concat(chunks).toString("utf8") });
         if (request.url === "/images/result.png") {
-            if (request.headers["x-octal-internal-dispatch"] !== "1" || request.headers.authorization !== `Bearer ${request.headers["x-octal-runtime-key"]}`) {
+            if (request.headers["x-dreamyo-internal-dispatch"] !== "1" || request.headers.authorization !== `Bearer ${request.headers["x-dreamyo-runtime-key"]}`) {
                 response.writeHead(503);
                 response.end("public gateway disabled");
                 return;
@@ -49,8 +49,8 @@ async function fixture() {
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("fixture unavailable");
-    vi.stubEnv("OCTALAICANVAS_CHATGPT_API_URL", `http://127.0.0.1:${address.port}`);
-    vi.stubEnv("OCTALAICANVAS_CHATGPT_API_KEY", "fixture-private-runtime-key-32-characters");
+    vi.stubEnv("DREAMYO_CHATGPT_API_URL", `http://127.0.0.1:${address.port}`);
+    vi.stubEnv("DREAMYO_CHATGPT_API_KEY", "fixture-private-runtime-key-32-characters");
     return seen;
 }
 describe("ChatGPT internal transport", () => {
@@ -128,8 +128,8 @@ describe("ChatGPT internal transport", () => {
         expect(result).toContain("\n\ndata: [DONE]\n\n");
     });
     it("rejects reference URLs in the administrator private-upstream allowlist when public-only is requested", async () => {
-        vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
-        vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
+        vi.stubEnv("DREAMYO_ALLOW_PRIVATE_UPSTREAMS", "1");
+        vi.stubEnv("DREAMYO_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
         expect(await resolveSafeOutboundTarget("http://127.0.0.1:3000/secret")).not.toBeNull();
         expect(await resolveSafeOutboundTarget("http://127.0.0.1:3000/secret", { publicOnly: true })).toBeNull();
     });

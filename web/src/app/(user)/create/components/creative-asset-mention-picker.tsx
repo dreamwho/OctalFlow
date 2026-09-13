@@ -1,10 +1,11 @@
 "use client";
 
-import { ChevronDown, ChevronUp, FileAudio, FileText, FileVideo, ImageIcon, Play } from "lucide-react";
+import { ChevronDown, ChevronUp, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CreativeAsset } from "@/lib/creative-runtime-contract";
 import { imagePreviewUrl } from "@/lib/media-image-url";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 
 export function CreativeAssetMentionPicker({ assets, selectedAssetIds, onSelect }: { assets: CreativeAsset[]; selectedAssetIds: string[]; onSelect: (asset: CreativeAsset) => void }) {
     const [activeType, setActiveType] = useState<"image" | "video">("image");
@@ -94,7 +95,7 @@ export function CreativeAssetMentionPicker({ assets, selectedAssetIds, onSelect 
 
 function TypeTab({ type, count, active, onClick }: { type: "image" | "video"; count: number; active: boolean; onClick: () => void }) {
     const label = type === "image" ? "图片" : "视频";
-    const Icon = type === "image" ? ImageIcon : FileVideo;
+    const icon = type === "image" ? "image" : "video";
     return (
         <button
             type="button"
@@ -106,7 +107,7 @@ function TypeTab({ type, count, active, onClick }: { type: "image" | "video"; co
             onMouseDown={(event) => event.preventDefault()}
             onClick={onClick}
         >
-            <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+            <DreamyoIcon name={icon} size={16} />
             <span>{label}</span>
             <span className="text-[10px] font-normal tabular-nums opacity-55">{count}</span>
         </button>
@@ -118,10 +119,10 @@ function AssetPreview({ asset }: { asset: CreativeAsset }) {
     if (asset.type === "image" && url) return <img src={imagePreviewUrl(url, 240)} alt="" className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />;
     const coverUrl = asset.type === "video" && typeof asset.metadata.coverUrl === "string" ? asset.metadata.coverUrl : "";
     if (asset.type === "video") return <VideoAssetPreview url={url} coverUrl={coverUrl} />;
-    const Icon = asset.type === "audio" ? FileAudio : asset.type === "text" ? FileText : ImageIcon;
+    const icon = asset.type === "audio" ? "audio" : asset.type === "text" ? "document" : "image";
     return (
         <span className="grid size-full place-items-center text-[#66717e] dark:text-[#aab3bf]">
-            <Icon className="size-5" />
+            <DreamyoIcon name={icon} size={24} />
         </span>
     );
 }
@@ -137,7 +138,7 @@ function VideoAssetPreview({ url, coverUrl }: { url?: string; coverUrl: string }
             {showVideo ? <video src={url} muted playsInline preload="metadata" aria-hidden="true" className="size-full bg-black object-cover transition-transform duration-200 group-hover:scale-[1.03]" onError={() => setVideoFailed(true)} /> : null}
             {!showCover && !showVideo ? (
                 <span className="grid size-full place-items-center text-[#66717e] dark:text-[#aab3bf]">
-                    <FileVideo className="size-5" />
+                    <DreamyoIcon name="video" size={24} />
                 </span>
             ) : null}
             {showCover || showVideo ? (

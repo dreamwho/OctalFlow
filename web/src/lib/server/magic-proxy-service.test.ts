@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseDocument } from "yaml";
 
 const PROVIDER_FILE = "/runtime/mihomo/subscription.yaml";
-const PROVIDER_ENDPOINT = "/providers/proxies/OctalFlow-Subscription";
-const GEMINIAI_GROUP = "OctalFlow-GeminiAIStudio";
-const GEMINI_TOOLS_GROUP = "OctalFlow-GeminiTools";
-const CHATGPT_API_GROUP = "OctalFlow-ChatGPTAPI";
+const PROVIDER_ENDPOINT = "/providers/proxies/dreamyo-Subscription";
+const GEMINIAI_GROUP = "dreamyo-GeminiAIStudio";
+const GEMINI_TOOLS_GROUP = "dreamyo-GeminiTools";
+const CHATGPT_API_GROUP = "dreamyo-ChatGPTAPI";
 
 const mocks = vi.hoisted(() => ({
     files: new Map<string, unknown>(),
@@ -42,7 +42,16 @@ vi.mock("@/lib/server/secret-crypto", () => ({
     decryptSecretValue: (value: string) => (value.startsWith("enc:") ? Buffer.from(value.slice(4), "base64url").toString("utf8") : value),
 }));
 
-import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, resolveHopNodeName, updateMagicProxyBinding } from "./magic-proxy-service";
+const chatGptServiceMocks = vi.hoisted(() => ({
+    resolveGenericProxyNodeUrl: vi.fn(async (..._args: unknown[]) => ""),
+    syncChatGptApiRuntimeProxy: vi.fn(async (..._args: unknown[]) => undefined),
+}));
+vi.mock("@/lib/server/chatgpt-api-service", () => ({
+    resolveGenericProxyNodeUrl: (...args: unknown[]) => chatGptServiceMocks.resolveGenericProxyNodeUrl(...(args as [])),
+    syncChatGptApiRuntimeProxy: (...args: unknown[]) => chatGptServiceMocks.syncChatGptApiRuntimeProxy(...(args as [])),
+}));
+
+import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, resolveHopNodeName, testMagicProxyAllNodes, testMagicProxyNodeDelay, updateMagicProxyBinding } from "./magic-proxy-service";
 import { UnsafeOutboundUrlError } from "@/lib/server/safe-outbound-fetch";
 
 const SUBSCRIPTION_URL = "https://subscription.example/clash.yaml?token=private-token";
@@ -77,15 +86,15 @@ describe("magic proxy service", () => {
         });
         mocks.unlink.mockImplementation(async (path: string) => void mocks.providerFiles.delete(path));
         vi.unstubAllEnvs();
-        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CONTROLLER_URL", "http://mihomo-controller.test:9090");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_SECRET", "controller-secret-at-least-thirty-two-characters");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE", PROVIDER_FILE);
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST", "127.0.0.1");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_PORT", "17890");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_PORT", "17891");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL", "http://mihomo-listener.test:17890");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_URL", "http://mihomo-listener.test:17891");
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CONTROLLER_URL", "http://mihomo-controller.test:9090");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_SECRET", "controller-secret-at-least-thirty-two-characters");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_PROVIDER_FILE", PROVIDER_FILE);
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_LISTEN_HOST", "127.0.0.1");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_GEMINIAI_PORT", "17890");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_PORT", "17891");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_GEMINIAI_URL", "http://mihomo-listener.test:17890");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_URL", "http://mihomo-listener.test:17891");
         mocks.safeFetch.mockImplementation(async () => new Response(SUBSCRIPTION_YAML, { status: 200 }));
         mocks.controllerFetch.mockImplementation(async (input: string | URL, init?: RequestInit) => controllerResponse(String(input), init));
         vi.stubGlobal("fetch", mocks.controllerFetch);
@@ -99,7 +108,7 @@ describe("magic proxy service", () => {
     });
 
     it("encrypts settings, atomically refreshes the static file provider, and redacts provider-backed overview status", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST", "0.0.0.0");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_LISTEN_HOST", "0.0.0.0");
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
 
         expect(mocks.safeFetch).toHaveBeenCalledWith(SUBSCRIPTION_URL, expect.objectContaining({ redirect: "follow" }), { allowProxyFakeIpSpace: true });
@@ -187,30 +196,30 @@ describe("magic proxy service", () => {
         await expect(ensureMagicProxyProvider("geminiTools")).resolves.toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/", egress: { mode: "magic", node_name: "Tokyo-01" } });
         await expect(updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" })).rejects.toMatchObject({
             status: 503,
-            message: expect.stringContaining("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT"),
+            message: expect.stringContaining("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT"),
         });
     });
 
     it("fails explicitly instead of PUTing an unavailable ChatGPTAPI group after its enabled runtime config is removed", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
         await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" });
 
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT", "");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL", "");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "");
         mocks.controllerFetch.mockClear();
 
         await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({
             status: 503,
-            message: expect.stringContaining("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT"),
+            message: expect.stringContaining("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT"),
         });
         expect(controllerCalls(`/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}`, "PUT")).toHaveLength(0);
     });
 
     it("returns ChatGPTAPI's dedicated outbound listener URL without changing other provider selections", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
         mocks.controllerFetch.mockClear();
 
@@ -301,7 +310,7 @@ describe("magic proxy service", () => {
     });
 
     it("requires an explicitly ported controller URL before importing a subscription", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_CONTROLLER_URL", "http://mihomo-controller.test");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CONTROLLER_URL", "http://mihomo-controller.test");
 
         await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({ status: 503 });
 
@@ -309,22 +318,22 @@ describe("magic proxy service", () => {
     });
 
     it("requires an absolute subscription.yaml provider file path", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE", "runtime/mihomo/subscription.yaml");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_PROVIDER_FILE", "runtime/mihomo/subscription.yaml");
         await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({ status: 503 });
         expect(mocks.controllerFetch).not.toHaveBeenCalled();
 
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE", "/runtime/mihomo/other.yaml");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_PROVIDER_FILE", "/runtime/mihomo/other.yaml");
         await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({ status: 503 });
         expect(mocks.controllerFetch).not.toHaveBeenCalled();
     });
 
     it("requires a long controller secret and a loopback-or-all listener host", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_SECRET", "too-short");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_SECRET", "too-short");
         await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({ status: 503 });
         expect(mocks.controllerFetch).not.toHaveBeenCalled();
 
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_SECRET", "controller-secret-at-least-thirty-two-characters");
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST", "10.0.0.7");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_SECRET", "controller-secret-at-least-thirty-two-characters");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_LISTEN_HOST", "10.0.0.7");
         await expect(importMagicProxySubscription({ url: SUBSCRIPTION_URL })).rejects.toMatchObject({ status: 503 });
         expect(mocks.controllerFetch).not.toHaveBeenCalled();
     });
@@ -344,7 +353,7 @@ describe("magic proxy service", () => {
     });
 
     it("rejects oversized subscriptions from Content-Length before parsing", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES", "64");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES", "64");
         mocks.safeFetch.mockResolvedValueOnce(
             new Response(SUBSCRIPTION_YAML, {
                 status: 200,
@@ -358,7 +367,7 @@ describe("magic proxy service", () => {
     });
 
     it("rejects oversized local files before writing the provider", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES", "64");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES", "64");
 
         await expect(importMagicProxySubscription({ content: SUBSCRIPTION_YAML })).rejects.toMatchObject({ status: 413 });
 
@@ -367,7 +376,7 @@ describe("magic proxy service", () => {
     });
 
     it("enforces the subscription stream byte limit when Content-Length is absent", async () => {
-        vi.stubEnv("OCTALAICANVAS_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES", "64");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES", "64");
         mocks.safeFetch.mockResolvedValueOnce(
             new Response(
                 new ReadableStream({
@@ -470,6 +479,104 @@ describe("magic proxy service", () => {
         expect(overview.bindings.geminiTools).toEqual({ enabled: true, node: "Tokyo-01" });
     });
 
+    it("keeps a chained GPTAPI exit alive across subscription refreshes and upgrades https landings to tls", async () => {
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        chatGptServiceMocks.resolveGenericProxyNodeUrl.mockResolvedValue("https://landing.private.example:8443");
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+
+        await updateMagicProxyBinding({
+            provider: "chatgptApi",
+            enabled: true,
+            mode: "chained",
+            chained_config: { hop_node: "Tokyo-01", landing_node_id: "fixture-landing" },
+        });
+
+        expect(providerFileConfig()).toMatchObject({
+            proxies: expect.arrayContaining([
+                expect.objectContaining({ name: "Tokyo-01", type: "ss" }),
+                expect.objectContaining({ name: "dreamyo-Chained-Exit", type: "http", server: "landing.private.example", port: 8443, tls: true, "dialer-proxy": "dreamyo-Chained-Hop-ChatGPTAPI" }),
+            ]),
+        });
+        expect(selectionFor(CHATGPT_API_GROUP)).toBe("dreamyo-Chained-Exit");
+
+        mocks.safeFetch.mockResolvedValueOnce(new Response("proxies:\n  - name: Tokyo-01\n    type: ss\n    server: refreshed.private.example\n    port: 443\n    cipher: aes-256-gcm\n    password: node-password\n", { status: 200 }));
+        const refreshed = await importMagicProxySubscription({});
+
+        expect(refreshed.bindings.chatgptApi).toMatchObject({ enabled: true, mode: "chained" });
+        expect(providerFileConfig()).toMatchObject({
+            proxies: expect.arrayContaining([
+                expect.objectContaining({ name: "dreamyo-Chained-Exit", type: "http", server: "landing.private.example", port: 8443, tls: true, "dialer-proxy": "dreamyo-Chained-Hop-ChatGPTAPI" }),
+            ]),
+        });
+        expect(selectionFor(CHATGPT_API_GROUP)).toBe("dreamyo-Chained-Exit");
+        expect(chatGptServiceMocks.resolveGenericProxyNodeUrl).toHaveBeenCalledWith("fixture-landing");
+    });
+
+    it("preserves other providers' chained exits when one provider rewrites its own", async () => {
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        chatGptServiceMocks.resolveGenericProxyNodeUrl.mockResolvedValue("http://landing.private.example:8080");
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+
+        await updateMagicProxyBinding({ provider: "geminiai", enabled: true, mode: "chained", chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-g" } });
+        await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, mode: "chained", chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-c" } });
+
+        expect(providerFileConfig()).toMatchObject({
+            proxies: expect.arrayContaining([
+                expect.objectContaining({ name: "dreamyo-Chained-Exit-geminiai", server: "landing.private.example", port: 8080 }),
+                expect.objectContaining({ name: "dreamyo-Chained-Exit", server: "landing.private.example", port: 8080 }),
+            ]),
+        });
+
+        // 再次触发单 Provider 的链式同步（自愈路径）不得清除另一个 Provider 的出口。
+        await updateMagicProxyBinding({ provider: "geminiai", enabled: true, mode: "chained", chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-g" } });
+
+        const exitNames = (providerFileConfig().proxies as Array<{ name: string }>).map((node) => node.name);
+        expect(exitNames).toContain("dreamyo-Chained-Exit");
+        expect(exitNames).toContain("dreamyo-Chained-Exit-geminiai");
+        expect(selectionFor(CHATGPT_API_GROUP)).toBe("dreamyo-Chained-Exit");
+        expect(selectionFor(GEMINIAI_GROUP)).toBe("dreamyo-Chained-Exit-geminiai");
+    });
+
+    it("tests provider nodes through the group delay API instead of the per-name proxy endpoint", async () => {
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+
+        const single = await testMagicProxyNodeDelay({ node: "Tokyo-01" });
+        expect(single).toEqual({ name: "Tokyo-01", delay: 88 });
+
+        const missing = await testMagicProxyNodeDelay({ node: "Osaka-99" });
+        expect(missing).toEqual({
+            name: "Osaka-99",
+            error: expect.stringContaining("Mihomo 出网正常（DIRECT 42ms）"),
+        });
+
+        const all = await testMagicProxyAllNodes();
+        expect(all.results).toEqual([{ name: "Tokyo-01", delay: 88 }]);
+
+        // 逐节点 /proxies/<name>/delay 对 provider 节点一律 404，不允许再走该端点。
+        expect(mocks.controllerFetch.mock.calls.some(([url, init]) => {
+            const parsed = new URL(String(url));
+            return parsed.pathname.startsWith("/proxies/") && parsed.pathname.endsWith("/delay") && (init as RequestInit | undefined)?.method === "GET";
+        })).toBe(false);
+    });
+
+    it("falls back to the bound magic node when a chained landing cannot be rebuilt instead of leaving a stale exit selected", async () => {
+        chatGptServiceMocks.resolveGenericProxyNodeUrl.mockResolvedValue("http://landing.private.example:8080");
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+
+        await updateMagicProxyBinding({ provider: "geminiTools", enabled: true, mode: "chained", chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-g" } });
+        expect(selectionFor(GEMINI_TOOLS_GROUP)).toBe("dreamyo-Chained-Exit-geminiTools");
+
+        // 落地解析失败（如节点被删）触发订阅刷新：出口从文件移除，分组必须回退到绑定的魔法节点。
+        chatGptServiceMocks.resolveGenericProxyNodeUrl.mockResolvedValue("");
+        mocks.safeFetch.mockResolvedValueOnce(new Response("proxies:\n  - name: Tokyo-01\n    type: ss\n    server: node.private.example\n    port: 443\n    cipher: aes-256-gcm\n    password: node-password\n", { status: 200 }));
+        await importMagicProxySubscription({});
+
+        expect((providerFileConfig().proxies as Array<{ name: string }>).some((node) => node.name === "dreamyo-Chained-Exit-geminiTools")).toBe(false);
+        expect(selectionFor(GEMINI_TOOLS_GROUP)).toBe("DIRECT");
+    });
+
     describe("resolveHopNodeName and cleanNodeName", () => {
         it("strips emojis, regional indicator flags, and special brackets", () => {
             expect(cleanNodeName("🇭🇰 香港 01")).toBe("香港 01");
@@ -515,6 +622,12 @@ function controllerResponse(url: string, init?: RequestInit) {
     if (parsed.pathname === PROVIDER_ENDPOINT && init?.method === "GET") return jsonResponse({ proxies: providerRuntimeNodes() });
     if (parsed.pathname === PROVIDER_ENDPOINT && init?.method === "PUT") return new Response(null, { status: 204 });
     if (parsed.pathname === "/proxies" && parsed.search === "" && init?.method === "GET") return groupsResponse(providerRuntimeNodes().map((node) => node.name));
+    // 组级测速：mihomo 对 provider 节点的 /proxies/<name>/delay 一律 404，只有组测速返回真实延迟。
+    if (parsed.pathname === `/group/${encodeURIComponent(GEMINIAI_GROUP)}/delay` && init?.method === "GET") {
+        const target = parsed.searchParams.get("url") || "";
+        const delays: Record<string, number> = target.includes("google") ? { DIRECT: 60 } : { DIRECT: 42, "Tokyo-01": 88 };
+        return jsonResponse(delays);
+    }
     if (parsed.pathname === `/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}` && init?.method === "PUT" && !chatgptApiRuntimeConfigured()) return new Response(null, { status: 404 });
     return new Response(null, { status: 204 });
 }
@@ -531,7 +644,7 @@ function groupsResponse(nodeNames: string[]) {
 }
 
 function chatgptApiRuntimeConfigured() {
-    return Boolean(process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT && process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL);
+    return Boolean(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT && process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_URL);
 }
 
 function jsonResponse(value: unknown) {

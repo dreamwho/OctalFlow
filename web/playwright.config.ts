@@ -2,11 +2,11 @@ import path from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
-const port = Number(process.env.OCTALAICANVAS_E2E_PORT || 3100);
+const port = Number(process.env.DREAMYO_E2E_PORT || 3100);
 const baseURL = `http://127.0.0.1:${port}`;
-const protocolFixturePort = Number(process.env.OCTALAICANVAS_PROTOCOL_FIXTURE_PORT || 4010);
-const paymentFixturePort = Number(process.env.OCTALAICANVAS_PAYMENT_FIXTURE_PORT || 4020);
-const databaseUrl = process.env.OCTALAICANVAS_E2E_DATABASE_URL?.trim() || "";
+const protocolFixturePort = Number(process.env.DREAMYO_PROTOCOL_FIXTURE_PORT || 4010);
+const paymentFixturePort = Number(process.env.DREAMYO_PAYMENT_FIXTURE_PORT || 4020);
+const databaseUrl = process.env.DREAMYO_E2E_DATABASE_URL?.trim() || "";
 const storageState = path.join(process.cwd(), ".e2e-data", "admin-state.json");
 
 export default defineConfig({
@@ -44,14 +44,14 @@ export default defineConfig({
             url: `http://127.0.0.1:${protocolFixturePort}/health`,
             timeout: 30_000,
             reuseExistingServer: false,
-            env: { ...process.env, OCTALAICANVAS_PROTOCOL_FIXTURE_PORT: String(protocolFixturePort) },
+            env: { ...process.env, DREAMYO_PROTOCOL_FIXTURE_PORT: String(protocolFixturePort) },
         },
         {
             command: "node scripts/payment-fixture-server.mjs",
             url: `http://127.0.0.1:${paymentFixturePort}/health`,
             timeout: 30_000,
             reuseExistingServer: false,
-            env: { ...process.env, OCTALAICANVAS_PAYMENT_FIXTURE_PORT: String(paymentFixturePort) },
+            env: { ...process.env, DREAMYO_PAYMENT_FIXTURE_PORT: String(paymentFixturePort) },
         },
         {
             command: "pnpm run start",
@@ -62,21 +62,23 @@ export default defineConfig({
                 ...process.env,
                 PORT: String(port),
                 NEXT_PUBLIC_SITE_URL: baseURL,
-                OCTALAICANVAS_DATABASE_PROVIDER: databaseUrl ? "postgres" : "file",
-                OCTALAICANVAS_DATA_DIR: path.join(process.cwd(), ".e2e-data"),
-                OCTALAICANVAS_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-                OCTALAICANVAS_INSTALL_TOKEN: "octalaicanvas-e2e-install-token-32chars",
-                OCTALAICANVAS_MAINTENANCE_TOKEN: "octalaicanvas-e2e-maintenance-token-32chars",
-                OCTALAICANVAS_WORKER_TOKEN: "octalaicanvas-e2e-worker-token-separate-32chars",
-                OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS: "1",
-                OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS: "127.0.0.1",
+                DREAMYO_INTERNAL_ORIGIN: baseURL,
+                DREAMYO_WORKER_API_ORIGIN: baseURL,
+                DREAMYO_DATABASE_PROVIDER: databaseUrl ? "postgres" : "file",
+                DREAMYO_DATA_DIR: path.join(process.cwd(), ".e2e-data"),
+                DREAMYO_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                DREAMYO_INSTALL_TOKEN: "dreamyo-e2e-install-token-32chars",
+                DREAMYO_MAINTENANCE_TOKEN: "dreamyo-e2e-maintenance-token-32chars",
+                DREAMYO_WORKER_TOKEN: "dreamyo-e2e-worker-token-separate-32chars",
+                DREAMYO_ALLOW_PRIVATE_UPSTREAMS: "1",
+                DREAMYO_PRIVATE_UPSTREAM_HOSTS: "127.0.0.1",
                 ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
-                OCTALAICANVAS_PAYPLY_API_KEY: "octalaicanvas-e2e-payply-production-key",
-                OCTALAICANVAS_PAYPLY_CHECKOUT_URL: `http://127.0.0.1:${paymentFixturePort}/payply/checkout`,
-                OCTALAICANVAS_PAYPLY_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/query?orderId={{orderId}}&orderNo={{orderNo}}&tradeId={{providerTradeId}}&paymentId={{providerPaymentId}}`,
-                OCTALAICANVAS_PAYPLY_REFUND_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund`,
-                OCTALAICANVAS_PAYPLY_REFUND_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund-query?refundId={{providerRefundId}}`,
-                OCTALAICANVAS_PAYPLY_WEBHOOK_SECRET: "octalaicanvas-e2e-payply-webhook-secret",
+                DREAMYO_PAYPLY_API_KEY: "dreamyo-e2e-payply-production-key",
+                DREAMYO_PAYPLY_CHECKOUT_URL: `http://127.0.0.1:${paymentFixturePort}/payply/checkout`,
+                DREAMYO_PAYPLY_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/query?orderId={{orderId}}&orderNo={{orderNo}}&tradeId={{providerTradeId}}&paymentId={{providerPaymentId}}`,
+                DREAMYO_PAYPLY_REFUND_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund`,
+                DREAMYO_PAYPLY_REFUND_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund-query?refundId={{providerRefundId}}`,
+                DREAMYO_PAYPLY_WEBHOOK_SECRET: "dreamyo-e2e-payply-webhook-secret",
             },
         },
     ],

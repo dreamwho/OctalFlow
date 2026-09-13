@@ -14,6 +14,7 @@ import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textare
 import { CanvasPanoramaViewer } from "./canvas-panorama-viewer";
 import { useCanvasGenerationProgress } from "./use-canvas-generation-progress";
 import { CanvasImageComparison } from "./canvas-image-comparison";
+import { DreamyoIcon, DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 
@@ -35,6 +36,7 @@ export type NodeContentRendererProps = {
     onStopEditing: () => void;
     mentionReferences: CanvasResourceReference[];
     onRetry?: (node: CanvasNodeData) => void;
+    onRegenerate?: (node: CanvasNodeData) => void;
     onGenerateImage?: (node: CanvasNodeData) => void;
     onToggleBatch?: () => void;
     onSetBatchPrimary?: () => void;
@@ -55,8 +57,8 @@ export function NodeContent(props: NodeContentRendererProps) {
     if (transition.completing && transition.key === key && status === "success") return <LoadingContent key={key} theme={props.theme} scale={props.scale} node={props.node} completed onComplete={finish} />;
     if (props.isBatchRoot) return <ImageNodeContent {...props} />;
     if (props.node.metadata?.status === "loading") return <LoadingContent key={key} theme={props.theme} scale={props.scale} node={props.node} />;
-    if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} scale={props.scale} onRetry={props.onRetry} />;
-    if (props.node.metadata?.status === "needs_review") return <ReviewContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
+    if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} scale={props.scale} onRetry={props.onRetry} onRegenerate={props.onRegenerate} />;
+    if (props.node.metadata?.status === "needs_review") return <ReviewContent node={props.node} theme={props.theme} onRetry={props.onRetry} onRegenerate={props.onRegenerate} />;
     if (props.node.metadata?.status === "cancelled") return <CancelledContent theme={props.theme} />;
 
     const Renderer = nodeContentRenderers[props.node.type];
@@ -216,21 +218,25 @@ export function LoadingContent({ theme, scale = 1, node, completed = false, onCo
         <div data-canvas-node-loading role="status" aria-live="polite" aria-label={status} className="relative isolate h-full w-full overflow-hidden" style={{ background: theme.node.fill, color: theme.node.text }}>
             <img src="/generation-smoke.webp" alt="" aria-hidden="true" className={`canvas-node-generation-smoke canvas-node-generation-smoke-fallback${videoFailed ? " is-visible" : ""}`} />
             {!videoFailed ? <video src="/animations/generation-loading-animation.mp4" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" className="canvas-node-generation-video" onError={() => setVideoFailed(true)} /> : null}
-            <span className="pointer-events-none absolute left-4 right-4 top-4 z-10 text-left font-medium" style={{ fontSize: statusFontSize, lineHeight: 1.2, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }} title={title}>
-                {status}
-                {!completed && node?.metadata?.generationStage ? ` · ${node.metadata.generationStage}` : ""}
-                {detail ? <span className="mt-1 block text-[0.85em] font-normal opacity-80">{detail}</span> : null}
+            <span className="pointer-events-none absolute left-4 right-4 top-4 z-10 flex items-start gap-2 text-left font-medium" style={{ fontSize: statusFontSize, lineHeight: 1.2, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }} title={title}>
+                <DreamyoWaitingIcon frame={1} size={Math.max(20, Math.min(32, statusFontSize * 1.8))} label={status} />
+                <span>
+                    {status}
+                    {!completed && node?.metadata?.generationStage ? ` · ${node.metadata.generationStage}` : ""}
+                    {detail ? <span className="mt-1 block text-[0.85em] font-normal opacity-80">{detail}</span> : null}
+                </span>
             </span>
         </div>
     );
 }
 
-export function ErrorContent({ node, theme, onRetry, scale = 1 }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry" | "scale">) {
+export function ErrorContent({ node, theme, onRetry, onRegenerate, scale = 1 }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry" | "onRegenerate" | "scale">) {
     const readableScale = Math.max(0.25, scale);
     const fontSize = Math.max(12, 12 / readableScale);
     const lineHeight = Math.max(20, 20 / readableScale);
     const controlHeight = Math.max(32, 32 / readableScale);
     const errorDetails = node.metadata?.errorDetails || "生成失败";
+    const handleAction = onRegenerate || onRetry;
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden px-5 py-4 text-center">
             <div
@@ -248,37 +254,52 @@ export function ErrorContent({ node, theme, onRetry, scale = 1 }: Pick<NodeConte
                 style={{ background: theme.node.dangerSurface, borderColor: theme.node.dangerBorder, color: theme.node.danger, height: controlHeight, paddingInline: Math.max(12, 12 / readableScale), fontSize }}
                 onClick={(event) => {
                     event.stopPropagation();
-                    onRetry?.(node);
+                    handleAction?.(node);
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
             >
                 <RefreshCw className="size-3.5" />
-                重试
+                再次生成
             </button>
         </div>
     );
 }
 
-export function ReviewContent({ node, theme, onRetry }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry">) {
+export function ReviewContent({ node, theme, onRetry, onRegenerate }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry" | "onRegenerate">) {
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden px-5 py-4 text-center">
             <Clock3 className="size-6 shrink-0" style={{ color: theme.node.warningText }} />
-            <div className="max-h-[55%] max-w-[280px] overflow-y-auto text-xs leading-5" style={{ color: theme.node.text }}>
-                {node.metadata?.errorDetails || "任务创建结果待管理员确认，系统未重复提交。"}
+            <div className="max-h-[50%] max-w-[280px] overflow-y-auto text-xs leading-5" style={{ color: theme.node.text }}>
+                {node.metadata?.errorDetails || "任务创建结果待确认，系统未重复提交。"}
             </div>
-            <button
-                type="button"
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition hover:brightness-95"
-                style={{ background: theme.node.warningSurface, borderColor: theme.node.warningBorder, color: theme.node.warningText }}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    onRetry?.(node);
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-            >
-                <RefreshCw className="size-3.5" />
-                检查状态
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                    type="button"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition hover:brightness-95"
+                    style={{ background: theme.node.warningSurface, borderColor: theme.node.warningBorder, color: theme.node.warningText }}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onRetry?.(node);
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                >
+                    <RefreshCw className="size-3.5" />
+                    检查状态
+                </button>
+                <button
+                    type="button"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition hover:brightness-95"
+                    style={{ background: theme.node.subtleSurface, borderColor: theme.node.subtleBorder, color: theme.node.text }}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        (onRegenerate || onRetry)?.(node);
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                >
+                    <Sparkles className="size-3.5" />
+                    再次生成
+                </button>
+            </div>
         </div>
     );
 }
@@ -431,7 +452,7 @@ export function EmptyImageContent({ theme, isBatchRoot, batchCount, batchExpande
     const content = (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
             <div className="flex size-14 items-center justify-center rounded-2xl border" style={{ background: theme.node.subtleSurface, borderColor: theme.node.subtleBorder, color: theme.node.subtleText }}>
-                <ImageIcon className="size-6 opacity-30" />
+                <DreamyoIcon name="image" size={28} />
             </div>
             <span className="text-[10px] tracking-[0.18em] opacity-50">空图片节点</span>
         </div>
@@ -449,7 +470,7 @@ export function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
     if (!node.metadata?.content)
         return (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
-                <Video className="size-7 opacity-35" />
+                <DreamyoIcon name="video" size={32} />
                 <span className="text-sm">空视频节点</span>
             </div>
         );
@@ -479,7 +500,7 @@ export function AudioNodeContent({ node, theme, onUpload }: NodeContentRendererP
     if (!node.metadata?.content)
         return (
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4" style={{ color: theme.node.placeholder }}>
-                <Music2 className="size-7 opacity-35" />
+                <DreamyoIcon name="audio" size={32} />
                 <span className="text-sm">空音频节点</span>
                 {onUpload ? <button type="button" data-canvas-no-drag className="rounded-full border px-2.5 py-1 text-xs transition hover:brightness-110" style={{ borderColor: theme.node.subtleBorder, background: theme.node.subtleSurface, color: theme.node.text }} onClick={() => onUpload(node)}>上传音频</button> : null}
             </div>

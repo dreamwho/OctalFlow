@@ -6,10 +6,10 @@ import { parseEnv } from "node:util";
 import { restorePrivateFiles, verifyPrivateSnapshot } from "./restore-private-files.mjs";
 
 try {
-    const directory = process.env.OCTALAICANVAS_MIGRATION_DIR || "/migration";
+    const directory = process.env.DREAMYO_MIGRATION_DIR || "/migration";
     const manifest = await verifyPrivateSnapshot(directory);
     const privateEnv = parseEnv(await readFile(path.join(directory, "private.env"), "utf8"));
-    if (!privateEnv.OCTALAICANVAS_ENCRYPTION_KEY || privateEnv.OCTALAICANVAS_ENCRYPTION_KEY !== process.env.OCTALAICANVAS_ENCRYPTION_KEY) throw new Error("迁移必须使用本地原加密密钥，当前部署密钥不一致");
+    if (!privateEnv.DREAMYO_ENCRYPTION_KEY || privateEnv.DREAMYO_ENCRYPTION_KEY !== process.env.DREAMYO_ENCRYPTION_KEY) throw new Error("迁移必须使用本地原加密密钥，当前部署密钥不一致");
     const cli = fileURLToPath(new URL("./local-data-migration.mjs", import.meta.url));
     const args = [cli, "--input", path.join(directory, "data"), "--source-id", manifest.id];
     // The CLI checks target emptiness and transactional receipt before any runtime file is copied.

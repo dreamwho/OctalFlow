@@ -20,8 +20,8 @@ describe("offline Docker package scripts", () => {
         const fixture = createFixture();
         const packageDir = buildPackage(fixture);
 
-        expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("OCTALAICANVAS_DATABASE_MODE=external");
-        expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("OCTALAICANVAS_DOCKER_PLATFORM=linux/amd64");
+        expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DATABASE_MODE=external");
+        expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DOCKER_PLATFORM=linux/amd64");
         expect(readdirSync(path.join(packageDir, "images")).sort()).toEqual(["app.tar", "geminiai.tar", "magic-proxy.tar"]);
         expect(readFileSync(path.join(packageDir, "SHA256SUMS"), "utf8")).toContain("images/app.tar");
         expect(readFileSync(path.join(fixture.root, "scripts", "build-docker-offline-package.sh"), "utf8")).not.toContain("rm -rf");
@@ -64,7 +64,7 @@ describe("offline Docker package scripts", () => {
         const fixture = createFixture();
         const packageDir = buildPackage(fixture);
         const databaseUrl = "postgresql://offline_user:p%40ss$with!punctuation@127.0.0.1:5432/app?application_name=offline&sslmode=disable";
-        const firstEnvironment = { ...fixture.environment, OCTALAICANVAS_DATABASE_URL: databaseUrl };
+        const firstEnvironment = { ...fixture.environment, DREAMYO_DATABASE_URL: databaseUrl };
 
         writeFileSync(fixture.dockerLog, "", "utf8");
         const first = run("bash", ["一键部署.sh"], packageDir, firstEnvironment);
@@ -88,14 +88,14 @@ describe("offline Docker package scripts", () => {
         const databaseUrl = "postgresql://offline_user:password@127.0.0.1:5432/app";
         writeFileSync(path.join(packageDir, ".env"), "PORT=3000\n", "utf8");
 
-        const first = run("bash", ["一键部署.sh"], packageDir, { ...fixture.environment, OCTALAICANVAS_DATABASE_URL: databaseUrl, OCTALAICANVAS_PORT: "8866" });
+        const first = run("bash", ["一键部署.sh"], packageDir, { ...fixture.environment, DREAMYO_DATABASE_URL: databaseUrl, DREAMYO_PORT: "8866" });
         expect(first.status, first.stderr || first.stdout).toBe(0);
         expect(`${first.stdout}${first.stderr}`).toContain("http://服务器IP:8866/install");
 
         const firstEnv = readFileSync(path.join(packageDir, ".env"), "utf8");
         expect(firstEnv).toContain("PORT='8866'");
-        expect(firstEnv).toContain("OCTALAICANVAS_INTERNAL_ORIGIN='http://127.0.0.1:8866'");
-        expect(firstEnv).toContain("OCTALAICANVAS_TRUSTED_PROXY_HOPS='0'");
+        expect(firstEnv).toContain("DREAMYO_INTERNAL_ORIGIN='http://127.0.0.1:8866'");
+        expect(firstEnv).toContain("DREAMYO_TRUSTED_PROXY_HOPS='0'");
 
         const second = run("bash", ["一键部署.sh"], packageDir, fixture.environment);
         expect(second.status, second.stderr || second.stdout).toBe(0);
@@ -113,14 +113,14 @@ describe("offline Docker package scripts", () => {
             expect(source).toContain("database?.healthy");
         }
         expect(externalCompose.services.postgres).toBeUndefined();
-        expect(externalCompose.volumes["octalaicanvas-postgres"]).toBeUndefined();
+        expect(externalCompose.volumes["dreamyo-postgres"]).toBeUndefined();
         expect(externalCompose.services.app.network_mode).toBe("host");
-        expect(externalCompose.services.app.environment.HOSTNAME).toBe("${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}");
+        expect(externalCompose.services.app.environment.HOSTNAME).toBe("${DREAMYO_BIND_ADDRESS:-0.0.0.0}");
         expect(externalCompose.services.app.command).toBeUndefined();
         expect(externalCompose.services.app.environment.PORT).toBe("${PORT:-8866}");
-        expect(externalCompose.services.app.environment.OCTALAICANVAS_INTERNAL_ORIGIN).toBe("http://127.0.0.1:${PORT:-8866}");
-        expect(externalCompose.services["generation-worker"].environment.OCTALAICANVAS_WORKER_API_ORIGIN).toBe("http://127.0.0.1:${PORT:-8866}");
-        expect(externalCompose.services.app.environment.OCTALAICANVAS_TRUSTED_PROXY_HOPS).toBe("${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}");
+        expect(externalCompose.services.app.environment.DREAMYO_INTERNAL_ORIGIN).toBe("http://127.0.0.1:${PORT:-8866}");
+        expect(externalCompose.services["generation-worker"].environment.DREAMYO_WORKER_API_ORIGIN).toBe("http://127.0.0.1:${PORT:-8866}");
+        expect(externalCompose.services.app.environment.DREAMYO_TRUSTED_PROXY_HOPS).toBe("${DREAMYO_TRUSTED_PROXY_HOPS:-0}");
         const healthcheck = externalCompose.services.app.healthcheck.test.join("\n");
         expect(healthcheck).toContain("http://127.0.0.1:${PORT:-8866}/api/health/live");
         expect(healthcheck).toContain("http://127.0.0.1:${PORT:-8866}/api/health/ready");
@@ -132,7 +132,7 @@ describe("offline Docker package scripts", () => {
         const result = run("bash", ["一键部署.sh"], packageDir, {
             ...fixture.environment,
             FAKE_DOCKER_COMPOSE_UP_FAIL: "1",
-            OCTALAICANVAS_DATABASE_URL: "postgresql://offline_user:password@127.0.0.1:5432/app",
+            DREAMYO_DATABASE_URL: "postgresql://offline_user:password@127.0.0.1:5432/app",
         });
 
         expect(result.status).not.toBe(0);
@@ -145,7 +145,7 @@ describe("offline Docker package scripts", () => {
 });
 
 function createFixture() {
-    const root = mkdtempSync(path.join(tmpdir(), "octal-offline-package-"));
+    const root = mkdtempSync(path.join(tmpdir(), "dreamyo-offline-package-"));
     const fakeBin = path.join(root, "fake-bin");
     const dockerLog = path.join(root, "fake-docker.log");
     temporaryRoots.push(root);
@@ -165,7 +165,7 @@ function createFixture() {
         environment: {
             ...process.env,
             FAKE_DOCKER_LOG: dockerLog,
-            OCTALAICANVAS_PACKAGE_DATE: "20990101",
+            DREAMYO_PACKAGE_DATE: "20990101",
             PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
         },
     };
@@ -200,7 +200,7 @@ case "$1" in
         ;;
     inspect)
         case "\${@: -1}" in
-            octalaicanvas-generation-worker) printf 'running\\n' ;;
+            dreamyo-generation-worker) printf 'running\\n' ;;
             *) printf 'healthy\\n' ;;
         esac
         exit 0
@@ -246,7 +246,7 @@ function writeExecutable(file, source) {
 }
 
 function replaceArchiveArchitecture(archive, architecture) {
-    const fixtureDirectory = mkdtempSync(path.join(tmpdir(), "octal-offline-archive-"));
+    const fixtureDirectory = mkdtempSync(path.join(tmpdir(), "dreamyo-offline-archive-"));
     temporaryRoots.push(fixtureDirectory);
     writeFileSync(path.join(fixtureDirectory, "manifest.json"), '[{"Config":"config.json","RepoTags":["fake:offline"],"Layers":[]}]', "utf8");
     writeFileSync(path.join(fixtureDirectory, "config.json"), JSON.stringify({ architecture, os: "linux" }), "utf8");

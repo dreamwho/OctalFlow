@@ -178,8 +178,8 @@ export async function geminiAiHealth() {
 }
 
 function readProviderConfig() {
-    const value = process.env.OCTALAICANVAS_GEMINIAI_URL?.trim() || "";
-    const apiKey = process.env.OCTALAICANVAS_GEMINIAI_API_KEY?.trim() || "";
+    const value = process.env.DREAMYO_GEMINIAI_URL?.trim() || "";
+    const apiKey = process.env.DREAMYO_GEMINIAI_API_KEY?.trim() || "";
     if (!value || !apiKey) return null;
     try {
         const baseUrl = new URL(value);

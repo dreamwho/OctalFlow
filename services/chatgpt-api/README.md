@@ -1,4 +1,4 @@
-# Octal Canvas internal ChatGPT provider
+# dreamyo internal ChatGPT provider
 
 This is a loopback-only, AGPL-3.0-only transplant of the Python runtime from
 ChatGPT2API. It deliberately has no upstream web UI, static-file fallback,
@@ -16,7 +16,7 @@ sh setup.sh
 The supervisor runner is:
 
 ```sh
-services/chatgpt-api/.venv/bin/python services/chatgpt-api/main.py --port "${OCTALAICANVAS_CHATGPT_API_PORT:-8046}"
+services/chatgpt-api/.venv/bin/python services/chatgpt-api/main.py --port "${DREAMYO_CHATGPT_API_PORT:-8046}"
 ```
 
 The process always binds `127.0.0.1`; there is no public-host option.
@@ -25,32 +25,32 @@ Required environment:
 
 | Variable | Meaning |
 | --- | --- |
-| `OCTALAICANVAS_CHATGPT_DATA_DIR` | Absolute, dedicated provider data directory. It is created mode 0700. |
-| `OCTALAICANVAS_CHATGPT_API_KEY` | Mandatory internal runtime key, at least 32 characters. It is mapped to source `CHATGPT2API_AUTH_KEY`. |
-| `OCTALAICANVAS_ENCRYPTION_KEY` | Mandatory AES-256 key: exactly 64 hexadecimal characters or 32-byte Base64. This is the parent application's established secret-key variable. |
+| `DREAMYO_CHATGPT_DATA_DIR` | Absolute, dedicated provider data directory. It is created mode 0700. |
+| `DREAMYO_CHATGPT_API_KEY` | Mandatory internal runtime key, at least 32 characters. It is mapped to source `CHATGPT2API_AUTH_KEY`. |
+| `DREAMYO_ENCRYPTION_KEY` | Mandatory AES-256 key: exactly 64 hexadecimal characters or 32-byte Base64. This is the parent application's established secret-key variable. |
 
 Optional:
 
 | Variable | Meaning |
 | --- | --- |
-| `OCTALAICANVAS_CHATGPT_API_PORT` | Supervisor-provided port; default is 8046. |
-| `OCTALAICANVAS_CHATGPT_PUBLIC_BASE_URL` | Absolute HTTP(S) base for a root-controlled media proxy, with no embedded username/password. Do not point it at the loopback runtime directly. |
+| `DREAMYO_CHATGPT_API_PORT` | Supervisor-provided port; default is 8046. |
+| `DREAMYO_CHATGPT_PUBLIC_BASE_URL` | Absolute HTTP(S) base for a root-controlled media proxy, with no embedded username/password. Do not point it at the loopback runtime directly. |
 
 `DATABASE_URL` is intentionally ignored. This provider always uses
-`$OCTALAICANVAS_CHATGPT_DATA_DIR/chatgpt2api.db`.
+`$DREAMYO_CHATGPT_DATA_DIR/chatgpt2api.db`.
 
 ## Required headers
 
 Every request, including unknown paths, `/v1`, and media, requires:
 
 ```http
-x-octal-runtime-key: <OCTALAICANVAS_CHATGPT_API_KEY>
+x-dreamyo-runtime-key: <DREAMYO_CHATGPT_API_KEY>
 ```
 
 Management calls also use the source master identity:
 
 ```http
-Authorization: Bearer <OCTALAICANVAS_CHATGPT_API_KEY>
+Authorization: Bearer <DREAMYO_CHATGPT_API_KEY>
 ```
 
 External OpenAI-compatible calls retain source semantics and use a source user
@@ -293,13 +293,13 @@ URLs (or request `b64_json`). It must proxy signed `/images/{path}` and
 `/image-thumbnails/{path}` server-side with the runtime header; the bridge
 may also send its master Authorization header. Never expose a
 `127.0.0.1:8046` URL to a browser. If
-`OCTALAICANVAS_CHATGPT_PUBLIC_BASE_URL` is set, it must be a root-controlled
+`DREAMYO_CHATGPT_PUBLIC_BASE_URL` is set, it must be a root-controlled
 media proxy base, not the raw runtime.
 
 ## Persistence and lifecycle guarantees
 
 Account and auth-key payloads are AES-256-GCM encrypted using the compatible
-`octalaicanvas-secret:v1:` format. SQLite's account index holds only a
+`dreamyo-secret:v1:` format. SQLite's account index holds only a
 deterministic HMAC derived from the encryption key; access, refresh, and ID
 tokens stay in encrypted payload data. System settings and source proxy
 configuration are encrypted envelopes too.

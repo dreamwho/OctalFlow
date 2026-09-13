@@ -1,8 +1,8 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 import type { CreativeMessage } from "@/lib/creative-runtime-contract";
 import type { CreativeAgentRun } from "@/services/api/creative";
 
@@ -13,11 +13,15 @@ const LONG_WAIT_MESSAGES = ["主人，久等了，辛苦你再陪我一会儿，
 export function CreativeGenerationWaiting({ run, message }: { run?: CreativeAgentRun; message: Pick<CreativeMessage, "content" | "createdAt"> }) {
     const startedAt = run?.createdAt || message.createdAt;
     const [now, setNow] = useState(() => Date.now());
+    const [frameTick, setFrameTick] = useState(0);
 
     useEffect(() => {
         const update = () => setNow(Date.now());
         update();
-        const timer = window.setInterval(update, 1000);
+        const timer = window.setInterval(() => {
+            update();
+            setFrameTick((value) => value + 1);
+        }, 800);
         return () => window.clearInterval(timer);
     }, [startedAt]);
 
@@ -27,7 +31,7 @@ export function CreativeGenerationWaiting({ run, message }: { run?: CreativeAgen
     return (
         <div data-testid="creative-generation-waiting" className="mb-3 max-w-[520px] py-1 text-[#667085] dark:text-[#a0a9b4]">
             <div className="flex items-start gap-2.5">
-                <Sparkles className="mt-1 size-4 shrink-0 animate-pulse text-primary/75" aria-hidden />
+                <DreamyoWaitingIcon frame={(frameTick % 6) + 1} size={22} className="mt-0.5 motion-safe:animate-pulse" label="生成中" />
                 <div className="min-w-0">
                     <p className="text-sm leading-6 text-[#596474] dark:text-[#b0b8c2]" aria-live="polite">
                         {copy}

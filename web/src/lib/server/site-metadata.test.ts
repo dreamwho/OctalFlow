@@ -5,7 +5,7 @@ import { browserIconHref } from "./site-metadata";
 
 describe("site metadata", () => {
     it("keeps the bundled browser icon on the same origin", () => {
-        expect(browserIconHref(DEFAULT_SITE_SETTINGS)).toBe("/brand/octaflow-icon.png");
+        expect(browserIconHref(DEFAULT_SITE_SETTINGS)).toBe("/brand/dreamyo/mark.png");
     });
 
     it("uses a custom logo when the browser icon is still the bundled default", () => {

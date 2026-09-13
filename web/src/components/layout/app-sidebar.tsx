@@ -47,14 +47,14 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
                                                 "app-sidebar-item group relative flex h-9 cursor-pointer items-center rounded-lg border border-transparent px-2 text-[13px] font-medium transition duration-150",
                                                 expanded ? "justify-start gap-2.5 px-2.5" : "justify-center",
                                                 active
-                                                    ? "is-active octaflow-selection-surface"
+                                                    ? "is-active dreamyo-selection-surface"
                                                     : primary
                                                       ? "text-[#243044] hover:border-cyan-300/20 hover:bg-cyan-50/50 dark:text-[#d4d9df] dark:hover:bg-cyan-300/[.05]"
                                                       : "text-[#526077] hover:border-cyan-300/20 hover:bg-cyan-50/50 hover:text-[#172033] dark:text-[#aeb9c8] dark:hover:bg-cyan-300/[.05] dark:hover:text-[#f3fbff]",
                                             )}
                                             aria-current={active ? "page" : undefined}
                                         >
-                                            <Icon className={cn("size-[17px] shrink-0", active && "text-[var(--octa-selection-accent)]")} />
+                                            <Icon className={cn("size-[17px] shrink-0", active && "text-[var(--dreamyo-selection-accent)]")} />
                                             {expanded ? <span className="min-w-0 truncate">{tool.label}</span> : null}
                                             {active ? <span className="app-sidebar-active-mark absolute right-1 h-4 w-px rounded-full" /> : null}
                                         </Link>
@@ -76,7 +76,7 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
                     className={cn(
                         "app-sidebar-item relative flex min-h-9 cursor-pointer items-center rounded-lg border border-transparent px-2 text-[13px] font-medium text-[#526077] transition duration-150 hover:border-cyan-300/20 hover:bg-cyan-50/50 hover:text-[#172033] dark:text-[#aeb9c8] dark:hover:bg-cyan-300/[.05] dark:hover:text-[#f3fbff]",
                         expanded ? "justify-start gap-2.5 px-2.5" : "justify-center",
-                        helpActive && "is-active octaflow-selection-surface",
+                        helpActive && "is-active dreamyo-selection-surface",
                     )}
                     aria-current={helpActive ? "page" : undefined}
                 >

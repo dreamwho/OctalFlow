@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- [魔法代理/链式代理] 修复链式代理从上线起即无法拨通的致命缺陷：Mihomo 的 `dialer-proxy` 只能解析全局命名空间（顶层代理/代理组），此前出口节点引用 provider 内的订阅节点名作为跳板，真实拨号时报 `proxyName not found`——链式永远失败而配置界面全部显示正常。现改为 bootstrap 预置三个 `dreamyo-Chained-Hop-*` 跳板组（use 共享订阅 provider），出口节点 `dialer-proxy` 指向所属跳板组，链式保存/自愈/订阅刷新时同步把跳板组选中到指定跳板节点。已用真实 Mihomo v1.19.30 + 本地「跳板→带认证落地」两级代理完成端到端 204 验证（含生产 bootstrap）。
+- [魔法代理/链式代理] 连通性测试升级为分步诊断报告：一次组级测速同时获得 跳板节点、链式出口链路、DIRECT 三段真实结果，报告直接指明断点——「DIRECT 不通=容器出网异常」「跳板失败=更换跳板」「跳板正常但链路失败=检查落地凭据/流量/区域或更换落地」，不再只显示笼统的超时；链式链路整体延迟显著高于单节点，Google/ChatGPT 测试超时放宽至 12s/15s。
+- [魔法代理/链式代理] 修复链式出口被移除后分组停留在已删除出口名上的 stale 选择：此前出口因落地解析失败或切换代理方式被移除时，Mihomo 分组仍指向不存在的节点，链式测试与业务请求全部超时且界面显示的生效节点具误导性；现在每次重写 Provider 文件后统一对齐全部分组——出口存在则选中出口，缺失则回退到绑定魔法节点或 DIRECT，恢复路径不再悬空。
+- [魔法代理/测速] 修复单节点与批量测速对订阅节点必然秒失败：Mihomo 的 `/proxies/:name/delay` 只覆盖顶层代理表，file provider 的订阅节点不在其中（一律 404 "Resource not found"，无拨号发生）；节点测速全部改走组级 `/group/:name/delay`（一次返回组内全部节点与 DIRECT 的真实延迟，指定节点 Google 测试同样切换），失败节点用同一响应中的 DIRECT 区分「容器出网异常」与「节点拨号失败」；控制器 401/403 不再被吞成「测速超时」，明确报「鉴权失败，检查 SECRET 一致性」。
+- [魔法代理/链式代理] 修复单 Provider 链式同步会清除其他 Provider 链式出口的回归：每次重写 Provider 文件改为整体重建全部已启用 Provider 的出口（`rebuildChainedExits`，支持本次调用覆盖单个 Provider），三个服务的链式出口不再互相覆盖消失。
+- [魔法代理/订阅导入] 订阅地址返回非 YAML（网页验证/公告/拦截页）时报错明确指出收到的内容类型，并引导使用「YAML / 文本文件导入」上传浏览器取得的配置。
+- [构建] Dreamina CLI 上游更换二进制（2026-09-09 构建 ec1b9fa），Dockerfile 固定校验和同步更新为 sha256:8f0bc9b1…。
+- [魔法代理/诊断] 单节点测速与「测试 Google 连通性（指定节点）」失败时自动对内置 `DIRECT` 做对照测速：DIRECT 也不通时提示检查服务器出网/Docker 网络/防火墙并重启 magic-proxy 容器，DIRECT 正常则提示节点已失效或被墙、请刷新订阅或更换节点，替代原先无法定位的「测速超时或节点不可用」。
+- [GPTAPI/通用代理] 修复通用代理保存后所有上游请求仍直连导致连接超时：出站解析此前从不读取代理卡片保存的 `chatgptApi` 通用代理绑定，且保存流程把 `proxy_selection` 置为禁用；现在 `native/manual` 模式出站优先消费该绑定（`node:`/`group:` 引用，分组按容量轮换，优先级高于账号代理），保存绑定时自动启用 `proxy_selection`。
+- [GPTAPI/链式代理] 修复链式代理两类静默故障：落地节点为 `https://` 时 Mihomo 出口节点按明文 http 构建导致握手超时，现自动启用 `tls` 并默认 443；订阅刷新重写 Provider 文件会丢掉链式出口并使分组回落 DIRECT，现在原地重建已启用 Provider 的链式出口、保持分组选中，运行时发现出口丢失也会自动重建。
+- [GPTAPI/代理管理] 链式「测试 ChatGPT 连通性」超时时自动对跳板节点测速，明确区分「跳板节点不可用」与「跳板可用但落地链路不通」并给出对应处理建议。
+- [GPTAPI/代理管理] 链式代理连通性测试改为全链路「测试 ChatGPT 连通性」：原「测试落地节点」直连 IPWO 落地端口（正是链式架构要规避的阻断路径）导致 signal timed out；新增 Mihomo 控制器按 `dreamyo-ChatGPTAPI` 分组当前生效节点（链式模式即 跳板→落地 dialer-proxy 链）真实访问 `https://chatgpt.com` 的测试（`testChatGptChainAccess`，10 秒超时），与 GeminiAIStudio「测试 Google 连通性」同构；测试反馈显示延迟、当前生效节点与错误详情。
+
+
+- [GPTAPI/代理管理] 修复魔法代理与链式代理启用报「ChatGPTAPI 魔法代理监听未配置」：七套 Compose 拓扑补齐应用容器 `DREAMYO_MAGIC_PROXY_CHATGPT_API_URL/PORT` 环境变量注入（桥接 `http://magic-proxy:17892`、host `http://127.0.0.1:17892`，mihomo bootstrap 第三监听 `dreamyo-ChatGPTAPI` 此前已声明但未接线）；一键部署脚本在启动阶段强制重建无状态 magic-proxy，保证绑定挂载的 bootstrap 内容更新立即生效；Compose 契约校验与文档同步覆盖 17892。
+
+
 - [GPTAPI/链式代理] 修复链式代理保存报「代理选择参数无效」：服务端入参清洗补齐非 native 模式的 `native_source` 默认值，Python 后端 `ProxySelectionPatch` 增加默认值，前端显式注入 `native_source`；
 - [部署/离线镜像] 修复离线一键部署脚本镜像数量校验误判：支持 3 容器架构（app/geminiai/magic-proxy）动态清单核验与镜像更新；
 
@@ -54,7 +71,7 @@
 
 - [Canvas/生图] 图片生成参数按渠道真实能力展示：GPT API（`chatgpt-api` 协议）模型的尺寸选项收敛为上游认定的三档固定尺寸（1024x1024、1024x1536、1536x1024）加智能，隐藏自定义像素输入，历史无效尺寸自动回退智能。生成结果取消落盘前自动重采样，不再放大、缩小或裁切，上游出什么就保存、展示、下载什么；超清放大改为用户显式操作。
 
-- [部署/ChatGPT API] ChatGPT API 内部运行时正式打入主应用镜像并接入离线部署：Dockerfile 新增 `python:3.13-slim` 构建阶段按 `uv.lock` 固定依赖生成 `.venv`，两套离线 Compose 新增 `chatgpt-api` 独立服务（宿主网络绑 127.0.0.1:8046 / bridge 绑 0.0.0.0 并按服务名互访），`main.py` 支持默认不变的 `--host` 参数，部署脚本自动生成 `OCTALAICANVAS_CHATGPT_API_KEY` 并校验长度；容器内已验证服务启动与 `/integration/health` 响应。
+- [部署/ChatGPT API] ChatGPT API 内部运行时正式打入主应用镜像并接入离线部署：Dockerfile 新增 `python:3.13-slim` 构建阶段按 `uv.lock` 固定依赖生成 `.venv`，两套离线 Compose 新增 `chatgpt-api` 独立服务（宿主网络绑 127.0.0.1:8046 / bridge 绑 0.0.0.0 并按服务名互访），`main.py` 支持默认不变的 `--host` 参数，部署脚本自动生成 `DREAMYO_CHATGPT_API_KEY` 并校验长度；容器内已验证服务启动与 `/integration/health` 响应。
 
 - [上游/GeminiTools] Antigravity 内置 OAuth 客户端凭据不再写入源码，改为只从服务端环境变量 `GEMINI_TOOLS_OAUTH_CLIENT_ID` / `GEMINI_TOOLS_OAUTH_CLIENT_SECRET` 读取；未配置时授权入口返回明确错误，配置 `GEMINI_TOOLS_OAUTH_REDIRECT_URI` 时按自定义客户端回调。已有部署更新需在服务器 `.env` 补齐这两个变量。
 
@@ -251,7 +268,7 @@
 
 - [工程] 修复对象存储迁移测试夹具写死 Windows 路径导致 GitHub Linux runner 误判文件不存在的问题，并为质量、主应用镜像和文档镜像工作流增加清晰运行名称与步骤名称。
 - [体验] 版本更新弹窗在 GitHub 私有仓库或网络不可达时继续显示本地版本记录，并明确说明远端暂不可用，不再误报为版本数据失败。
-- [文档] README 首屏改为公开首页截图；补充完整用户端、管理后台、平台能力与部署功能清单，以及仓库目录、关键文件职责、参与贡献指南、OctalFlow 开源 QQ 交流群、赞助二维码和项目致谢；公开文案统一使用“画布”和“OctalFlow”，并移除旧 QQ、爱发电及未确认的 Telegram/X/Instagram 默认入口。
+- [文档] README 首屏改为公开首页截图；补充完整用户端、管理后台、平台能力与部署功能清单，以及仓库目录、关键文件职责、参与贡献指南、dreamyo 开源 QQ 交流群、赞助二维码和项目致谢；公开文案统一使用“画布”和“dreamyo”，并移除旧 QQ、爱发电及未确认的 Telegram/X/Instagram 默认入口。
 - [首发] 发布统一 AI 创作工作台，包含 Agent 对话、图片工作台、视频工作台、画布、短剧生产线、提示词和服务端素材库。
 - [Agent] 支持服务端创作会话、Skill、智能规划、手动逻辑模型、多参考素材、幂等 Run、SSE 恢复、任务重试和简洁生成结果；平台提示词、模型理由和内部复盘不写入生成型对话。
 - [生成] 文本、图片、视频和音频统一通过服务端逻辑模型路由与候选渠道执行，支持能力校验、异步轮询、失败退款、积分实时同步和生成记录；单个任务不会自动重复调用上游创建接口。

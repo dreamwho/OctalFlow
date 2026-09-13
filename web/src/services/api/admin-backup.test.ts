@@ -8,8 +8,8 @@ describe("admin backup API", () => {
     });
 
     it("uses and sanitizes the server backup filename", () => {
-        expect(adminBackupFileName('attachment; filename="octalaicanvas:backup.json"')).toBe("octalaicanvas-backup.json");
-        expect(adminBackupFileName("attachment; filename*=UTF-8''octalaicanvas-%E5%A4%87%E4%BB%BD.json")).toBe("octalaicanvas-备份.json");
+        expect(adminBackupFileName('attachment; filename="dreamyo:backup.json"')).toBe("dreamyo-backup.json");
+        expect(adminBackupFileName("attachment; filename*=UTF-8''dreamyo-%E5%A4%87%E4%BB%BD.json")).toBe("dreamyo-备份.json");
     });
 
     it("downloads the backup through the administrator endpoint", async () => {

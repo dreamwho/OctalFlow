@@ -26,7 +26,7 @@
 
 执行 `services/chatgpt-api/setup.sh` 安装锁定依赖，然后在 `web` 目录执行 `pnpm build && pnpm start`。启动器自动管理已安装的 Python 内部服务，默认仅监听 `127.0.0.1:8046`；内部服务不应直接对公网暴露。
 
-必须保留项目的 `OCTALAICANVAS_ENCRYPTION_KEY`，账号、用户密钥和代理配置在独立数据目录加密保存。应用 PostgreSQL 数据与 Provider 独立 SQLite 数据是两个存储边界，迁移时需同时保存 Provider 数据目录和加密密钥。完整环境参数见根目录 `.env.example` 与 `services/chatgpt-api/README.md`。
+必须保留项目的 `DREAMYO_ENCRYPTION_KEY`，账号、用户密钥和代理配置在独立数据目录加密保存。应用 PostgreSQL 数据与 Provider 独立 SQLite 数据是两个存储边界，迁移时需同时保存 Provider 数据目录和加密密钥。完整环境参数见根目录 `.env.example` 与 `services/chatgpt-api/README.md`。
 
 ChatGPT Magic Proxy 使用独立绑定和运行时配置；现有 Gemini 原生代理行为不因该 override 改变。监听端口、Docker 镜像和部署网络沿现有配置，本轮未重新构建或发布 Docker 镜像。
 
@@ -39,7 +39,7 @@ ChatGPT Magic Proxy 使用独立绑定和运行时配置；现有 Gemini 原生�
 - `chatgpt2api2-main/web-vue/src/api/stats.ts`、`web-vue/src/api/proxy.ts`：原始请求方法和前端 schema。
 - `chatgpt2api2-main/api/system.py`、`contracts/proxy.py`、`api/dashboard_contract.py`、`services/dashboard_view.py`：原始管理员路由、代理契约、统计响应契约和统计组装。
 
-Octal-Canvas 相关文件：
+dreamyo 相关文件：
 
 - `web/src/app/admin/chatgpt-api/components/admin-chatgpt-api-section.tsx`：ChatGPT API 管理 UI，承载账号/模型、网关、代理、日志及当前统计摘要。
 - `web/src/app/api/admin/chatgpt-api/[...path]/route.ts`：Session、`upstream.manage` 权限、统计/代理管理员桥接和脱敏审计。

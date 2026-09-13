@@ -11,9 +11,9 @@ describe("theme scope", () => {
     });
 
     it("uses separate persistence and broadcast namespaces", () => {
-        expect(themeStorageKey("frontend")).toBe("octalaicanvas:theme_store");
-        expect(themeStorageKey("admin")).toBe("octalaicanvas:admin_theme_store");
-        expect(themeBroadcastChannel("frontend")).toBe("octalaicanvas:theme_sync");
-        expect(themeBroadcastChannel("admin")).toBe("octalaicanvas:admin_theme_sync");
+        expect(themeStorageKey("frontend")).toBe("dreamyo:theme_store");
+        expect(themeStorageKey("admin")).toBe("dreamyo:admin_theme_store");
+        expect(themeBroadcastChannel("frontend")).toBe("dreamyo:theme_sync");
+        expect(themeBroadcastChannel("admin")).toBe("dreamyo:admin_theme_sync");
     });
 });

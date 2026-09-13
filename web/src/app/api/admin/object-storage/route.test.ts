@@ -23,7 +23,7 @@ const settings = {
     endpoint: "https://oss.example.com",
     region: "auto",
     bucket: "media",
-    prefix: "octalaicanvas",
+    prefix: "dreamyo",
     forcePathStyle: false,
     hasAccessKeyId: true,
     hasSecretAccessKey: true,

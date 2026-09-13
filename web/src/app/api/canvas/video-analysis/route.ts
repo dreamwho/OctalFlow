@@ -28,7 +28,7 @@ export async function POST(request: Request) {
             cookie: request.headers.get("cookie") || "",
         });
         const response = NextResponse.json({ code: 0, data: { analysisText: result.analysisText, model: result.model }, msg: "视频分析已完成" });
-        if (typeof result.pointsRemaining === "number") response.headers.set("x-octalaicanvas-points-remaining", String(result.pointsRemaining));
+        if (typeof result.pointsRemaining === "number") response.headers.set("x-dreamyo-points-remaining", String(result.pointsRemaining));
         return response;
     } catch (error) {
         const status = error instanceof CanvasVideoOperationError ? error.status : 502;

@@ -1,11 +1,11 @@
 # GeminiAI provider sidecar
 
-This service is the isolated GeminiAI provider for OctalFlow. It is derived
+This service is the isolated GeminiAI provider for dreamyo. It is derived
 from `chrysoljq/aistudio-api`; see [NOTICE.md](NOTICE.md) and
 [LICENSE.upstream](LICENSE.upstream) for retained MIT attribution.
 
-Compose starts it as the internal `geminiai` service. The OctalFlow app uses
-`OCTALAICANVAS_GEMINIAI_URL` and `OCTALAICANVAS_GEMINIAI_API_KEY`; the latter is
+Compose starts it as the internal `geminiai` service. The dreamyo app uses
+`DREAMYO_GEMINIAI_URL` and `DREAMYO_GEMINIAI_API_KEY`; the latter is
 also passed to the sidecar as `AISTUDIO_API_KEY`. Do not expose port 8080 on a
 public host or put this credential in browser code.
 
@@ -19,7 +19,7 @@ and generation routes require `Authorization: Bearer <key>` or `X-API-Key`:
   `/v1/images/edits`
 - `/v1beta/models/{model}:generateContent` and `:streamGenerateContent`
 
-Google account state is persisted only in the `octalaicanvas-geminiai-accounts`
+Google account state is persisted only in the `dreamyo-geminiai-accounts`
 volume at `/data/accounts`. The container starts as root only long enough to
 make that private volume owner-only, then drops to the `geminiai` user. New
 account directories use `0700`; account metadata, registry, and auth files use
@@ -30,7 +30,7 @@ so a running container does not need a first-use browser download.
 For a repository-local production start (`pnpm build && pnpm start`), the web
 supervisor starts this provider on `127.0.0.1:18080` and persists accounts under
 `web/.data/geminiai/accounts`. An explicitly configured
-`OCTALAICANVAS_GEMINIAI_URL` plus `OCTALAICANVAS_GEMINIAI_API_KEY` continues to
+`DREAMYO_GEMINIAI_URL` plus `DREAMYO_GEMINIAI_API_KEY` continues to
 take precedence, so Compose and remote-provider deployments are unchanged.
 
 The imported provider supports text, image generation/editing, and Google

@@ -1,8 +1,9 @@
 "use client";
 
 import { Tabs } from "antd";
-import { FileAudio, Film, Files, Image as ImageIcon, Paperclip } from "lucide-react";
+import { Files, Paperclip } from "lucide-react";
 
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { managedMediaTypeOptions } from "@/lib/media-management-contract";
 
 export function AdminMediaTypeTabs({ value, disabled, onChange }: { value: string; disabled?: boolean; onChange: (value: string) => void }) {
@@ -29,9 +30,9 @@ export function AdminMediaTypeTabs({ value, disabled, onChange }: { value: strin
 }
 
 function MediaTypeIcon({ value }: { value: string }) {
-    if (value === "image") return <ImageIcon className="size-4" />;
-    if (value === "video") return <Film className="size-4" />;
-    if (value === "audio") return <FileAudio className="size-4" />;
+    if (value === "image") return <DreamyoIcon name="image" size={18} />;
+    if (value === "video") return <DreamyoIcon name="video" size={18} />;
+    if (value === "audio") return <DreamyoIcon name="audio" size={18} />;
     if (value === "attachment") return <Paperclip className="size-4" />;
     return <Files className="size-4" />;
 }

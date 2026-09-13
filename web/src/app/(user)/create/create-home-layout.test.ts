@@ -17,7 +17,7 @@ describe("create Agent home layout", () => {
         ]);
 
         expect(page).toContain("从灵感");
-        expect(page).toContain("OCTAFLOW CREATIVE OS");
+        expect(page).toContain("DREAMYO CREATIVE OS");
         expect(page).toContain("create-studio.module.css");
         expect(page).toContain("createAgentDraftFromHash");
         expect(page).toContain("setCreationMode(incomingDraft.mode)");

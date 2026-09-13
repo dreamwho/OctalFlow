@@ -4,7 +4,7 @@ export type { AdminPermission } from "@/lib/admin-permissions";
 import type { AdminPermission } from "@/lib/admin-permissions";
 import type { GlobalAiOpcPresetId } from "@/lib/globalaiopc-catalog";
 import type { RegistrationPolicyConsent } from "@/lib/registration-consent";
-import { OctalAICanvas_QQ_GROUP_URL } from "@/constant/community";
+import { dreamyo_QQ_GROUP_URL } from "@/constant/community";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type SystemChannelProtocol =
@@ -24,7 +24,7 @@ export type SystemChannelProtocol =
     | "minimax-audio"
     | "tencent-tokenhub-music"
     | "aliyun-bailian-audio"
-    | "octalaicanvas-recommended"
+    | "dreamyo-recommended"
     | "globalaiopc"
     | "seedance"
     | "stable-diffusion"
@@ -388,8 +388,8 @@ export const DEFAULT_SITE_SOCIALS: SiteSocialSettings = {
 };
 
 export const DEFAULT_SITE_FRIEND_LINKS: SiteFriendLink[] = [
-    { id: "octalaicanvas-home", label: "OctalFlow", url: "https://www.octalaicanvas.com/", enabled: true },
-    { id: "qq-octalaicanvas-open-source", label: "OctalFlow 开源交流 QQ 群", url: OctalAICanvas_QQ_GROUP_URL, enabled: true },
+    { id: "dreamyo-home", label: "dreamyo", url: "https://www.dreamyo.com/", enabled: true },
+    { id: "qq-dreamyo-open-source", label: "dreamyo 开源交流 QQ 群", url: dreamyo_QQ_GROUP_URL, enabled: true },
     { id: "linux-do", label: "Linux.do", url: "https://linux.do/", enabled: true },
 ];
 

@@ -4,22 +4,22 @@ import { resolve } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const dataDir = resolve(tmpdir(), `octalaicanvas-local-media-${process.pid}-${Date.now()}`);
-const previousDataDir = process.env.OCTALAICANVAS_DATA_DIR;
-const previousProvider = process.env.OCTALAICANVAS_DATABASE_PROVIDER;
+const dataDir = resolve(tmpdir(), `dreamyo-local-media-${process.pid}-${Date.now()}`);
+const previousDataDir = process.env.DREAMYO_DATA_DIR;
+const previousProvider = process.env.DREAMYO_DATABASE_PROVIDER;
 
 describe("local media storage", () => {
     beforeAll(async () => {
-        process.env.OCTALAICANVAS_DATA_DIR = dataDir;
-        process.env.OCTALAICANVAS_DATABASE_PROVIDER = "file";
+        process.env.DREAMYO_DATA_DIR = dataDir;
+        process.env.DREAMYO_DATABASE_PROVIDER = "file";
         vi.resetModules();
     });
 
     afterAll(async () => {
-        if (previousDataDir === undefined) delete process.env.OCTALAICANVAS_DATA_DIR;
-        else process.env.OCTALAICANVAS_DATA_DIR = previousDataDir;
-        if (previousProvider === undefined) delete process.env.OCTALAICANVAS_DATABASE_PROVIDER;
-        else process.env.OCTALAICANVAS_DATABASE_PROVIDER = previousProvider;
+        if (previousDataDir === undefined) delete process.env.DREAMYO_DATA_DIR;
+        else process.env.DREAMYO_DATA_DIR = previousDataDir;
+        if (previousProvider === undefined) delete process.env.DREAMYO_DATABASE_PROVIDER;
+        else process.env.DREAMYO_DATABASE_PROVIDER = previousProvider;
         await rm(dataDir, { recursive: true, force: true });
     });
 

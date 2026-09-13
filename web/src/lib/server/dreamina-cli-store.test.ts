@@ -22,10 +22,10 @@ describe("Dreamina CLI account and request log store", () => {
     let directory = "";
 
     beforeEach(async () => {
-        directory = await mkdtemp(join(tmpdir(), "octal-dreamina-store-"));
-        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
-        vi.stubEnv("OCTALAICANVAS_DATA_DIR", directory);
-        vi.stubEnv("OCTALAICANVAS_TIME_ZONE", "Asia/Shanghai");
+        directory = await mkdtemp(join(tmpdir(), "dreamyo-dreamina-store-"));
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
+        vi.stubEnv("DREAMYO_TIME_ZONE", "Asia/Shanghai");
     });
 
     afterEach(async () => {

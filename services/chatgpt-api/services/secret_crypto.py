@@ -16,8 +16,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from services.internal_runtime import encryption_key_bytes
 
 
-PREFIX = "octalaicanvas-secret:v1:"
-CONFIGURATION_ENVELOPE_KEY = "_octalaicanvas_encrypted_v1"
+PREFIX = "dreamyo-secret:v1:"
+CONFIGURATION_ENVELOPE_KEY = "_dreamyo_encrypted_v1"
 _B64URL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -69,7 +69,7 @@ def decrypt_text(value: str) -> str:
         return plaintext.decode("utf-8")
     except Exception as exc:
         raise SecretCryptoError(
-            "provider secret decryption failed; verify OCTALAICANVAS_ENCRYPTION_KEY"
+            "provider secret decryption failed; verify DREAMYO_ENCRYPTION_KEY"
         ) from exc
 
 
@@ -111,4 +111,4 @@ def account_index_key(access_token: str) -> str:
     digest = hmac.new(
         encryption_key_bytes(), access_token.encode("utf-8"), hashlib.sha256
     ).hexdigest()
-    return f"octalaicanvas-account:v1:{digest}"
+    return f"dreamyo-account:v1:{digest}"

@@ -48,7 +48,7 @@ describe("canvas project file provider", () => {
         await createCanvasProject("user-one", project("legacy", "VOZEB PRO 画布 1"));
         await createCanvasProject("user-one", project("custom", "VOZEB PRO 品牌宣传片"));
 
-        await expect(getCanvasProject("legacy", "user-one")).resolves.toMatchObject({ title: "OctalFlow 画布 1" });
+        await expect(getCanvasProject("legacy", "user-one")).resolves.toMatchObject({ title: "dreamyo 画布 1" });
         await expect(getCanvasProject("custom", "user-one")).resolves.toMatchObject({ title: "VOZEB PRO 品牌宣传片" });
     });
 

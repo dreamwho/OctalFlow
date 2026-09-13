@@ -72,7 +72,7 @@ const sections = [
 export async function generateMetadata(): Promise<Metadata> {
     const site = await getPublicSiteSettings();
     return {
-        title: "隐私政策",
+        title: "隐私政策 | dreamyo",
         description: `了解 ${site.title} 如何处理账号、创作内容、AI 请求、交易和媒体数据，以及你可以行使的选择与权利。`,
         alternates: { canonical: "/privacy" },
     };

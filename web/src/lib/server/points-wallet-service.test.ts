@@ -10,17 +10,17 @@ import type { AuthDatabase, EntitlementPlan, StoredUser } from "@/lib/auth/store
 
 import { consumePoints, creditPermanentPoints, getPointsWalletSnapshot, refundPoints } from "./points-wallet-service";
 
-const previousProvider = process.env.OCTALAICANVAS_DATABASE_PROVIDER;
-const previousDataDir = process.env.OCTALAICANVAS_DATA_DIR;
+const previousProvider = process.env.DREAMYO_DATABASE_PROVIDER;
+const previousDataDir = process.env.DREAMYO_DATA_DIR;
 let dataDir = "";
 
 beforeAll(() => {
-    process.env.OCTALAICANVAS_DATABASE_PROVIDER = "file";
+    process.env.DREAMYO_DATABASE_PROVIDER = "file";
 });
 
 beforeEach(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "octalaicanvas-points-wallet-"));
-    process.env.OCTALAICANVAS_DATA_DIR = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "dreamyo-points-wallet-"));
+    process.env.DREAMYO_DATA_DIR = dataDir;
 });
 
 afterEach(async () => {
@@ -28,10 +28,10 @@ afterEach(async () => {
 });
 
 afterAll(() => {
-    if (previousProvider === undefined) delete process.env.OCTALAICANVAS_DATABASE_PROVIDER;
-    else process.env.OCTALAICANVAS_DATABASE_PROVIDER = previousProvider;
-    if (previousDataDir === undefined) delete process.env.OCTALAICANVAS_DATA_DIR;
-    else process.env.OCTALAICANVAS_DATA_DIR = previousDataDir;
+    if (previousProvider === undefined) delete process.env.DREAMYO_DATABASE_PROVIDER;
+    else process.env.DREAMYO_DATABASE_PROVIDER = previousProvider;
+    if (previousDataDir === undefined) delete process.env.DREAMYO_DATA_DIR;
+    else process.env.DREAMYO_DATA_DIR = previousDataDir;
 });
 
 describe("points wallet service", () => {

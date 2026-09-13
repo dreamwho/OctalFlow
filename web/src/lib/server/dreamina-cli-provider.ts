@@ -36,7 +36,7 @@ export class DreaminaCliSubmissionUncertainError extends DreaminaCliProviderErro
 }
 
 export async function resolveDreaminaCliExecutable() {
-    const configured = process.env.OCTALAICANVAS_DREAMINA_CLI_PATH?.trim();
+    const configured = process.env.DREAMYO_DREAMINA_CLI_PATH?.trim();
     if (!configured) return "dreamina";
     if (!isAbsolute(configured)) throw new DreaminaCliProviderError("即梦 CLI 可执行文件必须使用绝对路径", 500, "not_started");
     let executable = "";
@@ -220,9 +220,9 @@ const nativeRunner: DreaminaCliRunner = async (executable, args, options) => {
 };
 
 async function dreaminaCliTempRoot() {
-    const configured = process.env.OCTALAICANVAS_DREAMINA_CLI_TEMP_ROOT?.trim();
+    const configured = process.env.DREAMYO_DREAMINA_CLI_TEMP_ROOT?.trim();
     if (configured && !isAbsolute(configured)) throw new DreaminaCliProviderError("即梦 CLI 临时目录必须使用绝对路径", 500, "not_started");
-    const root = configured || join(tmpdir(), "octalflow-dreamina-cli");
+    const root = configured || join(tmpdir(), "dreamyo-dreamina-cli");
     await mkdir(/*turbopackIgnore: true*/ root, { recursive: true, mode: 0o700 });
     const details = await lstat(/*turbopackIgnore: true*/ root).catch(() => null);
     if (!details?.isDirectory() || details.isSymbolicLink()) throw new DreaminaCliProviderError("即梦 CLI 临时目录不可用", 500, "not_started");

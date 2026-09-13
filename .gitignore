@@ -62,3 +62,5 @@ services/chatgpt-api/config.json
 
 # 本地任务探测脚本
 .octal-task.*
+.regress-data/
+web/.regress-data/

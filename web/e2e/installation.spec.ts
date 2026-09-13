@@ -12,7 +12,7 @@ test("fresh deployments enter the installation flow", async ({ page }) => {
     await expect(page).toHaveURL(/\/install(?:\?|$)/);
     await expect(page.getByRole("link", { name: /安装向导/ })).toBeVisible();
     await expect(page.getByText("三步完成服务器初始化", { exact: true })).toBeVisible();
-    await expect(page.locator('[style*="/logo.svg"]').first()).toBeVisible();
+    await expect(page.locator('img[src*="/brand/dreamyo/mark.png"]').first()).toBeVisible();
 });
 
 test("public session omits internal configuration fields", async ({ request }) => {
@@ -24,7 +24,7 @@ test("public session omits internal configuration fields", async ({ request }) =
     expect(serialized).not.toContain("advancedConfig");
     expect(serialized).not.toContain("agentSkills");
     expect(serialized).not.toContain('"mail"');
-    expect(serialized).not.toContain("OCTALAICANVAS_");
+    expect(serialized).not.toContain("DREAMYO_");
 });
 
 test("initialization rejects a wrong token and creates the first administrator once", async ({ page, request }) => {

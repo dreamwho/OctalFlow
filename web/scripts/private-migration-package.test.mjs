@@ -66,16 +66,16 @@ describe("private FILE to PostgreSQL migration snapshot", () => {
         }
 
         const privateEnv = await readFile(path.join(fixture.output, "private.env"), "utf8");
-        expect(privateEnv).toContain(`OCTALAICANVAS_ENCRYPTION_KEY='${fixture.encryptionKey}'`);
+        expect(privateEnv).toContain(`DREAMYO_ENCRYPTION_KEY='${fixture.encryptionKey}'`);
         expect(privateEnv).toContain(`GEMINI_TOOLS_OAUTH_CLIENT_SECRET='${fixture.oauthSecret}'`);
         expect(privateEnv).toContain(`GEMINI_TOOLS_OAUTH_CLIENT_ID='${fixture.oauthClientId}'`);
         expect(privateEnv).toContain(`GEMINI_TOOLS_OAUTH_REDIRECT_URI='${fixture.oauthRedirectUri}'`);
-        for (const forbidden of ["PORT", "DATABASE_URL", "OCTALAICANVAS_DATABASE_PROVIDER", "OCTALAICANVAS_GEMINIAI_URL", "OCTALAICANVAS_DATA_DIR", "HTTP_PROXY", "NEXT_PUBLIC_SITE_URL"]) {
+        for (const forbidden of ["PORT", "DATABASE_URL", "DREAMYO_DATABASE_PROVIDER", "DREAMYO_GEMINIAI_URL", "DREAMYO_DATA_DIR", "HTTP_PROXY", "NEXT_PUBLIC_SITE_URL"]) {
             expect(privateEnv).not.toContain(forbidden);
         }
         expect(privateEnv).not.toContain(fixture.publicSiteUrl);
         await expectDeployEnvRoundTrip(path.join(fixture.output, "private.env"), [
-            ["OCTALAICANVAS_ENCRYPTION_KEY", fixture.encryptionKey],
+            ["DREAMYO_ENCRYPTION_KEY", fixture.encryptionKey],
             ["GEMINI_TOOLS_OAUTH_CLIENT_ID", fixture.oauthClientId],
             ["GEMINI_TOOLS_OAUTH_CLIENT_SECRET", fixture.oauthSecret],
             ["GEMINI_TOOLS_OAUTH_REDIRECT_URI", fixture.oauthRedirectUri],
@@ -171,12 +171,12 @@ describe("private FILE to PostgreSQL migration snapshot", () => {
         const fixture = await createFixture();
         const specialSecret = "fixture-oauth-'apostrophe\\literal-$value";
         const base64Key = Buffer.alloc(32, 0x42).toString("base64");
-        const result = await runExport(fixture, { environment: { GEMINI_TOOLS_OAUTH_CLIENT_SECRET: specialSecret, OCTALAICANVAS_ENCRYPTION_KEY: base64Key } });
+        const result = await runExport(fixture, { environment: { GEMINI_TOOLS_OAUTH_CLIENT_SECRET: specialSecret, DREAMYO_ENCRYPTION_KEY: base64Key } });
 
         expect(result.code).toBe(0);
         const privateEnv = path.join(fixture.output, "private.env");
         await expectDeployEnvRoundTrip(privateEnv, [
-            ["OCTALAICANVAS_ENCRYPTION_KEY", base64Key],
+            ["DREAMYO_ENCRYPTION_KEY", base64Key],
             ["GEMINI_TOOLS_OAUTH_CLIENT_SECRET", specialSecret],
         ]);
         expect(await readFile(privateEnv, "utf8")).toContain("\\'");
@@ -184,7 +184,7 @@ describe("private FILE to PostgreSQL migration snapshot", () => {
 
     it("rejects invalid encryption keys and multiline OAuth values before creating a snapshot", async () => {
         const invalidKey = await createFixture();
-        const invalidKeyResult = await runExport(invalidKey, { environment: { OCTALAICANVAS_ENCRYPTION_KEY: "not-a-valid-encryption-key" } });
+        const invalidKeyResult = await runExport(invalidKey, { environment: { DREAMYO_ENCRYPTION_KEY: "not-a-valid-encryption-key" } });
         expect(invalidKeyResult.code).toBe(1);
         expect(invalidKeyResult.stderr).toContain("64 位十六进制或 32 字节 Base64");
         await expect(lstat(invalidKey.output)).rejects.toMatchObject({ code: "ENOENT" });
@@ -198,7 +198,7 @@ describe("private FILE to PostgreSQL migration snapshot", () => {
 });
 
 async function createFixture() {
-    const root = await mkdtemp(path.join(os.tmpdir(), "octal-private-migration-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "dreamyo-private-migration-"));
     temporaryRoots.push(root);
     const source = path.join(root, "source");
     const output = path.join(root, "snapshot");
@@ -245,15 +245,15 @@ async function createFixture() {
     await writeFile(
         environmentFile,
         [
-            `OCTALAICANVAS_ENCRYPTION_KEY='${encryptionKey}'`,
+            `DREAMYO_ENCRYPTION_KEY='${encryptionKey}'`,
             `GEMINI_TOOLS_OAUTH_CLIENT_ID='${oauthClientId}'`,
             `GEMINI_TOOLS_OAUTH_CLIENT_SECRET='${oauthSecret}'`,
             `GEMINI_TOOLS_OAUTH_REDIRECT_URI='${oauthRedirectUri}'`,
             "PORT='3999'",
             "DATABASE_URL='postgresql://fixture:fixture@127.0.0.1:5432/fixture'",
-            "OCTALAICANVAS_DATABASE_PROVIDER='file'",
-            "OCTALAICANVAS_GEMINIAI_URL='http://127.0.0.1:18080'",
-            "OCTALAICANVAS_DATA_DIR='/private/fixture'",
+            "DREAMYO_DATABASE_PROVIDER='file'",
+            "DREAMYO_GEMINIAI_URL='http://127.0.0.1:18080'",
+            "DREAMYO_DATA_DIR='/private/fixture'",
             "HTTP_PROXY='http://127.0.0.1:7890'",
             `NEXT_PUBLIC_SITE_URL='${publicSiteUrl}'`,
             "",

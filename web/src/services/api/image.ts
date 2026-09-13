@@ -101,8 +101,8 @@ export async function createImageGenerationTask(config: AiConfig, prompt: string
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            ...(options?.clientRequestId ? { "X-OCTALAICANVAS-Client-Request-Id": options.clientRequestId } : {}),
-            ...(options?.attemptNo ? { "X-OCTALAICANVAS-Attempt-No": String(options.attemptNo) } : {}),
+            ...(options?.clientRequestId ? { "X-DREAMYO-Client-Request-Id": options.clientRequestId } : {}),
+            ...(options?.attemptNo ? { "X-DREAMYO-Attempt-No": String(options.attemptNo) } : {}),
         },
         body: JSON.stringify({
             kind,
@@ -164,6 +164,17 @@ export async function resumeImageGenerationTask(taskId: string, signal?: AbortSi
     });
     throwIfClientSessionExpired(response);
     if (!response.ok) throw new GenerationTaskRequestError(await readFetchError(response, "检查图片任务失败"), response.status);
+}
+
+export type ImageTaskSnapshot = NonNullable<ImageTaskPayload["task"]>;
+
+export async function getImageGenerationTask(taskId: string, signal?: AbortSignal): Promise<ImageTaskSnapshot> {
+    const response = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}`, { signal });
+    throwIfClientSessionExpired(response);
+    if (!response.ok) throw new GenerationTaskRequestError(await readFetchError(response, "获取图片任务状态失败"), response.status);
+    const payload = (await response.json()) as ImageTaskPayload;
+    if (!payload.task) throw new GenerationTaskRequestError(payload.error || "图片任务不存在", 404);
+    return payload.task;
 }
 
 function taskContext(options?: RequestOptions) {

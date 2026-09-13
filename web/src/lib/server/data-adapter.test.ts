@@ -9,8 +9,8 @@ describe("JSON data adapter", () => {
     let directory = "";
 
     beforeEach(async () => {
-        directory = await mkdtemp(join(tmpdir(), "octalaicanvas-data-adapter-"));
-        vi.stubEnv("OCTALAICANVAS_DATA_DIR", directory);
+        directory = await mkdtemp(join(tmpdir(), "dreamyo-data-adapter-"));
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
     });
 
     afterEach(async () => {

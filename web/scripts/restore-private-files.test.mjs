@@ -10,10 +10,10 @@ afterEach(async () => {
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 async function fixture() {
-    const root = await mkdtemp(path.join(tmpdir(), "octal-private-restore-"));
+    const root = await mkdtemp(path.join(tmpdir(), "dreamyo-private-restore-"));
     roots.push(root);
     const directory = path.join(root, "snapshot");
-    const files = { "private.env": "OCTALAICANVAS_ENCRYPTION_KEY='fixture'", "data/auth.json": "{}", "data/generation-assets/a.png": "image", "geminiai-accounts/account.json": "{}" };
+    const files = { "private.env": "DREAMYO_ENCRYPTION_KEY='fixture'", "data/auth.json": "{}", "data/generation-assets/a.png": "image", "geminiai-accounts/account.json": "{}" };
     const manifest = { version: 1, id: "fixture", files: [] };
     for (const [name, content] of Object.entries(files)) {
         await mkdir(path.dirname(path.join(directory, name)), { recursive: true });

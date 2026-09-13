@@ -66,7 +66,7 @@ import type { VideoTask } from "@/lib/server/video-task-store";
 import { queryVideoTaskUpstream } from "@/lib/server/video-task-runtime";
 import { createProtocolFixtureServer } from "../../../scripts/protocol-fixture-server.mjs";
 
-const INTERNAL_ORIGIN = "http://internal.octalaicanvas.test";
+const INTERNAL_ORIGIN = "http://internal.dreamyo.test";
 const MULTIPLIERS = { imageQuality: { auto: 1, high: 1 }, videoQuality: { "720": 1, "1080": 1 }, videoSeconds: { "5": 1, "8": 1 } };
 const TEXT_PROTOCOLS = protocolCases("text");
 const IMAGE_PROTOCOLS = protocolCases("image");
@@ -79,19 +79,19 @@ let dataDir = "";
 
 describe("active protocols through persisted admin settings and the system proxy", () => {
     beforeEach(async () => {
-        vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
-        vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
-        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
-        vi.stubEnv("OCTALAICANVAS_ENCRYPTION_KEY", "a".repeat(64));
-        dataDir = await mkdtemp(join(tmpdir(), "octalaicanvas-protocol-roundtrip-"));
-        vi.stubEnv("OCTALAICANVAS_DATA_DIR", dataDir);
+        vi.stubEnv("DREAMYO_ALLOW_PRIVATE_UPSTREAMS", "1");
+        vi.stubEnv("DREAMYO_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
+        dataDir = await mkdtemp(join(tmpdir(), "dreamyo-protocol-roundtrip-"));
+        vi.stubEnv("DREAMYO_DATA_DIR", dataDir);
         fixture = createProtocolFixtureServer();
         await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));
         const address = fixture.server.address();
         if (!address || typeof address === "string") throw new Error("Protocol fixture did not bind a TCP port");
         fixtureOrigin = `http://127.0.0.1:${address.port}`;
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", fixtureOrigin);
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "fixture-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", fixtureOrigin);
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "fixture-key");
         mocks.getCurrentUser.mockReset().mockResolvedValue({ id: "proxy-user", role: "admin", status: "active", adminPermissions: ["upstream.manage"], pointsBalance: 100 });
         mocks.consumeUserPoints.mockReset().mockResolvedValue({ cost: 1, remaining: 99, permanentRemaining: 99, dailyRemaining: 0, dailyExpiresAt: "", recordId: "points-record" });
         mocks.refundUserPoints.mockReset();
@@ -131,8 +131,8 @@ describe("active protocols through persisted admin settings and the system proxy
             headers: {
                 "idempotency-key": `text-${definition.id}`,
                 "x-client-request-id": `text-${definition.id}`,
-                "x-octalaicanvas-logical-model": channel.logicalModelId,
-                "x-octalaicanvas-upstream-model": model,
+                "x-dreamyo-logical-model": channel.logicalModelId,
+                "x-dreamyo-upstream-model": model,
             },
         });
 
@@ -198,7 +198,7 @@ describe("active protocols through persisted admin settings and the system proxy
                 "content-type": "application/json",
                 "idempotency-key": `audio-${definition.id}`,
                 "x-client-request-id": `audio-${definition.id}`,
-                "x-octalaicanvas-logical-model": channel.logicalModelId,
+                "x-dreamyo-logical-model": channel.logicalModelId,
             },
             body: JSON.stringify({ model, input: "protocol audio test", voice: "alloy", format: "wav" }),
         });
@@ -324,8 +324,8 @@ async function configureProxyChannel(definition: ChannelProtocolDefinition, capa
     expect(payload.settings.systemChannels[0]).toMatchObject(chatGptManaged ? { apiKey: "", hasApiKey: false } : { apiKey: "", hasApiKey: true });
     const persisted = await readFile(join(dataDir, "auth.json"), "utf8");
     expect(persisted).not.toContain("fixture-key");
-    if (chatGptManaged) expect(persisted).not.toContain("octalaicanvas-secret:v1:");
-    else expect(persisted).toContain("octalaicanvas-secret:v1:");
+    if (chatGptManaged) expect(persisted).not.toContain("dreamyo-secret:v1:");
+    else expect(persisted).toContain("dreamyo-secret:v1:");
     // 渠道保存完成：后续生成请求改用普通用户身份，走真实积分扣费路径（管理员会豁免计费）
     mocks.getCurrentUser.mockResolvedValue({ id: "proxy-user", role: "user", status: "active", adminPermissions: [], pointsBalance: 100 });
     return {
@@ -436,7 +436,7 @@ function expectProxyRequests(channel: ProxyChannel, createPath: string | undefin
     expect(request.headers["idempotency-key"]).toBeTruthy();
     expect(request.headers["x-client-request-id"]).toBeTruthy();
     Object.entries(channel.expectedAuthHeaders).forEach(([key, value]) => expect(request.headers[key.toLowerCase()]).toBe(value));
-    if (channel.config.advancedConfig?.protocol === "chatgpt-api") expect(request.headers["x-octal-internal-dispatch"]).toBe("1");
+    if (channel.config.advancedConfig?.protocol === "chatgpt-api") expect(request.headers["x-dreamyo-internal-dispatch"]).toBe("1");
     expect(requestContainsReference(request)).toBe(referenceRequired);
     if (queryPath && taskId) expect(fixture.requests.some((request) => request.method === "GET" && request.path === upstreamPath(channel.upstreamBaseUrl, queryPath.replace(":model", model).replace(":task_id", taskId)))).toBe(true);
     expect(mocks.consumeUserPoints).toHaveBeenCalled();

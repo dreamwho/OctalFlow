@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { Button } from "antd";
 
 const CHUNK_ERROR_PATTERN = /Loading chunk \d|ChunkLoadError|Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i;
-const AUTO_RELOAD_KEY = "octal-global-error-auto-reload-at";
+const AUTO_RELOAD_KEY = "dreamyo-global-error-auto-reload-at";
 
 function shouldAutoReload(error: unknown) {
     const message = error instanceof Error ? `${error.message}` : "";

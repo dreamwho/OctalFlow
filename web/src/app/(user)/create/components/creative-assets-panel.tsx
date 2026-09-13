@@ -1,10 +1,11 @@
 "use client";
 
 import { Button, Drawer, Dropdown, Grid, Input, Modal, Spin, Tabs, Tooltip } from "antd";
-import { AtSign, ChevronDown, CornerDownLeft, FileVideo, ImageIcon, LibraryBig, ListFilter, Play, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { AtSign, ChevronDown, CornerDownLeft, LibraryBig, ListFilter, Play, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LazyMediaImage } from "@/components/media/lazy-media-image";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import type { CreativeAsset } from "@/lib/creative-runtime-contract";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { listMyPrompts } from "@/services/api/my-prompts";
@@ -185,7 +186,7 @@ export function ConversationAssets({
     onPreview: (preview: PanelPreview) => void;
 }) {
     const [activeType, setActiveType] = useState<"image" | "video">("image");
-    if (!conversationId || !assets.length) return <PanelEmpty icon={<ImageIcon className="size-5" />} text="当前对话还没有资产" />;
+    if (!conversationId || !assets.length) return <PanelEmpty icon={<DreamyoIcon name="image" size={24} />} text="当前对话还没有资产" />;
     const imageAssets = assets.filter((asset) => asset.type === "image");
     const videoAssets = assets.filter((asset) => asset.type === "video");
     const visibleType = activeType === "image" && imageAssets.length ? "image" : activeType === "video" && videoAssets.length ? "video" : imageAssets.length ? "image" : "video";
@@ -356,7 +357,7 @@ export function PromptList({
                     }
                 />
             ) : !collection.items.length ? (
-                <PanelEmpty icon={<Sparkles className="size-5" />} text="暂无可用提示词" />
+                <PanelEmpty icon={<DreamyoIcon name="magic" size={24} />} text="暂无可用提示词" />
             ) : (
                 <>
                     <div className="grid grid-cols-4 gap-1.5" data-testid="creative-prompt-thumbnails">
@@ -374,7 +375,7 @@ export function PromptList({
                                         </button>
                                     ) : (
                                         <span className="grid size-full place-items-center text-[#929ba6] dark:text-[#78828e]" aria-hidden="true">
-                                            <Sparkles className="size-5" />
+                                            <DreamyoIcon name="magic" size={24} />
                                         </span>
                                     )}
                                 </div>
@@ -418,10 +419,10 @@ function AssetPreview({ asset }: { asset: CreativeAsset }) {
     const coverUrl = typeof asset.metadata.coverUrl === "string" ? asset.metadata.coverUrl : "";
     if (asset.type === "video" && coverUrl) return <img src={imagePreviewUrl(coverUrl, 320)} alt="" className="size-full object-cover" loading="lazy" />;
     if (asset.type === "video" && url) return <video src={url} aria-label={asset.title} className="size-full bg-black object-cover" muted playsInline preload="metadata" />;
-    const Icon = asset.type === "video" ? FileVideo : ImageIcon;
+    const icon = asset.type === "video" ? "video" : "image";
     return (
         <span className="grid size-full place-items-center text-[#7b8490] dark:text-[#aab3bf]">
-            <Icon className="size-5" />
+            <DreamyoIcon name={icon} size={24} />
         </span>
     );
 }

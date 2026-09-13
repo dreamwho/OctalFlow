@@ -562,7 +562,7 @@ function pointsIdempotencyKey(task: TextTask, protocol: ResolvedTextProtocol) {
 }
 
 function readPointsRemaining(headers: Headers) {
-    const value = Number(headers.get("x-octalaicanvas-points-remaining"));
+    const value = Number(headers.get("x-dreamyo-points-remaining"));
     return Number.isFinite(value) ? value : undefined;
 }
 

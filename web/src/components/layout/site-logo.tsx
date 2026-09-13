@@ -4,13 +4,23 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-export function SiteLogo({ logoUrl, className }: { logoUrl: string; className?: string }) {
-    const customLogoUrl = logoUrl.trim() && logoUrl !== "/logo.svg" ? logoUrl.trim() : "/brand/octaflow-mark.png";
-    const [failedLogoUrl, setFailedLogoUrl] = useState("");
+const DEFAULT_LIGHT_LOGO = "/brand/dreamyo/mark.png";
+const DEFAULT_DARK_LOGO = "/brand/dreamyo/mark.png";
 
-    if (customLogoUrl && failedLogoUrl !== customLogoUrl) {
-        return <img src={customLogoUrl} alt="" className={cn("shrink-0 object-contain", className)} referrerPolicy="no-referrer" onError={() => setFailedLogoUrl(customLogoUrl)} />;
-    }
+export function SiteLogo({ logoUrl, darkLogoUrl, className }: { logoUrl: string; darkLogoUrl?: string; className?: string }) {
+    const configuredLogoUrl = logoUrl.trim() && logoUrl !== "/logo.svg" ? logoUrl.trim() : "";
+    const lightLogoUrl = configuredLogoUrl || DEFAULT_LIGHT_LOGO;
+    const darkLogoUrlResolved = configuredLogoUrl ? configuredLogoUrl : darkLogoUrl?.trim() || DEFAULT_DARK_LOGO;
+    const [failedLightLogoUrl, setFailedLightLogoUrl] = useState("");
+    const [failedDarkLogoUrl, setFailedDarkLogoUrl] = useState("");
+    const lightSource = failedLightLogoUrl === lightLogoUrl ? DEFAULT_LIGHT_LOGO : lightLogoUrl;
+    const darkSource = failedDarkLogoUrl === darkLogoUrlResolved ? DEFAULT_DARK_LOGO : darkLogoUrlResolved;
+    const imageClass = cn("size-full shrink-0 object-contain", className);
 
-    return <img src="/brand/octaflow-mark.png" alt="" className={cn("shrink-0 object-contain", className)} />;
+    return (
+        <span className={cn("inline-flex shrink-0 items-center justify-center", className)} aria-hidden="true">
+            <img src={lightSource} alt="" className={cn(imageClass, "dark:hidden")} referrerPolicy="no-referrer" onError={() => setFailedLightLogoUrl(lightLogoUrl)} />
+            <img src={darkSource} alt="" className={cn(imageClass, "hidden dark:block")} referrerPolicy="no-referrer" onError={() => setFailedDarkLogoUrl(darkLogoUrlResolved)} />
+        </span>
+    );
 }

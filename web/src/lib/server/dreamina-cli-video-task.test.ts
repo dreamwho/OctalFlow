@@ -83,7 +83,7 @@ describe("Dreamina CLI video task adapter", () => {
 
         const upstream = await createDreaminaCliVideoUpstream({
             userId: "user-one",
-            origin: "https://octalflow.test",
+            origin: "https://dreamyo.test",
             channel: channel("dreamina-seedance-2-0-mini"),
             prompt: "竖版人物短片",
             raw: { size: "9:16", vquality: "720", videoSeconds: 5 },
@@ -101,7 +101,7 @@ describe("Dreamina CLI video task adapter", () => {
 
         const upstream = await createDreaminaCliVideoUpstream({
             userId: "user-one",
-            origin: "https://octalflow.test",
+            origin: "https://dreamyo.test",
             channel: channel("dreamina-seedance-2-0"),
             prompt: "让镜头自然衔接",
             raw: { size: "16:9", vquality: "720", videoSeconds: 5 },
@@ -127,7 +127,7 @@ describe("Dreamina CLI video task adapter", () => {
 
         await createDreaminaCliVideoUpstream({
             userId: "user-one",
-            origin: "https://octalflow.test",
+            origin: "https://dreamyo.test",
             channel: channel("dreamina-seedance-2-0-mini"),
             prompt: "城市夜景",
             raw: { size: "16:9", vquality: "1080", videoSeconds: 60 },
@@ -148,7 +148,7 @@ describe("Dreamina CLI video task adapter", () => {
         await expect(
             createDreaminaCliVideoUpstream({
                 userId: "user-one",
-                origin: "https://octalflow.test",
+                origin: "https://dreamyo.test",
                 channel: channel("dreamina-seedance-2-0"),
                 prompt: "测试",
                 raw: { size: "16:9", vquality: "720", videoSeconds: 5 },
@@ -165,27 +165,27 @@ describe("Dreamina CLI video task adapter", () => {
 
         await createDreaminaCliVideoUpstream({
             userId: "user-one",
-            origin: "https://octalflow.test",
+            origin: "https://dreamyo.test",
             channel: channel("dreamina-seedance-2-0"),
             prompt: "让镜头自然衔接",
             raw: { size: "16:9", vquality: "720", videoSeconds: 5 },
             references: [{ type: "image", url: "/api/generation-log-assets/permanent/2026/09/02/images/source.png", role: "reference" }],
         });
 
-        expect(mocks.download).toHaveBeenCalledWith("/api/generation-log-assets/permanent/2026/09/02/images/source.png", "/controlled/task/000-image.png", expect.objectContaining({ origin: "https://octalflow.test" }));
+        expect(mocks.download).toHaveBeenCalledWith("/api/generation-log-assets/permanent/2026/09/02/images/source.png", "/controlled/task/000-image.png", expect.objectContaining({ origin: "https://dreamyo.test" }));
         expect(mocks.submit).toHaveBeenCalledOnce();
     });
 
     it("uses the signed Worker context only to read an owned generation result during staging", async () => {
         mocks.withTemp.mockImplementation(async (callback: (directory: string) => Promise<unknown>) => callback("/controlled/task"));
-        mocks.workerHeaders.mockReturnValue({ authorization: "Bearer worker-token", "x-octalaicanvas-worker-user-id": "user-one" });
+        mocks.workerHeaders.mockReturnValue({ authorization: "Bearer worker-token", "x-dreamyo-worker-user-id": "user-one" });
         mocks.download.mockResolvedValue({ bytes: 12, mimeType: "image/png" });
         mocks.submit.mockResolvedValue({ submitId: "submit-video" });
 
         await createDreaminaCliVideoUpstream({
             userId: "user-one",
-            origin: "https://octalflow.test",
-            cookie: "octalaicanvas-worker-v1.owned.signature",
+            origin: "https://dreamyo.test",
+            cookie: "dreamyo-worker-v1.owned.signature",
             channel: channel("dreamina-seedance-2-0"),
             prompt: "保持人物一致",
             raw: { size: "9:16", vquality: "720", videoSeconds: 5 },
@@ -195,7 +195,7 @@ describe("Dreamina CLI video task adapter", () => {
         expect(mocks.download).toHaveBeenCalledWith(
             "/api/generation-log-assets/permanent/2026/09/02/images/source.png",
             "/controlled/task/000-image.png",
-            expect.objectContaining({ internalHeaders: { authorization: "Bearer worker-token", "x-octalaicanvas-worker-user-id": "user-one" } }),
+            expect.objectContaining({ internalHeaders: { authorization: "Bearer worker-token", "x-dreamyo-worker-user-id": "user-one" } }),
         );
     });
 

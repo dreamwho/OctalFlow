@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 }
 
 function callbackPage(ok: boolean, message: string, origin: string) {
-    const payload = JSON.stringify({ type: "octalflow-gemini-tools-oauth", ok, message }).replace(/</g, "\\u003c");
+    const payload = JSON.stringify({ type: "dreamyo-gemini-tools-oauth", ok, message }).replace(/</g, "\\u003c");
     const target = JSON.stringify(origin).replace(/</g, "\\u003c");
     const title = ok ? "授权完成" : "授权失败";
     return new Response(

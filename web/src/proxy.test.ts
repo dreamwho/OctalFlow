@@ -14,7 +14,7 @@ describe("application proxy security", () => {
         });
 
         expect(proxy(request).status).toBe(403);
-        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "1");
+        vi.stubEnv("DREAMYO_TRUSTED_PROXY_HOPS", "1");
         expect(proxy(request).status).toBe(200);
     });
 
@@ -34,12 +34,12 @@ describe("application proxy security", () => {
 
     it("uses forwarded HTTPS only when the existing trusted-proxy contract is configured", () => {
         vi.stubEnv("NODE_ENV", "production");
-        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "0");
+        vi.stubEnv("DREAMYO_TRUSTED_PROXY_HOPS", "0");
 
         const request = new NextRequest("http://192.168.100.223:8866/create", { headers: { "x-forwarded-proto": "https" } });
         expect(proxy(request).headers.get("content-security-policy")).not.toContain("upgrade-insecure-requests");
 
-        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "1");
+        vi.stubEnv("DREAMYO_TRUSTED_PROXY_HOPS", "1");
         expect(proxy(request).headers.get("content-security-policy")).toContain("upgrade-insecure-requests");
     });
 

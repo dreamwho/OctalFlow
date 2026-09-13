@@ -13,12 +13,12 @@ vi.mock("@/lib/server/referral-service", () => ({
             .toUpperCase(),
     ),
     recordReferralVisit: mocks.recordReferralVisit,
-    REFERRAL_COOKIE_NAME: "octalaicanvas_referral",
+    REFERRAL_COOKIE_NAME: "dreamyo_referral",
 }));
 vi.mock("@/lib/server/security", () => ({
     checkRateLimit: mocks.checkRateLimit,
     getClientIp: vi.fn(() => "203.0.113.9"),
-    getTrustedProxyHops: vi.fn(() => Number(process.env.OCTALAICANVAS_TRUSTED_PROXY_HOPS || 0)),
+    getTrustedProxyHops: vi.fn(() => Number(process.env.DREAMYO_TRUSTED_PROXY_HOPS || 0)),
 }));
 
 import { GET } from "./route";
@@ -27,7 +27,7 @@ describe("GET /invite/[code]", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.stubEnv("NEXT_PUBLIC_SITE_URL", "http://127.0.0.1:3000");
-        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "0");
+        vi.stubEnv("DREAMYO_TRUSTED_PROXY_HOPS", "0");
         mocks.recordReferralVisit.mockResolvedValue({ code: "INVITE88" });
     });
 
@@ -41,7 +41,7 @@ describe("GET /invite/[code]", () => {
 
         expect(mocks.recordReferralVisit).toHaveBeenCalledWith("INVITE88", { countClick: false });
         expect(response.headers.get("location")).toBe("http://localhost/register?next=%2Fgallery%2Fwork-one&ref=INVITE88");
-        expect(response.headers.get("set-cookie")).toContain("octalaicanvas_referral=INVITE88");
+        expect(response.headers.get("set-cookie")).toContain("dreamyo_referral=INVITE88");
     });
 
     it("redirects to the current IP when the configured site URL is loopback", async () => {
@@ -54,15 +54,15 @@ describe("GET /invite/[code]", () => {
     });
 
     it("redirects to the forwarded HTTPS domain behind a trusted proxy", async () => {
-        vi.stubEnv("OCTALAICANVAS_TRUSTED_PROXY_HOPS", "1");
+        vi.stubEnv("DREAMYO_TRUSTED_PROXY_HOPS", "1");
         mocks.checkRateLimit.mockResolvedValue({ allowed: true });
         const request = new NextRequest("http://127.0.0.1:3000/invite/INVITE88", {
-            headers: { host: "127.0.0.1:3000", "x-forwarded-host": "octalaicanvas.example.com", "x-forwarded-proto": "https" },
+            headers: { host: "127.0.0.1:3000", "x-forwarded-host": "dreamyo.example.com", "x-forwarded-proto": "https" },
         });
 
         const response = await GET(request, { params: Promise.resolve({ code: "INVITE88" }) });
 
-        expect(response.headers.get("location")).toBe("https://octalaicanvas.example.com/register?ref=INVITE88");
+        expect(response.headers.get("location")).toBe("https://dreamyo.example.com/register?ref=INVITE88");
         expect(response.headers.get("set-cookie")).toContain("Secure");
     });
 });

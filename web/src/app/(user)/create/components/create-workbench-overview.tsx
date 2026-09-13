@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AgentMediaPreview } from "@/components/agent/agent-media-preview";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { browserReadableMediaUrl } from "@/lib/browser-media-url";
 import type { CreateOverviewAsset, CreateOverviewMedia, CreateOverviewTask } from "@/lib/create-workbench-overview";
 import { imagePreviewUrl } from "@/lib/media-image-url";
@@ -160,7 +161,7 @@ function RecentAssetCard({ asset, importing, onUse }: { asset: CreateOverviewAss
             <div className="relative overflow-hidden bg-[#eef1f4] dark:bg-[#252a31]">
                 <AgentMediaPreview type={asset.kind} url={browserReadableMediaUrl(asset.url)} title={asset.title} className="aspect-[4/3] max-h-52" />
                 <span className="pointer-events-none absolute left-2 top-2 inline-flex size-7 items-center justify-center rounded-lg bg-black/55 text-white backdrop-blur-sm" aria-hidden="true">
-                    {asset.kind === "image" ? <FileImage className="size-3.5" /> : <Video className="size-3.5" />}
+                    <DreamyoIcon name={asset.kind === "image" ? "image" : "video"} size={16} />
                 </span>
             </div>
             <div className="min-w-0 px-2.5 py-2">

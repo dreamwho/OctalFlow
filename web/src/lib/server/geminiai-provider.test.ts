@@ -47,16 +47,16 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("requires server-only sidecar configuration", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "");
 
         expect(geminiAiProviderConfigured()).toBe(false);
         await expect(geminiAiSidecarRequest("/accounts")).rejects.toMatchObject({ status: 503 });
     });
 
     it("uses the configured private credential and removes caller credentials", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test/internal");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test/internal");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi.fn().mockResolvedValue(Response.json({ ok: true }));
         vi.stubGlobal("fetch", fetchMock);
 
@@ -70,8 +70,8 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("permits only the OpenAI-compatible runtime paths", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi.fn().mockResolvedValue(Response.json({ choices: [] }));
         vi.stubGlobal("fetch", fetchMock);
 
@@ -85,8 +85,8 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("records external gateway requests with the external source and caller metadata", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(Response.json({ choices: [{ message: { content: "外部结果" } }] }))
@@ -115,8 +115,8 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("applies the GeminiAIStudio runtime group before sending traffic to the sidecar", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const events: string[] = [];
         mocks.ensureMagicProxy.mockImplementation(async () => {
             events.push("ensure");
@@ -137,8 +137,8 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("checks health without sending the sidecar credential", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi.fn().mockResolvedValue(Response.json({ status: "ok" }));
         vi.stubGlobal("fetch", fetchMock);
 
@@ -148,8 +148,8 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("records a runtime request with the actual active account and a safe response preview", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(Response.json({ choices: [{ message: { content: "真实文本结果" } }] }))
@@ -173,8 +173,8 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("uses the account identity attached to the sidecar response", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi.fn().mockResolvedValueOnce(
             new Response(JSON.stringify({ choices: [{ message: { content: "结果" } }] }), {
                 headers: { "content-type": "application/json", "x-aistudio-account-id": "account-two", "x-aistudio-account-email": "two@example.com" },
@@ -189,8 +189,8 @@ describe("GeminiAI sidecar provider", () => {
     });
 
     it("never writes generated image bytes into the request log", async () => {
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_URL", "http://geminiai.test");
-        vi.stubEnv("OCTALAICANVAS_GEMINIAI_API_KEY", "sidecar-test-key");
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(Response.json({ data: [{ b64_json: "secret-image-base64" }] }))

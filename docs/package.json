@@ -1,9 +1,9 @@
 {
-  "name": "octalflow-docs",
+  "name": "dreamyo-docs",
   "version": "0.0.6",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "next build --webpack",
     "dev": "next dev -p 3001",
     "start": "next start -p 3001",
     "generate:source": "node --input-type=module -e \"import { postInstall } from 'fumadocs-mdx/next'; await postInstall();\"",

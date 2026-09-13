@@ -11,8 +11,10 @@ import "dayjs/locale/zh-cn";
 
 import { ClientRootInit } from "@/components/layout/client-root-init";
 import { getAntThemeConfig } from "@/lib/app-theme";
+import { pageTitleForPath } from "@/lib/page-titles";
 import { themeScopeForPathname } from "@/lib/theme-scope";
 import { startThemeStoreSync, useAdminThemeStore, useThemeStore } from "@/stores/use-theme-store";
+import { usePublicSessionStore } from "@/stores/use-public-session-store";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -31,6 +33,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     const pathname = usePathname();
     const frontendTheme = useThemeStore((state) => state.theme);
     const adminTheme = useAdminThemeStore((state) => state.theme);
+    const siteTitle = usePublicSessionStore((state) => state.payload?.settings?.site?.title);
     const theme = themeScopeForPathname(pathname) === "admin" ? adminTheme : frontendTheme;
     const dark = theme === "dark";
 
@@ -40,7 +43,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
         const reloadOnceForChunkError = (reason: unknown) => {
             const text = reason instanceof Error ? `${reason.name} ${reason.message}` : String(reason);
             if (!/ChunkLoadError|Loading chunk|dynamically imported module|failed to fetch/i.test(text)) return;
-            const key = "octalaicanvas:chunk-reload-attempted";
+            const key = "dreamyo:chunk-reload-attempted";
             const lastAttempt = Number(sessionStorage.getItem(key) || "0");
             if (Date.now() - lastAttempt < 30_000) return;
             sessionStorage.setItem(key, String(Date.now()));
@@ -61,6 +64,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
         document.documentElement.classList.toggle("dark", dark);
         document.documentElement.style.colorScheme = theme;
     }, [dark, theme]);
+
+    useEffect(() => {
+        document.title = pageTitleForPath(pathname, siteTitle);
+    }, [pathname, siteTitle]);
 
     return (
         <ConfigProvider locale={zhCN} theme={getAntThemeConfig(dark)} popupOverflow="viewport" getPopupContainer={() => document.body}>

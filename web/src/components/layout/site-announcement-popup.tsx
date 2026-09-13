@@ -73,5 +73,5 @@ export function SiteAnnouncementPopup() {
 }
 
 function dismissKey(id: string, context: string) {
-    return `octalaicanvas:announcement-dismissed:${context}:${id}`;
+    return `dreamyo:announcement-dismissed:${context}:${id}`;
 }

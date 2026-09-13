@@ -48,8 +48,8 @@ describe("image task route", () => {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "X-OCTALAICANVAS-Client-Request-Id": "image-workbench:conversation:slot",
-                    "X-OCTALAICANVAS-Attempt-No": "3",
+                    "X-DREAMYO-Client-Request-Id": "image-workbench:conversation:slot",
+                    "X-DREAMYO-Attempt-No": "3",
                 },
                 body: JSON.stringify({ prompt: "same request", context: { clientRequestId: "image-workbench:conversation:slot", attemptNo: 3 } }),
             }),

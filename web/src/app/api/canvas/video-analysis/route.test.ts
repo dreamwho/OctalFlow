@@ -32,7 +32,7 @@ describe("Canvas video analysis route", () => {
         expect(response.status).toBe(200);
         expect(mocks.analyze).toHaveBeenCalledWith({ ownerUserId: "owner-one", storageKey: "permanent/source.mp4", requestId: "request-one", origin: "http://127.0.0.1:3000", cookie: "session=test" });
         await expect(response.json()).resolves.toEqual({ code: 0, data: { analysisText: "【一、视频结构摘要】\n内容", model: "configured-video-analysis" }, msg: "视频分析已完成" });
-        expect(response.headers.get("x-octalaicanvas-points-remaining")).toBe("66");
+        expect(response.headers.get("x-dreamyo-points-remaining")).toBe("66");
     });
 
     it("rejects a missing stable request identifier", async () => {

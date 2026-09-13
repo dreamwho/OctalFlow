@@ -60,9 +60,9 @@ function alipayConfig(): PaymentRuntimeConfig {
         saved: { providers: {} },
         providers: { alipay: { enabled: true, saved: true } },
         valuesByEnvName: {
-            OCTALAICANVAS_ALIPAY_MODE: "face_to_face",
-            OCTALAICANVAS_ALIPAY_APP_ID: "2026000000000000",
-            OCTALAICANVAS_ALIPAY_PUBLIC_KEY: alipayPublicKey,
+            DREAMYO_ALIPAY_MODE: "face_to_face",
+            DREAMYO_ALIPAY_APP_ID: "2026000000000000",
+            DREAMYO_ALIPAY_PUBLIC_KEY: alipayPublicKey,
         },
     };
 }

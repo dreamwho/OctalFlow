@@ -7,7 +7,7 @@ import { listAnnouncementsPage } from "@/lib/auth/store";
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 20;
 export const metadata: Metadata = {
-    title: "网站公告",
+    title: "网站公告 | dreamyo",
     description: "查看站点通知、维护说明和功能更新。",
     alternates: { canonical: "/announcements" },
     robots: { index: true, follow: true },

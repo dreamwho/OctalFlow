@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Popover, Select } from "antd";
-import { AudioLines, ChevronDown, ImageIcon, Lightbulb, Maximize2, Sparkles, Video } from "lucide-react";
+import { ChevronDown, Lightbulb, Maximize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { audioFormatLabel, audioFormatOptions, audioVoiceLabel, audioVoiceOptions } from "@/lib/audio-generation";
@@ -9,6 +9,7 @@ import { canvasSelectionBorderStyle, canvasThemes } from "@/lib/canvas-theme";
 import type { CreativeGenerationPreferences } from "@/lib/creative-runtime-contract";
 import { cn } from "@/lib/utils";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 
 import { creativeComposerPopoverOverflow, readVisualViewportBounds, resolveCreativeComposerPopoverViewportLayout, type CreativeComposerPopoverPlacement } from "./creative-composer-popover";
 import { creativeComposerToolButtonClass } from "./creative-composer-styles";
@@ -264,7 +265,7 @@ export function CreativeGenerationPreferences({
                                         "inline-flex items-center justify-center gap-1.5 rounded-[7px] text-[11px] font-medium transition",
                                         compact ? "h-7" : "h-8",
                                         activeCapability === item
-                                            ? "octaflow-selection-surface"
+                                            ? "dreamyo-selection-surface"
                                             : "text-[#7b8591] hover:bg-white/60 hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:bg-[#30363e] dark:hover:text-white",
                                     )}
                                     onClick={() => onCapabilityChange?.(item)}
@@ -420,7 +421,7 @@ function PreferencePanel({
                                     ratioTileLayout ? "h-[52px] flex-col gap-1 border" : "gap-1 border border-transparent",
                                     !ratioTileLayout && (compact ? "h-8" : "h-9"),
                                     selectedSize === ratio.value
-                                        ? "octaflow-selection-surface font-semibold"
+                                        ? "dreamyo-selection-surface font-semibold"
                                         : "border-transparent bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                                 )}
                                 onClick={() => onChange({ size: ratio.value })}
@@ -441,7 +442,7 @@ function PreferencePanel({
                                 className={cn(
                                     "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-dashed px-2 text-[11px] transition",
                                     customEditorOpen || parseCustomDimensions(selectedSize)
-                                        ? "octaflow-selection-surface font-medium"
+                                        ? "dreamyo-selection-surface font-medium"
                                         : "border-[#d8dde2] text-[#687481] hover:border-[#b8c3cc] hover:bg-[#f7f8f9] hover:text-[#20242a] dark:border-[#414953] dark:text-[#a6afb9] dark:hover:bg-[#24282e] dark:hover:text-white",
                                 )}
                                 onClick={() => setCustomEditorOpen(true)}
@@ -506,7 +507,7 @@ function PreferencePanel({
                     aria-selected={section === "canvas"}
                     className={cn(
                         compact ? "h-7 rounded-[7px] text-[11px] font-medium transition" : "h-8 rounded-lg text-[11px] font-medium transition",
-                        section === "canvas" ? "octaflow-selection-surface" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
+                        section === "canvas" ? "dreamyo-selection-surface" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
                     )}
                     onClick={() => setSection("canvas")}
                 >
@@ -518,7 +519,7 @@ function PreferencePanel({
                     aria-selected={section === "output"}
                     className={cn(
                         compact ? "h-7 rounded-[7px] text-[11px] font-medium transition" : "h-8 rounded-lg text-[11px] font-medium transition",
-                        section === "output" ? "octaflow-selection-surface" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
+                        section === "output" ? "dreamyo-selection-surface" : "text-[#7b8591] hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:text-white",
                     )}
                     onClick={() => setSection("output")}
                 >
@@ -603,7 +604,7 @@ function GenerationCountGroup({ capability, value, onChange }: { capability: Ext
                         className={cn(
                             "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
                             value === option.value
-                                ? "octaflow-selection-surface font-semibold"
+                                ? "dreamyo-selection-surface font-semibold"
                                 : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                         )}
                         onClick={() => {
@@ -622,7 +623,7 @@ function GenerationCountGroup({ capability, value, onChange }: { capability: Ext
                     className={cn(
                         "relative h-8 min-w-0 rounded-lg text-[11px] transition",
                         customSelected
-                            ? "octaflow-selection-surface font-medium"
+                            ? "dreamyo-selection-surface font-medium"
                             : "bg-[#f5f6f7] text-[#687481] focus-within:bg-[#f5f8fa] focus-within:text-[#315d78] focus-within:ring-1 focus-within:ring-[#9bbdce] focus-within:ring-inset hover:bg-[#edf0f2] dark:bg-[#24282e] dark:text-[#a6afb9] dark:focus-within:bg-[#222d34] dark:focus-within:text-[#a8c8dc] dark:focus-within:ring-[#557f96] dark:hover:bg-[#30363e]",
                     )}
                     title="输入正整数，修改后立即生效"
@@ -691,7 +692,7 @@ function CompactOptionGroup<T extends string | number>({
                         className={cn(
                             "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
                             value === option.value
-                                ? "octaflow-selection-surface font-semibold"
+                                ? "dreamyo-selection-surface font-semibold"
                                 : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                         )}
                         onClick={() => onChange(option.value)}
@@ -716,7 +717,7 @@ function PreferenceSelect<T extends string | number>({ label, ariaLabel, value, 
 }
 
 function PreferenceSummaryIcon({ capability, preferences }: { capability: MediaCapability; preferences: CreativeGenerationPreferences }) {
-    if (capability === "audio") return <AudioLines className="size-4" />;
+    if (capability === "audio") return <DreamyoIcon name="audio" size={16} />;
     const size = capability === "image" ? preferences.image?.size : preferences.video?.size;
     const ratio = (capability === "image" ? imageRatios : videoRatios).find((item) => item.value === size);
     const custom = parseCustomDimensions(size);
@@ -727,7 +728,7 @@ function PreferenceSummaryIcon({ capability, preferences }: { capability: MediaC
             </span>
         );
     }
-    if (!ratio || ratio.value === "auto") return <Sparkles className="size-4" />;
+    if (!ratio || ratio.value === "auto") return <DreamyoIcon name={capability} size={16} />;
     return (
         <span className="grid size-4 place-items-center" aria-hidden="true">
             <span className="rounded-[2px] border-[1.5px] border-current" style={{ width: Math.max(8, ratio.width * 0.55), height: Math.max(7, ratio.height * 0.55) }} />
@@ -780,9 +781,7 @@ export function mediaCapabilityLabel(capability: MediaCapability) {
 }
 
 export function CreativeModeIcon({ mode }: { mode: "agent" | MediaCapability }) {
-    if (mode === "image") return <ImageIcon className="size-4" />;
-    if (mode === "video") return <Video className="size-4" />;
-    if (mode === "audio") return <AudioLines className="size-4" />;
+    if (mode === "image" || mode === "video" || mode === "audio") return <DreamyoIcon name={mode} size={18} />;
     return <Lightbulb className="size-4" />;
 }
 

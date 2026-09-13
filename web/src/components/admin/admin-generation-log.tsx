@@ -3,6 +3,7 @@
 import { Button, Checkbox, Popconfirm, Tag } from "antd";
 import { Eye, Film, Image as ImageIcon, Trash2 } from "lucide-react";
 
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { browserReadableMediaUrl } from "@/lib/browser-media-url";
 import { AdminAccountId } from "@/components/admin/admin-user-identity";
 import { imagePreviewUrl } from "@/lib/media-image-url";
@@ -14,7 +15,7 @@ export function GenerationLogAssetPreview({ log }: { log: StoredGenerationLog })
     if (!assetUrl) {
         return (
             <div className="flex size-12 items-center justify-center rounded-lg border border-stone-200 bg-stone-100 text-stone-400 dark:border-stone-800 dark:bg-stone-900">
-                {log.kind === "video" ? <Film className="size-4" /> : <ImageIcon className="size-4" />}
+                {log.kind === "video" ? <DreamyoIcon name="video" size={20} /> : <DreamyoIcon name="image" size={20} />}
             </div>
         );
     }

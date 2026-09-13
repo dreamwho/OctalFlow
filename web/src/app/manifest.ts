@@ -12,7 +12,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
         display: "standalone",
         lang: "zh-CN",
         background_color: "#ffffff",
-        theme_color: "#111111",
-        icons: [{ src: "/favicon.ico", sizes: "any", purpose: "any" }],
+        theme_color: "#2f6fff",
+        icons: [{ src: "/brand/dreamyo/mark.png", sizes: "1254x1254", type: "image/png", purpose: "maskable" }],
     };
 }

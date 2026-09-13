@@ -88,8 +88,8 @@ validate_platform() {
 validate_port() {
     local port="$1"
 
-    [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] || die "OCTALAICANVAS_PORT 或 .env PORT 必须是 1-65535 的整数"
-    (( 10#$port <= 65535 )) || die "OCTALAICANVAS_PORT 或 .env PORT 必须是 1-65535 的整数"
+    [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] || die "DREAMYO_PORT 或 .env PORT 必须是 1-65535 的整数"
+    (( 10#$port <= 65535 )) || die "DREAMYO_PORT 或 .env PORT 必须是 1-65535 的整数"
 }
 
 verify_image_archive_platform() {
@@ -123,10 +123,10 @@ resolve_expected_image_archives() {
     # 若 SHA256SUMS 未包含镜像归档，则结合 manifest.env 与数据库模式动态构建
     if [[ "${#archives[@]}" -eq 0 ]]; then
         archives=(images/app.tar images/geminiai.tar)
-        if grep -q '^OCTALAICANVAS_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/magic-proxy.tar" ]]; then
+        if grep -q '^DREAMYO_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/magic-proxy.tar" ]]; then
             archives+=(images/magic-proxy.tar)
         fi
-        if [[ "$DATABASE_MODE" == "embedded" ]] || grep -q '^OCTALAICANVAS_POSTGRES_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/postgres.tar" ]]; then
+        if [[ "$DATABASE_MODE" == "embedded" ]] || grep -q '^DREAMYO_POSTGRES_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/postgres.tar" ]]; then
             archives+=(images/postgres.tar)
         fi
     fi
@@ -275,12 +275,12 @@ require_checksum_command
 [[ -f "$MANIFEST_FILE" && ! -L "$MANIFEST_FILE" ]] || die "缺少镜像清单：$MANIFEST_FILE"
 verify_checksum_path manifest.env
 
-PACKAGE_VERSION="$(read_manifest_value OCTALAICANVAS_PACKAGE_VERSION)"
-PACKAGE_PLATFORM="$(read_manifest_value OCTALAICANVAS_DOCKER_PLATFORM)"
-DATABASE_MODE="$(read_manifest_value OCTALAICANVAS_DATABASE_MODE)"
+PACKAGE_VERSION="$(read_manifest_value DREAMYO_PACKAGE_VERSION)"
+PACKAGE_PLATFORM="$(read_manifest_value DREAMYO_DOCKER_PLATFORM)"
+DATABASE_MODE="$(read_manifest_value DREAMYO_DATABASE_MODE)"
 PRIVATE_MIGRATION=0
-if grep -q '^OCTALAICANVAS_PRIVATE_MIGRATION=' "$MANIFEST_FILE"; then
-    PRIVATE_MIGRATION="$(read_manifest_value OCTALAICANVAS_PRIVATE_MIGRATION)"
+if grep -q '^DREAMYO_PRIVATE_MIGRATION=' "$MANIFEST_FILE"; then
+    PRIVATE_MIGRATION="$(read_manifest_value DREAMYO_PRIVATE_MIGRATION)"
 fi
 [[ "$PRIVATE_MIGRATION" == 0 || "$PRIVATE_MIGRATION" == 1 ]] || die "私有迁移标记无效"
 if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
@@ -288,19 +288,19 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
 elif [[ -e "$SCRIPT_DIR/private-migration" ]]; then
     die "部署包存在未声明的私有迁移目录"
 fi
-APP_IMAGE="$(read_manifest_value OCTALAICANVAS_IMAGE)"
-GEMINIAI_IMAGE="$(read_manifest_value OCTALAICANVAS_GEMINIAI_IMAGE)"
+APP_IMAGE="$(read_manifest_value DREAMYO_IMAGE)"
+GEMINIAI_IMAGE="$(read_manifest_value DREAMYO_GEMINIAI_IMAGE)"
 MAGIC_PROXY_IMAGE=""
-if grep -q '^OCTALAICANVAS_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
-    MAGIC_PROXY_IMAGE="$(read_manifest_value OCTALAICANVAS_MAGIC_PROXY_IMAGE)"
+if grep -q '^DREAMYO_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
+    MAGIC_PROXY_IMAGE="$(read_manifest_value DREAMYO_MAGIC_PROXY_IMAGE)"
 fi
-COMPOSE_FILE="$(read_manifest_value OCTALAICANVAS_COMPOSE_FILE)"
+COMPOSE_FILE="$(read_manifest_value DREAMYO_COMPOSE_FILE)"
 validate_platform "$PACKAGE_PLATFORM"
 
 case "$DATABASE_MODE" in
     embedded)
         EXPECTED_COMPOSE_FILE="docker-compose.offline.yml"
-        POSTGRES_IMAGE="$(read_manifest_value OCTALAICANVAS_POSTGRES_IMAGE)"
+        POSTGRES_IMAGE="$(read_manifest_value DREAMYO_POSTGRES_IMAGE)"
         ;;
     external)
         EXPECTED_COMPOSE_FILE="docker-compose.offline-external-db.yml"
@@ -325,12 +325,12 @@ PACKAGE_STATIC_FILES=(
     docker/mihomo/bootstrap-host.yaml
     docker/mihomo/entrypoint.sh
 )
-SKIP_IMAGE_CHECK="${OCTALAICANVAS_SKIP_IMAGE_CHECK:-0}"
+SKIP_IMAGE_CHECK="${DREAMYO_SKIP_IMAGE_CHECK:-0}"
 for package_file in "${PACKAGE_STATIC_FILES[@]}"; do
     verify_checksum_path "$package_file"
 done
 if [[ "$SKIP_IMAGE_CHECK" == "1" ]]; then
-    printf '提示：已指定 OCTALAICANVAS_SKIP_IMAGE_CHECK=1，跳过镜像归档文件的 SHA-256 校验与平台架构检查。\n'
+    printf '提示：已指定 DREAMYO_SKIP_IMAGE_CHECK=1，跳过镜像归档文件的 SHA-256 校验与平台架构检查。\n'
 else
     for package_file in "${IMAGE_ARCHIVES[@]}"; do
         verify_checksum_path "$package_file"
@@ -355,7 +355,7 @@ case "$(uname -m)" in
     *) HOST_PLATFORM="unknown" ;;
 esac
 if [[ "$HOST_PLATFORM" != "$PACKAGE_PLATFORM" ]]; then
-    if [[ "${OCTALAICANVAS_ALLOW_PLATFORM_EMULATION:-0}" != "1" ]]; then
+    if [[ "${DREAMYO_ALLOW_PLATFORM_EMULATION:-0}" != "1" ]]; then
         die "镜像包平台为 ${PACKAGE_PLATFORM}，但服务器架构为 ${HOST_PLATFORM}。请使用匹配架构的部署包。"
     fi
     printf '警告：使用 Docker 的跨架构仿真运行 %s 镜像，正式服务器应使用匹配架构的部署包。\n' "$PACKAGE_PLATFORM" >&2
@@ -379,23 +379,23 @@ generate_token() {
     od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
 }
 
-set_env_value OCTALAICANVAS_DOCKER_PLATFORM "$PACKAGE_PLATFORM"
-set_env_value OCTALAICANVAS_IMAGE "$APP_IMAGE"
-set_env_value OCTALAICANVAS_GEMINIAI_IMAGE "$GEMINIAI_IMAGE"
-set_env_value OCTALAICANVAS_MAGIC_PROXY_IMAGE "$MAGIC_PROXY_IMAGE"
+set_env_value DREAMYO_DOCKER_PLATFORM "$PACKAGE_PLATFORM"
+set_env_value DREAMYO_IMAGE "$APP_IMAGE"
+set_env_value DREAMYO_GEMINIAI_IMAGE "$GEMINIAI_IMAGE"
+set_env_value DREAMYO_MAGIC_PROXY_IMAGE "$MAGIC_PROXY_IMAGE"
 if [[ "$DATABASE_MODE" == embedded ]]; then
-    set_env_value OCTALAICANVAS_POSTGRES_IMAGE "$POSTGRES_IMAGE"
-    ensure_env_value POSTGRES_DB "${POSTGRES_DB:-octalaicanvas}"
-    ensure_env_value POSTGRES_USER "${POSTGRES_USER:-octalaicanvas}"
+    set_env_value DREAMYO_POSTGRES_IMAGE "$POSTGRES_IMAGE"
+    ensure_env_value POSTGRES_DB "${POSTGRES_DB:-dreamyo}"
+    ensure_env_value POSTGRES_USER "${POSTGRES_USER:-dreamyo}"
     ensure_env_value POSTGRES_PASSWORD "${POSTGRES_PASSWORD:-$(generate_token)}"
 fi
-ensure_env_value OCTALAICANVAS_DATABASE_PROVIDER postgres
-ensure_env_value OCTALAICANVAS_DATA_DIR /app/web/.data
-ensure_env_value OCTALAICANVAS_BIND_ADDRESS "${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}"
-ensure_env_value OCTALAICANVAS_COOKIE_SECURE "${OCTALAICANVAS_COOKIE_SECURE:-0}"
-app_port="${OCTALAICANVAS_PORT:-}"
+ensure_env_value DREAMYO_DATABASE_PROVIDER postgres
+ensure_env_value DREAMYO_DATA_DIR /app/web/.data
+ensure_env_value DREAMYO_BIND_ADDRESS "${DREAMYO_BIND_ADDRESS:-0.0.0.0}"
+ensure_env_value DREAMYO_COOKIE_SECURE "${DREAMYO_COOKIE_SECURE:-0}"
+app_port="${DREAMYO_PORT:-}"
 if [[ -z "$app_port" ]]; then
-    app_port="$(read_env_value OCTALAICANVAS_PORT)"
+    app_port="$(read_env_value DREAMYO_PORT)"
 fi
 if [[ -z "$app_port" ]]; then
     app_port="$(read_env_value PORT)"
@@ -410,14 +410,14 @@ fi
 validate_port "$app_port"
 set_env_value PORT "$app_port"
 export PORT="$app_port"
-set_env_value OCTALAICANVAS_PORT "$app_port"
-export OCTALAICANVAS_PORT="$app_port"
-set_env_value OCTALAICANVAS_INTERNAL_ORIGIN "http://127.0.0.1:$app_port"
+set_env_value DREAMYO_PORT "$app_port"
+export DREAMYO_PORT="$app_port"
+set_env_value DREAMYO_INTERNAL_ORIGIN "http://127.0.0.1:$app_port"
 install_port="$app_port"
 ensure_env_value NEXT_PUBLIC_SITE_URL "${NEXT_PUBLIC_SITE_URL:-http://localhost:$install_port}"
-ensure_env_value OCTALAICANVAS_TRUSTED_PROXY_HOPS "${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}"
-ensure_env_value OCTALAICANVAS_GEMINIAI_API_KEY "${OCTALAICANVAS_GEMINIAI_API_KEY:-$(generate_token)}"
-ensure_env_value OCTALAICANVAS_CHATGPT_API_KEY "${OCTALAICANVAS_CHATGPT_API_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_TRUSTED_PROXY_HOPS "${DREAMYO_TRUSTED_PROXY_HOPS:-0}"
+ensure_env_value DREAMYO_GEMINIAI_API_KEY "${DREAMYO_GEMINIAI_API_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_CHATGPT_API_KEY "${DREAMYO_CHATGPT_API_KEY:-$(generate_token)}"
 # GeminiTools OAuth 凭据由打包机注入部署包 .env.example，服务器 .env 缺失时自动种子
 seed_env_from_example() {
     local key="$1" value
@@ -429,29 +429,29 @@ seed_env_from_example() {
 }
 seed_env_from_example GEMINI_TOOLS_OAUTH_CLIENT_ID
 seed_env_from_example GEMINI_TOOLS_OAUTH_CLIENT_SECRET
-seed_env_from_example OCTALAICANVAS_GEMINIAI_STUDIO_URL
-seed_env_from_example OCTALAICANVAS_CHATGPT_API_PROXY_URL
-seed_env_from_example OCTALAICANVAS_ENCRYPTION_KEY
-seed_env_from_example OCTALAICANVAS_INSTALL_TOKEN
-seed_env_from_example OCTALAICANVAS_MAINTENANCE_TOKEN
-seed_env_from_example OCTALAICANVAS_WORKER_TOKEN
-seed_env_from_example OCTALAICANVAS_GEMINIAI_API_KEY
-seed_env_from_example OCTALAICANVAS_CHATGPT_API_KEY
-seed_env_from_example OCTALAICANVAS_MAGIC_PROXY_SECRET
-seed_env_from_example OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS
-seed_env_from_example OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS
+seed_env_from_example DREAMYO_GEMINIAI_STUDIO_URL
+seed_env_from_example DREAMYO_CHATGPT_API_PROXY_URL
+seed_env_from_example DREAMYO_ENCRYPTION_KEY
+seed_env_from_example DREAMYO_INSTALL_TOKEN
+seed_env_from_example DREAMYO_MAINTENANCE_TOKEN
+seed_env_from_example DREAMYO_WORKER_TOKEN
+seed_env_from_example DREAMYO_GEMINIAI_API_KEY
+seed_env_from_example DREAMYO_CHATGPT_API_KEY
+seed_env_from_example DREAMYO_MAGIC_PROXY_SECRET
+seed_env_from_example DREAMYO_ALLOW_PRIVATE_UPSTREAMS
+seed_env_from_example DREAMYO_PRIVATE_UPSTREAM_HOSTS
 
-ensure_env_value OCTALAICANVAS_CHATGPT_API_KEY "${OCTALAICANVAS_CHATGPT_API_KEY:-$(generate_token)}"
-ensure_env_value OCTALAICANVAS_MAGIC_PROXY_SECRET "${OCTALAICANVAS_MAGIC_PROXY_SECRET:-$(generate_token)}"
-ensure_env_value OCTALAICANVAS_ENCRYPTION_KEY "${OCTALAICANVAS_ENCRYPTION_KEY:-$(generate_token)}"
-ensure_env_value OCTALAICANVAS_INSTALL_TOKEN "${OCTALAICANVAS_INSTALL_TOKEN:-$(generate_token)}"
-ensure_env_value OCTALAICANVAS_MAINTENANCE_TOKEN "${OCTALAICANVAS_MAINTENANCE_TOKEN:-$(generate_token)}"
-ensure_env_value OCTALAICANVAS_WORKER_TOKEN "${OCTALAICANVAS_WORKER_TOKEN:-$(generate_token)}"
+ensure_env_value DREAMYO_CHATGPT_API_KEY "${DREAMYO_CHATGPT_API_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_MAGIC_PROXY_SECRET "${DREAMYO_MAGIC_PROXY_SECRET:-$(generate_token)}"
+ensure_env_value DREAMYO_ENCRYPTION_KEY "${DREAMYO_ENCRYPTION_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_INSTALL_TOKEN "${DREAMYO_INSTALL_TOKEN:-$(generate_token)}"
+ensure_env_value DREAMYO_MAINTENANCE_TOKEN "${DREAMYO_MAINTENANCE_TOKEN:-$(generate_token)}"
+ensure_env_value DREAMYO_WORKER_TOKEN "${DREAMYO_WORKER_TOKEN:-$(generate_token)}"
 
 if [[ "$DATABASE_MODE" == external ]]; then
     database_url="$(read_env_value DATABASE_URL)"
-    if [[ -n "${OCTALAICANVAS_DATABASE_URL:-}" ]]; then
-        database_url="$OCTALAICANVAS_DATABASE_URL"
+    if [[ -n "${DREAMYO_DATABASE_URL:-}" ]]; then
+        database_url="$DREAMYO_DATABASE_URL"
         set_env_value DATABASE_URL "$database_url"
     elif [[ "$database_url" == *"f777653747bf2d4abc4ae46e3c06d1cc"* ]]; then
         # 自动纠正误带入的开发机测试连接为服务器真实凭据
@@ -471,24 +471,24 @@ if [[ "$DATABASE_MODE" == external ]]; then
     set_env_value DATABASE_URL "$database_url"
 fi
 
-worker_token="$(read_env_value OCTALAICANVAS_WORKER_TOKEN)"
-maintenance_token="$(read_env_value OCTALAICANVAS_MAINTENANCE_TOKEN)"
+worker_token="$(read_env_value DREAMYO_WORKER_TOKEN)"
+maintenance_token="$(read_env_value DREAMYO_MAINTENANCE_TOKEN)"
 if [[ -z "$worker_token" || "$worker_token" == "$maintenance_token" ]]; then
-    set_env_value OCTALAICANVAS_WORKER_TOKEN "${OCTALAICANVAS_WORKER_TOKEN:-$(generate_token)}"
-    worker_token="$(read_env_value OCTALAICANVAS_WORKER_TOKEN)"
+    set_env_value DREAMYO_WORKER_TOKEN "${DREAMYO_WORKER_TOKEN:-$(generate_token)}"
+    worker_token="$(read_env_value DREAMYO_WORKER_TOKEN)"
     if [[ "$worker_token" == "$maintenance_token" ]]; then
-        set_env_value OCTALAICANVAS_WORKER_TOKEN "$(generate_token)"
+        set_env_value DREAMYO_WORKER_TOKEN "$(generate_token)"
     fi
 fi
 
-encryption_key="$(read_env_value OCTALAICANVAS_ENCRYPTION_KEY)"
-[[ "${#encryption_key}" -ge 32 ]] || die "OCTALAICANVAS_ENCRYPTION_KEY 至少需要 32 个字符"
-for key in OCTALAICANVAS_INSTALL_TOKEN OCTALAICANVAS_MAINTENANCE_TOKEN OCTALAICANVAS_WORKER_TOKEN OCTALAICANVAS_GEMINIAI_API_KEY OCTALAICANVAS_CHATGPT_API_KEY OCTALAICANVAS_MAGIC_PROXY_SECRET; do
+encryption_key="$(read_env_value DREAMYO_ENCRYPTION_KEY)"
+[[ "${#encryption_key}" -ge 32 ]] || die "DREAMYO_ENCRYPTION_KEY 至少需要 32 个字符"
+for key in DREAMYO_INSTALL_TOKEN DREAMYO_MAINTENANCE_TOKEN DREAMYO_WORKER_TOKEN DREAMYO_GEMINIAI_API_KEY DREAMYO_CHATGPT_API_KEY DREAMYO_MAGIC_PROXY_SECRET; do
     value="$(read_env_value "$key")"
     [[ "${#value}" -ge 32 ]] || die "$key 至少需要 32 个字符"
 done
 
-SKIP_IMAGE_LOAD="${OCTALAICANVAS_SKIP_IMAGE_LOAD:-$SKIP_IMAGE_CHECK}"
+SKIP_IMAGE_LOAD="${DREAMYO_SKIP_IMAGE_LOAD:-$SKIP_IMAGE_CHECK}"
 if [[ "$SKIP_IMAGE_LOAD" == "1" ]]; then
     printf '提示：已指定跳过镜像归档导入，直接复用 Docker 引擎中已有镜像并校验...\n'
 else
@@ -524,7 +524,7 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
         [[ -z "$private_line" || "$private_line" == \#* ]] && continue
         private_key="${private_line%%=*}"
         case "$private_key" in
-            OCTALAICANVAS_ENCRYPTION_KEY|GEMINI_TOOLS_OAUTH_CLIENT_ID|GEMINI_TOOLS_OAUTH_CLIENT_SECRET|GEMINI_TOOLS_OAUTH_REDIRECT_URI) ;;
+            DREAMYO_ENCRYPTION_KEY|GEMINI_TOOLS_OAUTH_CLIENT_ID|GEMINI_TOOLS_OAUTH_CLIENT_SECRET|GEMINI_TOOLS_OAUTH_REDIRECT_URI) ;;
             *) die "私有迁移包包含未允许的环境变量" ;;
         esac
         private_value="$(read_env_value "$private_key" "$SCRIPT_DIR/private-migration/private.env")"
@@ -533,7 +533,7 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     done < "$SCRIPT_DIR/private-migration/private.env"
     # Stop writers before preflight. A failed import never starts the Worker.
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" stop app generation-worker geminiai
-    migration_accounts_volume="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json | docker run --rm -i --entrypoint node "$APP_IMAGE" -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>console.log(JSON.parse(s).volumes["octalaicanvas-geminiai-accounts"].name))')"
+    migration_accounts_volume="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json | docker run --rm -i --entrypoint node "$APP_IMAGE" -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>console.log(JSON.parse(s).volumes["dreamyo-geminiai-accounts"].name))')"
     [[ "$migration_accounts_volume" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || die "迁移账号卷名称无效"
     docker volume create "$migration_accounts_volume" >/dev/null
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --no-deps --user 0 \
@@ -545,16 +545,23 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     done
 fi
 printf '启动服务……\n'
+# 绑定挂载的 bootstrap 配置内容变化不会触发 Compose 重建容器；每次部署强制重建
+# 无状态的 magic-proxy，保证更新后的监听声明（含 ChatGPTAPI 17892）立即生效。
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --pull never --force-recreate magic-proxy; then
+    printf '\nCompose 启动失败，服务状态与最近日志如下：\n' >&2
+    compose_diagnostics
+    exit 1
+fi
 if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --pull never; then
     printf '\nCompose 启动失败，服务状态与最近日志如下：\n' >&2
     compose_diagnostics
     exit 1
 fi
 
-health_timeout="${OCTALAICANVAS_DEPLOY_HEALTH_TIMEOUT_SECONDS:-600}"
-poll_seconds="${OCTALAICANVAS_DEPLOY_HEALTH_POLL_SECONDS:-2}"
-[[ "$health_timeout" =~ ^[0-9]+$ && "$health_timeout" -gt 0 ]] || die "OCTALAICANVAS_DEPLOY_HEALTH_TIMEOUT_SECONDS 必须为正整数"
-[[ "$poll_seconds" =~ ^[0-9]+$ && "$poll_seconds" -gt 0 ]] || die "OCTALAICANVAS_DEPLOY_HEALTH_POLL_SECONDS 必须为正整数"
+health_timeout="${DREAMYO_DEPLOY_HEALTH_TIMEOUT_SECONDS:-600}"
+poll_seconds="${DREAMYO_DEPLOY_HEALTH_POLL_SECONDS:-2}"
+[[ "$health_timeout" =~ ^[0-9]+$ && "$health_timeout" -gt 0 ]] || die "DREAMYO_DEPLOY_HEALTH_TIMEOUT_SECONDS 必须为正整数"
+[[ "$poll_seconds" =~ ^[0-9]+$ && "$poll_seconds" -gt 0 ]] || die "DREAMYO_DEPLOY_HEALTH_POLL_SECONDS 必须为正整数"
 
 container_health() {
     docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$1" 2>/dev/null || printf 'missing'
@@ -564,14 +571,14 @@ services_ready=0
 deadline=$((SECONDS + health_timeout))
 while (( SECONDS < deadline )); do
     if [[ "$DATABASE_MODE" == embedded ]]; then
-        postgres_health="$(container_health octalaicanvas-postgres)"
+        postgres_health="$(container_health dreamyo-postgres)"
     else
         postgres_health="external"
     fi
-    magic_proxy_health="$(container_health octalaicanvas-magic-proxy)"
-    geminiai_health="$(container_health octalaicanvas-geminiai)"
-    app_health="$(container_health octalaicanvas)"
-    worker_health="$(container_health octalaicanvas-generation-worker)"
+    magic_proxy_health="$(container_health dreamyo-magic-proxy)"
+    geminiai_health="$(container_health dreamyo-geminiai)"
+    app_health="$(container_health dreamyo)"
+    worker_health="$(container_health dreamyo-generation-worker)"
     printf '\r健康检查：postgres=%s magic-proxy=%s geminiai=%s app=%s worker=%s' "$postgres_health" "$magic_proxy_health" "$geminiai_health" "$app_health" "$worker_health"
     if [[ "$magic_proxy_health" == healthy && "$geminiai_health" == healthy && "$app_health" == healthy && "$worker_health" == running && ( "$DATABASE_MODE" == external || "$postgres_health" == healthy ) ]]; then
         services_ready=1
@@ -588,7 +595,7 @@ if [[ "$services_ready" -ne 1 ]]; then
 fi
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
-install_token="$(read_env_value OCTALAICANVAS_INSTALL_TOKEN)"
+install_token="$(read_env_value DREAMYO_INSTALL_TOKEN)"
 printf '\n部署完成。\n'
 if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     printf '本地数据已导入，请访问 http://服务器IP:%s 并使用原账号和密码登录，无需重新安装或配置模型渠道。\n' "$install_port"

@@ -39,7 +39,7 @@ type SkillSource = {
     body: string;
 };
 
-const globalRarImport = globalThis as typeof globalThis & { __octalaicanvasRarSkillImportQueue?: Promise<void> };
+const globalRarImport = globalThis as typeof globalThis & { __dreamyoRarSkillImportQueue?: Promise<void> };
 
 export class FileAgentSkillImportError extends Error {
     constructor(
@@ -185,9 +185,9 @@ async function readRarTextEntries(buffer: Buffer) {
 }
 
 function withRarImportLock<T>(callback: () => Promise<T>) {
-    const previous = globalRarImport.__octalaicanvasRarSkillImportQueue || Promise.resolve();
+    const previous = globalRarImport.__dreamyoRarSkillImportQueue || Promise.resolve();
     const current = previous.catch(() => undefined).then(callback);
-    globalRarImport.__octalaicanvasRarSkillImportQueue = current.then(
+    globalRarImport.__dreamyoRarSkillImportQueue = current.then(
         () => undefined,
         () => undefined,
     );

@@ -603,7 +603,7 @@ export function normalizeSiteFriendLinks(settings: unknown, siteTitle = DEFAULT_
     return links
         .map((link, index) => {
             const value = link as Partial<SiteFriendLink>;
-            const defaultHomeLink = value.id === "octalaicanvas-home" && value.url?.replace(/\/$/, "") === "https://www.octalaicanvas.com";
+            const defaultHomeLink = value.id === "dreamyo-home" && value.url?.replace(/\/$/, "") === "https://www.dreamyo.com";
             return {
                 id: normalizeText(value.id, `friend-${index + 1}`, 80),
                 label: normalizeText(defaultHomeLink && (!value.label || value.label === DEFAULT_SITE_SETTINGS.title || isLegacySiteTitle(value.label)) ? siteTitle : replaceLegacyBrand(value.label, siteTitle), "友情链接", 32),
@@ -667,12 +667,12 @@ export function normalizeMailSettings(settings: Partial<MailSettings> | undefine
 }
 
 function isLegacySiteTitle(value: unknown) {
-    return value === "OctalAICanvas" || value === "VOZEB PRO";
+    return value === "dreamyo" || value === "dreamyo" || value === "VOZEB PRO";
 }
 
 function replaceLegacyBrand(value: unknown, siteTitle: string) {
     if (typeof value !== "string") return value;
-    return value.replaceAll("OctalAICanvas", siteTitle).replaceAll("VOZEB PRO", siteTitle).replaceAll("VOZEB 开源交流", `${siteTitle} 开源交流`);
+    return value.replaceAll("dreamyo", siteTitle).replaceAll("dreamyo", siteTitle).replaceAll("VOZEB PRO", siteTitle).replaceAll("VOZEB 开源交流", `${siteTitle} 开源交流`);
 }
 
 export function normalizeSecretText(value: unknown, fallback: string, maxPlainLength: number) {
@@ -688,9 +688,9 @@ export function normalizeText(value: unknown, fallback: string, maxLength: numbe
 
 export function repairKnownMojibakeText(value: string) {
     if (value === DEFAULT_SITE_SETTINGS.title || value === DEFAULT_SITE_SETTINGS.seoTitle || value === DEFAULT_SITE_SETTINGS.seoKeywords) return value;
-    if (value.includes("OctalAICanvas") && value.includes("AI") && !value.includes("绘图") && value.includes(",")) return DEFAULT_SITE_SETTINGS.seoKeywords;
-    if (value.includes("OctalAICanvas") && value.includes("AI") && !value.includes("工作台")) return DEFAULT_SITE_SETTINGS.seoDescription;
-    if (value.includes("2026 OctalAICanvas") && !value.startsWith("©")) return DEFAULT_SITE_SETTINGS.footerCopyright;
+    if (value.includes("dreamyo") && value.includes("AI") && !value.includes("绘图") && value.includes(",")) return DEFAULT_SITE_SETTINGS.seoKeywords;
+    if (value.includes("dreamyo") && value.includes("AI") && !value.includes("工作台")) return DEFAULT_SITE_SETTINGS.seoDescription;
+    if (value.includes("2026 dreamyo") && !value.startsWith("©")) return DEFAULT_SITE_SETTINGS.footerCopyright;
     if (value.startsWith("QQ ") && !value.includes("邮箱")) return "QQ 邮箱";
     return repairUtf8MojibakeText(value);
 }

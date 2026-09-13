@@ -167,7 +167,7 @@ export function ImageToolSettingsModal({
                         max={Math.max(previewScroll.max, 1)}
                         value={Math.min(previewScroll.left, Math.max(previewScroll.max, 1))}
                         disabled={previewScroll.max <= 0}
-                        className="octaflow-preview-range absolute bottom-4 left-10 right-10 disabled:cursor-default disabled:opacity-50"
+                        className="dreamyo-preview-range absolute bottom-4 left-10 right-10 disabled:cursor-default disabled:opacity-50"
                         style={{ "--preview-scrollbar-thumb-width": `${scrollbarThumbWidth}px` } as CSSProperties}
                         onInput={(event) => setPreviewScrollLeft(Number(event.currentTarget.value))}
                         onChange={(event) => setPreviewScrollLeft(Number(event.target.value))}

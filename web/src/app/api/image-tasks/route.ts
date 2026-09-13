@@ -134,8 +134,8 @@ import {
 export async function POST(request: Request) {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) return NextResponse.json({ error: "请先登录" }, { status: 401 });
-    const headerRequestId = request.headers.get("x-octalaicanvas-client-request-id")?.trim();
-    const headerAttemptNo = positiveAttemptNo(request.headers.get("x-octalaicanvas-attempt-no"));
+    const headerRequestId = request.headers.get("x-dreamyo-client-request-id")?.trim();
+    const headerAttemptNo = positiveAttemptNo(request.headers.get("x-dreamyo-attempt-no"));
     if (headerRequestId) {
         const existing = await getStoredGenerationTaskByRequest<ImageTask>("image", currentUser.id, headerRequestId, headerAttemptNo);
         if (existing) return NextResponse.json({ task: publicTask(existing) });

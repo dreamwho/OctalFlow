@@ -49,8 +49,8 @@ from services.settings_management_service import (
 
 from contracts.proxy import ProxyChainedConfig
 
-GATEWAY_SETTING = "octalaicanvas_gateway_enabled"
-REDACTED_PROXY_AUTH = "__OCTAL_PROXY_AUTH_REDACTED__"
+GATEWAY_SETTING = "dreamyo_gateway_enabled"
+REDACTED_PROXY_AUTH = "__DREAMYO_PROXY_AUTH_REDACTED__"
 router = APIRouter()
 
 

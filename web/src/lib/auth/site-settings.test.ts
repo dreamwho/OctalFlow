@@ -15,14 +15,14 @@ describe("site settings", () => {
         expect(settings.iconUrl).toBe("https://cdn.example.com/favicon.ico");
     });
 
-    it("defaults public contacts to the OctalAICanvas email and QQ group", () => {
+    it("defaults public contacts to the dreamyo email and QQ group", () => {
         const settings = normalizeSiteSettings({});
 
         expect(settings.socials.email).toMatchObject({ enabled: true, url: "mailto:csyqlz@gmail.com" });
         expect(settings.socials.telegram).toMatchObject({ enabled: false, url: "" });
         expect(settings.socials.x).toMatchObject({ enabled: false, url: "" });
         expect(settings.socials.instagram).toMatchObject({ enabled: false, url: "" });
-        expect(settings.friendLinks).toContainEqual(expect.objectContaining({ id: "qq-octalaicanvas-open-source", url: "https://qm.qq.com/q/9MVLTxuRd6", enabled: true }));
+        expect(settings.friendLinks).toContainEqual(expect.objectContaining({ id: "qq-dreamyo-open-source", url: "https://qm.qq.com/q/9MVLTxuRd6", enabled: true }));
     });
 
     it("updates only bundled brand defaults when the site title changes", () => {
@@ -37,10 +37,10 @@ describe("site settings", () => {
             seoKeywords: expect.stringContaining("无限创作"),
             footerCopyright: expect.stringContaining("无限创作"),
         });
-        expect(settings.friendLinks).toContainEqual(expect.objectContaining({ id: "octalaicanvas-home", label: "无限创作" }));
+        expect(settings.friendLinks).toContainEqual(expect.objectContaining({ id: "dreamyo-home", label: "无限创作" }));
     });
 
-    it("migrates legacy VOZEB defaults to the OctalFlow brand", () => {
+    it("migrates legacy VOZEB defaults to the dreamyo brand", () => {
         const settings = normalizeSiteSettings({
             title: "VOZEB PRO",
             logoUrl: "/logo.svg",
@@ -54,13 +54,13 @@ describe("site settings", () => {
         });
 
         expect(settings).toMatchObject({
-            title: "OctalFlow",
-            logoUrl: "/brand/octaflow-mark.png",
-            iconUrl: "/brand/octaflow-icon.png",
-            seoTitle: "OctalFlow",
-            footerCopyright: "© 2026 OctalFlow. All rights reserved.",
+            title: "dreamyo",
+            logoUrl: "/brand/dreamyo/mark.png",
+            iconUrl: "/brand/dreamyo/mark.png",
+            seoTitle: "dreamyo",
+            footerCopyright: "© 2026 dreamyo. All rights reserved.",
         });
-        expect(settings.friendLinks.map((link) => link.label)).toEqual(["OctalFlow", "OctalFlow 开源交流 QQ 群"]);
+        expect(settings.friendLinks.map((link) => link.label)).toEqual(["dreamyo", "dreamyo 开源交流 QQ 群"]);
     });
 
     it("preserves explicitly customized brand copy when the title changes", () => {
@@ -70,7 +70,7 @@ describe("site settings", () => {
             seoTitle: "独立 SEO 标题",
             seoKeywords: "自定义,关键词",
             footerCopyright: "© 独立运营主体",
-            friendLinks: [{ id: "octalaicanvas-home", label: "官方网站", url: "https://www.octalaicanvas.com/", enabled: true }],
+            friendLinks: [{ id: "dreamyo-home", label: "官方网站", url: "https://www.dreamyo.com/", enabled: true }],
         });
 
         expect(settings).toMatchObject({ seoTitle: "独立 SEO 标题", seoKeywords: "自定义,关键词", footerCopyright: "© 独立运营主体" });
@@ -111,17 +111,17 @@ describe("site settings", () => {
         const settings = normalizeSiteSettings({
             socials: {
                 email: { enabled: true, label: "邮箱", url: "owner@example.com" },
-                telegram: { enabled: true, label: "Telegram", url: "t.me/octalaicanvas_group" },
-                x: { enabled: true, label: "X", url: "@octalaicanvas" },
-                instagram: { enabled: true, label: "Instagram", url: "instagram.com/octalaicanvas.pro" },
+                telegram: { enabled: true, label: "Telegram", url: "t.me/dreamyo_group" },
+                x: { enabled: true, label: "X", url: "@dreamyo" },
+                instagram: { enabled: true, label: "Instagram", url: "instagram.com/dreamyo.pro" },
             },
         });
 
         expect(settings.socials).toEqual({
             email: { enabled: true, label: "邮箱", url: "mailto:owner@example.com" },
-            telegram: { enabled: true, label: "Telegram", url: "https://t.me/octalaicanvas_group" },
-            x: { enabled: true, label: "X", url: "https://x.com/octalaicanvas" },
-            instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/octalaicanvas.pro" },
+            telegram: { enabled: true, label: "Telegram", url: "https://t.me/dreamyo_group" },
+            x: { enabled: true, label: "X", url: "https://x.com/dreamyo" },
+            instagram: { enabled: true, label: "Instagram", url: "https://instagram.com/dreamyo.pro" },
         });
         expect(normalizeSiteSettings(settings).socials).toEqual(settings.socials);
     });

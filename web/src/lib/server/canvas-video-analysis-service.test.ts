@@ -109,7 +109,7 @@ describe("Canvas video analysis", () => {
     });
 
     it("uses generationDefaults.videoAnalysisModel, retries native-video through sampled frames, and never invents unsupported audio", async () => {
-        mocks.request.mockRejectedValueOnce(new Error("native video upload failed")).mockResolvedValueOnce({ arguments: JSON.stringify(structuredAnalysis), headers: new Headers({ "x-octalaicanvas-points-remaining": "87" }) });
+        mocks.request.mockRejectedValueOnce(new Error("native video upload failed")).mockResolvedValueOnce({ arguments: JSON.stringify(structuredAnalysis), headers: new Headers({ "x-dreamyo-points-remaining": "87" }) });
 
         const result = await analyzeCanvasVideo({ ownerUserId: "owner-one", storageKey: "permanent/2026/09/08/videos/generated.mp4", requestId: "request-one", origin: "http://localhost", cookie: "session=test" });
 

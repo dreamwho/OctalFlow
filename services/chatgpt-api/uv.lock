@@ -450,7 +450,7 @@ wheels = [
 ]
 
 [[package]]
-name = "octalaicanvas-chatgpt-api"
+name = "dreamyo-chatgpt-api"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

@@ -1,4 +1,4 @@
-type OctalaicanvasRecommendedVideoInput = {
+type DreamyoRecommendedVideoInput = {
     model: string;
     prompt: string;
     duration: number;
@@ -12,13 +12,13 @@ type OctalaicanvasRecommendedVideoInput = {
 
 const SEEDANCE_FAST_720P = "seedance 2.0-fast-720p";
 
-export function assertOctalaicanvasRecommendedVideoReferences(model: string, references: Array<{ type?: string }>) {
+export function assertDreamyoRecommendedVideoReferences(model: string, references: Array<{ type?: string }>) {
     if (normalizeModel(model) !== SEEDANCE_FAST_720P) return;
     if (references.some((reference) => reference.type === "video")) throw new Error("Seedance 2.0-fast-720p 不支持参考视频");
     if (references.some((reference) => reference.type === "audio")) throw new Error("Seedance 2.0-fast-720p 不支持参考音频");
 }
 
-export function buildOctalaicanvasRecommendedVideoRequest(input: OctalaicanvasRecommendedVideoInput) {
+export function buildDreamyoRecommendedVideoRequest(input: DreamyoRecommendedVideoInput) {
     const seedanceFast720p = normalizeModel(input.model) === SEEDANCE_FAST_720P;
     const resolution = seedanceFast720p ? "720p" : input.resolution;
     const payload: Record<string, unknown> = {

@@ -22,14 +22,14 @@ describe("Docker Compose contracts", () => {
 
     it("rejects a Worker that can bypass the application database boundary", () => {
         const profile = composeProfiles.find(({ file }) => file === "docker-compose.external-db.yml");
-        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("      OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000", "      OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000\n      DATABASE_URL: postgres://leaked");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("      DREAMYO_WORKER_API_ORIGIN: http://app:3000", "      DREAMYO_WORKER_API_ORIGIN: http://app:3000\n      DATABASE_URL: postgres://leaked");
 
         expect(() => validateComposeContract(source, profile)).toThrow("generation-worker 不应直接持有数据库连接串");
     });
 
     it("rejects mutable latest release images", () => {
         const profile = composeProfiles.find(({ file }) => file === "docker-compose.yml");
-        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replaceAll("ghcr.io/dreamwho/octalaicanvas:v0.0.6", "ghcr.io/dreamwho/octalaicanvas:latest");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replaceAll("ghcr.io/dreamwho/dreamyo:v0.0.6", "ghcr.io/dreamwho/dreamyo:latest");
 
         expect(() => validateComposeContract(source, profile)).toThrow("app 必须使用当前发布版本的明确镜像");
     });
@@ -43,7 +43,7 @@ describe("Docker Compose contracts", () => {
 
     it("requires an authenticated magic-proxy healthcheck", () => {
         const profile = composeProfiles.find(({ file }) => file === "docker-compose.yml");
-        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("Authorization: Bearer $$OCTALAICANVAS_MAGIC_PROXY_SECRET", "Authorization: Bearer missing");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("Authorization: Bearer $$DREAMYO_MAGIC_PROXY_SECRET", "Authorization: Bearer missing");
 
         expect(() => validateComposeContract(source, profile)).toThrow("magic-proxy 健康检查必须使用 Controller Bearer 密钥");
     });
@@ -51,8 +51,8 @@ describe("Docker Compose contracts", () => {
     it("keeps database and provider secrets out of magic-proxy", () => {
         const profile = composeProfiles.find(({ file }) => file === "docker-compose.external-db.yml");
         const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace(
-            "      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}",
-            "      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}\n      DATABASE_URL: leaked",
+            "      DREAMYO_MAGIC_PROXY_SECRET: ${DREAMYO_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}",
+            "      DREAMYO_MAGIC_PROXY_SECRET: ${DREAMYO_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}\n      DATABASE_URL: leaked",
         );
 
         expect(() => validateComposeContract(source, profile)).toThrow("magic-proxy 只能接收 Controller 密钥和监听地址环境变量");
@@ -75,14 +75,14 @@ describe("Docker Compose contracts", () => {
         expect(script).toContain('chmod 600 "$provider_file"');
         expect(script).toContain('chown 1000:1000 "$runtime_dir" "$provider_file"');
         expect(script).toContain("proxies: []");
-        expect(script).toContain('exec /mihomo -secret "$OCTALAICANVAS_MAGIC_PROXY_SECRET" -ext-ctl "$OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST:9090"');
+        expect(script).toContain('exec /mihomo -secret "$DREAMYO_MAGIC_PROXY_SECRET" -ext-ctl "$DREAMYO_MAGIC_PROXY_LISTEN_HOST:9090"');
         expect(script).not.toMatch(/(?:printf|echo)[^\n]*\$secret/);
         expect(script).not.toMatch(/chmod\s+(?:0?777|a\+rw)/);
     });
 
     it("keeps host-network provider routes on loopback", () => {
         const profile = composeProfiles.find(({ file }) => file === "docker-compose.baota.yml");
-        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL: http://127.0.0.1:17890", "OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL: http://magic-proxy:17890");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("DREAMYO_MAGIC_PROXY_GEMINIAI_URL: http://127.0.0.1:17890", "DREAMYO_MAGIC_PROXY_GEMINIAI_URL: http://magic-proxy:17890");
 
         expect(() => validateComposeContract(source, profile)).toThrow("app 的 GeminiAIStudio 代理地址不正确");
     });
@@ -96,7 +96,7 @@ describe("Docker Compose contracts", () => {
 
     it("rejects exposing the external maintenance token to the Worker", () => {
         const profile = composeProfiles.find(({ file }) => file === "docker-compose.external-db.yml");
-        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("      OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000", "      OCTALAICANVAS_WORKER_API_ORIGIN: http://app:3000\n      OCTALAICANVAS_MAINTENANCE_TOKEN: leaked");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("      DREAMYO_WORKER_API_ORIGIN: http://app:3000", "      DREAMYO_WORKER_API_ORIGIN: http://app:3000\n      DREAMYO_MAINTENANCE_TOKEN: leaked");
 
         expect(() => validateComposeContract(source, profile)).toThrow("generation-worker 不得获得外部维护令牌");
     });
@@ -108,17 +108,17 @@ describe("Docker Compose contracts", () => {
         expect(profile).toMatchObject({
             appPort: "${PORT:-8866}",
             internalOrigin: "http://127.0.0.1:${PORT:-8866}",
-            trustedProxyHops: "${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}",
+            trustedProxyHops: "${DREAMYO_TRUSTED_PROXY_HOPS:-0}",
             workerOrigin: "http://127.0.0.1:${PORT:-8866}",
         });
         expect(() => validateComposeContract(source.replace("      PORT: ${PORT:-8866}", "      PORT: 3000"), profile)).toThrow("app 监听端口必须为 ${PORT:-8866}");
-        expect(() => validateComposeContract(source.replace("      OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}", "      OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:3000"), profile)).toThrow("Worker API 地址必须为 http://127.0.0.1:${PORT:-8866}");
+        expect(() => validateComposeContract(source.replace("      DREAMYO_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}", "      DREAMYO_WORKER_API_ORIGIN: http://127.0.0.1:3000"), profile)).toThrow("Worker API 地址必须为 http://127.0.0.1:${PORT:-8866}");
         expect(() => validateComposeContract(source.replace("http://127.0.0.1:${PORT:-8866}/api/health/live", "http://127.0.0.1:3000/api/health/live"), profile)).toThrow("app 健康检查必须请求 http://127.0.0.1:${PORT:-8866}/api/health/live");
     });
 
     it("rejects Baota-only host networking in the public default topology", () => {
         const profile = composeProfiles.find(({ file }) => file === "docker-compose.yml");
-        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("    image: ${OCTALAICANVAS_IMAGE", "    network_mode: host\n    image: ${OCTALAICANVAS_IMAGE");
+        const source = readFileSync(path.join(repoRoot, profile.file), "utf8").replace("    image: ${DREAMYO_IMAGE", "    network_mode: host\n    image: ${DREAMYO_IMAGE");
 
         expect(() => validateComposeContract(source, profile)).toThrow("宝塔专用 host 网络不得泄漏到其他拓扑");
     });

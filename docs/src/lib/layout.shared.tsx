@@ -10,7 +10,7 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: (
         <span className="inline-flex items-center gap-2 font-semibold">
-          <img src="/brand/octaflow-mark.png" alt={appName} className="h-6 w-8 object-contain" />
+          <img src="/brand/dreamyo/mark.png" alt={appName} className="h-6 w-8 object-contain" />
           <span>{appName}</span>
         </span>
       ),
@@ -43,8 +43,8 @@ export function baseOptions(): BaseLayoutProps {
       },
       {
         type: "icon",
-        text: "OctalFlow 开源交流 QQ 群",
-        label: "OctalFlow 开源交流 QQ 群（1049777515）",
+        text: "dreamyo 开源交流 QQ 群",
+        label: "dreamyo 开源交流 QQ 群（1049777515）",
         url: qqGroupUrl,
         external: true,
         on: "menu",

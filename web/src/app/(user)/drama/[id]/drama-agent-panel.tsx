@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SiteLogo } from "@/components/layout/site-logo";
+import { DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 
 import type { AgentMediaDownload } from "@/components/agent/agent-media-download";
 import { CreativeAgentControls, CreativeAgentSkillCard, type CreativeAgentModelOption } from "@/components/agent/creative-agent-controls";
@@ -719,7 +720,7 @@ function DramaAgentContent({
                 {loading ? (
                     <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground" data-drama-agent-loading>
                         <div className="flex items-center gap-2 text-sm font-medium">
-                            <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
+                            <DreamyoWaitingIcon frame={1} size={22} className="motion-safe:animate-pulse" label="正在恢复对话" />
                             正在恢复对话
                         </div>
                     </div>
@@ -769,7 +770,7 @@ function DramaAgentContent({
                             ) : null}
                             {referencedAssets.length ? <DramaMessageReferences assets={referencedAssets} /> : null}
                             <div className={`min-w-0 break-words text-sm leading-6 [overflow-wrap:anywhere] ${message.status === "failed" ? "text-red-500" : "text-foreground"}`}>
-                                {message.status === "running" ? <LoaderCircle className="mr-1 inline size-3.5 animate-spin" /> : null}
+                                {message.status === "running" ? <DreamyoWaitingIcon frame={2} size={18} className="mr-1 inline-grid align-[-3px] motion-safe:animate-pulse" label="生成中" /> : null}
                                 {message.role === "assistant" && message.status === "completed" ? <AgentMarkdown>{displayContent}</AgentMarkdown> : <span className="whitespace-pre-wrap">{displayContent}</span>}
                             </div>
                             {messageAssets.length ? <DramaAgentAssets assets={messageAssets} project={project} episode={episode} /> : null}

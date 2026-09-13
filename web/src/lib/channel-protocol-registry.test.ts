@@ -52,7 +52,7 @@ describe("channel protocol registry", () => {
             "compatible",
             "auto",
         ]);
-        expect(protocols).not.toEqual(expect.arrayContaining(["octalaicanvas-recommended", "seedance-special", "globalaiopc"]));
+        expect(protocols).not.toEqual(expect.arrayContaining(["dreamyo-recommended", "seedance-special", "globalaiopc"]));
         expect(channelProtocolDefinition("openai").modelCatalogPaths).toEqual(["/v1/models"]);
         expect(channelProtocolDefinition("sub2api").modelCatalogPaths).toEqual(["/v1/models"]);
         expect(channelProtocolDefinition("newapi").modelCatalogPaths).toEqual(["/v1/models"]);
@@ -195,7 +195,7 @@ describe("channel protocol registry", () => {
             },
         });
         expect(channelProtocolDefinition("seedance-special").operations.video).toMatchObject({ createPath: "/v1/seedance-special/videos", queryPath: "/v1/result/:task_id" });
-        expect(channelProtocolDefinition("octalaicanvas-recommended").operations.video).toMatchObject({
+        expect(channelProtocolDefinition("dreamyo-recommended").operations.video).toMatchObject({
             createPath: "/v1/videos/generations",
             imageToVideoPath: "/v1/videos/generations",
             queryPath: "/v1/videos/generations/:task_id",
@@ -234,12 +234,12 @@ describe("channel protocol registry", () => {
         }
     });
 
-    it("applies the OctalAICanvas recommended preset to frontend channel drafts", () => {
-        const configured = applyChannelProtocol({ ...channel, baseUrl: "", models: ["Seedance 2.0-fast-720p"] }, "octalaicanvas-recommended");
+    it("applies the dreamyo recommended preset to frontend channel drafts", () => {
+        const configured = applyChannelProtocol({ ...channel, baseUrl: "", models: ["Seedance 2.0-fast-720p"] }, "dreamyo-recommended");
 
         expect(configured).toMatchObject({ baseUrl: "https://new.aiym.ink/v1", apiFormat: "openai" });
         expect(configured.advancedConfig).toMatchObject({
-            protocol: "octalaicanvas-recommended",
+            protocol: "dreamyo-recommended",
             createPath: "/v1/videos/generations",
             queryPath: "/v1/videos/generations/:task_id",
             modelCatalogPaths: ["/v1/models"],
@@ -318,7 +318,7 @@ describe("channel protocol registry", () => {
 
     it("preserves an administrator-configured Base URL when selecting a protocol", () => {
         expect(applyChannelProtocol(channel, "gemini").baseUrl).toBe(channel.baseUrl);
-        expect(applyChannelProtocol(channel, "octalaicanvas-recommended").baseUrl).toBe(channel.baseUrl);
+        expect(applyChannelProtocol(channel, "dreamyo-recommended").baseUrl).toBe(channel.baseUrl);
         expect(applyChannelProtocol(channel, "yumeng").baseUrl).toBe(channel.baseUrl);
     });
 

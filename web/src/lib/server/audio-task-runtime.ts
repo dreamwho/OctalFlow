@@ -403,9 +403,9 @@ function mediaUrlFromProxyPath(path: string) {
 }
 
 function readBilling(headers: Headers) {
-    const raw = headers.get("x-octalaicanvas-points-cost");
+    const raw = headers.get("x-dreamyo-points-cost");
     const value = raw === null ? undefined : Number(raw);
-    return { pointsCost: value !== undefined && Number.isFinite(value) && value >= 0 ? value : undefined, pointsRecordId: headers.get("x-octalaicanvas-points-record-id") || undefined };
+    return { pointsCost: value !== undefined && Number.isFinite(value) && value >= 0 ? value : undefined, pointsRecordId: headers.get("x-dreamyo-points-record-id") || undefined };
 }
 
 function mediaContext(task: AudioTask) {

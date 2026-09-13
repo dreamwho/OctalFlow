@@ -20,7 +20,7 @@ const CHANNEL_PROTOCOLS: SystemChannelProtocol[] = [
     "minimax-audio",
     "tencent-tokenhub-music",
     "aliyun-bailian-audio",
-    "octalaicanvas-recommended",
+    "dreamyo-recommended",
     "globalaiopc",
     "seedance",
     "stable-diffusion",

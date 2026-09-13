@@ -119,7 +119,7 @@ describe("chatgpt api model selection", () => {
     });
 
     it("replaces a legacy self-HTTP source key with the managed channel semantics", async () => {
-        settings.systemChannels = [{ id: CHATGPT_API_CHANNEL_ID, name: "GPTAPI", baseUrl: "https://octal.example/api/chatgpt-api/v1", apiKey: "persisted-source-key", apiFormat: "openai", models: ["gpt-5.6"], enabled: true }];
+        settings.systemChannels = [{ id: CHATGPT_API_CHANNEL_ID, name: "GPTAPI", baseUrl: "https://dreamyo.example/api/chatgpt-api/v1", apiKey: "persisted-source-key", apiFormat: "openai", models: ["gpt-5.6"], enabled: true }];
 
         await saveChatGptModels({ models: ["gpt-5.6"] });
 

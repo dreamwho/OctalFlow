@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { assertOctalaicanvasRecommendedVideoReferences, buildOctalaicanvasRecommendedVideoRequest } from "./octalaicanvas-recommended-video";
+import { assertDreamyoRecommendedVideoReferences, buildDreamyoRecommendedVideoRequest } from "./dreamyo-recommended-video";
 
-describe("OctalAICanvas recommended video protocol", () => {
+describe("dreamyo recommended video protocol", () => {
     it("forces the 720p Seedance model to disable generated audio", () => {
         expect(
-            buildOctalaicanvasRecommendedVideoRequest({
+            buildDreamyoRecommendedVideoRequest({
                 model: "Seedance 2.0-fast-720p",
                 prompt: "test",
                 duration: 5,
@@ -21,7 +21,7 @@ describe("OctalAICanvas recommended video protocol", () => {
 
     it("keeps supported reference media in JSON arrays", () => {
         expect(
-            buildOctalaicanvasRecommendedVideoRequest({
+            buildDreamyoRecommendedVideoRequest({
                 model: "qy-seedance-2.0-fast",
                 prompt: "test",
                 duration: 10,
@@ -47,7 +47,7 @@ describe("OctalAICanvas recommended video protocol", () => {
     });
 
     it("rejects unsupported reference video and audio for Seedance 2.0-fast-720p", () => {
-        expect(() => assertOctalaicanvasRecommendedVideoReferences("Seedance 2.0-fast-720p", [{ type: "video" }])).toThrow("不支持参考视频");
-        expect(() => assertOctalaicanvasRecommendedVideoReferences("models/Seedance 2.0-fast-720p", [{ type: "audio" }])).toThrow("不支持参考音频");
+        expect(() => assertDreamyoRecommendedVideoReferences("Seedance 2.0-fast-720p", [{ type: "video" }])).toThrow("不支持参考视频");
+        expect(() => assertDreamyoRecommendedVideoReferences("models/Seedance 2.0-fast-720p", [{ type: "audio" }])).toThrow("不支持参考音频");
     });
 });

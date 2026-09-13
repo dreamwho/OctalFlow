@@ -6,8 +6,8 @@ describe("global selection controls", () => {
     it("shares one luminous surface across custom and Ant Design selected states", async () => {
         const css = await readFile(resolve(process.cwd(), "src/app/styles/global-selection-controls.css"), "utf8");
 
-        expect(css).toContain("--octa-selection-surface:");
-        expect(css).toContain('.octaflow-selection-surface');
+        expect(css).toContain("--dreamyo-selection-surface:");
+        expect(css).toContain('.dreamyo-selection-surface');
         expect(css).toContain('[role="tab"][aria-selected="true"]');
         expect(css).toContain(".ant-segmented .ant-segmented-item-selected");
         expect(css).toContain(".ant-select-item-option-selected");
@@ -23,13 +23,13 @@ describe("global selection controls", () => {
         ]);
 
         expect(css).toContain(".ant-switch.ant-switch-checked");
-        expect(css).toContain(".octaflow-smart-switch.is-checked");
+        expect(css).toContain(".dreamyo-smart-switch.is-checked");
         expect(css).toContain(".ant-slider .ant-slider-track");
-        expect(css).toContain(".octaflow-native-range");
-        expect(css).toContain(".octaflow-media-range");
-        expect(css).toContain(".octaflow-preview-range");
-        expect(zoom).toContain("octaflow-native-range");
-        expect(video).toContain("octaflow-media-range");
-        expect(preview).toContain("octaflow-preview-range");
+        expect(css).toContain(".dreamyo-native-range");
+        expect(css).toContain(".dreamyo-media-range");
+        expect(css).toContain(".dreamyo-preview-range");
+        expect(zoom).toContain("dreamyo-native-range");
+        expect(video).toContain("dreamyo-media-range");
+        expect(preview).toContain("dreamyo-preview-range");
     });
 });

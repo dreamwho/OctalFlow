@@ -4,13 +4,13 @@ import "./global.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "OctalFlow 文档",
-    template: "%s | OctalFlow 文档",
+    default: "dreamyo 文档",
+    template: "%s | dreamyo 文档",
   },
   description:
-    "OctalFlow - AI 创意工作台官方文档，提供图片、视频、音频、短剧等多种 AI 生成能力的完整指南。",
+    "dreamyo - AI 创意工作台官方文档，提供图片、视频、音频、短剧等多种 AI 生成能力的完整指南。",
   keywords: [
-    "OctalFlow",
+    "dreamyo",
     "AI创意",
     "图片生成",
     "视频生成",
@@ -18,34 +18,34 @@ export const metadata: Metadata = {
     "AI工作台",
     "文档",
   ],
-  authors: [{ name: "OctalFlow Team" }],
-  creator: "OctalFlow Team",
-  publisher: "OctalFlow",
+  authors: [{ name: "dreamyo Team" }],
+  creator: "dreamyo Team",
+  publisher: "dreamyo",
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://docs.octalaicanvas.pro",
+    process.env.NEXT_PUBLIC_SITE_URL || "https://docs.dreamyo.pro",
   ),
   alternates: {
     canonical: "/",
   },
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
+    icon: "/brand/dreamyo/mark.png",
+    shortcut: "/brand/dreamyo/mark.png",
+    apple: "/brand/dreamyo/mark.png",
   },
   openGraph: {
     type: "website",
     locale: "zh_CN",
     url: "/",
-    title: "OctalFlow 文档",
-    description: "OctalFlow - AI 创意工作台官方文档",
-    siteName: "OctalFlow 文档",
-    images: ["/brand/octaflow-mark.png"],
+    title: "dreamyo 文档",
+    description: "dreamyo - AI 创意工作台官方文档",
+    siteName: "dreamyo 文档",
+    images: ["/brand/dreamyo/mark.png"],
   },
   twitter: {
     card: "summary_large_image",
-    title: "OctalFlow 文档",
-    description: "OctalFlow - AI 创意工作台官方文档",
-    images: ["/brand/octaflow-mark.png"],
+    title: "dreamyo 文档",
+    description: "dreamyo - AI 创意工作台官方文档",
+    images: ["/brand/dreamyo/mark.png"],
   },
   robots: {
     index: true,

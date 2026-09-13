@@ -117,8 +117,8 @@ describe("system channel model capabilities", () => {
         expect(normalized?.modelCapabilities).toEqual({ "writer-v1": "text", "image-v1": "image", "video-v1": "video" });
     });
 
-    it("persists the OctalAICanvas recommended protocol after a settings round-trip", () => {
-        expect(normalizeSystemChannelAdvancedConfig({ protocol: "octalaicanvas-recommended" } as never)?.protocol).toBe("octalaicanvas-recommended");
+    it("persists the dreamyo recommended protocol after a settings round-trip", () => {
+        expect(normalizeSystemChannelAdvancedConfig({ protocol: "dreamyo-recommended" } as never)?.protocol).toBe("dreamyo-recommended");
     });
 
     it("normalizes per-model routes for mixed company APIs", () => {

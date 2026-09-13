@@ -8,9 +8,9 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 it("does not overwrite changed runtime media or account files after a matching receipt", async () => {
-    vi.stubEnv("OCTALAICANVAS_ENCRYPTION_KEY", "a".repeat(64));
+    vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
     mocks.verify.mockResolvedValue({ version: 1, id: "snapshot" });
-    mocks.read.mockResolvedValue(`OCTALAICANVAS_ENCRYPTION_KEY='${"a".repeat(64)}'`);
+    mocks.read.mockResolvedValue(`DREAMYO_ENCRYPTION_KEY='${"a".repeat(64)}'`);
     mocks.execute.mockReturnValue(JSON.stringify({ status: "alreadyImported", counts: { users: 2 } }));
     vi.spyOn(console, "log").mockImplementation(() => {});
     await import("./restore-private-migration.mjs");

@@ -1,6 +1,6 @@
 import { apiSuccess } from "@/app/api/_shared/api-response";
 import { auditMagicProxyAction, auditMagicProxyFailure, magicProxyRouteError, readMagicProxyAdminJson, requireMagicProxyAdmin } from "@/lib/server/magic-proxy-admin";
-import { getMagicProxyOverview, testMagicProxyAllNodes, testMagicProxyGoogleAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "@/lib/server/magic-proxy-service";
+import { getMagicProxyOverview, testChatGptChainAccess, testMagicProxyAllNodes, testMagicProxyGoogleAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "@/lib/server/magic-proxy-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +43,12 @@ export async function POST(request: Request) {
             const data = await testMagicProxyGoogleAccess(body);
             await auditMagicProxyAction(request, access.user, "admin.magic_proxy.google_test", { type: "magic_proxy", id: "google" }, { ok: data.overallOk, count: data.items.length });
             return apiSuccess(data, data.overallOk ? "Google 访问测试通过" : "部分或全部通道无法正常访问 Google");
+        }
+
+        if (action === "testChatGptChain") {
+            const data = await testChatGptChainAccess();
+            await auditMagicProxyAction(request, access.user, "admin.magic_proxy.chatgpt_chain_test", { type: "magic_proxy", id: "chatgpt-chain" }, { ok: data.overallOk });
+            return apiSuccess(data, data.overallOk ? "ChatGPT 链路连通性测试通过" : "ChatGPT 链路连通性测试未通过");
         }
 
         node = typeof body?.node === "string" ? body.node.trim() : "";

@@ -45,7 +45,7 @@ _ALLOWED_SOURCE_ROUTES: set[tuple[str, str]] = {
     ("/v1/images/generations", "POST"),
     ("/v1/images/edits", "POST"),
 }
-_INTERNAL_DISPATCH_HEADER = "x-octal-internal-dispatch"
+_INTERNAL_DISPATCH_HEADER = "x-dreamyo-internal-dispatch"
 
 
 def _is_trusted_internal_dispatch(request: Request, expected_runtime_key: str) -> bool:
@@ -71,7 +71,7 @@ def _add_allowlisted_source_routes(
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Octal Canvas internal ChatGPT provider",
+        title="dreamyo internal ChatGPT provider",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -79,12 +79,12 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def runtime_guard(request: Request, call_next):
-        supplied = request.headers.get("x-octal-runtime-key", "")
+        supplied = request.headers.get("x-dreamyo-runtime-key", "")
         expected_runtime_key = runtime_key()
         if not supplied or not hmac.compare_digest(supplied, expected_runtime_key):
             return JSONResponse(
                 status_code=401,
-                content={"detail": {"error": "x-octal-runtime-key is required"}},
+                content={"detail": {"error": "x-dreamyo-runtime-key is required"}},
             )
         if (
             request.url.path.startswith("/v1/")

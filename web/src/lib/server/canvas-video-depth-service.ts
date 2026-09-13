@@ -32,9 +32,9 @@ export type CanvasVideoDepthRunner = (input: CanvasVideoDepthRuntime & { inputDi
 
 export function resolveCanvasVideoDepthRuntime(): CanvasVideoDepthRuntime {
     return {
-        interpreter: process.env.OCTALAICANVAS_VIDEO_DEPTH_PYTHON?.trim() || defaultDepthInterpreter(),
-        scriptPath: configuredRuntimePath("OCTALAICANVAS_VIDEO_DEPTH_SCRIPT", DEFAULT_DEPTH_SCRIPT),
-        modelDir: configuredRuntimePath("OCTALAICANVAS_VIDEO_DEPTH_MODEL", DEFAULT_DEPTH_MODEL),
+        interpreter: process.env.DREAMYO_VIDEO_DEPTH_PYTHON?.trim() || defaultDepthInterpreter(),
+        scriptPath: configuredRuntimePath("DREAMYO_VIDEO_DEPTH_SCRIPT", DEFAULT_DEPTH_SCRIPT),
+        modelDir: configuredRuntimePath("DREAMYO_VIDEO_DEPTH_MODEL", DEFAULT_DEPTH_MODEL),
     };
 }
 
@@ -43,7 +43,7 @@ export async function extractCanvasVideoDepth(
     dependencies: { runner?: CanvasVideoDepthRunner } = {},
 ): Promise<{ video: CanvasDepthVideoAsset }> {
     const source = await authorizeCanvasVideoSource(input);
-    const workdir = await mkdtemp(join(tmpdir(), "octalaicanvas-video-depth-"));
+    const workdir = await mkdtemp(join(tmpdir(), "dreamyo-video-depth-"));
     try {
         await input.onProgress?.({ stage: "读取源视频" });
         const sourcePath = await materializeCanvasVideoSource(source, workdir);
@@ -153,7 +153,7 @@ export async function runCanvasVideoDepthInference(input: Parameters<CanvasVideo
         });
         child.once("error", (error) => {
             const unavailable = (error as NodeJS.ErrnoException).code === "ENOENT";
-            reject(new CanvasVideoOperationError(unavailable ? "视频深度推理运行时不可用：未找到 OCTALAICANVAS_VIDEO_DEPTH_PYTHON 指向的解释器" : `视频深度推理进程无法启动：${error.message}`, unavailable ? 503 : 502));
+            reject(new CanvasVideoOperationError(unavailable ? "视频深度推理运行时不可用：未找到 DREAMYO_VIDEO_DEPTH_PYTHON 指向的解释器" : `视频深度推理进程无法启动：${error.message}`, unavailable ? 503 : 502));
         });
         child.once("close", (code) => {
             if (code === 0) {
@@ -171,7 +171,7 @@ async function assertDepthRuntime(runtime: CanvasVideoDepthRuntime) {
         const [interpreter, script, model] = await Promise.all([stat(/*turbopackIgnore: true*/ runtime.interpreter), stat(/*turbopackIgnore: true*/ runtime.scriptPath), stat(/*turbopackIgnore: true*/ runtime.modelDir)]);
         if (!interpreter.isFile() || !script.isFile() || !model.isDirectory()) throw new Error("invalid depth runtime path");
     } catch {
-        throw new CanvasVideoOperationError("视频深度推理运行时尚未准备，请先运行 services/video-depth/setup_runtime.sh；也可通过 OCTALAICANVAS_VIDEO_DEPTH_* 指定外部运行时", 503);
+        throw new CanvasVideoOperationError("视频深度推理运行时尚未准备，请先运行 services/video-depth/setup_runtime.sh；也可通过 DREAMYO_VIDEO_DEPTH_* 指定外部运行时", 503);
     }
 }
 
@@ -184,7 +184,7 @@ async function assertCompleteDepthFrames(decodedNames: string[], depthDirectory:
     if (decodedNames.some((name) => !depthNames.has(name))) throw new CanvasVideoOperationError("深度推理没有为全部源视频帧生成深度图", 502);
 }
 
-function configuredRuntimePath(environmentName: "OCTALAICANVAS_VIDEO_DEPTH_SCRIPT" | "OCTALAICANVAS_VIDEO_DEPTH_MODEL", fallback: string) {
+function configuredRuntimePath(environmentName: "DREAMYO_VIDEO_DEPTH_SCRIPT" | "DREAMYO_VIDEO_DEPTH_MODEL", fallback: string) {
     const configured = process.env[environmentName]?.trim() || fallback;
     if (isAbsolute(configured)) return configured;
     const root = projectRoot();

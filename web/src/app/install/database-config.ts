@@ -30,18 +30,18 @@ export function generateDeploymentSecret() {
 export function buildDeploymentSnippets(config: DatabaseConfig) {
     const host = config.host.trim() || "localhost";
     const port = config.port.trim() || "5432";
-    const database = config.database.trim() || "octalaicanvas";
-    const username = config.username.trim() || "octalaicanvas";
+    const database = config.database.trim() || "dreamyo";
+    const username = config.username.trim() || "dreamyo";
     const databaseUrl = buildPostgresUrl({ database, host, password: config.password, port, username });
     const databaseEnv = config.mode === "docker" ? `POSTGRES_DB=${database}\nPOSTGRES_USER=${username}\nPOSTGRES_PASSWORD=${config.password}` : `DATABASE_URL=${databaseUrl}`;
-    const envText = `OCTALAICANVAS_DATABASE_PROVIDER=postgres
+    const envText = `DREAMYO_DATABASE_PROVIDER=postgres
 ${databaseEnv}
-OCTALAICANVAS_DATABASE_POOL_MAX=10
-OCTALAICANVAS_DATABASE_SSL=${config.ssl ? "1" : "0"}
-OCTALAICANVAS_ENCRYPTION_KEY=${config.encryptionKey}
-OCTALAICANVAS_INSTALL_TOKEN=${config.installToken}
-OCTALAICANVAS_MAINTENANCE_TOKEN=${config.maintenanceToken}
-OCTALAICANVAS_WORKER_TOKEN=${config.workerToken}${config.mode === "baota" ? "\nOCTALAICANVAS_TRUSTED_PROXY_HOPS=1" : ""}`;
+DREAMYO_DATABASE_POOL_MAX=10
+DREAMYO_DATABASE_SSL=${config.ssl ? "1" : "0"}
+DREAMYO_ENCRYPTION_KEY=${config.encryptionKey}
+DREAMYO_INSTALL_TOKEN=${config.installToken}
+DREAMYO_MAINTENANCE_TOKEN=${config.maintenanceToken}
+DREAMYO_WORKER_TOKEN=${config.workerToken}${config.mode === "baota" ? "\nDREAMYO_TRUSTED_PROXY_HOPS=1" : ""}`;
 
     return {
         envText,
@@ -69,7 +69,7 @@ function bundledCompose(config: DatabaseConfig, database: string, username: stri
       POSTGRES_USER: ${quoteYaml(username)}
       POSTGRES_PASSWORD: ${quoteYaml(config.password)}
     volumes:
-      - octalaicanvas-postgres:/var/lib/postgresql/data
+      - dreamyo-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${username} -d ${database}"]
       interval: 5s
@@ -78,19 +78,19 @@ function bundledCompose(config: DatabaseConfig, database: string, username: stri
     restart: unless-stopped
 
   app:
-    image: ghcr.io/dreamwho/octalaicanvas:latest
+    image: ghcr.io/dreamwho/dreamyo:latest
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - octalaicanvas-data:/app/web/.data
+      - dreamyo-data:/app/web/.data
     environment:
-      OCTALAICANVAS_DATABASE_PROVIDER: "postgres"
+      DREAMYO_DATABASE_PROVIDER: "postgres"
       DATABASE_URL: ${quoteYaml(databaseUrl)}
-      OCTALAICANVAS_DATABASE_SSL: "0"
-      OCTALAICANVAS_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
-      OCTALAICANVAS_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
-      OCTALAICANVAS_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
-      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
+      DREAMYO_DATABASE_SSL: "0"
+      DREAMYO_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
+      DREAMYO_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
+      DREAMYO_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
+      DREAMYO_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,58 +100,58 @@ ${appHealthcheck()}
 ${workerService(config.workerToken, "http://app:3000")}
 
 volumes:
-  octalaicanvas-data:
-  octalaicanvas-postgres:`;
+  dreamyo-data:
+  dreamyo-postgres:`;
 }
 
 function externalCompose(config: DatabaseConfig, databaseUrl: string) {
     return `services:
   app:
-    image: ghcr.io/dreamwho/octalaicanvas:latest
+    image: ghcr.io/dreamwho/dreamyo:latest
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - octalaicanvas-data:/app/web/.data
+      - dreamyo-data:/app/web/.data
     environment:
-      OCTALAICANVAS_DATABASE_PROVIDER: "postgres"
+      DREAMYO_DATABASE_PROVIDER: "postgres"
       DATABASE_URL: ${quoteYaml(databaseUrl)}
-      OCTALAICANVAS_DATABASE_SSL: "${config.ssl ? "1" : "0"}"
-      OCTALAICANVAS_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
-      OCTALAICANVAS_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
-      OCTALAICANVAS_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
-      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
+      DREAMYO_DATABASE_SSL: "${config.ssl ? "1" : "0"}"
+      DREAMYO_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
+      DREAMYO_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
+      DREAMYO_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
+      DREAMYO_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
 ${appHealthcheck()}
     restart: unless-stopped
 
 ${workerService(config.workerToken, "http://app:3000")}
 
 volumes:
-  octalaicanvas-data:`;
+  dreamyo-data:`;
 }
 
 function baotaCompose(config: DatabaseConfig, databaseUrl: string) {
     return `services:
   app:
-    image: ghcr.io/dreamwho/octalaicanvas:latest
+    image: ghcr.io/dreamwho/dreamyo:latest
     network_mode: host
     volumes:
-      - octalaicanvas-data:/app/web/.data
+      - dreamyo-data:/app/web/.data
     environment:
-      OCTALAICANVAS_DATABASE_PROVIDER: "postgres"
+      DREAMYO_DATABASE_PROVIDER: "postgres"
       DATABASE_URL: ${quoteYaml(databaseUrl)}
-      OCTALAICANVAS_DATABASE_SSL: "0"
-      OCTALAICANVAS_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
-      OCTALAICANVAS_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
-      OCTALAICANVAS_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
-      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
-      OCTALAICANVAS_TRUSTED_PROXY_HOPS: "1"
+      DREAMYO_DATABASE_SSL: "0"
+      DREAMYO_ENCRYPTION_KEY: ${quoteYaml(config.encryptionKey)}
+      DREAMYO_INSTALL_TOKEN: ${quoteYaml(config.installToken)}
+      DREAMYO_MAINTENANCE_TOKEN: ${quoteYaml(config.maintenanceToken)}
+      DREAMYO_WORKER_TOKEN: ${quoteYaml(config.workerToken)}
+      DREAMYO_TRUSTED_PROXY_HOPS: "1"
 ${appHealthcheck()}
     restart: unless-stopped
 
 ${workerService(config.workerToken, "http://127.0.0.1:3000", true)}
 
 volumes:
-  octalaicanvas-data:`;
+  dreamyo-data:`;
 }
 
 function appHealthcheck() {
@@ -165,11 +165,11 @@ function appHealthcheck() {
 
 function workerService(workerToken: string, origin: string, hostNetwork = false) {
     return `  generation-worker:
-    image: ghcr.io/dreamwho/octalaicanvas:latest
+    image: ghcr.io/dreamwho/dreamyo:latest
     command: ["node", "/app/web/scripts/generation-worker.mjs"]${hostNetwork ? "\n    network_mode: host" : ""}
     environment:
-      OCTALAICANVAS_WORKER_API_ORIGIN: ${origin}
-      OCTALAICANVAS_WORKER_TOKEN: ${quoteYaml(workerToken)}
+      DREAMYO_WORKER_API_ORIGIN: ${origin}
+      DREAMYO_WORKER_TOKEN: ${quoteYaml(workerToken)}
     depends_on:
       app:
         condition: service_healthy

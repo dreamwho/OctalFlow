@@ -51,7 +51,7 @@ describe("generationPreferenceSummary", () => {
         const source = await readFile(resolve(process.cwd(), "src/components/creative-generation-preferences.tsx"), "utf8");
 
         expect(source).toContain('classNames={{ container: "border border-[#d9e4ee] dark:border-[#4d6478]" }}');
-        expect(source).toContain("octaflow-selection-surface");
+        expect(source).toContain("dreamyo-selection-surface");
         expect(source).not.toContain("dark:bg-[#55dff3]");
     });
 });

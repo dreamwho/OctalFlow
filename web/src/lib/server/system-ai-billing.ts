@@ -1,12 +1,12 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-export const SYSTEM_AI_LOGICAL_MODEL_HEADER = "x-octalaicanvas-logical-model";
-export const SYSTEM_AI_POINTS_IDEMPOTENCY_HEADER = "x-octalaicanvas-points-idempotency-key";
-export const SYSTEM_AI_POINTS_SIGNATURE_HEADER = "x-octalaicanvas-points-signature";
-export const SYSTEM_AI_UPSTREAM_MODEL_HEADER = "x-octalaicanvas-upstream-model";
+export const SYSTEM_AI_LOGICAL_MODEL_HEADER = "x-dreamyo-logical-model";
+export const SYSTEM_AI_POINTS_IDEMPOTENCY_HEADER = "x-dreamyo-points-idempotency-key";
+export const SYSTEM_AI_POINTS_SIGNATURE_HEADER = "x-dreamyo-points-signature";
+export const SYSTEM_AI_UPSTREAM_MODEL_HEADER = "x-dreamyo-upstream-model";
 
 const SYSTEM_AI_POINTS_SIGNATURE_VERSION = "v1";
-const SYSTEM_AI_POINTS_PROCESS_SECRET = "__octalaicanvasProSystemAiPointsProcessSecret" as const;
+const SYSTEM_AI_POINTS_PROCESS_SECRET = "__dreamyoProSystemAiPointsProcessSecret" as const;
 
 export type SystemAiBilling = {
     pointsCost?: number;
@@ -76,19 +76,19 @@ function normalizeBillingModel(value: string) {
 }
 
 function systemAiPointsSigningSecret() {
-    const configured = process.env.OCTALAICANVAS_ENCRYPTION_KEY?.trim();
+    const configured = process.env.DREAMYO_ENCRYPTION_KEY?.trim();
     if (configured) return configured;
-    const scope = globalThis as typeof globalThis & { __octalaicanvasProSystemAiPointsProcessSecret?: Buffer };
+    const scope = globalThis as typeof globalThis & { __dreamyoProSystemAiPointsProcessSecret?: Buffer };
     scope[SYSTEM_AI_POINTS_PROCESS_SECRET] ||= randomBytes(32);
     return scope[SYSTEM_AI_POINTS_PROCESS_SECRET];
 }
 
 export function readSystemAiBilling(headers: Headers): SystemAiBilling {
-    const rawCost = headers.get("x-octalaicanvas-points-cost");
+    const rawCost = headers.get("x-dreamyo-points-cost");
     const cost = rawCost === null ? undefined : Number(rawCost);
     return {
         pointsCost: cost !== undefined && Number.isFinite(cost) && cost >= 0 ? cost : undefined,
-        pointsRecordId: headers.get("x-octalaicanvas-points-record-id") || undefined,
+        pointsRecordId: headers.get("x-dreamyo-points-record-id") || undefined,
     };
 }
 

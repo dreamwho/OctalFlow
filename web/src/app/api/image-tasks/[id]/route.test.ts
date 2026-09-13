@@ -89,6 +89,29 @@ describe("GET /api/image-tasks/[id]", () => {
         await recovery();
         expect(mocks.recover).toHaveBeenCalledWith(expect.objectContaining({ taskIds: ["image-one"] }));
     });
+
+    it("safely returns 200 with settled task when resume is sent on an already completed task", async () => {
+        const task = imageTask({ status: "success", result: { url: "https://example.com/generated.png" } });
+        mocks.getImageTask.mockResolvedValue(task);
+        mocks.getSchedule.mockResolvedValue({ executionPhase: "completed" });
+
+        const response = await PATCH(
+            new Request("http://localhost/api/image-tasks/image-one", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", cookie: "session=test" },
+                body: JSON.stringify({ status: "resume" }),
+            }),
+            context,
+        );
+
+        expect(response.status).toBe(200);
+        expect((await response.json()).task).toMatchObject({
+            id: "image-one",
+            status: "success",
+            result: { url: "https://example.com/generated.png" },
+        });
+        expect(mocks.resumeReview).not.toHaveBeenCalled();
+    });
 });
 
 function imageTask(patch: Record<string, unknown> = {}) {

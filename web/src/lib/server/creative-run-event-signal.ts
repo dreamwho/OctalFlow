@@ -2,12 +2,12 @@ import { getDatabaseProvider, getPostgresConnectionString, subscribePostgresNoti
 
 type RunEventListener = () => void;
 
-const CREATIVE_RUN_NOTIFY_CHANNEL = "octalaicanvas_run_events";
+const CREATIVE_RUN_NOTIFY_CHANNEL = "dreamyo_run_events";
 const globalSignals = globalThis as typeof globalThis & {
-    __octalaicanvasProCreativeRunSignals?: Map<string, Set<RunEventListener>>;
-    __octalaicanvasProCreativeRunSignalBridge?: Promise<unknown>;
+    __dreamyoProCreativeRunSignals?: Map<string, Set<RunEventListener>>;
+    __dreamyoProCreativeRunSignalBridge?: Promise<unknown>;
 };
-const listeners = (globalSignals.__octalaicanvasProCreativeRunSignals ??= new Map<string, Set<RunEventListener>>());
+const listeners = (globalSignals.__dreamyoProCreativeRunSignals ??= new Map<string, Set<RunEventListener>>());
 
 export function notifyCreativeRunEvent(runId: string) {
     for (const listener of [...(listeners.get(runId) || [])]) listener();
@@ -39,12 +39,12 @@ export function waitForCreativeRunEvent(runId: string, timeoutMs: number, signal
 }
 
 function ensurePostgresEventBridge() {
-    if (getDatabaseProvider() !== "postgres" || !getPostgresConnectionString() || globalSignals.__octalaicanvasProCreativeRunSignalBridge) return;
-    globalSignals.__octalaicanvasProCreativeRunSignalBridge = subscribePostgresNotification(CREATIVE_RUN_NOTIFY_CHANNEL, (runId) => {
+    if (getDatabaseProvider() !== "postgres" || !getPostgresConnectionString() || globalSignals.__dreamyoProCreativeRunSignalBridge) return;
+    globalSignals.__dreamyoProCreativeRunSignalBridge = subscribePostgresNotification(CREATIVE_RUN_NOTIFY_CHANNEL, (runId) => {
         const id = runId.trim();
         if (id && id.length <= 160) notifyCreativeRunEvent(id);
     }).catch((error) => {
-        globalSignals.__octalaicanvasProCreativeRunSignalBridge = undefined;
+        globalSignals.__dreamyoProCreativeRunSignalBridge = undefined;
         console.warn("Creative run PostgreSQL notification bridge unavailable", { error: error instanceof Error ? error.message : String(error) });
     });
 }

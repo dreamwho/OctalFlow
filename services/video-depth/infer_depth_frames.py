@@ -34,7 +34,7 @@ def main() -> None:
     from PIL import Image
     from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 
-    torch.set_num_threads(max(1, int(os.environ.get("OCTALAICANVAS_VIDEO_DEPTH_THREADS", "2"))))
+    torch.set_num_threads(max(1, int(os.environ.get("DREAMYO_VIDEO_DEPTH_THREADS", "2"))))
     processor = AutoImageProcessor.from_pretrained(model_dir, local_files_only=True)
     model = AutoModelForDepthEstimation.from_pretrained(model_dir, local_files_only=True).eval()
     low_ema: float | None = None

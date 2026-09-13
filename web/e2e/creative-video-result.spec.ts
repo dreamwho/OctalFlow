@@ -406,7 +406,7 @@ test("asset mentions stay as inline thumbnail references while the editor is foc
         await page.goto(`/create?conversationId=${fixture.id}`, { waitUntil: "domcontentloaded" });
 
         const composer = page.locator(".creative-composer");
-        const input = composer.getByRole("textbox", { name: "输入你的创作想法、脚本或画面要求" });
+        const input = composer.getByRole("textbox", { name: /输入创作要求|输入你的创作想法/ });
         await expect(page.getByTestId("creative-media-round")).toBeVisible({ timeout: 45_000 });
         await expect(composer).toHaveAttribute("data-ready", "true");
         await expect(input).toBeVisible();
@@ -470,7 +470,7 @@ test("asset mentions stay as inline thumbnail references while the editor is foc
         await expectNoHorizontalOverflow(page);
     }
 
-    await page.evaluate(() => localStorage.setItem("octalaicanvas:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
+    await page.evaluate(() => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expectNoHorizontalOverflow(page);
@@ -781,7 +781,7 @@ async function mockPendingCreativeRound(page: Page, type: MediaType) {
 
 function imageDataUrl(size: MediaSize, index: number) {
     const hue = (210 + index * 37) % 360;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size.width}" height="${size.height}" viewBox="0 0 ${size.width} ${size.height}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${hue} 55% 40%)"/><stop offset="1" stop-color="hsl(${(hue + 55) % 360} 70% 78%)"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${size.width * 0.5}" cy="${Math.min(size.height * 0.35, size.width)}" r="${Math.max(32, size.width * 0.18)}" fill="rgba(255,255,255,.72)"/><text x="50%" y="${Math.min(size.height * 0.72, size.height - 40)}" text-anchor="middle" fill="white" font-family="sans-serif" font-size="${Math.max(24, size.width * 0.07)}">OctalAICanvas ${size.label}</text></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size.width}" height="${size.height}" viewBox="0 0 ${size.width} ${size.height}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${hue} 55% 40%)"/><stop offset="1" stop-color="hsl(${(hue + 55) % 360} 70% 78%)"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${size.width * 0.5}" cy="${Math.min(size.height * 0.35, size.width)}" r="${Math.max(32, size.width * 0.18)}" fill="rgba(255,255,255,.72)"/><text x="50%" y="${Math.min(size.height * 0.72, size.height - 40)}" text-anchor="middle" fill="white" font-family="sans-serif" font-size="${Math.max(24, size.width * 0.07)}">dreamyo ${size.label}</text></svg>`;
     return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
@@ -913,14 +913,14 @@ async function copyCurrentPrompt(page: Page, round: ReturnType<Page["getByTestId
 }
 
 async function captureResult(locator: ReturnType<Page["getByTestId"]>, testInfo: TestInfo, name: string) {
-    if (process.env.OCTALAICANVAS_VISUAL_CAPTURE !== "1") return;
+    if (process.env.DREAMYO_VISUAL_CAPTURE !== "1") return;
     const path = testInfo.outputPath(`${name}-${testInfo.project.name}.png`);
     await locator.screenshot({ path });
     await testInfo.attach(name, { path, contentType: "image/png" });
 }
 
 async function captureVisibleResultSegments(page: Page, locator: ReturnType<Page["getByTestId"]>, testInfo: TestInfo, name: string) {
-    if (process.env.OCTALAICANVAS_VISUAL_CAPTURE !== "1") return;
+    if (process.env.DREAMYO_VISUAL_CAPTURE !== "1") return;
     for (const block of ["start", "end"] as const) {
         await locator.evaluate((element, position) => element.scrollIntoView({ block: position, inline: "nearest" }), block);
         await page.waitForTimeout(120);

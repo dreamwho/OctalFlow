@@ -15,7 +15,7 @@ export async function composeVideoRemakeTask(task: AgentRunTask, run: AgentRun, 
     const videoReferences = taskReferences(task).filter((reference) => reference.type === "video");
     if (!videoReferences.length) throw new Error("复刻成片缺少已完成的视频片段");
 
-    const workdir = await mkdtemp(join(tmpdir(), "octaflow-remake-"));
+    const workdir = await mkdtemp(join(tmpdir(), "dreamyo-remake-"));
     try {
         const size = dramaOutputDimensions(normalizeDramaImageSize(task.ratio) || "9:16");
         const clips: string[] = [];
@@ -53,7 +53,7 @@ export async function composeVideoRemakeTask(task: AgentRunTask, run: AgentRun, 
             clips.push(clipPath);
         }
         await writeFile(join(workdir, "concat.txt"), clips.map((_, index) => `file 'clip-${index}.mp4'`).join("\n"), "utf8");
-        const outputPath = join(workdir, "octaflow-remake.mp4");
+        const outputPath = join(workdir, "dreamyo-remake.mp4");
         await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", "-movflags", "+faststart", outputPath], { cwd: workdir });
         const durationMs = await readDurationMs(outputPath, workdir);
         const asset = await writeReferenceMediaFile(outputPath, "video", "video/mp4", true, {
@@ -62,7 +62,7 @@ export async function composeVideoRemakeTask(task: AgentRunTask, run: AgentRun, 
             conversationId: run.conversationId,
             taskId: task.id,
             projectId: run.projectId,
-            originalName: `${task.title || "OctalFlow 复刻成片"}.mp4`,
+            originalName: `${task.title || "dreamyo 复刻成片"}.mp4`,
         });
         const serverUrl = `/api/reference-assets/${asset.token
             .split("/")

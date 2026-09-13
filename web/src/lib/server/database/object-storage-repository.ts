@@ -66,7 +66,7 @@ function defaultSettings(): StoredObjectStorageSettings {
         endpoint: "",
         region: "us-east-1",
         bucket: "",
-        prefix: "octalaicanvas",
+        prefix: "dreamyo",
         accessKeyIdCiphertext: "",
         secretAccessKeyCiphertext: "",
         forcePathStyle: false,

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { mergeAnnouncementReadIds, parseAnnouncementReadIds } from "@/lib/announcement-notifications";
 
-const STORAGE_KEY = "octalaicanvas:announcement-read:v1";
-const CHANGE_EVENT = "octalaicanvas:announcement-read-change";
+const STORAGE_KEY = "dreamyo:announcement-read:v1";
+const CHANGE_EVENT = "dreamyo:announcement-read-change";
 
 export function useAnnouncementReadState() {
     const [readIds, setReadIds] = useState<Set<string>>(() => new Set());

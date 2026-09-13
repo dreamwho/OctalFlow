@@ -1,6 +1,6 @@
 /**
  * The Dreamina binary is a local, server-owned provider.  This catalog is the
- * sole translation layer from OctalFlow model IDs to CLI flags: callers never
+ * sole translation layer from dreamyo model IDs to CLI flags: callers never
  * get to pass a subcommand or arbitrary argv through to the executable.
  */
 export const DREAMINA_CLI_PROTOCOL = "dreamina-cli" as const;

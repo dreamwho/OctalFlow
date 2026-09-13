@@ -53,7 +53,7 @@ describe("importMigrationDomains", () => {
         expect(localMediaCall?.[1]).toContain("external-key");
 
         const auditCall = query.mock.calls.find(([statement]) => String(statement).includes("INSERT INTO audit_logs"));
-        expect(auditCall?.[1]).toContain(JSON.stringify({ ciphertext: "octalaicanvas-secret:v1:fixture" }));
+        expect(auditCall?.[1]).toContain(JSON.stringify({ ciphertext: "dreamyo-secret:v1:fixture" }));
     });
 });
 
@@ -173,7 +173,7 @@ function fixture(): Record<string, unknown> {
                     status: "success",
                     actor: { id: "user-1", username: "fixture", role: "admin", ip: "127.0.0.1", userAgent: "vitest" },
                     target: { type: "fixture", id: "target-1", label: "Target" },
-                    metadata: { ciphertext: "octalaicanvas-secret:v1:fixture" },
+                    metadata: { ciphertext: "dreamyo-secret:v1:fixture" },
                     createdAt,
                 },
             ],

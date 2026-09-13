@@ -1,7 +1,7 @@
 [project]
-name = "octalaicanvas-chatgpt-api"
+name = "dreamyo-chatgpt-api"
 version = "0.1.0"
-description = "Internal, loopback-only ChatGPT2API runtime for Octal Canvas"
+description = "Internal, loopback-only ChatGPT2API runtime for dreamyo"
 requires-python = ">=3.13"
 license = "AGPL-3.0-only"
 dependencies = [

@@ -127,3 +127,10 @@ export const testMagicProxyGoogle = (node?: string, signal?: AbortSignal) =>
         body: json({ action: "testGoogle", node: node || undefined }),
         signal,
     });
+
+export const testChatGptChain = (signal?: AbortSignal) =>
+    request<MagicProxyGoogleTestReport>("/api/admin/magic-proxy", {
+        method: "POST",
+        body: json({ action: "testChatGptChain" }),
+        signal,
+    });

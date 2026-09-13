@@ -1,1 +1,1 @@
-export const OctalAICanvas_QQ_GROUP_URL = "https://qm.qq.com/q/9MVLTxuRd6";
+export const dreamyo_QQ_GROUP_URL = "https://qm.qq.com/q/9MVLTxuRd6";

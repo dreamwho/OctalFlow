@@ -51,7 +51,7 @@ describe("CanvasTopBar", () => {
         expect(markup).toContain('aria-expanded="false"');
         expect(markup).toContain('aria-label="打开资产面板"');
         expect(markup).toContain('aria-pressed="false"');
-        expect(markup).not.toContain('aria-label="OctalFlow"');
+        expect(markup).not.toContain('aria-label="dreamyo"');
         expect(markup).not.toContain(">资产<");
     });
 });

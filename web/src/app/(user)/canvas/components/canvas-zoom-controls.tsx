@@ -45,8 +45,8 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
                         max="500"
                         step="1"
                         value={Math.round(scale * 100)}
-                        className="octaflow-native-range h-[5px] w-24"
-                        style={{ "--octa-range-progress": `${zoomProgress}%` } as CSSProperties}
+                        className="dreamyo-native-range h-[5px] w-24"
+                        style={{ "--dreamyo-range-progress": `${zoomProgress}%` } as CSSProperties}
                         onChange={(event) => onScaleChange(Number(event.target.value) / 100)}
                         aria-label="放大/缩小画布"
                     />

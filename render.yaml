@@ -1,73 +1,73 @@
 services:
   - type: web
-    name: octalaicanvas
+    name: dreamyo
     runtime: docker
     plan: starter
     autoDeployTrigger: off
     healthCheckPath: /api/health/live
     disk:
-      name: octalaicanvas-data
+      name: dreamyo-data
       mountPath: /app/web/.data
       sizeGB: 10
     envVars:
-      - fromGroup: octalaicanvas-runtime
+      - fromGroup: dreamyo-runtime
       - key: PORT
         value: 3000
       - key: NODE_OPTIONS
         value: --max-old-space-size=384
       - key: UV_THREADPOOL_SIZE
         value: "2"
-      - key: OCTALAICANVAS_DATA_DIR
+      - key: DREAMYO_DATA_DIR
         value: /app/web/.data
-      - key: OCTALAICANVAS_INTERNAL_ORIGIN
+      - key: DREAMYO_INTERNAL_ORIGIN
         value: http://127.0.0.1:3000
-      - key: OCTALAICANVAS_DATABASE_PROVIDER
+      - key: DREAMYO_DATABASE_PROVIDER
         value: postgres
       - key: DATABASE_URL
         fromDatabase:
-          name: octalaicanvas-postgres
+          name: dreamyo-postgres
           property: connectionString
-      - key: OCTALAICANVAS_DATABASE_POOL_MAX
+      - key: DREAMYO_DATABASE_POOL_MAX
         value: "5"
-      - key: OCTALAICANVAS_DATABASE_SSL
+      - key: DREAMYO_DATABASE_SSL
         value: "1"
-      - key: OCTALAICANVAS_ENCRYPTION_KEY
+      - key: DREAMYO_ENCRYPTION_KEY
         generateValue: true
       - key: GEMINI_TOOLS_OAUTH_CLIENT_ID
         sync: false
       - key: GEMINI_TOOLS_OAUTH_CLIENT_SECRET
         sync: false
-      - key: OCTALAICANVAS_INSTALL_TOKEN
+      - key: DREAMYO_INSTALL_TOKEN
         generateValue: true
-      - key: OCTALAICANVAS_MAINTENANCE_TOKEN
+      - key: DREAMYO_MAINTENANCE_TOKEN
         generateValue: true
       - key: NEXT_PUBLIC_SITE_URL
         sync: false
 
   - type: worker
-    name: octalaicanvas-generation-worker
+    name: dreamyo-generation-worker
     runtime: docker
     plan: starter
     autoDeployTrigger: off
     dockerCommand: node /app/web/scripts/generation-worker.mjs
     envVars:
-      - fromGroup: octalaicanvas-runtime
+      - fromGroup: dreamyo-runtime
       - key: NODE_OPTIONS
         value: --max-old-space-size=128
-      - key: OCTALAICANVAS_WORKER_API_ORIGIN
+      - key: DREAMYO_WORKER_API_ORIGIN
         fromService:
-          name: octalaicanvas
+          name: dreamyo
           type: web
           property: hostport
 
 databases:
-  - name: octalaicanvas-postgres
+  - name: dreamyo-postgres
     plan: basic-256mb
-    databaseName: octalaicanvas
-    user: octalaicanvas
+    databaseName: dreamyo
+    user: dreamyo
 
 envVarGroups:
-  - name: octalaicanvas-runtime
+  - name: dreamyo-runtime
     envVars:
-      - key: OCTALAICANVAS_WORKER_TOKEN
+      - key: DREAMYO_WORKER_TOKEN
         generateValue: true

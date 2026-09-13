@@ -82,8 +82,8 @@ describe("CanvasNode image border", () => {
         expect(markup).toContain("border-color:transparent");
         expect(markup).not.toContain("0 0 0 1px rgba(103,232,249,.45)");
         expect(markup).toContain("#67e8f9");
-        expect(markup).toContain("#818cf8");
-        expect(markup).toContain("#c084fc");
+        expect(markup).toContain("#5f85ff");
+        expect(markup).toContain("#8b7dff");
         expect(markup).toContain('x="0.8" y="0.8" width="98.4" height="98.4"');
     });
 
@@ -293,7 +293,7 @@ describe("CanvasNode error content", () => {
         expect(markup).toContain("h-full w-full flex-col items-center justify-center");
         expect(markup).toContain(`color:${canvasThemes.light.node.danger}`);
         expect(markup).toContain("生成失败，请稍后重试");
-        expect(markup).toContain("重试");
+        expect(markup).toContain("再次生成");
     });
 
     it.each(["light", "dark"] as const)("wraps complete error copy in a themed %s error surface", (themeName) => {
@@ -324,17 +324,17 @@ describe("CanvasNode error content", () => {
         const markup = renderImageNode({ data: cancelledNode, onRetry: noop });
 
         expect(markup).toContain("任务已取消");
-        expect(markup).not.toContain("重试");
+        expect(markup).not.toContain("再次生成");
     });
 
-    it("pauses tasks that need review without offering a new generation retry", () => {
+    it("pauses tasks that need review while offering both check status and regenerate actions", () => {
         const reviewNode: CanvasNodeData = { ...imageNode, metadata: { status: "needs_review", errorDetails: "上游创建状态待确认" } };
 
         const markup = renderImageNode({ data: reviewNode, onRetry: noop });
 
         expect(markup).toContain("上游创建状态待确认");
         expect(markup).toContain("检查状态");
-        expect(markup).not.toContain(">重试<");
+        expect(markup).toContain("再次生成");
     });
 });
 

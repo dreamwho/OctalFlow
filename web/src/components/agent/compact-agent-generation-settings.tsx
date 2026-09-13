@@ -136,7 +136,7 @@ export function CompactAgentGenerationSettings({
                             onClick={() => onSmartPlanningChange?.(!smartPlanning)}
                         >
                             <span>自动</span>
-                            <span className={cn("octaflow-smart-switch relative h-[18px] w-8 rounded-full transition", smartPlanning ? "is-checked" : "bg-[#d7dce1] dark:bg-[#4b535d]")}>
+                            <span className={cn("dreamyo-smart-switch relative h-[18px] w-8 rounded-full transition", smartPlanning ? "is-checked" : "bg-[#d7dce1] dark:bg-[#4b535d]")}>
                                 <span className={cn("absolute left-0.5 top-0.5 size-3.5 rounded-full bg-white shadow-sm transition-transform", smartPlanning && "translate-x-3.5")} />
                             </span>
                         </button>

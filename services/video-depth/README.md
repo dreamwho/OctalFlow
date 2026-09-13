@@ -15,4 +15,4 @@ services/video-depth/setup_runtime.sh
 - `services/video-depth/infer_depth_frames.py`
 - `services/video-depth/models/depth-anything-v2-small-hf`
 
-如需放到其他目录，可分别设置 `OCTALAICANVAS_VIDEO_DEPTH_PYTHON`、`OCTALAICANVAS_VIDEO_DEPTH_SCRIPT` 和 `OCTALAICANVAS_VIDEO_DEPTH_MODEL`。模型下载固定到 `5426e4f0f36572d16453bbda7a8389317b1bef99` 修订版本。
+如需放到其他目录，可分别设置 `DREAMYO_VIDEO_DEPTH_PYTHON`、`DREAMYO_VIDEO_DEPTH_SCRIPT` 和 `DREAMYO_VIDEO_DEPTH_MODEL`。模型下载固定到 `5426e4f0f36572d16453bbda7a8389317b1bef99` 修订版本。

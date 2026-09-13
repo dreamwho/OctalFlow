@@ -33,7 +33,7 @@ type PublicSessionStore = {
 
 export const usePublicSessionStore = create<PublicSessionStore>(() => ({ payload: null, ready: false }));
 
-export const PUBLIC_SETTINGS_CHANGED_EVENT = "octalaicanvas-public-settings-changed";
+export const PUBLIC_SETTINGS_CHANGED_EVENT = "dreamyo-public-settings-changed";
 const SESSION_CACHE_TTL_MS = 30_000;
 let sessionRequest: Promise<PublicSessionPayload> | null = null;
 let sessionLoadedAt = 0;
@@ -85,7 +85,7 @@ export function applyPublicSiteSettings(site: PublicSiteSettings) {
                         ...(payload.settings?.site || {}),
                         ...site,
                         title: resolveSiteTitle(site.title),
-                        logoUrl: site.logoUrl?.trim() || "/brand/octaflow-mark.png",
+                        logoUrl: site.logoUrl?.trim() || "/brand/dreamyo/mark.png",
                     },
                 },
             },

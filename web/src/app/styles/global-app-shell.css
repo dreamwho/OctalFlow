@@ -29,7 +29,7 @@
 
     .workspace-header-button:hover {
         background: rgba(230, 248, 252, 0.78);
-        border-color: var(--octa-selection-border);
+        border-color: var(--dreamyo-selection-border);
         color: #174e67;
     }
 
@@ -47,7 +47,7 @@
 
     .dark .workspace-header-button:hover {
         background: rgba(24, 65, 82, 0.58);
-        border-color: var(--octa-selection-border);
+        border-color: var(--dreamyo-selection-border);
         color: #f4fdff;
     }
 
@@ -107,7 +107,7 @@
     }
 
     .app-sidebar-item.is-active svg {
-        filter: drop-shadow(0 0 7px var(--octa-selection-glow));
+        filter: drop-shadow(0 0 7px var(--dreamyo-selection-glow));
     }
 
     .app-sidebar-active-mark {

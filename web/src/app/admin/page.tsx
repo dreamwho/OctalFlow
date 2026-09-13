@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { AuthUserHydrator } from "@/components/auth/auth-user-hydrator";
@@ -9,6 +10,8 @@ import { getFreshAuthSettings, getPublicUserSummary } from "@/lib/auth/store";
 import { getAdminSetupSummary } from "@/lib/server/admin-setup-status";
 import { serializeAdminSettingsForUser } from "@/lib/server/admin-channel-config";
 import { getAuthenticatedPageAccess } from "@/lib/server/page-access";
+
+export const metadata: Metadata = { title: "管理后台 | dreamyo" };
 
 type AdminPageProps = {
     searchParams?: Promise<Record<string, string | string[] | undefined>>;

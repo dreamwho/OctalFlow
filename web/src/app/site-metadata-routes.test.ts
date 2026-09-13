@@ -47,7 +47,7 @@ describe("site metadata routes", () => {
         const result = await manifest();
 
         expect(result.name).toBe("自定义站点");
-        expect(result.icons).toEqual([{ src: "/favicon.ico", sizes: "any", purpose: "any" }]);
+        expect(result.icons).toEqual([{ src: "/brand/dreamyo/mark.png", sizes: "1254x1254", type: "image/png", purpose: "maskable" }]);
     });
 
     it("rewrites the reserved favicon path to the dynamic site icon route before static files", async () => {
@@ -81,6 +81,6 @@ describe("site metadata routes", () => {
 
         const response = await favicon(new Request("http://localhost:3000/api/site-icon"));
 
-        expect(response.headers.get("location")).toBe("/brand/octaflow-icon.png");
+        expect(response.headers.get("location")).toBe("/brand/dreamyo/mark.png");
     });
 });

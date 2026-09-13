@@ -7,15 +7,15 @@ import { DEFAULT_SITE_SETTINGS } from "@/lib/auth/store";
 
 describe("default infinite-evolution brand assets", () => {
     it("uses the built-in infinite-evolution logo for every default brand entry", () => {
-        expect(DEFAULT_SITE_SETTINGS.logoUrl).toBe("/brand/octaflow-mark.png");
-        expect(DEFAULT_SITE_SETTINGS.iconUrl).toBe("/brand/octaflow-icon.png");
+        expect(DEFAULT_SITE_SETTINGS.logoUrl).toBe("/brand/dreamyo/mark.png");
+        expect(DEFAULT_SITE_SETTINGS.iconUrl).toBe("/brand/dreamyo/mark.png");
     });
 
-    it("ships the OctalFlow raster mark for the web app, browser icon and docs", async () => {
+    it("ships the dreamyo raster mark for the web app, browser icon and docs", async () => {
         const [logo, icon, docsLogo] = await Promise.all([
-            readFile(resolve(process.cwd(), "public/brand/octaflow-mark.png")),
-            readFile(resolve(process.cwd(), "public/brand/octaflow-icon.png")),
-            readFile(resolve(process.cwd(), "../docs/public/brand/octaflow-mark.png")),
+            readFile(resolve(process.cwd(), "public/brand/dreamyo/mark.png")),
+            readFile(resolve(process.cwd(), "public/brand/dreamyo/mark.png")),
+            readFile(resolve(process.cwd(), "../docs/public/brand/dreamyo/mark.png")),
         ]);
 
         expect(logo.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));

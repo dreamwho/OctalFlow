@@ -1,22 +1,22 @@
 services:
   magic-proxy:
-    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
-    image: ${OCTALAICANVAS_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}
-    container_name: octalaicanvas-magic-proxy
+    platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
+    image: ${DREAMYO_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}
+    container_name: dreamyo-magic-proxy
     network_mode: host
-    entrypoint: ["/usr/local/bin/octalaicanvas-mihomo-entrypoint.sh"]
+    entrypoint: ["/usr/local/bin/dreamyo-mihomo-entrypoint.sh"]
     environment:
-      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
-      OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST: 127.0.0.1
+      DREAMYO_MAGIC_PROXY_SECRET: ${DREAMYO_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
+      DREAMYO_MAGIC_PROXY_LISTEN_HOST: 127.0.0.1
     volumes:
       - ./docker/mihomo/bootstrap-host.yaml:/root/.config/mihomo/config.yaml:ro
-      - ./docker/mihomo/entrypoint.sh:/usr/local/bin/octalaicanvas-mihomo-entrypoint.sh:ro
-      - octalaicanvas-magic-proxy-runtime:/root/.config/mihomo/runtime
+      - ./docker/mihomo/entrypoint.sh:/usr/local/bin/dreamyo-mihomo-entrypoint.sh:ro
+      - dreamyo-magic-proxy-runtime:/root/.config/mihomo/runtime
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          'wget -q -O /dev/null -T 5 --header="Authorization: Bearer $$OCTALAICANVAS_MAGIC_PROXY_SECRET" http://127.0.0.1:9090/version',
+          'wget -q -O /dev/null -T 5 --header="Authorization: Bearer $$DREAMYO_MAGIC_PROXY_SECRET" http://127.0.0.1:9090/version',
         ]
       interval: 10s
       timeout: 10s
@@ -25,9 +25,9 @@ services:
     restart: unless-stopped
 
   geminiai:
-    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
-    image: ${OCTALAICANVAS_GEMINIAI_IMAGE:-octalaicanvas-geminiai:offline}
-    container_name: octalaicanvas-geminiai
+    platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
+    image: ${DREAMYO_GEMINIAI_IMAGE:-dreamyo-geminiai:offline}
+    container_name: dreamyo-geminiai
     network_mode: host
     command:
       [
@@ -41,16 +41,16 @@ services:
       ]
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      AISTUDIO_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
+      AISTUDIO_API_KEY: ${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
       AISTUDIO_ACCOUNTS_DIR: /data/accounts
       AISTUDIO_CONFIG_FILE: /app/config.yaml
       AISTUDIO_DUMP_RAW_RESPONSE: "0"
       AISTUDIO_HOST: 127.0.0.1
       AISTUDIO_PORT: "8080"
       AISTUDIO_PROXY: http://127.0.0.1:17890
-      AISTUDIO_STUDIO_URL: ${OCTALAICANVAS_GEMINIAI_STUDIO_URL:-https://aistudio.google.com/prompts/new_chat}
+      AISTUDIO_STUDIO_URL: ${DREAMYO_GEMINIAI_STUDIO_URL:-https://aistudio.google.com/prompts/new_chat}
     volumes:
-      - octalaicanvas-geminiai-accounts:/data/accounts
+      - dreamyo-geminiai-accounts:/data/accounts
     healthcheck:
       test:
         [
@@ -69,26 +69,26 @@ services:
         condition: service_healthy
 
   chatgpt-api:
-    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
-    image: ${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}
-    container_name: octalaicanvas-chatgpt-api
+    platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
+    image: ${DREAMYO_IMAGE:-dreamyo-app:offline}
+    container_name: dreamyo-chatgpt-api
     network_mode: host
     working_dir: /app/services/chatgpt-api
     command: ["/app/services/chatgpt-api/.venv/bin/python", "main.py", "--port", "8046"]
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      OCTALAICANVAS_CHATGPT_API_KEY: ${OCTALAICANVAS_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
-      OCTALAICANVAS_ENCRYPTION_KEY: ${OCTALAICANVAS_ENCRYPTION_KEY:?请在 .env 中配置 OCTALAICANVAS_ENCRYPTION_KEY}
-      OCTALAICANVAS_CHATGPT_DATA_DIR: /app/web/.data/chatgpt-api
+      DREAMYO_CHATGPT_API_KEY: ${DREAMYO_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
+      DREAMYO_ENCRYPTION_KEY: ${DREAMYO_ENCRYPTION_KEY:?请在 .env 中配置 DREAMYO_ENCRYPTION_KEY}
+      DREAMYO_CHATGPT_DATA_DIR: /app/web/.data/chatgpt-api
     volumes:
-      - octalaicanvas-data:/app/web/.data
+      - dreamyo-data:/app/web/.data
     healthcheck:
       test:
         [
           "CMD",
           "/app/services/chatgpt-api/.venv/bin/python",
           "-c",
-          "import os,urllib.request;req=urllib.request.Request('http://127.0.0.1:8046/integration/health',headers={'x-octal-runtime-key':os.environ['OCTALAICANVAS_CHATGPT_API_KEY']});urllib.request.urlopen(req,timeout=5)",
+          "import os,urllib.request;req=urllib.request.Request('http://127.0.0.1:8046/integration/health',headers={'x-dreamyo-runtime-key':os.environ['DREAMYO_CHATGPT_API_KEY']});urllib.request.urlopen(req,timeout=5)",
         ]
       interval: 15s
       timeout: 10s
@@ -97,46 +97,48 @@ services:
     restart: unless-stopped
 
   app:
-    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
-    image: ${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}
-    container_name: octalaicanvas
+    platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
+    image: ${DREAMYO_IMAGE:-dreamyo-app:offline}
+    container_name: dreamyo
     network_mode: host
     env_file:
       - .env
     volumes:
-      - octalaicanvas-data:/app/web/.data
-      - octalaicanvas-magic-proxy-runtime:/app/web/.magic-proxy-runtime
+      - dreamyo-data:/app/web/.data
+      - dreamyo-magic-proxy-runtime:/app/web/.magic-proxy-runtime
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       NEXT_TELEMETRY_DISABLED: "1"
-      HOSTNAME: ${OCTALAICANVAS_BIND_ADDRESS:-0.0.0.0}
+      HOSTNAME: ${DREAMYO_BIND_ADDRESS:-0.0.0.0}
       PORT: ${PORT:-8866}
-      OCTALAICANVAS_DATA_DIR: /app/web/.data
-      OCTALAICANVAS_INTERNAL_ORIGIN: http://127.0.0.1:${PORT:-8866}
-      OCTALAICANVAS_DATABASE_PROVIDER: postgres
+      DREAMYO_DATA_DIR: /app/web/.data
+      DREAMYO_INTERNAL_ORIGIN: http://127.0.0.1:${PORT:-8866}
+      DREAMYO_DATABASE_PROVIDER: postgres
       DATABASE_URL: ${DATABASE_URL:?请在 .env 中配置已有 PostgreSQL 的 DATABASE_URL}
-      OCTALAICANVAS_DATABASE_POOL_MAX: ${OCTALAICANVAS_DATABASE_POOL_MAX:-10}
-      OCTALAICANVAS_DATABASE_SSL: ${OCTALAICANVAS_DATABASE_SSL:-0}
-      OCTALAICANVAS_ENCRYPTION_KEY: ${OCTALAICANVAS_ENCRYPTION_KEY:?请在 .env 中配置 OCTALAICANVAS_ENCRYPTION_KEY}
-      OCTALAICANVAS_INSTALL_TOKEN: ${OCTALAICANVAS_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}
-      OCTALAICANVAS_MAINTENANCE_TOKEN: ${OCTALAICANVAS_MAINTENANCE_TOKEN:?请在 .env 中配置至少 32 位维护令牌}
-      OCTALAICANVAS_WORKER_TOKEN: ${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
-      OCTALAICANVAS_TRUSTED_PROXY_HOPS: ${OCTALAICANVAS_TRUSTED_PROXY_HOPS:-0}
-      OCTALAICANVAS_MAGIC_PROXY_CONTROLLER_URL: http://127.0.0.1:9090
-      OCTALAICANVAS_MAGIC_PROXY_SECRET: ${OCTALAICANVAS_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
-      OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE: /app/web/.magic-proxy-runtime/subscription.yaml
-      OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL: http://127.0.0.1:17890
-      OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_URL: http://127.0.0.1:17891
-      OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST: 127.0.0.1
-      OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_PORT: "17890"
-      OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_PORT: "17891"
-      OCTALAICANVAS_GEMINIAI_URL: http://127.0.0.1:8080
-      OCTALAICANVAS_GEMINIAI_API_KEY: ${OCTALAICANVAS_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
+      DREAMYO_DATABASE_POOL_MAX: ${DREAMYO_DATABASE_POOL_MAX:-10}
+      DREAMYO_DATABASE_SSL: ${DREAMYO_DATABASE_SSL:-0}
+      DREAMYO_ENCRYPTION_KEY: ${DREAMYO_ENCRYPTION_KEY:?请在 .env 中配置 DREAMYO_ENCRYPTION_KEY}
+      DREAMYO_INSTALL_TOKEN: ${DREAMYO_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}
+      DREAMYO_MAINTENANCE_TOKEN: ${DREAMYO_MAINTENANCE_TOKEN:?请在 .env 中配置至少 32 位维护令牌}
+      DREAMYO_WORKER_TOKEN: ${DREAMYO_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
+      DREAMYO_TRUSTED_PROXY_HOPS: ${DREAMYO_TRUSTED_PROXY_HOPS:-0}
+      DREAMYO_MAGIC_PROXY_CONTROLLER_URL: http://127.0.0.1:9090
+      DREAMYO_MAGIC_PROXY_SECRET: ${DREAMYO_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
+      DREAMYO_MAGIC_PROXY_PROVIDER_FILE: /app/web/.magic-proxy-runtime/subscription.yaml
+      DREAMYO_MAGIC_PROXY_GEMINIAI_URL: http://127.0.0.1:17890
+      DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_URL: http://127.0.0.1:17891
+      DREAMYO_MAGIC_PROXY_CHATGPT_API_URL: http://127.0.0.1:17892
+      DREAMYO_MAGIC_PROXY_LISTEN_HOST: 127.0.0.1
+      DREAMYO_MAGIC_PROXY_GEMINIAI_PORT: "17890"
+      DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_PORT: "17891"
+      DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT: "17892"
+      DREAMYO_GEMINIAI_URL: http://127.0.0.1:8080
+      DREAMYO_GEMINIAI_API_KEY: ${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
       GEMINI_TOOLS_OAUTH_CLIENT_ID: ${GEMINI_TOOLS_OAUTH_CLIENT_ID:-}
       GEMINI_TOOLS_OAUTH_CLIENT_SECRET: ${GEMINI_TOOLS_OAUTH_CLIENT_SECRET:-}
       GEMINI_TOOLS_OAUTH_REDIRECT_URI: ${GEMINI_TOOLS_OAUTH_REDIRECT_URI:-}
-      OCTALAICANVAS_CHATGPT_API_URL: http://127.0.0.1:8046
-      OCTALAICANVAS_CHATGPT_API_KEY: ${OCTALAICANVAS_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
+      DREAMYO_CHATGPT_API_URL: http://127.0.0.1:8046
+      DREAMYO_CHATGPT_API_KEY: ${DREAMYO_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
     depends_on:
       geminiai:
         condition: service_healthy
@@ -159,20 +161,21 @@ services:
     restart: unless-stopped
 
   generation-worker:
-    platform: ${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}
-    image: ${OCTALAICANVAS_IMAGE:-octalaicanvas-app:offline}
-    container_name: octalaicanvas-generation-worker
+    platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
+    image: ${DREAMYO_IMAGE:-dreamyo-app:offline}
+    container_name: dreamyo-generation-worker
     network_mode: host
     command: ["node", "/app/web/scripts/generation-worker.mjs"]
     environment:
-      OCTALAICANVAS_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}
-      OCTALAICANVAS_WORKER_TOKEN: ${OCTALAICANVAS_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
+      TZ: ${TZ:-Asia/Shanghai}
+      DREAMYO_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}
+      DREAMYO_WORKER_TOKEN: ${DREAMYO_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}
     depends_on:
       app:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  octalaicanvas-data:
-  octalaicanvas-geminiai-accounts:
-  octalaicanvas-magic-proxy-runtime:
+  dreamyo-data:
+  dreamyo-geminiai-accounts:
+  dreamyo-magic-proxy-runtime:

@@ -3,19 +3,19 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-PACKAGE_DATE="${OCTALAICANVAS_PACKAGE_DATE:-$(date +%Y%m%d)}"
-PACKAGE_DIR="${OCTALAICANVAS_PACKAGE_DIR:-$REPO_ROOT/本次修改需上传文件_$PACKAGE_DATE}"
-PLATFORM="${OCTALAICANVAS_DOCKER_PLATFORM:-linux/amd64}"
-APP_IMAGE="${OCTALAICANVAS_OFFLINE_APP_IMAGE:-octalaicanvas-app:offline}"
-GEMINIAI_IMAGE="${OCTALAICANVAS_OFFLINE_GEMINIAI_IMAGE:-octalaicanvas-geminiai:offline}"
-MAGIC_PROXY_IMAGE="${OCTALAICANVAS_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}"
-POSTGRES_IMAGE="${OCTALAICANVAS_OFFLINE_POSTGRES_IMAGE:-postgres:16.6-alpine}"
+PACKAGE_DATE="${DREAMYO_PACKAGE_DATE:-$(date +%Y%m%d)}"
+PACKAGE_DIR="${DREAMYO_PACKAGE_DIR:-$REPO_ROOT/本次修改需上传文件_$PACKAGE_DATE}"
+PLATFORM="${DREAMYO_DOCKER_PLATFORM:-linux/amd64}"
+APP_IMAGE="${DREAMYO_OFFLINE_APP_IMAGE:-dreamyo-app:offline}"
+GEMINIAI_IMAGE="${DREAMYO_OFFLINE_GEMINIAI_IMAGE:-dreamyo-geminiai:offline}"
+MAGIC_PROXY_IMAGE="${DREAMYO_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}"
+POSTGRES_IMAGE="${DREAMYO_OFFLINE_POSTGRES_IMAGE:-postgres:16.6-alpine}"
 BUILD_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
-DATABASE_MODE="${OCTALAICANVAS_DATABASE_MODE:-external}"
-PRIVATE_MIGRATION_DIR="${OCTALAICANVAS_PRIVATE_MIGRATION_DIR:-}"
+DATABASE_MODE="${DREAMYO_DATABASE_MODE:-external}"
+PRIVATE_MIGRATION_DIR="${DREAMYO_PRIVATE_MIGRATION_DIR:-}"
 PRIVATE_MIGRATION=0
 PRIVATE_MIGRATION_FILES=()
-REUSE_IMAGES="${OCTALAICANVAS_REUSE_IMAGES:-0}"
+REUSE_IMAGES="${DREAMYO_REUSE_IMAGES:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -82,7 +82,7 @@ checksum_file() {
 validate_platform() {
     case "$1" in
         linux/amd64|linux/arm64) ;;
-        *) die "OCTALAICANVAS_DOCKER_PLATFORM 只能是 linux/amd64 或 linux/arm64" ;;
+        *) die "DREAMYO_DOCKER_PLATFORM 只能是 linux/amd64 或 linux/arm64" ;;
     esac
 }
 
@@ -131,7 +131,7 @@ write_checksums() {
 verify_private_migration_snapshot() {
     local directory="$1"
 
-    [[ -d "$directory" && ! -L "$directory" ]] || die "OCTALAICANVAS_PRIVATE_MIGRATION_DIR 必须是非符号链接目录：$directory"
+    [[ -d "$directory" && ! -L "$directory" ]] || die "DREAMYO_PRIVATE_MIGRATION_DIR 必须是非符号链接目录：$directory"
     [[ -f "$REPO_ROOT/web/scripts/restore-private-files.mjs" ]] || die "缺少私有迁移快照校验器：web/scripts/restore-private-files.mjs"
     require_command node
     node --input-type=module --eval '
@@ -167,11 +167,11 @@ collect_private_migration_files() {
 case "$DATABASE_MODE" in
     embedded) COMPOSE_FILE="docker-compose.offline.yml" ;;
     external) COMPOSE_FILE="docker-compose.offline-external-db.yml" ;;
-    *) die "OCTALAICANVAS_DATABASE_MODE 只能是 embedded 或 external" ;;
+    *) die "DREAMYO_DATABASE_MODE 只能是 embedded 或 external" ;;
 esac
 
 if [[ -n "$PRIVATE_MIGRATION_DIR" ]]; then
-    [[ "$DATABASE_MODE" == external ]] || die "OCTALAICANVAS_PRIVATE_MIGRATION_DIR 仅支持 external PostgreSQL 模式"
+    [[ "$DATABASE_MODE" == external ]] || die "DREAMYO_PRIVATE_MIGRATION_DIR 仅支持 external PostgreSQL 模式"
     verify_private_migration_snapshot "$PRIVATE_MIGRATION_DIR"
     PRIVATE_MIGRATION=1
 fi
@@ -271,17 +271,17 @@ seed_env_example_from_local_env() {
 }
 seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_ID
 seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_SECRET
-seed_env_example_from_local_env OCTALAICANVAS_GEMINIAI_STUDIO_URL
-seed_env_example_from_local_env OCTALAICANVAS_CHATGPT_API_PROXY_URL
-seed_env_example_from_local_env OCTALAICANVAS_ENCRYPTION_KEY
-seed_env_example_from_local_env OCTALAICANVAS_INSTALL_TOKEN
-seed_env_example_from_local_env OCTALAICANVAS_MAINTENANCE_TOKEN
-seed_env_example_from_local_env OCTALAICANVAS_WORKER_TOKEN
-seed_env_example_from_local_env OCTALAICANVAS_GEMINIAI_API_KEY
-seed_env_example_from_local_env OCTALAICANVAS_CHATGPT_API_KEY
-seed_env_example_from_local_env OCTALAICANVAS_MAGIC_PROXY_SECRET
-seed_env_example_from_local_env OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS
-seed_env_example_from_local_env OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS
+seed_env_example_from_local_env DREAMYO_GEMINIAI_STUDIO_URL
+seed_env_example_from_local_env DREAMYO_CHATGPT_API_PROXY_URL
+seed_env_example_from_local_env DREAMYO_ENCRYPTION_KEY
+seed_env_example_from_local_env DREAMYO_INSTALL_TOKEN
+seed_env_example_from_local_env DREAMYO_MAINTENANCE_TOKEN
+seed_env_example_from_local_env DREAMYO_WORKER_TOKEN
+seed_env_example_from_local_env DREAMYO_GEMINIAI_API_KEY
+seed_env_example_from_local_env DREAMYO_CHATGPT_API_KEY
+seed_env_example_from_local_env DREAMYO_MAGIC_PROXY_SECRET
+seed_env_example_from_local_env DREAMYO_ALLOW_PRIVATE_UPSTREAMS
+seed_env_example_from_local_env DREAMYO_PRIVATE_UPSTREAM_HOSTS
 if [[ "$seeded_oauth_keys" == 1 ]]; then
     chmod 0600 "$PACKAGE_DIR/.env.example"
     printf '已将本地关键环境变量（OAuth/AIStudio/ChatGPT API代理/私网放行等）注入部署包模板（部署时会自动种子到服务器 .env）\n'
@@ -298,22 +298,22 @@ fi
 
 {
 cat <<EOF
-OCTALAICANVAS_PACKAGE_VERSION=$VERSION
-OCTALAICANVAS_DOCKER_PLATFORM=$PLATFORM
-OCTALAICANVAS_DATABASE_MODE=$DATABASE_MODE
-OCTALAICANVAS_PRIVATE_MIGRATION=$PRIVATE_MIGRATION
-OCTALAICANVAS_IMAGE=$APP_IMAGE
-OCTALAICANVAS_GEMINIAI_IMAGE=$GEMINIAI_IMAGE
-OCTALAICANVAS_MAGIC_PROXY_IMAGE=$MAGIC_PROXY_IMAGE
-OCTALAICANVAS_COMPOSE_FILE=$COMPOSE_FILE
+DREAMYO_PACKAGE_VERSION=$VERSION
+DREAMYO_DOCKER_PLATFORM=$PLATFORM
+DREAMYO_DATABASE_MODE=$DATABASE_MODE
+DREAMYO_PRIVATE_MIGRATION=$PRIVATE_MIGRATION
+DREAMYO_IMAGE=$APP_IMAGE
+DREAMYO_GEMINIAI_IMAGE=$GEMINIAI_IMAGE
+DREAMYO_MAGIC_PROXY_IMAGE=$MAGIC_PROXY_IMAGE
+DREAMYO_COMPOSE_FILE=$COMPOSE_FILE
 EOF
 if [[ "$DATABASE_MODE" == embedded ]]; then
-    printf 'OCTALAICANVAS_POSTGRES_IMAGE=%s\n' "$POSTGRES_IMAGE"
+    printf 'DREAMYO_POSTGRES_IMAGE=%s\n' "$POSTGRES_IMAGE"
 fi
 } > "$PACKAGE_DIR/manifest.env"
 
 if [[ "$DATABASE_MODE" == embedded ]]; then
-    DATABASE_DESCRIPTION="该包包含 PostgreSQL 镜像，并会自动创建 octalaicanvas-postgres 数据库容器。"
+    DATABASE_DESCRIPTION="该包包含 PostgreSQL 镜像，并会自动创建 dreamyo-postgres 数据库容器。"
     DATABASE_COMMAND="首次部署不需要已有 PostgreSQL。"
 else
     DATABASE_DESCRIPTION="该包复用服务器上已有的 Docker PostgreSQL，不包含或启动新的 PostgreSQL 镜像。"
@@ -322,12 +322,12 @@ fi
 
 if [[ "$DATABASE_MODE" == external ]]; then
     DEFAULT_APPLICATION_URL="http://服务器IP:8866"
-    PORT_GUIDANCE='external 模式默认端口为 8866。若服务器部署目录已有旧 `.env` 的 `PORT=3000`，脚本会保留它；要切换到 8866，请显式执行 `OCTALAICANVAS_PORT=8866 ./一键部署.sh`，脚本会写回 `.env`，之后重复部署会复用该端口。'
-    NETWORK_EXPOSURE_GUIDANCE='- external 模式默认直接暴露 8866 端口，正式公网环境建议在前面配置 HTTPS 反向代理，并把 `OCTALAICANVAS_BIND_ADDRESS` 改为 `127.0.0.1`。'
+    PORT_GUIDANCE='external 模式默认端口为 8866。若服务器部署目录已有旧 `.env` 的 `PORT=3000`，脚本会保留它；要切换到 8866，请显式执行 `DREAMYO_PORT=8866 ./一键部署.sh`，脚本会写回 `.env`，之后重复部署会复用该端口。'
+    NETWORK_EXPOSURE_GUIDANCE='- external 模式默认直接暴露 8866 端口，正式公网环境建议在前面配置 HTTPS 反向代理，并把 `DREAMYO_BIND_ADDRESS` 改为 `127.0.0.1`。'
 else
     DEFAULT_APPLICATION_URL="http://服务器IP:3000"
     PORT_GUIDANCE='embedded 模式默认端口为 3000。'
-    NETWORK_EXPOSURE_GUIDANCE='- 默认直接暴露 3000 端口，正式公网环境建议在前面配置 HTTPS 反向代理，并把 `OCTALAICANVAS_BIND_ADDRESS` 改为 `127.0.0.1`。'
+    NETWORK_EXPOSURE_GUIDANCE='- 默认直接暴露 3000 端口，正式公网环境建议在前面配置 HTTPS 反向代理，并把 `DREAMYO_BIND_ADDRESS` 改为 `127.0.0.1`。'
 fi
 
 if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
@@ -347,7 +347,7 @@ $DEFAULT_APPLICATION_URL/install
 fi
 
 cat > "$PACKAGE_DIR/README.md" <<EOF
-# OctalFlow 离线 Docker 部署包
+# dreamyo 离线 Docker 部署包
 
 版本：$VERSION
 目标平台：$PLATFORM
@@ -375,10 +375,10 @@ $ACCESS_URL_BLOCK
 ## 说明
 
 - 镜像归档已经包含 Node.js、Next.js standalone、Sharp/libvips、FFmpeg、PostgreSQL 客户端、Python、Camoufox/Playwright、GeminiAI sidecar 和 Mihomo v1.19.30 运行依赖；Mihomo 镜像由构建机拉取并原样保存，不在脚本中重建。
-- 应用还内置 CPU PyTorch、Transformers、Depth Anything V2 Small 模型权重，以及官方 Linux amd64 Dreamina CLI；深度推理无需启动后下载模型。CLI 登录目录保存在应用数据卷的 dreamina/ 下，可执行 \`docker exec -it octalaicanvas dreamina login\` 登录。二进制及模型遵循各自厂商条款，本包用于自有服务器部署。
+- 应用还内置 CPU PyTorch、Transformers、Depth Anything V2 Small 模型权重，以及官方 Linux amd64 Dreamina CLI；深度推理无需启动后下载模型。CLI 登录目录保存在应用数据卷的 dreamina/ 下，可执行 \`docker exec -it dreamyo dreamina login\` 登录。二进制及模型遵循各自厂商条款，本包用于自有服务器部署。
 - Mihomo 只提供两个静态内部 mixed 监听：GeminiAIStudio 与 GeminiTools 共用这一份镜像，但通过独立端口和代理分组隔离；动态订阅通过私有 runtime 文件 provider 刷新。
 - Mihomo 的只读入口脚本随配置文件一同打包，启动时校验 Controller 密钥和监听地址，并初始化共享 provider 文件权限。
-- 应用媒体和 GeminiAI 账号分别保存在独立卷中；embedded 模式下 PostgreSQL 数据另保存在 \`octalaicanvas-postgres\` 卷中，external 模式下不管理 PostgreSQL 数据卷。
+- 应用媒体和 GeminiAI 账号分别保存在独立卷中；embedded 模式下 PostgreSQL 数据另保存在 \`dreamyo-postgres\` 卷中，external 模式下不管理 PostgreSQL 数据卷。
 $PRIVATE_CONTENT_NOTICE
 - 请为本应用提供独立的 PostgreSQL 数据库及有建表权限的账号，勿填写其他系统正在使用的数据库。一键脚本不会替你创建外部数据库，也不会管理现有 PostgreSQL 容器及数据卷。
 $NETWORK_EXPOSURE_GUIDANCE

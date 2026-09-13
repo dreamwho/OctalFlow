@@ -20,6 +20,8 @@ describe("magic proxy provider binding card", () => {
 
         expect(source).toContain("title={`${providerLabels[provider]} · 代理管理`}");
         expect(source).toContain('chatgptApi: "GPTAPI"');
+        expect(source).toContain("testChatGptChain");
+        expect(source).toContain('测试 {provider === "chatgptApi" ? "ChatGPT" : "Google"} 连通性');
         expect(source).toContain("启用代理");
         expect(source).toContain("代理方式");
         expect(source).toContain("魔法节点");

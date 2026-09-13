@@ -1,50 +1,69 @@
-# OctalFlow host-network bootstrap. Controller authentication is supplied at
+# dreamyo host-network bootstrap. Controller authentication is supplied at
 # process start; subscription proxies arrive through the shared file provider.
 mode: rule
 log-level: info
 external-controller: 127.0.0.1:9090
 
 proxy-providers:
-  OctalFlow-Subscription:
+  dreamyo-Subscription:
     type: file
     path: /root/.config/mihomo/runtime/subscription.yaml
 
 proxy-groups:
-  - name: OctalFlow-GeminiAIStudio
+  - name: dreamyo-GeminiAIStudio
     type: select
     use:
-      - OctalFlow-Subscription
+      - dreamyo-Subscription
     proxies:
       - DIRECT
-  - name: OctalFlow-GeminiTools
+  - name: dreamyo-GeminiTools
     type: select
     use:
-      - OctalFlow-Subscription
+      - dreamyo-Subscription
     proxies:
       - DIRECT
-  - name: OctalFlow-ChatGPTAPI
+  - name: dreamyo-ChatGPTAPI
     type: select
     use:
-      - OctalFlow-Subscription
+      - dreamyo-Subscription
+    proxies:
+      - DIRECT
+  # 链式代理跳板组：dialer-proxy 只能解析全局命名空间（顶层组），不能引用 provider 节点名。
+  - name: dreamyo-Chained-Hop-GeminiAIStudio
+    type: select
+    use:
+      - dreamyo-Subscription
+    proxies:
+      - DIRECT
+  - name: dreamyo-Chained-Hop-GeminiTools
+    type: select
+    use:
+      - dreamyo-Subscription
+    proxies:
+      - DIRECT
+  - name: dreamyo-Chained-Hop-ChatGPTAPI
+    type: select
+    use:
+      - dreamyo-Subscription
     proxies:
       - DIRECT
 
 listeners:
-  - name: OctalFlow-GeminiAIStudio
+  - name: dreamyo-GeminiAIStudio
     type: mixed
     listen: 127.0.0.1
     port: 17890
-    proxy: OctalFlow-GeminiAIStudio
-  - name: OctalFlow-GeminiTools
+    proxy: dreamyo-GeminiAIStudio
+  - name: dreamyo-GeminiTools
     type: mixed
     listen: 127.0.0.1
     port: 17891
-    proxy: OctalFlow-GeminiTools
-  - name: OctalFlow-ChatGPTAPI
+    proxy: dreamyo-GeminiTools
+  - name: dreamyo-ChatGPTAPI
     type: mixed
     listen: 127.0.0.1
     port: 17892
-    proxy: OctalFlow-ChatGPTAPI
+    proxy: dreamyo-ChatGPTAPI
 
 rules:
   - MATCH,DIRECT

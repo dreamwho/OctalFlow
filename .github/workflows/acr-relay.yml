@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  SOURCE_IMAGE: ghcr.io/dreamwho/octalaicanvas
+  SOURCE_IMAGE: ghcr.io/dreamwho/dreamyo
 
 jobs:
   relay:
@@ -34,7 +34,7 @@ jobs:
           fi
           echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
           SOURCE="$SOURCE_IMAGE:$TAG"
-          TARGET="$ACR_REGISTRY/$ACR_NAMESPACE/octalaicanvas:$TAG"
+          TARGET="$ACR_REGISTRY/$ACR_NAMESPACE/dreamyo:$TAG"
           echo "中转 $SOURCE -> $TARGET"
           docker pull "$SOURCE"
           docker tag "$SOURCE" "$TARGET"

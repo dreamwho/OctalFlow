@@ -18,10 +18,10 @@ describe("GeminiTools store", () => {
     let directory = "";
 
     beforeEach(async () => {
-        directory = await mkdtemp(join(tmpdir(), "octal-gemini-tools-"));
-        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
-        vi.stubEnv("OCTALAICANVAS_DATA_DIR", directory);
-        vi.stubEnv("OCTALAICANVAS_ENCRYPTION_KEY", "a".repeat(64));
+        directory = await mkdtemp(join(tmpdir(), "dreamyo-gemini-tools-"));
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
     });
 
     afterEach(async () => {

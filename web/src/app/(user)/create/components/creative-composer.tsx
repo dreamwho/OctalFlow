@@ -21,6 +21,7 @@ import { creativeAssetMentionAtCursor, creativeAssetMentionCandidates, creativeA
 import { CreativeAssetMentionPicker } from "./creative-asset-mention-picker";
 import { CreativeGenerationControls, type CreativeModelOption } from "./creative-generation-controls";
 import { CreativeModeIcon, creativeModeOptions } from "@/components/creative-generation-preferences";
+import { DreamyoIcon, type DreamyoIconName } from "@/components/ui/dreamyo-icon";
 import { CreativeVideoFrameControls } from "./creative-video-frame-controls";
 import { creativeSkillCommandAtCursor, creativeSkillMatchesQuery, removeCreativeSkillCommand, type CreativeSkillCommand } from "./creative-skill-command";
 
@@ -414,10 +415,10 @@ export function CreativeComposer({
                             </span>
                         ))}
                         {otherAttachments.map((asset) => {
-                            const Icon = asset.type === "image" ? ImageIcon : asset.type === "video" ? FileVideo : FileAudio;
+                            const icon: DreamyoIconName = asset.type === "image" ? "image" : asset.type === "video" ? "video" : "audio";
                             return (
                                 <span key={asset.id} className="flex h-9 max-w-52 shrink-0 items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-2 text-xs text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200">
-                                    <Icon className="size-3.5 shrink-0" />
+                                    <DreamyoIcon name={icon} size={18} />
                                     <span className="truncate">{asset.title}</span>
                                     <button
                                         type="button"
@@ -699,14 +700,14 @@ function ComposerMentionPreview({ segments, assetsById, previewRef }: { segments
                 if (!segment.referenced || !asset) return <span key={`${index}-${segment.text}`}>{segment.text}</span>;
                 const coverUrl = asset.type === "video" && typeof asset.metadata.coverUrl === "string" ? asset.metadata.coverUrl : undefined;
                 const previewUrl = asset.type === "image" ? asset.serverUrl || asset.remoteUrl : coverUrl;
-                const Icon = asset.type === "video" ? FileVideo : asset.type === "audio" ? FileAudio : asset.type === "image" ? ImageIcon : Sparkles;
+                const icon: DreamyoIconName = asset.type === "video" ? "video" : asset.type === "audio" ? "audio" : asset.type === "image" ? "image" : "magic";
                 return (
                     <span key={`${asset.id}-${index}`} data-testid="creative-composer-reference-chip" data-asset-id={asset.id} title={asset.title} className="relative inline-block align-baseline font-normal text-transparent">
                         <span data-mention-token-width className="whitespace-pre">
                             {segment.text}
                         </span>
                         <span className="absolute inset-0 inline-flex min-w-0 items-center gap-0.5 overflow-hidden text-[#536273] dark:text-[#c8d0d9]">
-                            {previewUrl ? <img src={imagePreviewUrl(previewUrl, 96)} alt="" className="size-4 shrink-0 rounded object-cover shadow-[0_1px_2px_rgba(32,36,42,0.16)]" /> : <Icon className="size-3.5 shrink-0" />}
+                            {previewUrl ? <img src={imagePreviewUrl(previewUrl, 96)} alt="" className="size-4 shrink-0 rounded object-cover shadow-[0_1px_2px_rgba(32,36,42,0.16)]" /> : <DreamyoIcon name={icon} size={16} />}
                             <span data-mention-label className="min-w-0 truncate text-[13px] font-medium">
                                 {segment.text.slice(1)}
                             </span>

@@ -22,9 +22,9 @@ let origin = "";
 
 describe("active media protocols over TCP fixtures", () => {
     beforeEach(async () => {
-        vi.stubEnv("OCTALAICANVAS_ALLOW_PRIVATE_UPSTREAMS", "1");
-        vi.stubEnv("OCTALAICANVAS_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
-        vi.stubEnv("OCTALAICANVAS_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_ALLOW_PRIVATE_UPSTREAMS", "1");
+        vi.stubEnv("DREAMYO_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1");
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
         fixture = createProtocolFixtureServer();
         await new Promise<void>((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));
         const address = fixture.server.address();

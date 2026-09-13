@@ -6,6 +6,7 @@ import { Button, Dropdown } from "antd";
 
 import { GenerationActionButton } from "@/components/generation-action-button";
 import { ModelPicker } from "@/components/model-picker";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
 import { selectableModelsByCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -290,7 +291,7 @@ const GENERATION_MODES: Array<{ value: CanvasGenerationMode; label: string }> = 
 ];
 
 function ModeLabel({ mode, label }: { mode: CanvasGenerationMode; label: string }) {
-    const icon = mode === "image" ? <ImageIcon className="size-3.5" /> : mode === "text" ? <MessageSquare className="size-3.5" /> : mode === "video" ? <Video className="size-3.5" /> : <Music2 className="size-3.5" />;
+    const icon = mode === "image" || mode === "video" || mode === "audio" ? <DreamyoIcon name={mode} size={16} /> : <MessageSquare className="size-3.5" />;
     return (
         <span className="inline-flex items-center gap-1.5">
             {icon}

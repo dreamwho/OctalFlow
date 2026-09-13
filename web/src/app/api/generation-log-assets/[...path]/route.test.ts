@@ -36,7 +36,7 @@ describe("generation log asset access", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.getCurrentUser.mockResolvedValue({ id: "owner", role: "user" });
-        mocks.getDataDir.mockReturnValue("C:/octalaicanvas-data");
+        mocks.getDataDir.mockReturnValue("C:/dreamyo-data");
         mocks.canAccess.mockResolvedValue(true);
         mocks.registration.mockResolvedValue({ originalName: "uploaded-file.png", mimeType: "image/png" });
         mocks.rate.mockResolvedValue({ allowed: true, remaining: 239, resetAt: Date.now() + 60_000 });
@@ -98,7 +98,7 @@ describe("generation log asset access", () => {
     });
 
     it("passes the internal read request to session resolution for Worker-owned staging", async () => {
-        const request = new Request("http://localhost/api/generation-log-assets/permanent/2026/07/20/images/file.png", { headers: { authorization: "Bearer worker-token", "x-octalaicanvas-worker-user-id": "owner" } });
+        const request = new Request("http://localhost/api/generation-log-assets/permanent/2026/07/20/images/file.png", { headers: { authorization: "Bearer worker-token", "x-dreamyo-worker-user-id": "owner" } });
 
         await GET(request, context);
 

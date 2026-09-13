@@ -1,10 +1,10 @@
 # 数据库部署与私有迁移
 
-业务表结构以 `web/src/lib/server/database/schema.ts` 为准，数据库访问由项目 PostgreSQL executor 统一应用 `octalaicanvas_` 前缀。
+业务表结构以 `web/src/lib/server/database/schema.ts` 为准，数据库访问由项目 PostgreSQL executor 统一应用 `dreamyo_` 前缀。
 
 ## 私有数据迁移回执
 
-`octalaicanvas_private_migration_receipts` 仅由离线迁移 CLI 在完整导入事务中创建：
+`dreamyo_private_migration_receipts` 仅由离线迁移 CLI 在完整导入事务中创建：
 
 | 字段                | 类型        | 用途                                                               |
 | ------------------- | ----------- | ------------------------------------------------------------------ |
@@ -20,9 +20,9 @@
 
 ## 魔法代理
 
-`octalaicanvas_magic_proxy_settings` 是单例配置表（`id = 'default'`）。订阅地址和节点明文以加密字段保存。ChatGPT 用户代理方式只有 native（移植代理管理）与 magic（魔法代理）两种。Next 管理桥 `/api/admin/chatgpt-api/proxy-selection` 对接 Python `GET/PATCH /integration/proxy-selection`，请求体统一持久 `{enabled:boolean, mode:'native'|'magic', native_source:'manual'|'ipwo'}`；默认值为 `enabled=false, mode='native', native_source='manual'`。GET/PATCH 响应另返回 `magicConfigured:boolean` 与 `ipwoConfigured:boolean` 配置状态位，不返回代理凭据。`native_source` 是 native 内部的手动代理或 IPWO API 自动源，不是第三种方式；关闭总开关强制直连，开启时只能按 `mode` 选择一种方式。
+`dreamyo_magic_proxy_settings` 是单例配置表（`id = 'default'`）。订阅地址和节点明文以加密字段保存。ChatGPT 用户代理方式只有 native（移植代理管理）与 magic（魔法代理）两种。Next 管理桥 `/api/admin/chatgpt-api/proxy-selection` 对接 Python `GET/PATCH /integration/proxy-selection`，请求体统一持久 `{enabled:boolean, mode:'native'|'magic', native_source:'manual'|'ipwo'}`；默认值为 `enabled=false, mode='native', native_source='manual'`。GET/PATCH 响应另返回 `magicConfigured:boolean` 与 `ipwoConfigured:boolean` 配置状态位，不返回代理凭据。`native_source` 是 native 内部的手动代理或 IPWO API 自动源，不是第三种方式；关闭总开关强制直连，开启时只能按 `mode` 选择一种方式。
 
-Mihomo 为 ChatGPTAPI 固定声明独立的 `OctalFlow-ChatGPTAPI` group 与 listener。URL 同步只更新魔法代理运行时地址，不改变持久 `mode`；代理策略的启用/关闭由单一 `enabled` 字段决定，`native_source` 只决定 native 使用手动代理还是 IPWO API 自动源。未启用时 ChatGPT 请求强制直连，不自动切换到另一来源；启用时只允许移植代理管理或魔法代理之一。Next.js 到本地 Python 服务的请求保持直连。
+Mihomo 为 ChatGPTAPI 固定声明独立的 `dreamyo-ChatGPTAPI` group 与 listener。URL 同步只更新魔法代理运行时地址，不改变持久 `mode`；代理策略的启用/关闭由单一 `enabled` 字段决定，`native_source` 只决定 native 使用手动代理还是 IPWO API 自动源。未启用时 ChatGPT 请求强制直连，不自动切换到另一来源；启用时只允许移植代理管理或魔法代理之一。Next.js 到本地 Python 服务的请求保持直连。
 
 IPWO 源设置使用独立 Tab 与 `/integration/ipwo` 契约；来源开关通过共享选择的 `native_source` 在 native 内选择 `manual` 或 `ipwo`，关闭总开关不自动改选另一来源。`GET/PATCH /integration/ipwo` 读取/保存只返回脱敏配置，读取字段为 `configured`、`has_api_url`、`protocol`、`regions` 和 `timeout_seconds`，不返回加密 `api_url`；保存时可提交 `api_url`、`protocol`、`regions` 和 `timeout_seconds`，省略或清空 `api_url` 保留已存密文。`timeout_seconds` 接受任意正整数，默认 10，不设 10–30 上限。Fake-IP 兼容沿用现有 TUN 模型而非 DoH；仅已验证的 `ipwo.net` HTTPS 子域标准 443 可解析到 `198.18.0.0/15`，Curl 固定该结果且保持 `verify=True`，其他私有/保留 DNS 结果拒绝，IPWO 返回的代理 IP 仍须 public/global，且 `198.18/15` 不得用于返回的代理 endpoint。`POST /integration/ipwo/test` 是显式临时诊断，可在共享开关关闭时使用已存配置运行，按固定阶段检查配置、IPWO、代理出口和 `ipinfo.io/json`，错误保持可操作但不暴露 URL、查询参数、令牌、上游原文或异常；不自动调用、不启用共享代理策略，也不写入节点。正常请求仍受共享 `enabled`/`mode`/`native_source` 门控。真实 Next/Python 双进程 HTTP 已验收 IPWO 配置安全保存、不回显、不自动启用，最新手机日志截图与重启 read 通过，本地 `3333` production 已启动。Python 全量测试 22 项 exit 0，仅有 2 条第三方 TestClient 弃用警告。
 
@@ -34,4 +34,4 @@ IPWO 源设置使用独立 Tab 与 `/integration/ipwo` 契约；来源开关通�
 
 ## MiniMax 音频
 
-`octalaicanvas_minimax_voices` 保存用户创建的 MiniMax 或阿里云百炼音色本地映射（系统音色不落用户表）；`provider` 区分供应商，`user_id` 为空的记录仅供后台同步使用，前台个人音色查询必须按当前用户过滤。音色表同时保存供应商 `voice_name`、`description` 和 `provider_created_time`，分类由名称与介绍实时派生，不把分类规则固化成供应商字段。`octalaicanvas_minimax_music_records` 保存音乐生成的用户记录，`octalaicanvas_minimax_request_logs` 通过 `provider` 区分 MiniMax、阿里云百炼与腾讯云 TokenHub，并保存从提交、上游响应到完成/失败的请求过程日志。API Key 继续只存于系统模型渠道的加密字段，音色和音乐结果不在浏览器本地持久化。
+`dreamyo_minimax_voices` 保存用户创建的 MiniMax 或阿里云百炼音色本地映射（系统音色不落用户表）；`provider` 区分供应商，`user_id` 为空的记录仅供后台同步使用，前台个人音色查询必须按当前用户过滤。音色表同时保存供应商 `voice_name`、`description` 和 `provider_created_time`，分类由名称与介绍实时派生，不把分类规则固化成供应商字段。`dreamyo_minimax_music_records` 保存音乐生成的用户记录，`dreamyo_minimax_request_logs` 通过 `provider` 区分 MiniMax、阿里云百炼与腾讯云 TokenHub，并保存从提交、上游响应到完成/失败的请求过程日志。API Key 继续只存于系统模型渠道的加密字段，音色和音乐结果不在浏览器本地持久化。

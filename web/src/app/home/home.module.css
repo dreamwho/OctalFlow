@@ -242,9 +242,9 @@
 
 .mobileNav > a:hover,
 .mobileNav > button:hover {
-    background: var(--octa-selection-surface);
-    border-color: var(--octa-selection-border);
-    color: var(--octa-selection-text);
+    background: var(--dreamyo-selection-surface);
+    border-color: var(--dreamyo-selection-border);
+    color: var(--dreamyo-selection-text);
 }
 
 .mobileNav svg {
@@ -432,10 +432,10 @@
 .galleryTabs button.galleryTabActive:hover,
 .galleryTabs button.galleryTabActive:focus-visible,
 .galleryTabs button[aria-selected="true"] {
-    background: var(--octa-selection-surface);
-    border-color: var(--octa-selection-border);
-    box-shadow: var(--octa-selection-shadow);
-    color: var(--octa-selection-text);
+    background: var(--dreamyo-selection-surface);
+    border-color: var(--dreamyo-selection-border);
+    box-shadow: var(--dreamyo-selection-shadow);
+    color: var(--dreamyo-selection-text);
 }
 
 .galleryPanel {

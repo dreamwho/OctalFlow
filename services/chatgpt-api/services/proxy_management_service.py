@@ -399,7 +399,16 @@ class ProxyManagementService:
                 "enabled": enabled,
                 **({"target": normalized_target} if enabled else {}),
             }
-            self._config.update({"generic_proxy_bindings": next_bindings})
+            mutation: dict[str, Any] = {"generic_proxy_bindings": next_bindings}
+            if normalized_provider == "chatgptApi" and enabled:
+                selection = proxy_selection_from_configuration(snapshot)
+                if not selection.enabled or selection.mode == "native":
+                    mutation[PROXY_SELECTION_KEY] = {
+                        "enabled": True,
+                        "mode": "native",
+                        "native_source": "manual",
+                    }
+            self._config.update(mutation)
         return self.generic_proxy_bindings()
 
     def _proxy_selection_payload(self, snapshot: dict[str, Any]) -> dict[str, object]:

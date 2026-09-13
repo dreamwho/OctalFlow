@@ -87,7 +87,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
 
     useEffect(() => {
         const onOAuth = (event: MessageEvent) => {
-            if (event.origin !== window.location.origin || event.data?.type !== "octalflow-gemini-tools-oauth") return;
+            if (event.origin !== window.location.origin || event.data?.type !== "dreamyo-gemini-tools-oauth") return;
             if (event.data.ok) {
                 message.success(event.data.message || "Google 账号授权成功");
                 void load();
@@ -118,7 +118,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
             const height = 720;
             const popup = window.open(
                 authUrl,
-                `octalflow-gemini-tools-${Date.now()}`,
+                `dreamyo-gemini-tools-${Date.now()}`,
                 `popup=yes,width=${width},height=${height},left=${Math.max(0, window.screenX + (window.outerWidth - width) / 2)},top=${Math.max(0, window.screenY + (window.outerHeight - height) / 2)}`,
             );
             if (!popup) throw new Error("浏览器拦截了 Google 授权窗口，请允许本站弹出窗口后重试");

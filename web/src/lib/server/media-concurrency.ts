@@ -14,10 +14,10 @@ const LIMITS: Record<MediaConcurrencyScope, { total: number; perIdentity: number
 };
 
 const globalMediaConcurrencyStore = globalThis as typeof globalThis & {
-    __octalaicanvasProMediaConcurrency?: { totals: Map<string, number>; identities: Map<string, number> };
+    __dreamyoProMediaConcurrency?: { totals: Map<string, number>; identities: Map<string, number> };
 };
 
-const counters = (globalMediaConcurrencyStore.__octalaicanvasProMediaConcurrency ??= { totals: new Map(), identities: new Map() });
+const counters = (globalMediaConcurrencyStore.__dreamyoProMediaConcurrency ??= { totals: new Map(), identities: new Map() });
 
 export function acquireMediaConcurrency(scope: MediaConcurrencyScope, identity: string, overrides?: { total?: number; perIdentity?: number; leaseMs?: number }): MediaConcurrencyPermit | null {
     const defaults = LIMITS[scope];

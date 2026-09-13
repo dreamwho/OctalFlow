@@ -72,7 +72,7 @@ export function AdminSectionNav({
     const allowedGroups = adminSectionGroups.map((group) => ({ ...group, items: group.items.filter((section) => canAccessAdminSection(currentUser, section.key)) })).filter((group) => group.items.length);
     const activeGroup = allowedGroups.find((group) => group.items.some((section) => section.key === activeKey));
     const activeGroupTitle = activeGroup?.title;
-    const site = usePublicSessionStore((state) => state.payload?.settings?.site) || { title: DEFAULT_SITE_TITLE, logoUrl: "/logo.svg" };
+    const site = usePublicSessionStore((state) => state.payload?.settings?.site) || { title: DEFAULT_SITE_TITLE, logoUrl: "/brand/dreamyo/mark.png" };
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
@@ -93,7 +93,7 @@ export function AdminSectionNav({
                     type="button"
                     title={desktopCollapsed ? section.label : undefined}
                     aria-label={section.label}
-                    className={`admin-section-nav-item relative flex h-9 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition ${active ? "is-active bg-zinc-100 font-medium text-zinc-950 dark:bg-zinc-900 dark:text-zinc-50" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"}`}
+                    className={`admin-section-nav-item relative flex h-9 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition ${active ? "is-active font-medium text-[#102044] dark:text-[#eff8ff]" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"}`}
                     onPointerEnter={() => onIntent?.(section.key)}
                     onPointerDown={() => onIntent?.(section.key)}
                     onFocus={() => onIntent?.(section.key)}
@@ -218,14 +218,11 @@ export const adminSections: AdminSection[] = [
 
 export const adminSectionGroups: AdminSectionGroup[] = [
     { title: "经营分析", items: sectionsFor(["overview", "users", "logs", "generationOperations"]) },
-    { title: "商品运营", items: sectionsFor(["products", "orders"]) },
-    { title: "营销推广", items: sectionsFor(["promotions", "coupons", "referrals"]) },
+    { title: "商品运营", items: sectionsFor(["products", "orders", "promotions", "coupons", "referrals"]) },
     { title: "财务管理", items: sectionsFor(["points", "payments", "cdk", "wallet"]) },
     { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "genericProxy", "runninghub", "geminiai", "geminiTools", "chatgptApi", "minimax", "tencentMusic", "qwenAudio", "dreamina", "skills"]) },
-    { title: "系统管理", items: sectionsFor(["site", "settings", "accountDeletion"]) },
-    { title: "存储与备份", items: sectionsFor(["mediaStorage", "externalStorage", "backup"]) },
+    { title: "系统管理", items: sectionsFor(["site", "settings", "accountDeletion", "mediaStorage", "externalStorage", "backup", "updates", "adminHelp"]) },
     { title: "内容运营", items: sectionsFor(["works", "announcements", "prompts"]) },
-    { title: "帮助与支持", items: sectionsFor(["updates", "adminHelp"]) },
 ];
 
 function sectionsFor(keys: AdminSectionKey[]) {

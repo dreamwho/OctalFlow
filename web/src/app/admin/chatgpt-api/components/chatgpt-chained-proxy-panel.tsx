@@ -5,8 +5,8 @@ import { ArrowRight, CheckCircle2, Network, RefreshCw, ShieldCheck, Zap } from "
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
-import { getMagicProxy, type MagicProxyState } from "@/services/api/magic-proxy";
-import { getChatGptProxies, testChatGptProxyNode, type ChatGptProxyGroup, type ChatGptProxyNodeTestResult, type ChatGptProxyReference, type ChatGptProxyView } from "@/services/api/chatgpt-api";
+import { getMagicProxy, testChatGptChain, type MagicProxyGoogleTestItem, type MagicProxyState } from "@/services/api/magic-proxy";
+import { getChatGptProxies, type ChatGptProxyGroup, type ChatGptProxyReference, type ChatGptProxyView } from "@/services/api/chatgpt-api";
 import { genericProxyRequest } from "@/services/api/generic-proxy";
 import type { ChatGptProxyRuntimeController } from "./use-chatgpt-proxy-runtime";
 
@@ -25,7 +25,7 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
-    const [testResult, setTestResult] = useState<ChatGptProxyNodeTestResult | null>(null);
+    const [testResult, setTestResult] = useState<MagicProxyGoogleTestItem | null>(null);
     const [error, setError] = useState("");
     const mounted = useRef(false);
 
@@ -127,21 +127,19 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
     };
 
     const handleTest = async () => {
-        if (!landingNodeId.trim() || testing) return;
+        if (testing) return;
         setTesting(true);
         setTestResult(null);
         setError("");
         try {
-            const selectedNode = genericGroups.flatMap((group) => group.nodes || []).find((node) => node.id === landingNodeId.trim());
-            const selectedGroup = genericGroups.find((group) => group.nodes?.some((node) => node.id === landingNodeId.trim()));
-            if (!selectedNode || !selectedGroup) throw new Error("落地节点所属代理组不存在，请刷新后重试");
-            const res = await testChatGptProxyNode(selectedGroup.id, selectedNode.id, 15000, true);
+            const report = await testChatGptChain();
             if (!mounted.current) return;
-            setTestResult(res.result);
-            if (res.result.status === "passed") {
-                message.success(`连通性测试成功：延迟 ${res.result.latency_ms} ms`);
+            const item = report.items.find((entry) => entry.service === "chatgptApi") || null;
+            setTestResult(item);
+            if (item?.ok) {
+                message.success(`ChatGPT 链路连通正常：延迟 ${item.delay} ms`);
             } else {
-                message.warning(`连通性测试未通过：${res.result.error_message || "响应异常"}`);
+                message.warning(item?.error || "ChatGPT 链路连通性测试未通过");
             }
         } catch (reason) {
             if (mounted.current) {
@@ -293,15 +291,13 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
                 {testResult ? (
                     <div className="rounded-lg border border-zinc-200 p-4 text-xs dark:border-zinc-800">
                         <div className="flex items-center justify-between">
-                            <span className="font-medium">连通性测试反馈：</span>
-                            <Tag color={testResult.status === "passed" ? "success" : "error"}>
-                                {testResult.status === "passed" ? "连通正常" : "测试未通过"}
-                            </Tag>
+                            <span className="font-medium">ChatGPT 连通性测试反馈（经链式全链路）：</span>
+                            <Tag color={testResult.ok ? "success" : "error"}>{testResult.ok ? "连通正常" : "测试未通过"}</Tag>
                         </div>
                         <div className="mt-2 space-y-1 text-zinc-600 dark:text-zinc-400">
-                            <div>耗时延迟：<strong>{testResult.latency_ms} ms</strong></div>
-                            {testResult.details?.target_url ? <div>目标验证地址：{testResult.details.target_url}</div> : null}
-                            {testResult.error_message ? <div className="text-red-500">错误详情：{testResult.error_message}</div> : null}
+                            {testResult.ok ? <div>耗时延迟：<strong>{testResult.delay} ms</strong></div> : null}
+                            <div>当前生效节点：{testResult.activeNode === "DIRECT" ? "DIRECT 直连（链式未接管）" : testResult.activeNode}</div>
+                            {testResult.error ? <div className="text-red-500">错误详情：{testResult.error}</div> : null}
                         </div>
                     </div>
                 ) : null}
@@ -319,9 +315,9 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
                         <Button
                             onClick={() => void handleTest()}
                             loading={testing}
-                            disabled={!landingNodeId || testing}
+                            disabled={testing}
                         >
-                            测试落地节点
+                            测试 ChatGPT 连通性
                         </Button>
                         <Button
                             type="primary"

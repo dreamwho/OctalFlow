@@ -396,7 +396,7 @@ function mapProjectSummary(row: Record<string, unknown>): CanvasProjectSummary {
 }
 
 function publicCanvasTitle(value: string) {
-    return value.replace(/^(?:VOZEB PRO|OctalAICanvas)( 画布(?: \d+)?)$/, "OctalFlow$1");
+    return value.replace(/^(?:VOZEB PRO|dreamyo)( 画布(?: \d+)?)$/, "dreamyo$1");
 }
 
 function jsonArray(value: unknown): unknown[] {

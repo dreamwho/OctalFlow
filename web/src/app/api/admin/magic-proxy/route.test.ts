@@ -8,8 +8,8 @@ const overview = {
     nodeCount: 1,
     nodes: [{ name: "Tokyo-01", type: "ss", alive: true, delay: 42 }],
     groups: [
-        { name: "OctalFlow-GeminiAIStudio", type: "Selector", now: "DIRECT", all: ["DIRECT", "Tokyo-01"] },
-        { name: "OctalFlow-GeminiTools", type: "Selector", now: "Tokyo-01", all: ["DIRECT", "Tokyo-01"] },
+        { name: "dreamyo-GeminiAIStudio", type: "Selector", now: "DIRECT", all: ["DIRECT", "Tokyo-01"] },
+        { name: "dreamyo-GeminiTools", type: "Selector", now: "Tokyo-01", all: ["DIRECT", "Tokyo-01"] },
     ],
     bindings: { geminiai: { enabled: false }, geminiTools: { enabled: true, node: "Tokyo-01" } },
 };

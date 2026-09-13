@@ -208,7 +208,7 @@ const seedanceSpecialOperation: ProtocolOperation = {
     supportsReferenceAudio: true,
 };
 
-const octalaicanvasRecommendedVideoOperation: ProtocolOperation = {
+const dreamyoRecommendedVideoOperation: ProtocolOperation = {
     capability: "video",
     createPath: "/v1/videos/generations",
     imageToVideoPath: "/v1/videos/generations",
@@ -483,15 +483,15 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
         strict: true,
     },
     {
-        id: "octalaicanvas-recommended",
-        label: "OctalFlow 推荐",
-        description: "OctalFlow 推荐的 JSON 异步视频协议，支持多模态参考素材与持久结果地址。",
+        id: "dreamyo-recommended",
+        label: "dreamyo 推荐",
+        description: "dreamyo 推荐的 JSON 异步视频协议，支持多模态参考素材与持久结果地址。",
         apiFormat: "openai",
         authMode: "bearer",
         defaultBaseUrl: "https://new.aiym.ink/v1",
         modelCatalogPaths: ["/v1/models"],
         capabilities: ["video"],
-        operations: { video: octalaicanvasRecommendedVideoOperation },
+        operations: { video: dreamyoRecommendedVideoOperation },
         strict: true,
     },
     {
@@ -553,7 +553,7 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
     },
 ];
 
-const retiredProtocolIds = new Set<SystemChannelProtocol>(["octalaicanvas-recommended", "seedance-special", "globalaiopc"]);
+const retiredProtocolIds = new Set<SystemChannelProtocol>(["dreamyo-recommended", "seedance-special", "globalaiopc"]);
 
 export const channelProtocolDefinitions = registeredChannelProtocolDefinitions.filter((definition) => !retiredProtocolIds.has(definition.id));
 

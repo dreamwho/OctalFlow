@@ -29,7 +29,7 @@ describe("Dreamina CLI provider", () => {
     });
 
     it("uses an argv-only injected runner and never requires a real CLI in tests", async () => {
-        vi.stubEnv("OCTALAICANVAS_DREAMINA_CLI_PATH", process.execPath);
+        vi.stubEnv("DREAMYO_DREAMINA_CLI_PATH", process.execPath);
         const runner = vi.fn().mockResolvedValue({ stdout: '{"submit_id":"task_123","credit_count":6}', stderr: "", exitCode: 0 });
 
         await expect(submitDreaminaCliTask({ command: "image_upscale", images: ["/sandbox/source.png"], resolutionType: "2k" }, { runner })).resolves.toEqual({ submitId: "task_123", creditCost: 6 });
@@ -38,7 +38,7 @@ describe("Dreamina CLI provider", () => {
     });
 
     it("never treats unparseable post-spawn output as safe to resubmit", async () => {
-        vi.stubEnv("OCTALAICANVAS_DREAMINA_CLI_PATH", process.execPath);
+        vi.stubEnv("DREAMYO_DREAMINA_CLI_PATH", process.execPath);
         await expect(submitDreaminaCliTask({ command: "text2video", modelId: "dreamina-seedance-2-0", prompt: "测试", videoResolution: "720p" }, { runner: async () => ({ stdout: "queued", stderr: "", exitCode: 0 }) })).rejects.toBeInstanceOf(
             DreaminaCliSubmissionUncertainError,
         );
@@ -66,8 +66,8 @@ describe("Dreamina CLI provider", () => {
     });
 
     it("retains a task-scoped query directory across polling leases", async () => {
-        const root = await mkdtemp(join(tmpdir(), "octal-dreamina-task-root-"));
-        vi.stubEnv("OCTALAICANVAS_DREAMINA_CLI_TEMP_ROOT", root);
+        const root = await mkdtemp(join(tmpdir(), "dreamyo-dreamina-task-root-"));
+        vi.stubEnv("DREAMYO_DREAMINA_CLI_TEMP_ROOT", root);
         try {
             const first = await dreaminaCliTaskDirectory("task:stable");
             await writeFile(join(first, "pending.marker"), "pending");
@@ -81,7 +81,7 @@ describe("Dreamina CLI provider", () => {
     });
 
     it("queries through a controlled download directory and exposes no raw output", async () => {
-        vi.stubEnv("OCTALAICANVAS_DREAMINA_CLI_PATH", process.execPath);
+        vi.stubEnv("DREAMYO_DREAMINA_CLI_PATH", process.execPath);
         await withDreaminaCliTempDirectory(async (directory) => {
             const output = join(directory, "result.mp4");
             const runner = vi.fn().mockResolvedValue({ stdout: JSON.stringify({ status: "completed", files: [output] }), stderr: "", exitCode: 0 });

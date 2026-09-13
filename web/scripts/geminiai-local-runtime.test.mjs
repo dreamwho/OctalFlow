@@ -13,22 +13,22 @@ describe("local GeminiAI runtime", () => {
         const result = localGeminiAiRuntime({
             repoRoot,
             webRoot,
-            environment: { OCTALAICANVAS_GEMINIAI_URL: "http://geminiai:8080", OCTALAICANVAS_GEMINIAI_API_KEY: "configured-key" },
+            environment: { DREAMYO_GEMINIAI_URL: "http://geminiai:8080", DREAMYO_GEMINIAI_API_KEY: "configured-key" },
         });
         expect(result.service).toBeUndefined();
-        expect(result.environment.OCTALAICANVAS_GEMINIAI_URL).toBe("http://geminiai:8080");
+        expect(result.environment.DREAMYO_GEMINIAI_URL).toBe("http://geminiai:8080");
     });
 
     it("starts the bundled provider with persistent project-local account storage", () => {
         const result = localGeminiAiRuntime({
             repoRoot,
             webRoot,
-            environment: { OCTALAICANVAS_GEMINIAI_STUDIO_URL: "https://aistudio.google.com/prompts/new_chat?project=test-project" },
+            environment: { DREAMYO_GEMINIAI_STUDIO_URL: "https://aistudio.google.com/prompts/new_chat?project=test-project" },
             tokenFactory: () => "local-runtime-key",
         });
         expect(result.environment).toMatchObject({
-            OCTALAICANVAS_GEMINIAI_URL: "http://127.0.0.1:18080",
-            OCTALAICANVAS_GEMINIAI_API_KEY: "local-runtime-key",
+            DREAMYO_GEMINIAI_URL: "http://127.0.0.1:18080",
+            DREAMYO_GEMINIAI_API_KEY: "local-runtime-key",
         });
         expect(result.service).toMatchObject({
             name: "geminiai",
@@ -44,6 +44,6 @@ describe("local GeminiAI runtime", () => {
     });
 
     it("rejects a partial provider configuration", () => {
-        expect(() => localGeminiAiRuntime({ repoRoot, webRoot, environment: { OCTALAICANVAS_GEMINIAI_URL: "http://127.0.0.1:18080" } })).toThrow(/必须同时配置/);
+        expect(() => localGeminiAiRuntime({ repoRoot, webRoot, environment: { DREAMYO_GEMINIAI_URL: "http://127.0.0.1:18080" } })).toThrow(/必须同时配置/);
     });
 });

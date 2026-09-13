@@ -42,6 +42,6 @@ export async function readMagicProxyAdminJson<T = Record<string, unknown>>(reque
 }
 
 export function magicProxySubscriptionRequestBodyBytes() {
-    const configured = Number(process.env.OCTALAICANVAS_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES);
+    const configured = Number(process.env.DREAMYO_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES);
     return Number.isSafeInteger(configured) && configured > 0 ? configured + 64 * 1024 : MAX_MAGIC_PROXY_SUBSCRIPTION_BODY_BYTES;
 }

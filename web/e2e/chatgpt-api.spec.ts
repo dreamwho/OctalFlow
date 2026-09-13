@@ -5,7 +5,7 @@ const chatGptTabLabels = [...tabLabels, "统计报表", "代理管理", "IPWO �
 
 async function setTheme(page: Page, theme: "light" | "dark") {
     if (page.url() === "about:blank") await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.evaluate((nextTheme) => localStorage.setItem("octalaicanvas:admin_theme_store", JSON.stringify({ state: { theme: nextTheme }, version: 0 })), theme);
+    await page.evaluate((nextTheme) => localStorage.setItem("dreamyo:admin_theme_store", JSON.stringify({ state: { theme: nextTheme }, version: 0 })), theme);
     await page.reload({ waitUntil: "domcontentloaded" });
     if (theme === "dark") await expect(page.locator("html")).toHaveClass(/dark/);
     else await expect(page.locator("html")).not.toHaveClass(/dark/);

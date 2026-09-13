@@ -75,10 +75,39 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!parsed.ok) return NextResponse.json({ error: parsed.message }, { status: parsed.status });
     const body = parsed.data;
     if (body.status === "resume") {
+        if (task.status === "success" || task.status === "error" || task.status === "cancelled" || executionPhase !== "needs_review") {
+            return NextResponse.json({
+                task: {
+                    id: task.id,
+                    kind: task.kind,
+                    status: task.status,
+                    model: generationModelId(task.config),
+                    result: task.result,
+                    error: task.error,
+                    canRetry: task.retryable === true,
+                    needsReview: false,
+                    executionPhase: schedule?.executionPhase || settledExecutionPhase(task.status),
+                },
+            });
+        }
         try {
             await resumeImageGenerationReview(task, executionPhase);
         } catch (error) {
-            if (error instanceof GenerationTaskReviewResumeError) return NextResponse.json({ error: error.message }, { status: 409 });
+            if (error instanceof GenerationTaskReviewResumeError) {
+                return NextResponse.json({
+                    task: {
+                        id: task.id,
+                        kind: task.kind,
+                        status: task.status,
+                        model: generationModelId(task.config),
+                        result: task.result,
+                        error: task.error,
+                        canRetry: task.retryable === true,
+                        needsReview: false,
+                        executionPhase: schedule?.executionPhase || settledExecutionPhase(task.status),
+                    },
+                });
+            }
             throw error;
         }
         const origin = resolveInternalOrigin(new URL(request.url).origin);

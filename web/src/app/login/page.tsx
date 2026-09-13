@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { AuthForm } from "@/components/auth/auth-form";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getInstallStatus } from "@/lib/server/install-status";
+
+export const metadata: Metadata = { title: "登录 | dreamyo" };
 
 type LoginPageProps = {
     searchParams?: Promise<Record<string, string | string[] | undefined>>;

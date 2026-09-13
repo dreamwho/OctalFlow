@@ -34,10 +34,10 @@ describe("CanvasNodeUpscalePanel", () => {
     beforeEach(() => useThemeStore.setState({ theme: "light" }));
 
     it("uses a readable foreground for the light theme re-upscale action", () => {
-        expect(renderPanel()).toContain("background:#5b5ce2;border-color:#5b5ce2;color:#ffffff");
+        expect(renderPanel()).toContain("background:#2f6fff;border-color:#2f6fff;color:#ffffff");
     });
 
     it("switches the re-upscale action foreground for the dark theme", () => {
-        expect(resolveDreaminaUpscaleSubmitStyle(canvasThemes.dark)).toEqual({ background: "#ffffff", borderColor: "#ffffff", color: "#0f172a" });
+        expect(resolveDreaminaUpscaleSubmitStyle(canvasThemes.dark)).toEqual({ background: "#70d9ff", borderColor: "#70d9ff", color: "#04142b" });
     });
 });

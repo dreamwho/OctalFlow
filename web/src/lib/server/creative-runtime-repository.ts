@@ -64,7 +64,7 @@ export type CreativeRunBundleResult<T extends AgentRunBase> = {
 };
 
 const RUNTIME_FILE = "creative-runtime.json";
-const CREATIVE_RUN_NOTIFY_CHANNEL = "octalaicanvas_run_events";
+const CREATIVE_RUN_NOTIFY_CHANNEL = "dreamyo_run_events";
 
 export async function createPostgresRunBundle<T extends AgentRunBase>(userId: string, input: CreateRunBundleInput<T>) {
     await ensurePostgresSchema();

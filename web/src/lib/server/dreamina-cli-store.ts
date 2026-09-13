@@ -257,7 +257,7 @@ export function requestStats(logs: DreaminaCliRequestLog[], window = dreaminaCli
 }
 
 export function dreaminaCliStatsWindow(range: DreaminaCliStatsRange, now = new Date()): DreaminaCliStatsWindow {
-    const timeZone = validTimeZone(process.env.OCTALAICANVAS_TIME_ZONE || DEFAULT_TIME_ZONE);
+    const timeZone = validTimeZone(process.env.DREAMYO_TIME_ZONE || DEFAULT_TIME_ZONE);
     const endAt = now.toISOString();
     if (range === "all") return { range, endAt, timeZone };
     const zoned = dayjs(now).tz(timeZone);

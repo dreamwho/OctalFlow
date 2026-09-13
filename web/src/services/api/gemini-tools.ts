@@ -90,7 +90,7 @@ export const getGeminiToolsOverview = () => request<GeminiToolsOverview>("/api/a
 export const startGeminiToolsOAuth = () =>
     request<{ authUrl: string; redirectUri: string }>("/api/admin/gemini-tools/oauth/start", {
         method: "POST",
-        headers: { "x-octalflow-browser-origin": window.location.origin },
+        headers: { "x-dreamyo-browser-origin": window.location.origin },
     });
 export const updateGeminiToolsAccount = (accountId: string, patch: Partial<Pick<GeminiToolsAccount, "name" | "note" | "status" | "proxyEnabled" | "priority">>) =>
     request<GeminiToolsAccount>(`/api/admin/gemini-tools/accounts/${id(accountId)}`, { method: "PATCH", body: json(patch) });

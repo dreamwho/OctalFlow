@@ -1,9 +1,9 @@
 "use client";
 
-import { FileAudio2, Film } from "lucide-react";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 
 import { AgentMediaPreview } from "@/components/agent/agent-media-preview";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import type { CreativeAsset } from "@/lib/creative-runtime-contract";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { cn } from "@/lib/utils";
@@ -76,11 +76,11 @@ export function CreativeMediaResult({ assets, fallbackRatio, renderActions }: { 
                             <img src={imagePreviewUrl(coverUrl, 240)} alt={asset.title || `生成视频 ${index + 1}`} loading="lazy" className="size-full object-cover" />
                         ) : (
                             <span className="grid size-full place-items-center text-[#667085] dark:text-[#a4adb8]" aria-label={asset.title || `生成视频 ${index + 1}`}>
-                                <Film className="size-5" />
+                                <DreamyoIcon name="video" size={24} />
                             </span>
                         );
                     }
-                    return <span className="grid size-full place-items-center text-[#667085] dark:text-[#a4adb8]">{asset.type === "audio" ? <FileAudio2 className="size-5" /> : <Film className="size-5" />}</span>;
+                    return <span className="grid size-full place-items-center text-[#667085] dark:text-[#a4adb8]">{asset.type === "audio" ? <DreamyoIcon name="audio" size={24} /> : <DreamyoIcon name="video" size={24} />}</span>;
                 }}
                 onSelect={selectResult}
             />

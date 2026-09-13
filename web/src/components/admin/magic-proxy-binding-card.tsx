@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import {
     getMagicProxy,
+    testChatGptChain,
     testMagicProxyGoogle,
     updateMagicProxyBinding,
     type MagicProxyGoogleTestReport,
@@ -219,16 +220,17 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         setTesting(true);
         setTestReport(null);
         try {
-            const report = await testMagicProxyGoogle();
+            const report = provider === "chatgptApi" ? await testChatGptChain() : await testMagicProxyGoogle();
             setTestReport(report);
-            const currentItem = report.items.find((i) => i.service === provider);
+            const currentItem = report.items.find((i) => i.service === provider) || report.items[0];
+            const serviceTarget = provider === "chatgptApi" ? "ChatGPT" : "Google";
             if (currentItem?.ok) {
-                message.success(`${providerLabels[provider]} Google 连通性测试通过 (${currentItem.delay} ms)`);
+                message.success(`${providerLabels[provider]} ${serviceTarget} 连通性测试通过 (${currentItem.delay} ms)`);
             } else {
-                message.warning(currentItem?.error || "Google 连通性测试未通过，请检查节点状态");
+                message.warning(currentItem?.error || `${serviceTarget} 连通性测试未通过，请检查节点状态`);
             }
         } catch (testErr) {
-            message.error(testErr instanceof Error ? testErr.message : "测试 Google 连通性失败");
+            message.error(testErr instanceof Error ? testErr.message : `测试 ${provider === "chatgptApi" ? "ChatGPT" : "Google"} 连通性失败`);
         } finally {
             setTesting(false);
         }
@@ -435,7 +437,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     onChange={(value: string) => setLandingNodeId(value)}
                                 />
                                 <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                                    流量终点站：由境外跳板连接此节点，最终以该纯净住宅 IP 访问 Google。
+                                    流量终点站：由境外跳板连接此节点，最终以该纯净住宅 IP 访问 {provider === "chatgptApi" ? "ChatGPT" : "Google"}。
                                 </div>
                             </div>
                         </div>
@@ -461,7 +463,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     disabled={saving || !hopNode || !landingNodeId}
                                     onClick={() => void handleGoogleTest()}
                                 >
-                                    测试 Google 连通性
+                                    测试 {provider === "chatgptApi" ? "ChatGPT" : "Google"} 连通性
                                 </Button>
                                 <Button
                                     type="primary"
@@ -476,11 +478,11 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                             </div>
                         </div>
 
-                        {/* Google 连通性测试结果面板 */}
+                        {/* 连通性测试结果面板 */}
                         {testReport ? (
                             <div className="mt-2 rounded-lg border border-zinc-200/80 bg-white/80 p-2.5 text-xs dark:border-zinc-800 dark:bg-zinc-900/80">
                                 <div className="font-medium text-zinc-800 dark:text-zinc-200">
-                                    Google 连通性测试报告 ({testReport.testedAt}):
+                                    {provider === "chatgptApi" ? "ChatGPT" : "Google"} 连通性测试报告 ({testReport.testedAt}):
                                 </div>
                                 <div className="mt-1.5 space-y-1">
                                     {testReport.items

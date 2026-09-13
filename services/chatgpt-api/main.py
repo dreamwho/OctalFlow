@@ -23,7 +23,7 @@ app = create_app()
 
 
 def _arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Octal Canvas ChatGPT provider")
+    parser = argparse.ArgumentParser(description="dreamyo ChatGPT provider")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8046)
     return parser.parse_args()

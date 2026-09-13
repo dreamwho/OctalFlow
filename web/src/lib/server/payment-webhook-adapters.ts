@@ -36,9 +36,9 @@ const customWebhookAdapter: PaymentWebhookAdapter = {
         return {
             eventId,
             eventType,
-            orderId: normalizeOptionalId(readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_ORDER_ID_FIELD`, ["orderId", "data.orderId", "metadata.orderId", "metadata.octalaicanvasProOrderId"])),
+            orderId: normalizeOptionalId(readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_ORDER_ID_FIELD`, ["orderId", "data.orderId", "metadata.orderId", "metadata.dreamyoProOrderId"])),
             orderNo: normalizeOptionalId(
-                readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_ORDER_NO_FIELD`, ["orderNo", "outTradeNo", "out_trade_no", "data.orderNo", "data.outTradeNo", "metadata.orderNo", "metadata.octalaicanvasProOrderNo"]),
+                readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_ORDER_NO_FIELD`, ["orderNo", "outTradeNo", "out_trade_no", "data.orderNo", "data.outTradeNo", "metadata.orderNo", "metadata.dreamyoProOrderNo"]),
             ),
             status: normalizePaymentStatus(readConfiguredPath(paymentConfig, payload, `${fieldPrefix}_WEBHOOK_STATUS_FIELD`, ["status", "tradeStatus", "trade_status", "data.status", "data.tradeStatus"]), provider, paymentConfig),
             providerTradeId: normalizeOptionalText(
@@ -67,8 +67,8 @@ const stripeWebhookAdapter: PaymentWebhookAdapter = {
         const eventId = normalizeText(readPath(event, "id"), deterministicEventId(provider, rawBody), 160);
         const eventType = normalizeText(readPath(event, "type"), "stripe.event", 120);
         const object = readPath(event, "data.object");
-        const orderId = normalizeOptionalId(readPath(object, "metadata.orderId") || readPath(object, "metadata.octalaicanvasProOrderId") || readPath(object, "client_reference_id"));
-        const orderNo = normalizeOptionalId(readPath(object, "metadata.orderNo") || readPath(object, "metadata.octalaicanvasProOrderNo"));
+        const orderId = normalizeOptionalId(readPath(object, "metadata.orderId") || readPath(object, "metadata.dreamyoProOrderId") || readPath(object, "client_reference_id"));
+        const orderNo = normalizeOptionalId(readPath(object, "metadata.orderNo") || readPath(object, "metadata.dreamyoProOrderNo"));
         const amountCents = normalizeOptionalInteger(readPath(object, "amount_total") || readPath(object, "amount_received") || readPath(object, "amount"));
         const paidAt = normalizeStripePaidAt(readPath(object, "created"));
         const providerTradeId = normalizeOptionalText(readPath(object, "payment_intent") || readPath(object, "id"), 160);
@@ -160,9 +160,9 @@ export function resolveWebhookAdapter(provider: string) {
 export function verifyCustomSignature(provider: string, rawBody: string, headers: Headers, paymentConfig: PaymentRuntimeConfig) {
     const secret = webhookSecret(provider, paymentConfig);
     if (!secret) throw new BillingInputError("支付回调密钥未配置", 500);
-    const signature = normalizeSignatureHeader(headers.get(getPaymentRuntimeEnv(paymentConfig, `${providerEnvPrefix(provider)}_WEBHOOK_SIGNATURE_HEADER`) || "x-octalaicanvas-signature") || headers.get("x-payment-signature") || headers.get("x-signature"));
+    const signature = normalizeSignatureHeader(headers.get(getPaymentRuntimeEnv(paymentConfig, `${providerEnvPrefix(provider)}_WEBHOOK_SIGNATURE_HEADER`) || "x-dreamyo-signature") || headers.get("x-payment-signature") || headers.get("x-signature"));
     if (!signature) return false;
-    const timestamp = headers.get("x-octalaicanvas-timestamp") || headers.get("x-payment-timestamp") || "";
+    const timestamp = headers.get("x-dreamyo-timestamp") || headers.get("x-payment-timestamp") || "";
     const signedPayload = timestamp ? `${timestamp}.${rawBody}` : rawBody;
     const expected = createHmac("sha256", secret).update(signedPayload).digest("hex");
     if (!safeEqual(signature, expected)) return false;
@@ -174,7 +174,7 @@ export function verifyCustomSignature(provider: string, rawBody: string, headers
 }
 
 export function verifyStripeSignature(rawBody: string, headers: Headers, paymentConfig: PaymentRuntimeConfig) {
-    const secret = getPaymentRuntimeValue(paymentConfig, "OCTALAICANVAS_STRIPE_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET");
+    const secret = getPaymentRuntimeValue(paymentConfig, "DREAMYO_STRIPE_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET");
     if (!secret) throw new BillingInputError("Stripe 回调密钥未配置", 500);
     const header = headers.get("stripe-signature") || "";
     const parts = Object.fromEntries(
@@ -195,7 +195,7 @@ export function verifyStripeSignature(rawBody: string, headers: Headers, payment
 export function verifyAlipaySignature(payload: Record<string, string>, paymentConfig: PaymentRuntimeConfig) {
     const sign = payload.sign || "";
     if (!sign) return false;
-    const appId = getPaymentRuntimeEnv(paymentConfig, "OCTALAICANVAS_ALIPAY_APP_ID");
+    const appId = getPaymentRuntimeEnv(paymentConfig, "DREAMYO_ALIPAY_APP_ID");
     if (appId && payload.app_id !== appId) return false;
     if (normalizeText(payload.sign_type, "RSA2", 20).toUpperCase() !== "RSA2") return false;
     const content = Object.keys(payload)
@@ -203,7 +203,7 @@ export function verifyAlipaySignature(payload: Record<string, string>, paymentCo
         .sort()
         .map((key) => `${key}=${payload[key]}`)
         .join("&");
-    return verifyRsaSha256(content, sign, loadPaymentPublicKey(paymentConfig, "OCTALAICANVAS_ALIPAY_PUBLIC_KEY", "OCTALAICANVAS_ALIPAY_PUBLIC_KEY_PATH"));
+    return verifyRsaSha256(content, sign, loadPaymentPublicKey(paymentConfig, "DREAMYO_ALIPAY_PUBLIC_KEY", "DREAMYO_ALIPAY_PUBLIC_KEY_PATH"));
 }
 
 export function verifyWechatSignature(rawBody: string, headers: Headers, paymentConfig: PaymentRuntimeConfig) {
@@ -212,7 +212,7 @@ export function verifyWechatSignature(rawBody: string, headers: Headers, payment
     const signature = headers.get("wechatpay-signature") || "";
     const serial = headers.get("wechatpay-serial") || "";
     if (!timestamp || !nonce || !signature || !serial) return false;
-    const expectedSerial = getPaymentRuntimeEnv(paymentConfig, "OCTALAICANVAS_WECHAT_PAY_PLATFORM_CERT_SERIAL_NO");
+    const expectedSerial = getPaymentRuntimeEnv(paymentConfig, "DREAMYO_WECHAT_PAY_PLATFORM_CERT_SERIAL_NO");
     if (expectedSerial && serial !== expectedSerial) return false;
     const timestampMs = Number(timestamp) * 1000;
     if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > wechatToleranceMs(paymentConfig)) return false;
@@ -228,7 +228,7 @@ export function decryptWechatResource(envelope: unknown, paymentConfig: PaymentR
     const ciphertext = normalizeText(readPath(resource, "ciphertext"), "", 20_000);
     const nonce = normalizeText(readPath(resource, "nonce"), "", 120);
     const associatedData = normalizeText(readPath(resource, "associated_data"), "", 2000);
-    const key = Buffer.from(requiredConfig(paymentConfig, "OCTALAICANVAS_WECHAT_PAY_API_V3_KEY"), "utf8");
+    const key = Buffer.from(requiredConfig(paymentConfig, "DREAMYO_WECHAT_PAY_API_V3_KEY"), "utf8");
     if (key.length !== 32) throw new BillingInputError("微信支付 API v3 key 必须是 32 字节", 500);
     const encrypted = Buffer.from(ciphertext, "base64");
     if (encrypted.length <= 16) throw new BillingInputError("微信支付回调密文无效", 400);
@@ -244,7 +244,7 @@ export function decryptWechatResource(envelope: unknown, paymentConfig: PaymentR
 }
 
 function loadWechatPlatformPublicKey(paymentConfig: PaymentRuntimeConfig) {
-    return loadPaymentPublicKey(paymentConfig, "OCTALAICANVAS_WECHAT_PAY_PLATFORM_PUBLIC_KEY", "OCTALAICANVAS_WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH", "OCTALAICANVAS_WECHAT_PAY_PLATFORM_CERTIFICATE", "OCTALAICANVAS_WECHAT_PAY_PLATFORM_CERTIFICATE_PATH");
+    return loadPaymentPublicKey(paymentConfig, "DREAMYO_WECHAT_PAY_PLATFORM_PUBLIC_KEY", "DREAMYO_WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH", "DREAMYO_WECHAT_PAY_PLATFORM_CERTIFICATE", "DREAMYO_WECHAT_PAY_PLATFORM_CERTIFICATE_PATH");
 }
 
 function requiredConfig(paymentConfig: PaymentRuntimeConfig, name: string) {
@@ -254,8 +254,8 @@ function requiredConfig(paymentConfig: PaymentRuntimeConfig, name: string) {
 }
 
 function webhookSecret(provider: string, paymentConfig: PaymentRuntimeConfig) {
-    const envKey = `OCTALAICANVAS_${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_WEBHOOK_SECRET`;
-    return getPaymentRuntimeEnv(paymentConfig, envKey) || getPaymentRuntimeEnv(paymentConfig, "OCTALAICANVAS_PAYMENT_WEBHOOK_SECRET");
+    const envKey = `DREAMYO_${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_WEBHOOK_SECRET`;
+    return getPaymentRuntimeEnv(paymentConfig, envKey) || getPaymentRuntimeEnv(paymentConfig, "DREAMYO_PAYMENT_WEBHOOK_SECRET");
 }
 
 export function parseFallbackEvent(rawBody: string) {
@@ -332,7 +332,7 @@ export function normalizeProvider(value: unknown) {
 }
 
 function providerEnvPrefix(provider: string) {
-    return `OCTALAICANVAS_${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+    return `DREAMYO_${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 }
 
 function normalizeOptionalId(value: unknown) {
@@ -407,16 +407,16 @@ function safeEqual(left: string, right: string) {
 }
 
 export function deterministicEventId(provider: string, rawBody: string) {
-    return `${provider}_${createHmac("sha256", "octalaicanvas-webhook-event").update(rawBody).digest("hex").slice(0, 32)}`;
+    return `${provider}_${createHmac("sha256", "dreamyo-webhook-event").update(rawBody).digest("hex").slice(0, 32)}`;
 }
 
 function stripeToleranceMs(paymentConfig: PaymentRuntimeConfig) {
-    const seconds = Number(getPaymentRuntimeEnv(paymentConfig, "OCTALAICANVAS_STRIPE_WEBHOOK_TOLERANCE_SECONDS") || 300);
+    const seconds = Number(getPaymentRuntimeEnv(paymentConfig, "DREAMYO_STRIPE_WEBHOOK_TOLERANCE_SECONDS") || 300);
     return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 300_000;
 }
 
 function wechatToleranceMs(paymentConfig: PaymentRuntimeConfig) {
-    const seconds = Number(getPaymentRuntimeEnv(paymentConfig, "OCTALAICANVAS_WECHAT_PAY_WEBHOOK_TOLERANCE_SECONDS") || 300);
+    const seconds = Number(getPaymentRuntimeEnv(paymentConfig, "DREAMYO_WECHAT_PAY_WEBHOOK_TOLERANCE_SECONDS") || 300);
     return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 300_000;
 }
 

@@ -11,17 +11,17 @@ import { fetchSafeOutbound, UnsafeOutboundUrlError } from "@/lib/server/safe-out
 import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
 
 const FILE_NAME = "magic-proxy.json";
-const PROVIDER_NAME = "OctalFlow-Subscription";
+const PROVIDER_NAME = "dreamyo-Subscription";
 const PROVIDER_FILE_NAME = "subscription.yaml";
 const PROVIDER_ENDPOINT = `/providers/proxies/${encodeURIComponent(PROVIDER_NAME)}`;
 const LOCAL_FILE_SUBSCRIPTION_URL = "local://file-import";
 const GROUP_NAMES: Record<MagicProxyProvider, string> = {
-    geminiai: "OctalFlow-GeminiAIStudio",
-    geminiTools: "OctalFlow-GeminiTools",
-    chatgptApi: "OctalFlow-ChatGPTAPI",
+    geminiai: "dreamyo-GeminiAIStudio",
+    geminiTools: "dreamyo-GeminiTools",
+    chatgptApi: "dreamyo-ChatGPTAPI",
 };
 const DEFAULT_MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES = 4 * 1024 * 1024;
-const MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES_ENV = "OCTALAICANVAS_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES";
+const MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES_ENV = "DREAMYO_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES";
 const EMPTY_BINDINGS: MagicProxyBindings = {
     geminiai: { enabled: false },
     geminiTools: { enabled: false },
@@ -130,9 +130,11 @@ export async function importMagicProxySubscription(input: { url?: unknown; conte
 
 const DELAY_TEST_URL = "https://www.gstatic.com/generate_204";
 const DELAY_TEST_TIMEOUT_MS = 4000;
-const DELAY_TEST_CONCURRENCY = 16;
 const GOOGLE_TEST_URL = "https://www.google.com";
-const GOOGLE_TEST_TIMEOUT_MS = 6000;
+// 链式链路（跳板→住宅落地→目标）整体延迟显著高于单节点，测试超时需覆盖完整链路。
+const GOOGLE_TEST_TIMEOUT_MS = 12000;
+const CHATGPT_TEST_URL = "https://chatgpt.com";
+const CHATGPT_TEST_TIMEOUT_MS = 15000;
 
 export type MagicProxyDelayResult = { name: string; delay?: number; error?: string };
 
@@ -165,7 +167,7 @@ export async function testMagicProxyNodeDelay(input: unknown): Promise<MagicProx
     if (!name) throw new MagicProxyError("请提供要测速的节点名称", 400);
     const runtime = readRuntimeConfig();
     if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
-    return { name, ...(await requestNodeDelay(runtime, name)) };
+    return { name, ...(await probeNodeDelay(runtime, name)) };
 }
 
 export async function testMagicProxyAllNodes(): Promise<{ results: MagicProxyDelayResult[] }> {
@@ -173,7 +175,9 @@ export async function testMagicProxyAllNodes(): Promise<{ results: MagicProxyDel
     if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
     const overview = await getMagicProxyOverview();
     if (!overview.runtimeAvailable) throw new MagicProxyError("魔法代理运行时当前不可用，无法测速", 503);
-    const results = await mapWithLimit(overview.nodes.map((node) => node.name), DELAY_TEST_CONCURRENCY, async (name) => ({ name, ...(await requestNodeDelay(runtime, name)) }));
+    // 组级测速一次返回全部节点（含 DIRECT 对照），逐节点请求对 provider 节点必然 404。
+    const delays = await requestGroupDelays(runtime, DELAY_TEST_URL, DELAY_TEST_TIMEOUT_MS);
+    const results = overview.nodes.map((node) => ({ name: node.name, ...interpretGroupDelay(delays, node.name) }));
     return { results };
 }
 
@@ -187,24 +191,9 @@ export async function testMagicProxyGoogleAccess(input?: unknown): Promise<Magic
     const testedAt = new Date().toISOString();
 
     if (specificNode) {
-        let delay: number | undefined;
-        let error: string | undefined;
-        try {
-            const response = await controllerRequest(
-                runtime,
-                `/proxies/${encodeURIComponent(specificNode)}/delay?url=${encodeURIComponent(GOOGLE_TEST_URL)}&timeout=${GOOGLE_TEST_TIMEOUT_MS}`,
-                { method: "GET" },
-            );
-            const payload = record(await response.json());
-            const d = Number(payload.delay);
-            if (Number.isFinite(d) && d >= 0) {
-                delay = d;
-            } else {
-                error = "返回数据无效";
-            }
-        } catch {
-            error = `访问 Google 超时或节点阻断 (>${GOOGLE_TEST_TIMEOUT_MS}ms)`;
-        }
+        const delays = await requestGroupDelays(runtime, GOOGLE_TEST_URL, GOOGLE_TEST_TIMEOUT_MS);
+        const delay = delays.get(specificNode);
+        const error = delay !== undefined ? undefined : specificNode === "DIRECT" ? `访问 Google 超时或节点阻断 (>${GOOGLE_TEST_TIMEOUT_MS}ms)` : interpretGroupDelay(delays, specificNode).error;
         return {
             targetUrl: GOOGLE_TEST_URL,
             testedAt,
@@ -226,6 +215,16 @@ export async function testMagicProxyGoogleAccess(input?: unknown): Promise<Magic
 
     const providers: MagicProxyProvider[] = ["geminiai", "geminiTools", "chatgptApi"];
     const items: MagicProxyGoogleTestItem[] = [];
+
+    // 容器出网基线用国内可直连的 gstatic；目标延迟单独按 google 探测（国内直连 google 必然失败，
+    // 该结果里没有 DIRECT 属正常，不可作为出网故障依据）。
+    const baselineDelays = await requestGroupDelays(runtime, DELAY_TEST_URL, DELAY_TEST_TIMEOUT_MS).catch(() => new Map<string, number>());
+    let targetDelays = new Map<string, number>();
+    try {
+        targetDelays = await requestGroupDelays(runtime, GOOGLE_TEST_URL, GOOGLE_TEST_TIMEOUT_MS);
+    } catch {
+        targetDelays = new Map();
+    }
 
     for (const provider of providers) {
         const group = GROUP_NAMES[provider];
@@ -256,24 +255,8 @@ export async function testMagicProxyGoogleAccess(input?: unknown): Promise<Magic
             continue;
         }
 
-        let delay: number | undefined;
-        let error: string | undefined;
-        try {
-            const response = await controllerRequest(
-                runtime,
-                `/proxies/${encodeURIComponent(group)}/delay?url=${encodeURIComponent(GOOGLE_TEST_URL)}&timeout=${GOOGLE_TEST_TIMEOUT_MS}`,
-                { method: "GET" },
-            );
-            const payload = record(await response.json());
-            const d = Number(payload.delay);
-            if (Number.isFinite(d) && d >= 0) {
-                delay = d;
-            } else {
-                error = "返回数据无效";
-            }
-        } catch {
-            error = `访问 Google 超时或节点阻断 (>${GOOGLE_TEST_TIMEOUT_MS}ms)`;
-        }
+        const delay = targetDelays.get(activeNode);
+        const error = delay === undefined ? describeChainFailure(targetDelays, baselineDelays, binding, activeNode, "Google") : undefined;
 
         items.push({
             service: provider,
@@ -281,7 +264,7 @@ export async function testMagicProxyGoogleAccess(input?: unknown): Promise<Magic
             group,
             activeNode,
             enabled: true,
-            ok: typeof delay === "number",
+            ok: delay !== undefined,
             delay,
             error,
         });
@@ -296,29 +279,133 @@ export async function testMagicProxyGoogleAccess(input?: unknown): Promise<Magic
     };
 }
 
-async function requestNodeDelay(runtime: MihomoRuntimeConfig, name: string): Promise<{ delay?: number; error?: string }> {
+/**
+ * GPTAPI 链式代理的全链路连通性测试：通过 Mihomo 控制器让 `dreamyo-ChatGPTAPI`
+ * 分组的当前生效节点（链式模式下为 跳板→落地 的 dialer-proxy 链）真实访问 ChatGPT
+ * 上游主机，复刻 GeminiAIStudio「测试 Google 连通性」的验证方式。
+ */
+export async function testChatGptChainAccess(): Promise<MagicProxyGoogleTestReport> {
+    const runtime = readRuntimeConfig();
+    if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
+    const overview = await getMagicProxyOverview();
+    if (!overview.runtimeAvailable) throw new MagicProxyError("魔法代理运行时当前不可用，无法测试", 503);
+
+    const group = GROUP_NAMES.chatgptApi;
+    const binding = overview.bindings.chatgptApi;
+    const testedAt = new Date().toISOString();
+
+    let activeNode = "DIRECT";
     try {
-        const response = await controllerRequest(runtime, `/proxies/${encodeURIComponent(name)}/delay?url=${encodeURIComponent(DELAY_TEST_URL)}&timeout=${DELAY_TEST_TIMEOUT_MS}`, { method: "GET" });
-        const payload = record(await response.json());
-        const delay = Number(payload.delay);
-        if (Number.isFinite(delay) && delay >= 0) return { delay };
-        return { error: "测速结果无效" };
+        const groupInfoRes = await controllerRequest(runtime, `/proxies/${encodeURIComponent(group)}`, { method: "GET" });
+        activeNode = optionalText(record(await groupInfoRes.json()).now) || "DIRECT";
     } catch {
-        return { error: "测速超时或节点不可用" };
+        activeNode = binding?.node || "DIRECT";
     }
+
+    // 出网基线用 gstatic；目标延迟单独探测 chatgpt.com（国内直连必失败，结果里无 DIRECT 属正常）。
+    const baselineDelays = await requestGroupDelays(runtime, DELAY_TEST_URL, DELAY_TEST_TIMEOUT_MS).catch(() => new Map<string, number>());
+    let groupDelays = new Map<string, number>();
+    try {
+        groupDelays = await requestGroupDelays(runtime, CHATGPT_TEST_URL, CHATGPT_TEST_TIMEOUT_MS);
+    } catch {
+        groupDelays = new Map();
+    }
+    const delay = groupDelays.get(activeNode);
+    const error =
+        delay === undefined
+            ? activeNode === "DIRECT"
+                ? `访问 ChatGPT 超时或链路阻断 (>${CHATGPT_TEST_TIMEOUT_MS}ms)；链式代理未生效，当前分组处于 DIRECT 直连状态`
+                : describeChainFailure(groupDelays, baselineDelays, binding, activeNode, "ChatGPT")
+            : undefined;
+
+    return {
+        targetUrl: CHATGPT_TEST_URL,
+        testedAt,
+        overallOk: typeof delay === "number",
+        items: [
+            {
+                service: "chatgptApi",
+                serviceTitle: SERVICE_TITLES.chatgptApi || "ChatGPTAPI",
+                group,
+                activeNode,
+                enabled: Boolean(binding?.enabled),
+                ok: typeof delay === "number",
+                delay,
+                ...(error ? { error } : {}),
+            },
+        ],
+    };
 }
 
-async function mapWithLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
-    const results = new Array<R>(items.length);
-    let cursor = 0;
-    const runners = Array.from({ length: Math.min(limit, items.length) || 0 }, async () => {
-        while (cursor < items.length) {
-            const current = cursor++;
-            results[current] = await worker(items[current]);
+/**
+ * mihomo 的 `/proxies/:name/delay` 只覆盖顶层代理表，file provider 的订阅节点不在其中
+ * （一律 404 "Resource not found" 秒回）；组级 `/group/:name/delay` 会对组内全部节点
+ * （含订阅节点与 DIRECT）发起真实拨号并返回延迟映射，是节点测速的唯一正确通道。
+ * 组级测速要等组内最慢节点完成，控制器请求超时必须大于逐节点 urltest 超时。
+ */
+async function requestGroupDelays(runtime: MihomoRuntimeConfig, targetUrl: string, timeoutMs: number): Promise<Map<string, number>> {
+    const response = await controllerRequest(
+        runtime,
+        `/group/${encodeURIComponent(GROUP_NAMES.geminiai)}/delay?url=${encodeURIComponent(targetUrl)}&timeout=${timeoutMs}`,
+        { method: "GET", signal: AbortSignal.timeout(timeoutMs + 5000) },
+    );
+    const payload = record(await response.json());
+    const delays = new Map<string, number>();
+    for (const [name, value] of Object.entries(payload)) {
+        const delay = Number(value);
+        if (Number.isFinite(delay) && delay >= 0) delays.set(name, delay);
+    }
+    return delays;
+}
+
+function interpretGroupDelay(delays: Map<string, number>, name: string): { delay?: number; error?: string } {
+    const delay = delays.get(name);
+    if (delay !== undefined) return { delay };
+    if (name === "DIRECT") return { error: "测速超时或节点不可用" };
+    const direct = delays.get("DIRECT");
+    // 失败节点不在组测速结果里；用同一响应中的 DIRECT 区分「容器出网异常」与「节点拨号失败」。
+    if (direct === undefined) {
+        return { error: "Mihomo 容器直连出网不可用，与节点无关；请检查服务器出网、Docker 网络或防火墙，并重启 magic-proxy 容器后重试" };
+    }
+    return { error: `Mihomo 出网正常（DIRECT ${direct}ms），但该节点拨号失败；节点可能已失效或被墙，请刷新订阅或更换节点` };
+}
+
+async function probeNodeDelay(runtime: MihomoRuntimeConfig, name: string): Promise<{ delay?: number; error?: string }> {
+    const delays = await requestGroupDelays(runtime, DELAY_TEST_URL, DELAY_TEST_TIMEOUT_MS);
+    return interpretGroupDelay(delays, name);
+}
+
+/**
+ * 组级测速失败节点的分步诊断：同一响应里包含 DIRECT 与跳板的真实结果，
+ * 可直接定位断点在「容器出网 / 跳板 / 跳板→落地链路」哪一段。
+ */
+function describeChainFailure(delays: Map<string, number>, baselineDelays: Map<string, number>, binding: MagicProxyBinding | undefined, activeNode: string, target: string): string {
+    // 容器出网基线只能用国内可直连的 gstatic 判定：google/chatgpt 目标直连本来就不通，
+    // 这些目标的组测速结果里没有 DIRECT 是正常现象，不能当作出网故障的证据。
+    const baselineDirect = baselineDelays.get("DIRECT");
+    if (baselineDirect === undefined) {
+        return `Mihomo 容器直连出网不可用，与节点无关；请检查服务器出网、Docker 网络或防火墙，并重启 magic-proxy 容器后重试`;
+    }
+    if (activeNode === getChainedExitNodeName(magicProxyProviderByGroup(activeNode))) {
+        const hopNode = binding?.chained_config?.hop_node || "";
+        const hopDelay = hopNode ? delays.get(hopNode) : undefined;
+        if (hopDelay !== undefined) {
+            return `跳板 ${hopNode} 正常（${hopDelay}ms），但 跳板→落地→目标 链路访问 ${target} 失败：请检查落地节点凭据/流量/区域是否有效（可直接在通用代理页测该节点），或更换落地出口`;
         }
-    });
-    await Promise.all(runners);
-    return results;
+        const hopBaseline = hopNode ? baselineDelays.get(hopNode) : undefined;
+        if (hopNode && hopBaseline !== undefined) {
+            return `跳板 ${hopNode} 可用（基线 ${hopBaseline}ms），但该目标经跳板的探测失败：请更换跳板节点并重新保存链式代理`;
+        }
+        if (hopNode) {
+            return `跳板 ${hopNode} 拨号失败：请更换跳板节点并重新保存链式代理`;
+        }
+        return "链式出口链路失败：请重新保存链式代理配置";
+    }
+    return `该节点访问 ${target} 失败；节点可能已失效或被墙，请刷新订阅或更换节点`;
+}
+
+function magicProxyProviderByGroup(groupName: string): MagicProxyProvider {
+    return (Object.keys(GROUP_NAMES) as MagicProxyProvider[]).find((provider) => GROUP_NAMES[provider] === groupName) || "chatgptApi";
 }
 
 export async function updateMagicProxyBinding(input: {
@@ -393,6 +480,11 @@ export async function updateMagicProxyBinding(input: {
                 await ensureMihomoGroupSelection(next, runtime, provider);
             }
             await saveSettings(encodeSettings(next));
+            if (provider === "chatgptApi") {
+                const { syncChatGptApiRuntimeProxy } = await import("./chatgpt-api-service");
+                const proxyUrl = next.bindings.chatgptApi?.enabled ? runtimeProxyUrl(runtime, "chatgptApi") : undefined;
+                await syncChatGptApiRuntimeProxy(proxyUrl, next.bindings.chatgptApi?.mode).catch(() => undefined);
+            }
         } catch (error) {
             await ensureMihomoGroupSelection(settings, runtime, provider).catch(() => undefined);
             throw error;
@@ -440,10 +532,30 @@ export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Pr
 
         if (isChained) {
             const chainedNodeName = getChainedExitNodeName(provider);
-            await selectMihomoProxy(runtime, GROUP_NAMES[provider], chainedNodeName).catch(() => undefined);
+            const providerNodes = await readMihomoProviderNodes(runtime);
+            const exitAlive = providerNodes?.some((node) => node.name === chainedNodeName) ?? false;
+            const chainedConfig = binding?.chained_config;
+            if (!exitAlive && chainedConfig?.hop_node && chainedConfig?.landing_node_id) {
+                // 订阅刷新等场景会重写 Provider 文件并丢失链式出口，这里按已保存配置原地重建。
+                const landingProxyUrl = await resolveChainedLandingUrl(chainedConfig.landing_node_id);
+                if (landingProxyUrl) {
+                    await syncMihomoChainedProxyInternal({ hopNode: chainedConfig.hop_node, landingProxyUrl, provider });
+                } else {
+                    await selectMihomoProxy(runtime, GROUP_NAMES[provider], chainedNodeName).catch(() => undefined);
+                }
+            } else {
+                // 出口健在时仍需保证跳板组选中（dialer-proxy 依赖该组提供跳板出口）。
+                if (chainedConfig?.hop_node) {
+                    await selectMihomoProxy(runtime, getChainedHopGroupName(provider), chainedConfig.hop_node).catch(() => undefined);
+                }
+                await selectMihomoProxy(runtime, GROUP_NAMES[provider], chainedNodeName).catch(() => undefined);
+            }
             if (provider === "geminiai") {
                 const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
                 await syncGeminiAiRuntimeProxy(runtimeProxyUrl(runtime, "geminiai"));
+            } else if (provider === "chatgptApi") {
+                const { syncChatGptApiRuntimeProxy } = await import("./chatgpt-api-service");
+                await syncChatGptApiRuntimeProxy(runtimeProxyUrl(runtime, "chatgptApi"), "chained").catch(() => undefined);
             }
             return {
                 enabled: true,
@@ -459,6 +571,9 @@ export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Pr
         if (isMagic && provider === "geminiai") {
             const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
             await syncGeminiAiRuntimeProxy(runtimeProxyUrl(runtime, "geminiai"));
+        } else if (isMagic && provider === "chatgptApi") {
+            const { syncChatGptApiRuntimeProxy } = await import("./chatgpt-api-service");
+            await syncChatGptApiRuntimeProxy(runtimeProxyUrl(runtime, "chatgptApi"), "magic").catch(() => undefined);
         }
 
         return {
@@ -577,7 +692,7 @@ async function readBoundedSubscriptionText(response: Response, maxBytes: number)
     const contentType = (response.headers.get("content-type") || "").split(";", 1)[0]?.trim().toLowerCase() || "";
     if (contentType && !["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml", "text/plain"].includes(contentType)) {
         await response.body?.cancel().catch(() => undefined);
-        throw new MagicProxyError("订阅响应必须是 YAML 或文本内容", 422);
+        throw new MagicProxyError(`订阅地址返回的是 ${contentType}（通常是网页验证、公告或拦截页，不是 Clash 配置）；请在本地浏览器打开订阅链接，把 YAML 内容保存后用「YAML / 文本文件导入」上传`, 422);
     }
     const contentLength = response.headers.get("content-length")?.trim() || "";
     if (/^\d+$/.test(contentLength)) {
@@ -742,24 +857,47 @@ function bindingNode(value: unknown) {
 }
 
 async function syncMihomoProvider(settings: MihomoProviderState, runtime: MihomoRuntimeConfig) {
-    await writeMihomoProviderFile(runtime.providerFile, settings.nodes);
-    const response = await controllerRequest(runtime, PROVIDER_ENDPOINT, {
-        method: "PUT",
-    });
-    await response.body?.cancel().catch(() => undefined);
+    // 订阅刷新会整体重写 Provider 文件；已启用的链式出口必须原地重建，否则分组回落 DIRECT 造成静默直连。
+    const { baseNodes, chainedNodes, hopSelections } = await rebuildChainedExits(settings, runtime);
+
+    const mergedNodes = [...baseNodes, ...chainedNodes];
+    await writeProviderNodes(runtime, mergedNodes);
     const runtimeNodes = await requestMihomoProxyList(runtime, PROVIDER_ENDPOINT);
     const runtimeNodeNames = new Set(runtimeNodes.map((node) => node.name));
-    const expectedNodeNames = new Set(settings.nodes.map((node) => node.name));
+    const expectedNodeNames = new Set(mergedNodes.map((node) => node.name));
     if (expectedNodeNames.size !== runtimeNodeNames.size || [...expectedNodeNames].some((name) => !runtimeNodeNames.has(name))) {
         throw new MagicProxyError("Mihomo Provider 节点与当前订阅不一致，请检查共享订阅文件和 Provider 配置", 502);
     }
+    // 出口重建后同步恢复跳板组选中（dialer-proxy 依赖该组提供跳板出口）。
+    for (const [provider, hopNode] of hopSelections) {
+        await selectMihomoProxy(runtime, getChainedHopGroupName(provider), hopNode).catch(() => undefined);
+    }
+    await alignMihomoGroupSelections(runtime, settings, chainedNodes);
+}
+
+/**
+ * 出口未被重建（如链式落地解析失败）时，分组必须回退到绑定魔法节点或 DIRECT，
+ * 不能停留在已从文件移除的链式出口名上——stale 选择会让测试与业务请求全部落空。
+ * override 用于强制指定某个 Provider 的分组目标（保存链式时磁盘绑定尚未更新，以本次调用意图为准）。
+ */
+async function alignMihomoGroupSelections(runtime: MihomoRuntimeConfig, settings: MihomoProviderState, chainedNodes: MagicProxyNode[], override?: { provider: MagicProxyProvider; target: string }) {
     for (const provider of Object.keys(GROUP_NAMES) as MagicProxyProvider[]) {
+        if (override && provider === override.provider) {
+            await selectMihomoProxy(runtime, GROUP_NAMES[provider], override.target);
+            continue;
+        }
         const binding = settings.bindings[provider];
         if (provider === "chatgptApi" && !runtime.proxyUrls.chatgptApi) {
             if (binding.enabled) runtimeProxyUrl(runtime, provider);
             continue;
         }
-        await selectMihomoProxy(runtime, GROUP_NAMES[provider], binding.enabled && binding.node ? binding.node : "DIRECT");
+        const exitName = getChainedExitNodeName(provider);
+        const hasExit = chainedNodes.some((node) => node.name === exitName);
+        if (binding.enabled && binding.mode === "chained") {
+            await selectMihomoProxy(runtime, GROUP_NAMES[provider], hasExit ? exitName : binding.node || "DIRECT");
+        } else {
+            await selectMihomoProxy(runtime, GROUP_NAMES[provider], binding.enabled && binding.node ? binding.node : "DIRECT");
+        }
     }
 }
 
@@ -792,10 +930,104 @@ async function writeMihomoProviderFile(providerFile: string, nodes: MagicProxyNo
 }
 
 export function getChainedExitNodeName(provider: MagicProxyProvider = "chatgptApi") {
-    return provider === "chatgptApi" ? "OctalFlow-Chained-Exit" : `OctalFlow-Chained-Exit-${provider}`;
+    return provider === "chatgptApi" ? "dreamyo-Chained-Exit" : `dreamyo-Chained-Exit-${provider}`;
 }
 
-export const CHAINED_EXIT_NODE_NAME = "OctalFlow-Chained-Exit";
+export const CHAINED_EXIT_NODE_NAME = "dreamyo-Chained-Exit";
+
+const CHAINED_HOP_GROUP_NAMES: Record<MagicProxyProvider, string> = {
+    geminiai: "dreamyo-Chained-Hop-GeminiAIStudio",
+    geminiTools: "dreamyo-Chained-Hop-GeminiTools",
+    chatgptApi: "dreamyo-Chained-Hop-ChatGPTAPI",
+};
+
+function getChainedHopGroupName(provider: MagicProxyProvider) {
+    return CHAINED_HOP_GROUP_NAMES[provider];
+}
+
+/**
+ * 依据已保存的链式绑定重建全部 Provider 的链式出口节点。
+ * override 用于把某个 Provider 的出口替换为本次调用显式提供的节点（传 null 表示本次移除）。
+ * 每次重写 Provider 文件都必须整体重建，否则会把其他 Provider 的链式出口静默清掉。
+ * 返回 hopSelections：各 Provider 出口实际使用的跳板节点名（用于把跳板组选中到该节点）。
+ */
+async function rebuildChainedExits(
+    settings: MihomoProviderState,
+    runtime: MihomoRuntimeConfig,
+    override?: { provider: MagicProxyProvider; node: MagicProxyNode | null },
+) {
+    const providers = Object.keys(GROUP_NAMES) as MagicProxyProvider[];
+    const exitNames = new Set(providers.map((provider) => getChainedExitNodeName(provider)));
+    const baseNodes = settings.nodes.filter((node) => !exitNames.has(node.name));
+
+    const chainedNodes: MagicProxyNode[] = [];
+    const hopSelections = new Map<MagicProxyProvider, string>();
+    for (const provider of providers) {
+        if (override && provider === override.provider) {
+            if (override.node) chainedNodes.push(override.node);
+            continue;
+        }
+        const binding = settings.bindings[provider];
+        if (!binding.enabled || binding.mode !== "chained" || !binding.chained_config?.hop_node || !binding.chained_config?.landing_node_id) continue;
+        const landingProxyUrl = await resolveChainedLandingUrl(binding.chained_config.landing_node_id);
+        const built = landingProxyUrl ? buildChainedExitNode(provider, binding.chained_config.hop_node, landingProxyUrl, baseNodes) : null;
+        if (built) {
+            chainedNodes.push(built.node);
+            hopSelections.set(provider, built.hopNode);
+        }
+    }
+    return { baseNodes, chainedNodes, hopSelections };
+}
+
+async function writeProviderNodes(runtime: MihomoRuntimeConfig, nodes: MagicProxyNode[]) {
+    await writeMihomoProviderFile(runtime.providerFile, nodes);
+    const response = await controllerRequest(runtime, PROVIDER_ENDPOINT, {
+        method: "PUT",
+    });
+    await response.body?.cancel().catch(() => undefined);
+}
+
+async function resolveChainedLandingUrl(nodeId: string) {
+    if (!nodeId) return "";
+    try {
+        const { resolveGenericProxyNodeUrl } = await import("./chatgpt-api-service");
+        return (await resolveGenericProxyNodeUrl(nodeId)) || "";
+    } catch {
+        return "";
+    }
+}
+
+function buildChainedExitNode(provider: MagicProxyProvider, rawHop: string, landingProxyUrl: string, baseNodes: MagicProxyNode[]): { node: MagicProxyNode; hopNode: string } | null {
+    const hopNode = resolveHopNodeName(rawHop, baseNodes) || (baseNodes.length > 0 ? baseNodes[0].name : "");
+    const landingUrl = landingProxyUrl?.trim();
+    if (!hopNode || !landingUrl) return null;
+
+    let parsed: URL;
+    try {
+        parsed = new URL(landingUrl.includes("://") ? landingUrl : `http://${landingUrl}`);
+    } catch {
+        return null;
+    }
+
+    const isSocks = parsed.protocol.startsWith("socks");
+    const isHttps = parsed.protocol === "https:";
+    const port = Number(parsed.port) || (isSocks ? 1080 : isHttps ? 443 : 80);
+
+    return {
+        hopNode,
+        node: {
+            name: getChainedExitNodeName(provider),
+            type: isSocks ? "socks5" : "http",
+            server: parsed.hostname,
+            port,
+            ...(isHttps ? { tls: true } : {}),
+            ...(parsed.username ? { username: decodeURIComponent(parsed.username) } : {}),
+            ...(parsed.password ? { password: decodeURIComponent(parsed.password) } : {}),
+            // dialer-proxy 只能解析全局命名空间：必须指向预置跳板组，引用 provider 节点名会在拨号时报 not found。
+            "dialer-proxy": getChainedHopGroupName(provider),
+        },
+    };
+}
 
 async function syncMihomoChainedProxyInternal(input: {
     hopNode?: string;
@@ -806,52 +1038,41 @@ async function syncMihomoChainedProxyInternal(input: {
     if (!settings) return;
     const runtime = requireRuntimeConfig();
     const provider = input.provider || "chatgptApi";
-    const groupName = GROUP_NAMES[provider];
     const chainedNodeName = getChainedExitNodeName(provider);
 
-    const baseNodes = settings.nodes.filter((node) => node.name !== chainedNodeName);
+    const built = buildChainedExitNode(
+        provider,
+        input.hopNode?.trim() || "",
+        input.landingProxyUrl?.trim() || "",
+        settings.nodes.filter((node) => node.name !== chainedNodeName),
+    );
+    const { baseNodes, chainedNodes, hopSelections } = await rebuildChainedExits(settings, runtime, {
+        provider,
+        node: built?.node ?? null,
+    });
+    if (built) hopSelections.set(provider, built.hopNode);
+    const hasOwnExit = chainedNodes.some((node) => node.name === chainedNodeName);
 
-    const rawHop = input.hopNode?.trim() || "";
-    const resolvedHop = rawHop ? resolveHopNodeName(rawHop, baseNodes) : null;
-    const hopNode = resolvedHop || (baseNodes.length > 0 ? baseNodes[0].name : "");
-    const landingUrl = input.landingProxyUrl?.trim();
-
-    if (!hopNode || !landingUrl) {
-        await writeMihomoProviderFile(runtime.providerFile, baseNodes);
-        await controllerRequest(runtime, PROVIDER_ENDPOINT, { method: "PUT" }).catch(() => undefined);
-        const binding = settings.bindings[provider];
-        const targetNode = binding?.enabled && binding?.node ? binding.node : "DIRECT";
-        await selectMihomoProxy(runtime, groupName, targetNode).catch(() => undefined);
-        return;
-    }
-
-    let parsed: URL;
+    const mergedNodes = [...baseNodes, ...chainedNodes];
     try {
-        parsed = new URL(landingUrl.includes("://") ? landingUrl : `http://${landingUrl}`);
-    } catch {
-        return;
+        await writeProviderNodes(runtime, mergedNodes);
+    } catch (error) {
+        // 移除自身出口的清理路径保持旧的容错语义；显式启用链式时才要求写入成功。
+        if (hasOwnExit) throw error;
     }
 
-    const isSocks = parsed.protocol.startsWith("socks");
-    const nodeType = isSocks ? "socks5" : "http";
-    const port = Number(parsed.port) || (isSocks ? 1080 : 80);
+    // 跳板组必须选中本次跳板节点：出口的 dialer-proxy 指向该组，未选中时链路无出口。
+    for (const [hopProvider, hopNode] of hopSelections) {
+        await selectMihomoProxy(runtime, getChainedHopGroupName(hopProvider), hopNode).catch(() => undefined);
+    }
 
-    const chainedNode: MagicProxyNode = {
-        name: chainedNodeName,
-        type: nodeType,
-        server: parsed.hostname,
-        port,
-        ...(parsed.username ? { username: decodeURIComponent(parsed.username) } : {}),
-        ...(parsed.password ? { password: decodeURIComponent(parsed.password) } : {}),
-        "dialer-proxy": hopNode,
-    };
-
-    const mergedNodes = [...baseNodes, chainedNode];
-    await writeMihomoProviderFile(runtime.providerFile, mergedNodes);
-    const reloadRes = await controllerRequest(runtime, PROVIDER_ENDPOINT, { method: "PUT" });
-    await reloadRes.body?.cancel().catch(() => undefined);
-
-    await selectMihomoProxy(runtime, groupName, chainedNodeName);
+    // 重写文件后统一对齐全部分组选择：出口缺失的 Provider 回退到魔法节点，
+    // 避免分组停留在已被移除的链式出口名上（stale 选择会让链路静默失效）。
+    try {
+        await alignMihomoGroupSelections(runtime, settings, chainedNodes, hasOwnExit ? { provider, target: chainedNodeName } : undefined);
+    } catch (error) {
+        if (hasOwnExit) throw error;
+    }
 }
 
 export async function syncMihomoChainedProxy(input: {
@@ -948,7 +1169,10 @@ async function controllerRequest(runtime: MihomoRuntimeConfig, path: string, ini
     }
     if (!response.ok) {
         await response.body?.cancel().catch(() => undefined);
-        throw new MagicProxyError("魔法代理控制器拒绝了配置请求，请检查服务器运行状态", 502);
+        if (response.status === 401 || response.status === 403) {
+            throw new MagicProxyError(`魔法代理控制器鉴权失败（HTTP ${response.status}），请检查应用与 magic-proxy 容器的 DREAMYO_MAGIC_PROXY_SECRET 是否一致`, 502);
+        }
+        throw new MagicProxyError(`魔法代理控制器拒绝了配置请求（HTTP ${response.status}）`, 502);
     }
     return response;
 }
@@ -958,21 +1182,21 @@ function controllerEndpoint(base: URL, path: string) {
 }
 
 function readRuntimeConfig(): MihomoRuntimeConfig | null {
-    const controllerValue = process.env.OCTALAICANVAS_MAGIC_PROXY_CONTROLLER_URL?.trim() || "";
-    const secret = process.env.OCTALAICANVAS_MAGIC_PROXY_SECRET?.trim() || "";
-    const providerFile = process.env.OCTALAICANVAS_MAGIC_PROXY_PROVIDER_FILE?.trim() || "";
-    const listenHost = process.env.OCTALAICANVAS_MAGIC_PROXY_LISTEN_HOST?.trim() || "";
-    const geminiaiPort = port(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_PORT);
-    const geminiToolsPort = port(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_PORT);
-    const chatgptApiPort = port(process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT);
-    const geminiaiUrl = proxyUrl(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINIAI_URL, geminiaiPort);
-    const geminiToolsUrl = proxyUrl(process.env.OCTALAICANVAS_MAGIC_PROXY_GEMINI_TOOLS_URL, geminiToolsPort);
+    const controllerValue = process.env.DREAMYO_MAGIC_PROXY_CONTROLLER_URL?.trim() || "";
+    const secret = process.env.DREAMYO_MAGIC_PROXY_SECRET?.trim() || "";
+    const providerFile = process.env.DREAMYO_MAGIC_PROXY_PROVIDER_FILE?.trim() || "";
+    const listenHost = process.env.DREAMYO_MAGIC_PROXY_LISTEN_HOST?.trim() || "";
+    const geminiaiPort = port(process.env.DREAMYO_MAGIC_PROXY_GEMINIAI_PORT);
+    const geminiToolsPort = port(process.env.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_PORT);
+    const chatgptApiPort = port(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT);
+    const geminiaiUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_GEMINIAI_URL, geminiaiPort);
+    const geminiToolsUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_URL, geminiToolsPort);
     if (!controllerValue || secret.length < 32 || !isMagicProxyProviderFile(providerFile) || !isMagicProxyListenHost(listenHost) || !geminiaiPort || !geminiToolsPort || geminiaiPort === geminiToolsPort || !geminiaiUrl || !geminiToolsUrl) return null;
     try {
         const controllerUrl = new URL(controllerValue);
         const controllerPort = port(controllerUrl.port);
         if (!["http:", "https:"].includes(controllerUrl.protocol) || !controllerPort || controllerUrl.username || controllerUrl.password || controllerUrl.pathname !== "/" || controllerUrl.search || controllerUrl.hash) return null;
-        const chatgptApiUrl = proxyUrl(process.env.OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL, chatgptApiPort);
+        const chatgptApiUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_URL, chatgptApiPort);
         const chatgptApiProxyUrl = chatgptApiPort && chatgptApiPort !== controllerPort && chatgptApiPort !== geminiaiPort && chatgptApiPort !== geminiToolsPort ? chatgptApiUrl : "";
         return {
             controllerUrl,
@@ -995,7 +1219,7 @@ function runtimeProxyUrl(runtime: MihomoRuntimeConfig, provider: MagicProxyProvi
     const value = runtime.proxyUrls[provider];
     if (value) return value;
     if (provider === "chatgptApi") {
-        throw new MagicProxyError("ChatGPTAPI 魔法代理监听未配置，请同时设置 OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_PORT 和 OCTALAICANVAS_MAGIC_PROXY_CHATGPT_API_URL，并使用独立端口", 503);
+        throw new MagicProxyError("ChatGPTAPI 魔法代理监听未配置，请同时设置 DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT 和 DREAMYO_MAGIC_PROXY_CHATGPT_API_URL，并使用独立端口", 503);
     }
     throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
 }
@@ -1155,21 +1379,21 @@ function cloneBindings(value: MagicProxyBindings): MagicProxyBindings {
     return { geminiai: cloneBinding(value.geminiai), geminiTools: cloneBinding(value.geminiTools), chatgptApi: cloneBinding(value.chatgptApi) };
 }
 
-const runtimeState = globalThis as typeof globalThis & { __octalaicanvasMagicProxyRuntimeQueue?: Promise<void> };
+const runtimeState = globalThis as typeof globalThis & { __dreamyoMagicProxyRuntimeQueue?: Promise<void> };
 
 async function withRuntimeLock<T>(callback: () => Promise<T>) {
-    const previous = runtimeState.__octalaicanvasMagicProxyRuntimeQueue || Promise.resolve();
+    const previous = runtimeState.__dreamyoMagicProxyRuntimeQueue || Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolve) => {
         release = resolve;
     });
     const queued = previous.catch(() => undefined).then(() => current);
-    runtimeState.__octalaicanvasMagicProxyRuntimeQueue = queued;
+    runtimeState.__dreamyoMagicProxyRuntimeQueue = queued;
     await previous.catch(() => undefined);
     try {
         return await callback();
     } finally {
         release();
-        if (runtimeState.__octalaicanvasMagicProxyRuntimeQueue === queued) delete runtimeState.__octalaicanvasMagicProxyRuntimeQueue;
+        if (runtimeState.__dreamyoMagicProxyRuntimeQueue === queued) delete runtimeState.__dreamyoMagicProxyRuntimeQueue;
     }
 }

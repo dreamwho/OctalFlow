@@ -57,7 +57,7 @@ const OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/experimentsandconfigs",
 ];
 const CLOUD_CODE_ENDPOINTS = ["https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal", "https://daily-cloudcode-pa.googleapis.com/v1internal", "https://cloudcode-pa.googleapis.com/v1internal"];
-const MACHINE_ID = createHash("sha256").update(`${hostname()}|${platform()}|octalflow`).digest("hex");
+const MACHINE_ID = createHash("sha256").update(`${hostname()}|${platform()}|dreamyo`).digest("hex");
 const SESSION_ID = randomUUID();
 const magicProxyRequestContext = new AsyncLocalStorage<{ binding?: Promise<{ enabled: boolean; proxyUrl?: string; egress?: MagicProxyEgressInfo } | undefined> }>();
 
@@ -95,7 +95,7 @@ export async function getGeminiToolsOverview() {
 export async function startGeminiToolsOAuth(request: Request) {
     const config = oauthConfig();
     if (!config) throw new GeminiToolsError("GeminiTools OAuth 未配置：请在服务端环境变量设置 GEMINI_TOOLS_OAUTH_CLIENT_ID 与 GEMINI_TOOLS_OAUTH_CLIENT_SECRET", 400);
-    const openerOrigin = webOrigin(request.headers.get("x-octalflow-browser-origin") || "") || resolvePublicRequestOrigin(request, "");
+    const openerOrigin = webOrigin(request.headers.get("x-dreamyo-browser-origin") || "") || resolvePublicRequestOrigin(request, "");
     const localOrigin = localOAuthOrigin(openerOrigin);
     if (config.builtIn && !localOrigin) throw new GeminiToolsError("内置 Antigravity OAuth 客户端仅支持从当前机器的 localhost 页面发起授权", 400);
     const redirectUri = config.builtIn ? `${localOrigin}/oauth/callback` : process.env.GEMINI_TOOLS_OAUTH_REDIRECT_URI?.trim() || `${resolvePublicRequestOrigin(request)}/oauth/callback`;

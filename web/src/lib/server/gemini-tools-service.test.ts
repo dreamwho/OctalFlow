@@ -126,7 +126,7 @@ describe("GeminiTools runtime", () => {
         await expect(
             startGeminiToolsOAuth(
                 new Request("https://public.example.com/api/admin/gemini-tools/oauth/start", {
-                    headers: { "x-octalflow-browser-origin": "http://localhost:3333" },
+                    headers: { "x-dreamyo-browser-origin": "http://localhost:3333" },
                 }),
             ),
         ).rejects.toMatchObject({ status: 400 });
@@ -140,7 +140,7 @@ describe("GeminiTools runtime", () => {
 
         const result = await startGeminiToolsOAuth(
             new Request("https://public.example.com/api/admin/gemini-tools/oauth/start", {
-                headers: { "x-octalflow-browser-origin": "http://localhost:3333" },
+                headers: { "x-dreamyo-browser-origin": "http://localhost:3333" },
             }),
         );
 

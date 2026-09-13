@@ -7,6 +7,7 @@ import { ArrowUp, Check, CheckCircle2, Circle, CircleAlert, Crosshair, FileText,
 import { AgentMessageActions } from "@/components/agent/agent-message-actions";
 import { AgentMarkdown } from "@/components/agent/agent-markdown";
 import { AgentMediaPreview } from "@/components/agent/agent-media-preview";
+import { DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { clipboardImageFiles } from "@/lib/clipboard-image-files";
@@ -296,7 +297,10 @@ export function AgentWorkingMessage({
         <div className="flex items-start gap-3" aria-live={terminal ? "off" : "polite"} data-canvas-agent-run-status={status || "active"}>
             <AgentAvatar theme={theme} />
             <div className="min-w-0 w-[340px] max-w-[86%] rounded-xl border p-4 antialiased" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
-                <div className="text-sm font-semibold tracking-[0.005em]">{title}</div>
+                <div className="flex items-center gap-2 text-sm font-semibold tracking-[0.005em]">
+                    {!terminal ? <DreamyoWaitingIcon frame={(Math.floor(now / 800) % 6) + 1} size={24} className="motion-safe:animate-pulse" label="Agent 处理中" /> : null}
+                    <span>{title}</span>
+                </div>
                 {startedAt ? (
                     <div className="mt-1 text-[11px]" style={{ color: theme.node.muted }}>
                         开始 {formatAgentClock(startedAt)} · {terminal ? `${status === "completed" ? "总耗时" : "截至"} ${formatAgentDuration(Math.max(0, displayEndAt - startedAt))}` : `已持续 ${formatAgentDuration(Math.max(0, now - startedAt))}`}

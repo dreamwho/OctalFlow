@@ -328,7 +328,7 @@ function isChannelProtocol(value: unknown): value is SystemChannelProtocol {
         value === "lingkeai" ||
         value === "minimax-h3" ||
         value === "minimax-h3-official" ||
-        value === "octalaicanvas-recommended" ||
+        value === "dreamyo-recommended" ||
         value === "globalaiopc" ||
         value === "seedance" ||
         value === "stable-diffusion" ||
