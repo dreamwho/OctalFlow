@@ -41,7 +41,6 @@ export function useCanvasInteractionCore({ state }: { state: CanvasPageState }) 
         setToolbarNodeId,
         nodeImageSettingsOpen,
         dialogNodeId,
-        setDialogNodeId,
         infoNodeId,
         cropNodeId,
         maskEditNodeId,
@@ -126,7 +125,7 @@ export function useCanvasInteractionCore({ state }: { state: CanvasPageState }) 
                   }
                 : pending.position;
             const newNode = { ...draftNode, position: resolveCanvasNodePlacement(nodesRef.current, draftNode, pending.position, preferredPosition) };
-            const connection = normalizeCreatedNodeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode]);
+            const connection = normalizeCreatedNodeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType);
             if (!connection) {
                 message.warning("配置节点之间不能连接");
                 return;
@@ -135,7 +134,11 @@ export function useCanvasInteractionCore({ state }: { state: CanvasPageState }) 
             setConnections((prev) => [...prev, { id: nanoid(), ...connection }]);
             setSelectedNodeIds(new Set([newNode.id]));
             setSelectedConnectionId(null);
-            if (type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio) setDialogNodeId(newNode.id);
+            // Keep the current canvas context after an edge creates a node.
+            // Opening the prompt immediately would auto-focus that new node,
+            // moving the viewport and hiding the source the user is still
+            // working with. The selected node toolbar remains available and
+            // a deliberate click opens its prompt without a context jump.
             setPendingConnectionCreate(null);
         },
         [effectiveConfig.canvasImageCount, effectiveConfig.count, effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, message],

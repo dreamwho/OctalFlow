@@ -1,0 +1,20 @@
+{
+  "route": "/u/e2e_admin",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "theme": "light",
+  "state": "动态创作者主页真实公开作品",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "overflow": false,
+  "webpPreviewCount": 4,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "entity": "公开作品视觉验收 f7cd2e29"
+}

@@ -1,0 +1,48 @@
+{
+  "documentOverflowX": 0,
+  "editor": {
+    "bottom": 679,
+    "height": 122,
+    "right": 1037,
+    "width": 634,
+    "x": 403,
+    "y": 557
+  },
+  "editorStyle": {
+    "caretColor": "rgb(19, 32, 59)",
+    "color": "rgb(19, 32, 59)",
+    "fontSize": "14px",
+    "lineHeight": "24px"
+  },
+  "generate": {
+    "bottom": 727.5,
+    "height": 40,
+    "right": 1037,
+    "width": 40,
+    "x": 997,
+    "y": 687.5
+  },
+  "generationBar": {
+    "bottom": 735,
+    "height": 56,
+    "right": 1037,
+    "width": 634,
+    "x": 403,
+    "y": 679
+  },
+  "panel": {
+    "bottom": 744,
+    "height": 232,
+    "right": 1050,
+    "width": 660,
+    "x": 390,
+    "y": 512
+  },
+  "panelOverflowX": 0,
+  "theme": "font-sans",
+  "url": "http://127.0.0.1:3101/canvas/canvas-cqjm4F2WuJce9wRsfe4d_",
+  "viewport": {
+    "height": 1000,
+    "width": 1440
+  }
+}

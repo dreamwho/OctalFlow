@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/canvas",
+  "actualPath": "/canvas",
+  "responseStatus": 200,
+  "route": "/canvas",
+  "theme": "dark",
+  "title": "Canvas 项目 | dreamyo",
+  "heading": "我的画布",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 56,
+    "width": 768,
+    "height": 968
+  },
+  "overflow": false,
+  "state": "画布列表",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

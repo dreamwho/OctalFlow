@@ -1,0 +1,46 @@
+{
+  "applyVisible": true,
+  "background": "oklab(0.999994 0.0000455678 0.0000200868 / 0.96)",
+  "bodyOverflowX": 0,
+  "clientHeight": 621,
+  "color": "rgb(31, 43, 70)",
+  "documentOverflowX": 0,
+  "overflowY": "auto",
+  "pressed": [
+    "选择图片比例 1:1",
+    "选择图片画质 智能画质",
+    "选择图片生成数量 1 份"
+  ],
+  "rect": {
+    "bottom": 659,
+    "height": 620.90625,
+    "right": 1074,
+    "width": 520,
+    "x": 554,
+    "y": 38.09375
+  },
+  "route": "/canvas/canvas-ui-after-20260915",
+  "scrollHeight": 621,
+  "sticky": [
+    {
+      "bottom": 121.15625,
+      "height": 83.0625,
+      "position": "sticky",
+      "text": "图片生成参数设置生成图片的比例、画质与数量",
+      "top": 38.09375
+    },
+    {
+      "bottom": 659,
+      "height": 61,
+      "position": "sticky",
+      "text": "1:1 · 智能画质 · 1份应用",
+      "top": 598
+    }
+  ],
+  "theme": "light",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "zoom": 1
+}

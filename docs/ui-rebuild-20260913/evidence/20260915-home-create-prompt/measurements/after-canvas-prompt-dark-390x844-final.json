@@ -1,0 +1,43 @@
+{
+  "editor": {
+    "bottom": 699,
+    "color": "rgb(238, 246, 255)",
+    "height": 122,
+    "right": 365,
+    "width": 340,
+    "x": 25,
+    "y": 577
+  },
+  "generate": {
+    "bottom": 747.5,
+    "height": 40,
+    "hit": true,
+    "right": 365,
+    "width": 40,
+    "x": 325,
+    "y": 707.5
+  },
+  "overflow": {
+    "body": 0,
+    "html": 0
+  },
+  "panel": {
+    "bottom": 764,
+    "height": 232,
+    "right": 378,
+    "width": 366,
+    "x": 12,
+    "y": 532
+  },
+  "referenceTokens": 1,
+  "skillLabel": [
+    "自然美颜精修"
+  ],
+  "skillTokens": 1,
+  "theme": "dark",
+  "url": "http://127.0.0.1:3102/canvas/canvas-ui-after-20260915",
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

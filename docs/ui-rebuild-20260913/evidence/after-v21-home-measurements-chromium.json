@@ -1,0 +1,27 @@
+{
+  "route": "/",
+  "state": "filled homepage textarea, generation action idle",
+  "themes": {
+    "light": {
+      "background": "rgba(255, 255, 255, 0.9)",
+      "color": "rgb(13, 23, 48)",
+      "buttonBackground": "url(\"http://127.0.0.1:3200/brand/dreamyo/generation/button-surface.png\"), linear-gradient(108deg, rgb(94, 127, 241) 0%, rgb(53, 204, 225) 52%, rgb(88, 222, 201) 74%, rgb(185, 179, 247) 100%)",
+      "width": 86,
+      "height": 44,
+      "whiteSpace": "nowrap"
+    },
+    "dark": {
+      "background": "rgba(7, 16, 37, 0.9)",
+      "color": "rgb(246, 249, 255)",
+      "buttonBackground": "url(\"http://127.0.0.1:3200/brand/dreamyo/generation/button-surface.png\"), linear-gradient(108deg, rgb(94, 127, 241) 0%, rgb(53, 204, 225) 52%, rgb(88, 222, 201) 74%, rgb(185, 179, 247) 100%)",
+      "width": 86,
+      "height": 44,
+      "whiteSpace": "nowrap"
+    }
+  },
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  }
+}

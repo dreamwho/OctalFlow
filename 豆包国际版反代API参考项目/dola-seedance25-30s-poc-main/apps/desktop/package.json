@@ -1,0 +1,15 @@
+{
+  "name": "seedance-desktop-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clean-room multi-account desktop shell for Dola sessions and supported Seedance providers.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer/app.js && node --check src/shared/daily-capacity.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "electron": "44.0.0"
+  }
+}

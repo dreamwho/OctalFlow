@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/help",
+  "actualPath": "/help",
+  "responseStatus": 200,
+  "route": "/help",
+  "theme": "dark",
+  "title": "帮助中心 | dreamyo",
+  "heading": "从操作到交付，按真实流程完成创作",
+  "viewport": {
+    "width": 1366,
+    "height": 768,
+    "visualWidth": 1366,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "main": {
+    "left": 464,
+    "top": 264,
+    "width": 870,
+    "height": 1507
+  },
+  "overflow": false,
+  "state": "帮助中心",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

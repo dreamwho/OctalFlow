@@ -1,0 +1,104 @@
+{
+  "version": "2.1",
+  "status": "design_spec_with_runtime_mapping_verified",
+  "references": {
+    "button": "B01",
+    "global_palette": "C01",
+    "superseded": "08"
+  },
+  "brand": {
+    "blue": "#506BF8",
+    "cyan": "#39C7E5",
+    "mint": "#52F0DF",
+    "ice_cyan": "#B7F8FE",
+    "blue_lilac": "#B4D0FF",
+    "lilac": "#B5ACF6",
+    "ice_white": "#EAFEFE",
+    "action_blue": "#3853D8"
+  },
+  "light": {
+    "page": "#F3FAFF",
+    "panel": "#FFFFFF",
+    "panel_subtle": "#EEF8FC",
+    "text": "#1C2638",
+    "text_muted": "#506278",
+    "placeholder": "#64748B",
+    "border": "#D5E6F1",
+    "focus": "#3853D8",
+    "selected_surface": "#DBF3FA",
+    "selected_text": "#245678",
+    "disabled_surface": "#E5EDF2",
+    "disabled_text": "#66788B"
+  },
+  "dark": {
+    "page": "#080F20",
+    "panel": "#0C1A36",
+    "panel_subtle": "#142953",
+    "text": "#EEF6FF",
+    "text_muted": "#B8CBE4",
+    "placeholder": "#94A3B8",
+    "border": "#2B4C7F",
+    "focus": "#94E6ED",
+    "selected_surface": "#173C50",
+    "selected_text": "#B7F8FE",
+    "disabled_surface": "#1A2B40",
+    "disabled_text": "#91A4BA"
+  },
+  "source_samples": [
+    {
+      "pixel": [
+        110,
+        165
+      ],
+      "hex": "#506BF8"
+    },
+    {
+      "pixel": [
+        550,
+        335
+      ],
+      "hex": "#52F0DF"
+    },
+    {
+      "pixel": [
+        630,
+        120
+      ],
+      "hex": "#B7F8FE"
+    },
+    {
+      "pixel": [
+        875,
+        335
+      ],
+      "hex": "#B4D0FF"
+    },
+    {
+      "pixel": [
+        500,
+        30
+      ],
+      "hex": "#EAFEFE"
+    },
+    {
+      "pixel": [
+        130,
+        80
+      ],
+      "hex": "#1C1E27"
+    }
+  ],
+  "derived_colors": [
+    "brand.cyan",
+    "brand.lilac",
+    "brand.action_blue",
+    "light.*",
+    "dark.*"
+  ],
+  "requirements": [
+    "Brand gradients: blue left, cyan/mint center, pale lilac right, icy highlights above.",
+    "Normal text contrast >=4.5:1; important icons/focus >=3:1; evaluate actual composite including gradient extremes.",
+    "Do not recolor user media, vendor logos or semantic danger states.",
+    "B01 exact shape and color relation govern generation actions; keep DOM labels and single state glyph."
+  ]
+}

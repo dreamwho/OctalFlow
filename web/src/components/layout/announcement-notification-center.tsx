@@ -15,7 +15,7 @@ import type { PublicAnnouncement } from "@/services/api/announcements";
 import type { InteractionNotification } from "@/services/api/work-community";
 import { useUserStore } from "@/stores/use-user-store";
 
-export function AnnouncementNotificationCenter({ compact, buttonClassName, buttonStyle, onOpen }: { compact: boolean; buttonClassName: string; buttonStyle?: CSSProperties; onOpen?: () => void }) {
+export function AnnouncementNotificationCenter({ compact, dark, buttonClassName, buttonStyle, onOpen }: { compact: boolean; dark?: boolean; buttonClassName: string; buttonStyle?: CSSProperties; onOpen?: () => void }) {
     const { data: announcements = [], error, isFetching, refetch } = useAnnouncements();
     const user = useUserStore((state) => state.user);
     const interactions = useInteractionNotifications(user?.id);
@@ -89,7 +89,16 @@ export function AnnouncementNotificationCenter({ compact, buttonClassName, butto
                 footer={null}
                 closeIcon={null}
                 destroyOnHidden
-                styles={{ container: { overflow: "hidden", borderRadius: 18, padding: 0 }, body: { padding: 0 } }}
+                rootClassName={dark ? "octal-dark-overlay dark" : undefined}
+                styles={{
+                    container: {
+                        overflow: "hidden",
+                        borderRadius: 18,
+                        padding: 0,
+                        ...(dark ? { background: "rgba(18, 21, 31, 0.97)", border: "1px solid rgba(255, 255, 255, 0.1)", boxShadow: "0 24px 70px rgba(0, 0, 0, 0.6)", color: "#e5eaf3" } : {}),
+                    },
+                    body: { padding: 0 },
+                }}
             >
                 {panel}
             </Modal>

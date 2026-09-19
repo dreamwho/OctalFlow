@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-09-14",
+  "incrementalBuildId": "mFCnh_sZTk02HCpXjVU2F",
+  "baselineBuildId": "nSTS_Kms_ikgtSS2hh3wH",
+  "incrementalEvidence": {
+    "uiRebuild": "evidence/after-ui-rebuild-mFCnh-passing-20260914.log",
+    "allPages": "evidence/after-all-pages-mFCnh-passing2-20260914.log",
+    "userMatrix": "evidence/after-user-pages-matrix-mFC-20260914.log",
+    "adminSectionsMatrix": "evidence/after-admin-sections-matrix-mFC-20260914.log",
+    "adminEntryMatrix": "evidence/after-admin-entry-matrix-mFC-20260914.log",
+    "contentAccount": "evidence/after-content-account-mFCnh-passing2-20260914.log",
+    "dramaRetry": "evidence/after-drama-retry-mFCnh-final-20260914.log",
+    "typecheck": "evidence/after-typecheck-mFCnh-20260914.log",
+    "lint": "evidence/after-lint-mFCnh-20260914.log",
+    "vitest": "evidence/after-full-vitest-mFCnh-20260914.log",
+    "format": "evidence/after-format-check-mFCnh-20260914.log",
+    "releaseAudit": "evidence/after-release-check-mFCnh-20260914.log",
+    "canvas": "evidence/after-canvas-mFC-20260914.log",
+    "responsive": "evidence/after-responsive-mFC-20260914.log",
+    "adminBusiness": "evidence/after-admin-business-mFC-20260914.log",
+    "prompts": "evidence/after-prompts-mFC-20260914.log",
+    "playwrightList": "evidence/after-playwright-list-mFCnh-all-20260914.txt"
+  },
+  "baselineEvidence": {
+    "canvas": "evidence/after-canvas-nSTS-20260914.log (历史对照)",
+    "responsive": "evidence/after-responsive-nSTS-20260914.log (历史对照)",
+    "viewportMatrix": "视口主题验收.csv",
+    "pageMatrix": "页面验收矩阵.csv"
+  },
+  "status": "mFC默认视口主题矩阵980/980、Canvas20/20、responsive48/48及后台经营代表4/4已重跑；有效、加载、失败、弹层、保存状态和外部服务仍未完成或阻塞"
+}

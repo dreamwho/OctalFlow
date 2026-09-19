@@ -1,113 +1,145 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Modal } from "antd";
-import { ArrowRight, GalleryVerticalEnd, ImageOff, Play, RotateCw } from "lucide-react";
+import { ImageOff, Play, Sparkles } from "lucide-react";
 
 import { LazyMediaImage } from "@/components/media/lazy-media-image";
+import { ResponsiveMasonryGrid } from "@/components/works/responsive-masonry-grid";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { listPublicGallery, type PublicGalleryItem } from "@/services/api/work-governance";
-import { HOME_GALLERY_TABS, homeGalleryMatches, type HomeGalleryTab } from "./home-data";
 import styles from "./home.module.css";
 
 export function HomeGallery() {
-    const [tab, setTab] = useState<HomeGalleryTab>("all");
     const [previewItem, setPreviewItem] = useState<PublicGalleryItem>();
     const query = useQuery({
         queryKey: ["home-public-gallery", "random"],
-        queryFn: () => listPublicGallery({ limit: 18, sort: "random" }),
+        queryFn: () => listPublicGallery({ limit: 16, sort: "random" }),
         staleTime: 60_000,
     });
-    const items = (query.data?.items || []).filter((item) => homeGalleryMatches(item, tab));
+    const items = query.data?.items || [];
+
+    const handleApplyPrompt = (item: PublicGalleryItem) => {
+        const text = item.publicPrompt?.trim() || item.description?.trim() || item.title?.trim();
+        if (!text) return;
+        const event = new CustomEvent("dreamyo:apply-prompt", {
+            detail: {
+                prompt: text,
+                mode: item.preview?.mediaType === "video" ? "video" : "image",
+            },
+        });
+        window.dispatchEvent(event);
+    };
 
     return (
         <section id="inspiration" className={styles.section} aria-labelledby="home-gallery-title">
-            <header className={styles.sectionHeading}>
-                <h2 id="home-gallery-title">灵感作品展示</h2>
-                <p>探索创作者的优秀作品，激发你的创作灵感</p>
-            </header>
-
-            <div className={styles.galleryTabs} role="tablist" aria-label="作品分类">
-                {HOME_GALLERY_TABS.map((item) => (
-                    <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} aria-controls="home-gallery-panel" className={tab === item.id ? styles.galleryTabActive : undefined} onClick={() => setTab(item.id)}>
-                        {item.label}
-                    </button>
-                ))}
+            <div className="flex items-center justify-between mb-6 max-w-7xl mx-auto px-4">
+                <h3 id="home-gallery-title" className="text-xl md:text-2xl font-bold tracking-tight text-white">
+                    灵感发现🔥
+                </h3>
             </div>
 
-            <div id="home-gallery-panel" role="tabpanel" className={styles.galleryPanel}>
-                {query.isLoading ? (
-                    <div className={styles.galleryGrid} aria-label="正在加载公开作品">
-                        {Array.from({ length: 8 }, (_, index) => (
-                            <GallerySkeleton key={index} />
-                        ))}
-                    </div>
-                ) : query.isError ? (
-                    <GalleryState
-                        icon={<RotateCw aria-hidden="true" />}
-                        title="作品暂时无法加载"
-                        description="请稍后重试，或刷新页面后再试。"
-                        action={
-                            <button type="button" onClick={() => void query.refetch()}>
-                                重新加载
-                            </button>
-                        }
-                    />
-                ) : items.length ? (
-                    <div className={styles.galleryGrid} data-testid="home-public-gallery">
-                        {items.map((item) => (
-                            <HomeWorkCard key={item.slug} item={item} onPreview={() => setPreviewItem(item)} />
-                        ))}
-                    </div>
-                ) : (
-                    <GalleryState
-                        icon={<GalleryVerticalEnd aria-hidden="true" />}
-                        title={tab === "all" ? "还没有公开作品" : "该分类暂无公开作品"}
-                        description={tab === "all" ? "审核通过并公开发布的作品会出现在这里。" : "切换其他分类，探索更多创作灵感。"}
-                    />
-                )}
-            </div>
+            {query.isLoading ? (
+                <div className={styles.galleryGrid} aria-label="正在加载公开作品">
+                    {Array.from({ length: 8 }, (_, index) => (
+                        <GallerySkeleton key={index} />
+                    ))}
+                </div>
+            ) : items.length ? (
+                <ResponsiveMasonryGrid
+                    className="grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                    ariaLabel="公开作品灵感列表"
+                >
+                    {items.map((item) => (
+                        <HomeWorkCard
+                            key={item.slug}
+                            item={item}
+                            onPreview={() => setPreviewItem(item)}
+                            onApplyPrompt={() => handleApplyPrompt(item)}
+                        />
+                    ))}
+                </ResponsiveMasonryGrid>
+            ) : null}
 
-            <div className={styles.galleryMore}>
-                <Link href="/gallery">
-                    查看更多作品 <ArrowRight aria-hidden="true" />
-                </Link>
-            </div>
             <HomeMediaPreview item={previewItem} onClose={() => setPreviewItem(undefined)} />
         </section>
     );
 }
 
-function HomeWorkCard({ item, onPreview }: { item: PublicGalleryItem; onPreview: () => void }) {
+function HomeWorkCard({
+    item,
+    onPreview,
+    onApplyPrompt,
+}: {
+    item: PublicGalleryItem;
+    onPreview: () => void;
+    onApplyPrompt: () => void;
+}) {
     const [mediaFailed, setMediaFailed] = useState(false);
     const [duration, setDuration] = useState(0);
     const preview = item.preview;
 
     return (
-        <article className={styles.workCard} data-testid="home-gallery-card">
-            <button type="button" className={styles.workMedia} aria-label={`查看作品：${item.title}`} onClick={onPreview}>
-                {mediaFailed || !preview || (preview.mediaType !== "image" && preview.mediaType !== "video") ? (
-                    <span className={styles.mediaFallback} role="img" aria-label="作品预览不可用">
-                        <ImageOff aria-hidden="true" />
-                        <span>预览不可用</span>
-                    </span>
-                ) : preview.mediaType === "image" ? (
-                    <LazyMediaImage src={imagePreviewUrl(preview.url, 640)} alt={item.title} containerClassName={styles.workImageWrap} imageClassName={styles.workImage} errorLabel="作品图片不可用" />
-                ) : (
-                    <video src={preview.url} muted playsInline preload="metadata" className={styles.workImage} onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)} onError={() => setMediaFailed(true)} />
-                )}
-                {preview?.mediaType === "video" ? (
-                    <span className={styles.playIcon}>
-                        <Play aria-hidden="true" fill="currentColor" />
-                    </span>
-                ) : null}
-                {preview?.mediaType === "video" && duration > 0 ? <span className={styles.duration}>{formatDuration(duration)}</span> : null}
-                <span className={styles.workBody} data-gallery-work-body>
-                    <span className={styles.workTitle}>{item.title}</span>
+        <article className="group" data-testid="home-gallery-card">
+            <h4 className="mb-1.5 truncate text-[13px] font-medium text-zinc-200" title={item.title}>
+                {item.title}
+            </h4>
+            <button
+                type="button"
+                className="block w-full overflow-hidden rounded-xl border border-white/5 bg-zinc-900/50 text-left transition-all duration-300 hover:border-indigo-500/40"
+                aria-label={`查看作品：${item.title}`}
+                onClick={onPreview}
+            >
+                <span className={styles.workMediaMasonry}>
+                    {mediaFailed || !preview || (preview.mediaType !== "image" && preview.mediaType !== "video") ? (
+                        <span className={styles.mediaFallback} role="img" aria-label="作品预览不可用">
+                            <ImageOff aria-hidden="true" />
+                            <span>预览不可用</span>
+                        </span>
+                    ) : preview.mediaType === "image" ? (
+                        <LazyMediaImage
+                            src={imagePreviewUrl(preview.url, 640)}
+                            alt={item.title}
+                            containerClassName={styles.workImageWrapMasonry}
+                            imageClassName="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                            errorLabel="作品图片不可用"
+                        />
+                    ) : (
+                        <video
+                            src={preview.url}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="block w-full h-auto transition-transform duration-500 group-hover:scale-[1.03]"
+                            onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+                            onError={() => setMediaFailed(true)}
+                        />
+                    )}
+
+                    {item.category ? (
+                        <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/55 backdrop-blur-md text-zinc-200 border border-white/10">
+                            {item.category}
+                        </span>
+                    ) : null}
+
+                    {preview?.mediaType === "video" ? (
+                        <span className={styles.playIcon}>
+                            <Play aria-hidden="true" fill="currentColor" />
+                        </span>
+                    ) : null}
+                    {preview?.mediaType === "video" && duration > 0 ? (
+                        <span className={styles.duration}>{formatDuration(duration)}</span>
+                    ) : null}
                 </span>
+            </button>
+            <button
+                type="button"
+                className="mt-1.5 w-full py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] active:bg-white/[0.16] border border-white/10 text-zinc-300 hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                onClick={() => onApplyPrompt()}
+            >
+                <Sparkles size={13} className="text-amber-300" />
+                <span>做同款</span>
             </button>
         </article>
     );
@@ -125,10 +157,28 @@ function HomeMediaPreview({ item, onClose }: { item?: PublicGalleryItem; onClose
             width="auto"
             destroyOnHidden
             title={null}
-            styles={{ container: { padding: 0, overflow: "hidden" }, body: { padding: 0, display: "flex", justifyContent: "center", alignItems: "center", maxHeight: "88dvh" } }}
+            styles={{
+                container: { padding: 0, overflow: "hidden" },
+                body: { padding: 0, display: "flex", justifyContent: "center", alignItems: "center", maxHeight: "88dvh" },
+            }}
         >
-            {item && preview?.mediaType === "image" ? <img src={imagePreviewUrl(preview.url, 1920)} alt={item.title} className="block max-h-[88dvh] max-w-[min(92vw,1440px)] object-contain" /> : null}
-            {item && preview?.mediaType === "video" ? <video src={preview.url} aria-label={item.title} className="block max-h-[88dvh] max-w-[min(92vw,1440px)] object-contain" controls autoPlay playsInline /> : null}
+            {item && preview?.mediaType === "image" ? (
+                <img
+                    src={imagePreviewUrl(preview.url, 1920)}
+                    alt={item.title}
+                    className="block max-h-[88dvh] max-w-[min(92vw,1440px)] object-contain"
+                />
+            ) : null}
+            {item && preview?.mediaType === "video" ? (
+                <video
+                    src={preview.url}
+                    aria-label={item.title}
+                    className="block max-h-[88dvh] max-w-[min(92vw,1440px)] object-contain"
+                    controls
+                    autoPlay
+                    playsInline
+                />
+            ) : null}
         </Modal>
     );
 }
@@ -139,17 +189,6 @@ function GallerySkeleton() {
             <span />
             <i />
             <i />
-        </div>
-    );
-}
-
-function GalleryState({ icon, title, description, action }: { icon: ReactNode; title: string; description: string; action?: ReactNode }) {
-    return (
-        <div className={styles.galleryState}>
-            <span>{icon}</span>
-            <h3>{title}</h3>
-            <p>{description}</p>
-            {action}
         </div>
     );
 }

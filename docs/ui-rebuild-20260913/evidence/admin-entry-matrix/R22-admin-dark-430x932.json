@@ -1,0 +1,24 @@
+{
+  "requestedPath": "/admin",
+  "actualPath": "/admin",
+  "responseStatus": 200,
+  "title": "管理后台 | dreamyo",
+  "theme": "dark",
+  "viewport": {
+    "width": 430,
+    "height": 932,
+    "visualWidth": 430,
+    "visualHeight": 932,
+    "zoom": 1
+  },
+  "heading": "经营看板",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 430,
+    "height": 932
+  },
+  "overflow": false,
+  "state": "后台总览入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

@@ -34,6 +34,7 @@ describe("channel protocol registry", () => {
             "yumeng",
             "gemini",
             "geminiai",
+            "dola",
             "gemini-tools",
             "chatgpt-api",
             "dreamina-cli",
@@ -74,6 +75,17 @@ describe("channel protocol registry", () => {
             modelCatalogPaths: ["/v1/models"],
             capabilities: ["text"],
             operations: { text: { supportsReferenceImage: true, referenceRule: expect.stringContaining("inlineData") } },
+        });
+        expect(channelProtocolDefinition("dola")).toMatchObject({
+            label: "Dola API",
+            authMode: "provider-managed",
+            capabilities: ["video", "image"],
+            operations: { image: { createPath: "/v1/images", queryPath: "/v1/images/:task_id", statusField: "status" } },
+            builtInModels: expect.arrayContaining([
+                expect.objectContaining({ id: "dola-seedance-2-5", capability: "video" }),
+                expect.objectContaining({ id: "dola-seedance-2-0-fast", capability: "video" }),
+                expect.objectContaining({ id: "dola-seedream-4-5", capability: "image" }),
+            ]),
         });
         expect(channelProtocolDefinition("chatgpt-api")).toMatchObject({
             label: "GPTAPI",

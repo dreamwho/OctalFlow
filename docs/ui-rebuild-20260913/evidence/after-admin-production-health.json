@@ -1,0 +1,74 @@
+{
+  "route": "standalone health and B01 asset probe",
+  "baseUrl": "http://127.0.0.1:3100",
+  "buildId": "7El_rjCPc_PqKytAWqXfc",
+  "evidenceVersion": "admin-c01-v3",
+  "capturedAt": "2026-09-14T02:21:40+0800",
+  "endpoints": {
+    "/api/health": {
+      "httpStatus": 200,
+      "response": {
+        "code": 0,
+        "data": {
+          "status": "ok"
+        },
+        "msg": "服务正常"
+      }
+    },
+    "/api/health/live": {
+      "httpStatus": 200,
+      "response": {
+        "code": 0,
+        "data": {
+          "status": "live"
+        },
+        "msg": "服务运行中"
+      }
+    },
+    "/api/health/ready": {
+      "httpStatus": 200,
+      "response": {
+        "code": 0,
+        "data": {
+          "ready": true,
+          "provider": "file",
+          "database": {
+            "healthy": true,
+            "schemaReady": true
+          },
+          "encryptionReady": true,
+          "firstAdminRequired": false,
+          "generationWorker": {
+            "required": true,
+            "healthy": true,
+            "lastHeartbeatAt": "2026-09-13T18:21:26.804Z",
+            "staleAfterMs": 90000
+          }
+        },
+        "msg": "服务已就绪"
+      }
+    }
+  },
+  "assets": {
+    "button-reference.png": {
+      "httpStatus": 200,
+      "contentType": "image/png",
+      "contentLength": "966143"
+    },
+    "button-surface.png": {
+      "httpStatus": 200,
+      "contentType": "image/png",
+      "contentLength": "1937006"
+    },
+    "generate-glyph.png": {
+      "httpStatus": 200,
+      "contentType": "image/png",
+      "contentLength": "2427"
+    },
+    "manifest.json": {
+      "httpStatus": 200,
+      "contentType": "application/json; charset=UTF-8",
+      "contentLength": "619"
+    }
+  }
+}

@@ -3,7 +3,7 @@
 import { SlidersHorizontal } from "lucide-react";
 import { useEffect } from "react";
 
-import { CreativeGenerationPreferences, generationPreferenceSummary, type CreativeGenerationPreferencePatch, type GenerationQualityOption, type GenerationRatioOption } from "@/components/creative-generation-preferences";
+import { CreativeGenerationPreferences, friendlyImageSizeLabel, generationPreferenceSummary, type CreativeGenerationPreferencePatch, type GenerationQualityOption, type GenerationRatioOption } from "@/components/creative-generation-preferences";
 import type { CreativeGenerationPreferences as GenerationPreferences } from "@/lib/creative-runtime-contract";
 import { resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
 import { useCreativeComposerPopoverPlacement, type CreativeComposerPopoverPlacement } from "@/components/creative-composer-popover";
@@ -88,10 +88,13 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             autoAdjustOverflow
             tabless
             fixedSizeLabel={fixedSizeLabel}
+            canvasPanel={{}}
             imageQualityProfile={geminiAi ? "geminiai" : "default"}
             ratioOptions={chatGptApi ? chatGptApiImageSizes : dreamina?.ratios}
             imageQualityOptions={chatGptApi ? chatGptApiImageQualities : dreamina?.qualities}
             allowCustomSize={chatGptApi ? false : allowCustomSize}
+            ratioGridClassName="grid-cols-3"
+            ratioTileLayout
             onOpenChange={onOpenChange}
             onChange={(patch) => applyImagePreferencePatch(patch, onConfigChange)}
         />
@@ -153,5 +156,6 @@ function positiveInteger(value: unknown) {
 }
 
 function compactSizeLabel(value?: string, geminiAi = false) {
-    return !value || value === "auto" ? (geminiAi ? "Auto" : "智能") : value.replace("x", "×");
+    if (!value || value === "auto") return geminiAi ? "Auto" : "智能";
+    return friendlyImageSizeLabel(value) || value.replace("x", "×");
 }

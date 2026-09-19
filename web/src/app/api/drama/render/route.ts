@@ -6,10 +6,11 @@ import { join } from "node:path";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuthSettings, isAuthInputError } from "@/lib/auth/store";
 import { readJsonBody } from "@/lib/auth/request";
+import { getDramaProjectForUser } from "@/lib/server/drama-project-service";
 import { createDramaRenderTask, getDramaRenderTask, touchDramaRenderTask, transitionDramaRenderTask, type DramaRenderTask } from "@/lib/server/drama-render-store";
 import { resolveDramaRenderAudioPlan } from "@/lib/server/drama-render-audio";
 import { normalizeDramaRenderShots, type NormalizedDramaRenderShot } from "@/lib/server/drama-render-input";
-import { ffmpegAvailable, runFfmpeg, runFfprobe } from "@/lib/server/ffmpeg";
+import { ffmpegAvailable, ffmpegFilterAvailable, runFfmpeg, runFfprobe } from "@/lib/server/ffmpeg";
 import { fetchInternalApi, resolveInternalOrigin } from "@/lib/server/internal-origin";
 import { writeReferenceMediaFile } from "@/lib/server/reference-asset-store";
 import { checkGenerationRateLimit, rateLimitHeaders } from "@/lib/server/security";
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     const renderLimit = (await getAuthSettings()).generationConcurrency.render;
     const response = await withGenerationConcurrencyLimit(user.id, "render", 60 * 60_000, renderLimit, async () => {
         if (!(await ffmpegAvailable())) return NextResponse.json({ code: 503, data: null, msg: "当前服务器未安装 FFmpeg" }, { status: 503 });
-        let body: { projectId?: unknown; conversationId?: unknown; title?: unknown; ratio?: unknown; shots?: unknown[] };
+        let body: { projectId?: unknown; episodeId?: unknown; conversationId?: unknown; title?: unknown; ratio?: unknown; shots?: unknown[] };
         try {
             body = await readJsonBody(request);
         } catch (error) {
@@ -41,9 +42,12 @@ export async function POST(request: Request) {
         const shots = normalizeDramaRenderShots(body.shots);
         if (!projectId || !shots.length || shots.some((shot) => !shot.videoUrl)) return NextResponse.json({ code: 400, data: null, msg: "请先完成全部镜头视频" }, { status: 400 });
         if (shots.some((shot) => shot.audioMode === "voiceover" && !shot.audioUrl)) return NextResponse.json({ code: 400, data: null, msg: "部分镜头选择了 AI 配音，但配音尚未完成" }, { status: 400 });
+        const project = await getDramaProjectForUser(user.id, projectId);
+        const episodeId = text(body.episodeId) || project.activeEpisodeId || project.episodes[0]?.id || "";
+        if (!project.episodes.some((episode) => episode.id === episodeId)) return NextResponse.json({ code: 400, data: null, msg: "短剧剧集不存在" }, { status: 400 });
         const size = normalizeDramaImageSize(body.ratio);
         if (!size) return NextResponse.json({ code: 400, data: null, msg: "短剧尺寸无效" }, { status: 400 });
-        const task = await createDramaRenderTask({ userId: user.id, projectId, conversationId: text(body.conversationId) || undefined, title });
+        const task = await createDramaRenderTask({ userId: user.id, projectId, episodeId, conversationId: text(body.conversationId) || undefined, title });
         after(() => renderDrama(task, shots, size, resolveInternalOrigin(new URL(request.url).origin), request.headers.get("cookie") || ""));
         return NextResponse.json({ code: 0, data: publicTask(task), msg: "合成任务已创建" });
     });
@@ -129,28 +133,36 @@ async function renderDrama(task: DramaRenderTask, shots: NormalizedDramaRenderSh
         const srt = buildServerSrt(shots);
         const outputPath = join(workdir, "output.mp4");
         if (srt) {
-            await writeFile(join(workdir, "subtitles.srt"), `\uFEFF${srt}`, "utf8");
-            await runFfmpeg(
-                [
-                    "-y",
-                    "-i",
-                    joinedPath,
-                    "-vf",
-                    "subtitles=subtitles.srt:force_style='FontName=Noto Sans CJK SC,FontSize=18,Outline=2,Shadow=1,MarginV=36'",
-                    "-c:v",
-                    "libx264",
-                    "-preset",
-                    "veryfast",
-                    "-crf",
-                    "22",
-                    "-c:a",
-                    "copy",
-                    "-movflags",
-                    "+faststart",
-                    outputPath,
-                ],
-                { cwd: workdir, signal: abortController.signal },
-            );
+            const subtitlePath = join(workdir, "subtitles.srt");
+            await writeFile(subtitlePath, `\uFEFF${srt}`, "utf8");
+            if (await ffmpegFilterAvailable("subtitles")) {
+                await runFfmpeg(
+                    [
+                        "-y",
+                        "-i",
+                        joinedPath,
+                        "-vf",
+                        "subtitles=subtitles.srt:force_style=FontName=Noto Sans CJK SC\\,FontSize=18\\,Outline=2\\,Shadow=1\\,MarginV=36",
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "veryfast",
+                        "-crf",
+                        "22",
+                        "-c:a",
+                        "copy",
+                        "-movflags",
+                        "+faststart",
+                        outputPath,
+                    ],
+                    { cwd: workdir, signal: abortController.signal },
+                );
+            } else {
+                await runFfmpeg(
+                    ["-y", "-i", joinedPath, "-f", "srt", "-i", subtitlePath, "-map", "0:v:0", "-map", "0:a?", "-map", "1:0", "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=zho", "-movflags", "+faststart", outputPath],
+                    { cwd: workdir, signal: abortController.signal },
+                );
+            }
         } else {
             await runFfmpeg(["-y", "-i", joinedPath, "-c", "copy", outputPath], { cwd: workdir, signal: abortController.signal });
         }

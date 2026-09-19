@@ -1,6 +1,7 @@
 import { getDatabaseProvider, ensurePostgresSchema, postgresQuery, withPostgresTransaction } from "@/lib/server/database";
 import { resolveGenerationReviewReason } from "@/lib/server/generation-task-review-reason";
-import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
+import { readJsonDataFile, resolveDataPath, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
+import { stat as statFile } from "node:fs/promises";
 import type {
     GenerationTaskContext,
     GenerationTaskCostAggregate,
@@ -860,11 +861,33 @@ function mutateFileTasks(mutator: (tasks: StoredGenerationTaskRecord[]) => Store
     return withGenerationTaskFileMutation(async (tasks) => ({ tasks: mutator(tasks), result: undefined }));
 }
 
+/* 文件 Provider：任务文件 mtime 未变化时跳过重复解析（23MB 级文件的单次推进 I/O 主要来自重复 parse） */
+let taskFileReadCache: { mtimeMs: number; tasks: StoredGenerationTaskRecord[] } | null = null;
+
+async function readFileTasksCached() {
+    try {
+        const info = await statFile(resolveDataPath(TASK_FILE));
+        if (taskFileReadCache && taskFileReadCache.mtimeMs === info.mtimeMs) return taskFileReadCache.tasks;
+        const tasks = await readJsonDataFile<StoredGenerationTaskRecord[]>(TASK_FILE, []);
+        taskFileReadCache = { mtimeMs: info.mtimeMs, tasks };
+        return tasks;
+    } catch {
+        taskFileReadCache = null;
+        return readJsonDataFile<StoredGenerationTaskRecord[]>(TASK_FILE, []);
+    }
+}
+
 export function withGenerationTaskFileMutation<T>(mutator: (tasks: StoredGenerationTaskRecord[]) => Promise<{ tasks: StoredGenerationTaskRecord[]; result: T }>) {
     const run = fileMutationQueue.then(async () => {
         return withJsonDataFileLock(TASK_FILE, async () => {
-            const mutation = await mutator(await readFileTasks());
+            const mutation = await mutator(await readFileTasksCached());
             await writeJsonDataFile(TASK_FILE, mutation.tasks);
+            try {
+                const info = await statFile(resolveDataPath(TASK_FILE));
+                taskFileReadCache = { mtimeMs: info.mtimeMs, tasks: mutation.tasks };
+            } catch {
+                taskFileReadCache = null;
+            }
             return mutation.result;
         });
     });

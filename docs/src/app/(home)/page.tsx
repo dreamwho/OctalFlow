@@ -28,8 +28,8 @@ const previewImages = [
 
 export default function HomePage() {
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 pb-16 pt-8 md:px-10 md:pt-14">
-      <section className="grid min-h-[520px] items-center gap-10 border-b border-zinc-200 pb-12 dark:border-zinc-800 lg:grid-cols-[0.88fr_1.12fr]">
+    <main className="dreamyo-docs-home mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 pb-16 pt-8 md:px-10 md:pt-14">
+      <section className="dreamyo-docs-hero grid min-h-[520px] items-center gap-10 border-b pb-12 lg:grid-cols-[0.88fr_1.12fr]">
         <div>
           <div className="inline-flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
             <Rocket className="size-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -48,7 +48,7 @@ export default function HomePage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href="/docs/overview/quick-start"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-zinc-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
+              className="dreamyo-docs-cta inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium transition"
             >
               <BookOpen className="size-4" />
               快速开始
@@ -57,7 +57,7 @@ export default function HomePage() {
               href={githubUrl}
               target="_blank"
               rel="noreferrer noopener"
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-900 transition hover:border-zinc-900 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-900"
+              className="dreamyo-docs-outline inline-flex items-center justify-center gap-2 rounded-full border px-5 py-3 text-sm font-medium transition"
             >
               <img src="/github.svg" alt="" className="size-4" />
               GitHub
@@ -66,7 +66,7 @@ export default function HomePage() {
               href={githubUrl}
               target="_blank"
               rel="noreferrer noopener"
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-900 transition hover:border-zinc-900 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-900"
+              className="dreamyo-docs-outline inline-flex items-center justify-center gap-2 rounded-full border px-5 py-3 text-sm font-medium transition"
             >
               项目仓库
               <ArrowUpRight className="size-4" />
@@ -74,7 +74,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl lg:w-[108%] lg:max-w-none">
+        <div className="dreamyo-docs-preview overflow-hidden rounded-2xl lg:w-[108%] lg:max-w-none">
           <img
             src={previewImages[0].src}
             alt="dreamyo 效果图"

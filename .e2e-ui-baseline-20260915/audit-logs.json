@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "logs": [
+    {
+      "id": "e4723f24-6039-4304-a837-ddced4423c13",
+      "action": "auth.login",
+      "status": "success",
+      "actor": {
+        "id": "623c1d05-8edb-43fb-9044-c08c8503061f",
+        "username": "e2e_admin",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "target": {
+        "type": "user",
+        "id": "623c1d05-8edb-43fb-9044-c08c8503061f",
+        "label": "e2e_admin"
+      },
+      "createdAt": "2026-09-15T14:23:16.438Z"
+    }
+  ]
+}

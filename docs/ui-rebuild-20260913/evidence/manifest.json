@@ -1,0 +1,391 @@
+[
+  {
+    "id": "01",
+    "file": "evidence/01-dark-logo-background.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-cbf1d0bd-ba70-4396-8655-d380244f5e93.png",
+    "sha256": "6652c21f5270f5d0e7a394b79fb4772b2d867675bb17964501ca8e779d86e90f",
+    "role": "user_reported_failure",
+    "status": "reference_only_not_fixed"
+  },
+  {
+    "id": "02",
+    "file": "evidence/02-dark-composer-caret-text.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-3a4d3a30-0332-4ff8-9abf-78bbe76c880d.png",
+    "sha256": "1d02a7f61b55387ce86b504df081899677d213a66cf3d179c9027063ddfdb86a",
+    "role": "user_reported_failure",
+    "status": "reference_only_not_fixed"
+  },
+  {
+    "id": "03",
+    "file": "evidence/03-canvas-toolbar-icon-mix.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-bc446d36-51b0-4fd3-a8fe-426dda04cd6a.png",
+    "sha256": "a3fc2baff4b8ee22257c5f5b1ecbc891cac63b416f5bacceb3902176a6fe6d96",
+    "role": "user_reported_failure",
+    "status": "reference_only_not_fixed"
+  },
+  {
+    "id": "04",
+    "file": "evidence/04-canvas-button-clipped.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-ce6c3062-0534-4b72-bbde-7410a3a0bf8b.png",
+    "sha256": "23efe9c58743164e17e79ed0e3c030c4aba1c97407b56b1236b5919f248d3430",
+    "role": "user_reported_failure",
+    "status": "reference_only_not_fixed"
+  },
+  {
+    "id": "05",
+    "file": "evidence/05-node-border-inset.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-3ada868d-fdd4-4d38-9180-a48f318983da.png",
+    "sha256": "d17fb8cf279d5edd49351017ff46b813a53b9fdcd9dde320a7e7b62806b70bc6",
+    "role": "user_reported_failure",
+    "status": "reference_only_not_fixed"
+  },
+  {
+    "id": "06",
+    "file": "evidence/06-light-background-haze.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-fd2872e6-a29b-40c4-b48c-f45a5204afae.png",
+    "sha256": "61b443e9a3a3fb3d3592621bc3daf26dff3fd2f2c57ce690e08c31705c84b0e6",
+    "role": "user_reported_failure",
+    "status": "reference_only_not_fixed"
+  },
+  {
+    "id": "07",
+    "file": "evidence/07-home-light-dark-panel.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-015b88db-0f9a-4796-8ae0-97273cc8083e.png",
+    "sha256": "626a1e3d0b7066f784e416478c78bfdb943094fc51d01f0cf11d876beeaf9ca9",
+    "role": "user_reported_failure",
+    "status": "reference_only_not_fixed"
+  },
+  {
+    "id": "08",
+    "file": "evidence/08-generation-button-reference.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-e53281ff-ac2b-4ee1-a37a-12b9aabb4d8e.png",
+    "sha256": "a5c8c4f6228847b30c1a3103d6e5ea05c8581b0cc74eb93f685ef9a40199fc9d",
+    "role": "superseded_button_reference",
+    "status": "historical_only",
+    "superseded_by": "B01"
+  },
+  {
+    "id": "B01",
+    "file": "evidence/09-generation-button-v21.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-04be1552-f366-430c-b681-b3127f157b57.png",
+    "sha256": "c6345426fa832fdfc53fe0a4d3dcc59df5fd1c921219e62b32fb4b477b07b749",
+    "role": "approved_button_reference",
+    "status": "implemented_and_verified",
+    "version": "V2.1",
+    "implementation": "web/public/brand/dreamyo/generation/ + web/src/app/styles/global-generation-actions.css"
+  },
+  {
+    "id": "C01",
+    "file": "evidence/10-global-palette-reference-v21.png",
+    "source": "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-9f5063bf-fe5c-4adb-8801-4643768f9201.png",
+    "sha256": "15702c1d07ad2caddb1e43912077c1af17c5460530ee988d1be45b8a009bed14",
+    "role": "approved_global_palette_reference",
+    "status": "implemented_in_scope",
+    "version": "V2.1",
+    "implementation": "web/src/lib/canvas-theme.ts + web/src/lib/app-theme.ts + web/src/app/styles/global-product-design.css + shared page styles"
+  },
+  {
+    "id": "11",
+    "file": "evidence/after-followup-canvas-image-toolbar-light-1440-selected-150.png",
+    "sha256": "6f87e87a139aa1c69ca00abaf6102b1f658df841d86000b775be1e61b812abfb",
+    "role": "canvas_toolbar_grid_regression_after",
+    "status": "verified_after",
+    "theme_or_scope": "light"
+  },
+  {
+    "id": "12",
+    "file": "evidence/after-followup-canvas-image-toolbar-dark-1440-selected-150.png",
+    "sha256": "775704304ecf7795382a8008efaf8c77a963f359a2ebc9c6f1404a7a37bc3d23",
+    "role": "canvas_toolbar_grid_regression_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark"
+  },
+  {
+    "id": "13",
+    "file": "evidence/after-followup-playwright-list.txt",
+    "sha256": "3dfda947e20cf7baa1e02995254ea30d39074e4b63c377568c783dca000f81cb",
+    "role": "playwright_discovery_after",
+    "status": "verified_after",
+    "theme_or_scope": "all_projects"
+  },
+  {
+    "id": "14",
+    "file": "evidence/after-followup-canvas-image-toolbar-light-1440-selected-150.json",
+    "sha256": "875c4e49aa1800e6eb8d3dd973413e79c3da64fa6d0b8e5e03d7a1a9d2ad3b2f",
+    "role": "canvas_toolbar_grid_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "light"
+  },
+  {
+    "id": "15",
+    "file": "evidence/after-followup-canvas-image-toolbar-dark-1440-selected-150.json",
+    "sha256": "4e10c21ace08d342ff652f3d6c6f2123c0093ec2f2168da445526590275e69f2",
+    "role": "canvas_toolbar_grid_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark"
+  },
+  {
+    "id": "16",
+    "file": "evidence/after-followup-canvas-image-toolbar-checksums.txt",
+    "sha256": "23ff774f9ff22a10e7a71676e1df347f060ff92a835dc292c5bd7f28bb04a614",
+    "role": "canvas_toolbar_grid_checksums",
+    "status": "verified_after",
+    "theme_or_scope": "both"
+  },
+  {
+    "id": "17",
+    "file": "evidence/after-followup-health-check.json",
+    "sha256": "b7343cbec15c0a1f7703d11f64287e3285b85b98a55cc3111c71ec0b1d15031f",
+    "role": "production_health_static_resource_after",
+    "status": "verified_after",
+    "theme_or_scope": "standalone"
+  },
+  {
+    "id": "18",
+    "file": "evidence/after-followup-validation.log",
+    "sha256": "1855290b6c049ad43a92bac6a7bf9395fdface2e3963b7cbbae9e7e61774e781",
+    "role": "follow_up_validation_log",
+    "status": "verified_after",
+    "theme_or_scope": "implementation"
+  },
+  {
+    "id": "ADMIN-19",
+    "file": "evidence/after-admin-regression-overview-light-chromium.png",
+    "sha256": "8c02283dc3b8e87877db2de4e5d24a15b91ca12e89b94859864dfa474c6062e0",
+    "role": "admin_c01_overview_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "light"
+  },
+  {
+    "id": "ADMIN-20",
+    "file": "evidence/after-admin-regression-overview-dark-chromium.png",
+    "sha256": "ee7e9cb6cf5d243206bfce7a9bcbef2d3597809957a9bc840ef7b4b890f1cbf5",
+    "role": "admin_c01_overview_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark"
+  },
+  {
+    "id": "ADMIN-21",
+    "file": "evidence/after-admin-regression-overview-light-mobile-390.png",
+    "sha256": "7191281e39b866e1e59385659ade0940c415f61f9cd14baed1e1c412e9aed432",
+    "role": "admin_c01_overview_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "light-mobile-390"
+  },
+  {
+    "id": "ADMIN-22",
+    "file": "evidence/after-admin-regression-overview-dark-mobile-430.png",
+    "sha256": "5856e901f9c134b61761a5edbab0749603e28493674be5c419cae21695eb0d05",
+    "role": "admin_c01_overview_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark-mobile-430"
+  },
+  {
+    "id": "ADMIN-23",
+    "file": "evidence/after-admin-regression-light-chromium.png",
+    "sha256": "10aee0bfc755fd1c8d5072faaed01ce6e0cc82d75edc67771e5a66770c148654",
+    "role": "admin_c01_operations_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "light"
+  },
+  {
+    "id": "ADMIN-24",
+    "file": "evidence/after-admin-regression-dark-chromium.png",
+    "sha256": "0efb7644bac09ca404380adf93685393cb9c7a2df15f0245bb70309f879b5cfc",
+    "role": "admin_c01_operations_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark"
+  },
+  {
+    "id": "ADMIN-25",
+    "file": "evidence/after-admin-regression-light-mobile-390.png",
+    "sha256": "ad42564abd4c5b8139539f92909be6a5fd7ecdb11cc03a259445459c88c62448",
+    "role": "admin_c01_operations_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "light-mobile-390"
+  },
+  {
+    "id": "ADMIN-26",
+    "file": "evidence/after-admin-regression-dark-mobile-430.png",
+    "sha256": "a0e825ba32b0a917e6d8e6c55cb9077f1f2cb6162edb21e31823c9d614f44b87",
+    "role": "admin_c01_operations_visual_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark-mobile-430"
+  },
+  {
+    "id": "ADMIN-27",
+    "file": "evidence/after-admin-regression-overview-light-chromium.json",
+    "sha256": "f0ce72680a3191f0cf076490dbf665e3feaf7ea501dad12c8ba32445ea0bccbc",
+    "role": "admin_c01_overview_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "light"
+  },
+  {
+    "id": "ADMIN-28",
+    "file": "evidence/after-admin-regression-overview-dark-chromium.json",
+    "sha256": "0f70737ebf0e2f096dd9bf652bf87150b6b8e2e6b0215c916a6bae6ca6ad33b4",
+    "role": "admin_c01_overview_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark"
+  },
+  {
+    "id": "ADMIN-29",
+    "file": "evidence/after-admin-regression-overview-light-mobile-390.json",
+    "sha256": "ed6e67194f371be158133f824493293bc246a55d048f659a26922280734fdc02",
+    "role": "admin_c01_overview_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "light-mobile-390"
+  },
+  {
+    "id": "ADMIN-30",
+    "file": "evidence/after-admin-regression-overview-dark-mobile-430.json",
+    "sha256": "6a1f908918a657c8e63861f0aa77998dbc01cc502fbb5a025bb7f86ae5d7ec0f",
+    "role": "admin_c01_overview_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark-mobile-430"
+  },
+  {
+    "id": "ADMIN-31",
+    "file": "evidence/after-admin-regression-light-chromium.json",
+    "sha256": "01ec08024a1ee06cf59beecb7ede9139b110bedf8b14931a496d0368c41498bb",
+    "role": "admin_c01_operations_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "light"
+  },
+  {
+    "id": "ADMIN-32",
+    "file": "evidence/after-admin-regression-dark-chromium.json",
+    "sha256": "fa5e09dd446e7781eccf394966526f291d0867b711bb4ee5f666a7314a7b13f3",
+    "role": "admin_c01_operations_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark"
+  },
+  {
+    "id": "ADMIN-33",
+    "file": "evidence/after-admin-regression-light-mobile-390.json",
+    "sha256": "11899db55332d60afcb1288f5840e80338ecf818b41473e4ca674294ea3911bf",
+    "role": "admin_c01_operations_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "light-mobile-390"
+  },
+  {
+    "id": "ADMIN-34",
+    "file": "evidence/after-admin-regression-dark-mobile-430.json",
+    "sha256": "03f8bcd28f7ed48b12b25b06e24effa5e8b7e2e4e426c507da11b5a9bd88478f",
+    "role": "admin_c01_operations_measurement_after",
+    "status": "verified_after",
+    "theme_or_scope": "dark-mobile-430"
+  },
+  {
+    "id": "ADMIN-35",
+    "file": "evidence/after-admin-production-health.json",
+    "sha256": "b2caa67caa9a9a188a0318571070e2a80f5184a55b46a4f33fb4c66166b11635",
+    "role": "admin_standalone_health_after",
+    "status": "verified_after",
+    "theme_or_scope": "standalone"
+  },
+  {
+    "id": "ADMIN-36",
+    "file": "后台设计素材映射.csv",
+    "sha256": "1a711057d256e6ce66cf32a80c297d990957eb93a71b64ce2e8396534482fd8b",
+    "role": "admin_design_asset_mapping",
+    "status": "verified_after",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-37",
+    "file": "07-后台视觉验收.md",
+    "sha256": "c440ac20ca7f1b8ceadc4f46947b678eb276727ed7f96e558ddbffff0522aa3e",
+    "role": "admin_visual_acceptance",
+    "status": "verified_after",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-38",
+    "file": "页面验收矩阵.csv",
+    "sha256": "7c3afea1fab44dc09d144eedd3cf5c7bce8769e03a318b0fc1914bf5a5634634",
+    "role": "admin_page_matrix_updates",
+    "status": "verified_after",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-39",
+    "file": "视口主题验收.csv",
+    "sha256": "45b5cce65fd6d12780968cc13aa5aeb27586413c6156379ddadef81340b39ea5",
+    "role": "admin_viewport_matrix_updates",
+    "status": "verified_after",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-40",
+    "file": "web/src/components/admin/admin-section-nav.tsx",
+    "sha256": "9673381e3d9f20db1ac7fbdd565db68c9d845b21ce40e354faecff44ea74854d",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-41",
+    "file": "web/src/components/admin/admin-dashboard.tsx",
+    "sha256": "f663e35bb8cdbe8eb8c042a22ded9d43695076ec241ccf464a60959d2ad4ab05",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-42",
+    "file": "web/src/components/admin/admin-overview.tsx",
+    "sha256": "489d1b56ea04e1ae34f7faab38b8ec7d615bead0b4c62acc2cb77499999a7570",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-43",
+    "file": "web/src/components/admin/admin-overview-operations.tsx",
+    "sha256": "6470fb431c1d7c69db7c6aa2a2b21cae3053b21d110b6ec5a0791d2bfb61b902",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-44",
+    "file": "web/src/app/admin/generation-operations/components/generation-channel-status.tsx",
+    "sha256": "b88d38de442baa9009dcc2ec0deda47d0bd3d32c00609c188ed11ce73bfd6b21",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-45",
+    "file": "web/src/app/admin/generation-operations/components/generation-operations-client.tsx",
+    "sha256": "81724d7dbf862707bf1edb591a85a66414aef4a1023f56ce13aafc0d82de753a",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-46",
+    "file": "web/src/app/admin/generation-operations/components/generation-operations-theme.ts",
+    "sha256": "12693f54c90848d6ead96e7bfdb8ebd22f1c7a183a7c27fc432232346df3785d",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-47",
+    "file": "web/src/app/admin/generation-operations/components/generation-operations-theme.test.ts",
+    "sha256": "68bfdfc77e5b8673c3f6ba97617233fa1b8cc8c25aa2b4e1408872028dd19e54",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  },
+  {
+    "id": "ADMIN-48",
+    "file": "web/src/app/styles/global-product-design.css",
+    "sha256": "67ac1fa38049879b2f65a8e38778fa5e2df5f4df19ce824c393377ca62c2e458",
+    "role": "admin_c01_implementation",
+    "status": "implemented_in_scope",
+    "theme_or_scope": "all"
+  }
+]

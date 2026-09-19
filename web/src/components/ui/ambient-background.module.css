@@ -1,0 +1,40 @@
+.ambient {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 0;
+}
+
+.glow {
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(80px);
+    opacity: 0.55;
+    transform: translateZ(0);
+}
+
+.glowA {
+    width: min(72vw, 840px);
+    height: min(72vw, 840px);
+    top: -18%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.28) 0%, rgba(37, 99, 235, 0.12) 40%, transparent 70%);
+}
+
+.glowB {
+    width: min(60vw, 680px);
+    height: min(60vw, 680px);
+    top: 25%;
+    left: 20%;
+    background: radial-gradient(circle, rgba(147, 51, 234, 0.18) 0%, rgba(79, 70, 229, 0.08) 45%, transparent 70%);
+}
+
+.stars {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}

@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/canvas/canvas-8YZ92SBzYzoKVoCGkHPON",
+  "actualPath": "/canvas/canvas-8YZ92SBzYzoKVoCGkHPON",
+  "responseStatus": 200,
+  "route": "/canvas/canvas-8YZ92SBzYzoKVoCGkHPON",
+  "theme": "dark",
+  "title": "Canvas 画布 | dreamyo",
+  "heading": "矩阵画布 57206317",
+  "viewport": {
+    "width": 1024,
+    "height": 768,
+    "visualWidth": 1024,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1024,
+    "height": 768
+  },
+  "overflow": false,
+  "state": "真实画布实体",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

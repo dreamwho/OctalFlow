@@ -108,7 +108,7 @@
 - 全站页面、侧栏、抽屉、弹窗、列表和编辑区域不得显示浏览器原生滚动轨道或滑块，但必须保留鼠标滚轮、触控板、触屏和键盘滚动能力；长下拉列表隐藏滚动条后使用轻量上下方向提示，不得通过 `overflow: hidden` 截断内容来伪装。
 - 组件优先使用函数组件和现有 hooks，不新增大型状态管理方案。
 - UI 图标优先使用 `lucide-react` 或项目已经使用的 Ant Design 图标。
-- 所有默认站点品牌 Logo、ICO、favicon、manifest/metadata 图标、登录/用户端/后台品牌标识和助手头像必须使用项目的“无限进化”Logo，并统一从后台站点 Logo/图标配置或内置 `/logo.svg`、`/icon.svg` 派生；禁止使用三角形作为品牌 Logo、默认占位或回退图标。播放、告警等功能性三角图标不属于品牌标识，仍按语义使用。
+- 所有默认站点品牌 Logo、ICO、favicon、manifest/metadata 图标、登录/用户端/后台品牌标识和助手头像统一使用用户已选定的 dreamyo 新品牌图形及后台站点配置；旧“无限进化”品牌限制已由本次用户要求替换。浅深主题必须验证实际透明合成、清晰度和失败回退，不能仅凭文件包含 Alpha 通道判定正确。
 - 管理后台的作品、素材、提示词封面、本地媒体和外部存储等内容图片必须使用限宽 WebP 变体展示，禁止把 PNG/JPEG 原件或对象存储源文件签名地址直接放入图片 `src`；只有明确的下载操作返回源文件格式。站点 Logo、ICO、SVG 品牌资源不属于内容图片，不受此转换规则影响。
 - 作品发布、公开分享和作品广场只允许图片与视频，不提供音频、收藏或评论；用户或管理员下架后可二次确认永久删除发布主记录、版本快照、治理与互动记录，但必须保留源素材、Canvas/短剧项目和媒体文件，禁止恢复“撤销后长期保留发布快照”的旧行为。
 - 后续通用 UI 可以参考 https://uiverse.io/elements 或用户提供参考图/HTML 的交互和视觉方向，但必须改造成项目现有 Next.js / React / Tailwind / Ant Design 写法；不要直接复制第三方源码、图片、字体、图标、素材、专有 token 命名或受限资源，确需引入第三方资源时必须先确认授权许可证。
@@ -194,3 +194,16 @@
 - Cover desktop and mobile layouts, canvas interactions including node actions and linking, image workbench generation/history/reference-image flows, video workbench text-to-video and image-to-video flows, all visible buttons touched by the change, and configured API capability checks for text/image/video.
 - For live upstream API tests that include Chinese prompts, do not put Chinese literals directly in PowerShell commands. Use the app flow, Node/fetch with UTF-8 text loaded from a file, or base64/Unicode reconstruction before sending so the upstream prompt is not submitted as question marks.
 - If the full live API/browser matrix cannot be completed, report the exact gap and why.
+
+## dreamyo UI 重建与验收约束（2026-09-13）
+
+- 本轮用户指出的8项问题及执行规格固定记录于 `docs/ui-rebuild-20260913/`；此前全站视觉验收结论已撤回，后续以逐项保存的当前证据为准。
+- 高频紧凑工具栏统一同一套单色线性图标，16–20px操作入口不得混入不清晰的彩色PNG插画；大入口、状态插画和供应商品牌按各自语义使用。
+- 生成按钮以V2.1的B01（2026-09-13后续上传新图1）为视觉依据，旧图8不再有效，按紧凑/标准/整行场景定尺寸与文字，主状态只显示一个清晰图标；不得继续用模糊magic.png或以CreditSymbol代替生成图标。
+- 输入框验收必须真实输入并聚焦，分别检查浅深正文、placeholder、caret-color和文字选区；只检查空输入或placeholder不算通过。
+- Canvas按钮验收检查本体与全部裁切祖先交集、点击命中和真实缩放，不允许只用页面横溢出为0证明按钮完整；移动端必须实际设置viewport。
+- 媒体选中边框必须量实际笔画最外缘与媒体四边，不能只量SVG根节点；禁止百分比内缩造成大节点边框落在图片内部。
+- 首页和/create分别验收浅色面板、快捷区和所有弹层；浅色背景不得使用深色粒子视频叠白雾伪装，动态/减少动态/失败降级均须清晰。
+- 每项视觉PASS须有当前源码/构建身份、route、theme、viewport、state、保存的截图和操作/测量证据；代表页面、HTTP200、测试数量不能替代全站覆盖。无法验证必须列明缺口。
+
+- dreamyo后续整体UI配色以V2.1的C01（用户后续上传图2）为最高优先级配色参考：蓝、青、薄荷与淡紫柔和过渡，覆盖首页、创作、Canvas、短剧、后台、弹层及文档；具体语义值和验收见 `docs/ui-rebuild-20260913/06-配色参考与应用矩阵.md`。小工具栏单色、文本对比和错误状态规则继续有效，不复制参考图中的英文、头像和署名。

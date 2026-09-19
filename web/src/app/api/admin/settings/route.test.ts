@@ -206,6 +206,32 @@ describe("admin settings model routing", () => {
         expect(payload.settings.mail.host).not.toBe("smtp.internal");
         expect(payload.settings.mail.password).toBe("");
     });
+
+    it("persists both theme scopes from a system administrator patch", async () => {
+        const response = await PATCH(request({ site: { ...DEFAULT_SITE_SETTINGS, frontendTheme: "light", adminTheme: "dark" } }));
+
+        expect(response.status).toBe(200);
+        expect(mocks.setAuthSettings).toHaveBeenCalledWith(expect.objectContaining({ site: expect.objectContaining({ frontendTheme: "light", adminTheme: "dark" }) }));
+        expect(mocks.safeRecordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "admin.settings.update", metadata: { fields: expect.arrayContaining(["site"]) } }));
+    });
+
+    it("returns the saved theme scopes to a system administrator", async () => {
+        mocks.getFreshAuthSettings.mockResolvedValue({ ...savedSettings, site: { ...DEFAULT_SITE_SETTINGS, frontendTheme: "light", adminTheme: "light" } });
+
+        const response = await GET();
+        const payload = (await response.json()) as { settings: { site: { frontendTheme: string; adminTheme: string } } };
+
+        expect(response.status).toBe(200);
+        expect(payload.settings.site.frontendTheme).toBe("light");
+        expect(payload.settings.site.adminTheme).toBe("light");
+    });
+
+    it("normalizes an unknown theme value back to dark instead of persisting it", async () => {
+        const response = await PATCH(request({ site: { ...DEFAULT_SITE_SETTINGS, frontendTheme: "neon" } }));
+
+        expect(response.status).toBe(200);
+        expect(mocks.setAuthSettings).toHaveBeenCalledWith(expect.objectContaining({ site: expect.objectContaining({ frontendTheme: "dark" }) }));
+    });
 });
 
 function request(body: unknown) {

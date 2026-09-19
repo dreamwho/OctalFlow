@@ -1,0 +1,757 @@
+import type { ApiCallFormat, LogicalModelCapability, SystemChannelAdvancedConfig, SystemChannelAuthMode, SystemChannelModelConfig, SystemChannelProtocol, SystemModelChannel } from "@/lib/auth/store-types";
+import { inferModelCapability, normalizeModelId } from "@/lib/model-capability";
+import { MINIMAX_H3_MODELS } from "@/lib/minimax-h3";
+import { MINIMAX_H3_OFFICIAL_MODELS } from "@/lib/minimax-h3-official";
+import { SEEDANCE_SPECIAL_MODELS } from "@/lib/seedance-special";
+import { normalizeYumengModelCenterBaseUrl, YUMENG_DEFAULT_IMAGE_OPERATION, YUMENG_DEFAULT_VIDEO_OPERATION, YUMENG_MODEL_CENTER_BASE_URL, YUMENG_MODEL_CENTER_MODELS } from "@/lib/yumeng-model-center";
+import { MINIMAX_MUSIC_MODELS, MINIMAX_SPEECH_MODELS, TOKENHUB_MUSIC_MODELS } from "@/lib/minimax-audio";
+import { QWEN_AUDIO_MODELS } from "@/lib/qwen-audio";
+
+type ProtocolOperation = Omit<SystemChannelModelConfig, "capability" | "source" | "protocol" | "apiFormat"> & {
+    capability: LogicalModelCapability;
+};
+
+export type ChannelProtocolDefinition = {
+    id: SystemChannelProtocol;
+    label: string;
+    description: string;
+    apiFormat: ApiCallFormat;
+    authMode: SystemChannelAuthMode;
+    defaultBaseUrl?: string;
+    modelCatalogPaths: string[];
+    capabilities: LogicalModelCapability[];
+    operations: Partial<Record<LogicalModelCapability, ProtocolOperation>>;
+    transport?: "http" | "local-cli";
+    builtInModels?: ReadonlyArray<{ id: string; label: string; capability: LogicalModelCapability; operation?: ProtocolOperation }>;
+    strict?: boolean;
+    advanced?: boolean;
+};
+
+const openAiOperations: ChannelProtocolDefinition["operations"] = {
+    text: { capability: "text", createPath: "/chat/completions", requestTemplate: '{"model":"{{model}}","messages":[{"role":"user","content":"{{prompt}}"}]}', resultField: "choices[0].message.content" },
+    image: {
+        capability: "image",
+        createPath: "/images/generations",
+        editPath: "/images/edits",
+        requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","size":"{{size}}","quality":"{{quality}}"}',
+        resultField: "data[0].url / data[0].b64_json",
+        referenceRule: "文生图使用 /images/generations；参考图编辑使用 /images/edits multipart/form-data。",
+        supportsReferenceImage: true,
+    },
+    video: {
+        capability: "video",
+        createPath: "/videos",
+        imageToVideoPath: "/videos",
+        queryPath: "/videos/:task_id",
+        requestTemplate: "multipart/form-data: model、prompt、seconds、size、input_reference",
+        resultField: "/videos/:task_id/content",
+        statusField: "status",
+        referenceRule: "参考图使用 multipart/form-data 的单个 input_reference 文件字段。",
+        supportsReferenceImage: true,
+    },
+    audio: { capability: "audio", createPath: "/audio/speech", requestTemplate: '{"model":"{{model}}","input":"{{prompt}}","voice":"alloy","response_format":"mp3"}', resultField: "binary" },
+};
+
+const minimaxSpeechOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/v1/t2a_v2",
+    requestTemplate: '{"model":"{{model}}","text":"{{text}}","stream":false,"voice_setting":{{voice_setting}},"audio_setting":{{audio_setting}},"language_boost":"{{language_boost}}","subtitle_enable":false}',
+    resultField: "data.audio",
+};
+
+const minimaxMusicOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/v1/music_generation",
+    requestTemplate:
+        '{"model":"{{model}}","prompt":"{{prompt}}","lyrics":"{{lyrics}}","stream":false,"output_format":"hex","audio_setting":{{audio_setting}},"lyrics_optimizer":{{lyrics_optimizer}},"is_instrumental":{{is_instrumental}},"aigc_watermark":false}',
+    resultField: "data.audio",
+};
+
+const tokenHubMusicOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/v1/wand/minimax-music/generation",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","lyrics":"{{lyrics}}","output_format":"url","audio_setting":{{audio_setting}},"lyrics_optimizer":{{lyrics_optimizer}},"is_instrumental":{{is_instrumental}}}',
+    resultField: "data.audio",
+};
+
+const qwenSpeechOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/services/audio/tts/SpeechSynthesizer",
+    requestTemplate: '{"model":"{{model}}","input":{"text":"{{text}}","voice":"{{voice}}","format":"{{format}}","sample_rate":{{sample_rate}},"volume":{{volume}},"rate":{{rate}},"pitch":{{pitch}},"instruction":"{{instructions}}"}}',
+    resultField: "output.audio.url / output.audio.data",
+};
+
+const qwenTtsOperation: ProtocolOperation = {
+    capability: "audio",
+    createPath: "/services/aigc/multimodal-generation/generation",
+    requestTemplate: '{"model":"{{model}}","input":{"text":"{{text}}","voice":"{{voice}}"}}',
+    resultField: "output.audio.url / output.audio.data",
+};
+
+const geminiToolsTextOperation: ProtocolOperation = {
+    ...openAiOperations.text!,
+    referenceRule: "文本多模态输入使用 content 数组，服务端将参考图片和视频抽帧转换为 inlineData。",
+    supportsReferenceImage: true,
+};
+
+const lingkeaiSyncImageOperation: ProtocolOperation = {
+    capability: "image",
+    createPath: "/images/generations",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","n":1}',
+    resultField: "data[0].url / data[0].b64_json",
+};
+
+const lingkeaiMediaImageOperation: ProtocolOperation = {
+    capability: "image",
+    createPath: "/v1/media/generate",
+    queryPath: "/v1/media/status?task_id=:task_id",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","params":{"n":1}}',
+    resultField: "result_url",
+    statusField: "state",
+};
+
+const lingkeaiMediaVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/media/generate",
+    queryPath: "/v1/media/status?task_id=:task_id",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","params":{"images":"{{images}}","aspect_ratio":"{{aspect_ratio}}","resolution":"{{resolution}}","duration":"{{duration}}"}}',
+    resultField: "result_url",
+    statusField: "state",
+    durationRange: "1-15 秒",
+    referenceRule: "首帧参考图使用公网可访问的图片 URL，通过 params.images 数组提交（最多 1 张）；params.aspect_ratio、params.resolution、params.duration 为必填参数。",
+    supportsReferenceImage: true,
+};
+
+const minimaxH3VideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/videos",
+    imageToVideoPath: "/v1/videos",
+    queryPath: "/v1/videos/:task_id",
+    cancelPath: "/v1/videos/:task_id/cancel",
+    cancelMethod: "POST",
+    requestTemplate: "json: model、mode(t2va/i2va/fl2va/ref2va)、resolution(480p/720p)、seconds(5-15 整数)、aspect_ratio、prompt；参考媒体使用 images/videos/audios 公网 URL 数组，首尾帧按首帧在前的顺序写入 images。",
+    resultField: "/v1/videos/:task_id/content",
+    statusField: "status",
+    durationRange: "5-15 秒",
+    qualityOptions: ["480p", "720p"],
+    referenceRule: "参考媒体使用公网可访问 URL：普通参考进入 ref2va 的 images/videos/audios；首帧与首尾帧分别映射 i2va 与 fl2va 的 images，两种方式不能混用。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
+};
+
+const minimaxH3OfficialVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v2/video_generation",
+    imageToVideoPath: "/v2/video_generation",
+    queryPath: "/v2/query/video_generation/:task_id",
+    cancelPath: "/v2/video_generation/:task_id",
+    cancelMethod: "DELETE",
+    requestTemplate:
+        "json: model(MiniMax-H3)、content 多模态数组(text/image_url/video_url/audio_url)、resolution(768P/2K)、duration(4-15 整数)、ratio；首尾帧用 first_frame/last_frame 角色，参考图/视频/音频用 reference_image/reference_video/reference_audio 角色。",
+    resultField: "task.content.url",
+    statusField: "task.status",
+    durationRange: "4-15 秒",
+    qualityOptions: ["768P", "2K"],
+    referenceRule: "content 数组多模态输入：首帧、尾帧分别使用 role=first_frame/last_frame 的 image_url；多模态参考使用 role=reference_image/reference_video/reference_audio，且与首尾帧互斥。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
+};
+
+const geminiVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/models/:model:predictLongRunning",
+    imageToVideoPath: "/models/:model:predictLongRunning",
+    queryPath: "/models/:model/operations/:task_id",
+    requestTemplate:
+        '{"instances":[{"prompt":"{{prompt}}","image":"{{image}}","lastFrame":"{{last_frame}}","referenceImages":"{{references}}"}],"parameters":{"durationSeconds":"{{duration}}","aspectRatio":"{{ratio}}","resolution":"{{resolution}}","generateAudio":"{{generate_audio}}"}}',
+    resultField: "response.generateVideoResponse.generatedSamples[0].video.uri",
+    statusField: "done",
+    durationRange: "4、6、8 秒",
+    qualityOptions: ["720p", "1080p"],
+    referenceRule: "服务端将参考图片转为 inlineData；支持普通参考图、首帧和尾帧，不支持参考视频或参考音频。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: false,
+    supportsReferenceAudio: false,
+};
+
+const seedanceOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/contents/generations/tasks",
+    imageToVideoPath: "/contents/generations/tasks",
+    queryPath: "/contents/generations/tasks/:task_id",
+    requestTemplate: '{"model":"{{model}}","content":"{{content}}","ratio":"{{ratio}}","resolution":"{{resolution}}","duration":"{{duration}}","generate_audio":true,"watermark":false}',
+    resultField: "content.video_url",
+    statusField: "status",
+    durationRange: "4-15 秒，具体范围以模型文档为准",
+    referenceRule: "图片、视频和音频使用 content 多模态数组；首帧与尾帧分别使用 first_frame、last_frame 角色；媒体必须使用上游可访问的 URL 或供应商素材 ID。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
+};
+
+const seedanceSpecialOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/seedance-special/videos",
+    imageToVideoPath: "/v1/seedance-special/videos",
+    queryPath: "/v1/result/:task_id",
+    requestTemplate: '{"model":"{{model}}","ratio":"{{ratio}}","duration":"{{duration}}","generate_audio":true,"return_last_frame":false,"seed":-1,"content":"{{content}}"}',
+    resultField: "video_url",
+    statusField: "status",
+    durationRange: "4-15 秒",
+    referenceRule: "严格使用 content 数组；图片/视频/音频只能是公网 URL 或 assetId://，禁止 base64。首帧、首尾帧和多模态参考不可混用；音频不能单独输入。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
+};
+
+const dreamyoRecommendedVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/videos/generations",
+    imageToVideoPath: "/v1/videos/generations",
+    queryPath: "/v1/videos/generations/:task_id",
+    requestTemplate:
+        '{"model":"{{model}}","prompt":"{{prompt}}","duration":"{{duration}}","resolution":"{{resolution}}","generate_audio":"{{generate_audio}}","aspect_ratio":"{{aspect_ratio}}","images":"{{images}}","videos":"{{videos}}","audios":"{{audios}}"}',
+    resultField: "metadata.url",
+    statusField: "status",
+    durationRange: "5-15 秒",
+    referenceRule: "使用 application/json；参考图片、视频和音频分别写入 images、videos、audios 字符串数组。Seedance 2.0-fast-720p 仅支持参考图片且不支持声音生成。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
+};
+
+const stableDiffusionOperation: ProtocolOperation = {
+    capability: "image",
+    createPath: "/sdapi/v1/txt2img",
+    editPath: "/sdapi/v1/img2img",
+    requestTemplate: '{"prompt":"{{prompt}}","width":"{{width}}","height":"{{height}}","batch_size":1,"init_images":"{{images}}","override_settings":{"sd_model_checkpoint":"{{model}}"},"override_settings_restore_afterwards":true}',
+    resultField: "images[0]",
+    referenceRule: "文生图使用 txt2img；图生图使用 img2img，参考图写入 init_images 数组。",
+    supportsReferenceImage: true,
+};
+
+export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] = [
+    {
+        id: "openai",
+        label: "OpenAI",
+        description: "OpenAI 官方及严格兼容接口，支持文本、图片、视频和语音。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image", "video", "audio"],
+        operations: openAiOperations,
+        strict: true,
+    },
+    {
+        id: "yumeng",
+        label: "昱梦",
+        description: "昱梦新版模型中心协议，统一提交和查询图片、视频异步任务。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: YUMENG_MODEL_CENTER_BASE_URL,
+        modelCatalogPaths: [],
+        builtInModels: YUMENG_MODEL_CENTER_MODELS,
+        capabilities: ["image", "video"],
+        operations: { image: YUMENG_DEFAULT_IMAGE_OPERATION, video: YUMENG_DEFAULT_VIDEO_OPERATION },
+        strict: true,
+    },
+    {
+        id: "gemini",
+        label: "Google Gemini / Veo",
+        description: "Google Gemini API 的 Veo 异步视频协议，使用 predictLongRunning 与 operation 轮询。",
+        apiFormat: "gemini",
+        authMode: "custom-header",
+        defaultBaseUrl: "https://generativelanguage.googleapis.com",
+        modelCatalogPaths: ["/v1beta/models"],
+        capabilities: ["video"],
+        operations: { video: geminiVideoOperation },
+        strict: true,
+    },
+    {
+        id: "geminiai",
+        label: "Gemini AI Studio",
+        description: "通过服务器已授权的 Google AI Studio 账号调用；支持文本、Google 搜索与图片生成。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image"],
+        operations: { text: openAiOperations.text, image: openAiOperations.image },
+        strict: true,
+    },
+    {
+        id: "gemini-tools",
+        label: "Gemini Antigravity Tools",
+        description: "通过当前项目内置网关和已授权 Google 账号调用 Antigravity 文本与视觉理解模型。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text"],
+        operations: { text: geminiToolsTextOperation },
+        strict: true,
+    },
+    {
+        id: "chatgpt-api",
+        label: "GPTAPI",
+        description: "通过服务器已配置的 ChatGPT 内部运行时调用；模型只能从该运行时的文本与图片目录中选择。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image"],
+        operations: { text: openAiOperations.text, image: openAiOperations.image },
+        strict: true,
+    },
+    {
+        id: "dreamina-cli",
+        label: "即梦 CLI",
+        description: "服务器本地已授权的即梦 CLI 渠道。只可由图片、视频和 Canvas 任务 Runtime 调用，不提供通用 HTTP 代理或模型目录探测。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        transport: "local-cli",
+        modelCatalogPaths: [],
+        capabilities: ["image", "video"],
+        operations: {
+            image: {
+                capability: "image",
+                referenceRule: "服务端仅将已归属的图片素材暂存到受控目录，再由 Dreamina CLI 上传；图片超清使用独立 operation。",
+                supportsReferenceImage: true,
+            },
+            video: {
+                capability: "video",
+                referenceRule: "服务端仅将已归属的图片、视频、音频素材按角色暂存到受控目录，再由 Dreamina CLI 上传。",
+                supportsReferenceImage: true,
+                supportsReferenceVideo: true,
+                supportsReferenceAudio: true,
+            },
+        },
+        strict: true,
+    },
+    {
+        id: "seedance",
+        label: "Seedance 2.0 / SD2",
+        description: "Seedance 2.0 多模态视频协议。SD2 在这里不表示 Stable Diffusion。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: ["/models"],
+        capabilities: ["video"],
+        operations: { video: seedanceOperation },
+        strict: true,
+    },
+    {
+        id: "stable-diffusion",
+        label: "Stable Diffusion（SD）",
+        description: "Automatic1111 / Forge WebUI 图片协议；与 Seedance 2.0（SD2）视频协议完全独立。",
+        apiFormat: "openai",
+        authMode: "none",
+        modelCatalogPaths: ["/sdapi/v1/sd-models"],
+        capabilities: ["image"],
+        operations: { image: stableDiffusionOperation },
+        strict: true,
+    },
+    {
+        id: "volcengine-video",
+        label: "火山方舟视频",
+        description: "火山方舟视频生成协议，仅配置视频模型与文生视频、图生视频任务路径。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        modelCatalogPaths: ["/api/v3/models"],
+        capabilities: ["video"],
+        operations: { video: seedanceOperation },
+        strict: true,
+    },
+    {
+        id: "sub2api",
+        label: "sub2api",
+        description: "sub2api 聚合接口；文本沿用 OpenAI，图生图严格使用 image_urls 字符串数组。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image", "video", "audio"],
+        operations: {
+            ...openAiOperations,
+            image: {
+                ...openAiOperations.image!,
+                editPath: "/images/generations",
+                requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","image_urls":"{{images}}","size":"{{size}}"}',
+                referenceRule: "图生图使用 JSON 请求体，参考图字段必须是 image_urls 字符串数组。",
+            },
+        },
+        strict: true,
+    },
+    {
+        id: "newapi",
+        label: "New API",
+        description: "New API 聚合网关，按 OpenAI 路径调用并保留独立协议身份。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image", "video", "audio"],
+        operations: openAiOperations,
+        strict: true,
+    },
+    {
+        id: "lingkeai",
+        label: "无线创客",
+        description: "无线创客聚合网关（api.lingkeai.ai）。gpt-image-2 走同步 /images/generations；gemini 图片与视频模型走 /v1/media/generate 异步任务，视频可通过 image_url 传公网参考图；文本走 OpenAI 兼容 /chat/completions。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://api.lingkeai.ai/v1",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image", "video"],
+        operations: { text: openAiOperations.text, image: lingkeaiSyncImageOperation, video: lingkeaiMediaVideoOperation },
+        builtInModels: [
+            { id: "gpt-image-2", label: "gpt-image-2", capability: "image", operation: lingkeaiSyncImageOperation },
+            { id: "gpt-image-2-guan", label: "gpt-image-2-guan", capability: "image", operation: lingkeaiSyncImageOperation },
+            { id: "gemini-3.1-flash-image-preview", label: "gemini-3.1-flash-image-preview", capability: "image", operation: lingkeaiMediaImageOperation },
+            { id: "gemini-3-pro-image-preview", label: "gemini-3-pro-image-preview", capability: "image", operation: lingkeaiMediaImageOperation },
+            { id: "grok-imagine-video-1.5-preview", label: "grok-imagine-video-1.5-preview", capability: "video", operation: lingkeaiMediaVideoOperation },
+            { id: "hailuo-h3", label: "hailuo-h3", capability: "video", operation: lingkeaiMediaVideoOperation },
+        ],
+        strict: true,
+    },
+    {
+        id: "minimax-h3",
+        label: "easyframe MiniMaxH3",
+        description: "easyframe 网关的 MiniMax H3 视频接口（minimax.api.easyframe.cn）。POST /v1/videos 按 mode 支持文生（t2va）、首帧（i2va）、首尾帧（fl2va）与多参考（ref2va）；GET /v1/videos/:task_id 轮询，完成后从 /v1/videos/:task_id/content 取片。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://minimax.api.easyframe.cn",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["video"],
+        operations: { video: minimaxH3VideoOperation },
+        builtInModels: MINIMAX_H3_MODELS.map((id) => ({ id, label: id, capability: "video" as const })),
+        strict: true,
+    },
+    {
+        id: "minimax-h3-official",
+        label: "MiniMax H3 官方",
+        description:
+            "MiniMax 官方视频生成 V2 接口（api.minimaxi.com）。POST /v2/video_generation 按多模态 content 数组支持文生（t2va）、首尾帧（i2va）与多模态参考（r2va）；GET /v2/query/video_generation/:task_id 轮询，DELETE /v2/video_generation/:task_id 取消或删除。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://api.minimaxi.com",
+        modelCatalogPaths: [],
+        capabilities: ["video"],
+        operations: { video: minimaxH3OfficialVideoOperation },
+        builtInModels: MINIMAX_H3_OFFICIAL_MODELS.map((id) => ({ id, label: id, capability: "video" as const })),
+        strict: true,
+    },
+    {
+        id: "minimax-audio",
+        label: "MiniMax 音频 / 音乐",
+        description: "MiniMax 官方语音合成、音色设计、音色复刻和音乐生成接口。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://api.minimaxi.com",
+        modelCatalogPaths: [],
+        capabilities: ["audio"],
+        operations: { audio: minimaxSpeechOperation },
+        builtInModels: [
+            ...MINIMAX_SPEECH_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: minimaxSpeechOperation })),
+            ...MINIMAX_MUSIC_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: minimaxMusicOperation })),
+        ],
+        strict: true,
+    },
+    {
+        id: "aliyun-bailian-audio",
+        label: "阿里云百炼语音",
+        description: "阿里云百炼 Qwen-Audio-TTS、CosyVoice 和 Qwen-TTS 音色复刻/设计接口。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://dashscope.aliyuncs.com/api/v1",
+        modelCatalogPaths: [],
+        capabilities: ["audio"],
+        operations: { audio: qwenSpeechOperation },
+        builtInModels: QWEN_AUDIO_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: /^qwen3-tts-/i.test(id) ? qwenTtsOperation : qwenSpeechOperation })),
+        strict: true,
+    },
+    {
+        id: "tencent-tokenhub-music",
+        label: "腾讯云 TokenHub 音乐",
+        description: "通过腾讯云 TokenHub 调用 MiniMax Music v3.0 音乐生成接口。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://tokenhub.tencentmaas.com",
+        modelCatalogPaths: [],
+        capabilities: ["audio"],
+        operations: { audio: tokenHubMusicOperation },
+        builtInModels: TOKENHUB_MUSIC_MODELS.map((id) => ({ id, label: id, capability: "audio" as const, operation: tokenHubMusicOperation })),
+        strict: true,
+    },
+    {
+        id: "dreamyo-recommended",
+        label: "dreamyo 推荐",
+        description: "dreamyo 推荐的 JSON 异步视频协议，支持多模态参考素材与持久结果地址。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://new.aiym.ink/v1",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["video"],
+        operations: { video: dreamyoRecommendedVideoOperation },
+        strict: true,
+    },
+    {
+        id: "seedance-special",
+        label: "Seedance 2.0 特价版",
+        description: "按特价版接口文档固定模型、参数、素材与轮询路径。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        defaultBaseUrl: "https://zcbservice.aizfw.cn/kyyReactApiServer",
+        modelCatalogPaths: [],
+        capabilities: ["video"],
+        operations: { video: seedanceSpecialOperation },
+        builtInModels: SEEDANCE_SPECIAL_MODELS.map(([id, label]) => ({ id, label, capability: "video" as const })),
+        strict: true,
+    },
+    {
+        id: "custom",
+        label: "自定义协议",
+        description: "通过文档 URL、cURL 和请求/响应示例生成可复核的声明式协议。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: [],
+        capabilities: ["text", "image", "video", "audio"],
+        operations: {},
+        advanced: true,
+    },
+    {
+        id: "globalaiopc",
+        label: "GlobalAiOpc",
+        description: "按现有 GlobalAiOpc 模型预设执行文本、图片与视频请求。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: [],
+        capabilities: ["text", "image", "video"],
+        operations: {},
+        advanced: true,
+    },
+    {
+        id: "compatible",
+        label: "通用兼容",
+        description: "保留旧版兼容模式；新接口优先使用自定义协议并完成测试。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image", "video", "audio"],
+        operations: {},
+        advanced: true,
+    },
+    {
+        id: "auto",
+        label: "自动识别（旧配置）",
+        description: "仅用于已有渠道过渡；新增渠道应明确选择协议。",
+        apiFormat: "openai",
+        authMode: "bearer",
+        modelCatalogPaths: ["/v1/models"],
+        capabilities: ["text", "image", "video", "audio"],
+        operations: {},
+        advanced: true,
+    },
+];
+
+const retiredProtocolIds = new Set<SystemChannelProtocol>(["dreamyo-recommended", "seedance-special", "globalaiopc"]);
+
+export const channelProtocolDefinitions = registeredChannelProtocolDefinitions.filter((definition) => !retiredProtocolIds.has(definition.id));
+
+export function channelProtocolDefinition(protocol: SystemChannelProtocol) {
+    return registeredChannelProtocolDefinitions.find((item) => item.id === protocol) || registeredChannelProtocolDefinitions.at(-1)!;
+}
+
+export function channelProtocolOptions() {
+    return channelProtocolDefinitions.map(({ id: value, label, description, advanced }) => ({ value, label, description, advanced }));
+}
+
+export function channelSupportsModelCatalog(channel: Pick<SystemModelChannel, "advancedConfig">) {
+    const advanced = channel.advancedConfig;
+    const paths = advanced?.modelCatalogPaths ?? channelProtocolDefinition(advanced?.protocol || "auto").modelCatalogPaths;
+    return paths.some((path) => Boolean(path.trim()));
+}
+
+export function protocolCatalogCapability(protocol: SystemChannelProtocol): LogicalModelCapability | undefined {
+    const definition = channelProtocolDefinition(protocol);
+    return definition.strict && definition.capabilities.length === 1 ? definition.capabilities[0] : undefined;
+}
+
+export function protocolModelConfig(protocol: SystemChannelProtocol, capability: LogicalModelCapability, model?: string): SystemChannelModelConfig | undefined {
+    const definition = channelProtocolDefinition(protocol);
+    const builtIn = model ? definition.builtInModels?.find((item) => normalizeModelId(item.id) === normalizeModelId(model)) : undefined;
+    const operation = builtIn?.capability === capability && builtIn.operation ? builtIn.operation : definition.operations[capability];
+    if (!operation) return undefined;
+    return { ...operation, capability, source: "manual", protocol, apiFormat: definition.apiFormat };
+}
+
+export function applyModelProtocol(config: SystemChannelModelConfig, protocol: SystemChannelProtocol, model?: string): SystemChannelModelConfig {
+    return protocolModelConfig(protocol, config.capability, model) || { ...config, source: "manual", protocol };
+}
+
+export function normalizeStrictProtocolModelConfig(config: SystemChannelModelConfig, fallbackProtocol: SystemChannelProtocol, model?: string): SystemChannelModelConfig {
+    const protocol = config.protocol || fallbackProtocol;
+    if (!channelProtocolDefinition(protocol).strict) return config;
+    return protocolModelConfig(protocol, config.capability, model) || config;
+}
+
+export function resolveChannelModelConfig(config: SystemChannelAdvancedConfig | undefined, model: string) {
+    if (!config) return undefined;
+    const key = normalizeModelId(model);
+    const modelConfig = config.modelConfigs?.[key];
+    if (modelConfig) return modelConfig;
+    const capability = protocolCatalogCapability(config.protocol) || config.modelCapabilities?.[key] || inferModelCapability(model);
+    return config.operationConfigs?.[capability];
+}
+
+export function resolveChannelModelAdvancedConfig(config: SystemChannelAdvancedConfig | undefined, model: string) {
+    if (!config) return undefined;
+    const modelConfig = resolveChannelModelConfig(config, model);
+    if (!modelConfig) return config;
+    const modelAdvanced = Object.fromEntries(Object.entries(modelConfig).filter(([key]) => key !== "capability" && key !== "apiFormat"));
+    return { ...config, ...modelAdvanced };
+}
+
+export function applyChannelProtocol(channel: SystemModelChannel, protocol: SystemChannelProtocol): SystemModelChannel {
+    const definition = channelProtocolDefinition(protocol);
+    const advanced = channel.advancedConfig || emptyAdvancedConfig();
+    const builtInModels = definition.builtInModels?.map((item) => item.id) || [];
+    const isAlreadyConfigured = advanced.protocol === protocol;
+    const configuredModels = channel.models.filter((model) => builtInModels.some((builtInModel) => normalizeModelId(builtInModel) === normalizeModelId(model)));
+    const models = builtInModels.length ? (isAlreadyConfigured ? (channel.models.length === 0 || configuredModels.length ? configuredModels : builtInModels) : builtInModels) : channel.models;
+    const modelConfigs = { ...(advanced.modelConfigs || {}) };
+    const modelCapabilities = { ...(advanced.modelCapabilities || {}) };
+    const operationConfigs = definition.strict
+        ? Object.fromEntries(definition.capabilities.flatMap((capability) => (protocolModelConfig(protocol, capability) ? [[capability, protocolModelConfig(protocol, capability)!] as const] : [])))
+        : protocol === "custom"
+          ? advanced.operationConfigs || {}
+          : {};
+    for (const model of models) {
+        const key = normalizeModelId(model);
+        const builtIn = definition.builtInModels?.find((item) => normalizeModelId(item.id) === key);
+        const capability = builtIn?.capability || protocolCatalogCapability(protocol) || modelConfigs[key]?.capability || modelCapabilities[key] || inferModelCapability(model);
+        const strict = protocolModelConfig(protocol, capability, model);
+        if (strict) modelConfigs[key] = strict;
+        modelCapabilities[key] = capability;
+    }
+    const primary = definition.capabilities.length === 1 ? definition.operations[definition.capabilities[0]] : undefined;
+    const primaryAdvanced = primary ? Object.fromEntries(Object.entries(primary).filter(([key]) => key !== "capability")) : {};
+    return {
+        ...channel,
+        baseUrl: protocol === "yumeng" ? normalizeYumengModelCenterBaseUrl(channel.baseUrl) : channel.baseUrl.trim() || definition.defaultBaseUrl || "",
+        apiFormat: definition.apiFormat,
+        models,
+        advancedConfig: {
+            ...advanced,
+            protocol,
+            authMode: definition.authMode,
+            modelCatalogPaths: definition.modelCatalogPaths,
+            ...primaryAdvanced,
+            modelConfigs,
+            modelCapabilities,
+            operationConfigs,
+        },
+    };
+}
+
+export function protocolAuthHeaders(apiKey: string, input: Pick<SystemChannelAdvancedConfig, "protocol" | "authMode" | "authHeader" | "authPrefix"> | undefined, fallback: ApiCallFormat = "openai"): Record<string, string> {
+    if (input?.protocol === "gemini") return { "x-goog-api-key": apiKey };
+    const mode = resolveChannelAuthMode(input);
+    if (mode === "none" || mode === "provider-managed") return {};
+    if (fallback === "gemini" && !input?.authMode) return { "x-goog-api-key": apiKey };
+    if (mode === "x-api-key") return { "x-api-key": apiKey };
+    if (mode === "custom-header") {
+        const name = input?.authHeader?.trim() || "x-api-key";
+        const prefix = input?.authPrefix?.trim();
+        return { [name]: prefix ? `${prefix} ${apiKey}` : apiKey };
+    }
+    return { authorization: `Bearer ${apiKey}` };
+}
+
+export function resolveChannelAuthMode(input: Pick<SystemChannelAdvancedConfig, "protocol" | "authMode"> | undefined): SystemChannelAuthMode {
+    const definition = channelProtocolDefinition(input?.protocol || "auto");
+    return definition.strict ? definition.authMode : input?.authMode || definition.authMode;
+}
+
+export function channelRequiresApiKey(channel: Pick<SystemModelChannel, "advancedConfig">) {
+    const mode = resolveChannelAuthMode(channel.advancedConfig);
+    return mode !== "none" && mode !== "provider-managed";
+}
+
+export function channelCredentialsReady(channel: Pick<SystemModelChannel, "apiKey" | "hasApiKey" | "advancedConfig">) {
+    return !channelRequiresApiKey(channel) || Boolean(channel.apiKey.trim() || channel.hasApiKey);
+}
+
+export function channelConnectionReady(channel: Pick<SystemModelChannel, "baseUrl" | "apiKey" | "hasApiKey" | "advancedConfig">) {
+    return resolveChannelAuthMode(channel.advancedConfig) === "provider-managed" ? channelCredentialsReady(channel) : Boolean(channel.baseUrl.trim() && channelCredentialsReady(channel));
+}
+
+export function channelProtocolValidationErrors(channel: SystemModelChannel) {
+    const advanced = channel.advancedConfig;
+    if (!advanced) return [];
+    const errors: string[] = [];
+    const definition = channelProtocolDefinition(advanced.protocol);
+    if (definition.strict && advanced.authMode && advanced.authMode !== definition.authMode) errors.push(`${channel.name || "渠道"} 的鉴权方式必须使用 ${definition.label} 协议预设`);
+    if (advanced.authMode === "custom-header" && !isSafeAuthHeaderName(advanced.authHeader)) errors.push(`${channel.name || "渠道"} 的自定义鉴权请求头名称无效`);
+    for (const model of channel.models) {
+        const key = normalizeModelId(model);
+        const config = resolveChannelModelConfig(advanced, model);
+        const protocol = config?.protocol || advanced.protocol;
+        const definition = channelProtocolDefinition(protocol);
+        if (protocol === "custom") {
+            if (!config?.createPath) errors.push(`${model} 的自定义协议缺少创建路径`);
+            if (!config?.requestTemplate) errors.push(`${model} 的自定义协议缺少请求模板`);
+            if (!config?.resultField && config?.capability !== "audio") errors.push(`${model} 的自定义协议缺少结果字段`);
+            continue;
+        }
+        if (!definition.strict) continue;
+        const capability = config?.capability || advanced.modelCapabilities?.[key] || inferModelCapability(model);
+        const expected = protocolModelConfig(protocol, capability, model);
+        if (!expected) {
+            errors.push(`${definition.label} 不支持 ${capability} 模型 ${model}`);
+            continue;
+        }
+        const hasCapabilityDefault = Boolean(definition.operations[capability]);
+        if (definition.builtInModels && !definition.builtInModels.some((item) => normalizeModelId(item.id) === key) && !hasCapabilityDefault) errors.push(`${model} 不在 ${definition.label} 文档模型列表中`);
+        if (!config) {
+            errors.push(`${model} 缺少 ${definition.label} 的严格模型配置`);
+            continue;
+        }
+        if (config.protocol !== protocol) errors.push(`${model} 的协议必须为 ${protocol}`);
+        if ((config.apiFormat || definition.apiFormat) !== expected.apiFormat) errors.push(`${model} 的 API 格式必须为 ${expected.apiFormat}`);
+        if (config.createPath !== expected.createPath) errors.push(`${model} 的创建路径必须为 ${expected.createPath}`);
+        if ((config.editPath || "") !== (expected.editPath || "")) errors.push(`${model} 的图生图路径必须为 ${expected.editPath || "空"}`);
+        if ((config.imageToVideoPath || "") !== (expected.imageToVideoPath || "")) errors.push(`${model} 的图生视频路径必须为 ${expected.imageToVideoPath || "空"}`);
+        if ((config.queryPath || "") !== (expected.queryPath || "")) errors.push(`${model} 的查询路径必须为 ${expected.queryPath || "空"}`);
+        if ((config.requestTemplate || "") !== (expected.requestTemplate || "")) errors.push(`${model} 的请求参数必须使用 ${definition.label} 协议预设`);
+        if ((config.resultField || "") !== (expected.resultField || "")) errors.push(`${model} 的结果字段必须使用 ${definition.label} 协议预设`);
+        if ((config.statusField || "") !== (expected.statusField || "")) errors.push(`${model} 的状态字段必须使用 ${definition.label} 协议预设`);
+        if (Boolean(config.supportsReferenceImage) !== Boolean(expected.supportsReferenceImage)) errors.push(`${model} 的参考图片能力必须使用 ${definition.label} 协议预设`);
+        if (Boolean(config.supportsReferenceVideo) !== Boolean(expected.supportsReferenceVideo)) errors.push(`${model} 的参考视频能力必须使用 ${definition.label} 协议预设`);
+        if (Boolean(config.supportsReferenceAudio) !== Boolean(expected.supportsReferenceAudio)) errors.push(`${model} 的参考音频能力必须使用 ${definition.label} 协议预设`);
+    }
+    return errors;
+}
+
+function isSafeAuthHeaderName(value: string | undefined) {
+    const name = value?.trim() || "";
+    return /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) && !["connection", "content-length", "cookie", "host", "transfer-encoding"].includes(name.toLowerCase());
+}
+
+export function emptyAdvancedConfig(): SystemChannelAdvancedConfig {
+    return {
+        protocol: "auto",
+        textModel: "",
+        imageModel: "",
+        videoModel: "",
+        createPath: "",
+        editPath: "",
+        imageToVideoPath: "",
+        queryPath: "",
+        requestTemplate: "",
+        resultField: "",
+        statusField: "",
+        durationRange: "",
+        referenceRule: "",
+        supportsReferenceImage: false,
+        supportsReferenceVideo: false,
+        supportsReferenceAudio: false,
+    };
+}

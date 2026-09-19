@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/",
+  "actualPath": "/",
+  "responseStatus": 200,
+  "route": "/",
+  "theme": "light",
+  "title": "dreamyo",
+  "heading": "把灵感，变成作品",
+  "viewport": {
+    "width": 430,
+    "height": 932,
+    "visualWidth": 430,
+    "visualHeight": 932,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 430,
+    "height": 932
+  },
+  "overflow": false,
+  "state": "匿名首页",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

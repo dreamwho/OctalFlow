@@ -39,7 +39,7 @@ dreamyo 的 PostgreSQL 真实表名统一使用项目名前缀 `dreamyo_`。业�
 
 - `dreamyo_schema_migrations`：已应用的数据库结构版本。
 - `dreamyo_app_settings`：站点、注册、邮箱、积分、生成、支付配置、逻辑模型目录、渠道绑定和默认模型等全局设置；`logical_models` JSONB 保存用户可见模型及其能力、上游模型、渠道、启用状态和优先级，`generation_cost_control` JSONB 保存管理员配置的单任务、单用户每日和全站每日积分成本上限，三个值为 `0` 时均表示不限制；`data_lifecycle` JSONB 保存四类技术到期清理开关和单类批次大小，不承载对话、支付、审计等长期业务数据的法律保留期限。
-- `magic_proxy_settings`：后端预期的 Mihomo 魔法代理单例设置表，使用 `id = 'default'` 保证单例，保存订阅地址、节点和绑定的加密规范数据、订阅摘要/更新时间、运行时同步状态和审计时间；这些数据库字段是 canonical storage，订阅明文不进入普通配置响应、日志、`.env` 或离线发布包。运行时固定使用一份 Mihomo 镜像，bootstrap 静态声明 GeminiAIStudio、GeminiTools、ChatGPTAPI 三个 mixed listener 和 `dreamyo-Subscription` file provider；provider 文件只写入私有 Docker runtime volume，是可由数据库规范数据重建的运行副本，不是数据库替代品。该文件包含 Mihomo 建连必需的明文节点字段，必须按敏感数据保护，不得对外挂载、写入日志或进入公开备份。
+- `magic_proxy_settings`：后端预期的 Mihomo 魔法代理单例设置表，使用 `id = 'default'` 保证单例，保存订阅地址、节点和 GeminiAIStudio、GeminiTools、ChatGPTAPI、DolaAPI 四个 Provider 绑定的加密规范数据、订阅摘要/更新时间、运行时同步状态和审计时间；这些数据库字段是 canonical storage，订阅明文不进入普通配置响应、日志、`.env` 或离线发布包。运行时固定使用一份 Mihomo 镜像，bootstrap 静态声明四个 mixed listener、四个链式跳板组和 `dreamyo-Subscription` file provider；provider 文件只写入私有 Docker runtime volume，是可由数据库规范数据重建的运行副本，不是数据库替代品。该文件包含 Mihomo 建连必需的明文节点字段，必须按敏感数据保护，不得对外挂载、写入日志或进入公开备份。
 - `dreamyo_object_storage_settings`：S3 兼容外部存储单例配置，保存启用状态、Endpoint、Region、Bucket、对象前缀、path-style 模式及加密后的 Access Key/Secret Key；管理接口只返回密钥是否已配置，不回传明文。
 - `dreamyo_system_model_channels`：系统模型渠道、分别加密保存的 API Key 与渠道生成回调密钥、模型列表和高级配置；后台不保存渠道验证记录。
 - `dreamyo_gemini_tools_accounts`：GeminiTools 的 Google OAuth 账号、加密后的 Access/Refresh Token、Cloud Code 项目、额度快照与使用统计；账号邮箱使用不区分大小写的唯一索引。
@@ -50,6 +50,9 @@ dreamyo 的 PostgreSQL 真实表名统一使用项目名前缀 `dreamyo_`。业�
 - `dreamyo_geminiai_request_logs`：GeminiAIStudio 的运行时、外部网关或后台实测请求记录（`source` 为 `runtime`/`external`/`admin-test`），保存能力、模型、实际账号、状态、耗时与脱敏预览；列表使用服务端条件、分页和聚合统计查询，支持按 `source` 精准过滤。
 - `dreamyo_geminiai_api_keys`：外部 GeminiAIStudio 网关密钥摘要、前缀、状态、过期时间、IP 白名单和用量；数据库只保存 SHA-256 摘要，不保存可再次回显的明文。
 - `dreamyo_geminiai_gateway_settings`：GeminiAIStudio 外部网关的启用/停用单例设置（`id = 'default'`）。
+- `dreamyo_dola_accounts`：Dola Cookie 账号池的加密凭据、HMAC 去重摘要、账号状态、并发占用和上游额度快照；普通列表只返回脱敏状态，不返回 Cookie 或指纹。
+- `dreamyo_dola_api_keys` / `dreamyo_dola_gateway_settings`：Dola 外部 API 密钥摘要、来源 IP 白名单和网关启停/自动去水印设置；明文密钥只在创建时返回一次。
+- `dreamyo_dola_request_logs` / `dreamyo_dola_attempts`：Dola Camoufox 页面提交、人工验证、查询和媒体保存的脱敏日志，以及按账号凭据版本和代理来源固定的任务尝试；请求日志支持生命周期、服务端筛选分页、状态聚合、任务/验证 ID、参数与详情查看，敏感凭据和媒体二进制不落库。通用代理只保存 `node:<id>`/`group:<id>` 引用，魔法/链式代理只保存 Provider 绑定，不保存区域专用代理 URL 或密码。
 - `dreamyo_dreamina_cli_account_state`：部署服务账号的即梦 CLI 已观测版本、授权状态、会员等级、积分余额与提交租约快照；不保存 CLI OAuth 凭证、设备码、执行路径或原始命令输出。
 - `dreamyo_dreamina_cli_request_logs`：即梦 CLI 的提交、查询、下载和账户刷新审计，保存命令、模型、状态、耗时及提交响应中的官方 `credit_count`；旧版余额差记录仍可读取，提示词正文、素材路径、token、stdout/stderr 均不写入。列表按服务端分页和索引查询，累计/本周/本月/本年积分由 PostgreSQL 按 `created_at` 范围聚合，并按 `submit_id` 去重。
 - `dreamyo_runninghub_settings`：RunningHub 单例配置，保存启用状态、HTTPS API 地址、加密后的 API Key 与算力实例类型；管理接口只返回密钥是否已配置，不回传明文。

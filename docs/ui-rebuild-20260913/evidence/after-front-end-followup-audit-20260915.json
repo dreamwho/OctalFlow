@@ -1,0 +1,163 @@
+{
+  "generatedAt": "2026-09-15T12:21:20.703245+00:00",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "scope": "T14-T18,T22,T23 local front-end follow-up; T19 external blocker audit",
+  "taskStatusCounts": {
+    "PASS": 18,
+    "IN_PROGRESS": 7,
+    "BLOCKED": 1
+  },
+  "results": [
+    {
+      "task": "T14",
+      "status": "IN_PROGRESS",
+      "command": "static-brand-visual.spec.ts chromium/mobile-390/mobile-430",
+      "exitCode": 0,
+      "result": "9 passed",
+      "log": "evidence/after-static-brand-current-build-20260915.log",
+      "evidenceScope": {
+        "jsonCount": 48,
+        "buildIds": {
+          "9sMLb0KxOZx3vl8L7_ez-": 48
+        },
+        "staleBuildIdFiles": []
+      }
+    },
+    {
+      "task": "T15",
+      "status": "IN_PROGRESS",
+      "command": "content-account-visual.spec.ts chromium/mobile-390/mobile-430 (isolated PostgreSQL)",
+      "exitCode": 0,
+      "result": "15 passed",
+      "log": "evidence/after-content-account-current-postgres-20260915.log",
+      "remaining": "全部账户/内容入口逐入口状态矩阵仍未完成"
+    },
+    {
+      "task": "T16",
+      "status": "IN_PROGRESS",
+      "command": "drama-visual.spec.ts chromium/mobile-390/mobile-430 --no-deps (configured isolated fixture)",
+      "exitCode": 0,
+      "result": "6 passed",
+      "log": "evidence/after-drama-current-postgres-configured-20260915.log",
+      "remaining": "全量审核/分镜/镜头业务矩阵仍未逐项归档"
+    },
+    {
+      "task": "T17",
+      "status": "IN_PROGRESS",
+      "command": "admin-brand-visual.spec.ts admin-commerce-visual.spec.ts + admin-sections-matrix.spec.ts + admin-entry-matrix.spec.ts",
+      "exitCode": 0,
+      "result": "4 + 1 + 1 passed",
+      "logs": [
+        "evidence/after-admin-brand-commerce-current-postgres-20260915.log",
+        "evidence/after-admin-sections-current-20260915.log",
+        "evidence/after-admin-entry-current-20260915.log"
+      ],
+      "remaining": "36 分区业务状态仍未逐项归档"
+    },
+    {
+      "task": "T18",
+      "status": "IN_PROGRESS",
+      "command": "admin-commerce-visual.spec.ts (isolated PostgreSQL)",
+      "exitCode": 0,
+      "result": "4 passed",
+      "log": "evidence/after-admin-brand-commerce-current-postgres-20260915.log",
+      "remaining": "全部经营/商品/财务分区四状态仍未齐全"
+    },
+    {
+      "task": "T22",
+      "status": "IN_PROGRESS",
+      "command": "user/admin matrix + ui-rebuild.spec.ts",
+      "exitCode": 0,
+      "result": "994 default JSON current; ui-rebuild 24 passed",
+      "logs": [
+        "evidence/after-matrix-current-build-final-20260915.log",
+        "evidence/after-ui-rebuild-current-20260915.log"
+      ],
+      "remaining": "有效/加载/失败/弹层/保存状态尚未逐格完成"
+    },
+    {
+      "task": "T23",
+      "status": "IN_PROGRESS",
+      "command": "check:release + Playwright discovery/full E2E + health",
+      "exitCode": 0,
+      "result": "release 0; --list 218 tests/18 files; full 201 passed/17 skipped; health 200",
+      "logs": [
+        "evidence/after-release-followup-20260915.log",
+        "evidence/after-playwright-list-current-20260915.log",
+        "evidence/after-full-e2e-live-finaldb-20260915.log",
+        "evidence/after-standalone-health-final-20260915.log"
+      ],
+      "remaining": "T22 未完成且 T19 外部能力仍阻塞"
+    }
+  ],
+  "matrices": {
+    "userPages": {
+      "jsonCount": 434,
+      "buildIds": {
+        "9sMLb0KxOZx3vl8L7_ez-": 434
+      },
+      "staleBuildIdFiles": []
+    },
+    "adminSections": {
+      "jsonCount": 504,
+      "buildIds": {
+        "9sMLb0KxOZx3vl8L7_ez-": 504
+      },
+      "staleBuildIdFiles": []
+    },
+    "adminEntries": {
+      "jsonCount": 56,
+      "buildIds": {
+        "9sMLb0KxOZx3vl8L7_ez-": 56
+      },
+      "staleBuildIdFiles": []
+    }
+  },
+  "t19": "evidence/after-t19-external-blocker-audit-20260915.json",
+  "decision": "继续完成本地隔离 fixture 可验证的前端和状态证据；T19 保持 BLOCKED，待真实外部授权、运行时和可访问配置具备后再验收真实链路。",
+  "package": {
+    "manifest": "evidence/after-package-manifest-final-20260915.json",
+    "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+    "source": {
+      "fileCount": 2998,
+      "selectedFileCount": 2996,
+      "hashCount": 2997,
+      "totalBytes": 387581777,
+      "hashMismatches": [],
+      "invalidUtf8Files": [],
+      "unexpectedReplacementMarkerFiles": [],
+      "intentionalReplacementMarkerFiles": [
+        "AGENTS.md"
+      ]
+    },
+    "build": {
+      "fileCount": 6075,
+      "selectedFileCount": 6073,
+      "hashCount": 6074,
+      "totalBytes": 176551683,
+      "hashMismatches": [],
+      "invalidUtf8Files": [],
+      "unexpectedReplacementMarkerFiles": [],
+      "intentionalReplacementMarkerFiles": [
+        "standalone/.next/server/chunks/0tld_parse5_dist_index_0pqumj-.js",
+        "standalone/.next/server/chunks/[root-of-the-server]__0ktbn70._.js",
+        "standalone/.next/server/chunks/[root-of-the-server]__0tq4464._.js",
+        "standalone/.next/server/chunks/[root-of-the-server]__17i8-z7._.js",
+        "standalone/.next/server/chunks/[root-of-the-server]__1sxaagw._.js",
+        "standalone/.next/server/chunks/_0wo0wm-._.js",
+        "standalone/.next/server/chunks/_15w5ymf._.js",
+        "standalone/.next/server/chunks/_17v39nx._.js",
+        "standalone/.next/server/chunks/_1g-8gcj._.js",
+        "standalone/.next/server/chunks/_1p82_qd._.js",
+        "standalone/.next/server/chunks/src_lib_1ab4c_j._.js",
+        "standalone/.next/server/chunks/ssr/[root-of-the-server]__0ynj0ch._.js",
+        "standalone/.next/server/chunks/ssr/[root-of-the-server]__17149ug._.js",
+        "standalone/.next/server/chunks/ssr/_1zbv__e._.js",
+        "standalone/.next/static/chunks/0cz1d0mv5g_q7.js",
+        "standalone/.next/static/chunks/35e6sojez5zly.js",
+        "standalone/node_modules/.pnpm/next@16.3.3_@babel+core@7.29.7_supports-color@7.2.0__@playwright+test@1.62.1_@types+nod_cd3d6151a6cfcef900a0b86240bfb581/node_modules/next/dist/compiled/send/index.js"
+      ]
+    },
+    "closureComplete": true
+  }
+}

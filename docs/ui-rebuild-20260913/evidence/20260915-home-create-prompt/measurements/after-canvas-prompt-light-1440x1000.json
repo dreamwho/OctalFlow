@@ -1,0 +1,87 @@
+{
+  "deprecatedContext": 0,
+  "editor": {
+    "caretColor": "rgb(19, 32, 59)",
+    "color": "rgb(19, 32, 59)",
+    "lineHeight": "24px",
+    "overflowY": "auto",
+    "rect": {
+      "bottom": 663,
+      "height": 122,
+      "right": 1037,
+      "width": 634,
+      "x": 403,
+      "y": 541
+    },
+    "text": "请帮我生成一个 图片1 ，风格的家居客厅场景，电商生图 ，在柔和的自然光下，展示温馨氛围。"
+  },
+  "generate": {
+    "disabled": false,
+    "hit": true,
+    "icon": {
+      "bottom": 700.828125,
+      "height": 18.671875,
+      "right": 1026.5,
+      "width": 19,
+      "x": 1007.5,
+      "y": 682.15625
+    },
+    "rect": {
+      "bottom": 711.5,
+      "height": 40,
+      "right": 1037,
+      "width": 40,
+      "x": 997,
+      "y": 671.5
+    }
+  },
+  "panel": {
+    "bottom": 728,
+    "height": 232,
+    "right": 1050,
+    "width": 660,
+    "x": 390,
+    "y": 496
+  },
+  "referenceTokens": [
+    {
+      "bottom": 579,
+      "height": 34,
+      "right": 617.140625,
+      "width": 108.34375,
+      "x": 508.796875,
+      "y": 545
+    }
+  ],
+  "scroll": {
+    "bodyClientWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "htmlClientWidth": 1440,
+    "htmlScrollWidth": 1440
+  },
+  "selectedNode": {
+    "bottom": 480,
+    "height": 280,
+    "right": 930,
+    "width": 420,
+    "x": 510,
+    "y": 200
+  },
+  "skillTokens": [
+    {
+      "bottom": 579,
+      "height": 34,
+      "right": 896.9375,
+      "width": 122,
+      "x": 774.9375,
+      "y": 545
+    }
+  ],
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/canvas/canvas-ui-after-20260915",
+  "viewport": {
+    "dpr": 1,
+    "height": 1000,
+    "width": 1440
+  }
+}

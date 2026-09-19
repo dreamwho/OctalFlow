@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/a-route-that-does-not-exist",
+  "actualPath": "/a-route-that-does-not-exist",
+  "responseStatus": 404,
+  "route": "/a-route-that-does-not-exist",
+  "theme": "dark",
+  "title": "页面不存在 | dreamyo",
+  "heading": "页面不存在",
+  "viewport": {
+    "width": 1024,
+    "height": 768,
+    "visualWidth": 1024,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1024,
+    "height": 768
+  },
+  "overflow": false,
+  "state": "404错误页",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/gallery",
+  "actualPath": "/gallery",
+  "responseStatus": 200,
+  "route": "/gallery",
+  "theme": "light",
+  "title": "作品广场 | dreamyo",
+  "heading": "灵感发现",
+  "viewport": {
+    "width": 1672,
+    "height": 941,
+    "visualWidth": 1672,
+    "visualHeight": 941,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1672,
+    "height": 941
+  },
+  "overflow": false,
+  "state": "作品广场匿名入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

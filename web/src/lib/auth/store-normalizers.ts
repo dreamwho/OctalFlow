@@ -550,6 +550,7 @@ export function normalizeGenerationConcurrency(settings: Partial<GenerationConcu
         audio: normalizePositiveSafeInteger(settings?.audio, DEFAULT_SETTINGS.generationConcurrency.audio),
         text: normalizePositiveSafeInteger(settings?.text, DEFAULT_SETTINGS.generationConcurrency.text),
         render: normalizePositiveSafeInteger(settings?.render, DEFAULT_SETTINGS.generationConcurrency.render),
+        workerLanes: Math.max(1, Math.min(8, normalizePositiveSafeInteger(settings?.workerLanes, DEFAULT_SETTINGS.generationConcurrency.workerLanes))),
     };
 }
 
@@ -589,6 +590,18 @@ export function normalizeSiteSettings(settings: Partial<SiteSettings> | undefine
         privacyVersion: normalizeText(settings?.privacyVersion, DEFAULT_SITE_SETTINGS.privacyVersion, 80),
         friendLinks: normalizeSiteFriendLinks(settings?.friendLinks, title),
         socials: normalizeSiteSocials(settings?.socials),
+        announcementBar: normalizeAnnouncementBar(settings?.announcementBar),
+        frontendTheme: settings?.frontendTheme === "light" ? "light" : "dark",
+        adminTheme: settings?.adminTheme === "light" ? "light" : "dark",
+    };
+}
+
+function normalizeAnnouncementBar(value: Partial<SiteSettings["announcementBar"]> | undefined): SiteSettings["announcementBar"] {
+    const text = normalizeText(value?.text, "", 160);
+    return {
+        enabled: value?.enabled === true && Boolean(text),
+        text,
+        href: normalizeLinkUrl(value?.href, ""),
     };
 }
 
@@ -667,12 +680,12 @@ export function normalizeMailSettings(settings: Partial<MailSettings> | undefine
 }
 
 function isLegacySiteTitle(value: unknown) {
-    return value === "dreamyo" || value === "dreamyo" || value === "VOZEB PRO";
+    return value === "dreamyo" || value === "VOZEB PRO";
 }
 
 function replaceLegacyBrand(value: unknown, siteTitle: string) {
     if (typeof value !== "string") return value;
-    return value.replaceAll("dreamyo", siteTitle).replaceAll("dreamyo", siteTitle).replaceAll("VOZEB PRO", siteTitle).replaceAll("VOZEB 开源交流", `${siteTitle} 开源交流`);
+    return value.replaceAll("dreamyo", siteTitle).replaceAll("VOZEB PRO", siteTitle).replaceAll("VOZEB 开源交流", `${siteTitle} 开源交流`);
 }
 
 export function normalizeSecretText(value: unknown, fallback: string, maxPlainLength: number) {
@@ -757,6 +770,7 @@ export function normalizeSystemChannel(channel: Partial<SystemModelChannel>): Sy
     };
     if (normalized.advancedConfig?.protocol === "yumeng") return applyChannelProtocol(normalized, "yumeng");
     if (normalized.advancedConfig?.protocol === "geminiai") return { ...normalized, name: "Gemini AI Studio" };
+    if (normalized.id === "dola" || normalized.advancedConfig?.protocol === "dola") return { ...applyChannelProtocol(normalized, "dola"), name: "Dola API" };
     if (normalized.advancedConfig?.protocol === "gemini-tools") return { ...applyChannelProtocol(normalized, "gemini-tools"), name: "Gemini Antigravity Tools" };
     if (normalized.id === "minimax-audio" || normalized.advancedConfig?.protocol === "minimax-audio") {
         const baseUrl = normalized.baseUrl.replace(/\/+$/, "");

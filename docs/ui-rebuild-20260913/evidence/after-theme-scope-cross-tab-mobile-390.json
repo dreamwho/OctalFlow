@@ -1,0 +1,19 @@
+{
+  "route": "/",
+  "theme": "light",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844,
+    "zoom": 1
+  },
+  "stored": {
+    "frontend": "light",
+    "admin": "light"
+  },
+  "crossTabSync": "frontend theme synchronized through peer tab while admin scope remained independent",
+  "state": "前台/后台主题作用域跨页刷新与跨标签同步",
+  "buildId": "skNq3_iBgO4rSqUuV-XE4",
+  "capturedAt": "2026-09-15T08:46:41.608Z"
+}

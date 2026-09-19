@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-09-15",
+  "incrementalBuildId": "8fjwGRuU8GN6AmsttSMpL",
+  "previousIncrementalBuildId": "PfwHfWwtCCPfuQqyDE6Uc",
+  "baselineBuildId": "nSTS_Kms_ikgtSS2hh3wH",
+  "incrementalEvidence": {
+    "build": "evidence/after-build-responsive-selector-fix2-20260915.log",
+    "uiRebuild": "evidence/after-core-8fjw-20260915.log",
+    "responsive": "evidence/after-responsive-8fjw-20260915.log",
+    "allPagesAndSecondary": "evidence/after-secondary-8fjw-20260915.log",
+    "defaultViewportMatrix": "evidence/after-matrix-8fjw-20260915.log",
+    "typecheck": "evidence/after-typecheck-8fjw-20260915.log",
+    "lint": "evidence/after-lint-8fjw-20260915.log",
+    "vitest": "evidence/after-full-vitest-8fjw-20260915.log",
+    "playwrightList": "evidence/after-playwright-list-8fjw-20260915.txt",
+    "gitDiffCheck": "evidence/after-git-diff-check-8fjw-final-20260915.log",
+    "format": "evidence/after-format-check-8fjw-20260915.log",
+    "releaseAudit": "evidence/after-release-check-8fjw-20260915.log"
+  },
+  "results": {
+    "core": "UI21 + home15 + Canvas20 + drama3; 62 total incl setup",
+    "responsive": "48 user tests; 51 total incl setup",
+    "secondary": "admin commerce3 + all pages9 + content6 + static3; 24 total incl setup",
+    "defaultViewportMatrix": "994 JSON (434 user/public + 504 admin sections +56 admin entries); 6 tests passed",
+    "vitest": "631 files passed, 4 skipped; 3105 passed,10 skipped"
+  },
+  "status": "8fjw 当前构建通过共用UI/首页/Canvas/短剧/响应式/默认矩阵/代表后台与内容状态；完整有效/加载/失败/弹层/保存矩阵及外部服务仍未完成或阻塞。"
+}

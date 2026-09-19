@@ -54,18 +54,12 @@ describe("useCreateAgent submission retry", () => {
         expect(retrySource).not.toContain("createCreativeAgentRun");
     });
 
-    it("directly retries failed persisted tasks without rebuilding the composer or conversation", async () => {
-        const source = await readFile(resolve(process.cwd(), "src/app/(user)/create/page.tsx"), "utf8");
-        const retryStart = source.indexOf("const retryRound");
-        const retrySource = source.slice(retryStart, source.indexOf("const uploadAttachments", retryStart));
+    it("keeps the decommissioned /create route redirecting to the home page", async () => {
+        const source = await readFile(resolve(process.cwd(), "src/app/create/page.tsx"), "utf8");
 
-        expect(retrySource).toContain("agent.retrySubmission(assistantMessage.id)");
-        expect(retrySource).toContain("agent.retryTasks(");
-        expect(retrySource).toContain("failedTasks.map((task) => task.id)");
-        expect(retrySource).toContain("agent.retryRun(run.id)");
-        expect(retrySource).not.toContain("updatePrompt");
-        expect(retrySource).not.toContain("createCreativeAgentRun");
-        expect(retrySource).not.toContain("createCreativeConversation");
+        expect(source).toContain('redirect("/")');
+        expect(source).not.toContain("retryRound");
+        expect(source).not.toContain("createCreativeAgentRun");
     });
 
     it("keeps delayed run callbacks and controls scoped to the active conversation", async () => {

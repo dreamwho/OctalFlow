@@ -34,9 +34,7 @@ export function resolveCanvasNodePointerSelection(selectedNodeIds: ReadonlySet<s
  */
 export function resolveCanvasSelectionLayout(nodes: CanvasNodeData[], selectedNodeIds: Iterable<string>): CanvasNodeLayoutUpdate[] {
     const selected = new Set(selectedNodeIds);
-    const roots = nodes
-        .map((node, index) => ({ node, index }))
-        .filter(({ node }) => selected.has(node.id) && !node.metadata?.batchRootId);
+    const roots = nodes.map((node, index) => ({ node, index })).filter(({ node }) => selected.has(node.id) && !node.metadata?.batchRootId);
     if (roots.length < 2) return [];
 
     const left = Math.min(...roots.map(({ node }) => node.position.x));
@@ -87,12 +85,7 @@ function compareCanvasLayoutNodes(left: { node: CanvasNodeData; index: number },
     return leftValue === rightValue ? left.index - right.index : leftValue < rightValue ? -1 : 1;
 }
 
-export function resolveCanvasNodePlacement(
-    nodes: CanvasNodeData[],
-    size: { width: number; height: number },
-    canvasCenter: Position,
-    preferredPosition?: Position,
-) {
+export function resolveCanvasNodePlacement(nodes: CanvasNodeData[], size: { width: number; height: number }, canvasCenter: Position, preferredPosition?: Position) {
     const available = (position: Position) =>
         nodes.every(
             (node) =>
@@ -106,7 +99,13 @@ export function resolveCanvasNodePlacement(
 
     const centerDistance = (node: CanvasNodeData) => Math.hypot(node.position.x + node.width / 2 - canvasCenter.x, node.position.y + node.height / 2 - canvasCenter.y);
     const centerNode = nodes.reduce((closest, node) => (centerDistance(node) < centerDistance(closest) ? node : closest));
-    const anchors = [centerNode, ...nodes.slice().reverse().filter((node) => node.id !== centerNode.id)];
+    const anchors = [
+        centerNode,
+        ...nodes
+            .slice()
+            .reverse()
+            .filter((node) => node.id !== centerNode.id),
+    ];
     for (const anchor of anchors) {
         const candidates = [
             { x: anchor.position.x + anchor.width + CANVAS_NODE_GAP, y: anchor.position.y },
@@ -122,8 +121,22 @@ export function resolveCanvasNodePlacement(
     return { x: rightEdge + CANVAS_NODE_GAP, y: centerNode.position.y };
 }
 
+/**
+ * 连线端点按两节点相对位置自动选择进出边：目标在来源左侧时从来源左侧出、
+ * 进入目标右侧，避免连线绕到节点背面（从左侧拉出的新节点连线不再从右侧绕出）。
+ */
+export function connectionAnchors(from: CanvasNodeData, to: CanvasNodeData) {
+    const flip = to.position.x + to.width / 2 < from.position.x + from.width / 2;
+    return {
+        start: nodeAnchor(from, flip ? "target" : "source"),
+        end: nodeAnchor(to, flip ? "source" : "target"),
+        curvature: (flip ? -1 : 1) as 1 | -1,
+    };
+}
+
 export function edgePath(from: CanvasNodeData, to: CanvasNodeData) {
-    return smoothCurve(nodeAnchor(from, "source"), nodeAnchor(to, "target"), 1);
+    const { start, end, curvature } = connectionAnchors(from, to);
+    return smoothCurve(start, end, curvature);
 }
 
 export function previewPath(start: Position, end: Position, handleType: "source" | "target") {

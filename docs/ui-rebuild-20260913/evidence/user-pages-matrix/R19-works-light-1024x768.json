@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/works",
+  "actualPath": "/works",
+  "responseStatus": 200,
+  "route": "/works",
+  "theme": "light",
+  "title": "我的作品 | dreamyo",
+  "heading": "作品管理",
+  "viewport": {
+    "width": 1024,
+    "height": 768,
+    "visualWidth": 1024,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "main": {
+    "left": 168,
+    "top": 56,
+    "width": 856,
+    "height": 712
+  },
+  "overflow": false,
+  "state": "作品管理",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

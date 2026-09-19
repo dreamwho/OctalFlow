@@ -1,0 +1,58 @@
+{
+  "route": "/admin?section=generationOperations",
+  "theme": "dark",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "state": "generation operations scrolled to channel runtime status",
+  "buildId": "dd6ezvU18AJ6w0hEjdkHA",
+  "evidenceVersion": "admin-c01-v2",
+  "capturedAt": "2026-09-13T17:57:01.829Z",
+  "channelCards": [
+    {
+      "left": 285,
+      "top": 641.5625,
+      "width": 545,
+      "height": 260.84375
+    },
+    {
+      "left": 285,
+      "top": 959.40625,
+      "width": 545,
+      "height": 198.5625
+    },
+    {
+      "left": 285,
+      "top": 1214.96875,
+      "width": 545,
+      "height": 260.84375
+    },
+    {
+      "left": 285,
+      "top": 1532.8125,
+      "width": 545,
+      "height": 198.5625
+    }
+  ],
+  "statePills": [
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    },
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    },
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    },
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    }
+  ],
+  "bodyOverflow": false
+}

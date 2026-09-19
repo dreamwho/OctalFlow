@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     updateImageTask: vi.fn(),
     getVideoTask: vi.fn(),
     queryVideoTaskUpstream: vi.fn(),
+    persistVideoTaskResult: vi.fn(),
     getAudioTask: vi.fn(),
     updateAudioTask: vi.fn(),
     queryAudioTaskUpstreamStep: vi.fn(),
@@ -40,7 +41,7 @@ vi.mock("@/lib/server/agent-run-executor", () => ({ executeAgentRun: mocks.execu
 vi.mock("@/lib/server/agent-run-execution", () => ({ processAgentRunReview: mocks.processAgentRunReview }));
 vi.mock("@/lib/server/agent-run-store", () => ({ getAgentRun: mocks.getAgentRun }));
 vi.mock("@/lib/server/maintenance-auth", () => ({ maintenanceWorkerContext: vi.fn((userId: string) => `worker-context:${userId}`) }));
-vi.mock("@/lib/server/video-task-runtime", () => ({ failVideoTaskFromWorker: vi.fn(), persistVideoTaskResult: vi.fn(), queryVideoTaskUpstream: mocks.queryVideoTaskUpstream }));
+vi.mock("@/lib/server/video-task-runtime", () => ({ failVideoTaskFromWorker: vi.fn(), persistVideoTaskResult: mocks.persistVideoTaskResult, queryVideoTaskUpstream: mocks.queryVideoTaskUpstream }));
 vi.mock("@/lib/server/video-task-store", () => ({ getVideoTask: mocks.getVideoTask }));
 vi.mock("@/lib/server/audio-task-runtime", () => ({ createAudioTaskUpstreamStep: vi.fn(), markAudioTaskFailed: vi.fn(), persistAudioTaskResult: vi.fn(), queryAudioTaskUpstreamStep: mocks.queryAudioTaskUpstreamStep }));
 vi.mock("@/lib/server/audio-task-store", () => ({ getAudioTask: mocks.getAudioTask, updateAudioTask: mocks.updateAudioTask }));
@@ -185,6 +186,22 @@ describe("generation task recovery service", () => {
         expect(mocks.queryVideoTaskUpstream).toHaveBeenCalledWith(task, "http://internal", "", task.userId);
         expect(mocks.release).toHaveBeenCalledWith("video", task.id, "worker-one", expect.objectContaining({ executionPhase: "polling", lastUpstreamStatus: "processing" }));
         expect(result).toMatchObject({ claimed: 1, pending: 1 });
+    });
+
+    it("keeps Dola VOD metadata through the result-ready handoff and persistence", async () => {
+        const task = { id: "video-dola", userId: "user-one", status: "running", upstream: { id: "upstream-one" }, config: { advancedConfig: { protocol: "dola" } } };
+        const vodPayload = { fallback_api: "https://vod.dola.com/fallback?sig=fixture", key_seed: "fixture-seed", video_list: { hd: { main_url: "encoded-url" } } };
+        mocks.claim.mockResolvedValue([{ ...lease(), id: task.id, userId: task.userId, type: "video", status: "running", executionPhase: "polling", upstreamTaskId: task.upstream.id }]);
+        mocks.getVideoTask.mockResolvedValue(task);
+        mocks.queryVideoTaskUpstream.mockResolvedValue({ state: "result_ready", status: "completed", resultUrl: "https://v16-dola.dola.com/result.mp4", watermarkPayload: vodPayload });
+
+        await expect(runGenerationTaskRecoveryBatch({ origin: "http://internal", workerId: "worker-one" })).resolves.toMatchObject({ claimed: 1, resultReady: 1 });
+        expect(mocks.release).toHaveBeenCalledWith("video", task.id, "worker-one", expect.objectContaining({ executionPhase: "result_ready", resultPayload: { url: "https://v16-dola.dola.com/result.mp4", dolaVodPayload: vodPayload } }));
+
+        mocks.claim.mockResolvedValue([{ ...lease(), id: task.id, userId: task.userId, type: "video", status: "running", executionPhase: "result_ready", resultPayload: { url: "https://v16-dola.dola.com/result.mp4", dolaVodPayload: vodPayload } }]);
+        mocks.persistVideoTaskResult.mockResolvedValue({ ...task, status: "success" });
+        await expect(runGenerationTaskRecoveryBatch({ origin: "http://internal", workerId: "worker-one" })).resolves.toMatchObject({ claimed: 1, completed: 1 });
+        expect(mocks.persistVideoTaskResult).toHaveBeenCalledWith(task, "https://v16-dola.dola.com/result.mp4", "http://internal", "", task.userId, vodPayload);
     });
 
     it("moves an unpersisted Dreamina video result to manual review without settling the task", async () => {

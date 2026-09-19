@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/privacy",
+  "actualPath": "/privacy",
+  "responseStatus": 200,
+  "route": "/privacy",
+  "theme": "light",
+  "title": "隐私政策 | dreamyo",
+  "heading": "隐私政策",
+  "viewport": {
+    "width": 1672,
+    "height": 941,
+    "visualWidth": 1672,
+    "visualHeight": 941,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1672,
+    "height": 941
+  },
+  "overflow": false,
+  "state": "隐私政策",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

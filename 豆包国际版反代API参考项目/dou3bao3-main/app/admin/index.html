@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DFYue Fetch 管理面板</title>
+    <link rel="stylesheet" href="/admin/assets/styles.css?v=20260630-admin-cache-2" />
+  </head>
+  <body>
+    <script>
+      document.body.dataset.portal = location.pathname.replace(/\/+$/, "") === "/client" ? "client" : "admin";
+    </script>
+    <section class="login-screen" id="loginView">
+      <form class="login-panel" id="loginForm">
+        <div class="login-brand">
+          <div class="brand-mark">DF</div>
+          <div>
+            <div class="brand-name">DFYue Fetch</div>
+            <div class="brand-subtitle">Task Console</div>
+          </div>
+        </div>
+
+        <div class="login-heading">
+          <div class="eyebrow">管理面板</div>
+          <h1>登录</h1>
+        </div>
+
+        <label class="field">
+          <span>API Token</span>
+          <input id="loginToken" type="password" autocomplete="off" spellcheck="false" />
+        </label>
+
+        <div class="login-token-hint">
+          <span>API Token唯一获取方式：登入服务器使用命令行获取</span>
+          <div class="login-command-row">
+            <input id="tokenCommand" type="text" value="/opt/dola-fetch-service/scripts/show-token.sh" readonly aria-label="获取 API Token 的命令行" />
+            <button class="copy-command-button" id="copyTokenCommand" type="button" aria-label="复制命令行" title="复制命令行">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 7.5A2.5 2.5 0 0 1 10.5 5H18a2 2 0 0 1 2 2v7.5a2.5 2.5 0 0 1-2.5 2.5" />
+                <path d="M6 9h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="login-actions">
+          <button class="primary-button" id="loginButton" type="submit">进入</button>
+          <span class="muted" id="loginState">等待输入</span>
+        </div>
+      </form>
+    </section>
+
+    <div class="app-shell hidden" id="appShell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">DF</div>
+          <div>
+            <div class="brand-name">DFYue Fetch</div>
+            <div class="brand-subtitle">Task Console</div>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item active" type="button" data-view="dashboard">
+            <span class="nav-symbol">01</span>
+            <span>总览</span>
+          </button>
+          <button class="nav-item" type="button" data-view="submit">
+            <span class="nav-symbol">02</span>
+            <span>提交任务</span>
+          </button>
+          <button class="nav-item" type="button" data-view="tasks">
+            <span class="nav-symbol">03</span>
+            <span>任务管理</span>
+          </button>
+          <button class="nav-item" type="button" data-view="quota" id="quotaNavItem">
+            <span class="nav-symbol">04</span>
+            <span>额度控制</span>
+          </button>
+          <button class="nav-item" type="button" data-view="docs">
+            <span class="nav-symbol">05</span>
+            <span>API接口文档</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-status">
+          <span class="status-dot" id="sidebarStatusDot"></span>
+          <span id="sidebarStatusText">未连接</span>
+        </div>
+      </aside>
+
+      <main class="main">
+
+        <section class="view active" id="dashboardView" data-title="总览">
+          <div class="metric-grid">
+            <div class="metric-card">
+              <span class="metric-label">服务</span>
+              <strong id="metricService">未知</strong>
+              <span class="metric-note" id="metricServiceNote">等待连接</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">并发</span>
+              <strong id="metricWorkers">-</strong>
+              <div class="metric-note-row">
+                <span class="metric-note">服务配置</span>
+                <button class="text-button metric-edit-button" id="editWorkers" type="button">修改</button>
+              </div>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">任务</span>
+              <strong id="metricTaskTotal">-</strong>
+              <span class="metric-note">当前列表</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">待执行</span>
+              <strong id="metricPending">-</strong>
+              <span class="metric-note">队列等待</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">生成中</span>
+              <strong id="metricRunning">-</strong>
+              <span class="metric-note">正在处理</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">任务结束</span>
+              <strong id="metricFinished">-</strong>
+              <span class="metric-note">已完成</span>
+            </div>
+          </div>
+
+          <section class="panel dashboard-proxy-panel" id="proxyConfigPanel">
+            <div class="panel-header">
+              <div class="proxy-title-row">
+                <h2>代理配置</h2>
+                <span class="section-side-label">提取地址</span>
+              </div>
+              <div class="proxy-header-actions">
+                <span class="muted" id="configState">未读取</span>
+                <button class="secondary-button" id="loadProxyConfig" type="button">读取当前</button>
+                <button class="primary-button" id="saveProxyConfig" type="button">保存配置</button>
+              </div>
+            </div>
+
+            <label class="field proxy-url-field">
+              <span class="sr-only">提取地址</span>
+              <textarea id="proxyApiUrl" rows="5" spellcheck="false"></textarea>
+            </label>
+
+            <div class="proxy-notice">
+              <strong>提取地址说明</strong>
+              <span>请输入完整的 http 或 https 提取接口地址，接口返回内容应为单个代理地址，例如 <code>1.2.3.4:20000</code>。查询提取接口本身不走代理；保存后，新任务会使用新地址。</span>
+            </div>
+          </section>
+          <section class="panel dashboard-update-panel" id="updatePanel">
+            <div class="panel-header">
+              <div>
+                <h2>在线更新</h2>
+                <p class="update-note">检查 GitHub 最新代码，确认后可在线拉取并重启服务。</p>
+              </div>
+              <div class="proxy-header-actions">
+                <span class="muted" id="updateState">未检查</span>
+                <button class="secondary-button" id="checkUpdate" type="button">检查更新</button>
+                <button class="primary-button" id="applyUpdate" type="button">立即更新</button>
+              </div>
+            </div>
+            <div class="update-status-grid">
+              <div>
+                <span>当前版本</span>
+                <strong id="updateCurrent">-</strong>
+              </div>
+              <div>
+                <span>远端版本</span>
+                <strong id="updateRemote">-</strong>
+              </div>
+              <div>
+                <span>分支</span>
+                <strong id="updateBranch">-</strong>
+              </div>
+              <div>
+                <span>状态</span>
+                <strong id="updateStatusText">-</strong>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="submitView" data-title="提交任务">
+          <form class="submit-layout" id="taskForm">
+            <section class="submit-composer" aria-label="提交任务">
+              <div class="composer-main">
+                <div class="image-list" id="imageList"></div>
+                <textarea id="promptInput" rows="5" placeholder="描述你想要的视频"></textarea>
+              </div>
+
+              <div class="composer-footer">
+                <div class="composer-controls">
+                  <input id="imageInput" class="sr-only" type="file" accept="image/*" multiple />
+                  <label class="reference-button" for="imageInput"><span class="plus-icon" aria-hidden="true">+</span> 参考图</label>
+
+                  <div class="ratio-picker" id="ratioGroup">
+                    <button class="ratio-trigger" type="button" aria-haspopup="true">
+                      <span id="ratioValue">9:16</span> 比例
+                    </button>
+                    <div class="ratio-options">
+                      <button class="active" type="button" data-ratio="9:16">9:16</button>
+                      <button type="button" data-ratio="16:9">16:9</button>
+                      <button type="button" data-ratio="1:1">1:1</button>
+                      <button type="button" data-ratio="3:4">3:4</button>
+                      <button type="button" data-ratio="4:3">4:3</button>
+                      <button type="button" data-ratio="21:9">21:9</button>
+                    </div>
+                  </div>
+
+                  <span class="sr-only composer-state" id="submitState">待提交</span>
+                </div>
+
+                <button class="submit-arrow-button" id="submitTask" type="submit" aria-label="提交任务" title="提交任务">
+                  <svg aria-hidden="true" viewBox="0 0 24 24">
+                    <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" />
+                  </svg>
+                </button>
+              </div>
+            </section>
+          </form>
+        </section>
+
+        <section class="view" id="tasksView" data-title="任务管理">
+          <section class="panel">
+            <div class="table-tools">
+              <label class="field search-field">
+                <span>搜索</span>
+                <input id="taskSearch" type="search" placeholder="任务 ID、状态、文本" />
+              </label>
+              <div class="task-table-actions">
+                <div class="pager">
+                  <button class="icon-button" id="prevPage" type="button">上一页</button>
+                  <span id="pageState">1 / 1</span>
+                  <button class="icon-button" id="nextPage" type="button">下一页</button>
+                </div>
+                <div class="toolbar-actions">
+                  <button class="secondary-button" id="refreshTasks" type="button">刷新列表</button>
+                  <button class="secondary-button" id="queryVisibleTasks" type="button">查询本页</button>
+                  <button class="danger-button" id="clearTasks" type="button">清空任务</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="task-table">
+                <colgroup>
+                  <col class="task-col" />
+                  <col class="status-col" />
+                  <col class="result-col" />
+                  <col class="video-col" />
+                  <col class="action-col" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>任务</th>
+                    <th>状态</th>
+                    <th>返回文本</th>
+                    <th>视频</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="taskTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="quotaView" data-title="额度控制">
+          <section class="panel quota-panel">
+            <div class="panel-header">
+              <div>
+                <h2>临时 Token</h2>
+                <p class="quota-entry-note">客户入口：生成临时 Token 后，将 Token 发给客户，客户只能从客户入口登录并查看自己的任务。</p>
+              </div>
+              <div class="client-entry-box">
+                <span>客户入口</span>
+                <input id="clientEntryUrl" type="text" readonly aria-label="客户入口地址" />
+                <button class="secondary-button" id="copyClientEntryUrl" type="button">复制入口</button>
+              </div>
+              <div class="toolbar-actions">
+                <button class="secondary-button" id="refreshTempTokens" type="button" onclick="window.dfyueRefreshTempTokens?.()">刷新</button>
+                <button class="primary-button" id="openCreateTokenModal" type="button" onclick="window.dfyueOpenCreateTokenModal?.()">生成临时密钥</button>
+              </div>
+            </div>
+
+            <div class="table-wrap quota-table-wrap">
+              <table class="quota-table">
+                <colgroup>
+                  <col class="token-col" />
+                  <col class="quota-col" />
+                  <col class="used-col" />
+                  <col class="remain-col" />
+                  <col class="time-col" />
+                  <col class="quota-action-col" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Token</th>
+                    <th>额度</th>
+                    <th>已用</th>
+                    <th>剩余</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="tempTokenTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="docsView" data-title="API接口文档">
+          <section class="panel docs-panel docs-entry-panel">
+            <div class="docs-header">
+              <h2>API接口文档</h2>
+              <span class="docs-chip">OpenAI 兼容</span>
+            </div>
+
+            <div class="docs-entry">
+              <p>打开完整接口文档，查看模型名称、Token 调用方式、视频生成、参考图、任务查询、视频下载和临时 Token 接入示例。</p>
+              <button class="primary-button docs-open-button" id="openApiDocs" type="button">API接口文档</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+    <div class="modal-backdrop hidden" id="workersModal" aria-hidden="true">
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="workersModalTitle">
+        <div class="modal-header">
+          <h2 id="workersModalTitle">修改并发</h2>
+          <button class="modal-close" id="closeWorkersModal" type="button" aria-label="关闭">×</button>
+        </div>
+        <label class="field">
+          <span>并发数量</span>
+          <input id="workersInput" type="number" min="1" max="5" step="1" />
+        </label>
+        <div class="modal-actions">
+          <span class="sr-only" id="workersModalState"></span>
+          <button class="primary-button" id="saveWorkers" type="button">保存</button>
+          <button class="secondary-button" id="cancelWorkersModal" type="button">取消</button>
+        </div>
+      </section>
+    </div>
+    <div class="modal-backdrop hidden" id="createTokenModal" aria-hidden="true">
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="createTokenModalTitle">
+        <div class="modal-header">
+          <h2 id="createTokenModalTitle">生成临时密钥</h2>
+          <button class="modal-close" id="closeCreateTokenModal" type="button" aria-label="关闭">×</button>
+        </div>
+        <label class="field">
+          <span>生成条数</span>
+          <input id="createTokenCount" type="number" min="1" max="200" step="1" value="1" />
+        </label>
+        <label class="field">
+          <span>每个额度</span>
+          <input id="createTokenLimit" type="number" min="1" max="100000" step="1" value="100" />
+        </label>
+        <div class="modal-actions">
+          <span class="sr-only" id="createTokenState"></span>
+          <button class="primary-button" id="confirmCreateTokens" type="button">生成</button>
+          <button class="secondary-button" id="cancelCreateTokenModal" type="button">取消</button>
+        </div>
+      </section>
+    </div>
+    <div class="modal-backdrop hidden" id="textModal" aria-hidden="true">
+      <section class="modal-panel text-modal-panel" role="dialog" aria-modal="true" aria-labelledby="textModalTitle">
+        <div class="modal-header">
+          <h2 id="textModalTitle">完整文本</h2>
+          <button class="modal-close" id="closeTextModal" type="button" aria-label="关闭">×</button>
+        </div>
+        <pre class="full-text-content" id="textModalContent"></pre>
+        <div class="modal-actions">
+          <button class="secondary-button" id="copyTextModal" type="button">复制文本</button>
+          <button class="primary-button" id="confirmTextModal" type="button">关闭</button>
+        </div>
+      </section>
+    </div>
+    <div class="modal-backdrop hidden" id="videoModal" aria-hidden="true">
+      <section class="modal-panel video-modal-panel" role="dialog" aria-modal="true" aria-labelledby="videoModalTitle">
+        <div class="modal-header">
+          <div class="video-title-row">
+            <h2 id="videoModalTitle">视频预览</h2>
+            <a class="decoder-help-link" href="https://www.bilibili.com/video/BV1YB4y1y7Ua/?share_source=copy_web&amp;vd_source=994a654dd463ff952d977e0d78aba48c" target="_blank" rel="noopener noreferrer">
+              没有画面，点击下载解码器
+            </a>
+          </div>
+          <button class="modal-close" id="closeVideoModal" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="video-frame">
+          <div class="video-loading" id="videoLoading">正在加载视频链接...</div>
+          <video class="video-player hidden" id="videoPlayer" controls playsinline preload="metadata"></video>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary-button" id="copyVideoUrl" type="button">复制链接</button>
+          <button class="primary-button" id="confirmVideoModal" type="button">关闭</button>
+        </div>
+      </section>
+    </div>
+    <script src="/admin/assets/runtime-config.js?v=20260630-admin-cache-2"></script>
+    <script src="/admin/assets/app.js?v=20260630-admin-cache-2"></script>
+  </body>
+</html>

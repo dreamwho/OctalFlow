@@ -2,7 +2,8 @@ import { createPostgresRepositories, ensurePostgresSchema, isPostgresDatabaseEna
 import { formatAccountId } from "@/lib/account-id";
 import { normalizeRegistrationPolicyConsent } from "@/lib/registration-consent";
 import { normalizeAdminPermissions } from "@/lib/admin-permissions";
-import { readJsonDataFile, writeJsonDataFile } from "@/lib/server/data-adapter";
+import { readJsonDataFile, resolveDataPath, writeJsonDataFile } from "@/lib/server/data-adapter";
+import { stat as statFile } from "node:fs/promises";
 import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
 import {
     type UserRole,
@@ -158,21 +159,45 @@ import {
 
 export let mutationQueue = Promise.resolve();
 
+let authDbCache: { db: AuthDatabase; mtimeMs: number } | null = null;
+
 export async function readAuthDb(): Promise<AuthDatabase> {
     if (isPostgresDatabaseEnabled()) throw new Error("PostgreSQL auth reads must use entity repositories");
-    return normalizeDb(await readJsonDataFile<Partial<AuthDatabase>>(AUTH_DATA_FILE, emptyDb()));
+    if (authDbCache) return structuredClone(authDbCache.db);
+    return readAuthDbUncached();
+}
+
+async function readAuthDbUncached(): Promise<AuthDatabase> {
+    const db = normalizeDb(await readJsonDataFile<Partial<AuthDatabase>>(AUTH_DATA_FILE, emptyDb()));
+    try {
+        const { stat } = await import("node:fs/promises");
+        const { resolveServerDataPath } = await import("@/lib/server/data-dir");
+        const info = await statFile(resolveDataPath(AUTH_DATA_FILE));
+        authDbCache = { db, mtimeMs: info.mtimeMs };
+    } catch {
+        authDbCache = { db, mtimeMs: 0 };
+    }
+    return db;
+}
+
+async function invalidateAuthDbCache() {
+    authDbCache = null;
 }
 
 export async function mutateAuthDb<T>(mutator: (db: AuthDatabase) => T | Promise<T>) {
     if (isPostgresDatabaseEnabled()) throw new Error("PostgreSQL auth mutations must use entity repositories");
     const run = mutationQueue.then(async () => {
-        const db = await readAuthDb();
+        const db = await readAuthDbUncached();
         try {
             const result = await mutator(db);
             await writeAuthDb(db);
+            invalidateAuthDbCache();
             return result;
         } catch (error) {
-            if (error instanceof EmailCodeAttemptError) await writeAuthDb(db);
+            if (error instanceof EmailCodeAttemptError) {
+                await writeAuthDb(db);
+                invalidateAuthDbCache();
+            }
             throw error;
         }
     });

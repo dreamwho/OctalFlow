@@ -8,6 +8,7 @@ const PROVIDER_ENDPOINT = "/providers/proxies/dreamyo-Subscription";
 const GEMINIAI_GROUP = "dreamyo-GeminiAIStudio";
 const GEMINI_TOOLS_GROUP = "dreamyo-GeminiTools";
 const CHATGPT_API_GROUP = "dreamyo-ChatGPTAPI";
+const DOLA_GROUP = "dreamyo-DolaAPI";
 
 const mocks = vi.hoisted(() => ({
     files: new Map<string, unknown>(),
@@ -51,7 +52,7 @@ vi.mock("@/lib/server/chatgpt-api-service", () => ({
     syncChatGptApiRuntimeProxy: (...args: unknown[]) => chatGptServiceMocks.syncChatGptApiRuntimeProxy(...(args as [])),
 }));
 
-import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, resolveHopNodeName, testMagicProxyAllNodes, testMagicProxyNodeDelay, updateMagicProxyBinding } from "./magic-proxy-service";
+import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, resolveHopNodeName, testMagicProxyAllNodes, testMagicProxyDolaAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "./magic-proxy-service";
 import { UnsafeOutboundUrlError } from "@/lib/server/safe-outbound-fetch";
 
 const SUBSCRIPTION_URL = "https://subscription.example/clash.yaml?token=private-token";
@@ -233,6 +234,21 @@ describe("magic proxy service", () => {
         expect(selectionFor(GEMINI_TOOLS_GROUP)).toBeUndefined();
     });
 
+    it("resolves Dola magic egress through its dedicated listener and probes the Dola origin", async () => {
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_DOLA_PORT", "17893");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_DOLA_URL", "http://mihomo-listener.test:17893");
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+
+        await updateMagicProxyBinding({ provider: "dola", enabled: true, node: "Tokyo-01" });
+        const resolved = await ensureMagicProxyProvider("dola");
+        expect(resolved).toEqual({ enabled: true, proxyUrl: "http://mihomo-listener.test:17893/", egress: { mode: "magic", node_name: "Tokyo-01" } });
+        expect(selectionFor(DOLA_GROUP)).toBe("Tokyo-01");
+
+        const report = await testMagicProxyDolaAccess();
+        expect(report.targetUrl).toBe("https://www.dola.com");
+        expect(report.items).toEqual([expect.objectContaining({ service: "dola", group: DOLA_GROUP, activeNode: "Tokyo-01", enabled: true, ok: true, delay: 88 })]);
+    });
+
     it("refreshes the provider before selecting a binding whose static group is missing the expected node", async () => {
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
         mocks.controllerFetch.mockClear();
@@ -284,7 +300,7 @@ describe("magic proxy service", () => {
 
         const overview = await getMagicProxyOverview();
 
-        expect(overview.groups.map((group) => group.now)).toEqual(["", "", ""]);
+        expect(overview.groups.map((group) => group.now)).toEqual(["", "", "", ""]);
     });
 
     it("rejects non-HTTPS or credential-bearing subscription URLs before any outbound request", async () => {
@@ -505,9 +521,7 @@ describe("magic proxy service", () => {
 
         expect(refreshed.bindings.chatgptApi).toMatchObject({ enabled: true, mode: "chained" });
         expect(providerFileConfig()).toMatchObject({
-            proxies: expect.arrayContaining([
-                expect.objectContaining({ name: "dreamyo-Chained-Exit", type: "http", server: "landing.private.example", port: 8443, tls: true, "dialer-proxy": "dreamyo-Chained-Hop-ChatGPTAPI" }),
-            ]),
+            proxies: expect.arrayContaining([expect.objectContaining({ name: "dreamyo-Chained-Exit", type: "http", server: "landing.private.example", port: 8443, tls: true, "dialer-proxy": "dreamyo-Chained-Hop-ChatGPTAPI" })]),
         });
         expect(selectionFor(CHATGPT_API_GROUP)).toBe("dreamyo-Chained-Exit");
         expect(chatGptServiceMocks.resolveGenericProxyNodeUrl).toHaveBeenCalledWith("fixture-landing");
@@ -555,10 +569,12 @@ describe("magic proxy service", () => {
         expect(all.results).toEqual([{ name: "Tokyo-01", delay: 88 }]);
 
         // 逐节点 /proxies/<name>/delay 对 provider 节点一律 404，不允许再走该端点。
-        expect(mocks.controllerFetch.mock.calls.some(([url, init]) => {
-            const parsed = new URL(String(url));
-            return parsed.pathname.startsWith("/proxies/") && parsed.pathname.endsWith("/delay") && (init as RequestInit | undefined)?.method === "GET";
-        })).toBe(false);
+        expect(
+            mocks.controllerFetch.mock.calls.some(([url, init]) => {
+                const parsed = new URL(String(url));
+                return parsed.pathname.startsWith("/proxies/") && parsed.pathname.endsWith("/delay") && (init as RequestInit | undefined)?.method === "GET";
+            }),
+        ).toBe(false);
     });
 
     it("falls back to the bound magic node when a chained landing cannot be rebuilt instead of leaving a stale exit selected", async () => {
@@ -623,7 +639,7 @@ function controllerResponse(url: string, init?: RequestInit) {
     if (parsed.pathname === PROVIDER_ENDPOINT && init?.method === "PUT") return new Response(null, { status: 204 });
     if (parsed.pathname === "/proxies" && parsed.search === "" && init?.method === "GET") return groupsResponse(providerRuntimeNodes().map((node) => node.name));
     // 组级测速：mihomo 对 provider 节点的 /proxies/<name>/delay 一律 404，只有组测速返回真实延迟。
-    if (parsed.pathname === `/group/${encodeURIComponent(GEMINIAI_GROUP)}/delay` && init?.method === "GET") {
+    if (parsed.pathname.startsWith("/group/") && parsed.pathname.endsWith("/delay") && init?.method === "GET") {
         const target = parsed.searchParams.get("url") || "";
         const delays: Record<string, number> = target.includes("google") ? { DIRECT: 60 } : { DIRECT: 42, "Tokyo-01": 88 };
         return jsonResponse(delays);
@@ -634,17 +650,23 @@ function controllerResponse(url: string, init?: RequestInit) {
 
 function groupsResponse(nodeNames: string[]) {
     const chatgptApiGroup = chatgptApiRuntimeConfigured() ? { [CHATGPT_API_GROUP]: { name: CHATGPT_API_GROUP, type: "Selector", now: "DIRECT", all: ["DIRECT", ...nodeNames] } } : {};
+    const dolaGroup = dolaRuntimeConfigured() ? { [DOLA_GROUP]: { name: DOLA_GROUP, type: "Selector", now: "DIRECT", all: ["DIRECT", ...nodeNames] } } : {};
     return jsonResponse({
         proxies: {
             [GEMINIAI_GROUP]: { name: GEMINIAI_GROUP, type: "Selector", now: "DIRECT", all: ["DIRECT", ...nodeNames] },
             [GEMINI_TOOLS_GROUP]: { name: GEMINI_TOOLS_GROUP, type: "Selector", now: "DIRECT", all: ["DIRECT", ...nodeNames] },
             ...chatgptApiGroup,
+            ...dolaGroup,
         },
     });
 }
 
 function chatgptApiRuntimeConfigured() {
     return Boolean(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT && process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_URL);
+}
+
+function dolaRuntimeConfigured() {
+    return Boolean(process.env.DREAMYO_MAGIC_PROXY_DOLA_PORT && process.env.DREAMYO_MAGIC_PROXY_DOLA_URL);
 }
 
 function jsonResponse(value: unknown) {

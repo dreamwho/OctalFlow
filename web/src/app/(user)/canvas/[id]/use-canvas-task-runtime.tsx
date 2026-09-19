@@ -230,6 +230,7 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
                         vquality: generationConfig.vquality,
                         generateAudio: generationConfig.videoGenerateAudio,
                         watermark: generationConfig.videoWatermark,
+                        unwatermarked: Boolean(video.dolaVodPayload || generationConfig.model?.startsWith("dola-")),
                         videoTask: undefined,
                         errorDetails: undefined,
                     },

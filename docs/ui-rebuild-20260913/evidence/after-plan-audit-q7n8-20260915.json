@@ -1,0 +1,62 @@
+{
+  "date": "2026-09-15",
+  "buildId": "q7n8SYibLU8_WeH3qJP2Q",
+  "plan": "03-Luna任务卡.md",
+  "manual": "04-验收手册.md",
+  "taskStatus": {
+    "T00": "PASS",
+    "T01": "PASS",
+    "T02": "PASS",
+    "T03": "PASS",
+    "T04": "PASS",
+    "T05": "PASS",
+    "T06": "PASS",
+    "T07": "PASS",
+    "T08": "PASS",
+    "T09": "PASS",
+    "T10": "PASS",
+    "T11": "PASS",
+    "T12": "PASS",
+    "T13": "PASS",
+    "T14": "IN_PROGRESS",
+    "T15": "IN_PROGRESS",
+    "T16": "IN_PROGRESS",
+    "T17": "IN_PROGRESS",
+    "T18": "IN_PROGRESS",
+    "T19": "BLOCKED",
+    "T20": "PASS",
+    "T21": "PASS",
+    "T22": "IN_PROGRESS",
+    "T23": "IN_PROGRESS",
+    "T24": "PASS",
+    "T25": "PASS"
+  },
+  "matrixJsonWithCurrentBuild": {
+    "user-pages-matrix": 434,
+    "admin-sections-matrix": 504,
+    "admin-entry-matrix": 56
+  },
+  "defaultMatrixTotal": 994,
+  "qualityLogs": {
+    "after-build-final-20260915.log": 0,
+    "after-typecheck-final-q7n8-20260915.log": 0,
+    "after-lint-final-q7n8-20260915.log": 0,
+    "after-full-vitest-final-q7n8-20260915.log": 0,
+    "after-format-check-final-q7n8-v2-20260915.log": 0,
+    "after-release-check-final-q7n8-20260915.log": 0,
+    "after-full-e2e-final-q7n8-20260915.log": 0,
+    "after-all-pages-all-viewports-reference-limit-20260915.log": 0,
+    "after-core-unified-composer-with-setup-final-q7n8-20260915.log": 0
+  },
+  "unresolved": [
+    "T14",
+    "T15",
+    "T16",
+    "T17",
+    "T18",
+    "T22",
+    "T23",
+    "T19"
+  ],
+  "externalDeployment": "not executed"
+}

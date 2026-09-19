@@ -476,6 +476,14 @@ export async function createUpstream(
             pollPath: path,
             queryPath: undefined,
             resultUrl: resultUrl || undefined,
+            ...(channel.advancedConfig?.protocol === "dola" && data && typeof data === "object"
+                ? {
+                      accountId: typeof (data as Record<string, unknown>).accountId === "string" ? String((data as Record<string, unknown>).accountId) : undefined,
+                      credentialVersion: Number.isSafeInteger(Number((data as Record<string, unknown>).credentialVersion)) ? Number((data as Record<string, unknown>).credentialVersion) : undefined,
+                      proxyMode: (data as Record<string, unknown>).proxyMode === "managed" || (data as Record<string, unknown>).proxyMode === "direct" ? (data as Record<string, unknown>).proxyMode : undefined,
+                      proxyTarget: typeof (data as Record<string, unknown>).proxyTarget === "string" ? String((data as Record<string, unknown>).proxyTarget) : undefined,
+                  }
+                : {}),
             pointsCost: billedPointsCost(response.headers.get("x-dreamyo-points-cost")),
             pointsUnits: videoUnits(raw, multipliers),
             pointsRecordId: response.headers.get("x-dreamyo-points-record-id") || undefined,

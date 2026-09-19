@@ -1,0 +1,15 @@
+{
+  "route": "/canvas/canvas-ui-after-20260915",
+  "theme": "light",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "buildId": "dK6POYeiax5lYEoGNtr-j",
+  "imageApplyClosed": true,
+  "videoFirstFrameControls": 1,
+  "videoFirstLastControls": 2,
+  "videoApplyClosed": true,
+  "videoFinalSummary": "视频设置：普通参考 · 16:9 · 1080P · 10秒 · 有声 · 带水印",
+  "paidGenerationInvoked": false
+}

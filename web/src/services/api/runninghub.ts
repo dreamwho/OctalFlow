@@ -13,7 +13,19 @@ export type RunningHubAdminApp = {
     createdAt: string;
     updatedAt: string;
 };
-export type RunningHubAdminTask = { id: string; imageTaskId?: string; userId?: string; appId?: string; remoteTaskId?: string; status: "queued" | "running" | "success" | "failed" | "cancelled"; error?: string; resultUrls: string[]; createdAt: string; updatedAt: string; completedAt?: string };
+export type RunningHubAdminTask = {
+    id: string;
+    imageTaskId?: string;
+    userId?: string;
+    appId?: string;
+    remoteTaskId?: string;
+    status: "queued" | "running" | "success" | "failed" | "cancelled";
+    error?: string;
+    resultUrls: string[];
+    createdAt: string;
+    updatedAt: string;
+    completedAt?: string;
+};
 export type RunningHubAdminLog = { id: string; taskId?: string; appId?: string; phase: "account" | "sync" | "upload" | "submit" | "query" | "cancel"; path: string; statusCode: number; durationMs: number; error?: string; createdAt: string };
 export type RunningHubAdminOverview = { settings: RunningHubAdminSettings; apps: RunningHubAdminApp[]; tasks: RunningHubAdminTask[]; logs: RunningHubAdminLog[]; account: unknown; accountError: string };
 export type RunningHubCatalogApp = Pick<RunningHubAdminApp, "id" | "remoteId" | "kind" | "name" | "description" | "thumbnailUrl" | "featureBindings"> & { fieldCount: number };

@@ -76,7 +76,9 @@ export function sanitizeConfigs(config: ImageTaskConfig | undefined, settings: A
             channelId: resolved.channelId,
             ...resolveImageTaskOptions(config || {}, settings.generationDefaults),
             systemPrompt: "",
-            advancedConfig: sanitizeAdvancedConfig(channel.advancedConfig),
+            // Multi-capability channels carry per-model operations (e.g. Dola
+            // image uses /images while the channel default stays /v1/videos).
+            advancedConfig: sanitizeModelAdvancedConfig(channel.advancedConfig, channel.model),
         };
     });
 }
@@ -354,6 +356,7 @@ export async function pollOpenAiImageTask(config: ImageTaskConfig, taskId: strin
             const error = readImagePayloadError(payload);
             if (error) throw new ImageUpstreamTerminalError(error);
             payload.status = readImageTaskStatus(payload) || payload.status;
+            if (String(payload.status).toLowerCase() === "needs_review") throw new ImageQueryContractError("上游需要人工完成验证");
             if (!isPendingImageStatus(payload.status)) throw new ImageUpstreamTerminalError("图片任务完成但没有返回图片");
         }
         if (!singleStep) await delay(IMAGE_TASK_POLL_INTERVAL_MS);
@@ -493,7 +496,7 @@ export function findStringByKeys(value: unknown, keys: string[], depth = 0): str
 
 export function isPendingImageStatus(status?: string) {
     const value = (status || "").toLowerCase();
-    return !value || ["pending", "queued", "running", "processing", "in_progress", "created"].includes(value);
+    return !value || ["pending", "queued", "running", "processing", "in_progress", "created", "accepted"].includes(value);
 }
 
 export function imageTaskPollUrls(config: ImageTaskConfig, requestUrl: string, taskId: string, explicitPollUrl = "") {

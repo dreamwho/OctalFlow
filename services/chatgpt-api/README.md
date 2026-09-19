@@ -39,6 +39,12 @@ Optional:
 `DATABASE_URL` is intentionally ignored. This provider always uses
 `$DREAMYO_CHATGPT_DATA_DIR/chatgpt2api.db`.
 
+When an existing local database was created before the Dreamyo rename, startup
+validates and migrates its legacy account indexes and encrypted configuration
+envelopes in place. The migration uses the current `DREAMYO_ENCRYPTION_KEY`,
+keeps the same account data, and refuses to continue if a payload cannot be
+authenticated or a duplicate account index would be created.
+
 ## Required headers
 
 Every request, including unknown paths, `/v1`, and media, requires:

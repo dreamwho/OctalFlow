@@ -1,0 +1,66 @@
+{
+  "route": "/admin?section=generationOperations",
+  "theme": "dark",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "state": "generation operations scrolled to channel runtime status",
+  "buildId": "Qd-EP40grYit2uhV46xUe",
+  "evidenceVersion": "admin-c01-v2",
+  "capturedAt": "2026-09-13T18:02:32.377Z",
+  "heading": {
+    "left": 289,
+    "top": 438.71875,
+    "right": 709,
+    "bottom": 461.5625,
+    "width": 420,
+    "height": 22.84375
+  },
+  "channelCards": [
+    {
+      "left": 285,
+      "top": 641.5625,
+      "width": 1102,
+      "height": 260.84375
+    },
+    {
+      "left": 285,
+      "top": 959.40625,
+      "width": 1102,
+      "height": 198.5625
+    },
+    {
+      "left": 285,
+      "top": 1214.96875,
+      "width": 1102,
+      "height": 260.84375
+    },
+    {
+      "left": 285,
+      "top": 1532.8125,
+      "width": 1102,
+      "height": 198.5625
+    }
+  ],
+  "statePills": [
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    },
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    },
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    },
+    {
+      "text": "正常",
+      "className": "admin-channel-state is-healthy"
+    }
+  ],
+  "bodyOverflow": false
+}

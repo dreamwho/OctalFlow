@@ -1,0 +1,33 @@
+{
+  "route": "/register",
+  "theme": "dark",
+  "title": "注册 | dreamyo",
+  "heading": "从一个入口开始视觉创作",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "input": {
+    "left": 70,
+    "top": 351.4375,
+    "width": 270,
+    "height": 24,
+    "caretColor": "rgb(238, 246, 255)",
+    "color": "rgb(238, 246, 255)",
+    "surfaceBackground": "rgba(14, 28, 58, 0.92)",
+    "surfaceColor": "rgb(238, 246, 255)",
+    "visible": true
+  },
+  "overflow": false,
+  "iconHref": "http://127.0.0.1:3200/brand/dreamyo/mark.png",
+  "state": "真实输入与光标可见",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "capturedAt": "2026-09-15T11:58:13.768Z"
+}

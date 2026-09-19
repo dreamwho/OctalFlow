@@ -1,6 +1,6 @@
 import type { QueryExecutor } from "./postgres";
 
-export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi";
+export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi" | "dola";
 
 export type MagicProxyChainedConfig = {
     hop_node: string;
@@ -18,6 +18,8 @@ export type MagicProxyBindings = {
     geminiai: MagicProxyBinding;
     geminiTools: MagicProxyBinding;
     chatgptApi: MagicProxyBinding;
+    /** Dola is optional in legacy file snapshots; new saves always materialize it. */
+    dola?: MagicProxyBinding;
 };
 
 export type MagicProxySettings = {
@@ -42,8 +44,9 @@ export class MagicProxyRepository {
                 geminiai_enabled,geminiai_node,geminiai_mode,geminiai_chained_config,
                 gemini_tools_enabled,gemini_tools_node,gemini_tools_mode,gemini_tools_chained_config,
                 chatgpt_api_enabled,chatgpt_api_node,chatgpt_api_mode,chatgpt_api_chained_config,
+                dola_enabled,dola_node,dola_mode,dola_chained_config,
                 updated_at
-             ) VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             ) VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
              ON CONFLICT (id) DO UPDATE SET
                 subscription_url_ciphertext=EXCLUDED.subscription_url_ciphertext,
                 nodes_ciphertext=EXCLUDED.nodes_ciphertext,
@@ -59,6 +62,10 @@ export class MagicProxyRepository {
                 chatgpt_api_node=EXCLUDED.chatgpt_api_node,
                 chatgpt_api_mode=EXCLUDED.chatgpt_api_mode,
                 chatgpt_api_chained_config=EXCLUDED.chatgpt_api_chained_config,
+                dola_enabled=EXCLUDED.dola_enabled,
+                dola_node=EXCLUDED.dola_node,
+                dola_mode=EXCLUDED.dola_mode,
+                dola_chained_config=EXCLUDED.dola_chained_config,
                 updated_at=EXCLUDED.updated_at
              RETURNING *`,
             [
@@ -76,6 +83,10 @@ export class MagicProxyRepository {
                 settings.bindings.chatgptApi.node || null,
                 settings.bindings.chatgptApi.mode || "magic",
                 settings.bindings.chatgptApi.chained_config ? JSON.stringify(settings.bindings.chatgptApi.chained_config) : null,
+                settings.bindings.dola?.enabled === true,
+                settings.bindings.dola?.node || null,
+                settings.bindings.dola?.mode || "magic",
+                settings.bindings.dola?.chained_config ? JSON.stringify(settings.bindings.dola.chained_config) : null,
                 new Date(settings.updatedAt),
             ],
         );
@@ -92,6 +103,7 @@ function mapSettings(row: Record<string, unknown>): MagicProxySettings {
             geminiai: binding(row.geminiai_enabled, row.geminiai_node, row.geminiai_mode, row.geminiai_chained_config),
             geminiTools: binding(row.gemini_tools_enabled, row.gemini_tools_node, row.gemini_tools_mode, row.gemini_tools_chained_config),
             chatgptApi: binding(row.chatgpt_api_enabled, row.chatgpt_api_node, row.chatgpt_api_mode, row.chatgpt_api_chained_config),
+            dola: binding(row.dola_enabled, row.dola_node, row.dola_mode, row.dola_chained_config),
         },
         updatedAt,
     };
@@ -100,9 +112,7 @@ function mapSettings(row: Record<string, unknown>): MagicProxySettings {
 function binding(enabled: unknown, node: unknown, mode?: unknown, chainedConfig?: unknown): MagicProxyBinding {
     const selected = text(node);
     const isChained = mode === "chained";
-    const cfg = chainedConfig && typeof chainedConfig === "object" && !Array.isArray(chainedConfig)
-        ? (chainedConfig as Record<string, unknown>)
-        : {};
+    const cfg = chainedConfig && typeof chainedConfig === "object" && !Array.isArray(chainedConfig) ? (chainedConfig as Record<string, unknown>) : {};
     const hop = text(cfg.hop_node);
     const landing = text(cfg.landing_node_id);
     return {

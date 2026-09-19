@@ -1,0 +1,324 @@
+{
+  "task": "Canvas提示词面板图片、视频、音频参数弹出层深化",
+  "scope": "Canvas /canvas/canvas-ui-after-20260915 only",
+  "buildId": "dK6POYeiax5lYEoGNtr-j",
+  "finalResult": "passed",
+  "paidGenerationInvoked": false,
+  "references": [
+    {
+      "path": "reference/01-image-light.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "82bdfe59fe8a69b87fb32472cb001b987ba8b14a2dac97ed6c05bc68f6da422d"
+    },
+    {
+      "path": "reference/02-image-dark.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "ccfe1594127b72a5edf1f8892efea82faba85cd3bd1ec2a57ce5389a6fbf811a"
+    },
+    {
+      "path": "reference/03-video-light.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "5c6e133c4fb43cc54f4afdc6a3b271cf92b10d2dff3d167321e2fada0d8d8660"
+    },
+    {
+      "path": "reference/04-video-dark.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "56edaed113cc8b43042e067c866fbfeaae9c055705d772157354e1803f430638"
+    },
+    {
+      "path": "reference/05-audio-light.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "7211ba9aed7fd0a1f7c1ee3879394ad69d058ef5a2c9290f969981b33e1123f0"
+    },
+    {
+      "path": "reference/06-audio-dark.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "cc9512e5e9e58e15c880e56b5d16055e8f746c5457c1d549313ce58bc200499a"
+    }
+  ],
+  "afterScreenshots": [
+    {
+      "path": "after/audio-dark-1440x900-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "4bb2fc340ad8d4e66e17736fdede85cc8581b09417aadd335e61536d96b93aca",
+      "measurement": "measurements/audio-dark-1440x900-final.json",
+      "theme": "dark",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "minimax-tts-unselected-voice",
+      "zoom": 100
+    },
+    {
+      "path": "after/audio-dark-390x844-final.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "e004ebb72b6dcd90ccd8ca8c5ebfbce399dcb0e0cbefcec1718c901288e79d0b",
+      "measurement": "measurements/audio-dark-390x844-final.json",
+      "theme": "dark",
+      "viewport": {
+        "height": 844,
+        "width": 390
+      },
+      "state": "minimax-tts-unselected-voice",
+      "zoom": 100
+    },
+    {
+      "path": "after/audio-light-1440x900-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "6f4d1922094f885f0bc3cec622454b87a86b72dbe8af0491e17508ece31a3887",
+      "measurement": "measurements/audio-light-1440x900-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "minimax-tts-unselected-voice",
+      "zoom": 100
+    },
+    {
+      "path": "after/audio-light-430x932-final.png",
+      "width": 430,
+      "height": 932,
+      "sha256": "2c928fc30774a4215a27fff3446152c9425ceaa9c52cf3a264036f8e47ce5336",
+      "measurement": "measurements/audio-light-430x932-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 932,
+        "width": 430
+      },
+      "state": "minimax-tts-unselected-voice",
+      "zoom": 100
+    },
+    {
+      "path": "after/image-dark-1440x900-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "05ca0bb734c7c5a5f382979317881133b4372fbbc141931bc8ace6efec525d46",
+      "measurement": "measurements/image-dark-1440x900-final.json",
+      "theme": "dark",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "configured-16x9-high-2",
+      "zoom": 100
+    },
+    {
+      "path": "after/image-dark-1440x900-review-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "8912f128b1ab59fbe7e3cd42ba8984b9ea1c3f1a9453dfacd9606de21ca2118e",
+      "measurement": "measurements/image-dark-1440x900-review-final.json",
+      "theme": "dark",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "configured-16x9-high-2-review",
+      "zoom": "100"
+    },
+    {
+      "path": "after/image-dark-390x844-final.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "172620eacee8bc3a26a5a3e83689f0209eec750654bc1790aa515629f31e5e23",
+      "measurement": "measurements/image-dark-390x844-final.json",
+      "theme": "dark",
+      "viewport": {
+        "height": 844,
+        "width": 390
+      },
+      "state": "configured-16x9-high-2-direct-mobile",
+      "zoom": 14
+    },
+    {
+      "path": "after/image-light-1440x900-custom-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "b4237faa595bd2b531cd1b164d2ea19c43615942f1fe8076ed940ea99edeabe2",
+      "measurement": "measurements/image-light-1440x900-custom-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "custom-1024x1280",
+      "zoom": 100
+    },
+    {
+      "path": "after/image-light-1440x900-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "d4eb14536a72974557a0ad6d549659ccdfa03b79b368fae806f7b0c61345a9c0",
+      "measurement": "measurements/image-light-1440x900-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "configured-16x9-high-2",
+      "zoom": 100
+    },
+    {
+      "path": "after/image-light-430x932-final.png",
+      "width": 430,
+      "height": 932,
+      "sha256": "d676d9910a9a44bee9b3fe3cd201597d7ed5a44338c966804f731f502b1dffc6",
+      "measurement": "measurements/image-light-430x932-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 932,
+        "width": 430
+      },
+      "state": "configured-16x9-high-2",
+      "zoom": 100
+    },
+    {
+      "path": "after/video-dark-1440x900-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "e092e4503a7d920a9c8aaab4b33cae50e81e386b2cafae777152ba4173acd33d",
+      "measurement": "measurements/video-dark-1440x900-final.json",
+      "theme": "dark",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "reference-16x9-1080p-10s-audio-watermark",
+      "zoom": 100
+    },
+    {
+      "path": "after/video-dark-390x844-final.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "4b5fccd0308604fffbd5b49e04a986ba713b1affde7af0d4fa3f84740d6537c9",
+      "measurement": "measurements/video-dark-390x844-final.json",
+      "theme": "dark",
+      "viewport": {
+        "height": 844,
+        "width": 390
+      },
+      "state": "reference-16x9-1080p-10s",
+      "zoom": 100
+    },
+    {
+      "path": "after/video-light-1440x900-custom-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "360c08c9e85e700034c7cfe8c7ea74aa70bb0ce153e86857551ad39a48ce5a70",
+      "measurement": "measurements/video-light-1440x900-custom-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "custom-1280x720",
+      "zoom": 100
+    },
+    {
+      "path": "after/video-light-1440x900-final.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "007441ee11ab53d78efde6db10006ad683e0debb022a3b2da7315fbf74165eae",
+      "measurement": "measurements/video-light-1440x900-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "reference-16x9-1080p-10s-audio-watermark",
+      "zoom": 100
+    },
+    {
+      "path": "after/video-light-430x932-final.png",
+      "width": 430,
+      "height": 932,
+      "sha256": "6be784b784e868b2642cfb662cb70981af2d1929de0633d6a6ed1fd648ec6b5d",
+      "measurement": "measurements/video-light-430x932-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 932,
+        "width": 430
+      },
+      "state": "reference-16x9-1080p-10s",
+      "zoom": 100
+    },
+    {
+      "path": "after/video-light-430x932-scrolled-final.png",
+      "width": 430,
+      "height": 932,
+      "sha256": "a3381983c7b4ff728556b328eafb88977557d62c3225ce973f6d128092ce4628",
+      "measurement": "measurements/video-light-430x932-scrolled-final.json",
+      "theme": "light",
+      "viewport": {
+        "height": 932,
+        "width": 430
+      },
+      "state": "scrolled-to-duration-and-switches",
+      "zoom": 100
+    }
+  ],
+  "comparisons": [
+    {
+      "path": "comparison/audio-dark-reference-vs-final.png",
+      "width": 1924,
+      "height": 860,
+      "sha256": "04abdf3d7deb2c9b9c87b331c4c7832bd3b9cff432a22f1e087a15f1984989cd"
+    },
+    {
+      "path": "comparison/audio-light-reference-vs-final.png",
+      "width": 1924,
+      "height": 860,
+      "sha256": "8b98f8add1bdc0182a78f08b6b2a17fd78d5110a8fffd56bae5aa265f5236d11"
+    },
+    {
+      "path": "comparison/image-dark-reference-vs-final.png",
+      "width": 1924,
+      "height": 860,
+      "sha256": "051d88d344662c7722782ef44c20e42f3267f0310e4ffcabd9fec239a8ed1920"
+    },
+    {
+      "path": "comparison/image-light-reference-vs-final.png",
+      "width": 1924,
+      "height": 860,
+      "sha256": "129e036c02dc312e8c415fb5c249a34ba11664aed01613d694055e0ef09c1292"
+    },
+    {
+      "path": "comparison/video-dark-reference-vs-final.png",
+      "width": 1924,
+      "height": 860,
+      "sha256": "3a2d7a4e3ed4bc75f1d55c207b5e294f65a1faf10085e0e7f6aae74eb058ed16"
+    },
+    {
+      "path": "comparison/video-light-reference-vs-final.png",
+      "width": 1924,
+      "height": 860,
+      "sha256": "0e25e3e3e9d79732b7d1721db5e097ce3c01470b4c5ca49fbb5d10e35f6084c6"
+    }
+  ],
+  "interactions": "measurements/interactions-final.json",
+  "logs": [
+    "logs/production-build-final.log",
+    "logs/targeted-vitest-final.log",
+    "logs/tsc-final.log",
+    "logs/eslint-final.log",
+    "logs/playwright-list-final.log",
+    "logs/health-final.log",
+    "logs/browser-console-final.json",
+    "logs/build-id-final.txt",
+    "logs/diff-check-final.log",
+    "logs/post-margin-checks.log",
+    "logs/evidence-audit-final.log"
+  ],
+  "errors": []
+}

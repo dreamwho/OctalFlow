@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "userId": "08ad9588-e2df-40db-98b4-9925bdd9fbad",
+      "project": {
+        "id": "canvas-jM9E6u-CnA7sBxKWMu7QT",
+        "creativeConversationId": "conversation-a33o3_PzVqcOPrPLrE3Yp",
+        "title": "dreamyo 画布 1",
+        "createdAt": "2026-09-13T12:43:30.229Z",
+        "updatedAt": "2026-09-13T12:44:25.742Z",
+        "nodes": [
+          {
+            "id": "image-xJZrYLMBycDValLG9cVgP",
+            "type": "image",
+            "title": "图片生成",
+            "position": {
+              "x": 470,
+              "y": 240
+            },
+            "width": 340,
+            "height": 240,
+            "metadata": {
+              "content": "",
+              "status": "idle"
+            }
+          }
+        ],
+        "connections": [],
+        "chatSessions": [],
+        "activeChatId": null,
+        "backgroundMode": "dots",
+        "showImageInfo": false,
+        "viewport": {
+          "x": 0,
+          "y": -124,
+          "k": 1
+        },
+        "__canvasLastMutationId": "M0cqeVyDrQqhIKK28_cRs"
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "route": "/assets",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "theme": "light",
+  "state": "已保存真实素材",
+  "card": {
+    "left": 484,
+    "top": 281.953125,
+    "width": 280,
+    "height": 326.09375
+  },
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "entity": "内容库视觉素材 2a5b8309"
+}

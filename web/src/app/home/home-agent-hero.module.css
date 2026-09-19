@@ -1,31 +1,49 @@
 .hero {
-    --hero-bg: #edf5ff;
-    --hero-text: #0d1730;
-    --hero-muted: #566580;
-    --hero-panel: rgba(4, 13, 31, 0.92);
-    --hero-panel-soft: rgba(10, 25, 48, 0.78);
-    --hero-panel-text: #f8fbff;
-    --hero-panel-muted: #9aa9c2;
-    --hero-line: rgba(155, 224, 255, 0.34);
-    --hero-cobalt: #4f68ff;
-    --hero-cyan: #53d9ff;
-    --hero-mint: #67f2d1;
-    --hero-lavender: #b8a7ff;
-    background: var(--hero-bg);
+    --hero-bg: #090d16;
+    --hero-text: #f6f9ff;
+    --hero-muted: #9aa9c2;
+    --hero-panel: rgba(13, 17, 28, 0.88);
+    --hero-panel-soft: rgba(20, 26, 45, 0.78);
+    --hero-panel-text: #edf7ff;
+    --hero-panel-muted: #a7b7d2;
+    --hero-line: rgba(129, 140, 248, 0.28);
+    --hero-cobalt: #5e7ff1;
+    --hero-cyan: #35cce1;
+    --hero-mint: #58dec9;
+    --hero-lavender: #b9b3f7;
+    --hero-caret: #35cce1;
+    background: transparent;
     color: var(--hero-text);
-    min-height: 760px;
+    min-height: auto;
     overflow: hidden;
-    padding: 126px 28px 62px;
+    padding: clamp(150px, 19vh, 210px) 24px 28px;
     position: relative;
 }
 
+:global(html:not(.dark)) .hero::before {
+    background: linear-gradient(140deg, rgba(255, 255, 255, 0.72), rgba(240, 248, 255, 0.42) 48%, rgba(255, 255, 255, 0.62));
+    border: 1px solid rgba(130, 171, 225, 0.2);
+    border-radius: 30px;
+    box-shadow:
+        0 26px 80px rgba(66, 101, 170, 0.09),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    content: "";
+    inset: 14px 3.5vw 14px;
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+}
+
 :global(.dark) .hero {
-    --hero-bg: #020711;
+    --hero-bg: transparent;
     --hero-text: #f6f9ff;
     --hero-muted: #9aa9c2;
-    --hero-panel: rgba(2, 9, 23, 0.9);
-    --hero-panel-soft: rgba(10, 24, 47, 0.72);
-    --hero-line: rgba(121, 218, 255, 0.32);
+    --hero-panel: rgba(15, 20, 38, 0.82);
+    --hero-panel-soft: rgba(20, 26, 50, 0.78);
+    --hero-panel-text: #edf7ff;
+    --hero-panel-muted: #a7b7d2;
+    --hero-line: rgba(129, 140, 248, 0.32);
+    --hero-caret: #a855f7;
 }
 
 .motionStage {
@@ -37,12 +55,12 @@
     position: absolute;
 }
 
-.motionVideo {
-    filter: hue-rotate(58deg) saturate(0.88) contrast(1.08) brightness(0.78) blur(1px);
+.motionVisual {
+    filter: saturate(0.92) contrast(1.02);
     height: 100%;
     left: 50%;
     object-fit: cover;
-    opacity: 0.5;
+    opacity: 0.72;
     position: absolute;
     top: 50%;
     transform: translate3d(calc(-50% + var(--pointer-x)), calc(-50% + var(--pointer-y)), 0) scale(1.13);
@@ -50,9 +68,21 @@
     width: 100%;
 }
 
-:global(.dark) .motionVideo {
-    filter: hue-rotate(58deg) saturate(0.9) contrast(1.14) brightness(0.7) blur(1px);
-    opacity: 0.66;
+:global(.dark) .motionVisual {
+    filter: saturate(1.02) contrast(1.08);
+    opacity: 0.42;
+}
+
+.motionImageDark {
+    display: none;
+}
+
+:global(.dark) .motionImageLight {
+    display: none;
+}
+
+:global(.dark) .motionImageDark {
+    display: block;
 }
 
 .motionVeil,
@@ -87,6 +117,14 @@
     background: radial-gradient(circle at 78% 52%, rgba(103, 242, 209, 0.18), transparent 28%);
 }
 
+.hero[data-page-hidden="true"] .motionVisual,
+.hero[data-page-hidden="true"] .motionBloom,
+.hero[data-page-hidden="true"] .motionLeft,
+.hero[data-page-hidden="true"] .motionRight {
+    animation-play-state: paused;
+    transition: none;
+}
+
 .heroContent {
     margin: 0 auto;
     max-width: 1320px;
@@ -106,63 +144,101 @@
 }
 
 .heroTitle {
-    background: linear-gradient(92deg, var(--hero-text) 14%, #dfe8ff 42%, #78e6f3 74%, #a9f4de 100%);
+    background: linear-gradient(92deg, #ffffff 15%, #e0e7ff 50%, #7dd3fc 85%, #bae6fd 100%);
     background-clip: text;
     color: transparent;
-    font-size: clamp(48px, 5.2vw, 76px);
-    font-weight: 780;
-    letter-spacing: -0.055em;
-    line-height: 1.04;
-    margin: 22px auto 0;
+    font-size: clamp(38px, 4.4vw, 56px);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.12;
+    margin: 14px auto 0;
     text-wrap: balance;
 }
 
+.heroTitle span {
+    display: block;
+}
+
 :global(html:not(.dark)) .heroTitle {
-    background: linear-gradient(92deg, #13213d 10%, #3857b9 46%, #1b9ba9 76%, #238a78 100%);
+    background: linear-gradient(92deg, #0f172a 10%, #1e40af 46%, #0369a1 76%, #0284c7 100%);
     background-clip: text;
 }
 
 .heroSubtitle {
-    color: var(--hero-muted);
-    font-size: 17px;
-    line-height: 1.7;
-    margin: 18px auto 0;
+    color: #94a3b8;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    line-height: 1.6;
+    margin: 10px auto 0;
 }
 
 .composerWrap {
-    margin: 38px auto 0;
-    max-width: 1080px;
+    margin: 24px auto 0;
+    max-width: 760px;
+    width: 100%;
     position: relative;
+}
+
+/* 顶部图片/视频切换：全局 preflight 的 button color:inherit 会吞掉 Tailwind 颜色类，改用模块类控制 */
+.modeToggleActive,
+.modeToggleActive:hover {
+    background: #ffffff;
+    color: #0b0f19;
+    font-weight: 600;
+}
+
+.modeToggleIdle {
+    color: #9aa5bd;
+}
+
+.modeToggleIdle:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #e2e8f0;
 }
 
 .composerGlow {
     animation: composer-pulse 5.5s ease-in-out infinite;
-    background: linear-gradient(96deg, rgba(79, 104, 255, 0.65), rgba(83, 217, 255, 0.58), rgba(103, 242, 209, 0.55), rgba(184, 167, 255, 0.6));
-    border-radius: 34px;
-    filter: blur(24px);
-    inset: 18px 42px -14px;
-    opacity: 0.28;
+    background: radial-gradient(circle at 50% 30%, rgba(53, 204, 225, 0.22), rgba(94, 127, 241, 0.25) 45%, rgba(185, 179, 247, 0.15) 65%, transparent 75%);
+    border-radius: 40px;
+    filter: blur(36px);
+    inset: -10px 10px -10px;
+    opacity: 0.45;
     position: absolute;
 }
 
 .composer {
-    background: var(--hero-panel);
-    border: 1px solid transparent;
-    border-radius: 29px;
-    box-shadow: 0 30px 90px rgba(1, 10, 28, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.07);
-    min-height: 260px;
-    padding: 27px 28px 22px;
+    background: rgba(13, 17, 28, 0.88);
+    border: 1px solid rgba(129, 140, 248, 0.22);
+    border-radius: 28px;
+    box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.65),
+        0 0 40px rgba(94, 127, 241, 0.08),
+        inset 0 1px 1px rgba(255, 255, 255, 0.12);
+    min-height: auto;
+    padding: 16px 20px 14px;
     position: relative;
     text-align: left;
-    backdrop-filter: blur(24px) saturate(1.2);
+    backdrop-filter: blur(36px) saturate(1.4);
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.composer:focus-within {
+    border-color: rgba(53, 204, 225, 0.45);
+    box-shadow:
+        0 0 0 1px rgba(53, 204, 225, 0.35),
+        0 30px 80px rgba(0, 0, 0, 0.75),
+        0 0 60px rgba(53, 204, 225, 0.18),
+        inset 0 1px 1px rgba(255, 255, 255, 0.18);
 }
 
 .composer::before {
-    background: linear-gradient(112deg, rgba(79, 104, 255, 0.94), rgba(83, 217, 255, 0.82) 34%, rgba(103, 242, 209, 0.8) 66%, rgba(184, 167, 255, 0.88));
+    background: linear-gradient(112deg, rgba(99, 102, 241, 0.95), rgba(168, 85, 247, 0.85) 34%, rgba(56, 189, 248, 0.8) 66%, rgba(129, 140, 248, 0.92));
     border-radius: inherit;
     content: "";
     inset: -1px;
-    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
     mask-composite: exclude;
     padding: 1px;
     pointer-events: none;
@@ -175,14 +251,15 @@
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    color: var(--hero-panel-text);
+    caret-color: var(--hero-caret);
+    color: #ffffff;
     display: block;
     font: inherit;
-    font-size: 17px;
-    line-height: 1.65;
-    min-height: 98px;
+    font-size: 16px;
+    line-height: 1.6;
+    min-height: 142px;
     outline: none !important;
-    padding: 0;
+    padding: 10px 0 6px;
     resize: none;
     width: 100%;
 }
@@ -199,39 +276,7 @@
 }
 
 .examplePrompts {
-    display: flex;
-    gap: 8px;
-    min-height: 30px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
-}
-
-.examplePrompts::-webkit-scrollbar {
     display: none;
-}
-
-.examplePrompts button {
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid rgba(144, 177, 221, 0.12);
-    border-radius: 999px;
-    color: var(--hero-panel-muted);
-    cursor: pointer;
-    flex: 0 0 auto;
-    font-size: 11px;
-    height: 28px;
-    max-width: 220px;
-    overflow: hidden;
-    padding: 0 11px;
-    text-overflow: ellipsis;
-    transition: border-color 180ms ease, color 180ms ease, background 180ms ease;
-    white-space: nowrap;
-}
-
-.examplePrompts button:hover {
-    background: rgba(83, 217, 255, 0.08);
-    border-color: rgba(83, 217, 255, 0.38);
-    color: #dffbff;
 }
 
 .composerToolbar,
@@ -243,16 +288,14 @@
 }
 
 .composerToolbar {
-    border-top: 1px solid rgba(148, 173, 215, 0.1);
     gap: 12px;
     justify-content: space-between;
-    margin-top: 13px;
-    padding-top: 16px;
+    margin-top: 12px;
 }
 
 .leftControls,
 .rightControls {
-    gap: 10px;
+    gap: 8px;
     min-width: 0;
 }
 
@@ -272,34 +315,41 @@
     cursor: pointer;
     display: inline-flex;
     justify-content: center;
-    transition: color 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    transition:
+        color 180ms ease,
+        background 180ms ease,
+        border-color 180ms ease,
+        box-shadow 180ms ease,
+        transform 180ms ease;
 }
 
 .iconControl,
 .toolControl,
 .modeGroup {
     background: rgba(6, 16, 34, 0.72);
-    border-radius: 13px;
+    border-radius: 9999px;
 }
 
 .iconControl {
-    height: 46px;
+    height: 38px;
     position: relative;
-    width: 46px;
+    width: 38px;
 }
 
 .iconControl svg,
 .toolControl svg,
 .modeGroup svg,
 .submitButton svg {
-    height: 17px;
-    width: 17px;
+    height: 14px;
+    width: 14px;
 }
 
 .toolControl {
-    gap: 8px;
-    height: 46px;
+    font-size: 13px;
+    gap: 6px;
+    height: 38px;
     padding: 0 14px;
+    border-radius: 9999px;
 }
 
 .toolControl > svg:first-child,
@@ -337,7 +387,10 @@
     background: rgba(2, 8, 19, 0.97);
     border: 1px solid rgba(103, 209, 242, 0.28);
     border-radius: 20px;
-    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58), 0 0 42px rgba(79, 104, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    box-shadow:
+        0 28px 80px rgba(0, 0, 0, 0.58),
+        0 0 42px rgba(79, 104, 255, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
     color: #f7fbff;
     overflow: hidden;
     padding: 18px;
@@ -429,7 +482,9 @@
 
 .pickerTabs button[aria-selected="true"] {
     background: linear-gradient(118deg, rgba(79, 104, 255, 0.22), rgba(83, 217, 255, 0.11));
-    box-shadow: inset 0 0 0 1px rgba(109, 213, 255, 0.2), 0 0 18px rgba(83, 217, 255, 0.08);
+    box-shadow:
+        inset 0 0 0 1px rgba(109, 213, 255, 0.2),
+        0 0 18px rgba(83, 217, 255, 0.08);
     color: #f5fbff;
 }
 
@@ -459,7 +514,10 @@
     min-height: 62px;
     padding: 8px;
     text-align: left;
-    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    transition:
+        background 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease;
     width: 100%;
 }
 
@@ -586,15 +644,18 @@
 .modeGroup {
     gap: 3px;
     padding: 3px;
+    border-radius: 9999px;
+    height: 38px;
 }
 
 .modeGroup button {
     background: transparent;
     border: 0;
-    border-radius: 10px;
-    gap: 7px;
-    height: 38px;
+    border-radius: 9999px;
+    gap: 6px;
+    height: 32px;
     padding: 0 10px;
+    font-size: 13px;
 }
 
 .modeGroup button:hover,
@@ -604,21 +665,37 @@
 }
 
 .submitButton {
-    background: linear-gradient(108deg, #4f68ff, #556fff 36%, #28cce0 100%);
-    border-color: rgba(148, 227, 255, 0.66);
-    border-radius: 14px;
-    box-shadow: 0 0 0 1px rgba(83, 217, 255, 0.14), 0 0 28px rgba(83, 217, 255, 0.28), 0 12px 30px rgba(35, 63, 195, 0.36);
-    color: #fff;
-    font-size: 15px;
-    font-weight: 700;
-    gap: 8px;
-    height: 48px;
-    padding: 0 21px;
+    background: linear-gradient(135deg, #4e46e9, #6e53f6 55%, #8979ff);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 50%;
+    box-shadow:
+        0 0 24px rgba(98, 82, 255, 0.56),
+        0 4px 14px rgba(0, 0, 0, 0.45),
+        inset 0 1px rgba(255, 255, 255, 0.45);
+    color: #ffffff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    width: 42px;
+    min-width: 42px;
+    padding: 0;
+    transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
 
-.submitButton:hover {
-    box-shadow: 0 0 0 1px rgba(124, 238, 255, 0.32), 0 0 38px rgba(83, 217, 255, 0.48), 0 14px 34px rgba(35, 63, 195, 0.4);
-    transform: translateY(-1px);
+.submitButton:hover:not(:disabled) {
+    background: linear-gradient(135deg, #574ff7, #785dfa 55%, #9486ff);
+    box-shadow:
+        0 0 32px rgba(110, 83, 246, 0.75),
+        0 6px 20px rgba(0, 0, 0, 0.55),
+        inset 0 1px rgba(255, 255, 255, 0.55);
+    transform: scale(1.06) translateY(-1px);
+}
+
+.submitButton:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .shortcutRow {
@@ -646,7 +723,9 @@
     min-width: 0;
     padding: 11px 15px;
     text-align: left;
-    transition: background 180ms ease, transform 180ms ease;
+    transition:
+        background 180ms ease,
+        transform 180ms ease;
 }
 
 .shortcutRow > button + button {
@@ -689,69 +768,1488 @@
     margin-top: 4px;
 }
 
+:global(html:not(.dark)) .composer {
+    box-shadow:
+        0 28px 74px rgba(64, 103, 165, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+:global(html:not(.dark)) .composerToolbar {
+    border-top-color: rgba(105, 129, 190, 0.14);
+}
+
+:global(html:not(.dark)) .iconControl,
+:global(html:not(.dark)) .toolControl,
+:global(html:not(.dark)) .modeGroup {
+    background: rgba(248, 251, 255, 0.92);
+    border-color: rgba(101, 123, 181, 0.22);
+    color: #4f6384;
+}
+
+:global(html:not(.dark)) .iconControl:hover,
+:global(html:not(.dark)) .toolControl:hover,
+:global(html:not(.dark)) .toolControlActive {
+    background: #eef4ff;
+    border-color: rgba(79, 104, 255, 0.46);
+    color: #304aa3;
+}
+
+:global(html:not(.dark)) .toolControl > svg:first-child,
+:global(html:not(.dark)) .modeGroup button[aria-pressed="true"] svg {
+    color: #3977e8;
+    filter: none;
+}
+
+:global(html:not(.dark)) .modeGroup button {
+    color: #657594;
+}
+
+:global(html:not(.dark)) .modeGroup button:hover,
+:global(html:not(.dark)) .modeGroup .modeActive {
+    background: linear-gradient(120deg, rgba(79, 104, 255, 0.12), rgba(83, 217, 255, 0.1));
+    color: #304aa3;
+}
+
+:global(html:not(.dark)) .examplePrompts button {
+    background: rgba(238, 246, 255, 0.78);
+    border-color: rgba(105, 142, 202, 0.2);
+    color: #64789a;
+}
+
+:global(html:not(.dark)) .examplePrompts button:hover {
+    background: #edf4ff;
+    border-color: rgba(79, 104, 255, 0.38);
+    color: #304aa3;
+}
+
+:global(html:not(.dark)) .shortcutRow {
+    background: rgba(255, 255, 255, 0.84);
+    border-color: rgba(105, 142, 202, 0.22);
+    box-shadow: 0 16px 38px rgba(64, 103, 165, 0.12);
+}
+
+:global(html:not(.dark)) .shortcutRow > button {
+    color: #30405f;
+}
+
+:global(html:not(.dark)) .shortcutRow > button + button {
+    border-color: rgba(105, 142, 202, 0.16);
+}
+
+:global(html:not(.dark)) .shortcutRow > button:hover {
+    background: linear-gradient(118deg, rgba(79, 104, 255, 0.08), rgba(83, 217, 255, 0.11));
+}
+
+:global(html:not(.dark)) .shortcutRow small {
+    color: #7183a0;
+}
+
 .hiddenInput {
     display: none;
 }
 
 @keyframes bloom-breathe {
-    from { opacity: 0.55; transform: scale(0.96); }
-    to { opacity: 1; transform: scale(1.06); }
+    from {
+        opacity: 0.55;
+        transform: scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1.06);
+    }
 }
 
 @keyframes edge-drift {
-    from { opacity: 0.58; transform: translate3d(-1.5%, 0, 0) scale(0.98); }
-    to { opacity: 0.94; transform: translate3d(1.5%, -1%, 0) scale(1.04); }
+    from {
+        opacity: 0.58;
+        transform: translate3d(-1.5%, 0, 0) scale(0.98);
+    }
+    to {
+        opacity: 0.94;
+        transform: translate3d(1.5%, -1%, 0) scale(1.04);
+    }
 }
 
 @keyframes composer-pulse {
-    0%, 100% { opacity: 0.2; transform: scale(0.985); }
-    50% { opacity: 0.38; transform: scale(1.01); }
+    0%,
+    100% {
+        opacity: 0.2;
+        transform: scale(0.985);
+    }
+    50% {
+        opacity: 0.38;
+        transform: scale(1.01);
+    }
 }
 
 @media (max-width: 1100px) {
-    .modeGroup button span { display: none; }
-    .modeGroup button { width: 38px; }
+    .modeGroup button > span:not([data-dreamyo-icon]) {
+        display: none;
+    }
+    .modeGroup button {
+        width: 38px;
+    }
 }
 
 @media (max-width: 820px) {
-    .hero { min-height: 0; padding: 56px 16px 42px; }
-    .heroTitle { font-size: clamp(42px, 11vw, 64px); }
-    .composer { border-radius: 23px; min-height: 0; padding: 22px 18px 18px; }
-    .composerToolbar { align-items: stretch; flex-direction: column; }
-    .leftControls, .rightControls { justify-content: space-between; }
-    .rightControls { border-top: 1px solid rgba(148, 173, 215, 0.1); padding-top: 12px; }
-    .modeGroup { flex: 1; justify-content: space-between; }
-    .modeGroup button { flex: 1; width: auto; }
-    .modeGroup button span { display: inline; }
-    .shortcutRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .shortcutRow > button + button { border-left: 0; }
-    .shortcutRow > button:nth-child(even) { border-left: 1px solid rgba(143, 177, 220, 0.13); }
-    .shortcutRow > button:nth-child(n + 3) { border-top: 1px solid rgba(143, 177, 220, 0.13); }
+    .hero {
+        min-height: 0;
+        padding: 56px 16px 42px;
+    }
+    .heroTitle {
+        font-size: clamp(42px, 11vw, 64px);
+    }
+    .composer {
+        border-radius: 23px;
+        min-height: 0;
+        padding: 22px 18px 18px;
+    }
+    .composerToolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .leftControls,
+    .rightControls {
+        justify-content: space-between;
+    }
+    .rightControls {
+        border-top: 1px solid rgba(148, 173, 215, 0.1);
+        padding-top: 12px;
+    }
+    .modeGroup {
+        flex: 1;
+        justify-content: space-between;
+    }
+    .modeGroup button {
+        flex: 1;
+        width: auto;
+    }
+    .modeGroup button > span:not([data-dreamyo-icon]) {
+        display: inline;
+    }
+    .shortcutRow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .shortcutRow > button + button {
+        border-left: 0;
+    }
+    .shortcutRow > button:nth-child(even) {
+        border-left: 1px solid rgba(143, 177, 220, 0.13);
+    }
+    .shortcutRow > button:nth-child(n + 3) {
+        border-top: 1px solid rgba(143, 177, 220, 0.13);
+    }
 }
 
 @media (max-width: 520px) {
-    .hero { padding: 44px 12px 34px; }
-    .eyebrow { font-size: 10px; }
-    .heroTitle { font-size: 43px; }
-    .heroSubtitle { font-size: 14px; margin-top: 12px; }
-    .composerWrap { margin-top: 28px; }
-    .composer { padding: 18px 14px 14px; }
-    .composer textarea { font-size: 15px; min-height: 88px; }
-    .examplePrompts { display: none; }
-    .leftControls { overflow-x: auto; scrollbar-width: none; }
-    .toolControl { padding: 0 11px; }
-    .pickerPanel { border-radius: 17px; padding: 14px; }
-    .pickerList { max-height: min(320px, 52svh); }
-    .modeGroup button span { display: none; }
-    .submitButton { border-radius: 50%; flex: 0 0 46px; height: 46px; padding: 0; width: 46px; }
-    .submitButton span { display: none; }
-    .shortcutRow > button { gap: 9px; padding: 10px; }
-    .shortcutIcon svg { height: 19px; width: 19px; }
-    .shortcutRow strong { font-size: 12px; }
-    .shortcutRow small { font-size: 9px; }
+    .hero {
+        padding: 44px 12px 34px;
+    }
+    .eyebrow {
+        font-size: 10px;
+    }
+    .heroTitle {
+        font-size: 43px;
+    }
+    .heroSubtitle {
+        font-size: 14px;
+        margin-top: 12px;
+    }
+    .composerWrap {
+        margin-top: 28px;
+    }
+    .composer {
+        padding: 18px 14px 14px;
+    }
+    .composer textarea {
+        font-size: 15px;
+        min-height: 88px;
+    }
+    .examplePrompts {
+        display: none;
+    }
+    .leftControls {
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .toolControl {
+        padding: 0 11px;
+    }
+    .pickerPanel {
+        border-radius: 17px;
+        padding: 14px;
+    }
+    .pickerList {
+        max-height: min(320px, 52svh);
+    }
+    .modeGroup button > span:not([data-dreamyo-icon]) {
+        display: none;
+    }
+    .submitButton {
+        border-radius: 13px;
+        flex: 0 0 44px;
+        height: 44px;
+        padding: 0;
+        width: 44px;
+    }
+    .submitButton > span:last-child {
+        display: none;
+    }
+    .shortcutRow > button {
+        gap: 9px;
+        padding: 10px;
+    }
+    .shortcutIcon svg {
+        height: 19px;
+        width: 19px;
+    }
+    .shortcutRow strong {
+        font-size: 12px;
+    }
+    .shortcutRow small {
+        font-size: 9px;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .motionVideo { display: none; }
-    .motionBloom, .motionLeft, .motionRight, .composerGlow { animation: none; }
+    .motionVisual {
+        animation: none;
+    }
+    .motionBloom,
+    .motionLeft,
+    .motionRight,
+    .composerGlow {
+        animation: none;
+    }
+}
+
+/* Homepage design board: keep the hero, composer and first set of capabilities in one calm glass panel. */
+.hero {
+    background: transparent;
+    min-height: clamp(760px, calc(100svh - 8px), 900px);
+    padding: clamp(150px, 19vh, 210px) 30px 46px;
+}
+
+.heroContent {
+    max-width: 1260px;
+}
+
+.heroTitle {
+    font-size: clamp(46px, 4.8vw, 72px);
+    margin-top: 17px;
+}
+
+.heroSubtitle {
+    font-size: 16px;
+    margin-top: 14px;
+}
+
+.composerWrap {
+    max-width: 1000px;
+    margin-top: 29px;
+}
+
+.composer {
+    min-height: 226px;
+    padding: 23px 25px 19px;
+}
+
+.shortcutRow {
+    max-width: 1100px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    margin-top: 16px;
+}
+
+.shortcutRow > button {
+    gap: 9px;
+    padding: 12px 10px;
+}
+
+.shortcutRow strong {
+    font-size: 13px;
+}
+
+.shortcutRow small {
+    font-size: 9px;
+}
+
+.heroHighlights {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 15px auto 0;
+    max-width: 1100px;
+}
+
+.heroRowHeading {
+    color: #213774;
+    font-size: 12px;
+    font-weight: 760;
+    letter-spacing: 0.02em;
+    margin: 13px auto 0;
+    max-width: 1100px;
+}
+
+:global(.dark) .heroRowHeading {
+    color: #e0ebff;
+}
+
+.hero[data-design-board-hero] {
+    background: transparent;
+    min-height: 402px;
+    padding: 78px 34px 18px;
+}
+
+.hero[data-design-board-hero] .heroContent {
+    max-width: 930px;
+    text-align: left;
+}
+
+.hero[data-design-board-hero] .eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+}
+
+.hero[data-design-board-hero] .heroTitle {
+    font-size: clamp(34px, 3.5vw, 53px);
+    line-height: 1.05;
+    margin: 14px 0 0;
+    max-width: 600px;
+    position: relative;
+    z-index: 2;
+}
+
+.hero[data-design-board-hero] .heroSubtitle {
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 10px 0 0;
+    max-width: 470px;
+    position: relative;
+    z-index: 2;
+}
+
+.hero[data-design-board-hero] .composerWrap {
+    margin: 18px auto 0;
+    max-width: 720px;
+}
+
+.hero[data-design-board-hero] .composer {
+    border-radius: 18px;
+    min-height: 112px;
+    padding: 13px 18px 11px;
+}
+
+.hero[data-design-board-hero] .composer textarea {
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 35px;
+}
+
+.hero[data-design-board-hero] .examplePrompts {
+    display: none;
+}
+
+.hero[data-design-board-hero] .composerToolbar {
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+}
+
+.hero[data-design-board-hero] .leftControls,
+.hero[data-design-board-hero] .rightControls {
+    gap: 6px;
+}
+
+.hero[data-design-board-hero] .iconControl,
+.hero[data-design-board-hero] .toolControl,
+.hero[data-design-board-hero] .modeGroup,
+.hero[data-design-board-hero] .submitButton {
+    border-radius: 9px;
+    min-height: 33px;
+}
+
+.hero[data-design-board-hero] .iconControl {
+    height: 33px;
+    width: 33px;
+}
+
+.hero[data-design-board-hero] .toolControl {
+    font-size: 10px;
+    gap: 5px;
+    height: 33px;
+    padding: 0 8px;
+}
+
+.hero[data-design-board-hero] .modeGroup button {
+    height: 31px;
+    padding: 0 7px;
+}
+
+.hero[data-design-board-hero] .modeGroup button > :where(span) {
+    font-size: 10px;
+}
+
+.hero[data-design-board-hero] .submitButton {
+    font-size: 10px;
+    height: 33px;
+    padding: 0 14px;
+}
+
+.hero[data-design-board-hero] .heroRowHeading {
+    margin: 10px 0 0;
+}
+
+.hero[data-design-board-hero] .shortcutRow {
+    gap: 8px;
+    margin: 6px 0 0;
+    max-width: none;
+}
+
+.hero[data-design-board-hero] .shortcutRow > button {
+    border-radius: 10px;
+    gap: 7px;
+    min-height: 48px;
+    padding: 8px 9px;
+}
+
+.hero[data-design-board-hero] .shortcutIcon {
+    border-radius: 8px;
+    height: 27px;
+    width: 27px;
+}
+
+.hero[data-design-board-hero] .shortcutIcon svg {
+    height: 15px;
+    width: 15px;
+}
+
+.hero[data-design-board-hero] .shortcutRow strong {
+    font-size: 10px;
+}
+
+.hero[data-design-board-hero] .shortcutRow small {
+    font-size: 8px;
+    margin-top: 2px;
+}
+
+.hero[data-design-board-hero] .heroHighlights {
+    gap: 8px;
+    margin: 6px 0 0;
+    max-width: none;
+}
+
+.hero[data-design-board-hero] .heroHighlight {
+    border-radius: 10px;
+    gap: 7px;
+    min-height: 50px;
+    padding: 8px 9px;
+}
+
+.hero[data-design-board-hero] .heroHighlightIcon {
+    border-radius: 8px;
+    height: 27px;
+    width: 27px;
+}
+
+.hero[data-design-board-hero] .heroHighlightIcon svg {
+    height: 14px;
+    width: 14px;
+}
+
+.hero[data-design-board-hero] .heroHighlightCopy strong {
+    font-size: 9px;
+}
+
+.hero[data-design-board-hero] .heroHighlightCopy small {
+    font-size: 8px;
+    margin-top: 2px;
+}
+
+.hero[data-design-board-hero] .motionVisual {
+    opacity: 0.52;
+}
+
+:global(.dark) .hero[data-design-board-hero] .motionVisual {
+    opacity: 0.62;
+}
+
+@media (max-width: 767px) {
+    .heroBrandVisual {
+        display: none;
+    }
+
+    .hero[data-design-board-hero] {
+        min-height: 760px;
+        padding: 78px 13px 34px;
+    }
+
+    .hero[data-design-board-hero] .heroContent {
+        text-align: center;
+    }
+
+    .hero[data-design-board-hero] .heroTitle {
+        font-size: clamp(40px, 12vw, 58px);
+        margin-inline: auto;
+    }
+
+    .hero[data-design-board-hero] .heroSubtitle {
+        margin-inline: auto;
+    }
+
+    .hero[data-design-board-hero] .composerWrap {
+        margin-top: 24px;
+    }
+
+    .hero[data-design-board-hero] .heroRowHeading {
+        margin-top: 13px;
+        text-align: left;
+    }
+
+    .hero[data-design-board-hero] .shortcutRow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .hero[data-design-board-hero] .heroHighlights {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Product surface fidelity: this is the actual homepage from the supplied
+   light homepage board. The editorial rails are outside the product and stay
+   out of the DOM; the product keeps its own compact hero grid and tool row. */
+.hero {
+    min-height: 610px;
+    padding: clamp(150px, 19vh, 210px) clamp(24px, 8%, 92px) 24px;
+}
+
+.heroContent {
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+    text-align: left;
+}
+
+.heroIntroGrid {
+    align-items: center;
+    display: grid;
+    gap: clamp(18px, 4vw, 58px);
+    grid-template-columns: minmax(0, 1.04fr) minmax(300px, 0.96fr);
+}
+
+.heroCopy {
+    min-width: 0;
+}
+
+.heroContent > .eyebrow {
+    display: none;
+}
+
+.heroTitle {
+    font-size: clamp(40px, 4.4vw, 58px);
+    letter-spacing: -0.06em;
+    line-height: 1.06;
+    margin: 0;
+    text-align: left;
+}
+
+.heroTitle span + span {
+    font-size: 0.78em;
+    margin-top: 3px;
+}
+
+.heroSubtitle {
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 12px 0 0;
+    max-width: 430px;
+    text-align: left;
+}
+
+.heroStats {
+    align-items: stretch;
+    display: flex;
+    gap: 0;
+    margin-top: 17px;
+    max-width: 430px;
+}
+
+.heroStats > div {
+    display: grid;
+    gap: 2px;
+    min-width: 102px;
+    padding: 0 17px;
+}
+
+.heroStats > div:first-child {
+    padding-left: 0;
+}
+
+.heroStats > div + div {
+    border-left: 1px solid rgba(69, 111, 192, 0.22);
+}
+
+.heroStats strong {
+    color: #132b76;
+    font-size: 16px;
+    font-weight: 780;
+    line-height: 1.1;
+}
+
+.heroStats span {
+    color: #7183aa;
+    font-size: 9px;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.heroBrandVisual {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+    pointer-events: none;
+    position: static;
+    width: 100%;
+}
+
+.heroBrandVisual img {
+    height: auto;
+    max-width: min(100%, 430px);
+    object-fit: contain;
+    width: 100%;
+}
+
+.heroBrandDark {
+    display: none;
+}
+
+:global(.dark) .heroBrandLight {
+    display: none;
+}
+
+:global(.dark) .heroBrandDark {
+    display: block;
+}
+
+:global(.dark) .heroStats strong {
+    color: #edf5ff;
+}
+
+:global(.dark) .heroStats span {
+    color: #9eb1d3;
+}
+
+:global(.dark) .heroStats > div + div {
+    border-left-color: rgba(157, 187, 237, 0.28);
+}
+
+.composerWrap {
+    margin-top: 20px;
+    max-width: 820px;
+    width: 100%;
+}
+
+.composer {
+    min-height: auto;
+    padding: 16px 20px 14px;
+}
+
+.promptField {
+    align-items: flex-start;
+    display: flex;
+    gap: 10px;
+}
+
+.promptField > svg {
+    background: rgba(242, 247, 255, 0.92);
+    border: 1px solid rgba(106, 139, 203, 0.16);
+    border-radius: 50%;
+    color: #2d4fb0;
+    flex: 0 0 auto;
+    height: 34px;
+    margin-top: 1px;
+    padding: 9px;
+    width: 34px;
+}
+
+.promptField textarea {
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 142px;
+    padding-top: 2px;
+}
+
+.examplePrompts {
+    display: none;
+}
+
+.composerToolbar {
+    gap: 12px;
+    justify-content: space-between;
+    margin-top: 12px;
+}
+
+.leftControls,
+.rightControls {
+    gap: 8px;
+}
+
+.iconControl,
+.toolControl,
+.modeGroup,
+.submitButton {
+    min-height: 38px;
+}
+
+.iconControl {
+    height: 38px;
+    width: 38px;
+}
+
+.toolControl {
+    font-size: 13px;
+    gap: 6px;
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 9999px;
+}
+
+.modeGroup {
+    gap: 3px;
+    padding: 3px;
+}
+
+.modeGroup button {
+    height: 32px;
+    padding: 0 9px;
+}
+
+.modeGroup button > :where(span) {
+    font-size: 11px;
+}
+
+.heroRowHeading {
+    margin-top: 16px;
+    max-width: none;
+}
+
+.shortcutRow {
+    border-radius: 13px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    margin-top: 7px;
+    max-width: none;
+    padding: 4px;
+}
+
+.shortcutRow > button {
+    gap: 8px;
+    min-height: 45px;
+    padding: 7px 8px;
+}
+
+.shortcutIcon {
+    border-radius: 9px;
+    height: 29px;
+    width: 29px;
+}
+
+.shortcutIcon svg {
+    height: 16px;
+    width: 16px;
+}
+
+.shortcutRow strong {
+    font-size: 11px;
+}
+
+.shortcutRow small {
+    font-size: 8px;
+    margin-top: 2px;
+}
+
+.heroHighlights {
+    gap: 9px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 7px 0 0;
+    max-width: none;
+}
+
+.heroHighlight {
+    border-radius: 12px;
+    gap: 8px;
+    min-height: 55px;
+    padding: 8px 9px;
+}
+
+.heroHighlightIcon {
+    border-radius: 9px;
+    height: 30px;
+    width: 30px;
+}
+
+.heroHighlightIcon svg {
+    height: 16px;
+    width: 16px;
+}
+
+.heroHighlightCopy strong {
+    font-size: 10px;
+}
+
+.heroHighlightCopy small {
+    font-size: 8px;
+    margin-top: 2px;
+}
+
+@media (max-width: 900px) {
+    .heroIntroGrid {
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 0.84fr);
+    }
+    .heroBrandVisual img {
+        max-width: 310px;
+    }
+    .shortcutRow {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 767px) {
+    .hero {
+        min-height: 0;
+        padding: 76px 16px 28px;
+    }
+    .heroContent {
+        text-align: center;
+    }
+    .heroIntroGrid {
+        display: block;
+    }
+    .heroTitle,
+    .heroSubtitle {
+        text-align: center;
+    }
+    .heroSubtitle {
+        margin-inline: auto;
+    }
+    .heroStats {
+        justify-content: center;
+        margin-inline: auto;
+    }
+    .heroBrandVisual {
+        margin-top: 18px;
+    }
+    .heroBrandVisual img {
+        max-width: 280px;
+    }
+    .composerWrap {
+        margin-top: 20px;
+    }
+    .heroHighlights {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .heroStats > div {
+        min-width: 0;
+        padding-inline: 10px;
+    }
+    .heroStats strong {
+        font-size: 14px;
+    }
+    .heroStats span {
+        font-size: 8px;
+    }
+    .shortcutRow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .heroHighlights {
+        grid-template-columns: 1fr;
+    }
+}
+
+.heroHighlight {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid rgba(101, 132, 205, 0.16);
+    border-radius: 16px;
+    box-shadow: 0 12px 28px rgba(59, 91, 164, 0.08);
+    display: flex;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px 13px;
+    text-align: left;
+    transition:
+        border-color 180ms ease,
+        box-shadow 180ms ease,
+        transform 180ms ease;
+}
+
+.heroHighlight:hover {
+    border-color: rgba(79, 104, 255, 0.34);
+    box-shadow: 0 16px 32px rgba(59, 91, 164, 0.13);
+    transform: translateY(-2px);
+}
+
+.heroHighlightIcon {
+    align-items: center;
+    border-radius: 11px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 35px;
+    justify-content: center;
+    width: 35px;
+}
+
+.heroHighlightIcon svg {
+    height: 18px;
+    width: 18px;
+}
+
+.heroHighlightCopy {
+    min-width: 0;
+}
+
+.heroHighlightCopy strong,
+.heroHighlightCopy small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.heroHighlightCopy strong {
+    color: #172554;
+    font-size: 12px;
+    font-weight: 720;
+}
+
+.heroHighlightCopy small {
+    color: #7382a2;
+    font-size: 9px;
+    margin-top: 4px;
+}
+
+.heroHighlightblue .heroHighlightIcon {
+    background: rgba(68, 143, 255, 0.14);
+    color: #3181ee;
+}
+
+.heroHighlightviolet .heroHighlightIcon {
+    background: rgba(134, 88, 241, 0.14);
+    color: #7952e8;
+}
+
+.heroHighlightmint .heroHighlightIcon {
+    background: rgba(20, 188, 173, 0.14);
+    color: #0ca99c;
+}
+
+.heroHighlightpurple .heroHighlightIcon {
+    background: rgba(181, 103, 238, 0.14);
+    color: #a14ddd;
+}
+
+:global(.dark) .heroHighlight {
+    background: rgba(7, 21, 47, 0.72);
+    border-color: rgba(119, 165, 236, 0.2);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+}
+
+:global(.dark) .heroHighlightCopy strong {
+    color: #eef4ff;
+}
+
+:global(.dark) .heroHighlightCopy small {
+    color: #91a4c2;
+}
+
+@media (max-width: 980px) {
+    .hero {
+        min-height: 760px;
+        padding-inline: 20px;
+    }
+    .shortcutRow {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .heroHighlights {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    .hero {
+        padding: 78px 13px 34px;
+    }
+    .heroTitle {
+        font-size: clamp(40px, 12vw, 58px);
+    }
+    .heroSubtitle {
+        font-size: 14px;
+    }
+    .composerWrap {
+        margin-top: 24px;
+    }
+    .shortcutRow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .heroHighlights {
+        gap: 8px;
+        grid-template-columns: 1fr;
+    }
+    .heroHighlight {
+        padding: 10px 12px;
+    }
+    :global(html:not(.dark)) .hero::before {
+        border-radius: 22px;
+        inset: 10px 8px;
+    }
+}
+
+/* Latest homepage direction: full-bleed night aurora, compact creation hero. */
+[data-home-design="aurora"] .hero {
+    --hero-bg: #06133b;
+    --hero-text: #f8fbff;
+    --hero-muted: rgba(237, 246, 255, 0.92);
+    --hero-panel: rgba(239, 248, 255, 0.96);
+    --hero-panel-soft: rgba(226, 241, 255, 0.82);
+    --hero-panel-text: #152b60;
+    --hero-panel-muted: #63789f;
+    --hero-line: rgba(35, 91, 191, 0.2);
+    background: transparent;
+    min-height: 610px;
+    padding: 111px clamp(28px, 5vw, 84px) 17px;
+}
+
+[data-home-design="aurora"] .hero::before {
+    display: none;
+}
+
+[data-home-design="aurora"] .motionStage {
+    inset: 0;
+    z-index: 0;
+}
+
+[data-home-design="aurora"] .motionVisual {
+    animation: aurora-pan 30s ease-in-out infinite alternate;
+    filter: saturate(1.12) contrast(1.04) brightness(0.96);
+    height: 108%;
+    left: 50%;
+    object-fit: cover;
+    opacity: 1;
+    top: 50%;
+    transform: translate3d(calc(-50% + var(--pointer-x)), calc(-50% + var(--pointer-y)), 0) scale(1.07);
+    width: 108%;
+}
+
+[data-home-design="aurora"] .motionVeil {
+    background:
+        linear-gradient(180deg, rgba(3, 10, 40, 0.5) 0%, rgba(3, 10, 40, 0.2) 37%, rgba(223, 239, 255, 0.08) 65%, rgba(239, 246, 255, 0.88) 100%),
+        radial-gradient(ellipse 48% 36% at 49% 27%, rgba(59, 223, 255, 0.04), transparent 72%);
+}
+
+[data-home-design="aurora"] .motionBloom {
+    animation: aurora-breathe 13s ease-in-out infinite alternate;
+    background: radial-gradient(ellipse 38% 24% at 54% 25%, rgba(117, 245, 255, 0.25), transparent 72%);
+    mix-blend-mode: screen;
+}
+
+[data-home-design="aurora"] .motionLeft,
+[data-home-design="aurora"] .motionRight {
+    animation: aurora-drift 18s ease-in-out infinite alternate;
+    background: radial-gradient(ellipse 28% 45% at 14% 48%, rgba(76, 120, 255, 0.22), transparent 72%);
+    mix-blend-mode: screen;
+}
+
+[data-home-design="aurora"] .motionRight {
+    animation-delay: -8s;
+    background: radial-gradient(ellipse 30% 45% at 86% 42%, rgba(88, 244, 221, 0.22), transparent 72%);
+}
+
+[data-home-design="aurora"] .heroContent {
+    max-width: none;
+    text-align: center;
+}
+
+[data-home-design="aurora"] .heroIntroGrid {
+    display: block;
+}
+
+[data-home-design="aurora"] .heroCopy {
+    max-width: none;
+    padding: 0;
+    text-align: center;
+}
+
+[data-home-design="aurora"] .heroCopy .eyebrow {
+    background: none;
+    color: #8aeefe;
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: 0.46em;
+    line-height: 1;
+    margin: 0 auto 20px;
+    text-align: center;
+}
+
+[data-home-design="aurora"] .heroTitle {
+    background: none;
+    color: #f8fbff;
+    font-size: clamp(44px, 4.4vw, 68px);
+    font-weight: 800;
+    letter-spacing: -0.06em;
+    line-height: 1.08;
+    margin: 0 auto;
+    text-align: center;
+    text-shadow: 0 5px 24px rgba(2, 12, 48, 0.46);
+    white-space: nowrap;
+}
+
+[data-home-design="aurora"] .heroTitle span {
+    display: inline;
+}
+
+[data-home-design="aurora"] .heroTitle span + span {
+    background: linear-gradient(96deg, #6cb2ff 0%, #4fd8f4 52%, #5ef0d6 100%);
+    background-clip: text;
+    color: transparent;
+    font-size: 1em;
+    letter-spacing: -0.06em;
+    margin-left: 16px;
+}
+
+[data-home-design="aurora"] .heroSubtitle {
+    color: rgba(248, 252, 255, 0.94);
+    font-size: clamp(16px, 1.25vw, 21px);
+    font-weight: 500;
+    line-height: 1.5;
+    margin: 16px auto 0;
+    max-width: 720px;
+    text-align: center;
+}
+
+[data-home-design="aurora"] .heroBrandVisual {
+    display: none;
+}
+
+[data-home-design="aurora"] .composerWrap {
+    margin: 34px auto 0;
+    max-width: 1080px;
+}
+
+[data-home-design="aurora"] .composerGlow {
+    animation: composer-pulse 6s ease-in-out infinite;
+    background: linear-gradient(94deg, rgba(72, 175, 255, 0.7), rgba(102, 227, 255, 0.66), rgba(181, 140, 255, 0.68));
+    border-radius: 25px;
+    filter: blur(22px);
+    inset: 10px 34px -10px;
+    opacity: 0.56;
+}
+
+[data-home-design="aurora"] .composer {
+    background: rgba(245, 250, 255, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.96);
+    border-radius: 25px;
+    box-shadow: 0 15px 42px rgba(15, 59, 145, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    min-height: 138px;
+    padding: 18px 21px 14px;
+}
+
+[data-home-design="aurora"] .composer::before {
+    background: linear-gradient(96deg, rgba(255, 255, 255, 0.8), rgba(99, 185, 255, 0.78), rgba(185, 143, 255, 0.78), rgba(255, 255, 255, 0.88));
+    opacity: 0.9;
+}
+
+[data-home-design="aurora"] .promptField > svg {
+    background: #eff6ff;
+    border: 1px solid rgba(93, 134, 202, 0.14);
+    color: #385591;
+    height: 38px;
+    padding: 9px;
+    width: 38px;
+}
+
+[data-home-design="aurora"] .composer textarea {
+    color: #233d73;
+    font-size: 16px;
+    min-height: 43px;
+    padding-top: 7px;
+}
+
+[data-home-design="aurora"] .composer textarea::placeholder {
+    color: #6d82aa;
+}
+
+[data-home-design="aurora"] .composerToolbar {
+    border-top-color: rgba(73, 115, 181, 0.13);
+    gap: 10px;
+    margin-top: 7px;
+    padding-top: 10px;
+}
+
+[data-home-design="aurora"] .leftControls,
+[data-home-design="aurora"] .rightControls {
+    gap: 8px;
+}
+
+[data-home-design="aurora"] .iconControl,
+[data-home-design="aurora"] .toolControl,
+[data-home-design="aurora"] .modeGroup,
+[data-home-design="aurora"] .submitButton {
+    background: rgba(244, 249, 255, 0.96);
+    border-color: rgba(92, 126, 191, 0.2);
+    color: #284477;
+    min-height: 38px;
+}
+
+[data-home-design="aurora"] .iconControl {
+    height: 38px;
+    width: 38px;
+}
+
+[data-home-design="aurora"] .toolControl {
+    height: 38px;
+    padding: 0 13px;
+}
+
+[data-home-design="aurora"] .modeGroup {
+    padding: 2px;
+}
+
+[data-home-design="aurora"] .modeGroup button {
+    color: #284477;
+    height: 32px;
+}
+
+[data-home-design="aurora"] .modeGroup button[aria-pressed="true"] {
+    background: rgba(221, 239, 255, 0.9);
+    color: #203d78;
+}
+
+[data-home-design="aurora"] .submitButton {
+    background: linear-gradient(110deg, #4a55f6 0%, #4b8bff 40%, #28d8d4 100%);
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 8px 18px rgba(41, 104, 236, 0.25);
+    color: #fff;
+    height: 38px;
+    padding: 0 20px;
+}
+
+[data-home-design="aurora"] .heroRowHeading,
+[data-home-design="aurora"] .heroHighlights {
+    display: none;
+}
+
+[data-home-design="aurora"] .shortcutRow {
+    background: transparent;
+    border-radius: 0;
+    gap: 11px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    margin: 34px auto 0;
+    max-width: 1080px;
+    width: 100%;
+    padding: 0;
+}
+
+[data-home-design="aurora"] .shortcutRow > button {
+    background: linear-gradient(135deg, rgba(45, 124, 218, 0.5), rgba(63, 131, 218, 0.26));
+    border: 1px solid rgba(207, 239, 255, 0.5);
+    border-radius: 12px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 8px 22px rgba(8, 44, 111, 0.12);
+    gap: 12px;
+    min-height: 78px;
+    padding: 12px 15px;
+    text-align: left;
+}
+
+[data-home-design="aurora"] .shortcutRow > button:hover {
+    background: linear-gradient(135deg, rgba(74, 164, 242, 0.65), rgba(102, 178, 255, 0.4));
+    border-color: rgba(237, 250, 255, 0.78);
+    transform: translateY(-2px);
+}
+
+[data-home-design="aurora"] .shortcutIcon {
+    border-radius: 50%;
+    height: 42px;
+    width: 42px;
+}
+
+[data-home-design="aurora"] .shortcutIcon {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 42px;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 7px 15px rgba(14, 66, 167, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+[data-home-design="aurora"] .shortcutRow > button:nth-child(1) .shortcutIcon {
+    background: linear-gradient(145deg, #42a8ff, #2f64f3);
+}
+
+[data-home-design="aurora"] .shortcutRow > button:nth-child(2) .shortcutIcon {
+    background: linear-gradient(145deg, #ff77c8, #d447b9);
+}
+
+[data-home-design="aurora"] .shortcutRow > button:nth-child(3) .shortcutIcon {
+    background: linear-gradient(145deg, #3c9dff, #4451e9);
+}
+
+[data-home-design="aurora"] .shortcutRow > button:nth-child(4) .shortcutIcon {
+    background: linear-gradient(145deg, #8d5cff, #5a2de0);
+}
+
+[data-home-design="aurora"] .shortcutRow > button:nth-child(5) .shortcutIcon {
+    background: linear-gradient(145deg, #39dcc3, #16bba6);
+}
+
+[data-home-design="aurora"] .shortcutRow > button:nth-child(6) .shortcutIcon {
+    background: linear-gradient(145deg, #a36aff, #7043e6);
+}
+
+[data-home-design="aurora"] .shortcutRow strong {
+    color: #f8fcff;
+    font-size: 15px;
+    font-weight: 720;
+}
+
+[data-home-design="aurora"] .shortcutRow small {
+    color: rgba(239, 249, 255, 0.88);
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+@keyframes aurora-pan {
+    0% {
+        transform: translate3d(calc(-50% - 0.8%), calc(-50% + 0.3%), 0) scale(1.07);
+    }
+    50% {
+        transform: translate3d(calc(-50% + 0.6%), calc(-50% - 0.6%), 0) scale(1.1);
+    }
+    100% {
+        transform: translate3d(calc(-50% + 1.1%), calc(-50% + 0.7%), 0) scale(1.07);
+    }
+}
+
+@keyframes aurora-breathe {
+    0% {
+        opacity: 0.35;
+        transform: scale(0.98);
+    }
+    100% {
+        opacity: 0.86;
+        transform: scale(1.08);
+    }
+}
+
+@keyframes aurora-drift {
+    0% {
+        opacity: 0.32;
+        transform: translate3d(-2%, 1%, 0) scale(0.96);
+    }
+    100% {
+        opacity: 0.78;
+        transform: translate3d(3%, -2%, 0) scale(1.05);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-home-design="aurora"] .motionVisual,
+    [data-home-design="aurora"] .motionBloom,
+    [data-home-design="aurora"] .motionLeft,
+    [data-home-design="aurora"] .motionRight {
+        animation: none;
+    }
+}
+
+@media (max-width: 900px) {
+    [data-home-design="aurora"] .heroTitle {
+        font-size: clamp(40px, 7vw, 60px);
+        white-space: normal;
+    }
+
+    [data-home-design="aurora"] .heroTitle span,
+    [data-home-design="aurora"] .heroTitle span + span {
+        display: block;
+        margin-left: 0;
+    }
+
+    [data-home-design="aurora"] .shortcutRow {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    [data-home-design="aurora"] .hero {
+        min-height: 0;
+        padding: 91px 18px 25px;
+    }
+
+    [data-home-design="aurora"] .heroTitle {
+        font-size: clamp(38px, 11vw, 56px);
+    }
+
+    [data-home-design="aurora"] .heroSubtitle {
+        font-size: 16px;
+    }
+
+    [data-home-design="aurora"] .submitButton {
+        border-radius: 12px;
+        height: 44px;
+        min-width: 44px;
+    }
+
+    [data-home-design="aurora"] .composerToolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    [data-home-design="aurora"] .leftControls,
+    [data-home-design="aurora"] .rightControls {
+        flex-wrap: wrap;
+    }
+
+    [data-home-design="aurora"] .rightControls {
+        justify-content: space-between;
+    }
+
+    [data-home-design="aurora"] .shortcutRow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 28px;
+    }
+
+    [data-home-design="aurora"] .shortcutRow > button {
+        min-height: 68px;
+        padding: 9px;
+    }
+}
+
+/* jiaotu.ai 首屏结构对齐（文件末尾规则优先生效）：
+   居中品牌图形 → 主标题（约 38% 视口）→ 副标题 → 提示词面板（约 52% 起，宽约 780px）→ 灵感发现 */
+.hero {
+    min-height: min(100svh, 960px);
+    padding: clamp(150px, 22vh, 240px) 24px 88px;
+}
+
+.heroCopy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.heroMark {
+    height: 116px;
+    margin: 0 0 28px;
+    width: auto;
+}
+
+
+.heroTitle {
+    margin-top: 0;
+}
+
+.composerWrap {
+    margin-top: 48px;
+    max-width: 780px;
 }

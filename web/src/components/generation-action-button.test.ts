@@ -10,23 +10,26 @@ describe("GenerationActionButton", () => {
         expect(source).toContain("data-generation-action");
         expect(source).toContain("data-state={state}");
         expect(source).toContain("data-appearance={appearance}");
-        expect(source).toContain("<Sparkles");
+        expect(source).toContain('"/brand/dreamyo/generation/generate-glyph.png"');
+        expect(source).toContain('density?: "compact" | "standard"');
+        expect(source).toContain("data-density={density}");
         expect(source).toContain("icon === undefined");
         expect(source).toContain("icon={actionIcon ?");
-        expect(styles).toContain("generation-action-ready");
-        expect(styles).toContain("generation-action-running");
-        expect(styles).toContain("generation-action-sheen");
         expect(styles).toContain("prefers-reduced-motion: reduce");
         expect(styles).toContain('data-appearance="icon"');
-        expect(styles).toContain("border-radius: 0.75rem !important");
-        expect(styles).toContain("width: 3rem");
-        expect(styles).toContain("height: 2.5rem");
+        expect(styles).toContain("button-surface.png");
+        expect(styles).toContain("linear-gradient(108deg, #5e7ff1 0%, #35cce1 52%, #58dec9 74%, #b9b3f7 100%)");
+        expect(styles).toContain('data-density="compact"');
+        expect(styles).toContain("min-height: 40px");
         expect(composer).not.toContain('shape="circle"');
         expect(composer).toContain('className="shrink-0"');
-        expect(readFileSync(new URL("../app/(user)/canvas/components/canvas-config-node-panel.tsx", import.meta.url), "utf8")).toContain("icon={null}");
+        const canvasConfigPanel = readFileSync(new URL("../app/(user)/canvas/components/canvas-config-node-panel.tsx", import.meta.url), "utf8");
+        expect(canvasConfigPanel).toContain("data-canvas-credit-cost");
+        // 配置节点已改用首页同款「积分 + 圆形提交」组合胶囊，不再使用 GenerationActionButton
+        expect(canvasConfigPanel).toContain("generate-glyph.png");
+        expect(canvasConfigPanel).not.toContain("icon={null}");
 
         for (const relativePath of [
-            "../app/(user)/canvas/components/canvas-config-node-panel.tsx",
             "../app/(user)/canvas/components/canvas-interior-design-node-panel.tsx",
             "../app/(user)/canvas/components/canvas-node-angle-dialog.tsx",
             "../app/(user)/canvas/components/canvas-node-mask-edit-dialog.tsx",

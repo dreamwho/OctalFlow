@@ -1,0 +1,39 @@
+{
+  "editor": {
+    "bottom": 699,
+    "height": 122,
+    "right": 405,
+    "width": 380,
+    "x": 25,
+    "y": 577
+  },
+  "generate": {
+    "bottom": 747.5,
+    "height": 40,
+    "hit": true,
+    "right": 405,
+    "width": 40,
+    "x": 365,
+    "y": 707.5
+  },
+  "overflow": {
+    "body": 0,
+    "html": 0
+  },
+  "panel": {
+    "bottom": 764,
+    "height": 232,
+    "right": 418,
+    "width": 406,
+    "x": 12,
+    "y": 532
+  },
+  "referenceTokens": 1,
+  "skillTokens": 1,
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/canvas/canvas-ui-after-20260915",
+  "viewport": {
+    "height": 932,
+    "width": 430
+  }
+}

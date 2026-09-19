@@ -64,7 +64,8 @@ describe("GeminiAI admin API client", () => {
     });
 
     it("loads filtered request logs and clears them through the dedicated endpoint", async () => {
-        const fetchMock = vi.fn()
+        const fetchMock = vi
+            .fn()
             .mockResolvedValueOnce(Response.json({ code: 0, data: { items: [], total: 0, page: 2, pageSize: 20, stats: { total: 1, success: 1, failed: 0, averageDurationMs: 300 } }, msg: "OK" }))
             .mockResolvedValueOnce(Response.json({ code: 0, data: { deletedCount: 1 }, msg: "已清空" }));
         vi.stubGlobal("fetch", fetchMock);

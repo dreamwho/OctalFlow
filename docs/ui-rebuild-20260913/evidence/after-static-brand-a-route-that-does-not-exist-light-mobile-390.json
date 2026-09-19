@@ -1,0 +1,21 @@
+{
+  "route": "/a-route-that-does-not-exist",
+  "theme": "light",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "title": "页面不存在 | dreamyo",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "logoSource": "http://127.0.0.1:3190/icon.svg",
+  "faviconHref": "http://127.0.0.1:3190/brand/dreamyo/mark.png",
+  "overflow": false,
+  "state": "404 静态错误入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

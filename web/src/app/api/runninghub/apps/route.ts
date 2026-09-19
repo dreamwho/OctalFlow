@@ -10,7 +10,5 @@ export async function GET(request: Request) {
     if (!user) return Response.json({ code: 401, data: null, msg: "请先登录" }, { status: 401 });
     const binding = new URL(request.url).searchParams.get("binding")?.trim() || "";
     const apps = await listRunningHubApps({ enabledOnly: true, ...(binding ? { binding } : {}) });
-    return apiSuccess(
-        apps.map((app) => ({ id: app.id, remoteId: app.remoteId, kind: app.kind, name: app.name, description: app.description, thumbnailUrl: app.thumbnailUrl, featureBindings: app.featureBindings, fieldCount: app.fields.length })),
-    );
+    return apiSuccess(apps.map((app) => ({ id: app.id, remoteId: app.remoteId, kind: app.kind, name: app.name, description: app.description, thumbnailUrl: app.thumbnailUrl, featureBindings: app.featureBindings, fieldCount: app.fields.length })));
 }

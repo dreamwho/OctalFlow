@@ -123,7 +123,7 @@ describe("Canvas Agent current-turn references", () => {
         const composer = source.slice(source.indexOf("data-canvas-agent-composer"), source.indexOf("export function AgentPanelTabs"));
 
         expect(composer).toContain("relative size-8");
-        expect(composer).toContain('data-canvas-agent-input-row');
+        expect(composer).toContain("data-canvas-agent-input-row");
         expect(composer).toContain('hasAttachments ? "flex-col" : "items-start"');
         expect(composer).toContain('className={`relative min-w-0 ${hasAttachments ? "w-full" : "min-w-0 flex-1"}`}');
         expect(composer.indexOf('aria-label="本轮参考素材"')).toBeLessThan(composer.indexOf("<Popover"));
@@ -182,6 +182,18 @@ describe("Canvas Agent current-turn references", () => {
         expect(styles).not.toContain("stroke-dasharray: 2 15");
     });
 
+    it("keeps the Agent drawer hierarchy aligned with the design board", async () => {
+        const [panelSource, chatSource] = await Promise.all([
+            readFile(resolve(process.cwd(), "src/app/(user)/canvas/components/canvas-assistant-panel.tsx"), "utf8"),
+            readFile(resolve(process.cwd(), "src/app/(user)/canvas/components/canvas-agent-chat-ui.tsx"), "utf8"),
+        ]);
+
+        expect(panelSource).toContain("data-canvas-agent-panel-header");
+        expect(panelSource).toContain(">Agent</div>");
+        expect(panelSource).toContain("Beta");
+        expect(chatSource).toContain("data-canvas-agent-result-card");
+    });
+
     it("keeps typed @ asset mentions without rendering a dedicated mention button", async () => {
         const source = await readFile(resolve(process.cwd(), "src/app/(user)/canvas/components/canvas-agent-chat-ui.tsx"), "utf8");
         const composer = source.slice(source.indexOf("data-canvas-agent-composer"), source.indexOf("export function AgentPanelTabs"));
@@ -226,7 +238,7 @@ describe("Canvas Agent current-turn references", () => {
         expect(assistantSource).toContain("showModelPicker={false}");
         expect(assistantSource).toContain("emphasizedCompactControls");
         expect(assistantSource).toContain("onSelectModel={selectModel}");
-        expect(assistantSource).toContain("selectSingleCanvasAgentModel(model, models.filter");
+        expect(assistantSource).toMatch(/selectSingleCanvasAgentModel\(\s*model,\s*models\.filter/);
         expect(assistantSource).toContain("selectedModels.map((model) => model.id)");
     });
 
@@ -351,7 +363,15 @@ describe("Canvas Agent current-turn references", () => {
 
         expect(snapshot.nodes).toEqual([
             { id: "text", type: CanvasNodeType.Text, title: "文案", position: { x: 120, y: 240 }, width: 320, height: 180, metadata: { content: "完整文本内容", size: undefined, naturalWidth: undefined, naturalHeight: undefined, url: undefined } },
-            { id: "config", type: CanvasNodeType.Config, title: "生成配置", position: { x: 480, y: 240 }, width: 340, height: 220, metadata: { content: "生成电影感海报", size: "1824x1024", naturalWidth: undefined, naturalHeight: undefined, url: undefined } },
+            {
+                id: "config",
+                type: CanvasNodeType.Config,
+                title: "生成配置",
+                position: { x: 480, y: 240 },
+                width: 340,
+                height: 220,
+                metadata: { content: "生成电影感海报", size: "1824x1024", naturalWidth: undefined, naturalHeight: undefined, url: undefined },
+            },
         ]);
         expect(snapshot).not.toHaveProperty("viewport");
         expect(snapshot.nodes[0]).toHaveProperty("position", { x: 120, y: 240 });

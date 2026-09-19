@@ -1,0 +1,65 @@
+{
+  "input": {
+    "caretColor": "rgb(79, 114, 233)",
+    "color": "rgb(19, 33, 63)",
+    "fontSize": "15px",
+    "rect": {
+      "bottom": 434.203125,
+      "height": 120,
+      "right": 1327,
+      "width": 970,
+      "x": 357,
+      "y": 314.203125
+    },
+    "value": "请根据参考素材规划一张清新明亮的产品主图"
+  },
+  "popup": {
+    "bottom": 790,
+    "height": 300,
+    "right": 1156,
+    "width": 430,
+    "x": 726,
+    "y": 490
+  },
+  "scroll": {
+    "bodyClientWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "htmlClientWidth": 1440,
+    "htmlScrollWidth": 1440
+  },
+  "send": {
+    "disabled": false,
+    "hit": true,
+    "icon": {
+      "bottom": 474.515625,
+      "height": 20.640625,
+      "right": 1313.5,
+      "width": 21,
+      "x": 1292.5,
+      "y": 453.875
+    },
+    "rect": {
+      "bottom": 486.203125,
+      "height": 44,
+      "right": 1325,
+      "width": 44,
+      "x": 1281,
+      "y": 442.203125
+    }
+  },
+  "skillButton": {
+    "bottom": 486.203125,
+    "height": 44,
+    "right": 798.515625,
+    "width": 72.09375,
+    "x": 726.421875,
+    "y": 442.203125
+  },
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/create",
+  "viewport": {
+    "dpr": 1,
+    "height": 1000,
+    "width": 1440
+  }
+}

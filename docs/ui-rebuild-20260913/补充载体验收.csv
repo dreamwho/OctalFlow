@@ -1,0 +1,9 @@
+﻿ID,类型,位置,要求,状态,证据,原因
+X01,Logo入口,首页/侧栏展开/折叠/助手/登录/后台/文档,默认/通用自定义/深色自定义/404/删除回退,IN_PROGRESS,evidence/after-full-e2e-live-finaldb-20260915.log,入口默认/深浅主题已有证据，后台自定义与全部失败回退仍未逐入口完成
+X02,图标载体,favicon/manifest/apple-touch-icon/浏览器标签,实际网络资源/透明合成/多尺寸,PASS,evidence/after-static-brand-Pfw-20260915.log;evidence/after-standalone-health-final-20260915.json,favicon/manifest/icon与品牌资源实际请求、透明合成和多尺寸检查通过
+X03,独立文档,文档首页/文档详情/搜索/移动目录,浅深/390/430/1440；实际docs生产服务,PASS,evidence/after-docs-types-final-20260915.log;evidence/after-docs-build-final-20260915.log;evidence/after-docs-visual-final-20260915.log,Docs生产类型、构建和首页/入口浅深主题三视口截图通过
+X04,全局状态,404/global-error/(user)error,浅深/返回操作/滚动/错误信息,IN_PROGRESS,evidence/after-full-e2e-live-finaldb-20260915.log,404和用户错误态有真实证据；global-error触发与逐入口返回操作尚未齐全
+X05,主题作用域,前台浅后台深/前台深后台浅,刷新/跨页/多标签；按现有作用域约定,PASS,evidence/after-theme-scope-cross-tab-final-20260915.log,前台/后台主题作用域和跨标签切换已实测
+X06,生成状态,全部调用点,ready/hover/focus/disabled/loading/running/cancellable/error；DPR1/2,IN_PROGRESS,evidence/after-full-e2e-live-finaldb-20260915.log;evidence/after-ui-rebuild-visibility-scope-final-20260915.log,ready/disabled/loading/running与B01清晰度已实测；全部调用点DPR2和错误态仍需补证
+X07,Canvas尺度,媒体/提示/配置/Agent面板,许可范围内25/50/75/100/150/200%与不同宽高比,IN_PROGRESS,evidence/after-matrix-current-build-final-20260915.log;evidence/after-canvas-suite-final-20260915.log,Canvas默认矩阵与专项缩放/节点证据已更新；25–200%多媒体/更多状态仍需补证
+X08,动态降级,首页/create,reduced-motion/资源404/页面不可见恢复,PASS,evidence/after-ui-rebuild-visibility-scope-final-20260915.log;evidence/after-full-e2e-live-finaldb-20260915.log,reduced-motion、资源404、页面不可见暂停/恢复均有真实断言

@@ -1,0 +1,15 @@
+文件,组件/入口,需要决定,状态,证据
+web/src/app/(user)/canvas/components/canvas-config-node-panel.tsx,GenerationActionButton,primary/standard block；icon=null，主图标由按钮统一渲染,PASS,evidence/after-canvas-nSTS-20260914.log
+web/src/app/(user)/canvas/components/canvas-interior-design-node-panel.tsx,GenerationActionButton,soft/standard；运行态使用停止语义,PASS,evidence/after-canvas-nSTS-20260914.log
+web/src/app/(user)/canvas/components/canvas-node-angle-dialog.tsx,GenerationActionButton,primary/standard；对话框确认生成,PASS,evidence/after-canvas-nSTS-20260914.log
+web/src/app/(user)/canvas/components/canvas-node-mask-edit-dialog.tsx,GenerationActionButton,primary/standard；保留 AI 修改语义,PASS,evidence/after-canvas-nSTS-20260914.log
+web/src/app/(user)/canvas/components/canvas-node-prompt-panel.tsx,GenerationActionButton,icon/compact 40px 收起态；standard 44px 展开态；均复用 B01/运行态,PASS,evidence/after-canvas-nSTS-20260914.log
+web/src/app/(user)/canvas/components/canvas-node-upscale-dialog.tsx,GenerationActionButton,primary/standard；对话框生成放大图,PASS,evidence/after-canvas-nSTS-20260914.log
+web/src/app/(user)/canvas/components/canvas-storyboard-dialog.tsx,GenerationActionButton,primary/standard；确认生成,PASS,evidence/after-canvas-nSTS-20260914.log
+web/src/app/(user)/create/components/creative-composer.tsx,GenerationActionButton,icon/standard 44px；发送/停止共用单一状态图标,PASS,evidence/after-ui-rebuild-nSTS-20260914.log
+web/src/app/(user)/drama/[id]/drama-asset-editor-drawer.tsx,GenerationActionButton,soft/standard；生成候选,PASS,evidence/after-drama-nSTS-20260914.log
+web/src/app/(user)/drama/[id]/drama-generation-panel.tsx,GenerationActionButton,soft/standard 用于镜头/配音/重试；primary/standard 用于批量与整集；保留刷新、发送等业务图标,PASS,evidence/after-drama-nSTS-20260914.log
+web/src/app/(user)/drama/[id]/drama-project-sections.tsx,GenerationActionButton,primary/standard（AI 整理使用小尺寸外观约束）；复用 B01,PASS,evidence/after-drama-nSTS-20260914.log
+web/src/app/(user)/drama/[id]/drama-review-panel.tsx,GenerationActionButton,primary/standard；确认内容并生成视觉方案,PASS,evidence/after-drama-nSTS-20260914.log
+web/src/app/(user)/drama/[id]/drama-scene-structure.tsx,GenerationActionButton,soft/standard；AI 整理使用小尺寸外观约束,PASS,evidence/after-drama-nSTS-20260914.log
+web/src/app/home/home-agent-hero.tsx,共享GenerationActionButton,primary/standard；首页独立生成入口改为共享 GenerationActionButton，使用 B01 白星资源与统一状态契约,PASS,evidence/after-ui-rebuild-nSTS-20260914.log; web/e2e/home.spec.ts

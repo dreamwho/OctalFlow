@@ -5,7 +5,7 @@ import { AdminOverview } from "@/components/admin/admin-overview";
 import { AdminSectionNav } from "@/components/admin/admin-section-nav";
 import type { AdminSectionKey } from "@/components/admin/admin-sections";
 import { Button, Form, Input, Modal } from "antd";
-import { ArrowRight, Copy, Menu, Plus, Sparkles } from "lucide-react";
+import { ArrowRight, Copy, Menu, Plus } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -16,6 +16,7 @@ import type { AdminSetupSummary } from "@/lib/server/admin-setup-status";
 import { CdkRedemptionDetail } from "./admin-dashboard-elements";
 import { AdminUserEditorModal } from "./admin-user-editor-modal";
 import { useAdminDashboardController } from "./use-admin-dashboard-controller";
+import { DreamyoIcon, DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 
 type AdminDashboardProps = {
     initialUsers: PublicUser[];
@@ -46,6 +47,7 @@ const loadChannelsSection = () => import("./admin-upstream-sections").then((modu
 const loadMagicProxySection = () => import("./admin-magic-proxy-section").then((module) => module.AdminMagicProxySection);
 const loadRunningHubSection = () => import("@/app/admin/runninghub/components/admin-runninghub-section").then((module) => module.AdminRunningHubSection);
 const loadGeminiAiSection = () => import("./admin-geminiai-section").then((module) => module.AdminGeminiAiSection);
+const loadDolaApiSection = () => import("./admin-dola-api-section").then((module) => module.AdminDolaApiSection);
 const loadGeminiToolsSection = () => import("./admin-gemini-tools-section").then((module) => module.AdminGeminiToolsSection);
 const loadChatGptApiSection = () => import("@/app/admin/chatgpt-api/components/admin-chatgpt-api-section").then((module) => module.AdminChatGptApiSection);
 const loadMiniMaxSection = () => import("./admin-minimax-section").then((module) => module.AdminMiniMaxSection);
@@ -83,6 +85,7 @@ const sectionLoaders: Partial<Record<AdminSectionKey, () => Promise<unknown>>> =
     magicProxy: loadMagicProxySection,
     runninghub: loadRunningHubSection,
     geminiai: loadGeminiAiSection,
+    dolaApi: loadDolaApiSection,
     geminiTools: loadGeminiToolsSection,
     chatgptApi: loadChatGptApiSection,
     minimax: loadMiniMaxSection,
@@ -120,6 +123,7 @@ const AdminChannelsSection = dynamic(loadChannelsSection, { loading: AdminSectio
 const AdminMagicProxySection = dynamic(loadMagicProxySection, { loading: AdminSectionLoading });
 const AdminRunningHubSection = dynamic(loadRunningHubSection, { loading: AdminSectionLoading });
 const AdminGeminiAiSection = dynamic(loadGeminiAiSection, { loading: AdminSectionLoading });
+const AdminDolaApiSection = dynamic(loadDolaApiSection, { loading: AdminSectionLoading });
 const AdminGeminiToolsSection = dynamic(loadGeminiToolsSection, { loading: AdminSectionLoading });
 const AdminChatGptApiSection = dynamic(loadChatGptApiSection, { loading: AdminSectionLoading });
 const AdminMiniMaxSection = dynamic(loadMiniMaxSection, { loading: AdminSectionLoading });
@@ -138,7 +142,12 @@ const AdminGenerationOperationsSection = dynamic(loadGenerationOperationsSection
 const AdminAccountDeletionSection = dynamic(loadAccountDeletionSection, { loading: AdminSectionLoading });
 
 function AdminSectionLoading() {
-    return <div className="flex min-h-36 items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">正在加载分区...</div>;
+    return (
+        <div className="flex min-h-36 flex-col items-center justify-center gap-2 text-sm text-zinc-500 dark:text-zinc-400" role="status" aria-label="正在加载分区">
+            <DreamyoWaitingIcon frame={4} size={34} label="正在加载分区" />
+            <span>正在加载分区...</span>
+        </div>
+    );
 }
 
 export function AdminDashboard(props: AdminDashboardProps) {
@@ -223,7 +232,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                                     className="admin-dashboard-setup-pill group flex min-w-0 items-center gap-2 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-left transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
                                 >
                                     <span className="admin-dashboard-setup-icon grid size-5 shrink-0 place-items-center text-zinc-500 dark:text-zinc-400">
-                                        <Sparkles className="size-3.5" />
+                                        <DreamyoIcon name="magic" size={15} />
                                     </span>
                                     <span className="admin-dashboard-setup-copy flex min-w-0 items-center gap-2">
                                         <span className="admin-dashboard-setup-title flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-zinc-700 dark:text-zinc-200">
@@ -241,8 +250,8 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     </div>
                 </header>
 
-                <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-3 px-3 py-3 sm:space-y-5 sm:px-6 sm:py-6 lg:px-8 xl:px-9 xl:py-7">
-                    <section className="border-b border-zinc-200 pb-3 sm:pb-5 dark:border-zinc-800">
+                <div className="admin-dashboard-content mx-auto w-full max-w-[1600px] min-w-0 space-y-3 px-3 py-3 sm:space-y-5 sm:px-6 sm:py-6 lg:px-8 xl:px-9 xl:py-7">
+                    <section className="admin-dashboard-intro">
                         <h1 className="text-lg font-semibold text-zinc-950 sm:text-xl dark:text-zinc-100">{activeSectionInfo.label}</h1>
                         <div className="mt-1 line-clamp-2 max-w-3xl text-xs leading-5 text-zinc-500 sm:mt-1.5 sm:line-clamp-none sm:text-sm sm:leading-6 dark:text-zinc-400">{activeSectionInfo.description}</div>
                     </section>
@@ -282,6 +291,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "magicProxy" ? <AdminMagicProxySection /> : null}
                     {activeSection === "runninghub" ? <AdminRunningHubSection /> : null}
                     {activeSection === "geminiai" ? <AdminGeminiAiSection /> : null}
+                    {activeSection === "dolaApi" ? <AdminDolaApiSection /> : null}
                     {activeSection === "geminiTools" ? <AdminGeminiToolsSection controller={controller} /> : null}
                     {activeSection === "chatgptApi" ? <AdminChatGptApiSection controller={controller} /> : null}
                     {activeSection === "minimax" ? <AdminMiniMaxSection controller={controller} /> : null}

@@ -1,10 +1,53 @@
-@import 'tailwindcss';
-@import 'fumadocs-ui/css/neutral.css';
-@import 'fumadocs-ui/css/preset.css';
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
 
 :root {
-  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
-  --font-display: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", Arial, sans-serif;
+  --font-display:
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+
+  /* C01: blue left, cyan/mint centre, pale lilac right. These are semantic
+   * documentation tokens so Fumadocs surfaces follow the same Dreamyo system
+   * without placing the reference artwork behind readable content. */
+  --dreamyo-blue: #506bf8;
+  --dreamyo-cyan: #39c7e5;
+  --dreamyo-mint: #52f0df;
+  --dreamyo-lilac: #b5acf6;
+  --dreamyo-ice: #eafefe;
+  --dreamyo-page: #f3faff;
+  --dreamyo-panel: #ffffff;
+  --dreamyo-ink: #1c2638;
+  --dreamyo-muted: #506278;
+  --color-fd-background: var(--dreamyo-page);
+  --color-fd-foreground: var(--dreamyo-ink);
+  --color-fd-muted-foreground: var(--dreamyo-muted);
+  --color-fd-border: #d5e6f1;
+  --color-fd-accent: #eaf7fb;
+  --color-fd-accent-foreground: #245678;
+  --color-fd-primary: #3853d8;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-card: rgba(255, 255, 255, 0.86);
+  --color-fd-card-foreground: var(--dreamyo-ink);
+}
+
+.dark {
+  --dreamyo-page: #080f20;
+  --dreamyo-panel: #0c1a36;
+  --dreamyo-ink: #eef6ff;
+  --dreamyo-muted: #b8cbe4;
+  --color-fd-background: var(--dreamyo-page);
+  --color-fd-foreground: var(--dreamyo-ink);
+  --color-fd-muted-foreground: var(--dreamyo-muted);
+  --color-fd-border: #2b4c7f;
+  --color-fd-accent: #142953;
+  --color-fd-accent-foreground: #b7f8fe;
+  --color-fd-primary: #94e6ed;
+  --color-fd-primary-foreground: #080f20;
+  --color-fd-card: rgba(12, 26, 54, 0.9);
+  --color-fd-card-foreground: var(--dreamyo-ink);
 }
 
 html {
@@ -13,6 +56,102 @@ html {
 
 body {
   font-family: var(--font-body);
+  color: var(--dreamyo-ink);
+  background:
+    radial-gradient(circle at 4% 0%, rgba(80, 107, 248, 0.14), transparent 34%),
+    radial-gradient(
+      circle at 54% 0%,
+      rgba(82, 240, 223, 0.12),
+      transparent 38%
+    ),
+    radial-gradient(
+      circle at 100% 0%,
+      rgba(181, 172, 246, 0.16),
+      transparent 36%
+    ),
+    var(--dreamyo-page);
+}
+
+.dreamyo-docs-home {
+  position: relative;
+  isolation: isolate;
+}
+
+.dreamyo-docs-home::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto;
+  height: 34rem;
+  background: linear-gradient(
+    118deg,
+    rgba(80, 107, 248, 0.16),
+    rgba(57, 199, 229, 0.15) 47%,
+    rgba(181, 172, 246, 0.16)
+  );
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--dreamyo-cyan) 18%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.dreamyo-docs-hero {
+  border-color: color-mix(
+    in srgb,
+    var(--dreamyo-cyan) 28%,
+    var(--color-fd-border)
+  );
+}
+
+.dreamyo-docs-preview {
+  border: 1px solid
+    color-mix(in srgb, var(--dreamyo-blue) 28%, var(--color-fd-border));
+  background: var(--dreamyo-panel);
+  box-shadow:
+    0 20px 50px rgba(54, 100, 180, 0.14),
+    0 0 0 5px rgba(183, 248, 254, 0.18);
+}
+
+.dark .dreamyo-docs-preview {
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.28),
+    0 0 0 5px rgba(57, 199, 229, 0.12);
+}
+
+.dreamyo-docs-cta {
+  background: linear-gradient(
+    108deg,
+    var(--dreamyo-blue),
+    var(--dreamyo-cyan) 50%,
+    var(--dreamyo-mint) 72%,
+    var(--dreamyo-lilac)
+  );
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(80, 107, 248, 0.22);
+}
+
+.dreamyo-docs-cta:hover {
+  filter: saturate(1.08) brightness(1.04);
+}
+
+.dreamyo-docs-outline {
+  border-color: color-mix(
+    in srgb,
+    var(--dreamyo-blue) 32%,
+    var(--color-fd-border)
+  );
+  color: var(--color-fd-foreground);
+}
+
+.dreamyo-docs-outline:hover {
+  border-color: var(--dreamyo-blue);
+  background: var(--color-fd-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dreamyo-docs-cta,
+  .dreamyo-docs-outline {
+    transition: none;
+  }
 }
 
 html > body[data-scroll-locked] {

@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/u/e2e_admin",
+  "actualPath": "/u/e2e_admin",
+  "responseStatus": 200,
+  "route": "/u/e2e_admin",
+  "theme": "dark",
+  "title": "创作者主页 | dreamyo",
+  "heading": "E2E 管理员",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 768,
+    "height": 1024
+  },
+  "overflow": false,
+  "state": "公开主页真实不可用状态",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

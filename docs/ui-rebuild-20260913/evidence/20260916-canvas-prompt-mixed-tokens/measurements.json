@@ -1,0 +1,304 @@
+{
+  "buildId": "ZkMiGzfnlgA6lGj0wMzQk",
+  "capturedAt": "2026-09-16T12:24:00+08:00",
+  "cases": {
+    "before": {
+      "route": "/canvas/canvas-ui-after-20260915",
+      "theme": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "prompt panel visible; legacy Skill rendered after the prose and image reference; parameter popover open in captured baseline",
+      "zoom": 100,
+      "screenshot": "before-mixed-tokens-390x844.png",
+      "observable": "Skill was not interleaved at the insertion point and the reference/skill flow was not a single persisted inline stream.",
+      "buildId": "UqeaFBuZ5AWViN9hGF5oE"
+    },
+    "afterLight": {
+      "editorHtml": "<p>请帮我生成一个 <span class=\"react-renderer node-skillToken\" contenteditable=\"false\"><span as=\"span\" class=\"canvas-prompt-token canvas-prompt-skill-token inline-flex max-w-full items-center gap-1 rounded-lg border border-[#cfc7ff] bg-[#f4f0ff] px-1 py-0.5 align-middle text-sm leading-6 text-[#4d42a8] shadow-sm dark:border-[#645ce0] dark:bg-[#342c67]/70 dark:text-[#e9e6ff]\" data-canvas-token=\"skill\" data-skill-id=\"portrait-realism-messy-hair\" data-canvas-inline-skill=\"true\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-sparkles canvas-prompt-token-icon size-4 shrink-0 text-[#6854e8] dark:text-[#bdb5ff]\" aria-hidden=\"true\"><path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"></path><path d=\"M20 2v4\"></path><path d=\"M22 4h-4\"></path><circle cx=\"4\" cy=\"20\" r=\"2\"></circle></svg><span class=\"canvas-prompt-token-label min-w-0 truncate px-0.5\">人物真人感优化（发丝凌乱）</span><button type=\"button\" class=\"canvas-prompt-token-remove grid size-7 shrink-0 place-items-center rounded-md text-[#6854e8]/75 transition hover:bg-[#6854e8]/10 hover:text-[#4d42a8] dark:text-[#ddd9ff] dark:hover:bg-white/10 dark:hover:text-white\" aria-label=\"移除 Skill 人物真人感优化（发丝凌乱）\" title=\"移除 Skill 人物真人感优化（发丝凌乱）\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-x size-3.5\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg></button></span></span> <span class=\"react-renderer node-referenceToken\" contenteditable=\"false\"><span as=\"span\" class=\"canvas-prompt-token canvas-prompt-reference-token inline-flex max-w-full items-center gap-1 rounded-lg border px-1 py-0.5 align-middle text-sm leading-6 shadow-sm dark:border-[#52658e] dark:bg-[#172342] dark:text-[#edf5ff]\" data-canvas-token=\"reference\" data-reference-id=\"image-ui-reference-20260915\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><span class=\"canvas-prompt-token-preview grid size-6 shrink-0 place-items-center overflow-hidden rounded-md bg-black/5 dark:bg-white/10\"><img alt=\"\" draggable=\"false\" src=\"/brand/dreamyo/flow-light.png\"></span><span class=\"canvas-prompt-token-label min-w-0 truncate px-0.5\">图片1</span><button type=\"button\" class=\"canvas-prompt-token-remove grid size-7 shrink-0 place-items-center rounded-md text-slate-500 transition hover:bg-slate-500/10 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white\" aria-label=\"移除图片1\" title=\"移除图片1\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-x size-3.5\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg></button></span></span> ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。<span class=\"react-renderer node-skillToken\" contenteditable=\"false\"><span as=\"span\" class=\"canvas-prompt-token canvas-prompt-skill-token inline-flex max-w-full items-center gap-1 rounded-lg border border-[#cfc7ff] bg-[#f4f0ff] px-1 py-0.5 align-middle text-sm leading-6 text-[#4d42a8] shadow-sm dark:border-[#645ce0] dark:bg-[#342c67]/70 dark:text-[#e9e6ff]\" data-canvas-token=\"skill\" data-skill-id=\"yanai-natural-beauty\" data-canvas-inline-skill=\"true\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-sparkles canvas-prompt-token-icon size-4 shrink-0 text-[#6854e8] dark:text-[#bdb5ff]\" aria-hidden=\"true\"><path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"></path><path d=\"M20 2v4\"></path><path d=\"M22 4h-4\"></path><circle cx=\"4\" cy=\"20\" r=\"2\"></circle></svg><span class=\"canvas-prompt-token-label min-w-0 truncate px-0.5\">自然美颜精修</span><button type=\"button\" class=\"canvas-prompt-token-remove grid size-7 shrink-0 place-items-center rounded-md text-[#6854e8]/75 transition hover:bg-[#6854e8]/10 hover:text-[#4d42a8] dark:text-[#ddd9ff] dark:hover:bg-white/10 dark:hover:text-white\" aria-label=\"移除 Skill 自然美颜精修\" title=\"移除 Skill 自然美颜精修\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-x size-3.5\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg></button></span></span><img class=\"ProseMirror-separator\" alt=\"\"><br class=\"ProseMirror-trailingBreak\"></p>",
+      "editorRect": {
+        "bottom": 604.625,
+        "height": 122,
+        "left": 403,
+        "right": 1037,
+        "top": 482.625,
+        "width": 634,
+        "x": 403,
+        "y": 482.625
+      },
+      "editorText": "请帮我生成一个 人物真人感优化（发丝凌乱） 图片1 ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。自然美颜精修",
+      "panelRect": {
+        "bottom": 669.625,
+        "height": 232,
+        "left": 390,
+        "right": 1050,
+        "top": 437.625,
+        "width": 660,
+        "x": 390,
+        "y": 437.625
+      },
+      "route": "/canvas/canvas-ui-after-20260915",
+      "theme": "light",
+      "tokens": [
+        {
+          "id": "portrait-realism-messy-hair",
+          "index": 0,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 520.625,
+            "height": 34,
+            "left": 508.796875,
+            "right": 756.796875,
+            "top": 486.625,
+            "width": 248,
+            "x": 508.796875,
+            "y": 486.625
+          },
+          "text": "人物真人感优化（发丝凌乱）",
+          "type": "skill"
+        },
+        {
+          "id": "image-ui-reference-20260915",
+          "index": 1,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 520.625,
+            "height": 34,
+            "left": 760.59375,
+            "right": 868.9375,
+            "top": 486.625,
+            "width": 108.34375,
+            "x": 760.59375,
+            "y": 486.625
+          },
+          "text": "图片1",
+          "type": "reference"
+        },
+        {
+          "id": "yanai-natural-beauty",
+          "index": 2,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 554.625,
+            "height": 34,
+            "left": 645,
+            "right": 795,
+            "top": 520.625,
+            "width": 150,
+            "x": 645,
+            "y": 520.625
+          },
+          "text": "自然美颜精修",
+          "type": "skill"
+        }
+      ],
+      "url": "http://127.0.0.1:3102/canvas/canvas-ui-after-20260915",
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "image generation node selected; prompt panel open; inline tokens at caret with natural wrapping",
+      "zoom": 100,
+      "screenshot": "after-mixed-tokens-light-1440x900.png",
+      "buildId": "ZkMiGzfnlgA6lGj0wMzQk"
+    },
+    "afterDark": {
+      "editorHtml": "<p>请帮我生成一个 <span class=\"react-renderer node-skillToken\" contenteditable=\"false\"><span as=\"span\" class=\"canvas-prompt-token canvas-prompt-skill-token inline-flex max-w-full items-center gap-1 rounded-lg border border-[#cfc7ff] bg-[#f4f0ff] px-1 py-0.5 align-middle text-sm leading-6 text-[#4d42a8] shadow-sm dark:border-[#645ce0] dark:bg-[#342c67]/70 dark:text-[#e9e6ff]\" data-canvas-token=\"skill\" data-skill-id=\"portrait-realism-messy-hair\" data-canvas-inline-skill=\"true\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-sparkles canvas-prompt-token-icon size-4 shrink-0 text-[#6854e8] dark:text-[#bdb5ff]\" aria-hidden=\"true\"><path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"></path><path d=\"M20 2v4\"></path><path d=\"M22 4h-4\"></path><circle cx=\"4\" cy=\"20\" r=\"2\"></circle></svg><span class=\"canvas-prompt-token-label min-w-0 truncate px-0.5\">人物真人感优化（发丝凌乱）</span><button type=\"button\" class=\"canvas-prompt-token-remove grid size-7 shrink-0 place-items-center rounded-md text-[#6854e8]/75 transition hover:bg-[#6854e8]/10 hover:text-[#4d42a8] dark:text-[#ddd9ff] dark:hover:bg-white/10 dark:hover:text-white\" aria-label=\"移除 Skill 人物真人感优化（发丝凌乱）\" title=\"移除 Skill 人物真人感优化（发丝凌乱）\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-x size-3.5\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg></button></span></span> <span class=\"react-renderer node-referenceToken\" contenteditable=\"false\"><span as=\"span\" class=\"canvas-prompt-token canvas-prompt-reference-token inline-flex max-w-full items-center gap-1 rounded-lg border px-1 py-0.5 align-middle text-sm leading-6 shadow-sm dark:border-[#52658e] dark:bg-[#172342] dark:text-[#edf5ff]\" data-canvas-token=\"reference\" data-reference-id=\"image-ui-reference-20260915\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><span class=\"canvas-prompt-token-preview grid size-6 shrink-0 place-items-center overflow-hidden rounded-md bg-black/5 dark:bg-white/10\"><img alt=\"\" draggable=\"false\" src=\"/brand/dreamyo/flow-light.png\"></span><span class=\"canvas-prompt-token-label min-w-0 truncate px-0.5\">图片1</span><button type=\"button\" class=\"canvas-prompt-token-remove grid size-7 shrink-0 place-items-center rounded-md text-slate-500 transition hover:bg-slate-500/10 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white\" aria-label=\"移除图片1\" title=\"移除图片1\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-x size-3.5\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg></button></span></span> ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。<span class=\"react-renderer node-skillToken\" contenteditable=\"false\"><span as=\"span\" class=\"canvas-prompt-token canvas-prompt-skill-token inline-flex max-w-full items-center gap-1 rounded-lg border border-[#cfc7ff] bg-[#f4f0ff] px-1 py-0.5 align-middle text-sm leading-6 text-[#4d42a8] shadow-sm dark:border-[#645ce0] dark:bg-[#342c67]/70 dark:text-[#e9e6ff]\" data-canvas-token=\"skill\" data-skill-id=\"yanai-natural-beauty\" data-canvas-inline-skill=\"true\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-sparkles canvas-prompt-token-icon size-4 shrink-0 text-[#6854e8] dark:text-[#bdb5ff]\" aria-hidden=\"true\"><path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"></path><path d=\"M20 2v4\"></path><path d=\"M22 4h-4\"></path><circle cx=\"4\" cy=\"20\" r=\"2\"></circle></svg><span class=\"canvas-prompt-token-label min-w-0 truncate px-0.5\">自然美颜精修</span><button type=\"button\" class=\"canvas-prompt-token-remove grid size-7 shrink-0 place-items-center rounded-md text-[#6854e8]/75 transition hover:bg-[#6854e8]/10 hover:text-[#4d42a8] dark:text-[#ddd9ff] dark:hover:bg-white/10 dark:hover:text-white\" aria-label=\"移除 Skill 自然美颜精修\" title=\"移除 Skill 自然美颜精修\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-x size-3.5\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg></button></span></span><img class=\"ProseMirror-separator\" alt=\"\"><br class=\"ProseMirror-trailingBreak\"></p>",
+      "editorRect": {
+        "bottom": 635,
+        "height": 122,
+        "left": 25,
+        "right": 365,
+        "top": 513,
+        "width": 340,
+        "x": 25,
+        "y": 513
+      },
+      "editorText": "请帮我生成一个 人物真人感优化（发丝凌乱） 图片1 ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。自然美颜精修",
+      "panelRect": {
+        "bottom": 700,
+        "height": 232,
+        "left": 12,
+        "right": 378,
+        "top": 468,
+        "width": 366,
+        "x": 12,
+        "y": 468
+      },
+      "route": "/canvas/canvas-ui-after-20260915",
+      "theme": "dark",
+      "tokens": [
+        {
+          "id": "portrait-realism-messy-hair",
+          "index": 0,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 548,
+            "height": 34,
+            "left": 29,
+            "right": 277,
+            "top": 514,
+            "width": 248,
+            "x": 29,
+            "y": 514
+          },
+          "text": "人物真人感优化（发丝凌乱）",
+          "type": "skill"
+        },
+        {
+          "id": "image-ui-reference-20260915",
+          "index": 1,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 582,
+            "height": 34,
+            "left": 29,
+            "right": 137.34375,
+            "top": 548,
+            "width": 108.34375,
+            "x": 29,
+            "y": 548
+          },
+          "text": "图片1",
+          "type": "reference"
+        },
+        {
+          "id": "yanai-natural-beauty",
+          "index": 2,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 616,
+            "height": 34,
+            "left": 211,
+            "right": 361,
+            "top": 582,
+            "width": 150,
+            "x": 211,
+            "y": 582
+          },
+          "text": "自然美颜精修",
+          "type": "skill"
+        }
+      ],
+      "url": "http://127.0.0.1:3102/canvas/canvas-ui-after-20260915",
+      "viewport": {
+        "height": 844,
+        "width": 390
+      },
+      "state": "image generation node selected; prompt panel open; inline tokens at caret with natural wrapping",
+      "zoom": 100,
+      "screenshot": "after-mixed-tokens-dark-390x844.png",
+      "styles": {
+        "panelBackground": "rgba(10, 22, 47, 0.98)",
+        "theme": "dark",
+        "tokens": [
+          {
+            "background": "lab(21.5495 16.9286 -34.1619 / 0.7)",
+            "border": "rgb(100, 92, 224)",
+            "color": "rgb(233, 230, 255)",
+            "labelColor": "rgb(233, 230, 255)",
+            "type": "skill"
+          },
+          {
+            "background": "rgb(23, 35, 66)",
+            "border": "rgb(82, 101, 142)",
+            "color": "rgb(237, 245, 255)",
+            "labelColor": "rgb(237, 245, 255)",
+            "type": "reference"
+          },
+          {
+            "background": "lab(21.5495 16.9286 -34.1619 / 0.7)",
+            "border": "rgb(100, 92, 224)",
+            "color": "rgb(233, 230, 255)",
+            "labelColor": "rgb(233, 230, 255)",
+            "type": "skill"
+          }
+        ]
+      },
+      "buildId": "ZkMiGzfnlgA6lGj0wMzQk"
+    },
+    "afterLightReload": {
+      "editorRect": {
+        "bottom": 604.625,
+        "height": 122,
+        "left": 403,
+        "right": 1037,
+        "top": 482.625,
+        "width": 634,
+        "x": 403,
+        "y": 482.625
+      },
+      "panelRect": {
+        "bottom": 669.625,
+        "height": 232,
+        "left": 390,
+        "right": 1050,
+        "top": 437.625,
+        "width": 660,
+        "x": 390,
+        "y": 437.625
+      },
+      "route": "/canvas/canvas-ui-after-20260915",
+      "theme": "light",
+      "tokens": [
+        {
+          "id": "portrait-realism-messy-hair",
+          "index": 0,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 520.625,
+            "height": 34,
+            "left": 508.796875,
+            "right": 756.796875,
+            "top": 486.625,
+            "width": 248,
+            "x": 508.796875,
+            "y": 486.625
+          },
+          "type": "skill"
+        },
+        {
+          "id": "image-ui-reference-20260915",
+          "index": 1,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 520.625,
+            "height": 34,
+            "left": 760.59375,
+            "right": 868.9375,
+            "top": 486.625,
+            "width": 108.34375,
+            "x": 760.59375,
+            "y": 486.625
+          },
+          "type": "reference"
+        },
+        {
+          "id": "yanai-natural-beauty",
+          "index": 2,
+          "insideEditor": true,
+          "rect": {
+            "bottom": 554.625,
+            "height": 34,
+            "left": 645,
+            "right": 795,
+            "top": 520.625,
+            "width": 150,
+            "x": 645,
+            "y": 520.625
+          },
+          "type": "skill"
+        }
+      ],
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      },
+      "state": "after full page reload; selected image node restored; prompt panel open",
+      "zoom": 100,
+      "screenshot": "after-mixed-tokens-light-1440x900-reload.png",
+      "buildId": "ZkMiGzfnlgA6lGj0wMzQk"
+    }
+  }
+}

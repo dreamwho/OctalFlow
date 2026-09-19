@@ -1,6 +1,6 @@
 import { apiSuccess } from "@/app/api/_shared/api-response";
 import { auditMagicProxyAction, auditMagicProxyFailure, magicProxyRouteError, readMagicProxyAdminJson, requireMagicProxyAdmin } from "@/lib/server/magic-proxy-admin";
-import { getMagicProxyOverview, testChatGptChainAccess, testMagicProxyAllNodes, testMagicProxyGoogleAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "@/lib/server/magic-proxy-service";
+import { getMagicProxyOverview, testChatGptChainAccess, testMagicProxyAllNodes, testMagicProxyDolaAccess, testMagicProxyGoogleAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "@/lib/server/magic-proxy-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,28 +35,38 @@ export async function POST(request: Request) {
     const access = await requireMagicProxyAdmin();
     if ("error" in access) return access.error;
     let node = "";
+    let failureAction = "admin.magic_proxy.delay_test";
     try {
         const body = (await readMagicProxyAdminJson(request).catch(() => ({}))) as { node?: unknown; action?: unknown };
         const action = typeof body?.action === "string" ? body.action.trim() : "";
 
         if (action === "testGoogle") {
+            failureAction = "admin.magic_proxy.google_test";
             const data = await testMagicProxyGoogleAccess(body);
             await auditMagicProxyAction(request, access.user, "admin.magic_proxy.google_test", { type: "magic_proxy", id: "google" }, { ok: data.overallOk, count: data.items.length });
             return apiSuccess(data, data.overallOk ? "Google 访问测试通过" : "部分或全部通道无法正常访问 Google");
         }
 
         if (action === "testChatGptChain") {
+            failureAction = "admin.magic_proxy.chatgpt_chain_test";
             const data = await testChatGptChainAccess();
             await auditMagicProxyAction(request, access.user, "admin.magic_proxy.chatgpt_chain_test", { type: "magic_proxy", id: "chatgpt-chain" }, { ok: data.overallOk });
             return apiSuccess(data, data.overallOk ? "ChatGPT 链路连通性测试通过" : "ChatGPT 链路连通性测试未通过");
         }
 
+        if (action === "testDola") {
+            failureAction = "admin.magic_proxy.dola_test";
+            const data = await testMagicProxyDolaAccess();
+            await auditMagicProxyAction(request, access.user, "admin.magic_proxy.dola_test", { type: "magic_proxy", id: "dola" }, { ok: data.overallOk });
+            return apiSuccess(data, data.overallOk ? "Dola 访问测试通过" : "Dola 访问测试未通过");
+        }
+
         node = typeof body?.node === "string" ? body.node.trim() : "";
         const data = node ? await testMagicProxyNodeDelay(node) : await testMagicProxyAllNodes();
-        await auditMagicProxyAction(request, access.user, "admin.magic_proxy.delay_test", { type: "magic_proxy", id: node || "default" }, { node: node || "all", count: node ? 1 : (data as { results?: unknown[] }).results?.length ?? 0 });
+        await auditMagicProxyAction(request, access.user, "admin.magic_proxy.delay_test", { type: "magic_proxy", id: node || "default" }, { node: node || "all", count: node ? 1 : ((data as { results?: unknown[] }).results?.length ?? 0) });
         return apiSuccess(data, node ? "节点测速完成" : "全部节点测速完成");
     } catch (error) {
-        await auditMagicProxyFailure(request, access.user, "admin.magic_proxy.delay_test", { type: "magic_proxy", id: node || "default" });
+        await auditMagicProxyFailure(request, access.user, failureAction, { type: "magic_proxy", id: node || "default" });
         return magicProxyRouteError(error, "测速或连通性测试失败");
     }
 }

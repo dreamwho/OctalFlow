@@ -119,7 +119,7 @@ export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGe
         }
         if (state.status === "failed") {
             await refreshUserPointsIfSystem(resolveModelRequestConfig(config, task.model).apiSource);
-            if (state.needsReview) throw new GenerationTaskNeedsReviewError(state.error);
+            if (state.needsReview) throw new GenerationTaskNeedsReviewError(state.error, state.verificationId, task.serverTaskId || task.id);
             throw new VideoGenerationUpstreamError(state.error, state.canRetry !== false);
         }
         await delay(delayMs, options?.signal);
@@ -254,7 +254,7 @@ export async function pollServerVideoTask(task: VideoGenerationTask, options?: R
     syncUserPointsFromHeaders(response.headers, "system");
     const payload = (await response.json().catch(() => ({}))) as { task?: GenerationTaskExecutionState & { status?: string; result?: VideoGenerationResult; error?: string; canRetry?: boolean }; error?: string };
     if (!response.ok) throw new Error(payload.error || "后台视频任务查询失败");
-    if (payload.task?.needsReview) return { status: "failed", error: payload.task.reviewReason || GENERATION_TASK_NEEDS_REVIEW_MESSAGE, needsReview: true };
+    if (payload.task?.needsReview) return { status: "failed", error: payload.task.reviewReason || GENERATION_TASK_NEEDS_REVIEW_MESSAGE, needsReview: true, verificationId: payload.task.verificationId };
     if (payload.task?.status === "success") return { status: "completed", result: payload.task.result || {} };
     if (payload.task?.status === "error" || payload.task?.status === "cancelled") return { status: "failed", error: payload.task.error || "视频生成失败", canRetry: payload.task.canRetry === true };
     return { status: "pending" };
@@ -286,12 +286,12 @@ export async function pollUpstreamVideoGenerationTask(config: AiConfig, task: Vi
 }
 
 export async function storeGeneratedVideo(result: VideoGenerationResult): Promise<UploadedFile> {
-    if (result.blob) return { ...(await uploadGeneratedMediaFile(result.blob, "video")), remoteUrl: result.remoteUrl };
+    if (result.blob) return { ...(await uploadGeneratedMediaFile(result.blob, "video")), remoteUrl: result.remoteUrl, dolaVodPayload: result.dolaVodPayload };
     if (result.url) {
         const existing = await readStoredMediaFile(result.url, "video", result.mimeType || "video/mp4");
-        if (existing) return { ...existing, remoteUrl: result.remoteUrl };
+        if (existing) return { ...existing, remoteUrl: result.remoteUrl, dolaVodPayload: result.dolaVodPayload };
         const stored = await uploadGeneratedMediaFile(result.url, "video");
-        return { ...stored, remoteUrl: result.remoteUrl || (/^https?:\/\//i.test(result.url) ? result.url : undefined) };
+        return { ...stored, remoteUrl: result.remoteUrl || (/^https?:\/\//i.test(result.url) ? result.url : undefined), dolaVodPayload: result.dolaVodPayload };
     }
     throw new Error("视频接口没有返回可播放的视频");
 }

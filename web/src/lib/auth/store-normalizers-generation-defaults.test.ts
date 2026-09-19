@@ -14,6 +14,12 @@ describe("generation default normalization", () => {
     });
 
     it("preserves administrator-defined positive concurrency without platform ceilings", () => {
-        expect(normalizeGenerationConcurrency({ agent: 11, image: 12, video: 6, audio: 13, text: 21, render: 7 })).toEqual({ agent: 11, image: 12, video: 6, audio: 13, text: 21, render: 7 });
+        expect(normalizeGenerationConcurrency({ agent: 11, image: 12, video: 6, audio: 13, text: 21, render: 7, workerLanes: 4 })).toEqual({ agent: 11, image: 12, video: 6, audio: 13, text: 21, render: 7, workerLanes: 4 });
+    });
+
+    it("clamps the worker lane count into the 1-8 platform range", () => {
+        expect(normalizeGenerationConcurrency({ workerLanes: 99 }).workerLanes).toBe(8);
+        expect(normalizeGenerationConcurrency({ workerLanes: 0 }).workerLanes).toBe(4);
+        expect(normalizeGenerationConcurrency({}).workerLanes).toBe(4);
     });
 });

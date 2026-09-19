@@ -22,20 +22,27 @@ type CanvasSettingsPopoverShellProps = {
     onOpenChange?: (open: boolean) => void;
     buttonAriaLabel?: string;
     panelWidth?: number;
+    panelMaxHeight?: number;
+    canvasPanel?: {
+        onApply?: () => void;
+    };
 };
 
-export function CanvasSettingsPopoverShell({ label, children, buttonClassName, defaultButtonClassName, icon, placement = "topLeft", onOpenChange, buttonAriaLabel, panelWidth = 340 }: CanvasSettingsPopoverShellProps) {
+export function CanvasSettingsPopoverShell({ label, children, buttonClassName, defaultButtonClassName, icon, placement = "topLeft", onOpenChange, buttonAriaLabel, panelWidth = 340, panelMaxHeight = 420, canvasPanel }: CanvasSettingsPopoverShellProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
     const [childOverlayOpen, setChildOverlayOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
-    const updateOpen = useCallback((nextOpen: boolean) => {
-        setOpen(nextOpen);
-        if (!nextOpen) setChildOverlayOpen(false);
-        onOpenChange?.(nextOpen);
-    }, [onOpenChange]);
+    const updateOpen = useCallback(
+        (nextOpen: boolean) => {
+            setOpen(nextOpen);
+            if (!nextOpen) setChildOverlayOpen(false);
+            onOpenChange?.(nextOpen);
+        },
+        [onOpenChange],
+    );
     const openChildOverlay = useCallback(() => setChildOverlayOpen(true), []);
 
     useEffect(() => {
@@ -79,7 +86,16 @@ export function CanvasSettingsPopoverShell({ label, children, buttonClassName, d
             </span>
             {open && buttonRect
                 ? createPortal(
-                      <SettingsPanel buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} panelWidth={panelWidth} childOverlayOpen={childOverlayOpen}>
+                      <SettingsPanel
+                          buttonRect={buttonRect}
+                          panelRef={panelRef}
+                          placement={placement}
+                          theme={theme}
+                          panelWidth={panelWidth}
+                          panelMaxHeight={panelMaxHeight}
+                          childOverlayOpen={childOverlayOpen}
+                          canvasPanel={canvasPanel}
+                      >
                           {children(theme, () => updateOpen(false), openChildOverlay)}
                       </SettingsPanel>,
                       document.body,
@@ -89,7 +105,27 @@ export function CanvasSettingsPopoverShell({ label, children, buttonClassName, d
     );
 }
 
-function SettingsPanel({ buttonRect, panelRef, placement, theme, panelWidth, childOverlayOpen, children }: { buttonRect: DOMRect; panelRef: React.RefObject<HTMLDivElement | null>; placement: CanvasSettingsPopoverPlacement; theme: CanvasTheme; panelWidth: number; childOverlayOpen: boolean; children: ReactNode }) {
+function SettingsPanel({
+    buttonRect,
+    panelRef,
+    placement,
+    theme,
+    panelWidth,
+    panelMaxHeight,
+    childOverlayOpen,
+    canvasPanel,
+    children,
+}: {
+    buttonRect: DOMRect;
+    panelRef: React.RefObject<HTMLDivElement | null>;
+    placement: CanvasSettingsPopoverPlacement;
+    theme: CanvasTheme;
+    panelWidth: number;
+    panelMaxHeight: number;
+    childOverlayOpen: boolean;
+    canvasPanel?: CanvasSettingsPopoverShellProps["canvasPanel"];
+    children: ReactNode;
+}) {
     const gap = 8;
     const margin = 12;
     const viewport = readVisualViewportBounds();
@@ -97,7 +133,7 @@ function SettingsPanel({ buttonRect, panelRef, placement, theme, panelWidth, chi
     const alignRight = placement.endsWith("Right");
     const alignCenter = placement === "top" || placement === "bottom";
     const left = alignCenter ? buttonRect.left + buttonRect.width / 2 - width / 2 : alignRight ? buttonRect.right - width : buttonRect.left;
-    const desiredHeight = Math.min(420, panelRef.current?.scrollHeight || 420);
+    const desiredHeight = Math.min(panelMaxHeight, panelRef.current?.scrollHeight || panelMaxHeight);
     const layout = resolveCreativeComposerPopoverViewportLayout(placement, buttonRect, viewport, desiredHeight, desiredHeight, margin + gap);
     const topPlacement = layout.placement.startsWith("top");
     const style = {
@@ -105,11 +141,11 @@ function SettingsPanel({ buttonRect, panelRef, placement, theme, panelWidth, chi
         zIndex: 1200,
         width,
         left: Math.max(viewport.left + margin, Math.min(viewport.right - width - margin, left)),
-        ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap } : { top: buttonRect.bottom + gap }),
+        ...(topPlacement ? { bottom: viewport.bottom - buttonRect.top + gap } : { top: buttonRect.bottom + gap }),
         maxHeight: layout.maxHeight,
-        borderRadius: 16,
+        borderRadius: 18,
         ...canvasSelectionBorderStyle(theme.toolbar.panel),
-        padding: 16,
+        padding: canvasPanel ? 12 : 16,
         overflowY: "auto",
         color: theme.node.text,
         visibility: childOverlayOpen ? "hidden" : "visible",
@@ -117,7 +153,17 @@ function SettingsPanel({ buttonRect, panelRef, placement, theme, panelWidth, chi
     } as const;
 
     return (
-        <div ref={panelRef} className="canvas-image-settings-popover" aria-hidden={childOverlayOpen} style={style} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+        <div
+            ref={panelRef}
+            className="canvas-image-settings-popover"
+            role={canvasPanel ? "dialog" : undefined}
+            aria-label="参数设置面板"
+            aria-hidden={childOverlayOpen}
+            style={style}
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+        >
             {children}
         </div>
     );

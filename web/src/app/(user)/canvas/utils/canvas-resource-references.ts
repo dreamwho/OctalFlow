@@ -101,7 +101,7 @@ function labelForKind(kind: CanvasResourceKind, index: number) {
     return `文本${index + 1}`;
 }
 
-function isResourceNode(node: CanvasNodeData) {
+export function isResourceNode(node: CanvasNodeData) {
     return Boolean(resourceKind(node));
 }
 

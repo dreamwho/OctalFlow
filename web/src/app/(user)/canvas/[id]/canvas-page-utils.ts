@@ -15,6 +15,7 @@ import { nodeSizeFromRatio, resizeImageNodeToNaturalRatio } from "../utils/canva
 import { PANORAMA_IMAGE_SIZE } from "../utils/canvas-panorama";
 import { INTERIOR_DESIGN_NODE_SIZE, isInteriorDesignNode } from "../utils/canvas-interior-design";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasImageGenerationType, type CanvasNodeData, type CanvasNodeMetadata, type ConnectionHandle } from "../types";
+import { isResourceNode } from "../utils/canvas-resource-references";
 
 export function imageExtension(dataUrl: string) {
     return dataUrl.match(/^data:image[/]([^;]+)/)?.[1] || dataUrl.match(/image[/]([^;]+)/)?.[1] || "png";
@@ -107,6 +108,7 @@ export function videoMetadata(video: UploadedFile): CanvasNodeMetadata {
         bytes: video.bytes,
         mimeType: video.mimeType || "video/mp4",
         durationMs: video.durationMs,
+        dolaVodPayload: video.dolaVodPayload,
         videoFrameExtraction: undefined,
         videoFrameExtractionError: undefined,
     };
@@ -316,8 +318,15 @@ export function normalizeCanvasConfigNodeLayout(node: CanvasNodeData) {
     }
     const configDetailsOpen = node.metadata?.configDetailsOpen === true;
     const height = configDetailsOpen ? CANVAS_CONFIG_NODE_HEIGHT.expanded : CANVAS_CONFIG_NODE_HEIGHT.collapsed;
-    if (node.height === height && node.metadata?.configDetailsOpen === configDetailsOpen) return node;
-    return { ...node, height, metadata: { ...node.metadata, configDetailsOpen } };
+    const width = node.width === 340 ? NODE_DEFAULT_SIZE[CanvasNodeType.Config].width : node.width;
+    if (node.width === width && node.height === height && node.metadata?.configDetailsOpen === configDetailsOpen) return node;
+    return {
+        ...node,
+        width,
+        height,
+        position: width === node.width ? node.position : { x: node.position.x - (width - node.width) / 2, y: node.position.y },
+        metadata: { ...node.metadata, configDetailsOpen },
+    };
 }
 
 export function getConnectionTargetAnchor(node: CanvasNodeData, current: ConnectionHandle) {
@@ -327,7 +336,7 @@ export function getConnectionTargetAnchor(node: CanvasNodeData, current: Connect
     };
 }
 
-export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeData[], firstHandleType: "source" | "target") {
+export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeData[], firstHandleType: "source" | "target", options?: { preserveDirection?: boolean }) {
     const first = nodes.find((node) => node.id === firstNodeId);
     const second = nodes.find((node) => node.id === secondNodeId);
     if (!first || !second || first.id === second.id) return null;
@@ -335,11 +344,18 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     if (second.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
     if (first.type === CanvasNodeType.Config && firstHandleType === "target") return { fromNodeId: second.id, toNodeId: first.id };
     if (first.type === CanvasNodeType.Config) return { fromNodeId: first.id, toNodeId: second.id };
-    return firstHandleType === "target" ? { fromNodeId: second.id, toNodeId: first.id } : { fromNodeId: first.id, toNodeId: second.id };
+    const oriented = firstHandleType === "target" ? { fromNodeId: second.id, toNodeId: first.id } : { fromNodeId: first.id, toNodeId: second.id };
+    if (options?.preserveDirection) return oriented;
+    // 两个非配置节点互连时按素材语义定向：素材（有内容的资源节点）永远是 from，
+    // 消费节点（生成节点）永远是 to，避免从另一侧拖线产生反向连接导致引用丢失。
+    const fromIsResource = isResourceNode(nodes.find((node) => node.id === oriented.fromNodeId) || ({} as CanvasNodeData));
+    const toIsResource = isResourceNode(nodes.find((node) => node.id === oriented.toNodeId) || ({} as CanvasNodeData));
+    if (!fromIsResource && toIsResource) return { fromNodeId: oriented.toNodeId, toNodeId: oriented.fromNodeId };
+    return oriented;
 }
 
-export function normalizeCreatedNodeConnection(originNodeId: string, createdNodeId: string, nodes: CanvasNodeData[]) {
-    return normalizeConnection(originNodeId, createdNodeId, nodes, "source");
+export function normalizeCreatedNodeConnection(originNodeId: string, createdNodeId: string, nodes: CanvasNodeData[], firstHandleType: "source" | "target" = "source") {
+    return normalizeConnection(originNodeId, createdNodeId, nodes, firstHandleType, { preserveDirection: true });
 }
 
 export function getInputSummary(inputs: NodeGenerationInput[]) {

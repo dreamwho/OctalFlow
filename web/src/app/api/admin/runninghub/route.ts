@@ -22,7 +22,12 @@ export async function GET(request: Request) {
     if ("error" in access) return access.error;
     try {
         const url = new URL(request.url);
-        const [settings, apps, tasks, logs] = await Promise.all([getRunningHubPublicSettings(), listRunningHubApps(), listRunningHubTasks(Number(url.searchParams.get("taskLimit") || 100)), listRunningHubRequestLogs(Number(url.searchParams.get("logLimit") || 100))]);
+        const [settings, apps, tasks, logs] = await Promise.all([
+            getRunningHubPublicSettings(),
+            listRunningHubApps(),
+            listRunningHubTasks(Number(url.searchParams.get("taskLimit") || 100)),
+            listRunningHubRequestLogs(Number(url.searchParams.get("logLimit") || 100)),
+        ]);
         let account: unknown = null;
         let accountError = "";
         if (url.searchParams.get("account") === "1" && settings.enabled && settings.hasApiKey) {

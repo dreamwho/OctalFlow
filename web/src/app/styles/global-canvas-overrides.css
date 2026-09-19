@@ -4,6 +4,23 @@
     mix-blend-mode: normal;
 }
 
+.canvas-node-selection-flow {
+    background:
+        linear-gradient(transparent, transparent) padding-box,
+        linear-gradient(112deg, var(--canvas-selection-start), var(--canvas-selection-middle) 48%, var(--canvas-selection-end)) border-box;
+    box-shadow:
+        0 0 18px rgba(94, 127, 241, 0.28),
+        0 0 32px rgba(53, 204, 225, 0.16);
+    -webkit-mask:
+        linear-gradient(#000 0 0) padding-box,
+        linear-gradient(#000 0 0);
+    mask:
+        linear-gradient(#000 0 0) padding-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+}
+
 .canvas-image-toolbar-settings-modal .canvas-toolbar-tool-check {
     color: #1f2937;
 }
@@ -124,16 +141,13 @@ html.dark .canvas-agent-confirm-switch.ant-switch.ant-switch-checked:hover:not(.
     border-color: #ffffff !important;
 }
 
-.canvas-toolbar-dock-wrap {
-    left: 300px;
-    right: 16px;
-}
+
 
 @media (min-width: 1024px) {
     .canvas-toolbar-dock.is-agent-open {
         gap: 2px;
-        padding-left: 6px;
-        padding-right: 6px;
+        padding-top: 6px;
+        padding-bottom: 6px;
     }
 
     .canvas-toolbar-dock.is-agent-open .ant-btn {
@@ -143,9 +157,9 @@ html.dark .canvas-agent-confirm-switch.ant-switch.ant-switch-checked:hover:not(.
     }
 
     .canvas-toolbar-dock.is-agent-open .canvas-toolbar-divider {
-        height: 22px;
-        margin-left: 2px;
-        margin-right: 2px;
+        width: 22px;
+        margin-top: 2px;
+        margin-bottom: 2px;
     }
 }
 
@@ -210,6 +224,32 @@ html:not(.dark) .canvas-scene-composer {
     box-shadow:
         0 22px 70px rgba(37, 43, 74, 0.16),
         0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+html:not(.dark) .canvas-node-prompt-surface {
+    border-color: transparent !important;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.97)) padding-box,
+        linear-gradient(122deg, rgba(93, 112, 255, 0.7), rgba(103, 232, 249, 0.45) 48%, rgba(167, 139, 250, 0.62)) border-box !important;
+    box-shadow:
+        0 24px 64px rgba(41, 61, 118, 0.16),
+        0 0 0 1px rgba(116, 126, 255, 0.08),
+        0 1px 0 rgba(255, 255, 255, 0.96) inset !important;
+    backdrop-filter: blur(24px) saturate(1.12);
+}
+
+html:not(.dark) .canvas-config-node-shell {
+    box-shadow:
+        0 0 0 1px rgba(124, 108, 255, 0.14),
+        0 12px 30px rgba(76, 81, 211, 0.18),
+        0 0 28px rgba(103, 232, 249, 0.12) !important;
+}
+
+html.dark .canvas-config-node-shell {
+    box-shadow:
+        0 0 0 1px rgba(112, 217, 255, 0.12),
+        0 16px 36px rgba(0, 0, 0, 0.38),
+        0 0 28px rgba(112, 217, 255, 0.12) !important;
 }
 
 html:not(.dark) .canvas-toolbar-dock.is-composer-open,
@@ -425,4 +465,66 @@ html:not(.dark) .canvas-zoom-dock {
     [data-canvas-camera-motion-picker] img {
         animation: none !important;
     }
+}
+
+/* 画布顶栏弹出层统一复刻头像账号面板的暗色卡片 UI（octal-dark-overlay + dark） */
+.octal-dark-overlay.ant-dropdown {
+    background: rgba(18, 21, 31, 0.97) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(16px) saturate(1.1);
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.octal-dark-overlay .ant-dropdown-menu {
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 6px !important;
+}
+
+.octal-dark-overlay .ant-dropdown-menu-item {
+    border-radius: 10px !important;
+    color: #d4dbe8 !important;
+}
+
+.octal-dark-overlay .ant-dropdown-menu-item:hover,
+.octal-dark-overlay .ant-dropdown-menu-item-selected {
+    background: rgba(255, 255, 255, 0.07) !important;
+    color: #ffffff !important;
+}
+
+.octal-dark-overlay .ant-dropdown-menu-item .ant-dropdown-menu-item-icon {
+    color: #9aa5bd !important;
+}
+
+.octal-dark-overlay .ant-dropdown-menu-item-danger.ant-dropdown-menu-item,
+.octal-dark-overlay .ant-dropdown-menu-item-danger.ant-dropdown-menu-item .ant-dropdown-menu-item-icon {
+    color: #f87171 !important;
+}
+
+.octal-dark-overlay .ant-dropdown-menu-item-danger.ant-dropdown-menu-item:hover {
+    background: rgba(248, 113, 113, 0.12) !important;
+    color: #fca5a5 !important;
+}
+
+.octal-dark-overlay .ant-dropdown-menu-item-divider {
+    background: rgba(255, 255, 255, 0.08) !important;
+    margin: 5px 0 !important;
+}
+
+.octal-dark-overlay.ant-modal .ant-modal-content,
+.octal-dark-overlay .ant-modal-container {
+    background: rgba(18, 21, 31, 0.97) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(16px) saturate(1.1);
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    color: #e5eaf3 !important;
+}
+
+.octal-dark-overlay.dark .ant-modal-content {
+    color-scheme: dark;
 }

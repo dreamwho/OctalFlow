@@ -1,0 +1,21 @@
+{
+  "route": "/terms",
+  "theme": "light",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "title": "服务条款 | dreamyo",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1280,
+    "height": 720
+  },
+  "logoSource": "",
+  "faviconHref": "http://127.0.0.1:3190/brand/dreamyo/mark.png",
+  "overflow": false,
+  "state": "服务条款 C01 长文入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

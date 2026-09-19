@@ -1,0 +1,20 @@
+{
+  "route": "/admin?section=referrals",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "theme": "light",
+  "entityVisible": true,
+  "card": {
+    "left": 14,
+    "top": 84,
+    "width": 362,
+    "height": 90.640625
+  },
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "state": "隔离真实后台实体/配置已加载",
+  "entity": "邀请奖励"
+}

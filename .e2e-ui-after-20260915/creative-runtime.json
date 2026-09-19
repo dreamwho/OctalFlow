@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "nextEventId": 1,
+  "conversations": [
+    {
+      "id": "conversation-xtveIR-qLSMC0zn_q9IX_",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "surface": "canvas",
+      "source": "canvas",
+      "projectId": "canvas-cqjm4F2WuJce9wRsfe4d_",
+      "title": "dreamyo 画布 1",
+      "status": "active",
+      "contextSummary": "",
+      "contextSummaryThroughSequence": 0,
+      "createdAt": 1789483746972,
+      "updatedAt": 1789483746972,
+      "lastMessageAt": 1789483746972
+    }
+  ],
+  "messages": [],
+  "assets": [],
+  "events": []
+}

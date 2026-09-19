@@ -1,0 +1,69 @@
+{
+  "apply": {
+    "bottom": 603.0217895507812,
+    "height": 35.94769287109375,
+    "right": 1033.28369140625,
+    "visible": true,
+    "width": 83.8779296875,
+    "x": 949.40576171875,
+    "y": 567.0740966796875
+  },
+  "buildId": "dK6POYeiax5lYEoGNtr-j",
+  "containedX": true,
+  "devicePixelRatio": 1,
+  "document": {
+    "bodyScrollWidth": 1440,
+    "documentScrollWidth": 1440,
+    "innerWidth": 1440
+  },
+  "kind": "image",
+  "overflowX": false,
+  "panel": {
+    "background": "lab(2.05101 -0.233494 -5.70221 / 0.98)",
+    "borderColor": "rgb(38, 61, 104)",
+    "bottom": 615.0043449401855,
+    "clientHeight": 595,
+    "clientWidth": 520,
+    "color": "rgb(247, 251, 255)",
+    "height": 594.135498046875,
+    "right": 1049.260498046875,
+    "scrollHeight": 621,
+    "scrollTop": 0,
+    "scrollWidth": 520,
+    "width": 519.2445068359375,
+    "x": 530.0159912109375,
+    "y": 20.868846893310547
+  },
+  "route": "/canvas/canvas-ui-after-20260915",
+  "selected": [
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(112, 217, 255, 0.42)",
+      "color": "rgb(234, 247, 255)",
+      "text": "16:9"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(112, 217, 255, 0.42)",
+      "color": "rgb(234, 247, 255)",
+      "text": "高"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(112, 217, 255, 0.42)",
+      "color": "rgb(234, 247, 255)",
+      "text": "2 份"
+    }
+  ],
+  "state": "configured-16x9-high-2",
+  "sticky": {
+    "footer": "sticky",
+    "header": "sticky"
+  },
+  "theme": "dark",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "zoom": 100
+}

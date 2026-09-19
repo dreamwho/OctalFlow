@@ -1,0 +1,79 @@
+{
+  "buildId": "gsuzD2vHmlrEgEXug1_FH",
+  "package": "本次修改需上传文件_20260916",
+  "fileCount": 14,
+  "files": [
+    {
+      "path": "docs/ui-rebuild-20260913/11-Canvas模型选择Agent与节点参数弹层深化计划.md",
+      "bytes": 3869,
+      "sha256": "bb9d739f652802488c1a25aa557985b11343ee288dcb21baa38b157769517b5e"
+    },
+    {
+      "path": "docs/ui-rebuild-20260913/evidence/20260916-canvas-design-popovers/measurements.json",
+      "bytes": 3020,
+      "sha256": "16774f2281dcb05a3c52151e44328f78306019951afc78da59d5a95a996fcaa9"
+    },
+    {
+      "path": "docs/ui-rebuild-20260913/任务状态.csv",
+      "bytes": 33340,
+      "sha256": "6d9a81849dd13c9a2094eebb4c798d70acd05902fbdaf5e071056ce5f790ae82"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-agent-chat-ui.tsx",
+      "bytes": 63313,
+      "sha256": "eed83614c5308679ee5128fd072c25dc4a86659b6673e3c847b958aa6e86c6ff"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-assistant-elements.test.ts",
+      "bytes": 26711,
+      "sha256": "517dcb0cd4dc062f82b639e1d2b2ee91f29716e9a8401c1756ed61d0dc594166"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-assistant-panel.tsx",
+      "bytes": 67378,
+      "sha256": "6180d941591a3a6fa15e277ee167a41ff7c8d0e637a7c5ceb6684520996b1d44"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-audio-settings-popover.tsx",
+      "bytes": 6709,
+      "sha256": "953dbe991ce5783c30e3548cc331a910f9c81c671b976bda22caeadf02f0a6ae"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-image-settings-popover.tsx",
+      "bytes": 9231,
+      "sha256": "dab9dbaf9913ec9cebceae2e6cf21405c75291b321391974e5a757033cd28cd5"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-parameter-popovers.test.ts",
+      "bytes": 2007,
+      "sha256": "20a3957616978020102d0b98464958643d126ed496f10745caf89881ced83fa9"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-settings-popover-shell.tsx",
+      "bytes": 10440,
+      "sha256": "af388dcd33ba1df249d34f084fa3c42c251d099cb6b2953bc37c7c8722450f30"
+    },
+    {
+      "path": "web/src/app/(user)/canvas/components/canvas-video-settings-popover.tsx",
+      "bytes": 6928,
+      "sha256": "553ddd5983ba41f638423c00fa9306ed24b53d9d8afec64c33e06e033e7986ec"
+    },
+    {
+      "path": "web/src/components/creative-generation-preferences.tsx",
+      "bytes": 45751,
+      "sha256": "7e2f1232d77e0fc177e52325eb8f63409b5542bee1d9632fb2983b70f6dc651c"
+    },
+    {
+      "path": "web/src/components/model-picker.test.ts",
+      "bytes": 3952,
+      "sha256": "1c6977a60a7ec850e150714d701d203d3e5ae1dc5589d59e912887bfb210b9e9"
+    },
+    {
+      "path": "web/src/components/model-picker.tsx",
+      "bytes": 16085,
+      "sha256": "ca82c816e4a9ea33acca0bd3880f6cb04609da158465ec6a6e90867e391a60af"
+    }
+  ],
+  "utf8Checked": true,
+  "secretsIncluded": false
+}

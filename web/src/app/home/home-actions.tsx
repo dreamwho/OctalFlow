@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { Modal } from "antd";
 import { useRouter } from "next/navigation";
+import { nanoid } from "nanoid";
 
 import { AuthForm } from "@/components/auth/auth-form";
 import { BillingPlansModal } from "@/components/billing/billing-plans-modal";
@@ -12,6 +13,17 @@ import { usePublicSessionStore } from "@/stores/use-public-session-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { HomeSiteSettings } from "./home-data";
 import { resolveSiteTitle } from "@/lib/site-brand";
+import { createCanvasProject } from "@/services/api/canvas-projects";
+import { CanvasNodeType } from "@/app/(user)/canvas/types";
+
+export type HomeCreateGenerateParams = {
+    prompt: string;
+    type: "image" | "video";
+    modelIds?: string[];
+    skillIds?: string[];
+    aspectRatio?: string;
+    duration?: string;
+};
 
 type HomeActions = {
     authenticated: boolean;
@@ -21,6 +33,7 @@ type HomeActions = {
     openBillingPlans: () => void;
     openProtectedPath: (path: string) => void;
     startCreating: (prompt?: string, mode?: CreateAgentMode, options?: { skillIds?: string[]; modelIds?: string[] }) => void;
+    createCanvasAndGenerate: (params: HomeCreateGenerateParams) => Promise<void>;
 };
 
 const HomeActionsContext = createContext<HomeActions | null>(null);
@@ -28,7 +41,7 @@ const HomeActionsContext = createContext<HomeActions | null>(null);
 export function HomeActionsProvider({ initialSite, children }: { initialSite: HomeSiteSettings; children: ReactNode }) {
     const router = useRouter();
     const [authOpen, setAuthOpen] = useState(false);
-    const [authNextPath, setAuthNextPath] = useState("/create");
+    const [authNextPath, setAuthNextPath] = useState("/canvas");
     const [billingPlansOpen, setBillingPlansOpen] = useState(false);
     const user = useUserStore((state) => state.user);
     const session = usePublicSessionStore((state) => state.payload);
@@ -42,12 +55,13 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
             logoUrl: sessionSite?.logoUrl?.trim() || initialSite.logoUrl || "/brand/dreamyo/mark.png",
             friendLinks: sessionSite?.friendLinks || initialSite.friendLinks,
             socials: (sessionSite?.socials as HomeSiteSettings["socials"] | undefined) || initialSite.socials,
+            announcementBar: (sessionSite as HomeSiteSettings | undefined)?.announcementBar || initialSite.announcementBar,
         }),
         [initialSite, sessionSite],
     );
     const authenticated = sessionReady && Boolean(user);
 
-    const openLogin = (nextPath = "/create") => {
+    const openLogin = (nextPath = "/canvas") => {
         setAuthNextPath(nextPath);
         setAuthOpen(true);
     };
@@ -58,14 +72,66 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
     const startCreating = (prompt = "", mode: CreateAgentMode = "agent", options: { skillIds?: string[]; modelIds?: string[] } = {}) =>
         openProtectedPath(createAgentPromptHref(prompt, { source: "home", mode, skillIds: options.skillIds, modelIds: options.modelIds }));
 
+    const createCanvasAndGenerate = async (params: HomeCreateGenerateParams) => {
+        if (!authenticated) {
+            openLogin("/canvas");
+            return;
+        }
+
+        const nodeId = `node-${nanoid(8)}`;
+        const isVideo = params.type === "video";
+        const title = (params.prompt || (isVideo ? "视频生成" : "图片生成")).slice(0, 30);
+
+        let width = isVideo ? 420 : 340;
+        let height = isVideo ? 236 : 240;
+        if (params.aspectRatio === "9:16") {
+            width = isVideo ? 236 : 240;
+            height = isVideo ? 420 : 340;
+        } else if (params.aspectRatio === "16:9") {
+            width = isVideo ? 420 : 340;
+            height = isVideo ? 236 : 240;
+        } else if (params.aspectRatio === "1:1") {
+            width = 300;
+            height = 300;
+        }
+
+        const node = {
+            id: nodeId,
+            type: isVideo ? CanvasNodeType.Video : CanvasNodeType.Image,
+            title: isVideo ? "视频生成" : "图片生成",
+            position: { x: 300, y: 200 },
+            width,
+            height,
+            metadata: {
+                prompt: params.prompt,
+                model: params.modelIds?.[0] || "",
+                selectedSkillIds: params.skillIds?.length ? params.skillIds : undefined,
+                size: params.aspectRatio || "1:1",
+                seconds: params.duration || "5",
+                status: "idle",
+            },
+        };
+
+        const res = await createCanvasProject({
+            title: title || "新创意画布",
+            project: {
+                nodes: [node as any],
+            },
+        });
+
+        if (res?.id) {
+            router.push(`/canvas/${res.id}?autoGenerate=${nodeId}`);
+        }
+    };
+
     return (
-        <HomeActionsContext.Provider value={{ authenticated, sessionReady, site, openLogin, openBillingPlans: () => setBillingPlansOpen(true), openProtectedPath, startCreating }}>
+        <HomeActionsContext.Provider value={{ authenticated, sessionReady, site, openLogin, openBillingPlans: () => setBillingPlansOpen(true), openProtectedPath, startCreating, createCanvasAndGenerate }}>
             {children}
             <Modal centered open={authOpen} width={740} footer={null} title={null} destroyOnHidden onCancel={() => setAuthOpen(false)} className="landing-auth-modal">
                 <div className="landing-auth-modal-shell">
                     <section className="landing-auth-modal-brand">
                         <div className="inline-flex items-center gap-3 text-stone-950 dark:text-white">
-                            <SiteLogo logoUrl={site.logoUrl} className="landing-auth-brand-logo bg-stone-950 dark:bg-white" />
+                            <SiteLogo logoUrl={site.logoUrl} className="landing-auth-brand-logo" />
                             <span className="text-xl font-semibold">{site.title}</span>
                         </div>
                         <div className="landing-auth-modal-copy">

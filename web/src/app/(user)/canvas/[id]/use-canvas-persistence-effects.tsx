@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
-import { isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
+import { GenerationTaskNeedsReviewError, isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
 import { CanvasNodeType, isCanvasImageNodeType } from "../types";
 import { classifyCanvasVideoTaskFailure } from "./canvas-video-task-recovery";
 
-import { NODE_STATUS_ERROR, NODE_STATUS_LOADING } from "./canvas-page-elements";
+import { NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_NEEDS_REVIEW } from "./canvas-page-elements";
 import { buildGenerationConfig, hydrateAssistantImages, hydrateCanvasImages, isGenerationCanceled, normalizeCanvasConfigNodeLayout } from "./canvas-page-utils";
 import { pauseCanvasGenerationReview } from "./canvas-generation-review";
 
@@ -15,6 +15,7 @@ import type { CanvasTaskRuntime } from "./use-canvas-task-runtime";
 
 export function useCanvasPersistenceEffects({ state, tasks }: { state: CanvasPageState; tasks: CanvasTaskRuntime }) {
     const skipInitialProjectSyncRef = useRef(false);
+    const openedDolaVerificationTaskIdsRef = useRef(new Set<string>());
     const {
         message,
         modal,
@@ -140,6 +141,7 @@ export function useCanvasPersistenceEffects({ state, tasks }: { state: CanvasPag
         resumingVideoTaskIdsRef,
         resumingTextTaskIdsRef,
         resumingAudioTaskIdsRef,
+        setDolaVerification,
     } = state;
     const { createHistoryEntry, startGenerationRequest, finishGenerationRequest, stopGenerationByRunningId, confirmStopGeneration, completeVideoTask, completeImageTask, startAndCompleteImageTask, completeTextTask, completeAudioTask } = tasks;
     const deferReviewedTask = (nodeId: string, errorDetails: string) => {
@@ -252,6 +254,11 @@ export function useCanvasPersistenceEffects({ state, tasks }: { state: CanvasPag
                     if (failureKind === "needs_review") {
                         message.error(errorDetails);
                         deferReviewedTask(node.id, errorDetails);
+                        if (error instanceof GenerationTaskNeedsReviewError) {
+                            const verificationId = error.verificationId || "";
+                            const taskId = error.taskId || "";
+                            if (verificationId && taskId) setDolaVerification({ nodeId: node.id, taskId, verificationId });
+                        }
                         return;
                     }
                     if (failureKind === "query_pending") {
@@ -268,7 +275,24 @@ export function useCanvasPersistenceEffects({ state, tasks }: { state: CanvasPag
                     setRunningNodeId((current) => (current === node.id ? null : current));
                 });
         });
-    }, [completeVideoTask, deferVideoTask, effectiveConfig, finishGenerationRequest, message, nodes, projectLoaded, startGenerationRequest]);
+    }, [completeVideoTask, deferVideoTask, effectiveConfig, finishGenerationRequest, message, nodes, projectLoaded, setDolaVerification, startGenerationRequest]);
+
+    useEffect(() => {
+        if (!projectLoaded) return;
+        const reviewTasks = nodes.filter((node) => node.type === CanvasNodeType.Video && node.metadata?.status === NODE_STATUS_NEEDS_REVIEW && node.metadata.videoTask);
+        reviewTasks.forEach((node) => {
+            const taskId = node.metadata?.videoTask?.serverTaskId || node.metadata?.videoTask?.id || "";
+            if (!taskId || openedDolaVerificationTaskIdsRef.current.has(taskId)) return;
+            openedDolaVerificationTaskIdsRef.current.add(taskId);
+            void fetch(`/api/video-tasks/${encodeURIComponent(taskId)}`, { cache: "no-store" })
+                .then((response) => response.json().catch(() => null))
+                .then((payload) => {
+                    const verificationId = typeof payload?.task?.verificationId === "string" ? payload.task.verificationId : "";
+                    if (verificationId) setDolaVerification({ nodeId: node.id, taskId, verificationId });
+                })
+                .catch(() => undefined);
+        });
+    }, [nodes, projectLoaded, setDolaVerification]);
 
     useEffect(() => {
         if (!projectLoaded) return;

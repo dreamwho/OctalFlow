@@ -1,0 +1,20 @@
+{
+  "route": "/admin?section=payments",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "entityVisible": true,
+  "card": {
+    "left": 268,
+    "top": 232.625,
+    "width": 976,
+    "height": 1273
+  },
+  "overflow": false,
+  "adminTheme": "light",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "state": "隔离真实实体卡片已加载",
+  "entity": "支付渠道配置"
+}

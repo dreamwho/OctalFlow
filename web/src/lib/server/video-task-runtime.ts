@@ -16,8 +16,12 @@ import { refundVideoTask } from "@/lib/server/video-task-refund";
 import { geminiVideoQueryPath, parseGeminiVideoOperation } from "@/lib/server/gemini-video-provider";
 import { isDreaminaCliVideoTask, isDreaminaCliPersistedResultUrl, queryDreaminaCliVideoTask } from "@/lib/server/dreamina-cli-video-task";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
+import { releaseDolaAccountAttempt, setDolaAccountStatus } from "@/lib/server/dola/account-service";
+import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
+import { resolveDolaWatermarkUrlRemote } from "@/lib/server/dola/watermark-url";
+import { resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
 
-export type VideoUpstreamStep = { state: "pending"; status: string } | { state: "result_ready"; status: string; resultUrl: string } | { state: "needs_review"; status: string; error: string } | { state: "failed"; status: string; error: string };
+export type VideoUpstreamStep = { state: "pending"; status: string } | { state: "result_ready"; status: string; resultUrl: string; watermarkPayload?: unknown } | { state: "needs_review"; status: string; error: string; verificationId?: string } | { state: "failed"; status: string; error: string };
 
 export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: string, cookie: string) {
     const polling = taskPollingPolicy(task);
@@ -26,16 +30,17 @@ export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: stri
 
     const step = await queryVideoTaskUpstream(claimed, origin, cookie);
     if (step.state === "needs_review") {
+        if (claimed.config.advancedConfig?.protocol === "dola" && claimed.upstream.accountId) await setDolaAccountStatus(claimed.upstream.accountId, "verification_required").catch(() => undefined);
         await scheduleGenerationTask("video", claimed.id, {
             executionPhase: "needs_review",
             nextPollAt: undefined,
             lastUpstreamStatus: step.status,
-            resultPayload: { reviewReason: step.error.slice(0, 500) },
+            resultPayload: { reviewReason: step.error.slice(0, 500), ...(step.verificationId ? { verificationId: step.verificationId } : {}) },
         });
         return getVideoTask(claimed.id);
     }
     if (step.state === "failed") return failVideoTask(claimed, step.error);
-    if (step.state === "result_ready") return persistVideoTaskResult(claimed, step.resultUrl, origin, cookie);
+    if (step.state === "result_ready") return persistVideoTaskResult(claimed, step.resultUrl, origin, cookie, "", step.watermarkPayload);
     return getVideoTask(claimed.id);
 }
 
@@ -45,9 +50,23 @@ export async function queryVideoTaskUpstream(task: VideoTask, origin: string, co
     if (isGeminiVideoTask(task)) return queryGeminiVideoUpstream(task, origin, cookie, workerUserId);
     const data = await queryVideoUpstream(task, origin, cookie, workerUserId);
     const status = readVideoProviderStatus(data, task.config.advancedConfig?.statusField);
+    const verificationId = data && typeof data === "object" && typeof (data as Record<string, unknown>).verificationId === "string" ? String((data as Record<string, unknown>).verificationId) : undefined;
+    const isDola = task.config.advancedConfig?.protocol === "dola";
+    if (status === "needs_review" || status === "verification_required" || (isDola && status === "submission_unknown")) {
+        const error = verificationId
+            ? isDola ? "Dola 需要人工完成滑块验证" : "上游需要人工完成验证"
+            : isDola
+                ? status === "submission_unknown"
+                    ? "Dola 提交响应未返回任务标识，且未检测到验证页面"
+                    : "Dola 返回待人工确认状态，但未提供验证会话"
+                : "上游返回待人工确认状态，但未提供验证会话";
+        return { state: "needs_review", status, error, ...(verificationId ? { verificationId } : {}) };
+    }
     const resultUrl = readVideoProviderUrl(data, task.config.advancedConfig?.resultField) || contentEndpointResultUrl(task, status);
     if (resultUrl || VIDEO_PROVIDER_SUCCESS.has(status)) {
-        return resultUrl ? { state: "result_ready", status: status || "completed", resultUrl } : { state: "failed", status: status || "completed", error: "视频任务已完成但没有返回视频地址" };
+        return resultUrl
+            ? { state: "result_ready", status: status || "completed", resultUrl, ...(task.config.advancedConfig?.protocol === "dola" && data && typeof data === "object" && "vodPayload" in data ? { watermarkPayload: (data as Record<string, unknown>).vodPayload } : {}) }
+            : { state: "failed", status: status || "completed", error: "视频任务已完成但没有返回视频地址" };
     }
     if (isProviderBusinessError(data) || VIDEO_PROVIDER_FAILED.has(status)) return { state: "failed", status: status || "failed", error: readProviderError(data) || "视频生成失败" };
     return { state: "pending", status: status || "processing" };
@@ -75,8 +94,8 @@ async function queryGeminiVideoUpstream(task: VideoTask, origin: string, cookie:
     return { state: "result_ready", status: operation.status, resultUrl: operation.resultUrl };
 }
 
-export async function persistVideoTaskResult(task: VideoTask, resultUrl: string, origin: string, cookie = "", workerUserId = "") {
-    return completeVideoTask(task, resultUrl, origin, cookie, workerUserId);
+export async function persistVideoTaskResult(task: VideoTask, resultUrl: string, origin: string, cookie = "", workerUserId = "", watermarkPayload?: unknown) {
+    return completeVideoTask(task, resultUrl, origin, cookie, workerUserId, watermarkPayload);
 }
 
 export async function failVideoTaskFromWorker(task: VideoTask, error: string, retryable = false) {
@@ -87,7 +106,7 @@ function taskPollingPolicy(task: VideoTask) {
     return videoPollingPolicy(Boolean(globalAiOpcPreset(task)));
 }
 
-async function completeVideoTask(task: VideoTask, resultUrl: string, origin: string, cookie: string, workerUserId = "") {
+async function completeVideoTask(task: VideoTask, resultUrl: string, origin: string, cookie: string, workerUserId = "", watermarkPayload?: unknown) {
     const beforePersistence = await getVideoTask(task.id);
     if (!beforePersistence || beforePersistence.status === "cancelled") {
         if (beforePersistence?.status === "cancelled") await refundVideoTask(beforePersistence);
@@ -101,16 +120,22 @@ async function completeVideoTask(task: VideoTask, resultUrl: string, origin: str
     });
     await updateVideoTask(task.id, { attempts });
     const channelId = task.config.channelId || systemGenerationChannelId(task.config.baseUrl);
+    const resolvedResultUrl = await resolveDolaResultUrl(task, resultUrl, watermarkPayload);
     const workerHeaders = new Headers(workerUserId ? maintenanceWorkerHeaders(workerUserId) : undefined);
-    if (resultUrl && channelId) {
-        Object.entries(generationMediaProxyHeaders({ userId: task.userId, taskType: "video", taskId: task.id, channelId, upstreamModel: task.config.model, url: resultUrl })).forEach(([key, value]) => workerHeaders.set(key, value));
+    if (resolvedResultUrl && channelId) {
+        Object.entries(generationMediaProxyHeaders({ userId: task.userId, taskType: "video", taskId: task.id, channelId, upstreamModel: task.config.model, url: resolvedResultUrl })).forEach(([key, value]) => workerHeaders.set(key, value));
     }
+    const isDola = isDolaVideoTask(task);
     const result = task.result?.url
         ? task.result
-        : isDreaminaCliVideoTask(task.config) && isDreaminaCliPersistedResultUrl(resultUrl)
-          ? { url: resultUrl, mimeType: dreaminaCliResultMimeType(resultUrl), ...(task.requestedDurationSeconds ? { durationMs: task.requestedDurationSeconds * 1000 } : {}) }
+        : isDreaminaCliVideoTask(task.config) && isDreaminaCliPersistedResultUrl(resolvedResultUrl)
+          ? { url: resolvedResultUrl, mimeType: dreaminaCliResultMimeType(resolvedResultUrl), ...(task.requestedDurationSeconds ? { durationMs: task.requestedDurationSeconds * 1000 } : {}) }
           : await normalizeVideoResult({
-                url: videoProviderMediaUrl(task.config.baseUrl, resultUrl),
+                // Dola returns a first-party HTTPS VOD URL. It is intentionally
+                // downloaded server-side and persisted as a private asset rather
+                // than routed through the generic channel media proxy (whose
+                // channel base URL is provider-managed and therefore empty).
+                url: isDola ? resolvedResultUrl : videoProviderMediaUrl(task.config.baseUrl, resolvedResultUrl),
                 origin,
                 cookie,
                 internalHeaders: workerHeaders,
@@ -123,15 +148,69 @@ async function completeVideoTask(task: VideoTask, resultUrl: string, origin: str
                 taskId: task.id,
                 projectId: task.projectId,
             });
-    const completed = await completeReconciledVideoTask(task.id, result);
+    const completed = await completeReconciledVideoTask(task.id, {
+        ...result,
+        ...(watermarkPayload !== undefined ? { dolaVodPayload: watermarkPayload } : {}),
+        ...(isDola ? { unwatermarked: resolvedResultUrl !== resultUrl || watermarkPayload !== undefined } : {}),
+    });
     if (!completed) {
         const latest = await getVideoTask(task.id);
         if (latest?.status === "cancelled") await refundVideoTask(latest);
         return latest;
     }
     await writeVideoGenerationLog(completed, "success");
+    if (isDolaVideoTask(completed) && completed.upstream.accountId) {
+        await releaseDolaAccountAttempt(completed.upstream.accountId).catch(() => undefined);
+        await setDolaAccountStatus(completed.upstream.accountId, "ready").catch(() => undefined);
+    }
     await registerVideoAsset(completed);
     return completed;
+}
+
+export function isDolaVideoTask(task: { config?: { channelId?: string; id?: string; advancedConfig?: { protocol?: string }; apiFormat?: string; model?: string; name?: string } | null; upstream?: { id?: string; provider?: string } }): boolean {
+    const config = task?.config;
+    if (config) {
+        if (
+            config.channelId === "dola" ||
+            config.id === "dola" ||
+            config.advancedConfig?.protocol === "dola" ||
+            config.apiFormat === "dola" ||
+            (typeof config.model === "string" && config.model.startsWith("dola-")) ||
+            (typeof config.name === "string" && config.name.toLowerCase().includes("dola"))
+        ) {
+            return true;
+        }
+    }
+    const upstream = task?.upstream;
+    if (upstream) {
+        if (
+            (typeof upstream.id === "string" && upstream.id.startsWith("dola-")) ||
+            (typeof upstream.provider === "string" && upstream.provider === "dola")
+        ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function resolveDolaResultUrl(task: VideoTask, resultUrl: string, watermarkPayload: unknown) {
+    const isDola = isDolaVideoTask(task);
+    const targetPayload = watermarkPayload ?? (task.result as Record<string, unknown> | undefined)?.dolaVodPayload;
+    if (!isDola && !targetPayload) return resultUrl;
+    if (!targetPayload) return resultUrl;
+    const settings = await getDolaGatewaySettings().catch(() => ({ enabled: false, autoWatermark: true }));
+    if (settings.autoWatermark === false) return resultUrl;
+    try {
+        const proxy = await resolveDolaProxyEgress().catch(() => ({ proxyUrl: undefined }));
+        const resolved = await resolveDolaWatermarkUrlRemote(targetPayload, { proxyUrl: proxy.proxyUrl });
+        if (resolved.downloadUrl) {
+            console.log(`[dola-watermark] 视频任务 ${task.id} 自动去水印成功，已替换为无水印地址`);
+            return resolved.downloadUrl;
+        }
+    } catch (error) {
+        console.warn(`[dola-watermark] 视频任务 ${task.id} 自动去水印未成功，降级保留带水印原视频:`, error);
+    }
+    return resultUrl;
 }
 
 async function failVideoTask(task: VideoTask, error: string, retryable = true) {
@@ -140,6 +219,7 @@ async function failVideoTask(task: VideoTask, error: string, retryable = true) {
     const failed = await failReconciledVideoTask(task.id, error, retryable);
     if (failed) {
         await writeVideoGenerationLog({ ...failed, attempts }, "failed", error, retryable);
+        if (isDolaVideoTask(failed) && failed.upstream.accountId) await releaseDolaAccountAttempt(failed.upstream.accountId).catch(() => undefined);
         if (task.status === "running") await refundVideoTask(failed);
     }
     return failed || getVideoTask(task.id);

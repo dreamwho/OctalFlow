@@ -1,0 +1,20 @@
+{
+  "route": "/admin?section=points",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "theme": "dark",
+  "entityVisible": true,
+  "card": {
+    "left": 27,
+    "top": 451.640625,
+    "width": 336,
+    "height": 537.5625
+  },
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "state": "隔离真实后台实体/配置已加载",
+  "entity": "e2e-text"
+}

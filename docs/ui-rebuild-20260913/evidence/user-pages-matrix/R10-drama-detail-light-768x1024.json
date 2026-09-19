@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/drama/drama-xYxcnZYDszZSjjZ2AFNHd",
+  "actualPath": "/drama/drama-xYxcnZYDszZSjjZ2AFNHd",
+  "responseStatus": 200,
+  "route": "/drama/drama-xYxcnZYDszZSjjZ2AFNHd",
+  "theme": "light",
+  "title": "短剧生产 | dreamyo",
+  "heading": "短剧项目",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 768,
+    "height": 1024
+  },
+  "overflow": false,
+  "state": "真实短剧实体",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

@@ -1,0 +1,62 @@
+{
+  "buildId": "VWpPSpy3vFaCq0kpTF9zG",
+  "base": "http://127.0.0.1:4331",
+  "checkedAt": "2026-09-14T10:24:50.779Z",
+  "resources": {
+    "/api/health": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 54
+    },
+    "/api/health/live": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 59
+    },
+    "/api/health/ready": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 293
+    },
+    "/brand/dreamyo/generation/button-surface.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1937006
+    },
+    "/brand/dreamyo/generation/generate-glyph.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 2427
+    },
+    "/brand/dreamyo/generation/manifest.json": {
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8",
+      "bytes": 619
+    },
+    "/brand/dreamyo/flow-light.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1183317
+    },
+    "/brand/dreamyo/flow-dark.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1244215
+    },
+    "/logo.svg": {
+      "status": 200,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    "/icon.svg": {
+      "status": 200,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    "/manifest.webmanifest": {
+      "status": 200,
+      "contentType": "application/manifest+json",
+      "bytes": 354
+    }
+  }
+}

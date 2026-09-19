@@ -1,0 +1,33 @@
+{
+  "route": "http://127.0.0.1:3200/canvas/canvas--4ZAz7mTgosShEAyrniuA",
+  "theme": "light",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "state": "image node selected, prompt panel open",
+  "geometry": {
+    "left": 0,
+    "top": 0,
+    "right": 0,
+    "bottom": 0,
+    "border": "2px",
+    "flow": {
+      "left": 470,
+      "top": 116,
+      "right": 810,
+      "bottom": 356,
+      "width": 340,
+      "height": 240
+    },
+    "media": {
+      "left": 470,
+      "top": 116,
+      "right": 810,
+      "bottom": 356,
+      "width": 340,
+      "height": 240
+    }
+  }
+}

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
-import { FileText, Link2, LoaderCircle, Maximize2, Minimize2, MoreHorizontal, Music2, Sparkles, X } from "lucide-react";
+import { Layers, Link2, Maximize2, Minimize2, Square } from "lucide-react";
 import { Button, Modal, Popover, Tooltip } from "antd";
 
 import { GenerationActionButton } from "@/components/generation-action-button";
 import { ModelPicker } from "@/components/model-picker";
-import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
+import { formatCreditAmount, requestCreditCost } from "@/constant/credits";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { defaultConfig, modelOptionLabel, modelOptionName, resolveModelRequestConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { MINIMAX_SPEECH_MODELS } from "@/lib/minimax-audio";
@@ -17,7 +17,7 @@ import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasSkillSelector } from "./canvas-skill-selector";
 import { CanvasAudioModePicker, CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
-import { CanvasResourceMentionTextarea, insertTextAtSelection, referenceMentionLabel } from "./canvas-resource-mention-textarea";
+import { CanvasRichPromptEditor, type CanvasPromptEditorHandle, type CanvasPromptTokenSnapshot } from "./canvas-rich-prompt-editor";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasCameraControl } from "./canvas-camera-control";
 import { CanvasCameraMotionPicker } from "./canvas-camera-motion-picker";
@@ -27,8 +27,37 @@ import { buildCanvasNodeConfig, canvasAudioConfigPatch, canvasVideoConfigPatch, 
 import { PANORAMA_IMAGE_SIZE } from "../utils/canvas-panorama";
 import { cameraMotionPromptToken, type CanvasCameraMotionDefinitions, type CanvasCameraMotionSelection } from "../utils/canvas-camera-motion";
 import { agentSkillSupportsMode, listNodeAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
+
+export function updateCanvasSelectedSkillIds(current: readonly string[], skillId: string, action: "add" | "remove") {
+    if (!skillId.trim()) return [...current];
+    if (action === "add") return current.includes(skillId) ? [...current] : [...current, skillId];
+    return current.filter((id) => id !== skillId);
+}
+
+type PersistedPromptSkillPosition = NonNullable<NonNullable<CanvasNodeData["metadata"]>["promptSkillPositions"]>[number];
+
+function restorePromptSkillSnapshots(positions: NonNullable<CanvasNodeData["metadata"]>["promptSkillPositions"] | undefined): CanvasPromptTokenSnapshot[] {
+    return (positions || [])
+        .filter((position) => position && position.id && Number.isFinite(position.start) && Number.isFinite(position.end))
+        .map((position) => ({
+            token: { type: "skill" as const, id: position.id, label: position.id },
+            start: Math.max(0, position.start),
+            end: Math.max(Math.max(0, position.start), position.end),
+        }));
+}
+
+function promptSkillPositions(snapshots: readonly CanvasPromptTokenSnapshot[]): PersistedPromptSkillPosition[] {
+    return snapshots
+        .filter((snapshot): snapshot is CanvasPromptTokenSnapshot & { token: Extract<CanvasPromptTokenSnapshot["token"], { type: "skill" }> } => snapshot.token.type === "skill")
+        .map((snapshot) => ({ id: snapshot.token.id, start: Math.max(0, snapshot.start), end: Math.max(Math.max(0, snapshot.start), snapshot.end) }));
+}
+
+function samePromptSkillPositions(left: readonly PersistedPromptSkillPosition[], right: readonly PersistedPromptSkillPosition[]) {
+    return left.length === right.length && left.every((position, index) => position.id === right[index]?.id && position.start === right[index]?.start && position.end === right[index]?.end);
+}
 
 const stopCanvasInteraction = (event: SyntheticEvent) => event.stopPropagation();
 
@@ -68,10 +97,13 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const [expanded, setExpanded] = useState(false);
     const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
     const [skillsLoading, setSkillsLoading] = useState(false);
-    const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+    const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>(() => [...(node.metadata?.selectedSkillIds || [])]);
+    const selectedSkillIdsRef = useRef<string[]>(node.metadata?.selectedSkillIds || []);
+    const [promptTokenSnapshot, setPromptTokenSnapshot] = useState<CanvasPromptTokenSnapshot[]>(() => restorePromptSkillSnapshots(node.metadata?.promptSkillPositions));
+    const promptSkillPositionsRef = useRef<NonNullable<CanvasNodeData["metadata"]>["promptSkillPositions"]>(node.metadata?.promptSkillPositions || []);
     const [cameraMotions, setCameraMotions] = useState<CanvasCameraMotionDefinitions>(node.metadata?.cameraMotions || {});
-    const promptEditorRef = useRef<HTMLTextAreaElement | null>(null);
-    const expandedEditorRef = useRef<HTMLTextAreaElement | null>(null);
+    const promptEditorRef = useRef<CanvasPromptEditorHandle | null>(null);
+    const expandedEditorRef = useRef<CanvasPromptEditorHandle | null>(null);
     const promptSelectionRef = useRef({ start: 0, end: 0 });
     const credits = requestCreditCost({
         apiSource: config.apiSource,
@@ -89,8 +121,23 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         const nextPrompt = publicNodePrompt(node);
         setPrompt(nextPrompt);
         promptSelectionRef.current = { start: nextPrompt.length, end: nextPrompt.length };
-        setSelectedSkillIds(node.metadata?.selectedSkillIds || []);
+        const restored = restorePromptSkillSnapshots(node.metadata?.promptSkillPositions);
+        promptSkillPositionsRef.current = node.metadata?.promptSkillPositions || [];
+        setPromptTokenSnapshot(restored);
     }, [node.id, node.metadata?.status]);
+
+    useEffect(() => {
+        const positions = node.metadata?.promptSkillPositions || [];
+        promptSkillPositionsRef.current = positions;
+        const restored = restorePromptSkillSnapshots(positions);
+        setPromptTokenSnapshot((current) => (JSON.stringify(current) === JSON.stringify(restored) ? current : restored));
+    }, [node.id, node.metadata?.promptSkillPositions]);
+
+    useEffect(() => {
+        const nextSelectedSkillIds = node.metadata?.selectedSkillIds || [];
+        selectedSkillIdsRef.current = [...nextSelectedSkillIds];
+        setSelectedSkillIds(nextSelectedSkillIds);
+    }, [node.id, node.metadata?.selectedSkillIds]);
 
     useEffect(() => {
         setCameraMotions(node.metadata?.cameraMotions || {});
@@ -134,19 +181,16 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     };
 
     const capturePromptSelection = () => {
-        const textarea = promptEditorRef.current;
-        if (textarea) rememberPromptSelection(textarea.selectionStart, textarea.selectionEnd);
+        const editor = promptEditorRef.current;
+        if (editor?.getSelectionOffset) {
+            const offset = editor.getSelectionOffset();
+            rememberPromptSelection(offset, offset);
+        }
     };
 
     const insertReferenceAtCursor = (reference: CanvasResourceReference) => {
         capturePromptSelection();
-        const next = insertTextAtSelection(prompt, promptSelectionRef.current.start, promptSelectionRef.current.end, `${referenceMentionLabel(reference.label)} `);
-        updatePrompt(next.value);
-        promptSelectionRef.current = { start: next.caret, end: next.caret };
-        requestAnimationFrame(() => {
-            promptEditorRef.current?.focus();
-            promptEditorRef.current?.setSelectionRange(next.caret, next.caret);
-        });
+        promptEditorRef.current?.insertReference?.(reference, promptSelectionRef.current.start, promptSelectionRef.current.end);
     };
 
     const insertCameraMotionAtCursor = (motion?: CanvasCameraMotionSelection) => {
@@ -154,17 +198,39 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         const nextMotions = { ...cameraMotions, [motion.label]: { label: motion.label, prompt: motion.prompt, previewClass: motion.previewClass } };
         setCameraMotions(nextMotions);
         onConfigChange(node.id, { cameraMotions: nextMotions });
-        const next = insertTextAtSelection(prompt, promptSelectionRef.current.start, promptSelectionRef.current.end, cameraMotionPromptToken(motion));
-        updatePrompt(next.value);
-        promptSelectionRef.current = { start: next.caret, end: next.caret };
-        requestAnimationFrame(() => {
-            promptEditorRef.current?.focus();
-            promptEditorRef.current?.setSelectionRange(next.caret, next.caret);
-        });
+        promptEditorRef.current?.insertTextAt?.(promptSelectionRef.current.start, promptSelectionRef.current.end, cameraMotionPromptToken(motion));
+    };
+
+    const persistSelectedSkillIds = (next: readonly string[]) => {
+        const normalized = Array.from(new Set(next.filter(Boolean)));
+        selectedSkillIdsRef.current = normalized;
+        setSelectedSkillIds((current) => (current.length === normalized.length && current.every((id, index) => id === normalized[index]) ? current : normalized));
+        onConfigChange(node.id, { selectedSkillIds: normalized.length ? normalized : undefined });
+    };
+
+    const updatePromptTokenSnapshot = (next: CanvasPromptTokenSnapshot[]) => {
+        setPromptTokenSnapshot(next);
+        const positions = promptSkillPositions(next);
+        if (samePromptSkillPositions(promptSkillPositionsRef.current || [], positions)) return;
+        promptSkillPositionsRef.current = positions;
+        onConfigChange(node.id, { promptSkillPositions: positions.length ? positions : undefined });
     };
 
     const selectSkill = (skill: AgentSkillSummary) => {
-        setSelectedSkillIds((current) => (current.includes(skill.id) ? current : [...current, skill.id]));
+        const next = updateCanvasSelectedSkillIds(selectedSkillIdsRef.current, skill.id, "add");
+        if (next.length === selectedSkillIdsRef.current.length) return;
+        persistSelectedSkillIds(next);
+    };
+
+    const removeSkill = (skillId: string) => {
+        const next = updateCanvasSelectedSkillIds(selectedSkillIdsRef.current, skillId, "remove");
+        if (next.length === selectedSkillIdsRef.current.length) return;
+        persistSelectedSkillIds(next);
+    };
+
+    const insertSkillAtCursor = (skill: AgentSkillSummary) => {
+        capturePromptSelection();
+        promptEditorRef.current?.insertSkill?.(skill, promptSelectionRef.current.start, promptSelectionRef.current.end);
     };
 
     const selectedSkills = skills.filter((skill) => selectedSkillIds.includes(skill.id));
@@ -186,6 +252,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 } satisfies CanvasResourceReference,
             ]
           : [];
+    const availableReferencePickers = visibleReferences.filter((reference) => !reference.id.endsWith("-current") && !prompt.includes(`@${reference.label.replace(/^@/u, "")}`));
     const optionalSkill = selectedSkills.length && selectedSkills.every((skill) => skill.promptMode === "optional") ? selectedSkills[0] : undefined;
     const missingRequiredReference = selectedSkills.some((skill) => skill.requiresReference) && visibleReferences.length === 0;
     const isAudioCreationMode = mode === "audio" && (config.audioMode === "voice-clone" || config.audioMode === "voice-design");
@@ -196,7 +263,11 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         const executionSeed = text || optionalSkill?.promptHint || `按「${optionalSkill?.name || "所选 Skill"}」默认流程生成`;
         void onGenerate(node.id, mode, executionSeed, eligibleSelectedSkillIds);
         setPrompt("");
+        selectedSkillIdsRef.current = [];
         setSelectedSkillIds([]);
+        setPromptTokenSnapshot([]);
+        promptSkillPositionsRef.current = [];
+        onConfigChange(node.id, { promptSkillPositions: undefined });
         return true;
     };
     const submitExpanded = () => {
@@ -225,7 +296,16 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const renderModelAndSettings = () => (
         <>
             {mode === "audio" ? <CanvasAudioModePicker value={config.audioMode} disabledModes={unavailableAudioModes} onChange={changeAudioMode} /> : null}
-            <ModelPicker className="min-w-[8.5rem]" config={config} value={config.model} onChange={changeAudioModel} capability={mode} options={mode === "audio" ? audioModelOptions : undefined} getModelLabel={mode === "audio" ? audioModelLabel : undefined} onMissingConfig={() => openConfigDialog(true)} />
+            <ModelPicker
+                className="min-w-[8.5rem]"
+                config={config}
+                value={config.model}
+                onChange={changeAudioModel}
+                capability={mode}
+                options={mode === "audio" ? audioModelOptions : undefined}
+                getModelLabel={mode === "audio" ? audioModelLabel : undefined}
+                onMissingConfig={() => openConfigDialog(true)}
+            />
             {mode === "image" ? (
                 <>
                     <CanvasImageSettingsPopover
@@ -259,14 +339,46 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         </>
     );
 
-    const generateButton = () => (
-        <GenerationActionButton appearance="icon" running={isRunning} cancellable className="shrink-0" disabled={!isRunning && !canGenerate} onClick={() => (isRunning ? onStop(node.id) : submit())} aria-label={isRunning ? "停止生成" : "生成"} />
+    const generateButton = (
+        <div
+            data-canvas-credit-cost
+            className="flex shrink-0 items-center gap-1 rounded-full border border-white/10 py-1 pl-4 shadow-lg"
+            style={{ background: "rgba(18, 21, 31, 0.92)" }}
+            aria-label={isRunning ? "停止生成" : credits !== undefined ? `生成（消耗 ${formatCreditAmount(credits)} 积分）` : "生成"}
+        >
+            {credits !== undefined ? (
+                <span className="mr-1.5 flex min-w-0 items-center gap-1.5" title="本次生成预计消耗积分">
+                    <Layers className="size-4 shrink-0 text-zinc-300" aria-hidden="true" />
+                    <span className="text-sm font-semibold leading-none tabular-nums text-zinc-100">
+                        {formatCreditAmount(credits)}
+                    </span>
+                </span>
+            ) : null}
+            <button
+                type="button"
+                className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+                style={{
+                    background: "linear-gradient(135deg, #4e46e9, #6e53f6 55%, #8979ff)",
+                    border: "1px solid rgba(255, 255, 255, 0.24)",
+                    boxShadow: "0 0 16px rgba(98, 82, 255, 0.5), inset 0 1px rgba(255, 255, 255, 0.35)",
+                    color: "#ffffff",
+                }}
+                disabled={!isRunning && !canGenerate}
+                onClick={() => (isRunning ? onStop(node.id) : submit())}
+            >
+                {isRunning ? (
+                    <Square className="size-3.5 fill-current" />
+                ) : (
+                    <img src="/brand/dreamyo/generation/generate-glyph.png" alt="" aria-hidden="true" width={20} height={20} />
+                )}
+            </button>
+        </div>
     );
 
     return (
         <div
             data-canvas-node-prompt-panel
-            className="canvas-scene-composer relative flex size-full min-h-0 flex-col overflow-hidden rounded-2xl border shadow-[0_18px_54px_rgba(15,23,42,.18)]"
+            className="canvas-scene-composer canvas-node-prompt-surface relative flex size-full min-h-0 flex-col overflow-hidden rounded-2xl border shadow-[0_18px_54px_rgba(15,23,42,.18)]"
             style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
@@ -275,18 +387,41 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
             onContextMenu={(event) => event.stopPropagation()}
         >
             <div className="flex h-11 shrink-0 items-center gap-1 px-3 pt-1.5" data-canvas-composer-quick-tools>
-                <button
-                    type="button"
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
-                    style={{ color: theme.node.muted }}
-                    onClick={() => visibleReferences[0] && !visibleReferences[0].id.endsWith("-current") && insertReferenceAtCursor(visibleReferences[0])}
-                    aria-label="插入参考素材"
+                <Popover
+                    trigger="click"
+                    placement="bottomLeft"
+                    content={
+                        <div className="flex max-w-[min(22rem,calc(100vw-32px))] flex-wrap gap-1.5" data-canvas-reference-picker>
+                            {availableReferencePickers.length ? (
+                                availableReferencePickers.map((reference) => (
+                                    <button
+                                        key={reference.id}
+                                        type="button"
+                                        className="inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition hover:bg-black/5 dark:hover:bg-white/10"
+                                        style={{ borderColor: `${theme.node.activeStroke}66`, color: theme.node.text }}
+                                        title={`插入 ${reference.label}`}
+                                        aria-label={`插入 ${reference.label}`}
+                                        onClick={() => insertReferenceAtCursor(reference)}
+                                    >
+                                        <span className="grid size-6 shrink-0 place-items-center overflow-hidden rounded-md bg-black/10">
+                                            <ReferencePreview reference={reference} fit="cover" />
+                                        </span>
+                                        <span className="max-w-40 truncate">{reference.label}</span>
+                                    </button>
+                                ))
+                            ) : (
+                                <span className="px-1 py-0.5 text-xs opacity-60">{visibleReferences.length ? "均已插入" : "暂无可插入的参考素材"}</span>
+                            )}
+                        </div>
+                    }
                 >
-                    <Link2 className="size-3.5" />
-                    参考{visibleReferences.length ? ` ${visibleReferences.length}` : ""}
-                </button>
+                    <button type="button" className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.muted }} aria-label="选择参考素材">
+                        <Link2 className="size-3.5" />
+                        参考{visibleReferences.length ? ` ${visibleReferences.length}` : ""}
+                    </button>
+                </Popover>
                 <CanvasPromptLibrary onSelect={updatePrompt} />
-                {mode === "image" || mode === "video" ? <CanvasSkillSelector skills={skills} loading={skillsLoading} selectedSkillIds={eligibleSelectedSkillIds} onSelect={selectSkill} /> : null}
+                {mode === "image" || mode === "video" ? <CanvasSkillSelector skills={skills} loading={skillsLoading} selectedSkillIds={eligibleSelectedSkillIds} onSelect={insertSkillAtCursor} /> : null}
                 {mode === "image" && !isPanorama ? <CanvasCameraControl value={node.metadata?.cameraControl} onChange={(cameraControl) => onConfigChange(node.id, { cameraControl })} /> : null}
                 {mode === "video" ? (
                     <>
@@ -303,65 +438,20 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
             </div>
 
             <section className="flex min-h-0 min-w-0 flex-1 flex-col px-3 pb-2">
-                {visibleReferences.length || selectedSkills.length ? (
-                    <div className="thin-scrollbar flex h-12 shrink-0 items-center gap-1.5 overflow-x-auto" data-canvas-prompt-context>
-                        {visibleReferences.map((reference) => (
-                            <Popover key={reference.id} trigger="hover" placement="topLeft" mouseEnterDelay={0.15} content={<ReferenceHoverPreview reference={reference} />} overlayInnerStyle={{ padding: 6 }}>
-                                <button
-                                    type="button"
-                                    className="group grid size-11 shrink-0 place-items-center overflow-hidden rounded-md border transition hover:-translate-y-0.5"
-                                    style={{ borderColor: `${theme.node.activeStroke}66`, background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}
-                                    title={`插入 ${reference.label}`}
-                                    aria-label={`插入 ${reference.label}`}
-                                    onClick={() => !reference.id.endsWith("-current") && insertReferenceAtCursor(reference)}
-                                >
-                                    <span className="flex size-full items-center justify-center overflow-hidden bg-black/10">
-                                        <ReferencePreview reference={reference} fit="cover" />
-                                    </span>
-                                </button>
-                            </Popover>
-                        ))}
-                        {selectedSkills.map((skill) => (
-                            <div
-                                key={skill.id}
-                                className="group inline-flex h-7 max-w-[18rem] shrink-0 items-center gap-1 rounded-full border px-1.5 text-xs font-semibold"
-                                style={{ borderColor: theme.toolbar.border, background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}
-                                data-canvas-inline-skill
-                            >
-                                <button
-                                    type="button"
-                                    className="grid size-4 shrink-0 place-items-center rounded-full opacity-55 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
-                                    onClick={() => setSelectedSkillIds((current) => current.filter((id) => id !== skill.id))}
-                                    aria-label={`移除 Skill ${skill.name}`}
-                                >
-                                    <X className="size-3" />
-                                </button>
-                                <Sparkles className="size-3 shrink-0" />
-                                <span className="truncate">{skill.name}</span>
-                                <CanvasSkillSelector
-                                    skills={skills.filter((item) => item.id !== skill.id)}
-                                    loading={skillsLoading}
-                                    selectedSkillIds={eligibleSelectedSkillIds}
-                                    onSelect={(next) => setSelectedSkillIds((current) => current.map((id) => (id === skill.id ? next.id : id)))}
-                                    trigger={
-                                        <button type="button" className="grid size-4 place-items-center rounded-full transition hover:bg-black/10 dark:hover:bg-white/10" aria-label={`更换 Skill ${skill.name}`}>
-                                            <MoreHorizontal className="size-3" />
-                                        </button>
-                                    }
-                                />
-                            </div>
-                        ))}
-                    </div>
-                ) : null}
                 <div className="relative min-h-0 flex-1">
-                    <CanvasResourceMentionTextarea
+                    <CanvasRichPromptEditor
                         ref={promptEditorRef}
+                        autoFocus
                         value={prompt}
                         references={mentionReferences}
                         inlineTokens={cameraMotionTokens}
                         skills={skills}
+                        selectedSkillIds={selectedSkillIds}
+                        tokenSnapshot={promptTokenSnapshot}
+                        onTokenSnapshotChange={updatePromptTokenSnapshot}
                         onSelectSkill={selectSkill}
-                        onSelect={(event) => rememberPromptSelection(event.currentTarget.selectionStart, event.currentTarget.selectionEnd)}
+                        onRemoveSkill={removeSkill}
+                        onSelectionChange={(_value, offset) => rememberPromptSelection(offset, offset)}
                         onChange={updatePrompt}
                         onSubmit={submit}
                         aria-label="节点提示词"
@@ -377,21 +467,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     />
                     <div className="pointer-events-none absolute bottom-0 right-1 text-[10px] tabular-nums opacity-30">{prompt.length}/1000</div>
                 </div>
-                <div className="flex h-9 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t pt-1" style={{ borderColor: theme.toolbar.border }}>
+                <div data-canvas-generation-bar className="box-border flex h-14 min-w-0 shrink-0 items-center gap-2 overflow-visible py-1">
                     <div className="canvas-composer-tools thin-scrollbar flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden whitespace-nowrap">{renderModelAndSettings()}</div>
-                    {!isRunning ? (
-                        <span
-                            data-canvas-credit-cost
-                            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border px-2 text-xs font-semibold tabular-nums"
-                            style={{ borderColor: theme.toolbar.border, background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}
-                        >
-                            <CreditSymbol />
-                            {formatCreditAmount(credits)}
-                        </span>
-                    ) : (
-                        <LoaderCircle className="size-4 shrink-0 animate-spin opacity-60" />
-                    )}
-                    {generateButton()}
+                    {generateButton}
                 </div>
             </section>
 
@@ -408,9 +486,8 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     afterOpenChange={(open: boolean) => {
                         if (!open) return;
                         requestAnimationFrame(() => {
-                            const textarea = expandedEditorRef.current;
-                            textarea?.focus();
-                            textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+                            const editor = expandedEditorRef.current;
+                            editor?.focusAt?.(prompt.length);
                         });
                     }}
                     styles={{
@@ -422,14 +499,19 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     footer={null}
                 >
                     <div data-canvas-prompt-editor="expanded" className="min-w-0 overflow-hidden rounded-xl border" style={{ borderColor: theme.node.stroke }}>
-                        <CanvasResourceMentionTextarea
+                        <CanvasRichPromptEditor
                             ref={expandedEditorRef}
                             autoFocus={expanded}
                             value={prompt}
                             references={mentionReferences}
                             inlineTokens={cameraMotionTokens}
                             skills={skills}
+                            selectedSkillIds={selectedSkillIds}
+                            tokenSnapshot={promptTokenSnapshot}
+                            onTokenSnapshotChange={updatePromptTokenSnapshot}
                             onSelectSkill={selectSkill}
+                            onRemoveSkill={removeSkill}
+                            onSelectionChange={(_value, offset) => rememberPromptSelection(offset, offset)}
                             onChange={updatePrompt}
                             onSubmit={submitExpanded}
                             aria-label="提示词编辑器"
@@ -459,25 +541,14 @@ function ReferencePreview({ reference, fit = "contain" }: { reference: CanvasRes
     if (reference.kind === "audio")
         return (
             <span className="grid size-full place-items-center">
-                <Music2 className="size-7 opacity-45" />
+                <DreamyoIcon name="audio" size={32} />
             </span>
         );
     return (
         <span className="flex size-full items-center gap-2 px-3 text-xs leading-5">
-            <FileText className="size-5 shrink-0 opacity-45" />
+            <DreamyoIcon name="document" size={22} />
             <span className="line-clamp-3">{reference.text || reference.title}</span>
         </span>
-    );
-}
-
-function ReferenceHoverPreview({ reference }: { reference: CanvasResourceReference }) {
-    return (
-        <div className="w-56 overflow-hidden rounded-lg bg-black text-white shadow-xl">
-            <div className="aspect-video overflow-hidden bg-black">
-                <ReferencePreview reference={reference} />
-            </div>
-            <div className="truncate px-2.5 py-2 text-xs font-medium">{reference.title}</div>
-        </div>
     );
 }
 

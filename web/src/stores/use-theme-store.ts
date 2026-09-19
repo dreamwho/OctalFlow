@@ -35,7 +35,7 @@ function createThemeStore(scope: ThemeScope) {
     const useStore = create<ThemeStore>()(
         persist(
             (set, get) => ({
-                theme: "light",
+                theme: "dark",
                 setTheme: (theme) => {
                     if (get().theme === theme) return;
                     set({ theme });

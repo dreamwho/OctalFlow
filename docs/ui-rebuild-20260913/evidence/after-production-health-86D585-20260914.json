@@ -1,0 +1,62 @@
+{
+  "route": "standalone health and current-build B01/C01 asset probe",
+  "buildId": "86D585GmCkEgU-hHnm_AI",
+  "base": "http://127.0.0.1:3187",
+  "responses": {
+    "/api/health": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytesProbe": 54
+    },
+    "/api/health/live": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytesProbe": 59
+    },
+    "/api/health/ready": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytesProbe": 293
+    },
+    "/brand/dreamyo/generation/button-surface.png": {
+      "status": 200,
+      "contentType": "",
+      "bytesProbe": 1937006
+    },
+    "/brand/dreamyo/generation/generate-glyph.png": {
+      "status": 200,
+      "contentType": "",
+      "bytesProbe": 2427
+    },
+    "/brand/dreamyo/flow-light.png": {
+      "status": 200,
+      "contentType": "",
+      "bytesProbe": 1183317
+    },
+    "/brand/dreamyo/flow-dark.png": {
+      "status": 200,
+      "contentType": "",
+      "bytesProbe": 1244215
+    },
+    "/brand/dreamyo/mark.png": {
+      "status": 200,
+      "contentType": "",
+      "bytesProbe": 482026
+    },
+    "/logo.svg": {
+      "status": 200,
+      "contentType": "",
+      "bytesProbe": 2642
+    },
+    "/icon.svg": {
+      "status": 200,
+      "contentType": "",
+      "bytesProbe": 2642
+    },
+    "/manifest.webmanifest": {
+      "status": 200,
+      "contentType": "application/manifest+json",
+      "bytesProbe": 354
+    }
+  }
+}

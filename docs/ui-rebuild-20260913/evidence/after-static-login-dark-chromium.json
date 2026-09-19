@@ -1,0 +1,33 @@
+{
+  "route": "/login",
+  "theme": "dark",
+  "title": "登录 | dreamyo",
+  "heading": "回到你的视觉创作台",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1440,
+    "height": 900
+  },
+  "input": {
+    "left": 766.09375,
+    "top": 435.5,
+    "width": 411.890625,
+    "height": 24,
+    "caretColor": "rgb(238, 246, 255)",
+    "color": "rgb(238, 246, 255)",
+    "surfaceBackground": "rgba(14, 28, 58, 0.92)",
+    "surfaceColor": "rgb(238, 246, 255)",
+    "visible": true
+  },
+  "overflow": false,
+  "iconHref": "http://127.0.0.1:3200/brand/dreamyo/mark.png",
+  "state": "真实输入与光标可见",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "capturedAt": "2026-09-15T11:57:53.190Z"
+}

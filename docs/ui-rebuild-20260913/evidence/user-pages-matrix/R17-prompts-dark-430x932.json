@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/prompts",
+  "actualPath": "/prompts",
+  "responseStatus": 200,
+  "route": "/prompts",
+  "theme": "dark",
+  "title": "提示词库 | dreamyo",
+  "heading": "提示词库",
+  "viewport": {
+    "width": 430,
+    "height": 932,
+    "visualWidth": 430,
+    "visualHeight": 932,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 52,
+    "width": 430,
+    "height": 880
+  },
+  "overflow": false,
+  "state": "提示词库",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

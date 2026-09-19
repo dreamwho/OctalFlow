@@ -55,8 +55,7 @@ const openAiOperations: ChannelProtocolDefinition["operations"] = {
 const minimaxSpeechOperation: ProtocolOperation = {
     capability: "audio",
     createPath: "/v1/t2a_v2",
-    requestTemplate:
-        '{"model":"{{model}}","text":"{{text}}","stream":false,"voice_setting":{{voice_setting}},"audio_setting":{{audio_setting}},"language_boost":"{{language_boost}}","subtitle_enable":false}',
+    requestTemplate: '{"model":"{{model}}","text":"{{text}}","stream":false,"voice_setting":{{voice_setting}},"audio_setting":{{audio_setting}},"language_boost":"{{language_boost}}","subtitle_enable":false}',
     resultField: "data.audio",
 };
 
@@ -71,8 +70,7 @@ const minimaxMusicOperation: ProtocolOperation = {
 const tokenHubMusicOperation: ProtocolOperation = {
     capability: "audio",
     createPath: "/v1/wand/minimax-music/generation",
-    requestTemplate:
-        '{"model":"{{model}}","prompt":"{{prompt}}","lyrics":"{{lyrics}}","output_format":"url","audio_setting":{{audio_setting}},"lyrics_optimizer":{{lyrics_optimizer}},"is_instrumental":{{is_instrumental}}}',
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","lyrics":"{{lyrics}}","output_format":"url","audio_setting":{{audio_setting}},"lyrics_optimizer":{{lyrics_optimizer}},"is_instrumental":{{is_instrumental}}}',
     resultField: "data.audio",
 };
 
@@ -178,6 +176,38 @@ const geminiVideoOperation: ProtocolOperation = {
     supportsReferenceAudio: false,
 };
 
+const dolaVideoOperations: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/videos",
+    imageToVideoPath: "/v1/videos",
+    queryPath: "/v1/videos/:task_id",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","duration":{{duration}},"ratio":"{{ratio}}","images":"{{images}}","first_frame":"{{first_frame}}","last_frame":"{{last_frame}}"}',
+    resultField: "data.video_url / video_url",
+    statusField: "status",
+    durationRange: "5、10、15、30 秒（按模型）",
+    aspectRatios: ["1:1", "3:4", "4:3", "9:16", "16:9", "21:9"],
+    referenceRule: "Dola 通过 Cookie 初始化的 Camoufox 页面会话上传参考图；服务端按账号、凭据版本和通用代理目标固定同一会话出口。",
+    supportsReferenceImage: true,
+};
+
+const dolaImageOperations: ProtocolOperation = {
+    capability: "image",
+    createPath: "/v1/images",
+    queryPath: "/v1/images/:task_id",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","ratio":"{{ratio}}"}',
+    resultField: "data.imageUrls[0] / imageUrls[0]",
+    statusField: "status",
+    aspectRatios: ["1:1", "3:4", "4:3", "9:16", "16:9", "21:9"],
+    referenceRule: "图片生成由 Dola Seedream 4.5 执行；比例随提示词文本提交，结果通过会话查询返回 imageUrls 数组。",
+    supportsReferenceImage: false,
+};
+
+const DOLA_VIDEO_MODELS = [
+    { id: "dola-seedance-2-5", label: "Dola Seedance 2.5", capability: "video" as const, operation: { ...dolaVideoOperations, durationRange: "5、10、15、30 秒" } },
+    { id: "dola-seedance-2-0-fast", label: "Dola Seedance 2.0 Fast", capability: "video" as const, operation: { ...dolaVideoOperations, durationRange: "5、10、15 秒" } },
+    { id: "dola-seedream-4-5", label: "Dola Seedream 4.5", capability: "image" as const, operation: dolaImageOperations },
+];
+
 const seedanceOperation: ProtocolOperation = {
     capability: "video",
     createPath: "/contents/generations/tasks",
@@ -280,6 +310,18 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
         modelCatalogPaths: ["/v1/models"],
         capabilities: ["text", "image"],
         operations: { text: openAiOperations.text, image: openAiOperations.image },
+        strict: true,
+    },
+    {
+        id: "dola",
+        label: "Dola API",
+        description: "通过服务器隔离的页面签名会话调用已导入 Dola Cookie 账号；目录与视频/图片参数由本站已验证档案维护。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: [],
+        capabilities: ["video", "image"],
+        operations: { video: dolaVideoOperations, image: dolaImageOperations },
+        builtInModels: DOLA_VIDEO_MODELS,
         strict: true,
     },
     {
@@ -617,11 +659,7 @@ export function applyChannelProtocol(channel: SystemModelChannel, protocol: Syst
     const builtInModels = definition.builtInModels?.map((item) => item.id) || [];
     const isAlreadyConfigured = advanced.protocol === protocol;
     const configuredModels = channel.models.filter((model) => builtInModels.some((builtInModel) => normalizeModelId(builtInModel) === normalizeModelId(model)));
-    const models = builtInModels.length
-        ? isAlreadyConfigured
-            ? channel.models.length === 0 || configuredModels.length ? configuredModels : builtInModels
-            : builtInModels
-        : channel.models;
+    const models = builtInModels.length ? (isAlreadyConfigured ? (channel.models.length === 0 || configuredModels.length ? configuredModels : builtInModels) : builtInModels) : channel.models;
     const modelConfigs = { ...(advanced.modelConfigs || {}) };
     const modelCapabilities = { ...(advanced.modelCapabilities || {}) };
     const operationConfigs = definition.strict

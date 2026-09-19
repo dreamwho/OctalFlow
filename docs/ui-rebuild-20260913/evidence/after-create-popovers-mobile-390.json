@@ -1,0 +1,185 @@
+{
+  "route": "/create",
+  "state": "model, generation preference, and Skill popovers opened in both themes",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "themes": {
+    "light": {
+      "model": {
+        "rect": {
+          "left": 0.5003662109375,
+          "top": 534.9898071289062,
+          "width": 356.172119140625,
+          "height": 282.82977294921875
+        },
+        "backgroundColor": "oklab(0.999994 0.0000455678 0.0000200868 / 0.96)",
+        "backgroundLightness": 0.999994,
+        "backgroundImage": "none",
+        "color": "rgb(31, 43, 70)",
+        "borderColor": "rgb(205, 221, 240)",
+        "headingColor": "rgb(19, 33, 63)",
+        "overflowX": "auto",
+        "horizontalOverflow": false,
+        "popup": {
+          "opacity": "0.974471",
+          "visibility": "visible",
+          "display": "block",
+          "zIndex": "1030",
+          "rect": {
+            "left": 0.5003662109375,
+            "top": 534.9898071289062,
+            "width": 356.172119140625,
+            "height": 282.82977294921875
+          }
+        }
+      },
+      "preferences": {
+        "rect": {
+          "left": -3886.558349609375,
+          "top": -8421.4921875,
+          "width": 346.393310546875,
+          "height": 273.1298828125
+        },
+        "backgroundColor": "oklab(0.999994 0.0000455678 0.0000200868 / 0.96)",
+        "backgroundLightness": 0.999994,
+        "backgroundImage": "none",
+        "color": "rgb(31, 43, 70)",
+        "borderColor": "rgb(216, 226, 242)",
+        "headingColor": "rgb(123, 133, 145)",
+        "overflowX": "hidden",
+        "horizontalOverflow": false,
+        "popup": {
+          "opacity": "0.837896",
+          "visibility": "visible",
+          "display": "block",
+          "zIndex": "1030",
+          "rect": {
+            "left": -3895.2666015625,
+            "top": -8430.2001953125,
+            "width": 363.809814453125,
+            "height": 290.5458984375
+          }
+        }
+      },
+      "skill": {
+        "rect": {
+          "left": 36.352691650390625,
+          "top": 534.9585571289062,
+          "width": 350.5797119140625,
+          "height": 293.7818603515625
+        },
+        "backgroundColor": "oklab(0.999994 0.0000455678 0.0000200868 / 0.96)",
+        "backgroundLightness": 0.999994,
+        "backgroundImage": "none",
+        "color": "rgb(31, 43, 70)",
+        "borderColor": "rgb(205, 221, 240)",
+        "headingColor": "rgb(19, 33, 63)",
+        "overflowX": "auto",
+        "horizontalOverflow": false,
+        "popup": {
+          "opacity": "0.896364",
+          "visibility": "visible",
+          "display": "block",
+          "zIndex": "1030",
+          "rect": {
+            "left": 36.352691650390625,
+            "top": 534.9585571289062,
+            "width": 350.5797119140625,
+            "height": 293.7818603515625
+          }
+        }
+      }
+    },
+    "dark": {
+      "model": {
+        "rect": {
+          "left": 3.1713485717773438,
+          "top": 534.935302734375,
+          "width": 346.4148864746094,
+          "height": 275.08172607421875
+        },
+        "backgroundColor": "lab(2.05101 -0.233494 -5.70221 / 0.98)",
+        "backgroundLightness": 0.020510100000000003,
+        "backgroundImage": "none",
+        "color": "rgb(247, 251, 255)",
+        "borderColor": "oklab(0.864993 -0.113081 -0.0577893 / 0.2)",
+        "headingColor": "rgb(255, 255, 255)",
+        "overflowX": "auto",
+        "horizontalOverflow": false,
+        "popup": {
+          "opacity": "0.838197",
+          "visibility": "visible",
+          "display": "block",
+          "zIndex": "1030",
+          "rect": {
+            "left": 3.1713485717773438,
+            "top": 534.935302734375,
+            "width": 346.4148864746094,
+            "height": 275.08172607421875
+          }
+        }
+      },
+      "preferences": {
+        "rect": {
+          "left": -3886.5673828125,
+          "top": -8421.5107421875,
+          "width": 346.416748046875,
+          "height": 273.14794921875
+        },
+        "backgroundColor": "lab(2.05101 -0.233494 -5.70221 / 0.98)",
+        "backgroundLightness": 0.020510100000000003,
+        "backgroundImage": "none",
+        "color": "rgb(247, 251, 255)",
+        "borderColor": "rgb(38, 61, 104)",
+        "headingColor": "rgb(152, 162, 174)",
+        "overflowX": "hidden",
+        "horizontalOverflow": false,
+        "popup": {
+          "opacity": "0.838223",
+          "visibility": "visible",
+          "display": "block",
+          "zIndex": "1030",
+          "rect": {
+            "left": -3895.276123046875,
+            "top": -8430.2197265625,
+            "width": 363.83447265625,
+            "height": 290.5654296875
+          }
+        }
+      },
+      "skill": {
+        "rect": {
+          "left": 38.79759216308594,
+          "top": 534.9352416992188,
+          "width": 346.41168212890625,
+          "height": 290.28912353515625
+        },
+        "backgroundColor": "lab(2.05101 -0.233494 -5.70221 / 0.98)",
+        "backgroundLightness": 0.020510100000000003,
+        "backgroundImage": "none",
+        "color": "rgb(247, 251, 255)",
+        "borderColor": "oklab(0.864993 -0.113081 -0.0577893 / 0.2)",
+        "headingColor": "rgb(255, 255, 255)",
+        "overflowX": "auto",
+        "horizontalOverflow": false,
+        "popup": {
+          "opacity": "0.838153",
+          "visibility": "visible",
+          "display": "block",
+          "zIndex": "1030",
+          "rect": {
+            "left": 38.79759216308594,
+            "top": 534.9352416992188,
+            "width": 346.41168212890625,
+            "height": 290.28912353515625
+          }
+        }
+      }
+    }
+  },
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "capturedAt": "2026-09-15T11:58:24.635Z"
+}

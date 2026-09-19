@@ -9,6 +9,7 @@ const CHANNEL_PROTOCOLS: SystemChannelProtocol[] = [
     "yumeng",
     "gemini",
     "geminiai",
+    "dola",
     "gemini-tools",
     "chatgpt-api",
     "dreamina-cli",

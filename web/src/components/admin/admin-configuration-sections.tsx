@@ -6,8 +6,8 @@ import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { buildAdminSettingsPatch, resolveAdminSettingsAccess } from "@/components/admin/admin-settings-access";
 import { LabeledControl, SectionTitle, SettingInlineToggle, SettingToggle } from "@/components/admin/admin-settings-controls";
 import { SiteLogoPreview, SiteSettingStatus, siteSocialItems } from "@/components/admin/admin-site-preview";
-import { Button, Input, InputNumber, Switch, Tag } from "antd";
-import { Database, Globe2, Image as ImageIcon, Mail, Plus, Save, Search, Send, SlidersHorizontal, Sparkles, Trash2, Upload, UserCog } from "lucide-react";
+import { Button, Input, InputNumber, Radio, Switch, Tag } from "antd";
+import { Database, Globe2, Image as ImageIcon, Mail, Megaphone, Palette, Plus, Save, Search, Send, SlidersHorizontal, Sparkles, Trash2, Upload, UserCog } from "lucide-react";
 
 import { SettingsAnchorItem, SettingsStatusTile } from "./admin-dashboard-elements";
 import type { AdminDashboardController } from "./use-admin-dashboard-controller";
@@ -70,6 +70,35 @@ export function AdminSiteSection({ controller }: { controller: AdminDashboardCon
                                         maxLength={240}
                                         placeholder={`${settings.site.title || "网站名称"},AI Agent,AI 绘图,AI 视频,画布,短剧`}
                                         onChange={(event) => updateSiteSetting("seoKeywords", event.target.value)}
+                                    />
+                                </LabeledControl>
+                            </div>
+                        </div>
+
+                        <div className="border-t border-stone-200 pt-5 dark:border-stone-800">
+                            <SectionTitle icon={<Megaphone className="size-4" />} title="首页顶部公告栏" />
+                            <div className="mt-4 space-y-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-stone-950 dark:text-stone-100">启用公告栏</div>
+                                        <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">在首页最顶部展示一条可关闭的公告，适合活动与通知。</p>
+                                    </div>
+                                    <Switch checked={settings.site.announcementBar?.enabled === true} checkedChildren="显示" unCheckedChildren="隐藏" onChange={(enabled) => updateSiteSetting("announcementBar", { ...(settings.site.announcementBar || { text: "", href: "" }), enabled })} />
+                                </div>
+                                <LabeledControl label="公告内容">
+                                    <Input
+                                        value={settings.site.announcementBar?.text || ""}
+                                        maxLength={160}
+                                        placeholder="例如：🔥 新用户注册即送 100 积分，限时活动进行中"
+                                        onChange={(event) => updateSiteSetting("announcementBar", { enabled: settings.site.announcementBar?.enabled === true, text: event.target.value, href: settings.site.announcementBar?.href || "" })}
+                                    />
+                                </LabeledControl>
+                                <LabeledControl label="跳转链接（可选）">
+                                    <Input
+                                        value={settings.site.announcementBar?.href || ""}
+                                        maxLength={2000}
+                                        placeholder="/billing/plans 或 https://..."
+                                        onChange={(event) => updateSiteSetting("announcementBar", { enabled: settings.site.announcementBar?.enabled === true, text: settings.site.announcementBar?.text || "", href: event.target.value })}
                                     />
                                 </LabeledControl>
                             </div>
@@ -201,12 +230,14 @@ export function AdminSettingsSection({ controller }: { controller: AdminDashboar
         updateGenerationCostControl,
         updateDataLifecycle,
         getLatestSettings,
+        getLatestSiteSettings,
+        updateSiteSetting,
         updateMailSetting,
         testMailSettings,
     } = controller;
     const access = resolveAdminSettingsAccess(currentUser);
     if (activeSection !== "settings" || (!access.system && !access.upstream)) return null;
-    const description = access.system && access.upstream ? "管理账号注册、邮箱服务、生成与数据维护。" : access.system ? "管理账号注册、邮箱服务与数据维护。" : "管理生成并发、成本保护与默认参数。";
+    const description = access.system && access.upstream ? "管理主题外观、账号注册、邮箱服务、生成与数据维护。" : access.system ? "管理主题外观、账号注册、邮箱服务与数据维护。" : "管理生成并发、成本保护与默认参数。";
     const navigationClass =
         access.system && access.upstream ? "grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2 2xl:grid-cols-1" : access.system ? "grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2 2xl:grid-cols-1" : "grid grid-cols-1 gap-1.5 2xl:grid-cols-1";
     return (
@@ -260,6 +291,7 @@ export function AdminSettingsSection({ controller }: { controller: AdminDashboar
                         <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
                             <div className="px-2 pb-2 text-xs font-semibold text-stone-500 dark:text-stone-400">设置顺序</div>
                             <nav className={navigationClass} aria-label="系统设置分组">
+                                {access.system ? <SettingsAnchorItem href="#admin-settings-theme" icon={<Palette className="size-4" />} title="主题外观" detail="前台与后台主题" /> : null}
                                 {access.system ? <SettingsAnchorItem href="#admin-settings-account" icon={<UserCog className="size-4" />} title="账号与邮箱" detail="注册、SMTP、测试邮件" /> : null}
                                 {access.upstream ? <SettingsAnchorItem href="#admin-settings-generation" icon={<SlidersHorizontal className="size-4" />} title="生成控制" detail="默认值、并发上限" /> : null}
                                 {access.system ? <SettingsAnchorItem href="#admin-settings-lifecycle" icon={<Database className="size-4" />} title="数据维护" detail="到期记录、批次大小" /> : null}
@@ -268,6 +300,48 @@ export function AdminSettingsSection({ controller }: { controller: AdminDashboar
                     </aside>
 
                     <div className="min-w-0 space-y-4">
+                        {access.system ? (
+                            <section id="admin-settings-theme" className="scroll-mt-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
+                                        <SectionTitle icon={<Palette className="size-4" />} title="系统主题模式" />
+                                        <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">由后台统一设定前台与后台的主题风格，前台用户端不提供切换开关，确保全站风格统一。</p>
+                                    </div>
+                                    <Button
+                                        className="w-full sm:w-auto"
+                                        loading={settingsLoading}
+                                        icon={<Save className="size-4" />}
+                                        onClick={() => saveSettings({ site: getLatestSiteSettings() }, "主题设置已保存")}
+                                    >
+                                        保存主题设置
+                                    </Button>
+                                </div>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                    <LabeledControl label="前端用户端主题">
+                                        <Radio.Group
+                                            value={settings.site.frontendTheme || "dark"}
+                                            onChange={(event) => updateSiteSetting("frontendTheme", event.target.value)}
+                                            optionType="button"
+                                            buttonStyle="solid"
+                                        >
+                                            <Radio.Button value="dark">深色主题 (Dark)</Radio.Button>
+                                            <Radio.Button value="light">浅色主题 (Light)</Radio.Button>
+                                        </Radio.Group>
+                                    </LabeledControl>
+                                    <LabeledControl label="管理后台主题">
+                                        <Radio.Group
+                                            value={settings.site.adminTheme || "dark"}
+                                            onChange={(event) => updateSiteSetting("adminTheme", event.target.value)}
+                                            optionType="button"
+                                            buttonStyle="solid"
+                                        >
+                                            <Radio.Button value="dark">深色主题 (Dark)</Radio.Button>
+                                            <Radio.Button value="light">浅色主题 (Light)</Radio.Button>
+                                        </Radio.Group>
+                                    </LabeledControl>
+                                </div>
+                            </section>
+                        ) : null}
                         {access.system ? (
                             <section id="admin-settings-account" className="scroll-mt-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
                                 <div className="grid gap-5 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.28fr)]">

@@ -1,0 +1,19 @@
+{
+  "route": "/drama/drama-MeAF66FNMQ1X_Z5VSRXTD",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "theme": "light",
+  "state": "剧本真实实体",
+  "section": {
+    "left": 0,
+    "top": 124,
+    "width": 1280,
+    "height": 536
+  },
+  "overflow": false,
+  "buildId": "VWpPSpy3vFaCq0kpTF9zG",
+  "entity": "真实短剧视觉验收 a845f7d7"
+}

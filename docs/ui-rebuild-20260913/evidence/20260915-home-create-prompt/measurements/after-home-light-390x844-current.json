@@ -1,0 +1,74 @@
+{
+  "generate": {
+    "bottom": 484.09375,
+    "height": 44,
+    "hit": true,
+    "right": 363,
+    "width": 44,
+    "x": 319,
+    "y": 440.09375
+  },
+  "modeGroup": {
+    "height": 46,
+    "right": 309,
+    "width": 282,
+    "x": 27,
+    "y": 439.09375
+  },
+  "modeRects": [
+    {
+      "height": 38,
+      "icon": {
+        "height": 20,
+        "width": 20
+      },
+      "label": "智能模式",
+      "width": 66.25,
+      "x": 31,
+      "y": 443.09375
+    },
+    {
+      "height": 38,
+      "icon": {
+        "height": 20,
+        "width": 20
+      },
+      "label": "AI 绘图",
+      "width": 66.25,
+      "x": 100.25,
+      "y": 443.09375
+    },
+    {
+      "height": 38,
+      "icon": {
+        "height": 20,
+        "width": 20
+      },
+      "label": "AI 视频",
+      "width": 66.25,
+      "x": 169.5,
+      "y": 443.09375
+    },
+    {
+      "height": 38,
+      "icon": {
+        "height": 20,
+        "width": 20
+      },
+      "label": "AI 音频",
+      "width": 66.25,
+      "x": 238.75,
+      "y": 443.09375
+    }
+  ],
+  "overflow": {
+    "body": 0,
+    "html": 0
+  },
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/",
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

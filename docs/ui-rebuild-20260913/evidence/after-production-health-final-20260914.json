@@ -1,0 +1,81 @@
+{
+  "buildId": "aZKOtDNRy6j0D6EOxByWv",
+  "base": "http://127.0.0.1:3337",
+  "registration": {
+    "status": 200,
+    "body": "{\"user\":{\"id\":\"f61d3281-02f5-4845-9d21-5acdbd137553\",\"accountId\":\"0001\",\"username\":\"healthadmin\",\"displayName\":\"Health Admin\",\"bio\":\"\",\"role\":\"admin\",\"adminPermissions\":[\"analytics.read\",\"users.read\",\"users.manage\",\"administrators.manage\",\"generation.read\",\"generation.manage\",\"upstream.manage\",\"comm"
+  },
+  "urls": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/json",
+      "bytes": 54
+    },
+    {
+      "path": "/api/health/live",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/json",
+      "bytes": 59
+    },
+    {
+      "path": "/api/health/ready",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/json",
+      "bytes": 289
+    },
+    {
+      "path": "/brand/dreamyo/generation/button-surface.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 1937006
+    },
+    {
+      "path": "/brand/dreamyo/generation/generate-glyph.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 2427
+    },
+    {
+      "path": "/brand/dreamyo/flow-light.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 1183317
+    },
+    {
+      "path": "/brand/dreamyo/flow-dark.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 1244215
+    },
+    {
+      "path": "/logo.svg",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    {
+      "path": "/icon.svg",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/manifest+json",
+      "bytes": 354
+    }
+  ],
+  "readyBody": "{\"code\":0,\"data\":{\"ready\":true,\"provider\":\"file\",\"database\":{\"healthy\":true,\"schemaReady\":true},\"encryptionReady\":true,\"firstAdminRequired\":false,\"generationWorker\":{\"required\":true,\"healthy\":true,\"lastHeartbeatAt\":\"2026-09-14T06:40:29.480Z\",\"staleAfterMs\":90000}},\"msg\":\"服务已就绪\"}"
+}

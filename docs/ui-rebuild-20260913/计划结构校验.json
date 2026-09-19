@@ -1,0 +1,32 @@
+{
+  "version": "V2.1",
+  "task_cards": 26,
+  "pages_and_sections": 70,
+  "viewport_theme_cases": 980,
+  "asset_rows": 236,
+  "evidence_originals": 10,
+  "active_design_references": [
+    "B01",
+    "C01"
+  ],
+  "superseded_reference": "08",
+  "acceptance_protocols": 17,
+  "task_graph": "acyclic in execution order",
+  "implementation_status": "T00-T13,T20-T21,T24-T25 PASS; T14-T18,T22-T23 IN_PROGRESS; T19 BLOCKED; current_build=9sMLb0KxOZx3vl8L7_ez-",
+  "errors": [],
+  "matrix_evidence": {
+    "user_public": 434,
+    "admin_sections": 504,
+    "admin_entries": 56,
+    "total": 994,
+    "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+    "run": "after-matrix-current-build-final-20260915.log"
+  },
+  "latest_followup": {
+    "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+    "audit": "evidence/after-front-end-followup-audit-20260915.json",
+    "t19Audit": "evidence/after-t19-external-blocker-audit-20260915.json",
+    "playwright": "218 tests / 18 files; 201 passed / 17 skipped; exit 0",
+    "consistency": "evidence/after-final-followup-consistency-20260915.json"
+  }
+}

@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Image as ImageIcon, MessageSquare, Music2, Settings2, Sparkles, Video } from "lucide-react";
+import { Check, ChevronDown, Layers, MessageSquare, Settings2, Square } from "lucide-react";
 import { Button, Dropdown } from "antd";
 
-import { GenerationActionButton } from "@/components/generation-action-button";
 import { ModelPicker } from "@/components/model-picker";
 import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
-import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
+import { formatCreditAmount, requestCreditCost } from "@/constant/credits";
 import { selectableModelsByCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -92,15 +91,21 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
     }, [node.id, node.metadata?.configDetailsOpen]);
 
     return (
-        <div className="flex h-full w-full cursor-move flex-col px-3 pb-2.5 pt-3 text-sm" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
-            <div className="mb-1.5 flex min-h-7 items-center justify-between gap-3">
+        <div
+            data-canvas-config-node-panel
+            data-canvas-config-ready={canGenerate ? "true" : "false"}
+            className="canvas-config-node-panel flex h-full w-full cursor-move flex-col px-4 pb-4 pt-4 text-sm"
+            style={{ color: theme.node.text }}
+            onWheel={(event) => event.stopPropagation()}
+        >
+            <div className="mb-3 flex min-h-10 items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="grid size-7 shrink-0 place-items-center rounded-lg" style={{ background: theme.toolbar.itemHover, color: theme.node.action }}>
-                        <Sparkles className="size-3.5" />
+                    <span className="grid size-10 shrink-0 place-items-center rounded-2xl" style={{ background: theme.toolbar.itemHover, color: theme.node.action }}>
+                        <DreamyoIcon name="magic" size={22} />
                     </span>
                     <div className="min-w-0">
-                        <div className="truncate text-[13px] font-semibold tracking-[0.01em]">生成配置</div>
-                        <div className="mt-0.5 truncate text-[10px]" style={{ color: theme.node.faint }}>
+                        <div className="truncate text-[18px] font-semibold tracking-[0.01em]">生成配置</div>
+                        <div className="mt-1 truncate text-xs" style={{ color: theme.node.faint }}>
                             {isRunning ? "正在处理当前输入" : canGenerate ? `${inputTotal ? `${inputTotal} 项` : "提示词"} · 就绪` : "连接素材或输入提示词"}
                         </div>
                     </div>
@@ -142,24 +147,24 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
                             type="text"
                             size="small"
                             data-canvas-no-drag
-                            className="!inline-flex !h-8 !items-center !rounded-lg !border !px-2.5 !shadow-none"
+                            className="!inline-flex !h-11 !items-center !rounded-2xl !border !px-3 !text-[15px] !shadow-none"
                             style={{ background: theme.toolbar.itemHover, borderColor: theme.node.stroke, color: theme.node.text }}
                             aria-label={`切换生成类型，当前${modeLabel}`}
                         >
                             <ModeLabel mode={mode} label={modeLabel} />
-                            <ChevronDown className="ml-1 size-3.5 opacity-60" />
+                            <ChevronDown className="ml-1 size-4 opacity-60" />
                         </Button>
                     </Dropdown>
                 </div>
             </div>
 
             <div
-                className={`mb-1.5 grid h-9 min-w-0 cursor-default items-stretch overflow-hidden rounded-xl border ${mode === "image" || mode === "video" || mode === "audio" ? "grid-cols-[minmax(0,1fr)_132px] divide-x" : "grid-cols-1"}`}
+                className={`mb-2 grid h-12 min-w-0 cursor-default items-stretch overflow-hidden rounded-2xl border ${mode === "image" || mode === "video" || mode === "audio" ? "grid-cols-[minmax(0,1fr)_150px] divide-x" : "grid-cols-1"}`}
                 style={{ background: theme.toolbar.itemHover, borderColor: theme.node.stroke }}
                 onMouseDown={(event) => event.stopPropagation()}
             >
                 <ModelPicker
-                    className="canvas-compact-control !h-9 !rounded-none !border-0 !bg-transparent !shadow-none"
+                    className="canvas-compact-control !h-12 !rounded-none !border-0 !bg-transparent !text-[15px] !shadow-none"
                     config={config}
                     value={config.model}
                     onChange={(model) => onConfigChange(node.id, { model })}
@@ -174,7 +179,7 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
                         metadata={node.metadata}
                         references={references}
                         placement="topRight"
-                        buttonClassName="canvas-compact-control !h-9 !w-full !justify-start !rounded-none !border-0 !bg-transparent !px-2.5 !shadow-none"
+                        buttonClassName="canvas-compact-control !h-12 !w-full !justify-start !rounded-none !border-0 !bg-transparent !px-3 !text-[14px] !shadow-none"
                         onConfigChange={(key, value) => onConfigChange(node.id, canvasVideoConfigPatch(key, value))}
                         onMetadataChange={(patch) => onConfigChange(node.id, patch)}
                     />
@@ -182,37 +187,37 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
                     <CanvasImageSettingsPopover
                         config={config}
                         placement="topRight"
-                        buttonClassName="canvas-compact-control !h-9 !w-full !justify-start !rounded-none !border-0 !bg-transparent !px-2.5 !shadow-none"
+                        buttonClassName="canvas-compact-control !h-12 !w-full !justify-start !rounded-none !border-0 !bg-transparent !px-3 !text-[14px] !shadow-none"
                         onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                     />
                 ) : mode === "audio" ? (
                     <CanvasAudioSettingsPopover
                         config={config}
                         placement="top"
-                        buttonClassName="canvas-compact-control !h-9 !w-full !justify-start !rounded-none !border-0 !bg-transparent !px-2.5 !shadow-none"
+                        buttonClassName="canvas-compact-control !h-12 !w-full !justify-start !rounded-none !border-0 !bg-transparent !px-3 !text-[14px] !shadow-none"
                         onConfigChange={(key, value) => onConfigChange(node.id, canvasAudioConfigPatch(key, value))}
                     />
                 ) : null}
             </div>
 
-            <div className="mb-1.5 min-w-0 cursor-default overflow-hidden rounded-xl border" style={{ background: theme.node.panel, borderColor: theme.node.stroke }} onMouseDown={(event) => event.stopPropagation()}>
-                <div className="flex h-9 min-w-0 items-stretch">
+            <div className="mb-2 min-w-0 cursor-default overflow-hidden rounded-2xl border" style={{ background: theme.node.panel, borderColor: theme.node.stroke }} onMouseDown={(event) => event.stopPropagation()}>
+                <div className="flex h-12 min-w-0 items-stretch">
                     <button
                         type="button"
-                        className="inline-flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-2.5 text-left transition-colors hover:bg-black/[.03] dark:hover:bg-white/[.05]"
+                        className="inline-flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-3 text-left transition-colors hover:bg-black/[.03] dark:hover:bg-white/[.05]"
                         aria-expanded={detailsOpen}
                         aria-controls={`canvas-config-details-${node.id}`}
                         aria-label={detailsOpen ? "收起输入与镜头" : "展开输入与镜头"}
                         onClick={() => setDetails(!detailsOpen)}
                     >
-                        <span className="grid size-6 shrink-0 place-items-center rounded-md" style={{ background: theme.toolbar.itemHover, color: theme.node.muted }}>
-                            <ImageIcon className="size-3.5" />
+                        <span className="grid size-8 shrink-0 place-items-center rounded-xl" style={{ background: theme.toolbar.itemHover, color: theme.node.muted }}>
+                            <DreamyoIcon name="image" size={18} />
                         </span>
-                        <span className="min-w-0 truncate text-xs font-medium">素材与镜头</span>
-                        <span className="truncate text-[11px]" style={{ color: theme.node.faint }}>
+                        <span className="min-w-0 truncate text-[14px] font-medium">素材与镜头</span>
+                        <span className="truncate text-xs" style={{ color: theme.node.faint }}>
                             {inputTotal ? `${inputTotal} 项已连接` : "等待连接"}
                         </span>
-                        <ChevronDown className={`ml-auto size-3.5 shrink-0 opacity-55 transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
+                        <ChevronDown className={`ml-auto size-4 shrink-0 opacity-55 transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
                     </button>
                     <button
                         type="button"
@@ -227,20 +232,20 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
                 </div>
 
                 {detailsOpen ? (
-                    <div id={`canvas-config-details-${node.id}`} data-canvas-config-details className="flex min-w-0 items-center gap-1 border-t px-1.5 py-1.5" style={{ borderColor: theme.node.stroke }}>
-                        <div className="flex h-8 min-w-0 flex-1 items-center divide-x overflow-hidden" style={{ color: theme.node.muted }}>
+                    <div id={`canvas-config-details-${node.id}`} data-canvas-config-details className="flex min-w-0 items-center gap-2 border-t px-2 py-2" style={{ borderColor: theme.node.stroke }}>
+                        <div className="flex h-9 min-w-0 flex-1 items-center divide-x overflow-hidden" style={{ color: theme.node.muted }}>
                             <InputCount icon={<MessageSquare className="size-3" />} label="提示词" value={inputSummary.textCount} />
-                            <InputCount icon={<ImageIcon className="size-3" />} label="参考图" value={inputSummary.imageCount} />
-                            <InputCount icon={<Video className="size-3" />} label="参考视频" value={inputSummary.videoCount} />
-                            <InputCount icon={<Music2 className="size-3" />} label="参考音频" value={inputSummary.audioCount} />
+                            <InputCount icon={<DreamyoIcon name="image" size={14} />} label="参考图" value={inputSummary.imageCount} />
+                            <InputCount icon={<DreamyoIcon name="video" size={14} />} label="参考视频" value={inputSummary.videoCount} />
+                            <InputCount icon={<DreamyoIcon name="audio" size={14} />} label="参考音频" value={inputSummary.audioCount} />
                         </div>
                         {mode === "image" || mode === "video" ? (
-                            <div className="ml-1.5 min-w-0 w-[118px] shrink-0 border-l pl-1.5">
+                            <div className="ml-1.5 min-w-0 w-[150px] shrink-0 border-l pl-2">
                                 <CanvasCameraControl
                                     value={node.metadata?.cameraControl}
                                     onChange={(cameraControl) => onConfigChange(node.id, { cameraControl })}
                                     placement="topRight"
-                                    buttonClassName="canvas-compact-control !h-8 !w-full !justify-start !rounded-lg !border-0 !bg-transparent !px-2 !shadow-none"
+                                    buttonClassName="canvas-compact-control !h-9 !w-full !justify-start !rounded-xl !border-0 !bg-transparent !px-2 !text-xs !shadow-none"
                                 />
                             </div>
                         ) : null}
@@ -248,28 +253,38 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
                 ) : null}
             </div>
 
-            <GenerationActionButton
-                appearance="primary"
-                icon={null}
-                running={isRunning}
-                cancellable
-                className="mt-auto !h-9 !w-full !cursor-pointer !rounded-xl !text-[13px] !font-semibold"
-                disabled={!isRunning && !canGenerate}
-                onMouseDown={(event) => event.stopPropagation()}
-                onClick={() => (isRunning ? onStop(node.id) : onGenerate(node.id))}
+            <div
+                data-canvas-credit-cost
+                className="mt-auto flex w-full shrink-0 items-center justify-between gap-2 rounded-full border border-white/10 py-1 pl-4 shadow-lg"
+                style={{ background: "rgba(18, 21, 31, 0.92)" }}
             >
-                {isRunning ? (
-                    "停止生成"
-                ) : (
-                    <span className="inline-flex items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1">
-                            <CreditSymbol />
-                            {formatCreditAmount(credits)}
-                        </span>
-                        <span>开始生成</span>
+                <span className="flex min-w-0 items-center gap-1.5" title="本次生成预计消耗积分">
+                    <Layers className="size-4 shrink-0 text-zinc-300" aria-hidden="true" />
+                    <span className="text-sm font-semibold leading-none tabular-nums text-zinc-100">
+                        {formatCreditAmount(credits)}
                     </span>
-                )}
-            </GenerationActionButton>
+                </span>
+                <button
+                    type="button"
+                    className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+                    style={{
+                        background: "linear-gradient(135deg, #4e46e9, #6e53f6 55%, #8979ff)",
+                        border: "1px solid rgba(255, 255, 255, 0.24)",
+                        boxShadow: "0 0 16px rgba(98, 82, 255, 0.5), inset 0 1px rgba(255, 255, 255, 0.35)",
+                        color: "#ffffff",
+                    }}
+                    aria-label={isRunning ? "停止生成" : "开始生成"}
+                    disabled={!isRunning && !canGenerate}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={() => (isRunning ? onStop(node.id) : onGenerate(node.id))}
+                >
+                    {isRunning ? (
+                        <Square className="size-3.5 fill-current" />
+                    ) : (
+                        <img src="/brand/dreamyo/generation/generate-glyph.png" alt="" aria-hidden="true" width={20} height={20} />
+                    )}
+                </button>
+            </div>
         </div>
     );
 }

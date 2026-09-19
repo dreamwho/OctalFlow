@@ -1,0 +1,62 @@
+{
+  "deprecatedContext": 0,
+  "editor": {
+    "background": "rgba(0, 0, 0, 0)",
+    "caretColor": "rgb(238, 246, 255)",
+    "color": "rgb(238, 246, 255)",
+    "rect": {
+      "bottom": 663,
+      "height": 122,
+      "right": 1037,
+      "width": 634,
+      "x": 403,
+      "y": 541
+    },
+    "text": "请帮我生成一个 图片1 ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。自然美颜精修 "
+  },
+  "generate": {
+    "disabled": false,
+    "hit": true,
+    "rect": {
+      "bottom": 711.5,
+      "height": 40,
+      "right": 1037,
+      "width": 40,
+      "x": 997,
+      "y": 671.5
+    }
+  },
+  "referenceTokens": [
+    {
+      "bottom": 579,
+      "height": 34,
+      "right": 617.140625,
+      "width": 108.34375,
+      "x": 508.796875,
+      "y": 545
+    }
+  ],
+  "scroll": {
+    "bodyClientWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "htmlClientWidth": 1440,
+    "htmlScrollWidth": 1440
+  },
+  "skillTokens": [
+    {
+      "bottom": 613,
+      "height": 34,
+      "right": 557,
+      "width": 150,
+      "x": 407,
+      "y": 579
+    }
+  ],
+  "theme": "dark",
+  "url": "http://127.0.0.1:3102/canvas/canvas-ui-after-20260915",
+  "viewport": {
+    "dpr": 1,
+    "height": 1000,
+    "width": 1440
+  }
+}

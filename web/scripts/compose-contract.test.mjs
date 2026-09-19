@@ -60,8 +60,8 @@ describe("Docker Compose contracts", () => {
 
     it("keeps static providers and listeners in secret-free bootstraps", () => {
         expect(validateMihomoBootstrapContracts({ repoRoot })).toEqual([
-            { file: "docker/mihomo/bootstrap.yaml", listenHost: "0.0.0.0", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892] },
-            { file: "docker/mihomo/bootstrap-host.yaml", listenHost: "127.0.0.1", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892] },
+            { file: "docker/mihomo/bootstrap.yaml", listenHost: "0.0.0.0", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892, 17893] },
+            { file: "docker/mihomo/bootstrap-host.yaml", listenHost: "127.0.0.1", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892, 17893] },
         ]);
     });
 
@@ -112,7 +112,9 @@ describe("Docker Compose contracts", () => {
             workerOrigin: "http://127.0.0.1:${PORT:-8866}",
         });
         expect(() => validateComposeContract(source.replace("      PORT: ${PORT:-8866}", "      PORT: 3000"), profile)).toThrow("app 监听端口必须为 ${PORT:-8866}");
-        expect(() => validateComposeContract(source.replace("      DREAMYO_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}", "      DREAMYO_WORKER_API_ORIGIN: http://127.0.0.1:3000"), profile)).toThrow("Worker API 地址必须为 http://127.0.0.1:${PORT:-8866}");
+        expect(() => validateComposeContract(source.replace("      DREAMYO_WORKER_API_ORIGIN: http://127.0.0.1:${PORT:-8866}", "      DREAMYO_WORKER_API_ORIGIN: http://127.0.0.1:3000"), profile)).toThrow(
+            "Worker API 地址必须为 http://127.0.0.1:${PORT:-8866}",
+        );
         expect(() => validateComposeContract(source.replace("http://127.0.0.1:${PORT:-8866}/api/health/live", "http://127.0.0.1:3000/api/health/live"), profile)).toThrow("app 健康检查必须请求 http://127.0.0.1:${PORT:-8866}/api/health/live");
     });
 

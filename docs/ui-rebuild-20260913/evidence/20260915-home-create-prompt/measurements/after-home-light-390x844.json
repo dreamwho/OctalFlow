@@ -1,0 +1,139 @@
+{
+  "modeGroup": {
+    "bottom": 485.09375,
+    "h": 46,
+    "right": 309,
+    "w": 282,
+    "x": 27,
+    "y": 439.09375
+  },
+  "modes": [
+    {
+      "button": {
+        "bottom": 481.09375,
+        "h": 38,
+        "right": 97.25,
+        "w": 66.25,
+        "x": 31,
+        "y": 443.09375
+      },
+      "icon": {
+        "display": "grid",
+        "rect": {
+          "bottom": 472.09375,
+          "h": 20,
+          "right": 74.125,
+          "w": 20,
+          "x": 54.125,
+          "y": 452.09375
+        },
+        "visible": true
+      },
+      "label": "智能模式",
+      "labelDisplay": "none"
+    },
+    {
+      "button": {
+        "bottom": 481.09375,
+        "h": 38,
+        "right": 166.5,
+        "w": 66.25,
+        "x": 100.25,
+        "y": 443.09375
+      },
+      "icon": {
+        "display": "grid",
+        "rect": {
+          "bottom": 472.09375,
+          "h": 20,
+          "right": 143.375,
+          "w": 20,
+          "x": 123.375,
+          "y": 452.09375
+        },
+        "visible": true
+      },
+      "label": "AI 绘图",
+      "labelDisplay": "none"
+    },
+    {
+      "button": {
+        "bottom": 481.09375,
+        "h": 38,
+        "right": 235.75,
+        "w": 66.25,
+        "x": 169.5,
+        "y": 443.09375
+      },
+      "icon": {
+        "display": "grid",
+        "rect": {
+          "bottom": 472.09375,
+          "h": 20,
+          "right": 212.625,
+          "w": 20,
+          "x": 192.625,
+          "y": 452.09375
+        },
+        "visible": true
+      },
+      "label": "AI 视频",
+      "labelDisplay": "none"
+    },
+    {
+      "button": {
+        "bottom": 481.09375,
+        "h": 38,
+        "right": 305,
+        "w": 66.25,
+        "x": 238.75,
+        "y": 443.09375
+      },
+      "icon": {
+        "display": "grid",
+        "rect": {
+          "bottom": 472.09375,
+          "h": 20,
+          "right": 281.875,
+          "w": 20,
+          "x": 261.875,
+          "y": 452.09375
+        },
+        "visible": true
+      },
+      "label": "AI 音频",
+      "labelDisplay": "none"
+    }
+  ],
+  "scroll": {
+    "body": 390,
+    "bodyClient": 390,
+    "html": 390,
+    "htmlClient": 390
+  },
+  "submit": {
+    "hit": true,
+    "icon": {
+      "bottom": 470.9375,
+      "h": 17.703125,
+      "right": 350,
+      "w": 18,
+      "x": 332,
+      "y": 453.234375
+    },
+    "rect": {
+      "bottom": 484.09375,
+      "h": 44,
+      "right": 363,
+      "w": 44,
+      "x": 319,
+      "y": 440.09375
+    }
+  },
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/",
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

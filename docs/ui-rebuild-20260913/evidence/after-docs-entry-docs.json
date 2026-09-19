@@ -1,0 +1,14 @@
+{
+  "route": "/docs",
+  "title": "dreamyo 文档 | dreamyo 文档",
+  "heading": "dreamyo 文档",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "overflow": false,
+  "buildId": "we3WtpHZSNwKrJGRuYpCE",
+  "httpStatus": 200,
+  "state": "文档入口实际生产渲染"
+}

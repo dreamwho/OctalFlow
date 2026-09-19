@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-09-15",
+  "incrementalBuildId": "PfwHfWwtCCPfuQqyDE6Uc",
+  "previousIncrementalBuildId": "mFCnh_sZTk02HCpXjVU2F",
+  "baselineBuildId": "nSTS_Kms_ikgtSS2hh3wH",
+  "incrementalEvidence": {
+    "themeToggle": "evidence/after-home-theme-8AA-20260915.log",
+    "home": "evidence/after-home-8AA-20260915.log",
+    "uiRebuild": "evidence/after-ui-rebuild-Pfw-20260915.log",
+    "canvas": "evidence/after-canvas-Pfw-20260915.log",
+    "responsive": "evidence/after-responsive-Pfw2-20260915.log",
+    "drama": "evidence/after-drama-Pfw-20260915.log",
+    "typecheck": "evidence/after-typecheck-drawer-R9-20260915.log",
+    "lint": "evidence/after-lint-Pfw-20260915.log",
+    "vitest": "evidence/after-full-vitest-Pfw-20260915.log",
+    "build": "evidence/after-build-drama-motion-R9-20260915.log",
+    "playwrightList": "evidence/after-playwright-list-Pfw-20260915.txt",
+    "gitDiffCheck": "evidence/after-git-diff-check-Pfw-20260915.log",
+    "defaultViewportMatrix": "evidence/after-matrix-Pfw-20260915.log"
+  },
+  "previousBuildEvidence": {
+    "allPages": "evidence/after-all-pages-mFCnh-passing2-20260914.log",
+    "contentAccount": "evidence/after-content-account-mFCnh-passing2-20260914.log",
+    "adminBusiness": "evidence/after-admin-business-mFC-20260914.log"
+  },
+  "results": {
+    "uiRebuild": "21/21",
+    "home": "15/15",
+    "canvas": "20/20",
+    "responsive": "48/48",
+    "drama": "3/3",
+    "vitest": "631 files passed, 4 skipped; 3105 passed, 10 skipped",
+    "defaultViewportMatrix": "994 JSON states (434 user/public + 504 admin sections + 56 admin entries), 6 Playwright tests passed"
+  },
+  "status": "Pfw 已重跑用户/公共、后台分区和后台入口的 994 个默认矩阵 JSON；主题/视口/overflow 断言通过。有效、加载、失败、弹层、保存状态矩阵和外部服务仍未完成或阻塞。"
+}

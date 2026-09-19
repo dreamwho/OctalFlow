@@ -31,11 +31,18 @@ dayjs.locale("zh-cn");
 
 export function AppProviders({ children }: { children: ReactNode }) {
     const pathname = usePathname();
-    const frontendTheme = useThemeStore((state) => state.theme);
-    const adminTheme = useAdminThemeStore((state) => state.theme);
-    const siteTitle = usePublicSessionStore((state) => state.payload?.settings?.site?.title);
-    const theme = themeScopeForPathname(pathname) === "admin" ? adminTheme : frontendTheme;
+    const siteSettings = usePublicSessionStore((state) => state.payload?.settings?.site);
+    const configuredFrontendTheme = siteSettings?.frontendTheme || "dark";
+    const configuredAdminTheme = siteSettings?.adminTheme || "dark";
+    const siteTitle = siteSettings?.title;
+    const scope = themeScopeForPathname(pathname);
+    const theme = scope === "admin" ? configuredAdminTheme : configuredFrontendTheme;
     const dark = theme === "dark";
+
+    useEffect(() => {
+        useThemeStore.getState().setTheme(configuredFrontendTheme);
+        useAdminThemeStore.getState().setTheme(configuredAdminTheme);
+    }, [configuredFrontendTheme, configuredAdminTheme]);
 
     useEffect(() => startThemeStoreSync(), []);
 

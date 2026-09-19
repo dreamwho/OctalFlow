@@ -442,7 +442,9 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
         },
     )
     assert created_group.status_code == 200
-    assert created_group.json()["group"]["nodes"][0]["url"] == group_proxy
+    created_group_url = created_group.json()["group"]["nodes"][0]["url"]
+    assert created_group_url == "http://__DREAMYO_PROXY_AUTH_REDACTED__@127.0.0.1:8082"
+    assert GROUP_PROXY_PASSWORD not in created_group.text
     preserved_node = client.post(
         "/api/proxy/groups",
         headers=admin,
@@ -459,7 +461,8 @@ def test_restricted_runtime_contract_and_encrypted_storage(runtime_data_dir, mon
         },
     )
     assert preserved_node.status_code == 200
-    assert preserved_node.json()["group"]["nodes"][0]["url"] == group_proxy
+    assert preserved_node.json()["group"]["nodes"][0]["url"] == created_group_url
+    assert GROUP_PROXY_PASSWORD not in preserved_node.text
     assert proxy_settings.get_profile(proxy="group:fixture-group").proxy_url == group_proxy
 
     generic_binding = client.post(

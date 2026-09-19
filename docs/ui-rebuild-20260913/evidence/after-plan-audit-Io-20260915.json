@@ -1,0 +1,84 @@
+{
+  "date": "2026-09-15",
+  "buildId": "Io-qYy9wOzKRaS5NndkrX",
+  "plan": "03-Luna任务卡.md",
+  "manual": "04-验收手册.md",
+  "taskStatus": {
+    "T00": "PASS",
+    "T01": "PASS",
+    "T02": "PASS",
+    "T03": "PASS",
+    "T04": "PASS",
+    "T05": "PASS",
+    "T06": "PASS",
+    "T07": "PASS",
+    "T08": "PASS",
+    "T09": "PASS",
+    "T10": "PASS",
+    "T11": "PASS",
+    "T12": "PASS",
+    "T13": "PASS",
+    "T14": "IN_PROGRESS",
+    "T15": "IN_PROGRESS",
+    "T16": "IN_PROGRESS",
+    "T17": "IN_PROGRESS",
+    "T18": "IN_PROGRESS",
+    "T19": "BLOCKED",
+    "T20": "PASS",
+    "T21": "PASS",
+    "T22": "IN_PROGRESS",
+    "T23": "IN_PROGRESS",
+    "T24": "PASS",
+    "T25": "PASS"
+  },
+  "matrixJsonWithCurrentBuild": {
+    "user-pages-matrix": 434,
+    "admin-sections-matrix": 504,
+    "admin-entry-matrix": 56
+  },
+  "defaultMatrixTotal": 994,
+  "qualityLogs": {
+    "after-build-final-Io-20260915.log": 0,
+    "after-typecheck-final-lXaT-20260915.log": 0,
+    "after-lint-final-lXaT-20260915.log": 0,
+    "after-full-vitest-final-lXaT-20260915.log": 0,
+    "after-format-check-final-lXaT-20260915.log": 0,
+    "after-release-check-final-lXaT-20260915.log": 0,
+    "after-full-e2e-final-Io-v6-postgres-20260915.log": 0,
+    "after-playwright-list-final-Io-20260915.txt": 0,
+    "after-standalone-start-final-Io-20260915.log": 0,
+    "after-docs-types-final-Io-20260915.log": 0,
+    "after-docs-build-final-Io-20260915.log": 0,
+    "after-git-diff-check-final-Io-20260915.log": 0,
+    "after-package-build-final-Io-20260915.log": 0
+  },
+  "unresolved": [
+    "T14",
+    "T15",
+    "T16",
+    "T17",
+    "T18",
+    "T22",
+    "T23",
+    "T19"
+  ],
+  "externalDeployment": "not executed",
+  "package": {
+    "source": {
+      "selectedFileCount": 2751,
+      "totalFilesIncludingMetadata": 2753,
+      "hashCount": 2752,
+      "totalBytes": 324715349
+    },
+    "build": {
+      "selectedFileCount": 6071,
+      "totalFilesIncludingMetadata": 6073,
+      "hashCount": 6072,
+      "totalBytes": 176468155
+    },
+    "hashMismatches": 0,
+    "invalidUtf8": 0,
+    "unexpectedReplacementMarkers": 0,
+    "closureComplete": true
+  }
+}

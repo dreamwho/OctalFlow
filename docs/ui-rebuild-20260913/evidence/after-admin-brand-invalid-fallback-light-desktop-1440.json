@@ -1,0 +1,12 @@
+{
+  "route": "/admin?section=site",
+  "theme": "light",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "state": "无效Logo回退",
+  "fallback": "/brand/dreamyo/mark.png",
+  "buildId": "l9LAF9ZLIY-o1bJMxJAaW"
+}

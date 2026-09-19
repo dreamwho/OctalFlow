@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/share/9913afba4ace40fcb7e3",
+  "actualPath": "/share/9913afba4ace40fcb7e3",
+  "responseStatus": 200,
+  "route": "/share/9913afba4ace40fcb7e3",
+  "theme": "light",
+  "title": "作品分享 | dreamyo",
+  "heading": "矩阵公开作品 57206317",
+  "viewport": {
+    "width": 1024,
+    "height": 768,
+    "visualWidth": 1024,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1024,
+    "height": 768
+  },
+  "overflow": false,
+  "state": "真实公开分享",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

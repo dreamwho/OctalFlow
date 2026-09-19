@@ -99,41 +99,41 @@ describe("scoped theme store sync", () => {
     it("persists front-end and admin selections under independent keys", () => {
         stopThemeSync = theme.startThemeStoreSync();
 
-        theme.useThemeStore.getState().setTheme("dark");
+        theme.useThemeStore.getState().setTheme("light");
 
-        expect(theme.useThemeStore.getState().theme).toBe("dark");
-        expect(theme.useAdminThemeStore.getState().theme).toBe("light");
-        expect(JSON.parse(storage.getItem(themeStorageKey("frontend")) || "{}")).toMatchObject({ state: { theme: "dark" } });
+        expect(theme.useThemeStore.getState().theme).toBe("light");
+        expect(theme.useAdminThemeStore.getState().theme).toBe("dark");
+        expect(JSON.parse(storage.getItem(themeStorageKey("frontend")) || "{}")).toMatchObject({ state: { theme: "light" } });
         expect(storage.getItem(themeStorageKey("admin"))).toBeNull();
-        expect(channelFor("frontend").sent).toEqual([{ type: "theme", theme: "dark" }]);
+        expect(channelFor("frontend").sent).toEqual([{ type: "theme", theme: "light" }]);
         expect(channelFor("admin").sent).toEqual([]);
 
-        theme.useAdminThemeStore.getState().setTheme("dark");
+        theme.useAdminThemeStore.getState().setTheme("light");
 
-        expect(JSON.parse(storage.getItem(themeStorageKey("admin")) || "{}")).toMatchObject({ state: { theme: "dark" } });
-        expect(channelFor("admin").sent).toEqual([{ type: "theme", theme: "dark" }]);
+        expect(JSON.parse(storage.getItem(themeStorageKey("admin")) || "{}")).toMatchObject({ state: { theme: "light" } });
+        expect(channelFor("admin").sent).toEqual([{ type: "theme", theme: "light" }]);
     });
 
     it("applies cross-tab updates only to their matching theme scope", () => {
         stopThemeSync = theme.startThemeStoreSync();
 
-        channelFor("frontend").receive({ type: "theme", theme: "dark" });
-        expect(theme.useThemeStore.getState().theme).toBe("dark");
-        expect(theme.useAdminThemeStore.getState().theme).toBe("light");
-
-        dispatchStorage(themeStorageKey("admin"), "dark");
-        expect(theme.useThemeStore.getState().theme).toBe("dark");
+        channelFor("frontend").receive({ type: "theme", theme: "light" });
+        expect(theme.useThemeStore.getState().theme).toBe("light");
         expect(theme.useAdminThemeStore.getState().theme).toBe("dark");
+
+        dispatchStorage(themeStorageKey("admin"), "light");
+        expect(theme.useThemeStore.getState().theme).toBe("light");
+        expect(theme.useAdminThemeStore.getState().theme).toBe("light");
         expect(channelFor("frontend").sent).toEqual([]);
         expect(channelFor("admin").sent).toEqual([]);
     });
 
     it("ignores malformed, unrelated, and opposite-scope updates", () => {
         stopThemeSync = theme.startThemeStoreSync();
-        theme.useThemeStore.getState().setTheme("dark");
+        theme.useThemeStore.getState().setTheme("light");
 
         for (const [key, newValue] of [
-            ["another-setting", JSON.stringify({ state: { theme: "light" } })],
+            ["another-setting", JSON.stringify({ state: { theme: "dark" } })],
             [themeStorageKey("frontend"), "not-json"],
         ] as const) {
             const event = new Event("storage");
@@ -142,7 +142,7 @@ describe("scoped theme store sync", () => {
         }
         channelFor("admin").receive({ type: "theme", theme: "dark" });
 
-        expect(theme.useThemeStore.getState().theme).toBe("dark");
+        expect(theme.useThemeStore.getState().theme).toBe("light");
         expect(theme.useAdminThemeStore.getState().theme).toBe("dark");
     });
 });

@@ -1,0 +1,35 @@
+{
+  "editor": {
+    "bottom": 663,
+    "caret": "rgb(19, 32, 59)",
+    "color": "rgb(19, 32, 59)",
+    "h": 122,
+    "right": 405,
+    "w": 380,
+    "x": 25,
+    "y": 541
+  },
+  "generate": {
+    "bottom": 711.5,
+    "h": 40,
+    "right": 405,
+    "w": 40,
+    "x": 365,
+    "y": 671.5
+  },
+  "scroll": {
+    "body": 430,
+    "bodyClient": 430,
+    "html": 430,
+    "htmlClient": 430
+  },
+  "theme": "light",
+  "tokens": {
+    "reference": 1,
+    "skill": 1
+  },
+  "viewport": {
+    "height": 932,
+    "width": 430
+  }
+}

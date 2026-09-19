@@ -19,6 +19,7 @@ const GROUP_NAMES: Record<MagicProxyProvider, string> = {
     geminiai: "dreamyo-GeminiAIStudio",
     geminiTools: "dreamyo-GeminiTools",
     chatgptApi: "dreamyo-ChatGPTAPI",
+    dola: "dreamyo-DolaAPI",
 };
 const DEFAULT_MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES = 4 * 1024 * 1024;
 const MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES_ENV = "DREAMYO_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES";
@@ -26,6 +27,7 @@ const EMPTY_BINDINGS: MagicProxyBindings = {
     geminiai: { enabled: false },
     geminiTools: { enabled: false },
     chatgptApi: { enabled: false },
+    dola: { enabled: false },
 };
 
 type MagicProxyNode = Record<string, unknown> & { name: string; type: string };
@@ -135,6 +137,8 @@ const GOOGLE_TEST_URL = "https://www.google.com";
 const GOOGLE_TEST_TIMEOUT_MS = 12000;
 const CHATGPT_TEST_URL = "https://chatgpt.com";
 const CHATGPT_TEST_TIMEOUT_MS = 15000;
+const DOLA_TEST_URL = "https://www.dola.com";
+const DOLA_TEST_TIMEOUT_MS = 15000;
 
 export type MagicProxyDelayResult = { name: string; delay?: number; error?: string };
 
@@ -160,6 +164,7 @@ const SERVICE_TITLES: Record<MagicProxyProvider, string> = {
     geminiai: "GeminiAIStudio (AIStudio 代理)",
     geminiTools: "GeminiTools (OAuth 代理)",
     chatgptApi: "ChatGPTAPI (逆向 API 代理)",
+    dola: "Dola API (Camoufox 代理)",
 };
 
 export async function testMagicProxyNodeDelay(input: unknown): Promise<MagicProxyDelayResult> {
@@ -213,7 +218,7 @@ export async function testMagicProxyGoogleAccess(input?: unknown): Promise<Magic
         };
     }
 
-    const providers: MagicProxyProvider[] = ["geminiai", "geminiTools", "chatgptApi"];
+    const providers: MagicProxyProvider[] = ["geminiai", "geminiTools", "chatgptApi", "dola"];
     const items: MagicProxyGoogleTestItem[] = [];
 
     // 容器出网基线用国内可直连的 gstatic；目标延迟单独按 google 探测（国内直连 google 必然失败，
@@ -303,10 +308,10 @@ export async function testChatGptChainAccess(): Promise<MagicProxyGoogleTestRepo
     }
 
     // 出网基线用 gstatic；目标延迟单独探测 chatgpt.com（国内直连必失败，结果里无 DIRECT 属正常）。
-    const baselineDelays = await requestGroupDelays(runtime, DELAY_TEST_URL, DELAY_TEST_TIMEOUT_MS).catch(() => new Map<string, number>());
+    const baselineDelays = await requestGroupDelays(runtime, DELAY_TEST_URL, DELAY_TEST_TIMEOUT_MS, group).catch(() => new Map<string, number>());
     let groupDelays = new Map<string, number>();
     try {
-        groupDelays = await requestGroupDelays(runtime, CHATGPT_TEST_URL, CHATGPT_TEST_TIMEOUT_MS);
+        groupDelays = await requestGroupDelays(runtime, CHATGPT_TEST_URL, CHATGPT_TEST_TIMEOUT_MS, group);
     } catch {
         groupDelays = new Map();
     }
@@ -337,18 +342,47 @@ export async function testChatGptChainAccess(): Promise<MagicProxyGoogleTestRepo
     };
 }
 
+/** Dola's proxy tab must test the Dola origin itself, never reuse a Google probe as success evidence. */
+export async function testMagicProxyDolaAccess(): Promise<MagicProxyGoogleTestReport> {
+    const runtime = readRuntimeConfig();
+    if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查 Mihomo 运行状态", 503);
+    const overview = await getMagicProxyOverview();
+    if (!overview.runtimeAvailable) throw new MagicProxyError("魔法代理运行时当前不可用，无法测试", 503);
+    const provider: MagicProxyProvider = "dola";
+    const group = GROUP_NAMES[provider];
+    const binding = overview.bindings[provider];
+    const testedAt = new Date().toISOString();
+    let activeNode = "DIRECT";
+    try {
+        const groupInfoRes = await controllerRequest(runtime, `/proxies/${encodeURIComponent(group)}`, { method: "GET" });
+        activeNode = optionalText(record(await groupInfoRes.json()).now) || "DIRECT";
+    } catch {
+        activeNode = binding?.node || "DIRECT";
+    }
+    const baselineDelays = await requestGroupDelays(runtime, DELAY_TEST_URL, DELAY_TEST_TIMEOUT_MS, group).catch(() => new Map<string, number>());
+    const targetDelays = await requestGroupDelays(runtime, DOLA_TEST_URL, DOLA_TEST_TIMEOUT_MS, group).catch(() => new Map<string, number>());
+    const delay = targetDelays.get(activeNode);
+    const error = delay === undefined
+        ? activeNode === "DIRECT"
+            ? `访问 Dola 超时或链路阻断 (>${DOLA_TEST_TIMEOUT_MS}ms)；当前分组处于 DIRECT 直连状态`
+            : describeChainFailure(targetDelays, baselineDelays, binding, activeNode, "Dola")
+        : undefined;
+    return {
+        targetUrl: DOLA_TEST_URL,
+        testedAt,
+        overallOk: typeof delay === "number",
+        items: [{ service: provider, serviceTitle: SERVICE_TITLES[provider], group, activeNode, enabled: Boolean(binding?.enabled), ok: typeof delay === "number", delay, ...(error ? { error } : {}) }],
+    };
+}
+
 /**
  * mihomo 的 `/proxies/:name/delay` 只覆盖顶层代理表，file provider 的订阅节点不在其中
  * （一律 404 "Resource not found" 秒回）；组级 `/group/:name/delay` 会对组内全部节点
  * （含订阅节点与 DIRECT）发起真实拨号并返回延迟映射，是节点测速的唯一正确通道。
  * 组级测速要等组内最慢节点完成，控制器请求超时必须大于逐节点 urltest 超时。
  */
-async function requestGroupDelays(runtime: MihomoRuntimeConfig, targetUrl: string, timeoutMs: number): Promise<Map<string, number>> {
-    const response = await controllerRequest(
-        runtime,
-        `/group/${encodeURIComponent(GROUP_NAMES.geminiai)}/delay?url=${encodeURIComponent(targetUrl)}&timeout=${timeoutMs}`,
-        { method: "GET", signal: AbortSignal.timeout(timeoutMs + 5000) },
-    );
+async function requestGroupDelays(runtime: MihomoRuntimeConfig, targetUrl: string, timeoutMs: number, group = GROUP_NAMES.geminiai): Promise<Map<string, number>> {
+    const response = await controllerRequest(runtime, `/group/${encodeURIComponent(group)}/delay?url=${encodeURIComponent(targetUrl)}&timeout=${timeoutMs}`, { method: "GET", signal: AbortSignal.timeout(timeoutMs + 5000) });
     const payload = record(await response.json());
     const delays = new Map<string, number>();
     for (const [name, value] of Object.entries(payload)) {
@@ -408,13 +442,7 @@ function magicProxyProviderByGroup(groupName: string): MagicProxyProvider {
     return (Object.keys(GROUP_NAMES) as MagicProxyProvider[]).find((provider) => GROUP_NAMES[provider] === groupName) || "chatgptApi";
 }
 
-export async function updateMagicProxyBinding(input: {
-    provider?: unknown;
-    enabled?: unknown;
-    node?: unknown;
-    mode?: unknown;
-    chained_config?: unknown;
-}) {
+export async function updateMagicProxyBinding(input: { provider?: unknown; enabled?: unknown; node?: unknown; mode?: unknown; chained_config?: unknown }) {
     const provider = magicProxyProvider(input.provider);
     if (!provider) throw new MagicProxyError("魔法代理服务标识无效", 400);
     if (typeof input.enabled !== "boolean") throw new MagicProxyError("请明确指定是否启用代理", 400);
@@ -425,7 +453,7 @@ export async function updateMagicProxyBinding(input: {
         const settings = await readSettings();
         if (!settings) throw new MagicProxyError("请先导入魔法代理订阅", 409);
         const nodeNames = new Set(settings.nodes.map((node) => node.name));
-        const current = settings.bindings[provider];
+        const current = settings.bindings[provider] || { enabled: false };
         const nextNode = Object.prototype.hasOwnProperty.call(input, "node") ? bindingNode(input.node) : current.node;
 
         if (mode === "magic") {
@@ -460,6 +488,7 @@ export async function updateMagicProxyBinding(input: {
         };
 
         const runtime = requireRuntimeConfig();
+        if (input.enabled) runtimeProxyUrl(runtime, provider);
         try {
             if (mode === "chained") {
                 if (chainedConfig?.hop_node && chainedConfig?.landing_node_id) {
@@ -512,7 +541,7 @@ export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Pr
             if (generic.enabled) return generic;
             return { enabled: false };
         }
-        const binding = settings.bindings[provider];
+        const binding = settings.bindings[provider] || { enabled: false };
         const isChained = binding?.mode === "chained";
         const isMagic = !isChained && binding?.enabled === true;
         const isEnabled = binding?.enabled === true;
@@ -633,11 +662,7 @@ function publicImportResult(settings: DecodedMagicProxySettings) {
 }
 
 async function fetchSubscriptionNodes(subscriptionUrl: string) {
-    const userAgents = [
-        "clash.meta",
-        "ClashforWindows/0.20.39",
-        "ClashMeta/1.18.0 Mihomo/1.18.0",
-    ];
+    const userAgents = ["clash.meta", "ClashforWindows/0.20.39", "ClashMeta/1.18.0 Mihomo/1.18.0"];
     let lastError: Error | null = null;
     let response: Response | null = null;
 
@@ -654,7 +679,7 @@ async function fetchSubscriptionNodes(subscriptionUrl: string) {
                     },
                     signal: AbortSignal.timeout(15000),
                 },
-                { allowProxyFakeIpSpace: true }
+                { allowProxyFakeIpSpace: true },
             );
             if (res.ok) {
                 response = res;
@@ -786,13 +811,15 @@ function normalizeSubscriptionUrl(value: string) {
 }
 
 export function cleanNodeName(name: string): string {
-    return name
-        // 清理 emoji / 国旗等代理名称常见装饰符号
-        .replace(/[\uD83C-\uDBFF\uDC00-\uDFFF]+/g, "")
-        .replace(/[\u2600-\u27BF\uFE00-\uFE0F\u200D]/g, "")
-        .replace(/[\[\]【】()（）|·_\-]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+    return (
+        name
+            // 清理 emoji / 国旗等代理名称常见装饰符号
+            .replace(/[\uD83C-\uDBFF\uDC00-\uDFFF]+/g, "")
+            .replace(/[\u2600-\u27BF\uFE00-\uFE0F\u200D]/g, "")
+            .replace(/[\[\]【】()（）|·_\-]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+    );
 }
 
 export function resolveHopNodeName(rawHop: string, availableNodes: Array<{ name: string }>): string | null {
@@ -825,6 +852,7 @@ function normalizeBindings(value: MagicProxyBindings | undefined, names: Set<str
         geminiai: normalizedBinding(value?.geminiai, names, allNodes),
         geminiTools: normalizedBinding(value?.geminiTools, names, allNodes),
         chatgptApi: normalizedBinding(value?.chatgptApi, names, allNodes),
+        dola: normalizedBinding(value?.dola, names, allNodes),
     };
 }
 
@@ -886,8 +914,8 @@ async function alignMihomoGroupSelections(runtime: MihomoRuntimeConfig, settings
             await selectMihomoProxy(runtime, GROUP_NAMES[provider], override.target);
             continue;
         }
-        const binding = settings.bindings[provider];
-        if (provider === "chatgptApi" && !runtime.proxyUrls.chatgptApi) {
+        const binding = settings.bindings[provider] || { enabled: false };
+        if ((provider === "chatgptApi" || provider === "dola") && !runtime.proxyUrls[provider]) {
             if (binding.enabled) runtimeProxyUrl(runtime, provider);
             continue;
         }
@@ -902,7 +930,7 @@ async function alignMihomoGroupSelections(runtime: MihomoRuntimeConfig, settings
 }
 
 async function ensureMihomoGroupSelection(settings: DecodedMagicProxySettings, runtime: MihomoRuntimeConfig, provider: MagicProxyProvider) {
-    const binding = settings.bindings[provider];
+    const binding = settings.bindings[provider] || { enabled: false };
     const expected = binding.enabled && binding.node ? binding.node : "DIRECT";
     const groups = await readMihomoGroups(runtime);
     const group = groups?.find((item) => item.name === GROUP_NAMES[provider]);
@@ -939,6 +967,7 @@ const CHAINED_HOP_GROUP_NAMES: Record<MagicProxyProvider, string> = {
     geminiai: "dreamyo-Chained-Hop-GeminiAIStudio",
     geminiTools: "dreamyo-Chained-Hop-GeminiTools",
     chatgptApi: "dreamyo-Chained-Hop-ChatGPTAPI",
+    dola: "dreamyo-Chained-Hop-DolaAPI",
 };
 
 function getChainedHopGroupName(provider: MagicProxyProvider) {
@@ -951,11 +980,7 @@ function getChainedHopGroupName(provider: MagicProxyProvider) {
  * 每次重写 Provider 文件都必须整体重建，否则会把其他 Provider 的链式出口静默清掉。
  * 返回 hopSelections：各 Provider 出口实际使用的跳板节点名（用于把跳板组选中到该节点）。
  */
-async function rebuildChainedExits(
-    settings: MihomoProviderState,
-    runtime: MihomoRuntimeConfig,
-    override?: { provider: MagicProxyProvider; node: MagicProxyNode | null },
-) {
+async function rebuildChainedExits(settings: MihomoProviderState, runtime: MihomoRuntimeConfig, override?: { provider: MagicProxyProvider; node: MagicProxyNode | null }) {
     const providers = Object.keys(GROUP_NAMES) as MagicProxyProvider[];
     const exitNames = new Set(providers.map((provider) => getChainedExitNodeName(provider)));
     const baseNodes = settings.nodes.filter((node) => !exitNames.has(node.name));
@@ -967,7 +992,7 @@ async function rebuildChainedExits(
             if (override.node) chainedNodes.push(override.node);
             continue;
         }
-        const binding = settings.bindings[provider];
+        const binding = settings.bindings[provider] || { enabled: false };
         if (!binding.enabled || binding.mode !== "chained" || !binding.chained_config?.hop_node || !binding.chained_config?.landing_node_id) continue;
         const landingProxyUrl = await resolveChainedLandingUrl(binding.chained_config.landing_node_id);
         const built = landingProxyUrl ? buildChainedExitNode(provider, binding.chained_config.hop_node, landingProxyUrl, baseNodes) : null;
@@ -1029,11 +1054,7 @@ function buildChainedExitNode(provider: MagicProxyProvider, rawHop: string, land
     };
 }
 
-async function syncMihomoChainedProxyInternal(input: {
-    hopNode?: string;
-    landingProxyUrl?: string;
-    provider?: MagicProxyProvider;
-}) {
+async function syncMihomoChainedProxyInternal(input: { hopNode?: string; landingProxyUrl?: string; provider?: MagicProxyProvider }) {
     const settings = await readSettings();
     if (!settings) return;
     const runtime = requireRuntimeConfig();
@@ -1075,11 +1096,7 @@ async function syncMihomoChainedProxyInternal(input: {
     }
 }
 
-export async function syncMihomoChainedProxy(input: {
-    hopNode?: string;
-    landingProxyUrl?: string;
-    provider?: MagicProxyProvider;
-}) {
+export async function syncMihomoChainedProxy(input: { hopNode?: string; landingProxyUrl?: string; provider?: MagicProxyProvider }) {
     return withRuntimeLock(async () => {
         return syncMihomoChainedProxyInternal(input);
     });
@@ -1189,6 +1206,7 @@ function readRuntimeConfig(): MihomoRuntimeConfig | null {
     const geminiaiPort = port(process.env.DREAMYO_MAGIC_PROXY_GEMINIAI_PORT);
     const geminiToolsPort = port(process.env.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_PORT);
     const chatgptApiPort = port(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT);
+    const dolaPort = port(process.env.DREAMYO_MAGIC_PROXY_DOLA_PORT);
     const geminiaiUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_GEMINIAI_URL, geminiaiPort);
     const geminiToolsUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_URL, geminiToolsPort);
     if (!controllerValue || secret.length < 32 || !isMagicProxyProviderFile(providerFile) || !isMagicProxyListenHost(listenHost) || !geminiaiPort || !geminiToolsPort || geminiaiPort === geminiToolsPort || !geminiaiUrl || !geminiToolsUrl) return null;
@@ -1197,12 +1215,19 @@ function readRuntimeConfig(): MihomoRuntimeConfig | null {
         const controllerPort = port(controllerUrl.port);
         if (!["http:", "https:"].includes(controllerUrl.protocol) || !controllerPort || controllerUrl.username || controllerUrl.password || controllerUrl.pathname !== "/" || controllerUrl.search || controllerUrl.hash) return null;
         const chatgptApiUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_URL, chatgptApiPort);
+        const dolaUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_DOLA_URL, dolaPort);
         const chatgptApiProxyUrl = chatgptApiPort && chatgptApiPort !== controllerPort && chatgptApiPort !== geminiaiPort && chatgptApiPort !== geminiToolsPort ? chatgptApiUrl : "";
+        const dolaProxyUrl = dolaPort && dolaPort !== controllerPort && dolaPort !== geminiaiPort && dolaPort !== geminiToolsPort && dolaPort !== chatgptApiPort ? dolaUrl : "";
         return {
             controllerUrl,
             secret,
             providerFile,
-            proxyUrls: { geminiai: geminiaiUrl, geminiTools: geminiToolsUrl, ...(chatgptApiProxyUrl ? { chatgptApi: chatgptApiProxyUrl } : {}) },
+            proxyUrls: {
+                geminiai: geminiaiUrl,
+                geminiTools: geminiToolsUrl,
+                ...(chatgptApiProxyUrl ? { chatgptApi: chatgptApiProxyUrl } : {}),
+                ...(dolaProxyUrl ? { dola: dolaProxyUrl } : {}),
+            },
         };
     } catch {
         return null;
@@ -1211,7 +1236,7 @@ function readRuntimeConfig(): MihomoRuntimeConfig | null {
 
 function requireRuntimeConfig() {
     const runtime = readRuntimeConfig();
-    if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查 Mihomo 控制器、订阅文件、监听地址和两个独立端口", 503);
+    if (!runtime) throw new MagicProxyError("魔法代理运行环境未配置，请检查 Mihomo 控制器、订阅文件、监听地址和独立端口", 503);
     return runtime;
 }
 
@@ -1220,6 +1245,9 @@ function runtimeProxyUrl(runtime: MihomoRuntimeConfig, provider: MagicProxyProvi
     if (value) return value;
     if (provider === "chatgptApi") {
         throw new MagicProxyError("ChatGPTAPI 魔法代理监听未配置，请同时设置 DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT 和 DREAMYO_MAGIC_PROXY_CHATGPT_API_URL，并使用独立端口", 503);
+    }
+    if (provider === "dola") {
+        throw new MagicProxyError("Dola API 魔法代理监听未配置，请同时设置 DREAMYO_MAGIC_PROXY_DOLA_PORT 和 DREAMYO_MAGIC_PROXY_DOLA_URL，并使用独立端口", 503);
     }
     throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
 }
@@ -1302,6 +1330,7 @@ function storedBindings(value: unknown): MagicProxyBindings {
         geminiai: storedBinding(bindings.geminiai),
         geminiTools: storedBinding(bindings.geminiTools),
         chatgptApi: storedBinding(bindings.chatgptApi),
+        dola: storedBinding(bindings.dola),
     };
 }
 
@@ -1359,10 +1388,11 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function magicProxyProvider(value: unknown): MagicProxyProvider | null {
-    return value === "geminiai" || value === "geminiTools" || value === "chatgptApi" ? value : null;
+    return value === "geminiai" || value === "geminiTools" || value === "chatgptApi" || value === "dola" ? value : null;
 }
 
-function cloneBinding(value: MagicProxyBinding): MagicProxyBinding {
+function cloneBinding(value: MagicProxyBinding | undefined): MagicProxyBinding {
+    value = value || { enabled: false };
     const node = optionalText(value.node);
     const isChained = value.mode === "chained";
     const hop = optionalText(value.chained_config?.hop_node);
@@ -1376,7 +1406,7 @@ function cloneBinding(value: MagicProxyBinding): MagicProxyBinding {
 }
 
 function cloneBindings(value: MagicProxyBindings): MagicProxyBindings {
-    return { geminiai: cloneBinding(value.geminiai), geminiTools: cloneBinding(value.geminiTools), chatgptApi: cloneBinding(value.chatgptApi) };
+    return { geminiai: cloneBinding(value.geminiai), geminiTools: cloneBinding(value.geminiTools), chatgptApi: cloneBinding(value.chatgptApi), dola: cloneBinding(value.dola) };
 }
 
 const runtimeState = globalThis as typeof globalThis & { __dreamyoMagicProxyRuntimeQueue?: Promise<void> };

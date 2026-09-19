@@ -1,0 +1,71 @@
+{
+  "runtime": "pnpm start / .next standalone",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "base": "http://127.0.0.1:3384",
+  "responses": {
+    "/api/health": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 54,
+      "body": {
+        "code": 0,
+        "data": {
+          "status": "ok"
+        },
+        "msg": "服务正常"
+      }
+    },
+    "/api/health/live": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 59,
+      "body": {
+        "code": 0,
+        "data": {
+          "status": "live"
+        },
+        "msg": "服务运行中"
+      }
+    },
+    "/api/health/ready": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 289,
+      "body": {
+        "code": 0,
+        "data": {
+          "ready": true,
+          "provider": "file",
+          "database": {
+            "healthy": true,
+            "schemaReady": true
+          },
+          "encryptionReady": true,
+          "firstAdminRequired": false,
+          "generationWorker": {
+            "required": true,
+            "healthy": true,
+            "lastHeartbeatAt": "2026-09-15T09:01:06.998Z",
+            "staleAfterMs": 90000
+          }
+        },
+        "msg": "服务已就绪"
+      }
+    },
+    "/brand/dreamyo/mark.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 482026
+    },
+    "/icon.svg": {
+      "status": 200,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    "/manifest.webmanifest": {
+      "status": 200,
+      "contentType": "application/manifest+json",
+      "bytes": 354
+    }
+  }
+}

@@ -16,6 +16,7 @@ import type { CanvasResourceReference } from "../utils/canvas-resource-reference
 import { canvasVideoReferenceModeLabel, normalizeCanvasVideoReferenceMode } from "../utils/canvas-video-references";
 import { CanvasVideoReferenceSettings } from "./canvas-video-reference-settings";
 import { canvasDreaminaVideoCommand, canvasDreaminaVideoProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
+import { canvasDolaVideoProfile, resolveCanvasDolaModelId } from "../utils/canvas-dola";
 
 type CanvasVideoSettingsPopoverProps = {
     config: AiConfig;
@@ -33,6 +34,8 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
     const dreaminaModelId = resolveCanvasDreaminaModelId(config);
     const dreaminaCommand = canvasDreaminaVideoCommand(metadata, references);
     const dreamina = canvasDreaminaVideoProfile(dreaminaModelId, dreaminaCommand);
+    const dola = canvasDolaVideoProfile(resolveCanvasDolaModelId(config));
+    const videoProfile = dola || dreamina;
     const preferences: GenerationPreferences = {
         mode: "video",
         video: {
@@ -47,20 +50,20 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
     const summary = canvasVideoPreferenceSummary(preferences);
     const fullSummary = generationPreferenceSummary("video", preferences);
     const referenceLabel = canvasVideoReferenceModeLabel(metadata?.videoReferenceMode);
-    const fixedSizeLabel = dreamina?.fixedRatio ? "由参考素材比例决定" : undefined;
+    const fixedSizeLabel = videoProfile?.fixedRatio ? "由参考素材比例决定" : undefined;
 
     useEffect(() => {
-        if (!dreamina) return;
+        if (!videoProfile) return;
         const quality = String(config.vquality || "720")
             .toLowerCase()
             .replace(/p$/, "");
-        if (!dreamina.qualities.some((option) => option.value === quality)) onConfigChange("vquality", dreamina.qualities[0]?.value || "720");
+        if (!videoProfile.qualities.some((option) => option.value === quality)) onConfigChange("vquality", videoProfile.qualities[0]?.value || "auto");
         const seconds = positiveInteger(config.videoSeconds, 5);
-        if (seconds < dreamina.durationRange.min || seconds > dreamina.durationRange.max) onConfigChange("videoSeconds", String(Math.min(Math.max(5, dreamina.durationRange.min), dreamina.durationRange.max)));
+        if (seconds < videoProfile.durationRange.min || seconds > videoProfile.durationRange.max) onConfigChange("videoSeconds", String(Math.min(Math.max(5, videoProfile.durationRange.min), videoProfile.durationRange.max)));
         const size = config.size || "auto";
-        if (dreamina.fixedRatio && size !== "auto") onConfigChange("size", "auto");
-        else if (!dreamina.fixedRatio && !dreamina.ratios.some((option) => option.value === size)) onConfigChange("size", "auto");
-    }, [config.size, config.videoSeconds, config.vquality, dreamina, onConfigChange]);
+        if (videoProfile.fixedRatio && size !== "auto") onConfigChange("size", "auto");
+        else if (!videoProfile.fixedRatio && !videoProfile.ratios.some((option) => option.value === size)) onConfigChange("size", videoProfile.ratios[0]?.value || "16:9");
+    }, [config.size, config.videoSeconds, config.vquality, videoProfile, onConfigChange]);
 
     return (
         <CreativeGenerationPreferences
@@ -76,12 +79,15 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
             showCount={false}
             tabless
             fixedSizeLabel={fixedSizeLabel}
-            ratioOptions={dreamina?.ratios}
-            videoQualityOptions={dreamina?.qualities}
-            videoDurationOptions={dreamina?.durations}
-            videoDurationRange={dreamina?.durationRange}
-            allowCustomSize={!dreamina}
-            allowCustomVideoQuality={!dreamina}
+            canvasPanel={{}}
+            ratioOptions={videoProfile?.ratios}
+            videoQualityOptions={videoProfile?.qualities}
+            videoDurationOptions={videoProfile?.durations}
+            videoDurationRange={videoProfile?.durationRange}
+            allowCustomSize={!videoProfile}
+            allowCustomVideoQuality={!videoProfile}
+            ratioGridClassName="grid-cols-2 sm:grid-cols-4"
+            ratioTileLayout
             videoReferenceContent={<CanvasVideoReferenceSettings metadata={metadata} references={references} theme={theme} compact onChange={onMetadataChange} />}
             onChange={(patch) => applyVideoPreferencePatch(patch, onConfigChange)}
         />

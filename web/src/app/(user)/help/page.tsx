@@ -58,7 +58,7 @@ export default function HelpPage() {
     };
 
     return (
-        <div className="h-full min-h-0 overflow-y-auto bg-[#fafbfc] text-foreground dark:bg-[#111316]">
+        <div className="help-center-page h-full min-h-0 overflow-y-auto bg-[#fafbfc] text-foreground dark:bg-[#111316]">
             <div className="mx-auto w-full max-w-[1480px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
                 <header className="grid gap-4 border-b border-border pb-5 sm:pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)] lg:items-end">
                     <div className="min-w-0">

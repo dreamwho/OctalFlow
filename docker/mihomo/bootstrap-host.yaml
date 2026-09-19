@@ -28,6 +28,12 @@ proxy-groups:
       - dreamyo-Subscription
     proxies:
       - DIRECT
+  - name: dreamyo-DolaAPI
+    type: select
+    use:
+      - dreamyo-Subscription
+    proxies:
+      - DIRECT
   # 链式代理跳板组：dialer-proxy 只能解析全局命名空间（顶层组），不能引用 provider 节点名。
   - name: dreamyo-Chained-Hop-GeminiAIStudio
     type: select
@@ -42,6 +48,12 @@ proxy-groups:
     proxies:
       - DIRECT
   - name: dreamyo-Chained-Hop-ChatGPTAPI
+    type: select
+    use:
+      - dreamyo-Subscription
+    proxies:
+      - DIRECT
+  - name: dreamyo-Chained-Hop-DolaAPI
     type: select
     use:
       - dreamyo-Subscription
@@ -64,6 +76,11 @@ listeners:
     listen: 127.0.0.1
     port: 17892
     proxy: dreamyo-ChatGPTAPI
+  - name: dreamyo-DolaAPI
+    type: mixed
+    listen: 127.0.0.1
+    port: 17893
+    proxy: dreamyo-DolaAPI
 
 rules:
   - MATCH,DIRECT

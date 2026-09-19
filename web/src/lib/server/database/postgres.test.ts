@@ -138,12 +138,18 @@ describe("PostgreSQL schema lifecycle", () => {
         expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_runninghub_apps");
         expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_runninghub_tasks");
         expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_runninghub_request_logs");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_dola_accounts");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_dola_api_keys");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_dola_gateway_settings");
+        expect(ddl).toContain("auto_watermark boolean NOT NULL DEFAULT false");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_dola_request_logs");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_dola_attempts");
         expect(ddl).toContain("CREATE UNIQUE INDEX IF NOT EXISTS dreamyo_gemini_tools_accounts_email_lower_idx");
         expect(ddl).toContain("'review_pending', 'reviewing', 'review_unavailable'");
         expect(ddl).toContain("task_type = 'agent' AND status = 'success' AND execution_phase IN ('review_pending', 'reviewing')");
 
         const tableNames = [...ddl.matchAll(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z][a-z0-9_]*)/gi)].map((match) => match[1]).sort();
-        expect(tableNames).toHaveLength(78);
+        expect(tableNames).toHaveLength(83);
         expect(tableNames.every((name) => name.startsWith("dreamyo_"))).toBe(true);
         expect(tableNames).not.toContain("dreamyo_check_ins");
         expect(ddl).toContain("DROP TABLE IF EXISTS dreamyo_check_ins");

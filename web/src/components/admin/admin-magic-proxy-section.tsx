@@ -6,7 +6,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { MagicProxyTestModal } from "@/components/admin/magic-proxy-test-modal";
-import { getMagicProxy, importMagicProxySubscription, refreshMagicProxySubscription, testMagicProxyAllNodes, testMagicProxyNode, type MagicProxyDelayResult, type MagicProxyGroup, type MagicProxyNode, type MagicProxyState } from "@/services/api/magic-proxy";
+import {
+    getMagicProxy,
+    importMagicProxySubscription,
+    refreshMagicProxySubscription,
+    testMagicProxyAllNodes,
+    testMagicProxyNode,
+    type MagicProxyDelayResult,
+    type MagicProxyGroup,
+    type MagicProxyNode,
+    type MagicProxyState,
+} from "@/services/api/magic-proxy";
 
 export function AdminMagicProxySection() {
     const { message } = App.useApp();
@@ -157,7 +167,7 @@ export function AdminMagicProxySection() {
             <Panel>
                 <PanelHeader
                     title="魔法代理"
-                    description="导入或更新订阅，并查看当前运行时状态、分组和节点。GeminiAIStudio 与 GeminiTools 的节点绑定请分别在各自 Provider 页面设置。"
+                    description="导入或更新订阅，并查看当前运行时状态、分组和节点。GeminiAIStudio、GeminiTools、GPTAPI 与 Dola API 的节点绑定请分别在各自 Provider 页面设置。"
                     actions={
                         <Button icon={<RefreshCw className="size-4" />} loading={loading && !action} onClick={() => void loadState()}>
                             刷新状态
@@ -239,7 +249,7 @@ export function AdminMagicProxySection() {
             <Panel>
                 <PanelHeader
                     title="代理节点"
-                    description="节点列表仅显示名称、类型、存活状态和延迟；Provider 节点绑定请在 GeminiAIStudio 或 GeminiTools 页面完成。测速通过节点请求外部连通性检查地址，结果仅表示节点当前可用性。"
+                    description="节点列表仅显示名称、类型、存活状态和延迟；Provider 节点绑定请在对应的 Provider 页面完成。测速通过节点请求外部连通性检查地址，结果仅表示节点当前可用性。"
                     actions={
                         <div className="flex flex-wrap items-center gap-2">
                             <Button
@@ -376,10 +386,10 @@ function MagicProxyNodeCard({ node, delayResult, testing, disabled, onTest }: { 
                         <span className="text-red-600 dark:text-red-400">{testedError}</span>
                     ) : testedDelay ? (
                         <span className="font-medium text-emerald-600 dark:text-emerald-400">{testedDelay}</span>
+                    ) : typeof node.delay === "number" ? (
+                        `${node.delay} ms`
                     ) : (
-                        typeof node.delay === "number"
-                          ? `${node.delay} ms`
-                          : "未知"
+                        "未知"
                     )}
                 </div>
                 <Button size="small" icon={<Gauge className="size-3.5" />} loading={testing} disabled={disabled || !onTest} onClick={onTest}>

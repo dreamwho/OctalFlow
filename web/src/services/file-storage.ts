@@ -2,7 +2,7 @@
 
 import { getServerMediaBlob, parseServerMediaUrl, serverMediaUrl, uploadServerMedia, type ServerMediaType } from "@/services/server-media-storage";
 
-export type UploadedFile = { url: string; storageKey: string; bytes: number; mimeType: string; width?: number; height?: number; durationMs?: number; remoteUrl?: string; serverUrl?: string };
+export type UploadedFile = { url: string; storageKey: string; bytes: number; mimeType: string; width?: number; height?: number; durationMs?: number; remoteUrl?: string; serverUrl?: string; dolaVodPayload?: unknown };
 
 export async function uploadMediaFile(input: string | Blob, prefix = "file"): Promise<UploadedFile> {
     const type = mediaType(input, prefix);

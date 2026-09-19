@@ -1,0 +1,170 @@
+.generation-action-button.ant-btn {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex !important;
+    box-sizing: border-box;
+    align-items: center !important;
+    justify-content: center;
+    flex-wrap: nowrap !important;
+    min-height: 44px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.76) !important;
+    border-radius: 14px !important;
+    /* B01's transparent surface is layered over the C01 gradient. It is sized
+     * to the actual button box so the source glow and inner rim stay intact;
+     * compact icon controls keep the CSS gradient only and are never cropped. */
+    background-color: #5e7ff1 !important;
+    background-image: url("/brand/dreamyo/generation/button-surface.png"), linear-gradient(108deg, #5e7ff1 0%, #35cce1 52%, #58dec9 74%, #b9b3f7 100%) !important;
+    background-position: center, center;
+    background-repeat: no-repeat;
+    background-size:
+        100% 100%,
+        100% 100%;
+    color: #ffffff !important;
+    box-shadow:
+        0 10px 24px rgba(66, 117, 235, 0.27),
+        inset 0 1px 0 rgba(255, 255, 255, 0.36) !important;
+    text-shadow: 0 1px 2px rgba(34, 47, 99, 0.24);
+    transition:
+        transform 160ms ease,
+        box-shadow 180ms ease,
+        filter 180ms ease !important;
+    white-space: nowrap !important;
+}
+
+.generation-action-button.ant-btn:not(:disabled):hover {
+    color: #fff !important;
+    filter: saturate(1.08) brightness(1.05);
+    transform: translateY(-1px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.46),
+        0 14px 30px rgba(66, 117, 235, 0.34),
+        0 0 0 2px rgba(87, 223, 200, 0.18) !important;
+}
+
+.generation-action-button.ant-btn:not(:disabled):active {
+    filter: saturate(1.02) brightness(0.98);
+    transform: translateY(0) scale(0.98);
+}
+
+.generation-action-button.ant-btn:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, 0.92);
+    outline-offset: 2px;
+}
+
+.generation-action-button.ant-btn[data-tone="danger"] {
+    border-color: rgba(253, 164, 175, 0.72) !important;
+    background: linear-gradient(118deg, #e11d48 0%, #ef4444 52%, #f97316 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.34),
+        0 8px 20px rgba(225, 29, 72, 0.22) !important;
+}
+
+.generation-action-button.ant-btn[data-appearance="icon"]:not([data-tone="danger"]) {
+    background-image: linear-gradient(108deg, #5e7ff1 0%, #35cce1 52%, #58dec9 74%, #b9b3f7 100%) !important;
+}
+
+.generation-action-button.ant-btn[data-state="running"] {
+    background: linear-gradient(108deg, #5872df 0%, #29bcd3 52%, #52cbb8 74%, #a8a1e5 100%) !important;
+}
+
+.generation-action-button.ant-btn[data-appearance="soft"] {
+    border-color: transparent !important;
+    background:
+        linear-gradient(#fff, #fff) padding-box,
+        linear-gradient(118deg, rgba(124, 58, 237, 0.7), rgba(37, 99, 235, 0.7)) border-box !important;
+    color: #4f46e5 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.72),
+        0 4px 12px rgba(79, 70, 229, 0.1) !important;
+    text-shadow: none;
+}
+
+.dark .generation-action-button.ant-btn[data-appearance="soft"] {
+    background:
+        linear-gradient(#171a21, #171a21) padding-box,
+        linear-gradient(118deg, rgba(167, 139, 250, 0.78), rgba(56, 189, 248, 0.72)) border-box !important;
+    color: #eef2ff !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 5px 14px rgba(76, 81, 211, 0.18) !important;
+}
+
+.generation-action-button.ant-btn[data-appearance="soft"]:not(:disabled):hover {
+    color: #4338ca !important;
+}
+
+.dark .generation-action-button.ant-btn[data-appearance="soft"]:not(:disabled):hover {
+    color: #fff !important;
+}
+
+.generation-action-button.ant-btn[data-appearance="icon"] {
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+    padding-inline: 0 !important;
+    border-radius: 13px !important;
+}
+
+.generation-action-button.ant-btn[data-density="compact"] {
+    min-height: 40px;
+}
+
+.generation-action-button.ant-btn[data-appearance="icon"][data-density="compact"] {
+    min-width: 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px !important;
+}
+
+.generation-action-button.ant-btn[data-state="disabled"] {
+    border-color: #d7dce3 !important;
+    background: #e7eaee !important;
+    color: #9aa3af !important;
+    box-shadow: none !important;
+    text-shadow: none;
+    transform: none;
+}
+
+.dark .generation-action-button.ant-btn[data-state="disabled"] {
+    border-color: #343a43 !important;
+    background: #292e36 !important;
+    color: #737d8a !important;
+}
+
+.generation-action-button__icon,
+.generation-action-button__label {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.generation-action-button__icon {
+    min-width: 0;
+}
+
+.generation-action-button__glyph {
+    display: block;
+    flex: 0 0 auto;
+    object-fit: contain;
+}
+
+.generation-action-button__icon.is-spinning {
+    animation: generation-action-spinner 0.9s linear infinite !important;
+}
+
+@keyframes generation-action-spinner {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .generation-action-button.ant-btn,
+    .generation-action-button.ant-btn .generation-action-button__icon {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+    }
+}

@@ -2,7 +2,19 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { readJsonBodyResult } from "@/lib/auth/request";
-import { appendMiniMaxRequestLog, fetchMiniMaxVoiceCatalog, isMiniMaxVoiceFeatureEnabled, isVoiceSubmissionUncertain, listAllStoredVoices, listStoredVoices, markVoiceSubmissionNeedsReview, mergeMiniMaxVoiceCatalog, requestMiniMax, saveMiniMaxVoice, updateMiniMaxRequestLog } from "@/lib/server/minimax-audio-store";
+import {
+    appendMiniMaxRequestLog,
+    fetchMiniMaxVoiceCatalog,
+    isMiniMaxVoiceFeatureEnabled,
+    isVoiceSubmissionUncertain,
+    listAllStoredVoices,
+    listStoredVoices,
+    markVoiceSubmissionNeedsReview,
+    mergeMiniMaxVoiceCatalog,
+    requestMiniMax,
+    saveMiniMaxVoice,
+    updateMiniMaxRequestLog,
+} from "@/lib/server/minimax-audio-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +50,18 @@ export async function POST(request: Request) {
     const prompt = String(body.prompt || "").trim();
     const previewText = String(body.previewText || "").trim() || DEFAULT_VOICE_DESIGN_PREVIEW_TEXT;
     if (!prompt) return NextResponse.json({ error: "音色设计需要填写音色提示词" }, { status: 400 });
-    const log = await appendMiniMaxRequestLog({ userId: user.id, capability: "voice", method: "POST", path: "/v1/voice_design", model: "voice-design", statusCode: 0, durationMs: 0, phase: "queued", requestPreview: JSON.stringify({ mode: "voice-design" }), lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "音色设计请求已提交" }] }).catch(() => undefined);
+    const log = await appendMiniMaxRequestLog({
+        userId: user.id,
+        capability: "voice",
+        method: "POST",
+        path: "/v1/voice_design",
+        model: "voice-design",
+        statusCode: 0,
+        durationMs: 0,
+        phase: "queued",
+        requestPreview: JSON.stringify({ mode: "voice-design" }),
+        lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "音色设计请求已提交" }],
+    }).catch(() => undefined);
     const startedAt = Date.now();
     if (log) await updateMiniMaxRequestLog(log.id, { statusCode: 0, durationMs: 0, phase: "running", lifecycle: [{ at: new Date().toISOString(), phase: "running", message: "正在调用 MiniMax 音色设计接口" }] }).catch(() => undefined);
     let statusCode = 0;
@@ -57,10 +80,23 @@ export async function POST(request: Request) {
             if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error, lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: error }] }).catch(() => undefined);
             return NextResponse.json({ error }, { status: response.status || 502 });
         }
-        const name = String(body.name || "我的音色").trim().slice(0, 80) || "我的音色";
-        const description = String(body.description || "").trim().slice(0, 500) || prompt.slice(0, 500);
+        const name =
+            String(body.name || "我的音色")
+                .trim()
+                .slice(0, 80) || "我的音色";
+        const description =
+            String(body.description || "")
+                .trim()
+                .slice(0, 500) || prompt.slice(0, 500);
         const voice = await saveMiniMaxVoice({ userId: user.id, remoteVoiceId: voiceId, name, voiceName: name, description, providerCreatedTime: "", voiceType: "voice_generation", visible: true, category: "其他" });
-        if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "success", responsePreview: "MiniMax 音色设计完成并已保存", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色设计完成" }] }).catch(() => undefined);
+        if (log)
+            await updateMiniMaxRequestLog(log.id, {
+                statusCode,
+                durationMs: Date.now() - startedAt,
+                phase: "success",
+                responsePreview: "MiniMax 音色设计完成并已保存",
+                lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色设计完成" }],
+            }).catch(() => undefined);
         return NextResponse.json({ voice });
     } catch (error) {
         const message = error instanceof Error ? error.message : "MiniMax 音色设计失败";
@@ -69,7 +105,10 @@ export async function POST(request: Request) {
             await markVoiceSubmissionNeedsReview(log?.id, startedAt, review, statusCode);
             return NextResponse.json({ error: review, needsReview: true, logId: log?.id }, { status: 409 });
         }
-        if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error: message.slice(0, 500), lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: message.slice(0, 200) }] }).catch(() => undefined);
+        if (log)
+            await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error: message.slice(0, 500), lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: message.slice(0, 200) }] }).catch(
+                () => undefined,
+            );
         return NextResponse.json({ error: message }, { status: statusCode || 502 });
     }
 }

@@ -1,0 +1,40 @@
+dreamyo active brand/name scan
+capturedAt=2026-09-14T14:54:37.832295+08:00
+buildId=aZKOtDNRy6j0D6EOxByWv
+command=rg -n --hidden --glob ... (see docs/ui-rebuild-20260913/evidence/rename-scan-20260914.txt source run)
+excluded=.next,.e2e-data,.e2e-artifacts,.regress-data*,ui-rebuild evidence,design sources,brand/dreamyo assets
+allMatchingLines=3298
+nonTechnicalReviewLines=25
+
+Classification:
+- Canvas/OctalFlow/Octal-Canvas matches are product feature names, compatibility normalizer tests, or historical technical fixtures; they are not the active project brand.
+- CreditSymbol is the points-balance glyph component and is not used by GenerationActionButton.
+- magic.png remains only in Skill/empty-state/type labels; GenerationActionButton uses /brand/dreamyo/generation/generate-glyph.png and button-surface.png.
+- Docker Compose, package name, metadata and active container/image names resolve to dreamyo; no active OCTALAICANVAS/octalaicanvas match was found outside Git history.
+
+Reviewed matches:
+web/src/constant/credits.tsx:4:export function CreditSymbol({ className, ...props }: ComponentProps<"span">) {
+web/src/components/billing/billing-plan-grid.tsx:7:import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
+web/src/components/billing/billing-plan-grid.tsx:142:                        <CreditSymbol className="text-[10px]" />
+web/src/components/billing/billing-plan-grid.tsx:203:                        <CreditSymbol className="text-[11px]" />
+web/src/app/(user)/profile/profile-elements.tsx:7:import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
+web/src/app/(user)/profile/profile-elements.tsx:28:    { key: "points", label: "积分记录", description: "查看每日积分、充值赠送、退款退回和管理员调整流水。", shortDescription: "余额流水", icon: <CreditSymbol className="text-sm" /> },
+web/src/lib/prompts/original-author-seeds.json:306:        "prompt": "GPT Image 2 On ChatGPT\r\n\r\nPrompt : (Soft Serve Ice Cream Aesthetic)\r\n\r\nClose-up aesthetic photo of two hands holding vanilla soft serve ice cream cones, cozy warm cafe lighting, creamy texture, dreamy beige and brown color palette, shallow depth of field, soft bokeh background, kawaii doodle stickers and white hand-drawn illustrations around the image, cute cartoon kids and bunny characters, handwritten typography saying “Sweet Moments”, playful sparkles and hearts, cozy lifestyle photography, cinematic warm tones, Instagram story aesthetic, soft glow, realistic food photography, adorable scrapbook journal style, ultra detailed, high quality, vibrant yet soft editing, wholesome happy vibe.\r\n\r\nPrompt : (Iced Coffee Cozy Aesthetic)\r\n\r\nClose-up aesthetic shot of a hand holding iced coffee in a transparent branded cup, warm golden cafe ambience, creamy iced latte with ice cubes, cozy sunlight and soft bokeh background, cute white doodle overlays and handwritten text, kawaii cartoon boy and bunny stickers, scrapbook aesthetic, soft brown and green color palette, dreamy lifestyle photography, playful sparkles and hearts around the drink, “Good Vibes, Good Coffee” typography style, warm cinematic tones, ultra realistic beverage photography, cozy Instagram aesthetic, soft glow effect, highly detailed, cheerful and refreshing mood.",
+web/src/lib/prompts/original-author-seeds.json:3856:        "prompt": "Vibe: outdoor lifestyle · introspective · open sky",
+web/src/app/(user)/profile/page.tsx:9:import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
+web/src/app/(user)/profile/page.tsx:207:                            icon={<CreditSymbol className="text-base" />}
+web/src/app/styles/global-product-design.css:2: * Source: 全新UI设计/LOGO品牌设计板.png, web品牌应用设计板.png,
+web/src/components/layout/user-status-actions.tsx:14:import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
+web/src/components/layout/user-status-actions.tsx:112:                                <CreditSymbol className="text-sm text-[#66758e] dark:text-[#d8dee8]" />
+web/src/components/layout/user-status-actions.tsx:224:            <CreditSymbol className="text-sm" />
+web/src/components/layout/user-status-actions.tsx:370:                    <CreditSymbol className="text-sm text-sky-600 dark:text-sky-300" /> 余额 <strong className="text-sm text-stone-950 dark:text-stone-100">{formatCreditAmount(user.pointsBalance)}</strong>
+web/src/app/(user)/billing/checkout/checkout-client.tsx:8:import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
+web/src/app/(user)/billing/checkout/checkout-client.tsx:219:                                <SummaryRow label={product.productKind === "points" ? "充值积分" : "创作积分"} value={`${formatCreditAmount(product.pointsAmount * quantity)} 积分`} icon={<CreditSymbol />} />
+web/src/components/ui/dreamyo-icon.tsx:12:    magic: "/brand/dreamyo/icons/magic.png",
+web/src/lib/server/canvas-project-store.ts:399:    return value.replace(/^(?:VOZEB PRO|OctalFlow|Octal-Canvas|dreamyo)( 画布(?: \d+)?)$/, "dreamyo$1");
+web/src/lib/server/canvas-project-store.test.ts:49:        await createCanvasProject("user-one", project("octalflow", "OctalFlow 画布 2"));
+web/src/lib/server/canvas-project-store.test.ts:53:        await expect(getCanvasProject("octalflow", "user-one")).resolves.toMatchObject({ title: "dreamyo 画布 2" });
+web/src/app/(user)/canvas/components/canvas-config-node-panel.tsx:10:import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
+web/src/app/(user)/canvas/components/canvas-config-node-panel.tsx:272:                            <CreditSymbol />
+web/src/app/(user)/canvas/components/canvas-node-prompt-panel.tsx:9:import { CreditSymbol, formatCreditAmount, requestCreditCost } from "@/constant/credits";
+web/src/app/(user)/canvas/components/canvas-node-prompt-panel.tsx:399:                            <CreditSymbol />

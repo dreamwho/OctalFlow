@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/announcements",
+  "actualPath": "/announcements",
+  "responseStatus": 200,
+  "route": "/announcements",
+  "theme": "dark",
+  "title": "网站公告 | dreamyo",
+  "heading": "网站公告",
+  "viewport": {
+    "width": 1366,
+    "height": 768,
+    "visualWidth": 1366,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1366,
+    "height": 768
+  },
+  "overflow": false,
+  "state": "公告静态入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

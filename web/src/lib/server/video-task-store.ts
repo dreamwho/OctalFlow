@@ -29,13 +29,17 @@ export type VideoTask = GenerationTaskContext & {
         pointsUnits?: number;
         pointsRecordId?: string;
         refunded?: boolean;
+        accountId?: string;
+        credentialVersion?: number;
+        proxyMode?: "direct" | "managed";
+        proxyTarget?: string;
     };
     requestedDurationSeconds?: number;
     source?: string;
     prompt?: string;
     attempts?: GenerationAttempt[];
     polling?: { lastAttemptAt?: number; nextAttemptAt?: number };
-    result?: { url?: string; remoteUrl?: string; mimeType?: string; durationMs?: number };
+    result?: { url?: string; remoteUrl?: string; mimeType?: string; durationMs?: number; dolaVodPayload?: unknown };
     error?: string;
     retryable?: boolean;
 };

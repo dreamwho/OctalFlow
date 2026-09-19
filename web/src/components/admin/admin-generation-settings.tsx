@@ -38,8 +38,18 @@ export function GenerationConcurrencyPanel({ settings, onChange }: { settings: A
                 <LabeledControl label="整集合成同时运行">
                     <InputNumber className="w-full" min={1} precision={0} value={settings.generationConcurrency.render} onChange={(value) => onChange("render", value)} />
                 </LabeledControl>
+                <LabeledControl label="生成处理通道数（1–8）">
+                    <InputNumber
+                        className="w-full"
+                        min={1}
+                        max={8}
+                        precision={0}
+                        value={settings.generationConcurrency.workerLanes}
+                        onChange={(value) => onChange("workerLanes", value === null ? value : Math.max(1, Math.min(8, value)))}
+                    />
+                </LabeledControl>
             </div>
-            <div className="mt-2 text-xs leading-5 text-stone-500 dark:text-stone-400">限制的是单个用户自己的并发任务，不是全站共享上限。</div>
+            <div className="mt-2 text-xs leading-5 text-stone-500 dark:text-stone-400">限制的是单个用户自己的并发任务，不是全站共享上限。「生成处理通道数」决定后台 Worker 同时处理的任务数量，可设置范围 1–8（保存后约 15 秒内自动生效，无需重启；输入超出范围会自动收敛到边界值，服务端同样强制校验）。</div>
         </div>
     );
 }

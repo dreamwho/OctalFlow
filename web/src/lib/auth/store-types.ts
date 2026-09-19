@@ -13,6 +13,7 @@ export type SystemChannelProtocol =
     | "yumeng"
     | "gemini"
     | "geminiai"
+    | "dola"
     | "gemini-tools"
     | "chatgpt-api"
     | "dreamina-cli"
@@ -224,6 +225,7 @@ export type GenerationConcurrencySettings = {
     audio: number;
     text: number;
     render: number;
+    workerLanes: number;
 };
 
 export type GenerationDefaultSettings = {
@@ -346,6 +348,12 @@ export type AnnouncementPage = {
     pageSize: number;
 };
 
+export type SiteAnnouncementBar = {
+    enabled: boolean;
+    text: string;
+    href: string;
+};
+
 export type SiteSettings = {
     title: string;
     logoUrl: string;
@@ -360,6 +368,9 @@ export type SiteSettings = {
     privacyVersion: string;
     friendLinks: SiteFriendLink[];
     socials: SiteSocialSettings;
+    announcementBar: SiteAnnouncementBar;
+    frontendTheme?: "dark" | "light";
+    adminTheme?: "dark" | "light";
 };
 
 export type SiteFriendLink = {

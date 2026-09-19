@@ -1,0 +1,82 @@
+{
+  "buildId": "gsuzD2vHmlrEgEXug1_FH",
+  "route": "/canvas/canvas-ui-after-20260915",
+  "server": "http://127.0.0.1:3102",
+  "fixture": ".e2e-ui-after-20260915",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "results": [
+    {
+      "surface": "model-picker",
+      "theme": "dark",
+      "panel": { "x": 0, "y": 249, "width": 366, "height": 225.5625, "right": 366, "bottom": 474.5625 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["search", "recent", "provider-group", "selected"]
+    },
+    {
+      "surface": "model-picker",
+      "theme": "light",
+      "panel": { "x": 0, "y": 249, "width": 366, "height": 225.5625, "right": 366, "bottom": 474.5625 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["search", "recent", "provider-group", "selected"]
+    },
+    {
+      "surface": "image-parameters",
+      "theme": "dark",
+      "panel": { "x": 47, "y": 250, "width": 342, "height": 575, "right": 389, "bottom": 825 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["ratio", "quality", "quantity", "summary", "apply"]
+    },
+    {
+      "surface": "image-parameters",
+      "theme": "light",
+      "panel": { "x": 47, "y": 250, "width": 342, "height": 575, "right": 389, "bottom": 825 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["ratio", "quality", "quantity", "summary", "apply"]
+    },
+    {
+      "surface": "audio-parameters",
+      "theme": "dark",
+      "panel": { "x": 12, "y": 253, "width": 366, "height": 482.53125, "right": 378, "bottom": 735.53125 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["voice-select", "speed", "volume", "pitch", "emotion", "summary", "apply"]
+    },
+    {
+      "surface": "video-parameters",
+      "theme": "dark",
+      "panel": { "x": 47, "y": 250, "width": 342, "height": 575, "right": 389, "bottom": 825 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["reference-mode", "ratio", "quality", "duration", "sound", "watermark", "summary", "apply"]
+    },
+    {
+      "surface": "agent-panel",
+      "theme": "dark",
+      "panel": { "x": 0, "y": 0, "width": 390, "height": 844, "right": 390, "bottom": 844 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["beta", "connected", "session-title", "suggestions", "composer"]
+    },
+    {
+      "surface": "agent-panel",
+      "theme": "light",
+      "panel": { "x": 0, "y": 0, "width": 390, "height": 844, "right": 390, "bottom": 844 },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "states": ["beta", "connected", "session-title", "suggestions", "composer"]
+    }
+  ],
+  "externalGeneration": false,
+  "notes": [
+    "All interactions used normal semantic clicks; no force click or fixed retry was used.",
+    "The final viewport was restored to the default 1280x720 and the initial dark theme was restored after verification.",
+    "This evidence covers the Canvas design increment only; it does not close T14-T19, T22, or T23."
+  ]
+}

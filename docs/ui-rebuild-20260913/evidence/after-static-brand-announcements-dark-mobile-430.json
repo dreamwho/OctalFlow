@@ -1,0 +1,21 @@
+{
+  "route": "/announcements",
+  "theme": "dark",
+  "viewport": {
+    "width": 430,
+    "height": 932,
+    "zoom": 1
+  },
+  "title": "网站公告 | dreamyo",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 430,
+    "height": 932
+  },
+  "logoSource": "",
+  "faviconHref": "http://127.0.0.1:3190/brand/dreamyo/mark.png",
+  "overflow": false,
+  "state": "公告静态入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

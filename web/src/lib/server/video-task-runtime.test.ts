@@ -38,7 +38,7 @@ vi.mock("@/lib/server/dreamina-cli-video-task", () => ({
 }));
 vi.mock("@/lib/server/generation-task-scheduler", () => ({ scheduleGenerationTask: mocks.schedule }));
 
-import { queryVideoTaskUpstream, refreshVideoTaskFromUpstream } from "./video-task-runtime";
+import { isDolaVideoTask, queryVideoTaskUpstream, refreshVideoTaskFromUpstream } from "./video-task-runtime";
 import type { VideoTask } from "./video-task-store";
 import { createProtocolFixtureServer } from "../../../scripts/protocol-fixture-server.mjs";
 
@@ -336,6 +336,15 @@ describe("video task upstream reconciliation", () => {
 
         expect(await refreshVideoTaskFromUpstream(task, "http://localhost", "session=test")).toEqual(task);
         expect(mocks.fetchInternalApi).not.toHaveBeenCalled();
+    });
+
+    it("accurately identifies Dola video tasks by channel, model or protocol", () => {
+        expect(isDolaVideoTask({ config: { channelId: "dola" } })).toBe(true);
+        expect(isDolaVideoTask({ config: { model: "dola-seedance-2-5" } })).toBe(true);
+        expect(isDolaVideoTask({ config: { model: "dola-seedance-2-0-fast" } })).toBe(true);
+        expect(isDolaVideoTask({ config: { advancedConfig: { protocol: "dola" } } })).toBe(true);
+        expect(isDolaVideoTask({ upstream: { id: "dola-upstream-123" } })).toBe(true);
+        expect(isDolaVideoTask({ config: { channelId: "openai", model: "sora" } })).toBe(false);
     });
 });
 

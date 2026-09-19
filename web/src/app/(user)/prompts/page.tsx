@@ -2,10 +2,11 @@
 
 import { FolderPlus, RotateCcw, Search } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
-import { App, Button, Input, Pagination, Select, Spin } from "antd";
+import { App, Button, Input, Pagination, Select } from "antd";
 
 import { PromptCard } from "@/components/prompts/prompt-card";
 import { CompactEmptyState } from "@/components/compact-empty-state";
+import { DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
 import { usePromptPage } from "@/components/prompts/use-prompt-list";
 import { useCopyText } from "@/hooks/use-copy-text";
@@ -81,7 +82,7 @@ export default function PromptsPage() {
 
     return (
         <div className="flex h-full flex-col overflow-hidden bg-background text-stone-800 dark:text-stone-100">
-            <main ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto bg-background px-3 py-3 sm:px-6 sm:py-8">
+            <main ref={scrollContainerRef} className="prompt-library-page min-h-0 flex-1 overflow-y-auto bg-background px-3 py-3 sm:px-6 sm:py-8">
                 <div className="mx-auto max-w-7xl">
                     <div>
                         <h1 className="text-xl font-semibold text-stone-950 sm:text-2xl dark:text-stone-100">提示词库</h1>
@@ -121,7 +122,10 @@ export default function PromptsPage() {
                     <div ref={listStartRef} className="scroll-mt-4 pt-3 sm:pt-5">
                         {query.isLoading ? (
                             <div className="flex h-32 items-center justify-center">
-                                <Spin />
+                                <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground" role="status" aria-label="正在加载提示词">
+                                    <DreamyoWaitingIcon frame={2} size={34} label="正在加载提示词" />
+                                    <span>正在加载提示词</span>
+                                </div>
                             </div>
                         ) : null}
                         {!query.isLoading ? (

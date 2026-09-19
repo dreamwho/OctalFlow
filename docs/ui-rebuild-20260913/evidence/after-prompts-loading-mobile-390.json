@@ -1,0 +1,12 @@
+{
+  "route": "/prompts",
+  "theme": "light",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "state": "提示词库加载中",
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

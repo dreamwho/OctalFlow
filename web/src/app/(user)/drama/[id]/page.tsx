@@ -45,10 +45,17 @@ export default function DramaProjectPage() {
             active = false;
         };
     }, [loadProject, projectId, userId]);
-    if (loading && !project) return <main className="grid h-full place-items-center bg-background text-sm text-muted-foreground">正在加载短剧项目…</main>;
+    if (loading && !project)
+        return (
+            <main className="grid h-full place-items-center bg-background text-sm text-muted-foreground">
+                <h1 className="sr-only">短剧项目</h1>
+                正在加载短剧项目…
+            </main>
+        );
     if (!project)
         return (
             <main className="grid h-full place-items-center bg-background">
+                <h1 className="sr-only">短剧项目不可用</h1>
                 <Empty description={loadError || "短剧项目不存在"}>
                     <Button onClick={() => router.push("/drama")}>返回项目列表</Button>
                 </Empty>
@@ -107,7 +114,11 @@ function DramaProjectEditor({ project }: { project: DramaProject }) {
         if (!episode.script.trim()) return message.warning("请先填写剧本内容");
         setAnalyzing(true);
         try {
-            const response = await fetch("/api/drama/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "content", script: episode.script, summary: project.summary, style: dramaVisualStylePrompt(project.style, project.stylePresetId) }) });
+            const response = await fetch("/api/drama/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phase: "content", script: episode.script, summary: project.summary, style: dramaVisualStylePrompt(project.style, project.stylePresetId) }),
+            });
             syncUserPointsFromHeaders(response.headers, "system");
             const payload = (await response.json().catch(() => ({}))) as { data?: DramaContentAnalysis; msg?: string };
             if (!response.ok || !payload.data) throw new Error(payload.msg || "AI 剧本解析失败");
@@ -129,7 +140,17 @@ function DramaProjectEditor({ project }: { project: DramaProject }) {
             const response = await fetch("/api/drama/analyze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phase: "visual", summary: project.summary, style: dramaVisualStylePrompt(project.style, project.stylePresetId), episode, characters: project.characters, scenes: project.scenes, props: project.props, clues: project.clues, shots: episode.shots }),
+                body: JSON.stringify({
+                    phase: "visual",
+                    summary: project.summary,
+                    style: dramaVisualStylePrompt(project.style, project.stylePresetId),
+                    episode,
+                    characters: project.characters,
+                    scenes: project.scenes,
+                    props: project.props,
+                    clues: project.clues,
+                    shots: episode.shots,
+                }),
             });
             syncUserPointsFromHeaders(response.headers, "system");
             const payload = (await response.json().catch(() => ({}))) as { data?: DramaVisualAnalysis; msg?: string };
@@ -356,6 +377,7 @@ function DramaProjectEditor({ project }: { project: DramaProject }) {
 
     return (
         <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground" data-drama-workspace aria-label="短剧制作工作区">
+            <h1 className="sr-only">{project.title || "未命名短剧项目"}</h1>
             <DramaWorkspaceHeader
                 project={project}
                 episode={episode}

@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/billing",
+  "actualPath": "/profile?section=billing",
+  "responseStatus": 200,
+  "route": "/profile",
+  "theme": "dark",
+  "title": "个人资料 | dreamyo",
+  "heading": "个人中心",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 56,
+    "width": 768,
+    "height": 968
+  },
+  "overflow": false,
+  "state": "账单入口重定向",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

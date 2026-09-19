@@ -1,0 +1,113 @@
+{
+  "route": "/create",
+  "themes": {
+    "light": {
+      "activeElement": true,
+      "caretColor": "rgb(79, 114, 233)",
+      "color": "rgb(19, 33, 63)",
+      "fill": "rgb(19, 33, 63)",
+      "backgroundImage": "linear-gradient(108deg, rgb(94, 127, 241) 0%, rgb(53, 204, 225) 52%, rgb(88, 222, 201) 74%, rgb(185, 179, 247) 100%)",
+      "width": 44,
+      "height": 44,
+      "icon": {
+        "width": 21,
+        "height": 20.640625
+      },
+      "glyph": {
+        "src": "http://127.0.0.1:3200/brand/dreamyo/generation/generate-glyph.png",
+        "naturalWidth": 182,
+        "naturalHeight": 179,
+        "width": 21,
+        "height": 20.640625,
+        "complete": true
+      },
+      "whiteSpace": "nowrap",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "zoom": 1
+      }
+    },
+    "dark": {
+      "caretColor": "rgb(101, 226, 208)",
+      "color": "rgb(244, 248, 255)",
+      "composerBackground": "none",
+      "buttonBackground": "linear-gradient(108deg, rgb(94, 127, 241) 0%, rgb(53, 204, 225) 52%, rgb(88, 222, 201) 74%, rgb(185, 179, 247) 100%)",
+      "buttonColor": "rgb(255, 255, 255)",
+      "glyphSource": "http://127.0.0.1:3200/brand/dreamyo/generation/generate-glyph.png",
+      "glyphNaturalWidth": 182,
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "zoom": 1
+      }
+    }
+  },
+  "state": "filled textarea, generation action idle",
+  "composerLayout": {
+    "viewport": {
+      "width": 390,
+      "height": 844,
+      "zoom": 1
+    },
+    "row": {
+      "left": 13,
+      "right": 377,
+      "width": 364
+    },
+    "send": {
+      "left": 318,
+      "right": 362,
+      "top": 487.3125,
+      "bottom": 531.3125,
+      "width": 44,
+      "height": 44
+    },
+    "tools": [
+      {
+        "left": 28,
+        "right": 72,
+        "top": 487.3125,
+        "bottom": 531.3125,
+        "text": ""
+      },
+      {
+        "left": 76,
+        "right": 120,
+        "top": 487.3125,
+        "bottom": 531.3125,
+        "text": ""
+      },
+      {
+        "left": 124,
+        "right": 168,
+        "top": 487.3125,
+        "bottom": 531.3125,
+        "text": ""
+      },
+      {
+        "left": 172,
+        "right": 216,
+        "top": 487.3125,
+        "bottom": 531.3125,
+        "text": ""
+      },
+      {
+        "left": 220,
+        "right": 264,
+        "top": 487.3125,
+        "bottom": 531.3125,
+        "text": ""
+      },
+      {
+        "left": 268,
+        "right": 312,
+        "top": 487.3125,
+        "bottom": 531.3125,
+        "text": ""
+      }
+    ],
+    "visibleLabelCount": 0,
+    "sendOverlapCount": 0
+  }
+}

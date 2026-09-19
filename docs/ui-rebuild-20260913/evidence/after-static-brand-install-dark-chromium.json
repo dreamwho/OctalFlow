@@ -1,0 +1,21 @@
+{
+  "route": "/",
+  "theme": "dark",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "title": "dreamyo",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1280,
+    "height": 720
+  },
+  "logoSource": "http://127.0.0.1:3190/brand/dreamyo/mark.png",
+  "faviconHref": "http://127.0.0.1:3190/brand/dreamyo/mark.png",
+  "overflow": false,
+  "state": "安装入口已初始化并重定向至首页",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

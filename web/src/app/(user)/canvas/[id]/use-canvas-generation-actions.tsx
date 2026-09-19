@@ -9,7 +9,7 @@ import { readImageMeta } from "@/lib/image-utils";
 import { safeRandomUUID } from "@/lib/uuid";
 import { createAudioGenerationTask } from "@/services/api/audio";
 import { getImageGenerationTask, resumeImageGenerationTask } from "@/services/api/image";
-import { isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
+import { GenerationTaskNeedsReviewError, isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
 import { createTextGenerationTask } from "@/services/api/text";
 import { createServerVideoGenerationTask } from "@/services/api/video";
 import { optimizePrompt } from "@/services/api/prompt-optimization";
@@ -65,7 +65,9 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
         size,
         setSelectedNodeIds,
         setSelectedConnectionId,
+        runningNodeId,
         setRunningNodeId,
+        setDolaVerification,
         projectLoaded,
         setDialogNodeId,
         assistantCollapsed,
@@ -115,24 +117,172 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             }
 
             setRunningNodeId(nodeId);
+            if (runningNodeId === nodeId) {
+                message.warning("该节点正在生成中，请等待完成或停止后再试");
+                return;
+            }
             const userPrompt = interiorDesignConfig ? sourceNode.metadata?.sourcePrompt?.trim() || "SU直出摄影级照片" : prompt.trim();
+            let pendingChildIds: string[] = [];
             let plannedPrompt = interiorDesignConfig ? sourceNode.metadata?.executionPrompt?.trim() || prompt.trim() : mode === "video" ? applyCameraMotionPrompt(userPrompt, sourceNode?.metadata?.cameraMotions) : userPrompt;
+            const runController = startGenerationRequest(nodeId, nodeId, nodeId);
+            // 先创建输出节点并进入“生成中”状态，Skill 优化与上下文解析期间用户即可看到新节点
+            let imageCreation: { rootId: string; childIds: string[]; targetIds: string[]; isEmptyImageNode: boolean; isConfigNode: boolean } | null = null;
+            let videoCreation: { videoId: string; isEmptyVideoNode: boolean } | null = null;
+            const discardCreatedNodes = () => {
+                const created = pendingChildIds.filter((id) => id !== nodeId);
+                if (!created.length) {
+                    if (pendingChildIds.includes(nodeId) && sourceNode) {
+                        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: sourceNode.metadata?.status, prompt: sourceNode.metadata?.prompt } } : node)));
+                    }
+                    return;
+                }
+                setNodes((prev) => prev.filter((node) => !created.includes(node.id)));
+                setConnections((prev) => prev.filter((connection) => !created.includes(connection.fromNodeId) && !created.includes(connection.toNodeId)));
+            };
+            if (mode === "image") {
+                const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
+                const isPanoramaNode = sourceNode?.type === CanvasNodeType.Panorama;
+                const count = isPanoramaNode ? 1 : getGenerationCount(generationConfig.count);
+                const isImageNode = isCanvasImageNodeType(sourceNode?.type);
+                // 正在生成中的节点不复用：一律新建输出节点，避免覆盖进行中的生成
+                const isEmptyImageNode = isImageNode && !sourceNode?.metadata?.content && sourceNode.metadata?.status !== NODE_STATUS_LOADING;
+                const resultType = isPanoramaNode ? CanvasNodeType.Panorama : CanvasNodeType.Image;
+                const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? resultType : CanvasNodeType.Text];
+                const imageConfig = NODE_DEFAULT_SIZE[resultType];
+                const provisionalSize = nodeSizeFromRatio(generationConfig.size, imageConfig.width, imageConfig.height) || imageConfig;
+                const parentPosition = sourceNode?.position || { x: 0, y: 0 };
+                const rootId = isEmptyImageNode ? nodeId : nanoid();
+                const childIds = count > 1 ? Array.from({ length: count }, () => nanoid()) : [];
+                const targetIds = count > 1 ? childIds : [rootId];
+                pendingChildIds = isEmptyImageNode ? childIds : [rootId, ...childIds];
+                const interiorDesignPosition =
+                    interiorDesignConfig && sourceNode
+                        ? resolveCanvasNodePlacement(
+                              nodesRef.current,
+                              provisionalSize,
+                              { x: sourceNode.position.x + sourceNode.width / 2, y: sourceNode.position.y + sourceNode.height / 2 },
+                              { x: sourceNode.position.x + sourceNode.width + CANVAS_NODE_GAP, y: sourceNode.position.y + (sourceNode.height - provisionalSize.height) / 2 },
+                          )
+                        : null;
+                const rootNode: CanvasNodeData = {
+                    id: rootId,
+                    type: resultType,
+                    title: isPanoramaNode ? "全景生成" : "图片生成",
+                    position: {
+                        x: isEmptyImageNode ? parentPosition.x : (interiorDesignPosition?.x ?? parentPosition.x + parentConfig.width + CANVAS_NODE_GAP),
+                        y: isEmptyImageNode ? parentPosition.y : (interiorDesignPosition?.y ?? parentPosition.y + parentConfig.height / 2 - provisionalSize.height / 2),
+                    },
+                    width: isEmptyImageNode ? sourceNode?.width || provisionalSize.width : provisionalSize.width,
+                    height: isEmptyImageNode ? sourceNode?.height || provisionalSize.height : provisionalSize.height,
+                    metadata: {
+                        prompt: userPrompt,
+                        sourcePrompt: userPrompt,
+                        status: NODE_STATUS_LOADING,
+                        isBatchRoot: count > 1,
+                        batchChildIds: count > 1 ? childIds : undefined,
+                        ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: userPrompt } : {}),
+                        ...(sourceNode?.metadata?.cameraControl && !isPanoramaNode ? { cameraControl: sourceNode.metadata.cameraControl } : {}),
+                        imageBatchExpanded: count > 1 ? true : undefined,
+                    },
+                };
+                const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
+                    id,
+                    type: resultType,
+                    title: isPanoramaNode ? "全景生成" : "图片生成",
+                    position: {
+                        x: rootNode.position.x + rootNode.width + CANVAS_NODE_GAP + (index % 2) * (provisionalSize.width + CANVAS_NODE_GAP),
+                        y: rootNode.position.y + Math.floor(index / 2) * (provisionalSize.height + CANVAS_NODE_GAP),
+                    },
+                    width: provisionalSize.width,
+                    height: provisionalSize.height,
+                    metadata: {
+                        prompt: userPrompt,
+                        sourcePrompt: userPrompt,
+                        status: NODE_STATUS_LOADING,
+                        batchRootId: count > 1 ? rootId : undefined,
+                        ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: userPrompt } : {}),
+                        ...(sourceNode?.metadata?.cameraControl ? { cameraControl: sourceNode.metadata.cameraControl } : {}),
+                    },
+                }));
+                const batchConnections = [...(isEmptyImageNode ? [] : [{ id: nanoid(), fromNodeId: nodeId, toNodeId: rootId }]), ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: rootId, toNodeId: childId }))];
+                setNodes((prev) => [
+                    ...prev.map((node) =>
+                        node.id === nodeId
+                            ? isConfigNode
+                                ? { ...node, metadata: { ...node.metadata, prompt: userPrompt, sourcePrompt: userPrompt, status: NODE_STATUS_LOADING, errorDetails: undefined } }
+                                : isEmptyImageNode
+                                  ? {
+                                        ...node,
+                                        position: rootNode.position,
+                                        width: rootNode.width,
+                                        height: rootNode.height,
+                                        title: rootNode.title,
+                                        metadata: { ...node.metadata, status: NODE_STATUS_LOADING, prompt: userPrompt, sourcePrompt: userPrompt, errorDetails: undefined },
+                                    }
+                                  : { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } }
+                            : node,
+                    ),
+                    ...(isEmptyImageNode ? [] : [rootNode]),
+                    ...childNodes,
+                ]);
+                setConnections((prev) => [...prev, ...batchConnections]);
+                setSelectedNodeIds(new Set([nodeId]));
+                setSelectedConnectionId(null);
+                setDialogNodeId(nodeId);
+                imageCreation = { rootId, childIds, targetIds, isEmptyImageNode, isConfigNode };
+            } else if (mode === "video") {
+                const isEmptyVideoNode = sourceNode?.type === CanvasNodeType.Video && !sourceNode.metadata?.content && sourceNode.metadata?.status !== NODE_STATUS_LOADING;
+                const spec = nodeSizeFromRatio(generationConfig.size, NODE_DEFAULT_SIZE[CanvasNodeType.Video].width, NODE_DEFAULT_SIZE[CanvasNodeType.Video].height) || NODE_DEFAULT_SIZE[CanvasNodeType.Video];
+                const videoId = isEmptyVideoNode ? nodeId : nanoid();
+                const parent = sourceNode?.position || { x: 0, y: 0 };
+                pendingChildIds = [videoId];
+                setNodes((prev) =>
+                    isEmptyVideoNode
+                        ? prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_LOADING, prompt: userPrompt, sourcePrompt: userPrompt, errorDetails: undefined } } : node))
+                        : [
+                              ...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)),
+                              {
+                                  id: videoId,
+                                  type: CanvasNodeType.Video,
+                                  title: "视频生成",
+                                  position: { x: parent.x + (sourceNode?.width || spec.width) + CANVAS_NODE_GAP, y: parent.y },
+                                  width: spec.width,
+                                  height: spec.height,
+                                  metadata: {
+                                      prompt: userPrompt,
+                                      sourcePrompt: userPrompt,
+                                      status: NODE_STATUS_LOADING,
+                                      model: generationConfig.model,
+                                      size: generationConfig.size,
+                                      seconds: generationConfig.videoSeconds,
+                                      vquality: generationConfig.vquality,
+                                      generateAudio: generationConfig.videoGenerateAudio,
+                                      watermark: generationConfig.videoWatermark,
+                                      cameraControl: sourceNode?.metadata?.cameraControl,
+                                      cameraMotions: sourceNode?.metadata?.cameraMotions,
+                                  },
+                              },
+                          ],
+                );
+                videoCreation = { videoId, isEmptyVideoNode };
+            }
             if (skillIds.length && (mode === "image" || mode === "video")) {
                 try {
                     plannedPrompt = await optimizePrompt({ requestId: `canvas-skill-${safeRandomUUID()}`, prompt: userPrompt, mode, skillIds });
                 } catch (error) {
                     message.error(error instanceof Error ? error.message : "Skill 提示词优化失败");
+                    discardCreatedNodes();
                     setRunningNodeId(null);
                     return;
                 }
             }
-            const runController = startGenerationRequest(nodeId, nodeId, nodeId);
             const sourceTextContent = sourceNode?.type === CanvasNodeType.Text ? sourceNode.metadata?.content?.trim() || "" : "";
             const editingTextNode = mode === "text" && Boolean(sourceTextContent);
             const generationContext = await hydrateNodeGenerationContext(
                 buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${plannedPrompt}` : plannedPrompt),
             );
             if (mode === "video" && generationContext.continuityPending) {
+                discardCreatedNodes();
                 finishGenerationRequest(nodeId, runController);
                 setRunningNodeId(null);
                 message.warning(generationContext.continuityError ? `上一段视频尾帧提取失败：${generationContext.continuityError}` : "上一段视频尾帧正在提取，请稍候再生成");
@@ -154,16 +304,18 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 setRunningNodeId(null);
                 return;
             }
-            let pendingChildIds: string[] = [];
             if (markSourceStatus) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: statusPrompt, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)));
 
             try {
                 if (mode === "image") {
-                    const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
+                    const isConfigNode = imageCreation?.isConfigNode ?? false;
                     const isPanoramaNode = sourceNode?.type === CanvasNodeType.Panorama;
                     const count = isPanoramaNode ? 1 : getGenerationCount(generationConfig.count);
                     const isImageNode = isCanvasImageNodeType(sourceNode?.type);
-                    const isEmptyImageNode = isImageNode && !sourceNode?.metadata?.content;
+                    const isEmptyImageNode = imageCreation?.isEmptyImageNode ?? false;
+                    const rootId = imageCreation?.rootId || nodeId;
+                    const childIds = imageCreation?.childIds || [];
+                    const targetIds = imageCreation?.targetIds || [rootId];
                     const sourceReference = isImageNode && sourceNode?.metadata?.content ? [canvasNodeReferenceImage(sourceNode)] : [];
                     const referenceImages = sourceReference.length ? sourceReference : generationContext.referenceImages;
                     const imageGenerationConfig = {
@@ -178,126 +330,33 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         }),
                     };
                     const generationType = referenceImages.length ? ("edit" as const) : ("generation" as const);
-                    const generationMetadata = buildImageGenerationMetadata(generationType, imageGenerationConfig, count, referenceImages);
+                    const count2 = count;
+                    const generationMetadata = buildImageGenerationMetadata(generationType, imageGenerationConfig, count2, referenceImages);
                     const publicResultPrompt = interiorDesignConfig ? userPrompt : effectivePrompt;
-                    const resultType = isPanoramaNode ? CanvasNodeType.Panorama : CanvasNodeType.Image;
-                    const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? resultType : CanvasNodeType.Text];
-                    const imageConfig = NODE_DEFAULT_SIZE[resultType];
+                    const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                     const pendingImageSize = nodeSizeFromRatio(imageGenerationConfig.size, imageConfig.width, imageConfig.height) || imageConfig;
-                    const parentPosition = sourceNode?.position || { x: 0, y: 0 };
-                    const gap = CANVAS_NODE_GAP;
-                    const rowGap = CANVAS_NODE_GAP;
-                    const rootId = isEmptyImageNode ? nodeId : nanoid();
-                    const childIds = count > 1 ? Array.from({ length: count }, () => nanoid()) : [];
-                    const targetIds = count > 1 ? childIds : [rootId];
-                    pendingChildIds = isEmptyImageNode ? childIds : [rootId, ...childIds];
-                    const interiorDesignPosition =
-                        interiorDesignConfig && sourceNode
-                            ? resolveCanvasNodePlacement(
-                                  nodesRef.current,
-                                  pendingImageSize,
-                                  { x: sourceNode.position.x + sourceNode.width / 2, y: sourceNode.position.y + sourceNode.height / 2 },
-                                  { x: sourceNode.position.x + sourceNode.width + CANVAS_NODE_GAP, y: sourceNode.position.y + (sourceNode.height - pendingImageSize.height) / 2 },
-                              )
-                            : null;
-                    const rootNode: CanvasNodeData = {
-                        id: rootId,
-                        type: resultType,
-                        title: isPanoramaNode ? "全景生成" : "图片生成",
-                        position: {
-                            x: isEmptyImageNode ? parentPosition.x : interiorDesignPosition?.x ?? parentPosition.x + parentConfig.width + gap,
-                            y: isEmptyImageNode ? parentPosition.y : interiorDesignPosition?.y ?? parentPosition.y + parentConfig.height / 2 - pendingImageSize.height / 2,
-                        },
-                        width: isEmptyImageNode ? sourceNode?.width || pendingImageSize.width : pendingImageSize.width,
-                        height: isEmptyImageNode ? sourceNode?.height || pendingImageSize.height : pendingImageSize.height,
-                        metadata: {
-                            prompt: publicResultPrompt,
-                            sourcePrompt: userPrompt,
-                            executionPrompt: effectivePrompt,
-                            selectedSkillIds: skillIds.length ? skillIds : undefined,
-                            status: NODE_STATUS_LOADING,
-                            isBatchRoot: count > 1,
-                            batchChildIds: count > 1 ? childIds : undefined,
-                            batchUsesReferenceImages: referenceImages.length > 0,
-                            ...generationMetadata,
-                            ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: userPrompt } : {}),
-                            ...(sourceNode?.metadata?.cameraControl && !isPanoramaNode ? { cameraControl: sourceNode.metadata.cameraControl } : {}),
-                            imageBatchExpanded: count > 1 ? true : undefined,
-                        },
-                    };
-                    const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
-                        id,
-                        type: resultType,
-                        title: isPanoramaNode ? "全景生成" : "图片生成",
-                        position: {
-                            x: rootNode.position.x + rootNode.width + CANVAS_NODE_GAP + (index % 2) * (pendingImageSize.width + CANVAS_NODE_GAP),
-                            y: rootNode.position.y + Math.floor(index / 2) * (pendingImageSize.height + rowGap),
-                        },
-                        width: pendingImageSize.width,
-                        height: pendingImageSize.height,
-                        metadata: {
-                            prompt: publicResultPrompt,
-                            sourcePrompt: userPrompt,
-                            executionPrompt: effectivePrompt,
-                            selectedSkillIds: skillIds.length ? skillIds : undefined,
-                            status: NODE_STATUS_LOADING,
-                            batchRootId: count > 1 ? rootId : undefined,
-                            ...generationMetadata,
-                            ...(isPanoramaNode ? { panoramaProjection: "equirectangular" as const, panoramaSourcePrompt: userPrompt } : {}),
-                            ...(sourceNode?.metadata?.cameraControl && !isPanoramaNode ? { cameraControl: sourceNode.metadata.cameraControl } : {}),
-                        },
-                    }));
-                    const batchConnections = [...(isEmptyImageNode ? [] : [{ id: nanoid(), fromNodeId: nodeId, toNodeId: rootId }]), ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: rootId, toNodeId: childId }))];
-
-                    setNodes((prev) => [
-                        ...prev.map((node) =>
-                            node.id === nodeId
-                                ? isConfigNode
-                                    ? {
-                                          ...node,
-                                          metadata: {
-                                              ...node.metadata,
-                                              prompt: publicResultPrompt,
-                                              sourcePrompt: userPrompt,
-                                              executionPrompt: effectivePrompt,
-                                              selectedSkillIds: skillIds.length ? skillIds : undefined,
-                                              status: NODE_STATUS_LOADING,
-                                              errorDetails: undefined,
-                                          },
-                                      }
-                                    : isEmptyImageNode
-                                      ? {
-                                            ...node,
-                                            position: rootNode.position,
-                                            width: rootNode.width,
-                                            height: rootNode.height,
-                                            title: rootNode.title,
-                                            metadata: { ...node.metadata, ...rootNode.metadata, errorDetails: undefined },
-                                        }
-                                      : isImageNode
-                                        ? {
-                                              ...node,
-                                              metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined },
-                                          }
-                                        : {
-                                              ...node,
-                                              type: CanvasNodeType.Text,
-                                              title: "文本",
-                                              width: parentConfig.width,
-                                              height: parentConfig.height,
-                                              metadata: { ...node.metadata, content: userPrompt, prompt: userPrompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
-                                          }
+                    // 上下文解析完成后补齐节点尺寸与生成元数据
+                    setNodes((prev) =>
+                        prev.map((node) =>
+                            targetIds.includes(node.id) && node.id !== nodeId
+                                ? {
+                                      ...node,
+                                      width: pendingImageSize.width,
+                                      height: pendingImageSize.height,
+                                      metadata: {
+                                          ...node.metadata,
+                                          prompt: publicResultPrompt,
+                                          sourcePrompt: userPrompt,
+                                          executionPrompt: effectivePrompt,
+                                          selectedSkillIds: skillIds.length ? skillIds : undefined,
+                                          ...generationMetadata,
+                                      },
+                                  }
                                 : node,
                         ),
-                        ...(isEmptyImageNode ? [] : [rootNode]),
-                        ...childNodes,
-                    ]);
-                    setConnections((prev) => [...prev, ...batchConnections]);
-                    setSelectedNodeIds(new Set([nodeId]));
-                    setSelectedConnectionId(null);
-                    setDialogNodeId(nodeId);
-
+                    );
                     const controller = runController;
+
                     targetIds.forEach((targetId) => startGenerationRequest(targetId, nodeId, nodeId, controller));
                     if (count > 1) startGenerationRequest(rootId, nodeId, nodeId, controller);
                     let hasSuccess = false;
@@ -364,42 +423,28 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         context: generationContext,
                         availableInputs: buildNodeGenerationInputs(nodeId, nodesRef.current, connectionsRef.current),
                     });
-                    const spec = nodeSizeFromRatio(generationConfig.size, NODE_DEFAULT_SIZE[CanvasNodeType.Video].width, NODE_DEFAULT_SIZE[CanvasNodeType.Video].height) || NODE_DEFAULT_SIZE[CanvasNodeType.Video];
-                    const isEmptyVideoNode = sourceNode?.type === CanvasNodeType.Video && !sourceNode.metadata?.content;
-                    const videoId = isEmptyVideoNode ? nodeId : nanoid();
-                    const parent = sourceNode?.position || { x: 0, y: 0 };
-                    const videoNode: CanvasNodeData = {
-                        id: videoId,
-                        type: CanvasNodeType.Video,
-                        title: "视频生成",
-                        position: isEmptyVideoNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + CANVAS_NODE_GAP, y: parent.y },
-                        width: isEmptyVideoNode ? sourceNode.width : spec.width,
-                        height: isEmptyVideoNode ? sourceNode.height : spec.height,
-                        metadata: {
-                            prompt: effectivePrompt,
-                            sourcePrompt: userPrompt,
-                            executionPrompt: effectivePrompt,
-                            selectedSkillIds: skillIds.length ? skillIds : undefined,
-                            status: NODE_STATUS_LOADING,
-                            model: generationConfig.model,
-                            size: generationConfig.size,
-                            seconds: generationConfig.videoSeconds,
-                            vquality: generationConfig.vquality,
-                            generateAudio: generationConfig.videoGenerateAudio,
-                            watermark: generationConfig.videoWatermark,
-                            cameraControl: sourceNode?.metadata?.cameraControl,
-                            cameraMotions: sourceNode?.metadata?.cameraMotions,
-                            ...canvasVideoReferenceMetadata(videoReferences),
-                        },
-                    };
-                    pendingChildIds = [videoId];
+                    const isEmptyVideoNode = videoCreation?.isEmptyVideoNode ?? false;
+                    const videoId = videoCreation?.videoId || nodeId;
+                    // 上下文解析完成后补齐视频引用与提示词元数据
                     setNodes((prev) =>
-                        isEmptyVideoNode
-                            ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode } : node))
-                            : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode],
+                        prev.map((node) =>
+                            node.id === videoId
+                                ? {
+                                      ...node,
+                                      metadata: {
+                                          ...node.metadata,
+                                          prompt: effectivePrompt,
+                                          executionPrompt: effectivePrompt,
+                                          selectedSkillIds: skillIds.length ? skillIds : undefined,
+                                          ...canvasVideoReferenceMetadata(videoReferences),
+                                      },
+                                  }
+                                : node,
+                        ),
                     );
                     if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
                     const controller = startGenerationRequest(videoId, nodeId, nodeId, runController);
+
                     try {
                         const task = await createServerVideoGenerationTask(generationConfig, effectivePrompt, videoReferences.images, videoReferences.videos, videoReferences.audios, {
                             signal: controller.signal,
@@ -525,6 +570,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 if (isGenerationTaskNeedsReviewError(error) && pendingChildIds.length) {
                     message.error(errorDetails);
                     pauseReviewedTasks(pendingChildIds, errorDetails);
+                    if (error instanceof GenerationTaskNeedsReviewError && error.verificationId && error.taskId) setDolaVerification({ nodeId: pendingChildIds[0], taskId: error.taskId, verificationId: error.verificationId });
                     return;
                 }
                 const videoTaskId = pendingChildIds.find((id) => nodesRef.current.find((item) => item.id === id)?.metadata?.videoTask);
@@ -563,6 +609,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             openConfigDialog,
             pauseReviewedTasks,
             projectId,
+            setDolaVerification,
             startAndCompleteImageTask,
             startGenerationRequest,
         ],
@@ -577,15 +624,9 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 if (node.metadata.imageTask) {
                     try {
                         const currentTask = await getImageGenerationTask(node.metadata.imageTask.id);
-                        const rawResults = currentTask.result?.results?.length
-                            ? currentTask.result.results
-                            : currentTask.result
-                              ? [currentTask.result]
-                              : [];
+                        const rawResults = currentTask.result?.results?.length ? currentTask.result.results : currentTask.result ? [currentTask.result] : [];
                         if (currentTask.status === "success" && rawResults.length > 0) {
-                            const uploaded = await Promise.all(
-                                rawResults.map((image) => uploadGeneratedCanvasImage(image.dataUrl || "", image.remoteUrl || "", image.serverUrl || "")),
-                            );
+                            const uploaded = await Promise.all(rawResults.map((image) => uploadGeneratedCanvasImage(image.dataUrl || "", image.remoteUrl || "", image.serverUrl || "")));
                             setNodes((prev) =>
                                 applyCanvasImageTaskResults(prev, {
                                     nodeId: node.id,
@@ -623,6 +664,26 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     } catch (error) {
                         message.warning(error instanceof Error ? error.message : "检查图片任务失败，可点击再次生成");
                         return;
+                    }
+                }
+                if (node.metadata.videoTask) {
+                    const taskId = node.metadata.videoTask.serverTaskId || node.metadata.videoTask.id;
+                    try {
+                        const response = await fetch(`/api/video-tasks/${encodeURIComponent(taskId)}`, { cache: "no-store" });
+                        const payload = (await response.json().catch(() => ({}))) as { task?: { needsReview?: boolean; verificationId?: string; reviewReason?: string } };
+                        if (response.ok && payload.task?.needsReview && payload.task.verificationId) {
+                            setDolaVerification({ nodeId: node.id, taskId, verificationId: payload.task.verificationId });
+                            message.info("请完成 Dola 滑块验证后继续生成");
+                            return;
+                        }
+                        if (response.ok && payload.task?.needsReview) {
+                            const reviewReason = payload.task.reviewReason || "上游返回待人工确认状态，但未提供验证会话";
+                            setNodes((prev) => prev.map((item) => item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_NEEDS_REVIEW, errorDetails: reviewReason } } : item));
+                            message.info("原任务仍需人工确认，未检测到验证页面");
+                            return;
+                        }
+                    } catch {
+                        // Keep the review state when the status endpoint is unavailable.
                     }
                 }
                 setNodes((prev) => resumeCanvasGenerationReview(prev, node.id));
@@ -677,9 +738,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                   : sourceNode.metadata?.executionPrompt || node.metadata?.executionPrompt || sourceNode.metadata?.prompt || node.metadata?.prompt || "";
             const context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, retryPromptSource));
             const executionPrompt = (savedImageMetadata?.executionPrompt || sourceNode.metadata?.executionPrompt || context?.prompt || savedImageMetadata?.prompt || sourceNode.metadata?.prompt || node.metadata?.prompt || "").trim();
-            const sourcePrompt = (
-                savedImageMetadata?.sourcePrompt || sourceNode.metadata?.sourcePrompt || node.metadata?.sourcePrompt || (interiorDesignRetry ? "SU直出摄影级照片" : executionPrompt)
-            ).trim();
+            const sourcePrompt = (savedImageMetadata?.sourcePrompt || sourceNode.metadata?.sourcePrompt || node.metadata?.sourcePrompt || (interiorDesignRetry ? "SU直出摄影级照片" : executionPrompt)).trim();
             const panoramaPrompt = node.type === CanvasNodeType.Panorama ? buildPanoramaPrompt(executionPrompt, Boolean(savedImageMetadata?.references?.length || context?.referenceImages.length)) : executionPrompt;
             const cameraPrompt = applyCameraPrompt(panoramaPrompt, node.type === CanvasNodeType.Text || node.type === CanvasNodeType.Panorama ? undefined : savedImageMetadata?.cameraControl || sourceNode.metadata?.cameraControl);
             const prompt = isVideoRetry ? applyCameraMotionPrompt(cameraPrompt, node.metadata?.cameraMotions || sourceNode.metadata?.cameraMotions) : cameraPrompt;
@@ -777,6 +836,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 message.error(errorDetails);
                 if (isGenerationTaskNeedsReviewError(error)) {
                     pauseReviewedTasks([node.id], errorDetails);
+                    if (error instanceof GenerationTaskNeedsReviewError && error.verificationId && error.taskId) setDolaVerification({ nodeId: node.id, taskId: error.taskId, verificationId: error.verificationId });
                     return;
                 }
                 setNodes((prev) =>
@@ -803,6 +863,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             projectId,
             setNodes,
             setRunningNodeId,
+            setDolaVerification,
             startAndCompleteImageTask,
             startGenerationRequest,
         ],

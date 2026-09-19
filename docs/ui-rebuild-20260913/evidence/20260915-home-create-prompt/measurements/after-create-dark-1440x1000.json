@@ -1,0 +1,40 @@
+{
+  "input": {
+    "caretColor": "rgb(101, 226, 208)",
+    "color": "rgb(244, 248, 255)",
+    "rect": {
+      "bottom": 434.203125,
+      "height": 120,
+      "right": 1327,
+      "width": 970,
+      "x": 357,
+      "y": 314.203125
+    },
+    "value": "请根据参考素材规划一张清新明亮的产品主图"
+  },
+  "scroll": {
+    "bodyClientWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "htmlClientWidth": 1440,
+    "htmlScrollWidth": 1440
+  },
+  "send": {
+    "disabled": false,
+    "hit": true,
+    "rect": {
+      "bottom": 486.203125,
+      "height": 44,
+      "right": 1325,
+      "width": 44,
+      "x": 1281,
+      "y": 442.203125
+    }
+  },
+  "theme": "dark",
+  "url": "http://127.0.0.1:3102/create",
+  "viewport": {
+    "dpr": 1,
+    "height": 1000,
+    "width": 1440
+  }
+}

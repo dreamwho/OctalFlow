@@ -1,0 +1,57 @@
+{
+  "route": "/admin",
+  "theme": "dark",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "state": "admin overview with C01 shell, KPI cards and real model/queue snapshot",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "evidenceVersion": "admin-c01-v3",
+  "capturedAt": "2026-09-15T11:58:09.763Z",
+  "overview": {
+    "intro": {
+      "left": 268,
+      "right": 1244,
+      "top": 94,
+      "width": 976,
+      "height": 118.625
+    },
+    "introBackground": "linear-gradient(112deg, rgba(11, 30, 65, 0.96), rgba(11, 49, 78, 0.94) 52%, rgba(36, 24, 77, 0.94))",
+    "metricCards": [
+      {
+        "left": 268,
+        "right": 503,
+        "top": 232.625,
+        "width": 235,
+        "height": 122
+      },
+      {
+        "left": 515,
+        "right": 750,
+        "top": 232.625,
+        "width": 235,
+        "height": 122
+      },
+      {
+        "left": 762,
+        "right": 997,
+        "top": 232.625,
+        "width": 235,
+        "height": 122
+      },
+      {
+        "left": 1009,
+        "right": 1244,
+        "top": 232.625,
+        "width": 235,
+        "height": 122
+      }
+    ],
+    "modelStatusCount": 5,
+    "queueCount": 4,
+    "emptySnapshotCount": 0,
+    "overflow": false
+  }
+}

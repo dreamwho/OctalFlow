@@ -26,7 +26,18 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     const voice = await getMiniMaxVoiceRecord(id);
     if (!voice) return NextResponse.json({ error: "音色不存在" }, { status: 404 });
     if (voice.voiceType !== "system") {
-        const log = await appendMiniMaxRequestLog({ userId: user.id, capability: "voice", method: "POST", path: "/v1/delete_voice", model: "voice-delete", statusCode: 0, durationMs: 0, phase: "queued", requestPreview: JSON.stringify({ mode: "voice-delete", voiceType: voice.voiceType }), lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "管理员删除音色请求已提交" }] }).catch(() => undefined);
+        const log = await appendMiniMaxRequestLog({
+            userId: user.id,
+            capability: "voice",
+            method: "POST",
+            path: "/v1/delete_voice",
+            model: "voice-delete",
+            statusCode: 0,
+            durationMs: 0,
+            phase: "queued",
+            requestPreview: JSON.stringify({ mode: "voice-delete", voiceType: voice.voiceType }),
+            lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "管理员删除音色请求已提交" }],
+        }).catch(() => undefined);
         const startedAt = Date.now();
         if (log) await updateMiniMaxRequestLog(log.id, { statusCode: 0, durationMs: 0, phase: "running", lifecycle: [{ at: new Date().toISOString(), phase: "running", message: "正在删除 MiniMax 云端音色" }] }).catch(() => undefined);
         let statusCode = 0;
@@ -39,10 +50,20 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
                 if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error, lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: error }] }).catch(() => undefined);
                 return NextResponse.json({ error }, { status: response.status || 502 });
             }
-            if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "success", responsePreview: "MiniMax 云端音色已删除", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色删除完成" }] }).catch(() => undefined);
+            if (log)
+                await updateMiniMaxRequestLog(log.id, {
+                    statusCode,
+                    durationMs: Date.now() - startedAt,
+                    phase: "success",
+                    responsePreview: "MiniMax 云端音色已删除",
+                    lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色删除完成" }],
+                }).catch(() => undefined);
         } catch (error) {
             const message = error instanceof Error ? error.message : "删除 MiniMax 音色失败";
-            if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error: message.slice(0, 500), lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: message.slice(0, 200) }] }).catch(() => undefined);
+            if (log)
+                await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error: message.slice(0, 500), lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: message.slice(0, 200) }] }).catch(
+                    () => undefined,
+                );
             return NextResponse.json({ error: message }, { status: statusCode || 502 });
         }
     }

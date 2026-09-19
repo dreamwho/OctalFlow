@@ -203,16 +203,18 @@
     }
 
     .canvas-toolbar-dock-wrap {
-        bottom: calc(env(safe-area-inset-bottom) + 12px);
-        left: max(12px, env(safe-area-inset-left));
-        right: max(12px, env(safe-area-inset-right));
-        justify-content: flex-start;
+        top: 50%;
+        bottom: auto;
+        left: max(10px, env(safe-area-inset-left));
+        right: auto;
+        transform: translateY(-50%);
     }
 
     .canvas-toolbar-dock {
-        height: 52px;
+        height: auto;
+        max-height: calc(100dvh - 140px);
         max-width: none;
-        width: 100%;
+        width: 48px;
     }
 
     .canvas-toolbar-dock .ant-btn {
@@ -222,10 +224,11 @@
     }
 
     .canvas-appearance-panel {
-        bottom: 64px;
-        left: 50% !important;
+        top: 0 !important;
+        left: auto !important;
+        right: 0;
         max-width: calc(100vw - 24px);
-        width: min(248px, calc(100vw - 24px));
+        width: min(248px, calc(100vw - 80px));
     }
 
     .canvas-assets-drawer.ant-drawer-open .ant-drawer-content-wrapper {

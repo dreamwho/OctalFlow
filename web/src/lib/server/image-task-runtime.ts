@@ -287,8 +287,15 @@ async function completeImageResult(task: ImageTask, result: ImageTaskRunResult, 
         if (current?.status === "cancelled") await refundImageTask(current);
         return current;
     }
-    const logged = await writeImageGenerationLog(current, "success", safeResults, Date.now() - current.createdAt);
-    const loggedAssets = logged?.assets?.length ? logged.assets : logged?.asset ? [logged.asset] : [];
+    let logged = await writeImageGenerationLog(current, "success", safeResults, Date.now() - current.createdAt);
+    let loggedAssets = logged?.assets?.length ? logged.assets : logged?.asset ? [logged.asset] : [];
+    // 站内媒体登记必须成功：登记失败时重试一次，仍失败则按“创建结果待确认”处理，
+    // 绝不把原始 base64 内联进任务持久层（历史上单条结果曾把任务文件污染到 19MB）。
+    if (!loggedAssets.length) {
+        logged = await writeImageGenerationLog(current, "success", safeResults, Date.now() - current.createdAt);
+        loggedAssets = logged?.assets?.length ? logged.assets : logged?.asset ? [logged.asset] : [];
+    }
+    if (!loggedAssets.length) throw generationSubmissionUncertainError(new Error("生成结果媒体登记失败，任务保留等待重试"), "图片任务创建结果未知");
     const finalResults = loggedAssets.length
         ? loggedAssets.map((asset) => ({ dataUrl: asset.serverUrl || asset.url, remoteUrl: asset.remoteUrl, serverUrl: asset.serverUrl, width: asset.width, height: asset.height, bytes: asset.bytes, mimeType: asset.mimeType }))
         : safeResults;

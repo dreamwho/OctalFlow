@@ -1,0 +1,113 @@
+{
+  "route": "/create",
+  "themes": {
+    "light": {
+      "activeElement": true,
+      "caretColor": "rgb(79, 114, 233)",
+      "color": "rgb(19, 33, 63)",
+      "fill": "rgb(19, 33, 63)",
+      "backgroundImage": "linear-gradient(108deg, rgb(94, 127, 241) 0%, rgb(53, 204, 225) 52%, rgb(88, 222, 201) 74%, rgb(185, 179, 247) 100%)",
+      "width": 44,
+      "height": 44,
+      "icon": {
+        "width": 21,
+        "height": 20.640625
+      },
+      "glyph": {
+        "src": "http://127.0.0.1:3200/brand/dreamyo/generation/generate-glyph.png",
+        "naturalWidth": 182,
+        "naturalHeight": 179,
+        "width": 21,
+        "height": 20.640625,
+        "complete": true
+      },
+      "whiteSpace": "nowrap",
+      "viewport": {
+        "width": 1280,
+        "height": 720,
+        "zoom": 1
+      }
+    },
+    "dark": {
+      "caretColor": "rgb(101, 226, 208)",
+      "color": "rgb(244, 248, 255)",
+      "composerBackground": "none",
+      "buttonBackground": "linear-gradient(108deg, rgb(94, 127, 241) 0%, rgb(53, 204, 225) 52%, rgb(88, 222, 201) 74%, rgb(185, 179, 247) 100%)",
+      "buttonColor": "rgb(255, 255, 255)",
+      "glyphSource": "http://127.0.0.1:3200/brand/dreamyo/generation/generate-glyph.png",
+      "glyphNaturalWidth": 182,
+      "viewport": {
+        "width": 1280,
+        "height": 720,
+        "zoom": 1
+      }
+    }
+  },
+  "state": "filled textarea, generation action idle",
+  "composerLayout": {
+    "viewport": {
+      "width": 1280,
+      "height": 720,
+      "zoom": 1
+    },
+    "row": {
+      "left": 196,
+      "right": 1252,
+      "width": 1056
+    },
+    "send": {
+      "left": 1189,
+      "right": 1233,
+      "top": 419.609375,
+      "bottom": 463.609375,
+      "width": 44,
+      "height": 44
+    },
+    "tools": [
+      {
+        "left": 215,
+        "right": 344.421875,
+        "top": 419.609375,
+        "bottom": 463.609375,
+        "text": "Agent 模式"
+      },
+      {
+        "left": 352.421875,
+        "right": 448.421875,
+        "top": 419.609375,
+        "bottom": 463.609375,
+        "text": "智能模型"
+      },
+      {
+        "left": 456.421875,
+        "right": 570.421875,
+        "top": 419.609375,
+        "bottom": 463.609375,
+        "text": "生成参数"
+      },
+      {
+        "left": 578.421875,
+        "right": 650.421875,
+        "top": 419.609375,
+        "bottom": 463.609375,
+        "text": "引用"
+      },
+      {
+        "left": 658.421875,
+        "right": 730.515625,
+        "top": 419.609375,
+        "bottom": 463.609375,
+        "text": "Skill"
+      },
+      {
+        "left": 738.515625,
+        "right": 810.515625,
+        "top": 419.609375,
+        "bottom": 463.609375,
+        "text": "优化"
+      }
+    ],
+    "visibleLabelCount": 6,
+    "sendOverlapCount": 0
+  }
+}

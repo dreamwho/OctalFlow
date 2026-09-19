@@ -1,0 +1,19 @@
+{
+  "route": "/assets",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "theme": "light",
+  "state": "编辑保存后",
+  "main": {
+    "left": 0,
+    "top": 52,
+    "width": 390,
+    "height": 792
+  },
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "entity": "内容库状态素材 074b045b"
+}

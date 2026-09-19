@@ -18,6 +18,8 @@ export type PublicSiteSettings = {
     privacyVersion?: string;
     friendLinks?: Array<{ id: string; label: string; url: string; enabled: boolean }>;
     socials?: Record<string, { enabled: boolean; label: string; url: string }>;
+    frontendTheme?: "dark" | "light";
+    adminTheme?: "dark" | "light";
 };
 
 type PublicSessionPayload = {

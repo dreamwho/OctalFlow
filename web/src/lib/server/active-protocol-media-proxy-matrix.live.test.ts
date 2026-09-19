@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
     chatGptRewriteMedia: vi.fn(),
     chatGptRewriteStream: vi.fn(),
     chatGptSyncMagicProxy: vi.fn(),
+    dolaRuntimeRequest: vi.fn(),
+    reserveDolaAccount: vi.fn(),
+    getDolaAccountCookie: vi.fn(),
+    markDolaAccountUsed: vi.fn(),
+    releaseDolaAccountAttempt: vi.fn(),
     geminiToolsRuntimeRequest: vi.fn(),
     mediaAccess: vi.fn(),
     refundUserPoints: vi.fn(),
@@ -50,6 +55,23 @@ vi.mock("@/lib/server/chatgpt-api-service", () => ({
     rewriteChatGptMedia: mocks.chatGptRewriteMedia,
     rewriteChatGptStream: mocks.chatGptRewriteStream,
     syncChatGptMagicProxy: mocks.chatGptSyncMagicProxy,
+}));
+vi.mock("@/lib/server/dola/provider", () => ({
+    DOLA_PROTOCOL: "dola",
+    DOLA_CHANNEL_ID: "dola",
+    dolaProviderConfigured: () => true,
+    isDolaRuntimePath: () => true,
+    dolaRuntimeRequest: mocks.dolaRuntimeRequest,
+}));
+vi.mock("@/lib/server/dola/account-service", () => ({
+    reserveDolaAccount: mocks.reserveDolaAccount,
+    getDolaAccountCookie: mocks.getDolaAccountCookie,
+    markDolaAccountUsed: mocks.markDolaAccountUsed,
+    releaseDolaAccountAttempt: mocks.releaseDolaAccountAttempt,
+}));
+vi.mock("@/lib/server/dola/proxy", () => ({
+    dolaProviderProxyMode: () => "direct",
+    resolveDolaProxyEgress: async () => ({ egress: { mode: "direct" } }),
 }));
 
 import { runCustomImageTask, pollCustomImageTask } from "@/app/api/image-tasks/image-task-custom";
@@ -108,6 +130,11 @@ describe("active protocols through persisted admin settings and the system proxy
         mocks.chatGptRewriteMedia.mockReset().mockImplementation((value: unknown) => value);
         mocks.chatGptRewriteStream.mockReset().mockImplementation((value: ReadableStream<Uint8Array>) => value);
         mocks.chatGptSyncMagicProxy.mockReset().mockResolvedValue(undefined);
+        mocks.dolaRuntimeRequest.mockReset().mockImplementation((path: string, init: RequestInit) => fetch(`${fixtureOrigin}${path}`, init));
+        mocks.reserveDolaAccount.mockReset().mockResolvedValue({ id: "dola-fixture-account", name: "Dola Fixture", credentialVersion: 1 });
+        mocks.getDolaAccountCookie.mockReset().mockResolvedValue("fixture-cookie");
+        mocks.markDolaAccountUsed.mockReset().mockResolvedValue(undefined);
+        mocks.releaseDolaAccountAttempt.mockReset().mockResolvedValue(undefined);
     });
 
     afterEach(async () => {

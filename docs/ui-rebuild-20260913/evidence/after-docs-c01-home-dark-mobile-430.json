@@ -1,0 +1,42 @@
+{
+  "route": "/",
+  "theme": "dark",
+  "viewport": {
+    "width": 430,
+    "height": 932,
+    "zoom": 1
+  },
+  "title": "dreamyo 文档",
+  "heading": "dreamyo文档中心",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 415,
+    "height": 2545.625
+  },
+  "background": "rgba(0, 0, 0, 0)",
+  "backgroundImage": "none",
+  "cta": {
+    "left": 20,
+    "top": 378,
+    "width": 120,
+    "height": 46,
+    "background": "rgba(0, 0, 0, 0)",
+    "backgroundImage": "linear-gradient(108deg, rgb(80, 107, 248), rgb(57, 199, 229) 50%, rgb(82, 240, 223) 72%, rgb(181, 172, 246))",
+    "color": "rgb(255, 255, 255)",
+    "border": "rgb(43, 76, 127)"
+  },
+  "preview": {
+    "left": 20,
+    "top": 522,
+    "width": 375,
+    "height": 235.125,
+    "background": "rgb(12, 26, 54)",
+    "border": "color(srgb 0.209255 0.332078 0.630902)"
+  },
+  "overflow": false,
+  "logo": "http://127.0.0.1:3001/brand/dreamyo/mark.png",
+  "buildId": "we3WtpHZSNwKrJGRuYpCE",
+  "state": "文档首页 C01 light/dark surface",
+  "capturedAt": "2026-09-15T09:03:15.141Z"
+}

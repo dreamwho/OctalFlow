@@ -1,0 +1,20 @@
+{
+  "route": "/admin?section=promotions",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "entityVisible": true,
+  "card": {
+    "left": 27,
+    "top": 308.640625,
+    "width": 336,
+    "height": 217
+  },
+  "overflow": false,
+  "adminTheme": "light",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "state": "隔离真实实体卡片已加载",
+  "entity": "E2E 视觉活动 ec99325b"
+}

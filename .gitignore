@@ -64,3 +64,10 @@ services/chatgpt-api/config.json
 .octal-task.*
 .regress-data/
 web/.regress-data/
+
+# UI 重建期间的源码快照备份与调试产物（不入库）
+docs/ui-rebuild-20260913/frontend-backup-*/
+web/web/
+web/verify_checks.py
+antigravity_tokens.json
+docs/dola-api-plan/evidence/

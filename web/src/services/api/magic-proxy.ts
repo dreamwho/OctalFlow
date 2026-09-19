@@ -1,4 +1,4 @@
-export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi";
+export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi" | "dola";
 
 export type MagicProxyNode = {
     name: string;
@@ -33,7 +33,7 @@ export type MagicProxyState = {
     nodeCount: number;
     nodes: MagicProxyNode[];
     groups: MagicProxyGroup[];
-    bindings: Record<MagicProxyProvider, MagicProxyBinding>;
+    bindings: Partial<Record<MagicProxyProvider, MagicProxyBinding>> & Record<Exclude<MagicProxyProvider, "dola">, MagicProxyBinding>;
 };
 
 export type MagicProxyBindingPatch = {
@@ -104,7 +104,7 @@ export const testMagicProxyAllNodes = (signal?: AbortSignal) =>
     });
 
 export type MagicProxyGoogleTestItem = {
-    service: "geminiai" | "geminiTools" | "chatgptApi";
+    service: MagicProxyProvider;
     serviceTitle: string;
     group: string;
     activeNode: string;
@@ -132,5 +132,12 @@ export const testChatGptChain = (signal?: AbortSignal) =>
     request<MagicProxyGoogleTestReport>("/api/admin/magic-proxy", {
         method: "POST",
         body: json({ action: "testChatGptChain" }),
+        signal,
+    });
+
+export const testMagicProxyDola = (signal?: AbortSignal) =>
+    request<MagicProxyGoogleTestReport>("/api/admin/magic-proxy", {
+        method: "POST",
+        body: json({ action: "testDola" }),
         signal,
     });

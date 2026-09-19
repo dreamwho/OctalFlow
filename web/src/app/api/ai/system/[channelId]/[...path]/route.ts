@@ -27,6 +27,10 @@ import { chatGptErrorMessage, chatGptRuntimeRequest, getChatGptRuntimeConfig, re
 import { CHATGPT_API_PROTOCOL, normalizeChatGptApiRuntimePath } from "@/lib/server/chatgpt-api-models";
 import { GEMINIAI_PROTOCOL, geminiAiProviderConfigured, geminiAiRuntimeRequest, isGeminiAiRuntimePath } from "@/lib/server/geminiai-provider";
 import { GEMINI_TOOLS_PROTOCOL, geminiToolsOAuthConfigured, geminiToolsRuntimeRequest, isGeminiToolsRuntimePath } from "@/lib/server/gemini-tools-service";
+import { DOLA_CHANNEL_ID, DOLA_PROTOCOL, dolaProviderConfigured, dolaRuntimeRequest, isDolaRuntimePath } from "@/lib/server/dola/provider";
+import { getDolaAccountCookie, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount } from "@/lib/server/dola/account-service";
+import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, openDolaRequestLog, markDolaRequestLogRunning, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
+import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -148,6 +152,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
 
     const isGeminiAiChannel = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL;
     const isGeminiToolsChannel = channel.advancedConfig?.protocol === GEMINI_TOOLS_PROTOCOL;
+    const isDolaChannel = channel.id === DOLA_CHANNEL_ID || channel.advancedConfig?.protocol === DOLA_PROTOCOL;
     const routedPath = globalAdaptation?.path || path;
     const requestSearch = new URL(request.url).search;
     const geminiAiPath = `/${routedPath.join("/")}${requestSearch}`;
@@ -155,6 +160,8 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     if (isGeminiAiChannel && !isGeminiAiRuntimePath(geminiAiPath)) return NextResponse.json({ error: "GeminiAI 不支持该运行时接口" }, { status: 404 });
     if (isGeminiToolsChannel && !geminiToolsOAuthConfigured()) return NextResponse.json({ error: "GeminiTools OAuth 尚未配置" }, { status: 503 });
     if (isGeminiToolsChannel && !isGeminiToolsRuntimePath(geminiAiPath)) return NextResponse.json({ error: "GeminiTools 不支持该运行时接口" }, { status: 404 });
+    if (isDolaChannel && !dolaProviderConfigured()) return NextResponse.json({ error: "Dola Camoufox Provider 尚未配置" }, { status: 503 });
+    if (isDolaChannel && !isDolaRuntimePath(geminiAiPath)) return NextResponse.json({ error: "Dola 不支持该运行时接口" }, { status: 404 });
     const chatGptApiPath = normalizeChatGptApiRuntimePath(geminiAiPath);
     if (isChatGptApiChannel) {
         try {
@@ -164,7 +171,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         }
         if (!chatGptApiPath) return NextResponse.json({ error: "GPTAPI 不支持该运行时接口" }, { status: 404 });
     }
-    const providerManaged = isGeminiAiChannel || isGeminiToolsChannel || isChatGptApiChannel;
+    const providerManaged = isGeminiAiChannel || isGeminiToolsChannel || isChatGptApiChannel || isDolaChannel;
     const target = providerManaged ? "" : targetUrl(globalPreset?.baseUrl || channel.baseUrl, globalPreset?.apiFormat || apiFormat, routedPath, requestSearch, globalChannel, modelConfig?.protocol || channel.advancedConfig?.protocol);
     if (!providerManaged && !(await isSafeOutboundUrl(target, { allowCredentials: false, allowProxyFakeIpSpace: true }))) return NextResponse.json({ error: "接口地址不允许访问内网或保留地址" }, { status: 400 });
     const headers = new Headers();
@@ -194,6 +201,20 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     let pointsResult: Awaited<ReturnType<typeof consumeUserPoints>> | null = null;
     let refundedPointsRemaining: number | null = null;
     let pointsSettled = false;
+    let dolaAccountId = "";
+    let dolaHold = false;
+    let dolaProxyEgress: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string } = { mode: "direct" };
+    const upstreamStartedAt = Date.now();
+    const dolaLifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(upstreamStartedAt).toISOString(), phase: "queued", message: "接收到 Canvas Dola 请求", durationMs: 0, detail: `${request.method} ${geminiAiPath}, 模型: ${upstreamModel || "未声明"}` }];
+    const dolaRequestParameters = isDolaChannel ? readDolaRequestParameters(requestBody.body) : {};
+    const dolaPathOnly = geminiAiPath.split("?", 1)[0];
+    const dolaCapability = isDolaChannel && dolaPathOnly.startsWith("/v1/images") ? ("image" as const) : ("video" as const);
+    // Poll requests attach to the original create log by upstream task id instead of opening a row per poll.
+    const dolaTaskQueryMatch = isDolaChannel && request.method === "GET" ? dolaPathOnly.match(/^\/v1\/(?:videos|images)\/([^/]+)$/) : null;
+    const dolaAttachedTaskLogId = dolaTaskQueryMatch ? await safeFindDolaTaskLog(decodeURIComponent(dolaTaskQueryMatch[1])) : "";
+    const dolaLogId = isDolaChannel && !dolaAttachedTaskLogId
+        ? await safeOpenDolaLog({ source: "runtime", capability: dolaCapability, method: request.method, path: dolaPathOnly, model: upstreamModel || "", ...(dolaRequestParameters.requestedDuration !== undefined ? { requestedDuration: dolaRequestParameters.requestedDuration } : {}), ...(dolaRequestParameters.ratio ? { ratio: dolaRequestParameters.ratio } : {}), requestPreview: summarizeDolaSystemRequest(requestBody.body, contentType), requestBytes: bodyByteLength(requestBody.body), clientIp: request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim() || request.headers.get("x-real-ip") || undefined, userAgent: request.headers.get("user-agent") || undefined, headers: { accept: accept || "", "content-type": contentType || "" } }, dolaLifecycle)
+        : "";
     const refundConsumedPoints = async () => {
         if (!pointsResult || pointsSettled) return;
         pointsSettled = true;
@@ -204,8 +225,14 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         try {
             pointsResult = await consumeUserPoints(userId, access.logicalModelId, pointsRequest.amount, pointsRequest.usageKind, pointsIdempotencyKey, requestFingerprint);
         } catch (error) {
-            if (isQuotaExceededError(error)) return NextResponse.json({ error: error.message }, { status: error.status });
-            if (isAuthInputError(error)) return NextResponse.json({ error: error.message }, { status: error.status });
+            if (isQuotaExceededError(error) || isAuthInputError(error)) {
+                if (isDolaChannel) {
+                    const errorMessage = error.message;
+                    dolaLifecycle.push({ time: new Date().toISOString(), phase: "failed", message: errorMessage, durationMs: Date.now() - upstreamStartedAt });
+                    await safeSettleDolaLog(dolaLogId, { statusCode: error.status, durationMs: Date.now() - upstreamStartedAt, phase: "failed", error: errorMessage, lifecycle: dolaLifecycle });
+                }
+                return NextResponse.json({ error: error.message }, { status: error.status });
+            }
             throw error;
         }
     }
@@ -214,7 +241,19 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     let upstream: Response;
     try {
         const upstreamBody = globalAdaptation?.body || requestBody.body;
-        const runtimeBody = isChatGptApiChannel ? await prepareChatGptApiRuntimeBody(contentType, upstreamBody, request.signal) : upstreamBody;
+        const runtimeBody = isChatGptApiChannel
+            ? await prepareChatGptApiRuntimeBody(contentType, upstreamBody, request.signal)
+            : isDolaChannel
+              ? await prepareDolaRuntimeBody(contentType, upstreamBody, ["/v1/videos", "/v1/images"].includes(geminiAiPath.split("?", 1)[0]))
+              : upstreamBody;
+        if (isDolaChannel) dolaAccountId = readDolaAccountId(runtimeBody);
+        if (isDolaChannel) dolaHold = readDolaHold(runtimeBody);
+        if (isDolaChannel) dolaProxyEgress = readDolaProxyEgress(runtimeBody);
+        if (isDolaChannel) {
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: "Dola 账号与代理路由已准备", durationMs: Date.now() - upstreamStartedAt, detail: `账号: ${dolaAccountId || "未识别"}, 代理: ${dolaProxyEgress.mode}` });
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: "upstream", message: "向 Dola Camoufox Provider 发起请求", durationMs: Date.now() - upstreamStartedAt, detail: "Cookie 和参考图已由服务端注入并脱敏" });
+            await safeMarkDolaLog(dolaLogId, { phase: "upstream", message: "向 Dola Camoufox Provider 发起请求", detail: "Cookie 和参考图已由服务端注入并脱敏" });
+        }
         if (isChatGptApiChannel) await syncChatGptMagicProxy();
         upstream = isGeminiAiChannel
             ? await geminiAiRuntimeRequest(geminiAiPath, {
@@ -237,6 +276,13 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                       body: runtimeBody,
                       signal: request.signal,
                   })
+                : isDolaChannel
+                  ? await dolaRuntimeRequest(geminiAiPath, {
+                        method: request.method,
+                        headers,
+                        body: runtimeBody,
+                        signal: request.signal,
+                    })
                 : await fetchSafeOutbound(
                       target,
                       {
@@ -251,6 +297,12 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                   );
     } catch (error) {
         await refundConsumedPoints();
+        if (isDolaChannel && dolaAccountId) await markDolaAccountUsed(dolaAccountId, false, true).catch(() => undefined);
+        if (isDolaChannel) {
+            const errorMessage = error instanceof Error ? error.message : "Dola Provider 请求失败";
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: "failed", message: errorMessage, durationMs: Date.now() - upstreamStartedAt });
+            await safeSettleDolaLog(dolaLogId, { statusCode: 502, durationMs: Date.now() - upstreamStartedAt, phase: "failed", error: errorMessage, accountId: dolaAccountId || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
+        }
         if (isChatGptApiChannel) return chatGptApiRuntimeErrorResponse(error);
         if (!providerManaged) console.error("System API proxy request failed", error instanceof Error ? error.message : error);
         return NextResponse.json({ error: DEFAULT_CHANNEL_CONNECT_ERROR }, { status: 502, headers: responseHeaders(new Headers(), null, refundedPointsRemaining) });
@@ -261,9 +313,53 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         pointsResult = null;
     }
     if (isRedirectStatus(upstream.status)) {
+        if (isDolaChannel) {
+            const errorMessage = "Dola Provider 返回了不允许的重定向";
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: "failed", message: errorMessage, durationMs: Date.now() - upstreamStartedAt, detail: `HTTP ${upstream.status}` });
+            await safeSettleDolaLog(dolaLogId, { statusCode: 502, durationMs: Date.now() - upstreamStartedAt, phase: "failed", error: errorMessage, accountId: dolaAccountId || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
+        }
         return NextResponse.json({ error: "上游接口不允许重定向，请检查后台渠道地址" }, { status: 502, headers: responseHeaders(new Headers(), null, refundedPointsRemaining) });
     }
     if (upstream.ok) pointsSettled = true;
+    if (isDolaChannel && dolaAccountId) {
+        await markDolaAccountUsed(dolaAccountId, upstream.ok, !dolaHold).catch(() => undefined);
+    }
+    if (isDolaChannel) {
+        const responseSnapshot = await snapshotDolaResponse(upstream);
+        if (dolaAttachedTaskLogId) {
+            // Poll responses advance the original create log through 排队中 → 生成中 → 生成完成/生成失败.
+            const providerStatus = stringValue(responseSnapshot.value?.status);
+            if (upstream.ok) {
+                const phase = dolaTaskLogPhase(providerStatus, Boolean(responseSnapshot.verificationId));
+                const errorText = stringValue(responseSnapshot.value?.error);
+                await safeAdvanceDolaTaskLog(dolaAttachedTaskLogId, {
+                    phase,
+                    message:
+                        phase === "success"
+                            ? "生成完成，最终结果已返回"
+                            : phase === "failed"
+                              ? `生成失败${errorText ? `：${errorText}` : ""}`
+                              : phase === "needs_review"
+                                ? "任务等待人工确认（滑块验证）"
+                                : phase === "generating"
+                                  ? "Dola 上游已受理，生成中"
+                                  : "Dola 上游排队中，等待生成",
+                    detail: dolaResultMediaDetail(responseSnapshot.value) || `上游任务状态: ${providerStatus || "unknown"}`,
+                    statusCode: upstream.status,
+                    responsePreview: responseSnapshot.preview,
+                    responseBytes: responseSnapshot.bytes,
+                    ...(phase === "failed" && errorText ? { error: errorText } : {}),
+                    ...(responseSnapshot.verificationId ? { verificationId: responseSnapshot.verificationId } : {}),
+                });
+            } else if (upstream.status === 404) {
+                await safeAdvanceDolaTaskLog(dolaAttachedTaskLogId, { phase: "failed", message: "生成失败：任务在 Provider 中不存在（可能已被重启清理）", statusCode: upstream.status, error: "task_not_found" });
+            }
+        } else {
+            const responsePhase = dolaCreateResponsePhase(upstream, responseSnapshot.value);
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: responsePhase === "needs_review" ? "Dola 返回待人工确认状态" : responsePhase === "submitted" ? "已提交到 Dola 上游，任务排队中" : upstream.ok ? "Dola Provider 已返回响应" : "Dola Provider 返回失败", durationMs: Date.now() - upstreamStartedAt, detail: `HTTP ${upstream.status}${responseSnapshot.taskId ? `, 任务: ${responseSnapshot.taskId}` : ""}` });
+            await safeSettleDolaLog(dolaLogId, { statusCode: upstream.status, durationMs: Date.now() - upstreamStartedAt, phase: responsePhase, ...(upstream.ok ? {} : { error: responseSnapshot.error || "Dola Provider 请求失败" }), responsePreview: responseSnapshot.preview, responseBytes: responseSnapshot.bytes, contentType: upstream.headers.get("content-type") || undefined, accountId: dolaAccountId || undefined, taskId: responseSnapshot.taskId || undefined, verificationId: responseSnapshot.verificationId || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
+        }
+    }
     if (isChatGptApiChannel) return chatGptApiRuntimeResponse(upstream, request, pointsResult, refundedPointsRemaining);
     if (globalAdaptation && upstream.ok) {
         const payload = await upstream.json().catch(() => null);
@@ -276,6 +372,69 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         statusText: upstream.statusText,
         headers: responseHeaders(upstream.headers, pointsResult, refundedPointsRemaining, providerManaged ? undefined : target),
     });
+}
+
+async function prepareDolaRuntimeBody(contentType: string | null, body: BodyInit | undefined, holdAttempt = false) {
+    if (!contentType?.toLowerCase().includes("application/json") || !body) return body;
+    const source = typeof body === "string" ? body : body instanceof ArrayBuffer ? new TextDecoder().decode(body) : "";
+    if (!source) return body;
+    let payload: Record<string, unknown>;
+    try {
+        const parsed = JSON.parse(source);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return body;
+        payload = { ...(parsed as Record<string, unknown>) };
+    } catch {
+        return body;
+    }
+    const proxy = await resolveDolaProxyEgress();
+    const proxyFields = { proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}) };
+    // User-facing system requests may never choose a Dola Cookie/account or a
+    // provider proxy. Those fields are injected from the server-side account
+    // pool and the generic proxy binding below.
+    delete payload.cookie;
+    const model = typeof payload.model === "string" ? payload.model : "dola-seedance-2-5";
+    const account = await reserveDolaAccount(model);
+    if (!account) throw new Error("没有可用的 Dola Cookie 账号");
+    const cookie = await getDolaAccountCookie(account.id);
+    if (!cookie) {
+        await releaseDolaAccountAttempt(account.id);
+        throw new Error("Dola 账号 Cookie 无法解密");
+    }
+    return JSON.stringify({ ...payload, accountId: account.id, credentialVersion: account.credentialVersion, cookie, transport: "camoufox-page", ...proxyFields, ...(holdAttempt ? { dolaHold: true } : {}) });
+}
+
+function readDolaAccountId(body: BodyInit | undefined) {
+    if (typeof body !== "string") return "";
+    try {
+        const value = JSON.parse(body) as Record<string, unknown>;
+        return typeof value.accountId === "string" ? value.accountId.slice(0, 160) : "";
+    } catch {
+        return "";
+    }
+}
+
+function readDolaHold(body: BodyInit | undefined) {
+    if (typeof body !== "string") return false;
+    try {
+        const value = JSON.parse(body) as Record<string, unknown>;
+        return value.dolaHold === true;
+    } catch {
+        return false;
+    }
+}
+
+function readDolaProxyEgress(body: BodyInit | undefined) {
+    if (typeof body !== "string") return { mode: "direct" as const };
+    try {
+        const value = JSON.parse(body) as Record<string, unknown>;
+        if (value.proxyMode === "managed") {
+            const mode: "magic" | "generic" | "chained" = value.proxySource === "magic" || value.proxySource === "chained" || value.proxySource === "generic" ? value.proxySource : "generic";
+            return { mode, nodeName: typeof value.proxyTarget === "string" ? value.proxyTarget.slice(0, 160) : undefined };
+        }
+    } catch {
+        // Keep log redaction deterministic for malformed provider bodies.
+    }
+    return { mode: "direct" as const };
 }
 
 function channelHasModel(models: string[], requested: string) {
@@ -346,7 +505,7 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
     if (request.method !== "GET" && request.method !== "HEAD") return NextResponse.json({ error: "Media proxy only supports GET and HEAD" }, { status: 405 });
     const rawUrl = new URL(request.url).searchParams.get("url") || "";
     if (!(await authorizeGenerationMediaProxyRequest(request, { userId, channelId: channel.id, url: rawUrl }))) return NextResponse.json({ error: "媒体路径未获任务授权" }, { status: 403 });
-    const target = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL ? geminiAiMediaTarget(rawUrl) : mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
+    const target = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL ? geminiAiMediaTarget(rawUrl) : channel.advancedConfig?.protocol === DOLA_PROTOCOL ? dolaMediaTarget(rawUrl) : mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
     if (!target) return NextResponse.json({ error: "Invalid media url" }, { status: 400 });
     // 媒体地址来自上游任务结果，且本请求携带按 URL 绑定的生成媒体授权：允许代理工具 fake-IP 段（198.18/15），由本机 TUN 按 Host 路由到真实公网目标。
     const mediaOutboundOptions = { allowCredentials: false, allowProxyFakeIpSpace: true };
@@ -397,6 +556,20 @@ function geminiAiMediaTarget(value: string): { url: string; includeAuth: boolean
     try {
         const url = new URL(value.trim());
         return url.protocol === "http:" || url.protocol === "https:" ? { url: url.toString(), includeAuth: false } : null;
+    } catch {
+        return null;
+    }
+}
+
+function dolaMediaTarget(value: string): { url: string; includeAuth: boolean } | null {
+    // Dola images and videos are first-party media on signed CDN URLs; the
+    // provider-managed channel has no upstream base URL to proxy against.
+    try {
+        const url = new URL(value.trim());
+        if (!["http:", "https:"].includes(url.protocol)) return null;
+        const host = url.hostname.toLowerCase();
+        const allowed = host === "ibyteimg.com" || host.endsWith(".ibyteimg.com") || host === "dola.com" || host.endsWith(".dola.com") || host === "byteintlapi.com" || host.endsWith(".byteintlapi.com");
+        return allowed ? { url: url.toString(), includeAuth: false } : null;
     } catch {
         return null;
     }
@@ -704,7 +877,8 @@ function readMultipartFields(text: string): Record<string, string> {
 }
 
 function targetUrl(baseUrl: string, apiFormat: "openai" | "gemini", path: string[], search: string, globalAiOpc = false, protocol?: import("@/lib/auth/store").SystemChannelProtocol) {
-    const usesLiteralPath = protocol === "seedance-special" || protocol === "stable-diffusion" || protocol === "yumeng" || protocol === "custom" || protocol === "minimax-h3-official" || protocol === "aliyun-bailian-audio" || protocol === "tencent-tokenhub-music";
+    const usesLiteralPath =
+        protocol === "seedance-special" || protocol === "stable-diffusion" || protocol === "yumeng" || protocol === "custom" || protocol === "minimax-h3-official" || protocol === "aliyun-bailian-audio" || protocol === "tencent-tokenhub-music";
     const cleanPath = !usesLiteralPath && (path[0] === "v1" || path[0] === "v1beta") ? path.slice(1) : path;
     const resolvedBaseUrl = protocol === "yumeng" ? normalizeYumengModelCenterBaseUrl(baseUrl) : baseUrl;
     if (isAgnesApiBaseUrl(resolvedBaseUrl) && cleanPath[0]?.toLowerCase() === "agnesapi") {
@@ -769,4 +943,87 @@ function responseHeaders(headers: Headers, pointsResult?: Awaited<ReturnType<typ
         nextHeaders.set("x-dreamyo-points-remaining", String(refundedPointsRemaining));
     }
     return nextHeaders;
+}
+
+async function safeOpenDolaLog(input: Parameters<typeof openDolaRequestLog>[0], lifecycle: DolaRequestLifecycleEntry[]) {
+    try { return await openDolaRequestLog({ ...input, lifecycle }); } catch (error) { console.error("Failed to open Canvas Dola request log", error); return ""; }
+}
+async function safeFindDolaTaskLog(taskId: string) {
+    try { return await findDolaTaskLogIdByTaskId(taskId, "runtime"); } catch (error) { console.error("Failed to locate Canvas Dola task log", error); return ""; }
+}
+async function safeAdvanceDolaTaskLog(id: string, advance: Parameters<typeof advanceDolaTaskLog>[1]) {
+    if (!id) return;
+    try { await advanceDolaTaskLog(id, advance); } catch (error) { console.error("Failed to advance Canvas Dola task log", error); }
+}
+async function safeMarkDolaLog(id: string, entry: Parameters<typeof markDolaRequestLogRunning>[1]) {
+    if (!id) return;
+    try { await markDolaRequestLogRunning(id, entry); } catch (error) { console.error("Failed to update Canvas Dola request log", error); }
+}
+async function safeSettleDolaLog(id: string, settle: Parameters<typeof settleDolaRequestLog>[1]) {
+    if (!id) return;
+    try { await settleDolaRequestLog(id, settle); } catch (error) { console.error("Failed to settle Canvas Dola request log", error); }
+}
+function bodyByteLength(body: BodyInit | undefined) {
+    if (typeof body === "string") return new TextEncoder().encode(body).byteLength;
+    if (body instanceof ArrayBuffer) return body.byteLength;
+    return undefined;
+}
+function summarizeDolaSystemRequest(body: BodyInit | undefined, contentType: string | null) {
+    if (typeof body !== "string" && !(body instanceof ArrayBuffer)) return "";
+    try {
+        const parsed = JSON.parse(typeof body === "string" ? body : new TextDecoder().decode(body)) as Record<string, unknown>;
+        return JSON.stringify({ model: typeof parsed.model === "string" ? parsed.model : undefined, duration: numberValue(parsed.duration ?? parsed.seconds), ratio: typeof parsed.ratio === "string" ? parsed.ratio : undefined, referenceCount: Array.isArray(parsed.references) ? parsed.references.length : 0, promptLength: typeof parsed.prompt === "string" ? parsed.prompt.length : 0, contentType: contentType || undefined });
+    } catch { return contentType?.includes("json") ? "请求体无法解析为 JSON 摘要" : "请求体已接收（非 JSON 摘要）"; }
+}
+function readDolaRequestParameters(body: BodyInit | undefined) {
+    if (typeof body !== "string" && !(body instanceof ArrayBuffer)) return {} as { requestedDuration?: number; ratio?: string };
+    try {
+        const parsed = JSON.parse(typeof body === "string" ? body : new TextDecoder().decode(body)) as Record<string, unknown>;
+        const requestedDuration = numberValue(parsed.duration ?? parsed.seconds);
+        const ratio = typeof parsed.ratio === "string" ? parsed.ratio.trim().slice(0, 32) : "";
+        return { ...(requestedDuration !== undefined ? { requestedDuration } : {}), ...(ratio ? { ratio } : {}) };
+    } catch {
+        return {} as { requestedDuration?: number; ratio?: string };
+    }
+}
+async function snapshotDolaResponse(response: Response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("text/event-stream")) return { preview: "流式响应内容未写入日志", bytes: undefined as number | undefined, error: "", taskId: "", verificationId: "", value: null };
+    try {
+        const bytes = new Uint8Array(await response.clone().arrayBuffer());
+        const value = parseDolaJson(bytes);
+        const taskId = stringValue(value?.taskId || value?.id);
+        const verificationId = stringValue(value?.verificationId || value?.verification_id);
+        const error = stringValue(value?.error || value?.detail);
+        if (!value) return { preview: bytes.byteLength ? "Dola Provider 返回了无法解析的响应" : "", bytes: bytes.byteLength, error, taskId, verificationId, value: null };
+        // Media result URLs stay visible: they are the deliverable the admin needs to see in the log detail.
+        const summary = Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl/i.test(key)).map(([key, item]) => [key, typeof item === "string" && item.length > 500 ? `${item.slice(0, 500)}…` : item]));
+        const rendered = JSON.stringify(summary, null, 2);
+        return { preview: rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered, bytes: bytes.byteLength, error, taskId, verificationId, value };
+    } catch {
+        return { preview: "Dola Provider 响应无法读取", bytes: undefined as number | undefined, error: "响应无法读取", taskId: "", verificationId: "", value: null };
+    }
+}
+function parseDolaJson(bytes: Uint8Array) {
+    try { const value = JSON.parse(new TextDecoder().decode(bytes)); return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null; } catch { return null; }
+}
+function numberValue(value: unknown) { const parsed = Number(value); return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined; }
+function stringValue(value: unknown) { return typeof value === "string" ? value.slice(0, 500) : ""; }
+function dolaCreateResponsePhase(response: Response, value: Record<string, unknown> | null): DolaRequestLogPhase {
+    const status = stringValue(value?.status).toLowerCase();
+    const error = stringValue(value?.error || value?.detail).toLowerCase();
+    if (stringValue(value?.verificationId || value?.verification_id) || ["needs_review", "verification_required", "submission_unknown", "pending_verification"].some((marker) => status.includes(marker) || error.includes(marker))) return "needs_review";
+    if (!response.ok) return "failed";
+    const taskId = stringValue(value?.taskId || value?.id);
+    // Async task creation only means the upstream accepted the job; it is queued, not finished.
+    if (taskId && status !== "completed" && status !== "failed") return "submitted";
+    if (taskId) return dolaTaskLogPhase(status);
+    return "success";
+}
+function dolaResultMediaDetail(value: Record<string, unknown> | null) {
+    const videoUrl = stringValue(value?.videoUrl || value?.video_url);
+    const imageUrls = Array.isArray(value?.imageUrls) ? value.imageUrls.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+    const urls = videoUrl ? [videoUrl] : imageUrls;
+    if (!urls.length) return "";
+    return urls.length === 1 ? `结果地址: ${urls[0]}` : `结果地址 (${urls.length}): ${urls.slice(0, 3).join(", ")}${urls.length > 3 ? " …" : ""}`;
 }

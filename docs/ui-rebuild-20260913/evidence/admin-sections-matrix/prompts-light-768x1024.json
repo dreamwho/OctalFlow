@@ -1,0 +1,34 @@
+{
+  "route": "/admin?section=prompts",
+  "section": "prompts",
+  "theme": "light",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "heading": "提示词运营",
+  "shell": {
+    "left": 0,
+    "top": 0,
+    "width": 768,
+    "height": 3145.734375
+  },
+  "content": {
+    "left": 0,
+    "top": 66,
+    "width": 768,
+    "height": 3079.734375
+  },
+  "headingRect": {
+    "left": 49,
+    "top": 113,
+    "width": 670,
+    "height": 29.390625
+  },
+  "overflow": false,
+  "state": "后台默认分区",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

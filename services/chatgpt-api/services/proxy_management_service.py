@@ -46,7 +46,7 @@ from services.storage.configuration_repository import proxy_configuration_reposi
 
 
 PROXY_SCHEMA_VERSION = 1
-_GENERIC_PROXY_BINDING_PROVIDERS = {"geminiai", "geminiTools", "chatgptApi"}
+_GENERIC_PROXY_BINDING_PROVIDERS = {"geminiai", "geminiTools", "chatgptApi", "dola"}
 _GENERIC_PROXY_BINDING_TARGET_PATTERN = re.compile(r"^(?:node|group):[\w-]+$")
 _PROXY_GROUP_STRATEGIES = {"request_random", "time_window", "round_robin"}
 _PROXY_URL_SCHEMES = {"http", "https", "socks5", "socks5h"}

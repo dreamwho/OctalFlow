@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "logs": [
+    {
+      "id": "9b9f404f-7a41-46e0-8d00-322312c546de",
+      "action": "auth.login",
+      "status": "success",
+      "actor": {
+        "id": "08ad9588-e2df-40db-98b4-9925bdd9fbad",
+        "username": "e2e_v21",
+        "role": "admin",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "target": {
+        "type": "user",
+        "id": "08ad9588-e2df-40db-98b4-9925bdd9fbad",
+        "label": "e2e_v21"
+      },
+      "createdAt": "2026-09-13T12:41:54.912Z"
+    }
+  ]
+}

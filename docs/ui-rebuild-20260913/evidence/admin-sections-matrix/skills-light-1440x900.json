@@ -1,0 +1,34 @@
+{
+  "route": "/admin?section=skills",
+  "section": "skills",
+  "theme": "light",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "visualWidth": 1440,
+    "visualHeight": 900,
+    "zoom": 1
+  },
+  "heading": "Agent Skills",
+  "shell": {
+    "left": 0,
+    "top": 0,
+    "width": 1440,
+    "height": 2367.03125
+  },
+  "content": {
+    "left": 232,
+    "top": 66,
+    "width": 1208,
+    "height": 2301.03125
+  },
+  "headingRect": {
+    "left": 293,
+    "top": 117,
+    "width": 1086,
+    "height": 39.1875
+  },
+  "overflow": false,
+  "state": "后台默认分区",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

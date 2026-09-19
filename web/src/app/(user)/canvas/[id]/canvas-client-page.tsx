@@ -39,6 +39,8 @@ import { videoStorageKey } from "./use-canvas-video-frame-extraction";
 import { fitCanvasImageNodeSize, fitNodeSize } from "../utils/canvas-node-size";
 import { CANVAS_NODE_GAP, resolveCanvasNodePlacement, resolveCanvasSelectionLayout } from "../utils/canvas-surface-geometry";
 import { createInteriorDesignConfigNode, interiorDesignModels, interiorDesignNodePatch, isInteriorDesignNode } from "../utils/canvas-interior-design";
+import { resolveCanvasDolaWatermark } from "./dola-watermark-api";
+import { DolaVerificationDialog } from "../components/dola-verification-dialog";
 
 export default function CanvasPage() {
     const [mounted, setMounted] = useState(false);
@@ -65,6 +67,7 @@ function DreamyoCanvasPage() {
     const [captureFrameNodeId, setCaptureFrameNodeId] = useState<string | null>(null);
     const [depthSourceNodeIds, setDepthSourceNodeIds] = useState<Set<string>>(new Set());
     const [analysisSourceNodeIds, setAnalysisSourceNodeIds] = useState<Set<string>>(new Set());
+    const [dolaWatermarkSourceNodeIds, setDolaWatermarkSourceNodeIds] = useState<Set<string>>(new Set());
     const [interiorDesignTarget, setInteriorDesignTarget] = useState<{ mode: "source" | "config"; nodeId: string } | null>(null);
     const [audioUploadNodeId, setAudioUploadNodeId] = useState<string | null>(null);
     const controller = useCanvasPageController();
@@ -179,6 +182,8 @@ function DreamyoCanvasPage() {
         setOpeningBatchIds,
         isNodeDragging,
         setIsNodeDragging,
+        dolaVerification,
+        setDolaVerification,
         nodesRef,
         connectionsRef,
         selectedNodeIdsRef,
@@ -286,6 +291,11 @@ function DreamyoCanvasPage() {
         openAgent,
         closeAgent,
     } = controller;
+    const closeDolaVerification = useCallback(() => setDolaVerification(null), [setDolaVerification]);
+    const resolveDolaVerification = useCallback(() => {
+        if (dolaVerification?.nodeId) setNodes((current) => current.map((node) => node.id === dolaVerification.nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node));
+        setDolaVerification(null);
+    }, [dolaVerification, setDolaVerification, setNodes]);
     const hiddenCanvasNodeIds = useMemo(() => new Set(nodes.filter((node) => isHiddenBatchChild(node, nodes, collapsingBatchIds)).map((node) => node.id)), [collapsingBatchIds, nodes]);
     const activeUpscaleNode = useMemo(() => nodes.find((node) => node.id === dialogNodeId && isDreaminaUpscaleImageNode(node)) || null, [dialogNodeId, nodes]);
     const activePromptNode = useMemo(() => nodes.find((node) => node.id === dialogNodeId && node.type !== CanvasNodeType.Config && !isDreaminaUpscaleImageNode(node)) || null, [dialogNodeId, nodes]);
@@ -302,7 +312,36 @@ function DreamyoCanvasPage() {
     );
     const agentReferenceSelectionCount = useMemo(() => nodes.filter((node) => selectedNodeIds.has(node.id) && isCanvasAgentReferenceNode(node)).length, [isCanvasAgentReferenceNode, nodes, selectedNodeIds]);
     const promptComposerOpen = Boolean(activePromptNode || activeUpscaleNode);
-    const showCanvasToolbar = !toolbarNode && !promptComposerOpen;
+    // A single selected node is the source of truth for the node toolbar. The
+    // hover state can be cleared while a prompt panel is opening or after a
+    // persisted selection is restored, so relying on toolbarNode alone would
+    // incorrectly leave the generic canvas dock visible.
+    const selectedToolbarNode = selectedNodeIds.size === 1 ? nodes.find((node) => selectedNodeIds.has(node.id)) || null : null;
+    const activeToolbarNode = toolbarNode || selectedToolbarNode;
+    const showCanvasToolbar = !activeToolbarNode && !promptComposerOpen && !agentReferencePicking;
+
+    const autoGenerateFiredRef = useRef(false);
+    useEffect(() => {
+        if (!projectLoaded || autoGenerateFiredRef.current || nodes.length === 0) return;
+        if (typeof window === "undefined") return;
+        const search = new URLSearchParams(window.location.search);
+        const autoGen = search.get("autoGenerate");
+        if (autoGen) {
+            autoGenerateFiredRef.current = true;
+            const targetNode = nodes.find((n) => n.id === autoGen) || (autoGen === "true" ? nodes[0] : null);
+            if (targetNode) {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("autoGenerate");
+                window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+                const nodeMode = targetNode.type === CanvasNodeType.Video ? "video" : "image";
+                const nodePrompt = targetNode.metadata?.prompt || targetNode.title || "";
+                const nodeSkillIds = targetNode.metadata?.selectedSkillIds || [];
+                setTimeout(() => {
+                    handleGenerateNode(targetNode.id, nodeMode, nodePrompt, nodeSkillIds);
+                }, 400);
+            }
+        }
+    }, [projectLoaded, nodes, handleGenerateNode]);
     const updateNodeTitle = useCallback(
         (nodeId: string, title: string) => {
             const next = title.trim();
@@ -534,6 +573,38 @@ function DreamyoCanvasPage() {
         },
         [analysisSourceNodeIds, message, nodes, nodesRef, setConnections, setNodes, setSelectedConnectionId, setSelectedNodeIds],
     );
+    const removeDolaWatermark = useCallback(
+        async (sourceNode: (typeof nodes)[number]) => {
+            if (sourceNode.type !== CanvasNodeType.Video || dolaWatermarkSourceNodeIds.has(sourceNode.id)) return;
+            const storageKey = videoStorageKey(sourceNode);
+            const payload = sourceNode.metadata?.dolaVodPayload || (sourceNode.metadata as Record<string, unknown> | undefined)?.vodPayload;
+            if (!payload) return message.error("当前视频缺少 Dola 原始结果信息，无法解析去水印地址");
+            const id = `dola-watermark-${nanoid()}`;
+            const size = fitNodeSize(sourceNode.metadata?.naturalWidth || sourceNode.width, sourceNode.metadata?.naturalHeight || sourceNode.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+            const position = resolveCanvasNodePlacement(nodesRef.current, size, { x: sourceNode.position.x + sourceNode.width / 2, y: sourceNode.position.y + sourceNode.height / 2 }, { x: sourceNode.position.x + sourceNode.width + CANVAS_NODE_GAP, y: sourceNode.position.y });
+            setDolaWatermarkSourceNodeIds((current) => new Set(current).add(sourceNode.id));
+            setNodes((current) => [...current, { id, type: CanvasNodeType.Video, title: "Dola 去水印", position, ...size, metadata: { status: NODE_STATUS_LOADING, derivedVideoOperation: "dola-watermark", derivedFromNodeId: sourceNode.id, mimeType: "video/mp4" } }]);
+            setConnections((current) => [...current, { id: nanoid(), fromNodeId: sourceNode.id, toNodeId: id }]);
+            setSelectedNodeIds(new Set([id]));
+            setSelectedConnectionId(null);
+            try {
+                const result = await resolveCanvasDolaWatermark({ storageKey: storageKey || "", payload });
+                setNodes((current) => current.map((item) => item.id === id ? { ...item, width: result.variant?.width ? fitNodeSize(result.variant.width, result.variant.height || result.variant.width, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT).width : item.width, height: result.variant?.height ? fitNodeSize(result.variant.width || item.width, result.variant.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT).height : item.height, metadata: { ...item.metadata, url: result.downloadUrl, content: result.downloadUrl, remoteUrl: result.downloadUrl, status: NODE_STATUS_SUCCESS, unwatermarked: true, errorDetails: undefined, resolverRevision: result.resolverRevision } } : item));
+                message.success("Dola 去水印节点已生成");
+            } catch (error) {
+                const detail = error instanceof Error ? error.message : "Dola 去水印失败";
+                setNodes((current) => current.map((item) => item.id === id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: detail } } : item));
+                message.error(detail);
+            } finally {
+                setDolaWatermarkSourceNodeIds((current) => {
+                    const next = new Set(current);
+                    next.delete(sourceNode.id);
+                    return next;
+                });
+            }
+        },
+        [dolaWatermarkSourceNodeIds, message, nodesRef, setConnections, setNodes, setSelectedConnectionId, setSelectedNodeIds],
+    );
     const openNodeRename = useCallback(
         (nodeId: string) => {
             const node = nodesRef.current.find((item) => item.id === nodeId);
@@ -573,7 +644,8 @@ function DreamyoCanvasPage() {
 
     if (!projectLoaded) return <CanvasRefreshShell />;
     return (
-        <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.backdrop, color: theme.node.text }}>
+        <main className="flex h-full min-h-0 overflow-hidden overflow-x-clip" style={{ background: theme.canvas.backdrop, color: theme.node.text }}>
+            <h1 className="sr-only">{currentProject?.title || "未命名画布"}</h1>
             <CanvasAssetsPanel
                 open={assetPickerOpen}
                 projectId={projectId}
@@ -587,7 +659,7 @@ function DreamyoCanvasPage() {
                 onLocateNode={locateCanvasNode}
                 onClose={() => setAssetPickerOpen(false)}
             />
-            <section className="relative min-w-0 flex-1 overflow-hidden">
+            <section className="relative min-w-0 flex-1 overflow-hidden overflow-x-clip">
                 <CanvasTopBar
                     title={currentProject?.title || "未命名画布"}
                     projectId={projectId}
@@ -672,7 +744,7 @@ function DreamyoCanvasPage() {
                         },
                         onImageDimensions: handleImageDimensions,
                         onViewImage: (node) => setPreviewNodeId(node.id),
-                        onUpload: (node) => node.type === CanvasNodeType.Audio ? setAudioUploadNodeId(node.id) : handleUploadRequest(node.id),
+                        onUpload: (node) => (node.type === CanvasNodeType.Audio ? setAudioUploadNodeId(node.id) : handleUploadRequest(node.id)),
                     }}
                     getNodeViewProps={(node) => ({
                         editRequestNonce: editingNodeId === node.id ? editRequestNonce : 0,
@@ -805,7 +877,7 @@ function DreamyoCanvasPage() {
                 />
 
                 <CanvasNodeHoverToolbar
-                    node={agentReferencePicking || isNodeDragging || nodeImageSettingsOpen ? null : toolbarNode}
+                    node={agentReferencePicking || isNodeDragging || nodeImageSettingsOpen ? null : activeToolbarNode}
                     viewport={viewport}
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
@@ -816,7 +888,7 @@ function DreamyoCanvasPage() {
                     onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
                     onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
                     onGenerateImage={generateImageFromTextNode}
-                    onUpload={(node) => node.type === CanvasNodeType.Audio ? setAudioUploadNodeId(node.id) : handleUploadRequest(node.id)}
+                    onUpload={(node) => (node.type === CanvasNodeType.Audio ? setAudioUploadNodeId(node.id) : handleUploadRequest(node.id))}
                     onDownload={downloadNodeImage}
                     onSaveAsset={(node) => void saveNodeAsset(node).catch((error) => message.error(error instanceof Error ? error.message : "素材保存失败"))}
                     onMaskEdit={(node) => setMaskEditNodeId(node.id)}
@@ -831,6 +903,7 @@ function DreamyoCanvasPage() {
                     onCaptureFrames={(node) => setCaptureFrameNodeId(node.id)}
                     onDepthExtract={(node) => void extractVideoDepth(node)}
                     onAnalyzeVideo={(node) => void analyzeVideoNode(node)}
+                    onRemoveWatermark={(node) => void removeDolaWatermark(node)}
                     onRetry={retryCanvasNode}
                     onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
@@ -877,6 +950,15 @@ function DreamyoCanvasPage() {
                         canUpscale={Boolean(contextNode && isCanvasImageNodeType(contextNode.type) && contextNode.metadata?.content)}
                         canStoryboard={Boolean(contextNode && isCanvasImageNodeType(contextNode.type) && contextNode.metadata?.content?.trim())}
                         canUseVideoTools={Boolean(contextNode?.type === CanvasNodeType.Video && contextNode.metadata?.content)}
+                        canDolaWatermark={Boolean(
+                            contextNode?.type === CanvasNodeType.Video &&
+                            contextNode.metadata?.content &&
+                            (contextNode.metadata?.dolaVodPayload ||
+                                (contextNode.metadata as Record<string, unknown> | undefined)?.vodPayload ||
+                                contextNode.metadata?.model?.startsWith("dola-") ||
+                                contextNode.metadata?.sourceModel?.startsWith("dola-") ||
+                                contextNode.metadata?.provider === "dola")
+                        )}
                         onClose={() => setContextMenu(null)}
                         onArrange={arrangeSelectedNodes}
                         onRename={() => {
@@ -919,6 +1001,15 @@ function DreamyoCanvasPage() {
                             void analyzeVideoNode(contextNode);
                             setContextMenu(null);
                         }}
+                        onDolaWatermark={
+                            contextNode?.type === CanvasNodeType.Video && Boolean(contextNode?.metadata?.dolaVodPayload || (contextNode?.metadata as Record<string, unknown> | undefined)?.vodPayload || contextNode?.metadata?.model?.startsWith("dola-") || contextNode?.metadata?.provider === "dola")
+                                ? () => {
+                                      if (!contextNode) return;
+                                      void removeDolaWatermark(contextNode);
+                                      setContextMenu(null);
+                                  }
+                                : undefined
+                        }
                         onDelete={() => {
                             if (contextMenu.type === "node") {
                                 const selectedIds = selectedNodeIdsRef.current;
@@ -949,6 +1040,12 @@ function DreamyoCanvasPage() {
                 />
 
                 <CanvasAudioUploadDialog open={Boolean(audioUploadNodeId)} nodeId={audioUploadNodeId} onClose={() => setAudioUploadNodeId(null)} onUpload={(nodeId, file) => replaceAudioNodeFile(nodeId, file)} />
+
+                <DolaVerificationDialog
+                    request={dolaVerification}
+                    onClose={closeDolaVerification}
+                    onResolved={resolveDolaVerification}
+                />
 
                 <input ref={imageInputRef} type="file" accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 

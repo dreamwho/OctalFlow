@@ -1,0 +1,45 @@
+{
+  "input": {
+    "caret": "rgb(101, 226, 208)",
+    "color": "rgb(244, 248, 255)",
+    "rect": {
+      "bottom": 479.3125,
+      "h": 120,
+      "right": 364,
+      "w": 274,
+      "x": 90,
+      "y": 359.3125
+    }
+  },
+  "scroll": {
+    "body": 390,
+    "bodyClient": 390,
+    "html": 390,
+    "htmlClient": 390
+  },
+  "send": {
+    "hit": true,
+    "rect": {
+      "bottom": 531.3125,
+      "h": 44,
+      "right": 362,
+      "w": 44,
+      "x": 318,
+      "y": 487.3125
+    },
+    "visible": true
+  },
+  "theme": "dark",
+  "toolbar": {
+    "bottom": 533.3125,
+    "h": 54,
+    "right": 364,
+    "w": 338,
+    "x": 26,
+    "y": 479.3125
+  },
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "豆包助手",
+  "short_name": "豆包助手",
+  "version": "0.2.1",
+  "description": "豆包与 Dola 素材提取、ZIP 下载及豆包账号管理工具。",
+  "icons": {
+    "16": "icon/favicon-16x16.png",
+    "32": "icon/favicon-32x32.png",
+    "48": "icon/favicon-48x48.png",
+    "128": "icon/favicon-128x128.png"
+  },
+  "minimum_chrome_version": "111",
+  "permissions": [
+    "cookies",
+    "storage",
+    "tabs",
+    "scripting",
+    "windows",
+    "browsingData"
+  ],
+  "host_permissions": [
+    "https://www.doubao.com/*",
+    "https://*.doubao.com/*",
+    "https://www.dola.com/*",
+    "https://*.dola.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.doubao.com/chat/*",
+        "https://*.doubao.com/chat/*",
+        "https://www.doubao.com/thread/*",
+        "https://*.doubao.com/thread/*",
+        "https://www.dola.com/chat/*",
+        "https://*.dola.com/chat/*",
+        "https://www.dola.com/thread/*",
+        "https://*.dola.com/thread/*"
+      ],
+      "js": ["doubao-assistant.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.doubao.com/*", "https://*.doubao.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "豆包助手",
+    "default_icon": {
+      "16": "icon/favicon-16x16.png",
+      "32": "icon/favicon-32x32.png",
+      "48": "icon/favicon-48x48.png",
+      "128": "icon/favicon-128x128.png"
+    },
+    "default_popup": "popup.html"
+  }
+}

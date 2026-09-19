@@ -1,0 +1,34 @@
+{
+  "route": "/admin?section=minimax",
+  "section": "minimax",
+  "theme": "light",
+  "viewport": {
+    "width": 1366,
+    "height": 768,
+    "visualWidth": 1366,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "heading": "MiniMax 音频",
+  "shell": {
+    "left": 0,
+    "top": 0,
+    "width": 1366,
+    "height": 1048.578125
+  },
+  "content": {
+    "left": 232,
+    "top": 66,
+    "width": 1134,
+    "height": 982.578125
+  },
+  "headingRect": {
+    "left": 293,
+    "top": 117,
+    "width": 1012,
+    "height": 38.234375
+  },
+  "overflow": false,
+  "state": "后台默认分区",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

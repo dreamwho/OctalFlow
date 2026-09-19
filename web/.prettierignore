@@ -1,6 +1,7 @@
 .next
 .next-*
 .data
+.regress-data*
 node_modules
 dist
 build

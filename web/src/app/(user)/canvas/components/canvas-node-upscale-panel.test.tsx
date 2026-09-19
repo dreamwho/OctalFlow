@@ -1,10 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { canvasThemes } from "@/lib/canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 import { CanvasNodeUpscalePanel, resolveDreaminaUpscaleSubmitStyle } from "./canvas-node-upscale-panel";
+
+// zustand resolves server renders from `getInitialState()`, so static markup can
+// never observe `setState`. Pin the theme scope directly to keep both branches testable.
+const mockedTheme = vi.hoisted(() => ({ current: "light" as "light" | "dark" }));
+
+vi.mock("@/stores/use-theme-store", () => ({
+    useThemeStore: <T,>(selector: (state: { theme: "light" | "dark" }) => T) => selector({ theme: mockedTheme.current }),
+    useAdminThemeStore: <T,>(selector: (state: { theme: "light" | "dark" }) => T) => selector({ theme: mockedTheme.current }),
+}));
 
 const sourceNode: CanvasNodeData = {
     id: "source",
@@ -31,13 +39,15 @@ function renderPanel() {
 }
 
 describe("CanvasNodeUpscalePanel", () => {
-    beforeEach(() => useThemeStore.setState({ theme: "light" }));
+    beforeEach(() => {
+        mockedTheme.current = "light";
+    });
 
     it("uses a readable foreground for the light theme re-upscale action", () => {
-        expect(renderPanel()).toContain("background:#2f6fff;border-color:#2f6fff;color:#ffffff");
+        expect(renderPanel()).toContain("background:#5e7ff1;border-color:#5e7ff1;color:#ffffff");
     });
 
     it("switches the re-upscale action foreground for the dark theme", () => {
-        expect(resolveDreaminaUpscaleSubmitStyle(canvasThemes.dark)).toEqual({ background: "#70d9ff", borderColor: "#70d9ff", color: "#04142b" });
+        expect(resolveDreaminaUpscaleSubmitStyle(canvasThemes.dark)).toEqual({ background: "#35cce1", borderColor: "#35cce1", color: "#071224" });
     });
 });

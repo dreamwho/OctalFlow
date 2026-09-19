@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/drama",
+  "actualPath": "/drama",
+  "responseStatus": 200,
+  "route": "/drama",
+  "theme": "light",
+  "title": "短剧项目 | dreamyo",
+  "heading": "短剧项目",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 52,
+    "width": 390,
+    "height": 792
+  },
+  "overflow": false,
+  "state": "短剧列表",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

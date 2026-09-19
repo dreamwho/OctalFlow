@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { SiteLogo } from "@/components/layout/site-logo";
+import { SiteWordmark } from "@/components/layout/site-wordmark";
 import { navigationGroups, navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { cn } from "@/lib/utils";
 import { DEFAULT_SITE_TITLE, resolveSiteTitle } from "@/lib/site-brand";
@@ -37,7 +38,7 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
             title={
                 <Link href="/create" onClick={onClose} className="inline-flex min-w-0 cursor-pointer items-center gap-2.5 text-base font-semibold leading-none text-[#20242a] dark:text-[#f3f5f7]">
                     <SiteLogo logoUrl={site.logoUrl} className="size-8" />
-                    <span className="truncate">{siteTitle}</span>
+                    <SiteWordmark className="h-[15px] min-w-0 max-w-full" title={siteTitle} />
                 </Link>
             }
             placement="left"

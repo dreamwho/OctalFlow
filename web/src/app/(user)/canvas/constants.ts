@@ -10,9 +10,11 @@ type CanvasNodeSpec = {
 };
 
 export const CANVAS_CONFIG_NODE_HEIGHT = {
-    collapsed: 180,
-    expanded: 226,
+    collapsed: 252,
+    expanded: 298,
 } as const;
+
+export const CANVAS_CONFIG_NODE_WIDTH = 480;
 
 export const IMAGE_NODE_DEFAULT_SIZE = { width: 340, height: 240 } as const;
 
@@ -20,7 +22,7 @@ export const NODE_DEFAULT_SIZE = {
     [CanvasNodeType.Image]: { ...IMAGE_NODE_DEFAULT_SIZE, title: "图片生成" },
     [CanvasNodeType.Panorama]: { ...PANORAMA_NODE_SIZE, title: "全景生成" },
     [CanvasNodeType.Text]: { width: 340, height: 240, title: "文本" },
-    [CanvasNodeType.Config]: { width: 340, height: CANVAS_CONFIG_NODE_HEIGHT.collapsed, title: "生成配置" },
+    [CanvasNodeType.Config]: { width: CANVAS_CONFIG_NODE_WIDTH, height: CANVAS_CONFIG_NODE_HEIGHT.collapsed, title: "生成配置" },
     [CanvasNodeType.Video]: { width: 420, height: 236, title: "视频生成" },
     [CanvasNodeType.VideoRemake]: { width: 380, height: 224, title: "一键视频复刻" },
     [CanvasNodeType.Audio]: { width: 340, height: 210, title: "音频" },

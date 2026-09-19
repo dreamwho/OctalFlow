@@ -1,0 +1,37 @@
+{
+  "checkedAt": "2026-09-13T22:40:00+08:00",
+  "baseUrl": "http://127.0.0.1:3337",
+  "runtime": "pnpm start / .next standalone",
+  "dataIsolation": "/tmp/dreamyo-health-v21-final-3",
+  "responses": {
+    "/api/health": {
+      "httpStatus": 200,
+      "body": { "code": 0, "data": { "status": "ok" }, "msg": "服务正常" }
+    },
+    "/api/health/live": {
+      "httpStatus": 200,
+      "body": { "code": 0, "data": { "status": "live" }, "msg": "服务运行中" }
+    },
+    "/api/maintenance/generation-tasks/heartbeat": {
+      "httpStatus": 200,
+      "body": { "code": 0, "data": { "accepted": true }, "msg": "OK" },
+      "workerId": "health-check-v21"
+    },
+    "/api/health/ready": {
+      "httpStatus": 503,
+      "body": {
+        "code": 503,
+        "data": {
+          "ready": false,
+          "provider": "file",
+          "database": { "healthy": true, "schemaReady": true },
+          "encryptionReady": true,
+          "firstAdminRequired": true,
+          "generationWorker": { "required": true, "healthy": true, "lastHeartbeatAt": "2026-09-13T14:39:28.502Z", "staleAfterMs": 90000 }
+        },
+        "msg": "服务尚未就绪"
+      },
+      "interpretation": "隔离的全新文件存储实例尚未创建首个管理员；503 是安装门禁的预期结果，不是健康端点故障。"
+    }
+  }
+}

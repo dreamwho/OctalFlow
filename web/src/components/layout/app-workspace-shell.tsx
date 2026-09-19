@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -24,13 +24,14 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const tool = navigationToolForPathname(pathname);
     const fullscreen = isFullscreenWorkspacePath(pathname);
     const rootSlug = pathname.split("/").filter(Boolean)[0] || "";
+    const isCreateRoute = rootSlug === "create";
 
     if (fullscreen) return <div className="h-dvh min-h-0 overflow-hidden">{children}</div>;
 
     return (
-        <div className="workspace-shell flex h-dvh min-h-0 overflow-hidden bg-white text-foreground dark:bg-[#111316]">
+        <div className={cn("workspace-shell flex h-dvh min-h-0 overflow-hidden bg-white text-foreground dark:bg-[#111316]", isCreateRoute && "is-create-workspace")}>
             <AppSidebar activeToolSlug={tool?.slug} expanded={sidebarExpanded} />
-            <div className={cn("workspace-main-column flex min-w-0 flex-1 flex-col overflow-hidden", rootSlug === "create" && "is-create-route")}>
+            <div className={cn("workspace-main-column flex min-w-0 flex-1 flex-col overflow-hidden", isCreateRoute && "is-create-route")}>
                 <header className="workspace-header relative z-30 flex h-14 shrink-0 items-center justify-between gap-3 bg-transparent px-3 sm:px-4 lg:px-5">
                     <div className="workspace-header-left flex min-w-0 items-center gap-2">
                         <button
@@ -42,7 +43,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                         >
                             <Menu className="size-5" />
                         </button>
-                        <Link href="/create" className="inline-flex shrink-0 items-center lg:hidden" aria-label={siteTitle}>
+                        <Link href="/" className="inline-flex shrink-0 items-center lg:hidden" aria-label={siteTitle}>
                             <SiteLogo logoUrl={site.logoUrl} className="size-6" />
                         </Link>
                         <button
@@ -56,6 +57,13 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                             {sidebarExpanded ? <PanelLeftClose className="size-[17px]" /> : <PanelLeftOpen className="size-[17px]" />}
                         </button>
                     </div>
+                    {isCreateRoute ? (
+                        <label className="create-workspace-search hidden min-w-0 flex-1 items-center gap-2 lg:flex" data-testid="create-workspace-search">
+                            <Search aria-hidden="true" className="size-4 shrink-0" />
+                            <input type="search" aria-label="搜索作品、素材、提示词" placeholder="搜索作品、素材、提示词..." />
+                            <kbd>⌘ K</kbd>
+                        </label>
+                    ) : null}
                     <div className="workspace-header-actions min-w-0 max-w-[calc(100vw-6.5rem)] shrink-0 overflow-visible sm:max-w-[calc(100vw-8rem)] lg:max-w-none">
                         <UserStatusActions />
                     </div>

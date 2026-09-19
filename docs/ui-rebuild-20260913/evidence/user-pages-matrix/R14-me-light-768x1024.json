@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/me",
+  "actualPath": "/me",
+  "responseStatus": 200,
+  "route": "/me",
+  "theme": "light",
+  "title": "我的账户 | dreamyo",
+  "heading": "E2E 管理员",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 56,
+    "width": 768,
+    "height": 968
+  },
+  "overflow": false,
+  "state": "我的账户",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

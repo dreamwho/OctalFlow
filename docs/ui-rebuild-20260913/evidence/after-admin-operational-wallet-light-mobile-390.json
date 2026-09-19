@@ -1,0 +1,20 @@
+{
+  "route": "/admin?section=wallet",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "theme": "light",
+  "entityVisible": true,
+  "card": {
+    "left": 14,
+    "top": 414.640625,
+    "width": 362,
+    "height": 689
+  },
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "state": "隔离真实后台实体/配置已加载",
+  "entity": "财务口径说明"
+}

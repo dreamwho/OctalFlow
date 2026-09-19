@@ -1,11 +1,23 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { canvasThemes } from "@/lib/canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 import { CanvasNode, resolveNodeMetaScale, resolveNodeResolutionOpacity, resolvePromptPanelLayout } from "./canvas-node";
 import { NodeContent } from "./canvas-node-content";
+
+// zustand resolves server renders from `getInitialState()`, so static markup can
+// never observe `setState`. Pin the theme scope directly to keep both branches testable.
+const mockedTheme = vi.hoisted(() => ({ current: "light" as "light" | "dark" }));
+
+vi.mock("@/stores/use-theme-store", () => ({
+    useThemeStore: <T,>(selector: (state: { theme: "light" | "dark" }) => T) => selector({ theme: mockedTheme.current }),
+    useAdminThemeStore: <T,>(selector: (state: { theme: "light" | "dark" }) => T) => selector({ theme: mockedTheme.current }),
+}));
+
+beforeEach(() => {
+    mockedTheme.current = "light";
+});
 
 const imageNode: CanvasNodeData = {
     id: "generated-image",
@@ -64,7 +76,9 @@ function renderContent(node: CanvasNodeData, theme: (typeof canvasThemes)[keyof 
 }
 
 describe("CanvasNode image border", () => {
-    beforeEach(() => useThemeStore.setState({ theme: "light" }));
+    beforeEach(() => {
+        mockedTheme.current = "light";
+    });
 
     it("uses the themed card border for an idle generated image", () => {
         const markup = renderImageNode();
@@ -81,10 +95,11 @@ describe("CanvasNode image border", () => {
         expect(markup).toContain("data-canvas-node-selection-flow");
         expect(markup).toContain("border-color:transparent");
         expect(markup).not.toContain("0 0 0 1px rgba(103,232,249,.45)");
-        expect(markup).toContain("#67e8f9");
-        expect(markup).toContain("#5f85ff");
-        expect(markup).toContain("#8b7dff");
-        expect(markup).toContain('x="0.8" y="0.8" width="98.4" height="98.4"');
+        expect(markup).toContain("#35cce1");
+        expect(markup).toContain("#5e7ff1");
+        expect(markup).toContain("#b9b3f7");
+        expect(markup).toContain("absolute -inset-px");
+        expect(markup).not.toContain('x="0.8" y="0.8" width="98.4" height="98.4"');
     });
 
     it("progressively reduces node title metadata after the canvas is zoomed out", () => {

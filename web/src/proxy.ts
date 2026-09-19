@@ -46,7 +46,10 @@ function securedJsonResponse(body: unknown, status: number, contentSecurityPolic
 
 function buildContentSecurityPolicy(nonce: string, host: string, protocol: string) {
     const isDev = process.env.NODE_ENV !== "production";
-    const hostname = host.toLowerCase().replace(/^\[([^\]]+)\](?::\d+)?$/, "$1").replace(/:\d+$/, "");
+    const hostname = host
+        .toLowerCase()
+        .replace(/^\[([^\]]+)\](?::\d+)?$/, "$1")
+        .replace(/:\d+$/, "");
     const localCanvasHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
     return [
         "default-src 'self'",

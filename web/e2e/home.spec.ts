@@ -1,3 +1,6 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import { expect, test, type Page } from "@playwright/test";
 
 const galleryResponse = {
@@ -60,7 +63,6 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
     await expect(galleryPreview.getByRole("img", { name: "首页公开作品 1" })).toBeVisible();
     await galleryPreview.getByRole("button", { name: "Close" }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator("header").getByRole("button", { name: "登录", exact: true })).toHaveCount(0);
     await expect(page.getByText("登录后使用 AI 创作", { exact: true })).toHaveCount(0);
     const menuButton = page.getByRole("button", { name: "打开导航菜单" });
     await expect(menuButton).toBeVisible();
@@ -68,22 +70,22 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
     await menuButton.click();
     const headerNavigation = page.getByRole("navigation", { name: "首页导航菜单" });
     await expect(headerNavigation).toBeVisible();
-    await expect(headerNavigation.getByRole("link", { name: "发现" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("link", { name: "首页", exact: true })).toHaveCount(1);
     await expect(headerNavigation.getByRole("button", { name: "创作" })).toHaveCount(1);
-    await expect(headerNavigation.getByRole("button", { name: "资产" })).toHaveCount(1);
-    await expect(headerNavigation.getByRole("button", { name: "Skill" })).toHaveCount(1);
-    await expect(headerNavigation.getByRole("button", { name: "价格" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("button", { name: "无限画布" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("link", { name: "作品广场" })).toHaveCount(1);
+    await expect(headerNavigation.getByRole("button", { name: "定价" })).toHaveCount(1);
     if (testInfo.project.name === "chromium") {
         await page.getByRole("button", { name: "关闭导航菜单" }).click();
         await page
             .locator("header")
-            .getByRole("button", { name: /立即体验/ })
+            .getByRole("button", { name: "登录", exact: true })
             .click();
         await expect(page.getByRole("dialog")).toBeVisible();
         await page.getByRole("button", { name: "Close" }).click();
 
         await menuButton.click();
-        await headerNavigation.getByRole("button", { name: "价格" }).click();
+        await headerNavigation.getByRole("button", { name: "定价" }).click();
         const plansDialog = page.getByRole("dialog");
         await expect(plansDialog.getByText("升级创作套餐", { exact: true })).toBeVisible();
         await expect(plansDialog.getByText("暂无已上架套餐", { exact: true })).toBeVisible();
@@ -97,22 +99,16 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
     expect(new URL(galleryRequest).searchParams.get("limit")).toBe("18");
     expect(new URL(galleryRequest).searchParams.get("sort")).toBe("random");
 
-    const prompt = page.getByLabel("描述你想创作的内容");
-    await prompt.fill("测试首页创作输入");
-    await page.getByRole("button", { name: "生成一张科幻城市概念图" }).click();
-    await expect(prompt).toHaveValue("生成一张科幻城市概念图");
-    await page.getByRole("button", { name: "AI 绘图" }).click();
-    await expect(page.getByRole("button", { name: "AI 绘图" })).toHaveAttribute("aria-pressed", "true");
-    await expect(prompt).toHaveAttribute("placeholder", "描述你想创作的内容，比如：");
-    await page.getByRole("button", { name: "生成电影感的未来城市概念图" }).click();
-    await expect(prompt).toHaveValue("生成电影感的未来城市概念图");
-    await expect(page.getByLabel("创作模式").getByRole("button")).toHaveCount(4);
-    await expect(page.getByRole("button", { name: "智能模式" })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "智能规划" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Agent 模式" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "AI 写作" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "AI 脚本" })).toHaveCount(0);
-
+    const prompt = page.locator('textarea[aria-label="描述你想创作的内容"]:visible').first();
+    await expect(prompt).toHaveAttribute("placeholder", /^描述你想创作的内容，比如：生成一张科幻城市概念图/);
+    const modeTrigger = page.getByRole("button", { name: "当前创作模式：智能模式" });
+    await expect(modeTrigger).toBeVisible();
+    await modeTrigger.click();
+    const modePicker = page.getByTestId("home-mode-picker");
+    await expect(modePicker.getByRole("button")).toHaveCount(4);
+    await modePicker.getByRole("button", { name: /AI 绘图/ }).click();
+    await expect(page.getByRole("button", { name: "当前创作模式：AI 绘图" })).toBeVisible();
+    await expect(prompt).toHaveAttribute("placeholder", /^描述你想创作的内容，比如：生成电影感的未来城市概念图/);
     await expect(page.getByRole("button", { name: "使用麦克风" })).toHaveCount(0);
     if (testInfo.project.name === "chromium") {
         await prompt.focus();
@@ -122,6 +118,9 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
         expect(await prompt.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
 
         const send = page.getByRole("button", { name: "开始创作" });
+        await expect(send).toHaveAttribute("data-generation-action", "true");
+        await expect(send.locator(".generation-action-button__glyph")).toHaveCount(1);
+        await expect(send.locator(".generation-action-button__label")).toHaveText("开始创作");
         await send.hover();
         const sendStyle = await send.evaluate((element) => ({
             backgroundImage: getComputedStyle(element).backgroundImage,
@@ -146,11 +145,6 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
         await expect(dialog).toBeHidden();
     }
     await expect(page.locator('input[type="file"][accept*="image"]')).toHaveCount(1);
-
-    await expect(page.getByRole("heading", { name: "简单四步，创意即刻落地" })).toBeVisible();
-    for (const title of ["选择场景", "输入需求", "生成内容", "发布与分享"]) await expect(page.getByRole("heading", { name: title })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "开启你的 AI 创作工作流" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "行业场景解决方案" })).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "产品" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "平台" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "解决方案" })).toHaveCount(0);
@@ -190,7 +184,7 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
     await page.getByRole("button", { name: "切换到深色主题" }).click();
     await expect(page.locator("html")).toHaveClass(/dark/);
     if (testInfo.project.name === "chromium") {
-        const attach = page.getByRole("button", { name: "进入创作页添加参考素材" });
+        const attach = page.getByRole("button", { name: "参考素材" });
         const send = page.getByRole("button", { name: "开始创作" });
         const [attachStyle, sendStyle] = await Promise.all([
             attach.evaluate((element) => ({ backgroundImage: getComputedStyle(element).backgroundImage, borderColor: getComputedStyle(element).borderColor, color: getComputedStyle(element).color })),
@@ -211,11 +205,9 @@ test("public homepage is functional for signed-out visitors", async ({ browser }
 test("signed-in homepage restores the selected creation mode and prompt", async ({ page }, testInfo) => {
     await page.route("**/api/public/gallery?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(galleryResponse) }));
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const createEntry = page.locator("header").getByRole("button", { name: "开始创作", exact: true });
-    if (testInfo.project.name === "chromium") await expect(createEntry).toBeVisible();
-    else await expect(createEntry).toHaveCount(0);
-    await expect(page.locator("header").getByRole("button", { name: /用户|账号|头像/ })).toHaveCount(0);
-    await page.getByRole("button", { name: "AI 绘图" }).click();
+    await expect(page.locator("header").getByRole("button", { name: "打开个人中心" })).toBeVisible();
+    await page.getByRole("button", { name: "当前创作模式：智能模式" }).click();
+    await page.getByTestId("home-mode-picker").getByRole("button", { name: /AI 绘图/ }).click();
     await page.getByLabel("描述你想创作的内容").fill("已登录首页图片提示词");
     await page.getByTestId("home-agent-card").getByRole("button", { name: "开始创作" }).click();
     await expect(page).toHaveURL(/\/create(?:#.*)?$/);
@@ -249,22 +241,19 @@ test("homepage hero stays centered and responsive", async ({ page }, testInfo) =
         const card = document.querySelector<HTMLElement>('[data-testid="home-agent-card"]')!.getBoundingClientRect();
         const halo = document.querySelector<HTMLElement>('[data-testid="home-agent-halo"]')!.getBoundingClientRect();
         const textarea = document.querySelector<HTMLElement>("#home-agent-prompt")!.getBoundingClientRect();
-        const presetsElement = document.querySelector<HTMLElement>('[aria-label="示例提示词"]')!;
-        const presets = presetsElement.getBoundingClientRect();
-        const presetButtons = Array.from(presetsElement.querySelectorAll<HTMLButtonElement>("button"));
-        const presetButtonRects = presetButtons.map((button) => button.getBoundingClientRect());
-        const creationModesElement = document.querySelector<HTMLElement>('[aria-label="创作模式"]')!;
-        const creationModes = creationModesElement.getBoundingClientRect();
-        const toolbarElement = creationModesElement.parentElement!;
+        const sendElement = document.querySelector<HTMLElement>('button[aria-label="开始创作"]')!;
+        const send = sendElement.getBoundingClientRect();
+        const toolbarElement = sendElement.closest("div")!.parentElement!;
         const toolbar = toolbarElement.getBoundingClientRect();
-        const send = document.querySelector<HTMLElement>('button[aria-label="开始创作"]')!.getBoundingClientRect();
-        const mobileToolbarButtons = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button")).map((button) => button.getBoundingClientRect());
+        const toolbarButtons = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button"));
+        const toolbarButtonRects = toolbarButtons.map((button) => button.getBoundingClientRect());
         const cardRadius = Number.parseFloat(getComputedStyle(document.querySelector<HTMLElement>('[data-testid="home-agent-card"]')!).borderRadius);
         const rings = Array.from(document.querySelectorAll<HTMLElement>("[data-halo-ring]"));
         const decorations = Array.from(document.querySelectorAll<HTMLElement>("[data-hero-decoration]"));
         return {
             viewportWidth,
             titleCenterOffset: Math.abs(title.left + title.width / 2 - viewportWidth / 2),
+            subtitleCenterOffset: Math.abs(subtitle.left + subtitle.width / 2 - viewportWidth / 2),
             cardCenterOffset: Math.abs(card.left + card.width / 2 - viewportWidth / 2),
             cardWidth: card.width,
             cardHeight: card.height,
@@ -274,91 +263,92 @@ test("homepage hero stays centered and responsive", async ({ page }, testInfo) =
             haloTop: halo.top,
             cardBottom: card.bottom,
             textareaHeight: textarea.height,
-            presetOffset: presets.top - textarea.bottom,
-            presetButtonsInsideCard: presetButtonRects.every((button) => button.left >= card.left && button.right <= card.right && button.top >= card.top && button.bottom <= card.bottom),
-            presetColumnCount: new Set(presetButtonRects.map((button) => Math.round(button.left))).size,
-            presetRowCount: new Set(presetButtonRects.map((button) => Math.round(button.top))).size,
-            presetsFitWithoutScroll: presetsElement.scrollWidth <= presetsElement.clientWidth + 1,
-            visiblePresetCount: presetButtons.filter((button) => {
-                const style = getComputedStyle(button);
-                const bounds = button.getBoundingClientRect();
-                return style.display !== "none" && bounds.width > 0 && bounds.height > 0 && Boolean(button.textContent?.trim());
-            }).length,
-            toolbarOffset: toolbar.top - presets.bottom,
+            toolbarOffset: toolbar.top - textarea.bottom,
             sendInset: card.right - send.right,
             sendVisible: send.width >= 42 && send.height >= 42,
             filledRingCount: rings.filter((ring) => getComputedStyle(ring).backgroundImage !== "none").length,
             borderOnlyRingCount: rings.filter((ring) => Number.parseFloat(getComputedStyle(ring).borderTopWidth) > 0 && getComputedStyle(ring).backgroundImage === "none").length,
             decorationCount: decorations.length,
-            decorationSizeCount: new Set(
-                decorations.map((decoration) => {
-                    const bounds = decoration.getBoundingClientRect();
-                    return `${Math.round(bounds.width)}x${Math.round(bounds.height)}`;
-                }),
-            ).size,
-            polygonDecorationCount: decorations.filter((decoration) => getComputedStyle(decoration).clipPath !== "none").length,
-            animatedDecorationCount: decorations.filter((decoration) => getComputedStyle(decoration).animationName !== "none").length,
-            visibleDecorationCount: decorations.filter((decoration) => getComputedStyle(decoration).display !== "none").length,
-            decorationSubtitleOverlapCount: decorations.filter((decoration) => getComputedStyle(decoration).display !== "none" && decoration.getBoundingClientRect().top < subtitle.bottom).length,
-            mobileToolbarButtonCount: mobileToolbarButtons.length,
-            mobileToolbarButtonsInsideCard: mobileToolbarButtons.every((button) => button.left >= card.left && button.right <= card.right && button.top >= card.top && button.bottom <= card.bottom),
-            mobileToolbarRowSpread: Math.max(...mobileToolbarButtons.map((button) => button.top)) - Math.min(...mobileToolbarButtons.map((button) => button.top)),
-            visibleModeLabelCount: Array.from(creationModesElement.querySelectorAll<HTMLElement>("span:last-child")).filter((label) => getComputedStyle(label).display !== "none").length,
-            sequencedDecorationCount: decorations.filter((decoration) => getComputedStyle(decoration).animationName.includes("artifact-reveal") && getComputedStyle(decoration).animationName.includes("artifact-float")).length,
-            shadowedDecorationCount: decorations.filter((decoration) => {
-                const face = decoration.firstElementChild as HTMLElement | null;
-                return getComputedStyle(decoration).boxShadow !== "none" || getComputedStyle(decoration, "::before").boxShadow !== "none" || (face ? getComputedStyle(face).boxShadow !== "none" : false);
-            }).length,
-            castShadowDecorationCount: decorations.filter((decoration) => getComputedStyle(decoration, "::after").content !== "none").length,
+            mobileToolbarButtonCount: toolbarButtons.length,
+            mobileToolbarButtonsInsideCard: toolbarButtonRects.every((button) => button.left >= card.left && button.right <= card.right && button.top >= card.top && button.bottom <= card.bottom),
+            mobileToolbarMaxRight: Math.max(...toolbarButtonRects.map((button) => button.right)),
         };
     });
     expect(geometry.titleCenterOffset).toBeLessThanOrEqual(2);
+    expect(geometry.subtitleCenterOffset).toBeLessThanOrEqual(2);
     expect(geometry.cardCenterOffset).toBeLessThanOrEqual(2);
     expect(geometry.cardWidth).toBeLessThanOrEqual(geometry.viewportWidth - (geometry.viewportWidth < 768 ? 24 : 48));
     if (testInfo.project.name === "chromium") {
-        expect(geometry.cardWidth).toBeGreaterThanOrEqual(1080);
-        expect(geometry.cardWidth).toBeLessThanOrEqual(1120);
-        expect(geometry.cardHeight).toBeGreaterThanOrEqual(258);
-        expect(geometry.cardHeight).toBeLessThanOrEqual(266);
-        expect(geometry.cardRadius).toBeGreaterThanOrEqual(28);
-        expect(geometry.cardRadius).toBeLessThanOrEqual(32);
+        expect(geometry.cardWidth).toBeGreaterThanOrEqual(1040);
+        expect(geometry.cardWidth).toBeLessThanOrEqual(1100);
+        expect(geometry.cardHeight).toBeGreaterThanOrEqual(130);
+        expect(geometry.cardHeight).toBeLessThanOrEqual(220);
+        expect(geometry.cardRadius).toBeGreaterThanOrEqual(20);
+        expect(geometry.cardRadius).toBeLessThanOrEqual(30);
         expect(geometry.haloCenterOffset).toBeLessThanOrEqual(1);
         expect(geometry.haloWidthRatio).toBeGreaterThan(1.2);
         expect(geometry.haloWidthRatio).toBeLessThan(2);
         expect(geometry.haloTop).toBeLessThan(geometry.cardBottom);
-        expect(geometry.textareaHeight).toBeGreaterThanOrEqual(68);
-        expect(geometry.presetOffset).toBe(0);
-        expect(geometry.toolbarOffset).toBeGreaterThanOrEqual(28);
-        expect(geometry.toolbarOffset).toBeLessThanOrEqual(32);
-        expect(geometry.sendInset).toBeGreaterThanOrEqual(27);
+        expect(geometry.textareaHeight).toBeGreaterThanOrEqual(40);
+        expect(geometry.toolbarOffset).toBeGreaterThanOrEqual(8);
+        expect(geometry.sendInset).toBeGreaterThanOrEqual(16);
         expect(geometry.filledRingCount).toBe(4);
         expect(geometry.borderOnlyRingCount).toBe(0);
         expect(geometry.decorationCount).toBe(0);
-        expect(geometry.decorationSizeCount).toBe(0);
-        expect(geometry.polygonDecorationCount).toBe(0);
-        expect(geometry.animatedDecorationCount).toBe(0);
-        expect(geometry.sequencedDecorationCount).toBe(0);
-        expect(geometry.shadowedDecorationCount).toBe(0);
-        expect(geometry.castShadowDecorationCount).toBe(0);
     }
     if (testInfo.project.name.startsWith("mobile-")) {
-        expect(geometry.visiblePresetCount).toBe(0);
-        expect(geometry.presetButtonsInsideCard).toBe(true);
-        expect(geometry.presetColumnCount).toBe(1);
-        expect(geometry.presetRowCount).toBe(1);
-        expect(geometry.presetsFitWithoutScroll).toBe(true);
-        expect(geometry.visibleDecorationCount).toBe(0);
-        expect(geometry.decorationSubtitleOverlapCount).toBe(0);
         expect(geometry.mobileToolbarButtonCount).toBe(5);
         expect(geometry.mobileToolbarButtonsInsideCard).toBe(true);
-        expect(geometry.mobileToolbarRowSpread).toBeLessThanOrEqual(3);
-        expect(geometry.visibleModeLabelCount).toBe(0);
+        expect(geometry.mobileToolbarMaxRight).toBeLessThanOrEqual(geometry.viewportWidth);
     }
     expect(geometry.sendVisible).toBe(true);
     await expectNoHorizontalOverflow(page);
 });
 
-test("front-end and administrator theme choices remain independent", async ({ page }) => {
+test("homepage dark composer keeps entered text and caret readable", async ({ page }, testInfo) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "dark" }, version: 0 })));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    const prompt = page.locator('textarea[aria-label="描述你想创作的内容"]:visible').first();
+    await prompt.fill("暗色主题真实输入可读性验收");
+    const style = await prompt.evaluate((element) => {
+        const computed = getComputedStyle(element);
+        const panel = element.closest('[data-testid="home-agent-card"]');
+        const panelStyle = panel ? getComputedStyle(panel) : null;
+        return {
+            color: computed.color,
+            fill: computed.webkitTextFillColor,
+            caret: computed.caretColor,
+            background: panelStyle?.backgroundColor || "",
+            text: element.value,
+        };
+    });
+    expect(style.text).toBe("暗色主题真实输入可读性验收");
+    expect(style.color).toBe("rgb(35, 61, 115)");
+    expect(style.fill).toBe("rgb(35, 61, 115)");
+    expect(style.caret).toBe("rgb(53, 204, 225)");
+    expect(style.background).toContain("rgba(245, 250, 255");
+
+    const viewport = await page.evaluate(() => ({
+        width: innerWidth,
+        height: innerHeight,
+        visualWidth: visualViewport?.width || 0,
+        visualHeight: visualViewport?.height || 0,
+        zoom: visualViewport?.scale || 1,
+    }));
+    const evidenceRoot = path.resolve(process.cwd(), "../docs/ui-rebuild-20260913/evidence");
+    const stem = `after-home-dark-composer-${testInfo.project.name}`;
+    await mkdir(evidenceRoot, { recursive: true });
+    await page.screenshot({ path: path.join(evidenceRoot, `${stem}.png`), fullPage: false });
+    await writeFile(
+        path.join(evidenceRoot, `${stem}.json`),
+        `${JSON.stringify({ route: "/", theme: "dark", viewport, state: "暗色主题真实输入与光标", text: style.text, colors: { text: style.color, webkitTextFill: style.fill, caret: style.caret, panel: style.background }, buildId: (await readFile(path.resolve(process.cwd(), ".next/BUILD_ID"), "utf8")).trim() }, null, 2)}\n`,
+        "utf8",
+    );
+});
+
+test("front-end and administrator theme choices remain independent", async ({ page, context }, testInfo) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
         localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: "light" }, version: 0 }));
@@ -370,18 +360,50 @@ test("front-end and administrator theme choices remain independent", async ({ pa
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expect.poll(() => storedThemes(page)).toEqual({ frontend: "dark", admin: "light" });
 
+    const peer = await context.newPage();
+    try {
+        await peer.goto("/", { waitUntil: "domcontentloaded" });
+        await expect(peer.locator("html")).toHaveClass(/dark/);
+        await peer.getByRole("button", { name: "切换到浅色主题" }).click();
+        await expect(peer.locator("html")).not.toHaveClass(/dark/);
+        await expect.poll(() => page.locator("html").getAttribute("class")).not.toMatch(/dark/);
+        await expect.poll(() => storedThemes(page)).toEqual({ frontend: "light", admin: "light" });
+    } finally {
+        await peer.close();
+    }
+
     await page.goto("/admin", { waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).not.toHaveClass(/dark/);
     await page.getByRole("button", { name: "切换到深色主题" }).click();
     await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect.poll(() => storedThemes(page)).toEqual({ frontend: "light", admin: "dark" });
     await page.getByRole("button", { name: "切换到浅色主题" }).click();
     await expect(page.locator("html")).not.toHaveClass(/dark/);
-    await expect.poll(() => storedThemes(page)).toEqual({ frontend: "dark", admin: "light" });
+    await expect.poll(() => storedThemes(page)).toEqual({ frontend: "light", admin: "light" });
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).not.toHaveClass(/dark/);
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+
+    const measurement = await page.evaluate(() => ({
+        route: location.pathname,
+        theme: document.documentElement.classList.contains("dark") ? "dark" : "light",
+        viewport: { width: innerWidth, height: innerHeight, visualWidth: visualViewport?.width || 0, visualHeight: visualViewport?.height || 0, zoom: visualViewport?.scale || 1 },
+        stored: {
+            frontend: JSON.parse(localStorage.getItem("dreamyo:theme_store") || "{}").state?.theme,
+            admin: JSON.parse(localStorage.getItem("dreamyo:admin_theme_store") || "{}").state?.theme,
+        },
+        crossTabSync: "frontend theme synchronized through peer tab while admin scope remained independent",
+    }));
+    const root = path.resolve(process.cwd(), "../docs/ui-rebuild-20260913/evidence");
+    await mkdir(root, { recursive: true });
+    await page.screenshot({ path: path.join(root, `after-theme-scope-cross-tab-${testInfo.project.name}.png`), fullPage: false });
+    await writeFile(
+        path.join(root, `after-theme-scope-cross-tab-${testInfo.project.name}.json`),
+        `${JSON.stringify({ ...measurement, state: "前台/后台主题作用域跨页刷新与跨标签同步", buildId: (await readFile(path.resolve(process.cwd(), ".next/BUILD_ID"), "utf8")).trim(), capturedAt: new Date().toISOString() }, null, 2)}\n`,
+        "utf8",
+    );
 });
 
 function galleryItem(index: number, mediaType: "image" | "video", sourceType: "media" | "canvas" | "drama", category: string) {

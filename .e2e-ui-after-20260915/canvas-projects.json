@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "project": {
+        "id": "canvas-ui-after-20260915",
+        "creativeConversationId": "conversation-ui-after-20260915",
+        "title": "Canvas 提示词混排验收",
+        "createdAt": "2026-09-15T15:40:00.000Z",
+        "updatedAt": "2026-09-16T08:39:00.789Z",
+        "nodes": [
+          {
+            "id": "image-ui-reference-20260915",
+            "type": "image",
+            "title": "参考图片",
+            "position": {
+              "x": -350,
+              "y": 219.32416267942585
+            },
+            "width": 340,
+            "height": 191.35167464114832,
+            "metadata": {
+              "content": "/brand/dreamyo/flow-light.png",
+              "status": "success",
+              "naturalWidth": 1672,
+              "naturalHeight": 941,
+              "mimeType": "image/png"
+            }
+          },
+          {
+            "id": "image-ui-target-20260915",
+            "type": "image",
+            "title": "图片生成",
+            "position": {
+              "x": 170,
+              "y": 244.375
+            },
+            "width": 340,
+            "height": 191.25,
+            "metadata": {
+              "content": "",
+              "status": "idle",
+              "prompt": "请帮我生成一个  @图片1 ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。",
+              "selectedSkillIds": [
+                "yanai-natural-beauty",
+                "portrait-realism-messy-hair"
+              ],
+              "size": "16:9",
+              "sizeUserSelected": true,
+              "quality": "high",
+              "count": 2,
+              "promptSkillPositions": [
+                {
+                  "id": "portrait-realism-messy-hair",
+                  "start": 8,
+                  "end": 8
+                },
+                {
+                  "id": "yanai-natural-beauty",
+                  "start": 43,
+                  "end": 43
+                }
+              ]
+            }
+          },
+          {
+            "id": "video-D8RGmgReHJO-XcM11uzq-",
+            "type": "video",
+            "title": "视频生成",
+            "position": {
+              "x": -349.77777777777777,
+              "y": 454.67583732057415
+            },
+            "width": 419.55555555555554,
+            "height": 236,
+            "metadata": {
+              "content": "",
+              "status": "idle",
+              "videoReferenceMode": "reference",
+              "size": "16:9",
+              "vquality": "1080",
+              "seconds": "10",
+              "watermark": "true"
+            }
+          },
+          {
+            "id": "audio-P-btoqpnqQonz1FT2eUN_",
+            "type": "audio",
+            "title": "音频",
+            "position": {
+              "x": -734,
+              "y": 219.32416267942585
+            },
+            "width": 340,
+            "height": 210,
+            "metadata": {
+              "content": "",
+              "status": "idle",
+              "model": "speech-2.8-hd"
+            }
+          },
+          {
+            "id": "config-7RqKIvsWhiklhFcpPEj_z",
+            "type": "config",
+            "title": "生成配置",
+            "position": {
+              "x": -1258,
+              "y": 219.32416267942585
+            },
+            "width": 480,
+            "height": 252,
+            "metadata": {
+              "content": "",
+              "status": "idle",
+              "generationMode": "image",
+              "configDetailsOpen": false,
+              "model": "",
+              "size": "1:1",
+              "count": 1,
+              "audioMode": "tts",
+              "audioSpeed": "1",
+              "audioVolume": "1",
+              "audioPitch": "0",
+              "audioEmotion": "",
+              "audioFormat": "mp3"
+            }
+          }
+        ],
+        "connections": [
+          {
+            "id": "connection-ui-reference-target",
+            "fromNodeId": "image-ui-reference-20260915",
+            "toNodeId": "image-ui-target-20260915"
+          }
+        ],
+        "chatSessions": [],
+        "activeChatId": null,
+        "backgroundMode": "dots",
+        "showImageInfo": false,
+        "viewport": {
+          "x": 1204,
+          "y": -88.32416267942585,
+          "k": 1
+        },
+        "__canvasLastMutationId": "StUQxDAPsc91Ma0Q1610m"
+      }
+    }
+  ]
+}

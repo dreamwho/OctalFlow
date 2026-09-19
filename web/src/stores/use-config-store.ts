@@ -17,6 +17,7 @@ type SystemChannelProtocol =
     | "yumeng"
     | "gemini"
     | "geminiai"
+    | "dola"
     | "gemini-tools"
     | "chatgpt-api"
     | "dreamina-cli"

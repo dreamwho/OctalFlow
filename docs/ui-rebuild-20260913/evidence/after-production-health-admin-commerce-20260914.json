@@ -1,0 +1,76 @@
+{
+  "buildId": "BH8vDXqDuJ-_iM8qy9hyl",
+  "base": "http://127.0.0.1:4333",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/json",
+      "bytes": 0
+    },
+    {
+      "path": "/api/health/live",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/json",
+      "bytes": 0
+    },
+    {
+      "path": "/api/health/ready",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/json",
+      "bytes": 0
+    },
+    {
+      "path": "/brand/dreamyo/generation/button-surface.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 1937006
+    },
+    {
+      "path": "/brand/dreamyo/generation/generate-glyph.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 2427
+    },
+    {
+      "path": "/brand/dreamyo/flow-light.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 1183317
+    },
+    {
+      "path": "/brand/dreamyo/flow-dark.png",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/png",
+      "bytes": 1244215
+    },
+    {
+      "path": "/logo.svg",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    {
+      "path": "/icon.svg",
+      "status": 200,
+      "ok": true,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200,
+      "ok": true,
+      "contentType": "application/manifest+json",
+      "bytes": 0
+    }
+  ]
+}

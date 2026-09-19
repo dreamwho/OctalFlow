@@ -1,0 +1,68 @@
+{
+  "route": "standalone health and current-build B01/C01 asset probe",
+  "buildId": "nSTS_Kms_ikgtSS2hh3wH",
+  "base": "http://127.0.0.1:3210",
+  "checkedAt": "2026-09-14T13:28:53.184396+00:00",
+  "responses": {
+    "/api/health": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 54
+    },
+    "/api/health/live": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 59
+    },
+    "/api/health/ready": {
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 293
+    },
+    "/brand/dreamyo/generation/button-surface.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1937006
+    },
+    "/brand/dreamyo/generation/generate-glyph.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 2427
+    },
+    "/brand/dreamyo/generation/manifest.json": {
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8",
+      "bytes": 619
+    },
+    "/brand/dreamyo/flow-light.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1183317
+    },
+    "/brand/dreamyo/flow-dark.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1244215
+    },
+    "/brand/dreamyo/mark.png": {
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 482026
+    },
+    "/logo.svg": {
+      "status": 200,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    "/icon.svg": {
+      "status": 200,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    "/manifest.webmanifest": {
+      "status": 200,
+      "contentType": "application/manifest+json",
+      "bytes": 354
+    }
+  }
+}

@@ -1,44 +1,45 @@
 .generation-action-button.ant-btn {
     position: relative;
     isolation: isolate;
+    display: inline-flex !important;
+    box-sizing: border-box;
+    align-items: center !important;
+    justify-content: center;
+    flex-wrap: nowrap !important;
+    min-height: 44px;
     overflow: hidden;
-    border: 1px solid rgba(196, 181, 253, 0.72) !important;
-    background: linear-gradient(118deg, #7c3aed 0%, #5b5ce2 48%, #2563eb 100%) !important;
-    background-size: 180% 180% !important;
-    color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.76) !important;
+    border-radius: 14px !important;
+    /* B01's transparent surface is layered over the C01 gradient. It is sized
+     * to the actual button box so the source glow and inner rim stay intact;
+     * compact icon controls keep the CSS gradient only and are never cropped. */
+    background-color: #5e7ff1 !important;
+    background-image: url("/brand/dreamyo/generation/button-surface.png"), linear-gradient(108deg, #5e7ff1 0%, #35cce1 52%, #58dec9 74%, #b9b3f7 100%) !important;
+    background-position: center, center;
+    background-repeat: no-repeat;
+    background-size:
+        100% 100%,
+        100% 100%;
+    color: #ffffff !important;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.38),
-        0 8px 20px rgba(79, 70, 229, 0.24),
-        0 0 0 1px rgba(99, 102, 241, 0.12) !important;
-    text-shadow: 0 1px 1px rgba(30, 41, 59, 0.2);
+        0 10px 24px rgba(66, 117, 235, 0.27),
+        inset 0 1px 0 rgba(255, 255, 255, 0.36) !important;
+    text-shadow: 0 1px 2px rgba(34, 47, 99, 0.24);
     transition:
-        transform 180ms ease,
-        box-shadow 220ms ease,
-        filter 220ms ease !important;
-}
-
-.generation-action-button.ant-btn::before {
-    position: absolute;
-    z-index: -1;
-    inset: 0;
-    background: linear-gradient(108deg, transparent 28%, rgba(255, 255, 255, 0.28) 48%, transparent 68%);
-    content: "";
-    pointer-events: none;
-    transform: translateX(-125%);
+        transform 160ms ease,
+        box-shadow 180ms ease,
+        filter 180ms ease !important;
+    white-space: nowrap !important;
 }
 
 .generation-action-button.ant-btn:not(:disabled):hover {
     color: #fff !important;
-    filter: saturate(1.06) brightness(1.04);
+    filter: saturate(1.08) brightness(1.05);
     transform: translateY(-1px);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.46),
-        0 11px 26px rgba(79, 70, 229, 0.3),
-        0 0 0 2px rgba(103, 232, 249, 0.16) !important;
-}
-
-.generation-action-button.ant-btn:not(:disabled):hover::before {
-    animation: generation-action-sheen 760ms ease-out;
+        0 14px 30px rgba(66, 117, 235, 0.34),
+        0 0 0 2px rgba(87, 223, 200, 0.18) !important;
 }
 
 .generation-action-button.ant-btn:not(:disabled):active {
@@ -51,25 +52,20 @@
     outline-offset: 2px;
 }
 
-.generation-action-button.ant-btn[data-state="ready"][data-appearance="primary"],
-.generation-action-button.ant-btn[data-state="ready"][data-appearance="icon"] {
-    animation: generation-action-ready 3.6s ease-in-out infinite;
-}
-
-.generation-action-button.ant-btn[data-state="ready"] .generation-action-button__icon {
-    animation: generation-action-icon 2.8s ease-in-out infinite;
-}
-
-.generation-action-button.ant-btn[data-state="running"] {
-    animation: generation-action-running 1.8s linear infinite;
-}
-
 .generation-action-button.ant-btn[data-tone="danger"] {
     border-color: rgba(253, 164, 175, 0.72) !important;
     background: linear-gradient(118deg, #e11d48 0%, #ef4444 52%, #f97316 100%) !important;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.34),
         0 8px 20px rgba(225, 29, 72, 0.22) !important;
+}
+
+.generation-action-button.ant-btn[data-appearance="icon"]:not([data-tone="danger"]) {
+    background-image: linear-gradient(108deg, #5e7ff1 0%, #35cce1 52%, #58dec9 74%, #b9b3f7 100%) !important;
+}
+
+.generation-action-button.ant-btn[data-state="running"] {
+    background: linear-gradient(108deg, #5872df 0%, #29bcd3 52%, #52cbb8 74%, #a8a1e5 100%) !important;
 }
 
 .generation-action-button.ant-btn[data-appearance="soft"] {
@@ -103,11 +99,29 @@
 }
 
 .generation-action-button.ant-btn[data-appearance="icon"] {
-    min-width: 3rem;
-    width: 3rem;
-    height: 2.5rem;
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
     padding-inline: 0 !important;
-    border-radius: 0.75rem !important;
+    border-radius: 13px !important;
+}
+
+/* Primary pill fits its own content ("生成 3") instead of the global 140px
+ * octal min-width; label/number/paddings define the final width. */
+button.generation-action-button.ant-btn.ant-btn-primary[data-appearance="primary"] {
+    min-width: 0 !important;
+    padding-inline: 18px !important;
+}
+
+.generation-action-button.ant-btn[data-density="compact"] {
+    min-height: 40px;
+}
+
+.generation-action-button.ant-btn[data-appearance="icon"][data-density="compact"] {
+    min-width: 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px !important;
 }
 
 .generation-action-button.ant-btn[data-state="disabled"] {
@@ -134,53 +148,18 @@
     justify-content: center;
 }
 
+.generation-action-button__icon {
+    min-width: 0;
+}
+
+.generation-action-button__glyph {
+    display: block;
+    flex: 0 0 auto;
+    object-fit: contain;
+}
+
 .generation-action-button__icon.is-spinning {
     animation: generation-action-spinner 0.9s linear infinite !important;
-}
-
-@keyframes generation-action-ready {
-    0%,
-    100% {
-        background-position: 0% 50%;
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.38),
-            0 7px 18px rgba(79, 70, 229, 0.2),
-            0 0 0 1px rgba(99, 102, 241, 0.1);
-    }
-    50% {
-        background-position: 100% 50%;
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.44),
-            0 10px 24px rgba(79, 70, 229, 0.3),
-            0 0 0 2px rgba(103, 232, 249, 0.12);
-    }
-}
-
-@keyframes generation-action-running {
-    to {
-        background-position: 180% 50%;
-    }
-}
-
-@keyframes generation-action-sheen {
-    from {
-        transform: translateX(-125%);
-    }
-    to {
-        transform: translateX(125%);
-    }
-}
-
-@keyframes generation-action-icon {
-    0%,
-    100% {
-        opacity: 0.92;
-        transform: scale(1) rotate(0deg);
-    }
-    50% {
-        opacity: 1;
-        transform: scale(1.08) rotate(5deg);
-    }
 }
 
 @keyframes generation-action-spinner {
@@ -191,7 +170,6 @@
 
 @media (prefers-reduced-motion: reduce) {
     .generation-action-button.ant-btn,
-    .generation-action-button.ant-btn::before,
     .generation-action-button.ant-btn .generation-action-button__icon {
         animation: none !important;
         transition-duration: 0.01ms !important;

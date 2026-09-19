@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/video",
+  "actualPath": "/create",
+  "responseStatus": 200,
+  "route": "/create",
+  "theme": "dark",
+  "title": "创作工作台 | dreamyo",
+  "heading": "从灵感，到完整作品",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "visualWidth": 1440,
+    "visualHeight": 900,
+    "zoom": 1
+  },
+  "main": {
+    "left": 168,
+    "top": 56,
+    "width": 1272,
+    "height": 844
+  },
+  "overflow": false,
+  "state": "视频入口重定向",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

@@ -1,0 +1,21 @@
+{
+  "route": "/login",
+  "theme": "dark",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "title": "登录 | dreamyo",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1280,
+    "height": 720
+  },
+  "logoSource": "",
+  "faviconHref": "http://127.0.0.1:3190/brand/dreamyo/mark.png",
+  "overflow": false,
+  "state": "登录表单入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

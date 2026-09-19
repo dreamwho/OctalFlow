@@ -11,14 +11,7 @@ import { ChatGptProxyManager } from "@/app/admin/chatgpt-api/components/chatgpt-
 
 const PAGE_SIZE = 50;
 
-const statusTone = (item: ChatGptLogSummary) =>
-    item.outcome === "success" || item.outcome === "partial_success"
-        ? "success"
-        : item.outcome === "failed"
-          ? "danger"
-          : item.outcome === "rate_limited"
-            ? "warning"
-            : "default";
+const statusTone = (item: ChatGptLogSummary) => (item.outcome === "success" || item.outcome === "partial_success" ? "success" : item.outcome === "failed" ? "danger" : item.outcome === "rate_limited" ? "warning" : "default");
 
 const statusLabel = (item: ChatGptLogSummary) => item.display_status || (item.outcome === "success" ? "成功" : item.outcome === "failed" ? "失败" : item.outcome === "rate_limited" ? "限流" : item.outcome || "未知");
 
@@ -26,7 +19,9 @@ function ProxyLogMeta({ proxy }: { proxy: NonNullable<ChatGptLogSummary["proxy_e
     const label = proxy.mode === "magic" ? "魔法代理" : "通用代理";
     return (
         <span className="inline-flex items-center gap-1">
-            <Tag color="geekblue" className="m-0">{label}</Tag>
+            <Tag color="geekblue" className="m-0">
+                {label}
+            </Tag>
             <span className="break-all text-xs text-zinc-500">{[proxy.node_name, proxy.address].filter(Boolean).join(" · ")}</span>
         </span>
     );
@@ -81,7 +76,9 @@ function ProxyRequestLogs() {
             <div className="space-y-3 p-3 sm:p-5">
                 {error ? <Alert type="error" showIcon title={error} /> : null}
                 {loading && !items.length ? (
-                    <div className="flex justify-center py-8"><Spin /></div>
+                    <div className="flex justify-center py-8">
+                        <Spin />
+                    </div>
                 ) : !items.length ? (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无经代理提交的请求" />
                 ) : (
@@ -90,7 +87,9 @@ function ProxyRequestLogs() {
                             {items.map((item) => (
                                 <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
                                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                        <Tag color={statusTone(item) === "danger" ? "red" : statusTone(item) === "success" ? "green" : statusTone(item) === "warning" ? "orange" : "default"} className="m-0">{statusLabel(item)}</Tag>
+                                        <Tag color={statusTone(item) === "danger" ? "red" : statusTone(item) === "success" ? "green" : statusTone(item) === "warning" ? "orange" : "default"} className="m-0">
+                                            {statusLabel(item)}
+                                        </Tag>
                                         {item.proxy_egress ? <ProxyLogMeta proxy={item.proxy_egress} /> : null}
                                         <span className="min-w-0 break-all text-xs text-zinc-500">{item.summary || item.endpoint || item.id}</span>
                                     </div>
@@ -120,22 +119,20 @@ function ProxyRequestLogs() {
                     </>
                 )}
             </div>
-            <Drawer
-                title="通用代理请求详情"
-                open={Boolean(detail) || detailLoading}
-                width={Math.min(680, typeof window !== "undefined" ? window.innerWidth - 24 : 680)}
-                onClose={() => setDetail(null)}
-                destroyOnHidden
-            >
+            <Drawer title="通用代理请求详情" open={Boolean(detail) || detailLoading} width={Math.min(680, typeof window !== "undefined" ? window.innerWidth - 24 : 680)} onClose={() => setDetail(null)} destroyOnHidden>
                 {detail ? (
                     <div className="space-y-3 text-sm">
                         <div className="flex flex-wrap items-center gap-2">
                             <Tag color={detail.outcome === "success" ? "green" : detail.outcome === "failed" ? "red" : "default"}>{statusLabel(detail)}</Tag>
                             {detail.proxy_egress ? <ProxyLogMeta proxy={detail.proxy_egress} /> : null}
                         </div>
-                        <p className="break-all text-xs text-zinc-500">{detail.time} · {detail.duration_ms ?? 0} ms</p>
+                        <p className="break-all text-xs text-zinc-500">
+                            {detail.time} · {detail.duration_ms ?? 0} ms
+                        </p>
                         <div className="space-y-1 rounded-lg border border-zinc-200 p-3 text-xs dark:border-zinc-800">
-                            <p className="break-all">出口：{detail.model || "-"} · {detail.endpoint || "-"}</p>
+                            <p className="break-all">
+                                出口：{detail.model || "-"} · {detail.endpoint || "-"}
+                            </p>
                             {detail.account_email ? <p className="break-all">账号：{detail.account_email}</p> : null}
                             {detail.public_error ? <p className="break-all text-red-500">错误：{detail.public_error}</p> : null}
                         </div>
@@ -147,7 +144,9 @@ function ProxyRequestLogs() {
                         ) : null}
                     </div>
                 ) : (
-                    <div className="flex justify-center py-8"><Spin /></div>
+                    <div className="flex justify-center py-8">
+                        <Spin />
+                    </div>
                 )}
             </Drawer>
         </Panel>
@@ -157,17 +156,16 @@ function ProxyRequestLogs() {
 export function AdminGenericProxySection() {
     return (
         <div className="min-w-0 space-y-4">
-            <Alert
-                type="info"
-                showIcon
-                title="通用代理是多表面共享的代理出口池"
-                description="在 GPTAPI、GeminiTools、GeminiAIStudio 的「代理管理」中选择通用代理作为出口来源；分组内节点按容量感知随机切换，请求结束前固定出口。"
-            />
+            <Alert type="info" showIcon title="通用代理是多表面共享的代理出口池" description="在 GPTAPI、GeminiTools、GeminiAIStudio 或 Dola API 的「代理管理」中选择通用代理作为出口来源；分组内节点按容量感知随机切换，请求结束前固定出口。" />
             <Tabs
                 className="max-sm:[&_.ant-tabs-nav-list]:w-full max-sm:[&_.ant-tabs-tab]:!m-0 max-sm:[&_.ant-tabs-tab]:min-w-0 max-sm:[&_.ant-tabs-tab]:flex-1 max-sm:[&_.ant-tabs-tab]:justify-center max-sm:[&_.ant-tabs-tab]:!px-1 max-sm:[&_.ant-tabs-tab-btn]:text-xs"
                 defaultActiveKey="management"
                 items={[
-                    { key: "management", label: "代理管理", children: <ChatGptProxyManager request={genericProxyRequest} showDefaults={true} title="通用代理" description="维护通用代理默认出口、代理分组与节点：分组内节点按容量随机切换，节点可配置图片并发上限。" /> },
+                    {
+                        key: "management",
+                        label: "代理管理",
+                        children: <ChatGptProxyManager request={genericProxyRequest} showDefaults={true} title="通用代理" description="维护通用代理默认出口、代理分组与节点：分组内节点按容量随机切换，节点可配置图片并发上限。" />,
+                    },
                     { key: "logs", label: "请求日志", children: <ProxyRequestLogs /> },
                 ]}
             />

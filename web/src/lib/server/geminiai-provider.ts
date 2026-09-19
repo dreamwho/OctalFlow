@@ -1,4 +1,17 @@
-import { appendGeminiAiRequestLog, markGeminiAiRequestLogRunning, openGeminiAiRequestLog, settleGeminiAiRequestLog, type GeminiAiRequestCapability, type GeminiAiRequestSource, type GeminiAiRequestLog, type GeminiAiRequestLifecycleEntry } from "@/lib/server/geminiai-request-log-store";
+import { Agent } from "undici";
+
+import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-lifecycle";
+import { toUndiciRequestBody } from "@/lib/server/undici-request-body";
+import {
+    appendGeminiAiRequestLog,
+    markGeminiAiRequestLogRunning,
+    openGeminiAiRequestLog,
+    settleGeminiAiRequestLog,
+    type GeminiAiRequestCapability,
+    type GeminiAiRequestSource,
+    type GeminiAiRequestLog,
+    type GeminiAiRequestLifecycleEntry,
+} from "@/lib/server/geminiai-request-log-store";
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
 
 const GEMINIAI_REQUEST_PATHS = new Set(["/v1/models", "/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
@@ -21,6 +34,10 @@ export function geminiAiProviderConfigured() {
     return Boolean(readProviderConfig());
 }
 
+/* Sidecar 长请求（生图大 base64 经慢速代理）必须使用专用 dispatcher，
+ * 否则 undici 全局默认 300s headersTimeout 会在上游仍在生成时掐断连接（表现为 fetch failed）。 */
+const sidecarDispatcher = new Agent({ headersTimeout: GENERATION_TRANSPORT_TIMEOUT_MS, bodyTimeout: GENERATION_TRANSPORT_TIMEOUT_MS });
+
 export async function geminiAiSidecarRequest(path: string, init: RequestInit = {}, options: { unauthenticated?: boolean; logSource?: GeminiAiRequestSource } = {}) {
     const config = readProviderConfig();
     if (!config) throw new GeminiAiProviderError("GeminiAI 服务尚未配置", 503);
@@ -40,7 +57,7 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
     const lifecycle: GeminiAiRequestLifecycleEntry[] = [
         {
             phase: "queued",
-            message: "接收到 GeminiAIStudio 请求并建立调用上下文",
+            message: "受理 GeminiAIStudio 请求并建立调用上下文",
             time: new Date(startedAt).toISOString(),
             durationMs: 0,
             detail: `来源: ${options.logSource || "admin-test"}, 能力: ${metadata?.capability || "text"}, 方法: ${(init.method || "GET").toUpperCase()}, 路径: ${normalizedPath}${metadata?.model ? `, 模型: ${metadata.model}` : ""}`,
@@ -69,11 +86,15 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
         });
 
         const response = await fetch(sidecarUrl(config.baseUrl, normalizedPath), {
-            ...init,
+            method: init.method,
             headers,
+            body: await toUndiciRequestBody(init.body),
             cache: "no-store",
             redirect: "error",
-        });
+            signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(GENERATION_TRANSPORT_TIMEOUT_MS)]) : AbortSignal.timeout(GENERATION_TRANSPORT_TIMEOUT_MS),
+            // Node 全局 fetch 即 undici：dispatcher 覆盖默认 300s headersTimeout，避免长生成被掐断
+            dispatcher: sidecarDispatcher,
+        } as RequestInit & { dispatcher: unknown });
 
         lifecycle.push({
             phase: "response",
@@ -347,12 +368,12 @@ function extractResponseMetrics(value: unknown, capability: GeminiAiRequestCapab
             const usage = obj.usage as Record<string, unknown>;
             promptTokens = Number(usage.prompt_tokens) || 0;
             completionTokens = Number(usage.completion_tokens) || 0;
-            totalTokens = Number(usage.total_tokens) || (promptTokens + completionTokens);
+            totalTokens = Number(usage.total_tokens) || promptTokens + completionTokens;
         } else if (obj.usageMetadata && typeof obj.usageMetadata === "object") {
             const usage = obj.usageMetadata as Record<string, unknown>;
             promptTokens = Number(usage.promptTokenCount) || 0;
             completionTokens = Number(usage.candidatesTokenCount) || 0;
-            totalTokens = Number(usage.totalTokenCount) || (promptTokens + completionTokens);
+            totalTokens = Number(usage.totalTokenCount) || promptTokens + completionTokens;
         }
 
         if (capability === "image") {
@@ -407,9 +428,7 @@ async function recordRequestLog(config: NonNullable<ReturnType<typeof readProvid
             message: response.ok ? "请求处理完成并成功交付客户端" : `上游调用异常: ${error || "HTTP " + response.status}`,
             time: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
-            detail: response.ok
-                ? `总耗时: ${Date.now() - startedAt}ms, 消耗 Tokens: ${metrics.totalTokens || 0}${account?.email ? `, 账号: ${account.email}` : ""}`
-                : `错误详情: ${error || "上游未返回成功响应"}`,
+            detail: response.ok ? `总耗时: ${Date.now() - startedAt}ms, 消耗 Tokens: ${metrics.totalTokens || 0}${account?.email ? `, 账号: ${account.email}` : ""}` : `错误详情: ${error || "上游未返回成功响应"}`,
         });
     }
 
@@ -480,7 +499,11 @@ function summarizeResponseValue(value: unknown, depth = 0, key = ""): unknown {
     }
     if (Array.isArray(value)) return value.slice(0, 12).map((item) => summarizeResponseValue(item, depth + 1, key));
     if (value && typeof value === "object" && depth < 6) {
-        return Object.fromEntries(Object.entries(value).slice(0, 40).map(([entryKey, item]) => [entryKey, summarizeResponseValue(item, depth + 1, entryKey)]));
+        return Object.fromEntries(
+            Object.entries(value)
+                .slice(0, 40)
+                .map(([entryKey, item]) => [entryKey, summarizeResponseValue(item, depth + 1, entryKey)]),
+        );
     }
     return value;
 }

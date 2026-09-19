@@ -56,7 +56,7 @@ export default function DramaPage() {
         }
     };
     return (
-        <main className="h-full overflow-y-auto bg-background text-foreground">
+        <main className="drama-library-page h-full overflow-y-auto bg-background text-foreground">
             <div className="mx-auto w-full max-w-7xl px-2 py-2 sm:px-6 sm:py-8">
                 <header className="flex items-end justify-between gap-3 border-b border-border pb-3 sm:gap-5 sm:pb-6">
                     <div className="min-w-0">
@@ -108,7 +108,7 @@ export default function DramaPage() {
             <Modal
                 title="新建短剧项目"
                 open={open}
-                width={760}
+                width="min(522px, calc(100vw - 22px))"
                 destroyOnHidden
                 style={{ maxWidth: "calc(100vw - 24px)" }}
                 styles={{ body: { paddingTop: 4 } }}

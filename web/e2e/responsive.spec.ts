@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { billingProductsFixture, expectDialogWithinViewport, expectNoHorizontalOverflow, masonryGalleryFixture, masonryLayoutIsReady, openCreativeHistory, readMasonryLayout } from "./responsive-helpers";
 
+const uiEvidenceRoot = path.resolve(process.cwd(), "../docs/ui-rebuild-20260913/evidence");
+
 async function waitForCreativeComposerReady(page: Page) {
-    await expect(page.locator(".creative-composer")).toHaveAttribute("data-ready", "true", { timeout: 45_000 });
+    await expect(page.locator(".creative-composer[data-ready='true']:visible").first()).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("button", { name: /当前创作类型：/ })).toBeVisible({ timeout: 45_000 });
 }
 
@@ -571,9 +575,12 @@ test("creative composer renders uploaded images as thumbnails instead of filenam
     expect(requests.conversationCreates()).toBe(0);
     expect(requests.assetUploads()).toBe(0);
     await expect(page).toHaveURL(/\/create$/);
-    const inputRow = page.getByTestId("creative-composer-input-row");
     const previewSlot = page.getByLabel(`已上传图片 ${fileName}`);
     const textarea = page.getByRole("textbox", { name: /输入创作要求|输入你的创作想法/ });
+    // The landing shell keeps a second off-canvas composer for the responsive
+    // transition. Scope the geometry assertion to the row that owns this
+    // textarea instead of relying on a globally unique test id.
+    const inputRow = page.locator('[data-testid="creative-composer-input-row"]').filter({ has: textarea }).first();
     await expect
         .poll(async () => {
             const [previewRect, textareaRect, rowRect] = await Promise.all([
@@ -693,8 +700,10 @@ test("creative conversation keeps successful media rounds copy-only", async ({ p
         await testInfo.attach("单结果创作记录", { path: screenshotPath, contentType: "image/png" });
     }
 
-    const scrollArea = page.getByTestId("creative-conversation-scroll");
-    const composer = page.locator(".creative-composer");
+    // The landing shell can remain mounted below the conversation during the
+    // route transition; the main workspace scroll area is the active one.
+    const scrollArea = page.getByRole("main").getByTestId("creative-conversation-scroll").first();
+    const composer = page.locator(".creative-composer").first();
     await scrollArea.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
     await expect(composer).toHaveAttribute("data-compact", "false");
     const expandedComposerHeight = await composer.evaluate((element) => element.getBoundingClientRect().height);
@@ -811,7 +820,7 @@ test("creative composer opens menus upward after entering a conversation", async
     expect(popoverRect.bottom, "conversation mode popover should open above its trigger").toBeLessThanOrEqual(triggerRect.top + 1);
 });
 
-test("switching conversations keeps the previous Agent run isolated and resumable", async ({ page }) => {
+test("switching conversations keeps the previous Agent run isolated and resumable", async ({ page }, testInfo) => {
     const fixture = await mockAgentConversationSwitchRace(page);
     await page.goto(`/create?conversationId=${fixture.conversationA.id}`, { waitUntil: "domcontentloaded" });
     await waitForCreativeComposerReady(page);
@@ -838,7 +847,40 @@ test("switching conversations keeps the previous Agent run isolated and resumabl
     await history.getByText("运行中的对话 A", { exact: true }).click();
     await expect(page.getByText("A 对话正在生成海报", { exact: true })).toBeVisible();
     await expect(page.getByText("B 对话自己的消息", { exact: true })).toBeHidden();
-    await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+    const stopButton = page.getByRole("button", { name: "停止生成" });
+    await expect(stopButton).toBeVisible();
+    await expect(stopButton).toHaveAttribute("data-generation-action", "true");
+    await expect(stopButton).toHaveAttribute("data-state", "running");
+    await expect(stopButton).toHaveAttribute("data-tone", "danger");
+    const runningAction = await stopButton.evaluate((element) => {
+        const button = element as HTMLButtonElement;
+        const rect = button.getBoundingClientRect();
+        const icon = button.querySelector<HTMLElement>(".generation-action-button__icon");
+        const iconRect = icon?.getBoundingClientRect();
+        return {
+            route: location.pathname + location.search,
+            theme: document.documentElement.classList.contains("dark") ? "dark" : "light",
+            viewport: { width: innerWidth, height: innerHeight, visualWidth: visualViewport?.width || 0, visualHeight: visualViewport?.height || 0, zoom: visualViewport?.scale || 1 },
+            state: button.dataset.state,
+            tone: button.dataset.tone,
+            label: button.getAttribute("aria-label"),
+            disabled: button.disabled,
+            width: rect.width,
+            height: rect.height,
+            icon: iconRect ? { width: iconRect.width, height: iconRect.height, svgCount: icon?.querySelectorAll("svg").length || 0 } : null,
+            overflow: document.documentElement.scrollWidth > innerWidth || document.body.scrollWidth > innerWidth,
+        };
+    });
+    expect(runningAction.label).toBe("停止生成");
+    expect(runningAction.disabled).toBe(false);
+    expect(runningAction.width).toBeGreaterThanOrEqual(40);
+    expect(runningAction.height).toBeGreaterThanOrEqual(40);
+    expect(runningAction.icon?.svgCount).toBe(1);
+    expect(runningAction.overflow).toBe(false);
+    await mkdir(uiEvidenceRoot, { recursive: true });
+    const stem = `after-generation-action-running-${testInfo.project.name}`;
+    await page.screenshot({ path: path.join(uiEvidenceRoot, `${stem}.png`), fullPage: false });
+    await writeFile(path.join(uiEvidenceRoot, `${stem}.json`), `${JSON.stringify({ ...runningAction, buildId: (await readFile(path.resolve(process.cwd(), ".next/BUILD_ID"), "utf8")).trim(), capturedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
     await expect.poll(fixture.eventRequests).toBeGreaterThan(0);
 
     expect(fixture.runReads()).toBeGreaterThanOrEqual(4);
@@ -888,7 +930,7 @@ test("creative video first and last frame controls support upload, removal and r
     await page.goto("/create", { waitUntil: "domcontentloaded" });
     await selectFirstLastMode();
 
-    const composer = page.locator(".creative-composer");
+    const composer = page.locator(".creative-composer").first();
     const frames = page.locator('[aria-label="视频首尾帧"]');
     await composer.locator("textarea").fill("让首尾画面自然衔接");
     await page.getByRole("button", { name: "发送" }).click();
@@ -1018,9 +1060,27 @@ test("creative workspaces remain usable without horizontal overflow in light and
     await page.getByRole("button", { name: "新建短剧" }).click();
     const createDialog = page.getByRole("dialog", { name: "新建短剧项目" });
     await expect(createDialog).toBeVisible();
+    const minSettledModalWidth = Math.min(300, (page.viewportSize()?.width || 0) - 40);
+    await expect.poll(async () => (await createDialog.locator(".ant-modal-container").boundingBox())?.width || 0, { message: "等待短剧创建 Modal 入场动画完成" }).toBeGreaterThanOrEqual(minSettledModalWidth);
     const dialogBox = await createDialog.boundingBox();
-    const ratioLabelBox = await createDialog.getByText("生成尺寸", { exact: true }).boundingBox();
-    const ratioControlBox = await createDialog.locator(".ant-segmented").boundingBox();
+    const [ratioLabelBox, ratioControlBox] = await Promise.all([
+        createDialog.getByText("生成尺寸", { exact: true }).evaluateAll((elements) => {
+            const visible = elements.find((element) => {
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+            });
+            return visible?.getBoundingClientRect().toJSON() || null;
+        }),
+        createDialog.locator(".ant-segmented").evaluateAll((elements) => {
+            const visible = elements.find((element) => {
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+            });
+            return visible?.getBoundingClientRect().toJSON() || null;
+        }),
+    ]);
     expect(dialogBox?.width || 0).toBeLessThanOrEqual(Math.min(522, (page.viewportSize()?.width || 0) - 22));
     expect((ratioLabelBox?.y || 0) + (ratioLabelBox?.height || 0)).toBeLessThanOrEqual((ratioControlBox?.y || 0) + 1);
     await createDialog.getByRole("button", { name: /取\s*消/ }).click();
@@ -1155,7 +1215,7 @@ test("creative workspaces remain usable without horizontal overflow in light and
             await expect(page.getByRole("button", { name: "打开项目 Agent", exact: true })).toBeVisible();
         }
         if (route === canvasRoute) {
-            await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(245, 248, 255)");
+            await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(244, 248, 255)");
             if ((page.viewportSize()?.width || 0) <= 768) {
                 await page.getByRole("button", { name: "打开 Agent", exact: true }).click();
                 const agentPanel = page.getByLabel("Canvas Agent 对话面板");
@@ -1175,6 +1235,7 @@ test("creative workspaces remain usable without horizontal overflow in light and
             await expectDialogWithinViewport(promptDialog);
             await expect.poll(() => promptDialog.getByRole("textbox", { name: "提示词编辑器" }).evaluate((element) => document.activeElement === element)).toBe(true);
             await promptDialog.getByRole("button", { name: "收起提示词输入" }).click();
+            await page.locator("[data-canvas-surface]").click({ position: { x: 24, y: 100 } });
             await page.getByRole("button", { name: "切换到框选模式" }).click();
             await expect(page.locator("[data-canvas-surface]")).toHaveAttribute("data-canvas-interaction-mode", "select");
             await page.getByRole("button", { name: "切换到小手模式" }).click();
@@ -1190,7 +1251,7 @@ test("creative workspaces remain usable without horizontal overflow in light and
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expectNoHorizontalOverflow(page, "/create dark");
     await page.goto(canvasRoute, { waitUntil: "domcontentloaded" });
-    await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(6, 19, 38)");
+    await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", "rgb(8, 15, 32)");
     await expectNoHorizontalOverflow(page, `${canvasRoute} dark`);
     await page.goto(dramaRoute, { waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);

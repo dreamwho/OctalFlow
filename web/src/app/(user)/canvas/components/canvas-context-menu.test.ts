@@ -57,4 +57,10 @@ describe("Canvas context menu positioning", () => {
         expect(videoMarkup).toContain("分析");
         expect(renderToStaticMarkup(createElement(CanvasNodeContextMenu, props))).not.toContain("深度提取");
     });
+
+    it("shows Dola 去水印 only when a video has resolver metadata", () => {
+        const props = { menu: { type: "node", x: 20, y: 20, nodeId: "video" } as const, onClose: () => undefined, onDuplicate: () => undefined, onDelete: () => undefined, onRename: () => undefined, onDolaWatermark: () => undefined };
+        expect(renderToStaticMarkup(createElement(CanvasNodeContextMenu, { ...props, canDolaWatermark: true }))).toContain("Dola 去水印");
+        expect(renderToStaticMarkup(createElement(CanvasNodeContextMenu, props))).not.toContain("Dola 去水印");
+    });
 });

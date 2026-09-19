@@ -20,6 +20,9 @@ export type ImageQualityProfile = "default" | "geminiai";
 export type GenerationRatioOption = { value: string; label: string; width: number; height: number };
 export type GenerationQualityOption = { value: string; label: string; shortLabel?: string };
 export type GenerationDurationOption = { value: number; label: string };
+export type CanvasGenerationPanel = {
+    onApply?: () => void;
+};
 
 export type CreativeGenerationPreferencePatch = {
     size?: string;
@@ -130,6 +133,7 @@ export function CreativeGenerationPreferences({
     capabilityNotice,
     panelHeader,
     panelFooter,
+    canvasPanel,
     iconOnly = false,
     showTriggerChevron = true,
     ratioGridClassName,
@@ -168,6 +172,7 @@ export function CreativeGenerationPreferences({
     capabilityNotice?: string;
     panelHeader?: ReactNode;
     panelFooter?: ReactNode;
+    canvasPanel?: CanvasGenerationPanel;
     iconOnly?: boolean;
     showTriggerChevron?: boolean;
     ratioGridClassName?: string;
@@ -188,7 +193,7 @@ export function CreativeGenerationPreferences({
     const availableCapabilities = capabilities.length ? capabilities : [capability];
     const activeCapability = availableCapabilities.includes(capability) ? capability : availableCapabilities[0];
     const summary = triggerLabel || generationPreferenceSummary(activeCapability, preferences);
-    const maximumPanelHeight = compact ? 620 : 520;
+    const maximumPanelHeight = canvasPanel || compact ? 620 : 520;
 
     const measurePanelLayout = useCallback(() => {
         const trigger = triggerRef.current;
@@ -235,14 +240,24 @@ export function CreativeGenerationPreferences({
                 onOpenChange?.(nextOpen);
             }}
             classNames={{ container: "border border-[#d9e4ee] dark:border-[#4d6478]" }}
-            styles={{ container: { ...canvasSelectionBorderStyle(theme.toolbar.panel), padding: compact ? 6 : 8, borderRadius: compact ? 14 : 16 } }}
+            styles={{
+                container: {
+                    ...canvasSelectionBorderStyle(theme.toolbar.panel),
+                    padding: 0,
+                    borderRadius: compact ? 14 : 18,
+                },
+            }}
             content={
                 <div
                     ref={panelRef}
                     data-canvas-no-drag
                     data-creative-generation-preferences
-                    className={cn("hide-scrollbar min-w-0 max-w-[calc(100vw-32px)] overflow-x-hidden overflow-y-auto overscroll-contain", compact ? "w-[316px]" : "w-[360px]", panelClassName)}
-                    style={{ maxHeight: panelMaxHeight === undefined ? `min(${maximumPanelHeight}px, calc(100dvh - 96px))` : panelMaxHeight }}
+                    className={cn(
+                        "hide-scrollbar min-w-0 max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[17px] bg-white/[.96] p-3 text-[#1f2b46] dark:bg-[#020813]/[.98] dark:p-3.5 dark:text-[#f7fbff]",
+                        canvasPanel ? "w-[400px]" : compact ? "w-[316px]" : "w-[360px]",
+                        panelClassName,
+                    )}
+                    style={{ width: canvasPanel ? "min(400px, calc(100vw - 48px))" : undefined, maxHeight: panelMaxHeight === undefined ? `min(${maximumPanelHeight}px, calc(100dvh - 96px))` : panelMaxHeight }}
                     onClick={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
                     onMouseDown={(event) => event.stopPropagation()}
@@ -264,9 +279,7 @@ export function CreativeGenerationPreferences({
                                     className={cn(
                                         "inline-flex items-center justify-center gap-1.5 rounded-[7px] text-[11px] font-medium transition",
                                         compact ? "h-7" : "h-8",
-                                        activeCapability === item
-                                            ? "dreamyo-selection-surface"
-                                            : "text-[#7b8591] hover:bg-white/60 hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:bg-[#30363e] dark:hover:text-white",
+                                        activeCapability === item ? "dreamyo-selection-surface" : "text-[#7b8591] hover:bg-white/60 hover:text-[#20242a] dark:text-[#8f99a5] dark:hover:bg-[#30363e] dark:hover:text-white",
                                     )}
                                     onClick={() => onCapabilityChange?.(item)}
                                     aria-pressed={activeCapability === item}
@@ -280,25 +293,25 @@ export function CreativeGenerationPreferences({
                     {capabilityNotice ? <p className="mb-1.5 rounded-md bg-[#f2f8fb] px-2 py-1 text-[10px] leading-4 text-[#527086] dark:bg-[#20313b] dark:text-[#a8c8dc]">{capabilityNotice}</p> : null}
                     {showPreferenceFields ? (
                         <PreferencePanel
-                            capability={activeCapability}
-                            preferences={preferences}
-                            fixedSizeLabel={fixedSizeLabel}
-                            compact={compact}
-                            showCount={showCount}
-                            tabless={tabless}
-                            videoReferenceContent={videoReferenceContent}
-                            imageQualityProfile={imageQualityProfile}
-                            ratioOptions={ratioOptions}
-                            imageQualityOptions={configuredImageQualityOptions}
-                            videoQualityOptions={configuredVideoQualityOptions}
-                            videoDurationOptions={configuredVideoDurationOptions}
-                            allowCustomSize={allowCustomSize}
-                            allowCustomVideoQuality={allowCustomVideoQuality}
-                            videoDurationRange={videoDurationRange}
-                            ratioGridClassName={ratioGridClassName}
-                            ratioTileLayout={ratioTileLayout}
-                            onChange={onChange}
-                        />
+                                capability={activeCapability}
+                                preferences={preferences}
+                                fixedSizeLabel={fixedSizeLabel}
+                                compact={compact}
+                                showCount={showCount}
+                                tabless={tabless}
+                                videoReferenceContent={videoReferenceContent}
+                                imageQualityProfile={imageQualityProfile}
+                                ratioOptions={ratioOptions}
+                                imageQualityOptions={configuredImageQualityOptions}
+                                videoQualityOptions={configuredVideoQualityOptions}
+                                videoDurationOptions={configuredVideoDurationOptions}
+                                allowCustomSize={allowCustomSize}
+                                allowCustomVideoQuality={allowCustomVideoQuality}
+                                videoDurationRange={videoDurationRange}
+                                ratioGridClassName={ratioGridClassName}
+                                ratioTileLayout={ratioTileLayout}
+                                onChange={onChange}
+                            />
                     ) : (
                         emptyPreferenceState || <p className="px-2 py-4 text-center text-xs text-[#7b8591] dark:text-[#98a2ae]">先选定模型后设置生成参数。</p>
                     )}
@@ -317,8 +330,8 @@ export function CreativeGenerationPreferences({
             >
                 {iconOnly ? null : (
                     <>
-                        <span className={cn("max-w-[132px] truncate text-xs font-medium sm:max-w-[176px]", triggerLabelClassName)}>{summary}</span>
-                        {showTriggerChevron ? <ChevronDown className="size-3.5 shrink-0" /> : null}
+                        <span className={cn("hidden max-w-[132px] truncate text-xs font-medium sm:inline sm:max-w-[176px]", triggerLabelClassName)}>{summary}</span>
+                        {showTriggerChevron ? <ChevronDown className="hidden size-3.5 shrink-0 sm:block" /> : null}
                     </>
                 )}
             </Button>
@@ -394,31 +407,31 @@ function PreferencePanel({
     }
 
     const canvasSection = (
-        <div className={cn("grid min-w-0", compact ? "gap-2" : "gap-2.5")}>
+        <div className={cn("grid min-w-0", compact ? "gap-2.5" : "gap-3")}>
             {capability === "video" && videoReferenceContent ? (
                 videoReferenceContent
             ) : capability === "video" ? (
-                <CompactOptionGroup label="参考方式" ariaLabel="选择视频参考方式" value={preferences.video?.referenceMode || "reference"} options={videoReferenceModeOptions} columns={3} onChange={(referenceMode) => onChange({ referenceMode })} />
+                <CompactOptionGroup label="参考方式" ariaLabel="选择视频参考方式" value={preferences.video?.referenceMode || "reference"} options={videoReferenceModeOptions} columns={3} compact={compact} onChange={(referenceMode) => onChange({ referenceMode })} />
             ) : null}
             {fixedSizeLabel ? (
-                <div className="flex h-9 items-center justify-between rounded-lg bg-[#f5f6f7] px-3 text-[11px] dark:bg-[#24282e]">
+                <div className="flex h-9 items-center justify-between rounded-lg bg-[#f5f6f7] px-3 text-xs dark:bg-[#24282e]">
                     <span className="font-medium text-[#7b8591] dark:text-[#98a2ae]">尺寸</span>
                     <span className="text-[#20242a] dark:text-white">{fixedSizeLabel}</span>
                 </div>
             ) : (
-                <div className="grid min-w-0 gap-1.5">
+                <div className="grid min-w-0 gap-2">
                     <div className="flex items-center justify-between gap-3">
-                        <p className="text-[11px] font-medium text-[#7b8591] dark:text-[#98a2ae]">比例</p>
-                        <span className="text-[10px] text-[#a0a8b2] dark:text-[#707b88]">{selectedSize === "auto" ? (capability === "image" && imageQualityProfile === "geminiai" ? "Auto" : "智能") : formatSizeLabel(selectedSize)}</span>
+                        <p className="text-xs font-medium text-[#7b8591] dark:text-[#98a2ae]">比例</p>
+                        <span className="text-[11px] text-[#a0a8b2] dark:text-[#8b96a3]">{selectedSize === "auto" ? (capability === "image" && imageQualityProfile === "geminiai" ? "Auto" : "智能") : (ratioOptions?.find((option) => option.value === selectedSize)?.label || friendlyImageSizeLabel(selectedSize) || formatSizeLabel(selectedSize))}</span>
                     </div>
-                    <div className={cn("grid min-w-0 gap-1", ratioGridClassName || (capability === "image" && imageQualityProfile === "geminiai" ? "grid-cols-3" : "grid-cols-4"))}>
+                    <div className={cn("grid min-w-0 gap-1.5", ratioGridClassName || (capability === "image" && imageQualityProfile === "geminiai" ? "grid-cols-3" : "grid-cols-4"))}>
                         {ratios.map((ratio) => (
                             <button
                                 key={ratio.value}
                                 type="button"
                                 className={cn(
-                                    "inline-flex min-w-0 items-center justify-center rounded-lg px-1 text-[11px] transition",
-                                    ratioTileLayout ? "h-[52px] flex-col gap-1 border" : "gap-1 border border-transparent",
+                                    "inline-flex min-w-0 items-center justify-center rounded-lg px-1 text-xs transition",
+                                    ratioTileLayout ? "h-[52px] flex-col gap-1 border" : "gap-1.5 border border-transparent",
                                     !ratioTileLayout && (compact ? "h-8" : "h-9"),
                                     selectedSize === ratio.value
                                         ? "dreamyo-selection-surface font-semibold"
@@ -440,7 +453,8 @@ function PreferencePanel({
                             <button
                                 type="button"
                                 className={cn(
-                                    "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-dashed px-2 text-[11px] transition",
+                                    "inline-flex items-center justify-center gap-1.5 rounded-lg border border-dashed px-2 text-xs transition",
+                                    compact ? "h-8" : "h-9",
                                     customEditorOpen || parseCustomDimensions(selectedSize)
                                         ? "dreamyo-selection-surface font-medium"
                                         : "border-[#d8dde2] text-[#687481] hover:border-[#b8c3cc] hover:bg-[#f7f8f9] hover:text-[#20242a] dark:border-[#414953] dark:text-[#a6afb9] dark:hover:bg-[#24282e] dark:hover:text-white",
@@ -461,11 +475,11 @@ function PreferencePanel({
     );
 
     const outputSection = (
-        <div className="grid gap-2.5">
+        <div className="grid gap-3">
             {capability === "video" ? (
                 <VideoQualityField value={selectedQuality} options={effectiveVideoQualityOptions} allowCustom={allowCustomVideoQuality} onChange={(quality) => onChange({ quality })} />
             ) : (
-                <CompactOptionGroup label="画质" ariaLabel="选择图片画质" value={selectedQuality} options={qualityOptions} onChange={(quality) => onChange({ quality })} />
+                <CompactOptionGroup label="画质" ariaLabel="选择图片画质" value={selectedQuality} options={qualityOptions} compact={compact} onChange={(quality) => onChange({ quality })} />
             )}
             {showCount ? <GenerationCountGroup key={capability} capability={capability} value={selectedCount} onChange={(count) => onChange({ count })} /> : null}
             {capability === "video" ? (
@@ -594,18 +608,16 @@ function GenerationCountGroup({ capability, value, onChange }: { capability: Ext
     };
 
     return (
-        <div className="grid gap-1.5">
-            <p className="text-[11px] font-medium text-[#7b8591] dark:text-[#98a2ae]">数量</p>
-            <div className="grid grid-cols-5 gap-1" role="group" aria-label={`选择${capability === "image" ? "图片" : "视频"}生成数量`}>
+        <div className="grid gap-2">
+            <p className="text-xs font-medium text-[#7b8591] dark:text-[#98a2ae]">数量</p>
+            <div className="grid grid-cols-5 gap-1.5" role="group" aria-label={`选择${capability === "image" ? "图片" : "视频"}生成数量`}>
                 {generationCountOptions.map((option) => (
                     <button
                         key={option.value}
                         type="button"
                         className={cn(
-                            "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
-                            value === option.value
-                                ? "dreamyo-selection-surface font-semibold"
-                                : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
+                            "h-9 min-w-0 rounded-lg px-1 text-xs transition",
+                            value === option.value ? "dreamyo-selection-surface font-semibold" : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                         )}
                         onClick={() => {
                             setDraft("");
@@ -621,7 +633,7 @@ function GenerationCountGroup({ capability, value, onChange }: { capability: Ext
                 ))}
                 <label
                     className={cn(
-                        "relative h-8 min-w-0 rounded-lg text-[11px] transition",
+                        "relative h-9 min-w-0 rounded-lg text-xs transition",
                         customSelected
                             ? "dreamyo-selection-surface font-medium"
                             : "bg-[#f5f6f7] text-[#687481] focus-within:bg-[#f5f8fa] focus-within:text-[#315d78] focus-within:ring-1 focus-within:ring-[#9bbdce] focus-within:ring-inset hover:bg-[#edf0f2] dark:bg-[#24282e] dark:text-[#a6afb9] dark:focus-within:bg-[#222d34] dark:focus-within:text-[#a8c8dc] dark:focus-within:ring-[#557f96] dark:hover:bg-[#30363e]",
@@ -635,9 +647,9 @@ function GenerationCountGroup({ capability, value, onChange }: { capability: Ext
                         value={draft}
                         onChange={(event) => changeDraft(event.target.value)}
                         placeholder="自定义"
-                        className="size-full min-w-0 bg-transparent px-1 text-center text-[11px] font-medium outline-none placeholder:font-normal placeholder:text-current"
+                        className="size-full min-w-0 bg-transparent px-1 text-center text-xs font-medium outline-none placeholder:font-normal placeholder:text-current"
                     />
-                    {draft ? <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-[9px] opacity-70">份</span> : null}
+                    {draft ? <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-[10px] opacity-70">份</span> : null}
                 </label>
             </div>
             {error ? <p className="text-[10px] text-[#b85c5c] dark:text-[#e39a9a]">{error}</p> : null}
@@ -672,6 +684,7 @@ function CompactOptionGroup<T extends string | number>({
     value,
     options,
     columns = 4,
+    compact = false,
     onChange,
 }: {
     label: string;
@@ -679,21 +692,21 @@ function CompactOptionGroup<T extends string | number>({
     value: T;
     options: readonly { value: T; label: string; shortLabel?: string }[];
     columns?: 2 | 3 | 4;
+    compact?: boolean;
     onChange: (value: T) => void;
 }) {
     return (
-        <div className="grid gap-1.5">
-            <p className="text-[11px] font-medium text-[#7b8591] dark:text-[#98a2ae]">{label}</p>
-            <div className={cn("grid gap-1", columns === 2 ? "grid-cols-2" : columns === 3 ? "grid-cols-3" : "grid-cols-4")} role="group" aria-label={ariaLabel}>
+        <div className="grid gap-2">
+            <p className="text-xs font-medium text-[#7b8591] dark:text-[#98a2ae]">{label}</p>
+            <div className={cn("grid gap-1.5", columns === 2 ? "grid-cols-2" : columns === 3 ? "grid-cols-3" : "grid-cols-4")} role="group" aria-label={ariaLabel}>
                 {options.map((option) => (
                     <button
                         key={option.value}
                         type="button"
                         className={cn(
-                            "h-8 min-w-0 rounded-lg px-1 text-[11px] transition",
-                            value === option.value
-                                ? "dreamyo-selection-surface font-semibold"
-                                : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
+                            "min-w-0 rounded-lg px-1 text-xs transition",
+                            compact ? "h-8" : "h-9",
+                            value === option.value ? "dreamyo-selection-surface font-semibold" : "bg-[#f5f6f7] text-[#687481] hover:bg-[#edf0f2] hover:text-[#20242a] dark:bg-[#24282e] dark:text-[#a6afb9] dark:hover:bg-[#30363e] dark:hover:text-white",
                         )}
                         onClick={() => onChange(option.value)}
                         aria-label={`${ariaLabel} ${option.label}`}
@@ -742,7 +755,7 @@ export function generationPreferenceSummary(capability: MediaCapability, prefere
     const quality = capability === "image" ? preferences.image?.quality || "auto" : preferences.video?.quality || "auto";
     const count = capability === "image" ? preferences.image?.count || 1 : preferences.video?.count || 1;
     const countLabel = count > 1 ? ` · ${count}${capability === "image" ? "张" : "条"}` : "";
-    const sizeLabel = size === "auto" ? "智能比例" : formatSizeLabel(size);
+    const sizeLabel = size === "auto" ? "智能比例" : friendlyImageSizeLabel(size) || formatSizeLabel(size);
     const qualityLabel = capability === "image" ? imageQualityOptions.find((item) => item.value === quality)?.label || quality : videoQualityLabel(quality);
     const referenceLabel = capability === "video" ? videoReferenceModeOptions.find((item) => item.value === (preferences.video?.referenceMode || "reference"))?.label : undefined;
     if (capability === "image") return size === "auto" && quality === "auto" ? `智能参数${countLabel}` : `${sizeLabel} · ${qualityLabel}${countLabel}`;
@@ -769,6 +782,14 @@ function normalizeDimension(value: string) {
     if (!/^\d+$/.test(normalized)) return "";
     const parsed = Number(normalized);
     return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : "";
+}
+
+/** GPT-Image 系固定档位的友好名称：选中档位时展示档位名而不是原始像素 */
+const CHATGPT_IMAGE_SIZE_LABELS: Record<string, string> = { "1024x1024": "方形", "1024x1536": "竖版", "1536x1024": "横版" };
+
+export function friendlyImageSizeLabel(value?: string) {
+    if (!value) return null;
+    return CHATGPT_IMAGE_SIZE_LABELS[value.trim().toLowerCase()] ?? null;
 }
 
 function formatSizeLabel(value: string) {

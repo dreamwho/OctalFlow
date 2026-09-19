@@ -1,0 +1,76 @@
+{
+  "route": "/admin?section=generationOperations",
+  "theme": "light",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "state": "overview and generation operations visual regression, scrolled to channel runtime status",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "evidenceVersion": "admin-c01-v3",
+  "capturedAt": "2026-09-15T11:58:34.440Z",
+  "overview": {
+    "intro": {
+      "left": 14,
+      "right": 376,
+      "top": 84,
+      "width": 362,
+      "height": 90.640625
+    },
+    "introBackground": "linear-gradient(112deg, rgba(255, 255, 255, 0.92), rgba(235, 249, 255, 0.82) 52%, rgba(242, 237, 255, 0.84))",
+    "metricCards": [
+      {
+        "left": 14,
+        "right": 191,
+        "top": 186.640625,
+        "width": 177,
+        "height": 104
+      },
+      {
+        "left": 199,
+        "right": 376,
+        "top": 186.640625,
+        "width": 177,
+        "height": 104
+      },
+      {
+        "left": 14,
+        "right": 191,
+        "top": 298.640625,
+        "width": 177,
+        "height": 104
+      },
+      {
+        "left": 199,
+        "right": 376,
+        "top": 298.640625,
+        "width": 177,
+        "height": 104
+      }
+    ],
+    "modelStatusCount": 5,
+    "queueCount": 4,
+    "emptySnapshotCount": 0,
+    "overflow": false
+  },
+  "operationVisual": {
+    "summaryCount": 6,
+    "summaryBackgrounds": [
+      "linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(238, 247, 255, 0.94))",
+      "linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(238, 247, 255, 0.94))"
+    ],
+    "channelCards": 8,
+    "channelCardWidths": [
+      336,
+      336,
+      336,
+      336,
+      336,
+      336,
+      336,
+      336
+    ],
+    "overflow": false
+  }
+}

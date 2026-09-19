@@ -64,10 +64,10 @@ test("admin site form persists social addresses, publishes them to the home foot
 
         await page.goto("/admin?section=site", { waitUntil: "domcontentloaded" });
         await expect(page.locator(".admin-dashboard-shell")).toHaveAttribute("data-hydrated", "true");
-        const emailInput = page.getByPlaceholder("name@example.com");
-        const telegramInput = page.getByPlaceholder("https://t.me/username 或 @username");
-        const xInput = page.getByPlaceholder("https://x.com/username 或 @username");
-        const instagramInput = page.getByPlaceholder("https://instagram.com/username 或 @username");
+        const emailInput = page.getByPlaceholder("name@example.com").first();
+        const telegramInput = page.getByPlaceholder("https://t.me/username 或 @username").first();
+        const xInput = page.getByPlaceholder("https://x.com/username 或 @username").first();
+        const instagramInput = page.getByPlaceholder("https://instagram.com/username 或 @username").first();
         await expect(emailInput).toBeVisible();
         await expect(emailInput).toHaveValue("mailto:before@example.com");
         await emailInput.fill("owner@example.com");
@@ -178,14 +178,14 @@ test("GeminiAI authorization opens a fresh session after the previous account co
     await page.goto("/admin?section=geminiai", { waitUntil: "domcontentloaded" });
     await expect(page.locator(".admin-dashboard-shell")).toHaveAttribute("data-hydrated", "true");
     await page.getByRole("button", { name: "添加授权" }).click();
-    await page.getByRole("button", { name: "打开隔离授权窗口" }).click();
+    await page.getByRole("button", { name: "打开 Camoufox 授权窗口" }).click();
     await expect(page.getByText("授权状态：授权中", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "检查授权状态" }).click();
     await expect(page.getByRole("dialog", { name: "添加 Google 授权" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "添加授权" }).click();
     await expect(page.getByText("授权状态：授权完成", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "打开隔离授权窗口" }).click();
+    await page.getByRole("button", { name: "打开 Camoufox 授权窗口" }).click();
     await expect.poll(() => startedSessions).toBe(2);
 });
 
@@ -218,7 +218,10 @@ test("image task persists a real media result and reuses the same request identi
     expect(replay.ok()).toBe(true);
     expect((await replay.json()).task.id).toBe(firstTask.id);
     const completed = await pollTask(request, `/api/image-tasks/${firstTask.id}`);
-    expect(completed).toMatchObject({ status: "success", result: { width: 64, height: 64, mimeType: "image/png" } });
+    // The isolated upstream fixture intentionally returns a 2×2 PNG. Results must
+    // preserve the provider bytes and dimensions instead of being upscaled to the
+    // requested 64×64 target (see generated-image-normalizer contract).
+    expect(completed).toMatchObject({ status: "success", result: { width: 2, height: 2, mimeType: "image/png" } });
     const mediaUrl = String((completed.result as { dataUrl?: string }).dataUrl || "");
     expect(mediaUrl).toMatch(/^\/api\/generation-log-assets\/permanent\/.+\.png$/);
     const media = await request.get(mediaUrl);
@@ -231,7 +234,7 @@ test("image task persists a real media result and reuses the same request identi
 
 test("unified creative page reaches the local planning and image protocols", async ({ page, request }) => {
     await page.goto("/create", { waitUntil: "domcontentloaded" });
-    await expect(page.locator(".creative-composer")).toHaveAttribute("data-ready", "true", { timeout: 45_000 });
+    await expect(page.locator(".creative-composer[data-ready='true']")).toHaveAttribute("data-ready", "true", { timeout: 45_000 });
 
     await page.getByRole("button", { name: "当前创作类型：Agent 模式" }).click();
     const modePicker = page.locator(".ant-popover").filter({ hasText: "创作类型" }).last();
@@ -240,7 +243,7 @@ test("unified creative page reaches the local planning and image protocols", asy
     await expect(page.getByRole("button", { name: "当前创作类型：图片生成" })).toBeVisible();
 
     const prompt = `统一入口协议图片 ${randomUUID().slice(0, 8)}`;
-    await page.getByRole("textbox", { name: "输入你的创作想法、脚本或画面要求" }).fill(prompt);
+    await page.getByRole("textbox", { name: "输入创作要求，使用 / 选择 Skill" }).fill(prompt);
     const runCreated = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/agent/runs");
     await page.getByRole("button", { name: "发送" }).click();
     const runResponse = await runCreated;
@@ -288,7 +291,7 @@ test("legacy image and video routes hand off to the unified creative Agent", asy
     for (const route of ["/image", "/video"]) {
         await page.goto(route, { waitUntil: "domcontentloaded" });
         await expect(page).toHaveURL(/\/create$/);
-        await expect(page.getByRole("heading", { name: "dreamyo 创作 Agent" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "从灵感，到完整作品" })).toBeVisible();
         await expect(page.getByRole("button", { name: /生成模型：/ })).toBeVisible();
     }
 });
@@ -326,14 +329,12 @@ test("administrator orders and hides Canvas node models from the logical model c
     const before = (await beforeResponse.json()) as { settings: { systemChannels: Array<{ id: string; models: string[] }>; logicalModels: unknown[]; defaultModels: Record<string, string> } };
     const channel = before.settings.systemChannels.find((item) => item.models.includes("e2e-image"));
     expect(channel).toBeTruthy();
-    const logicalModels = [
-        logicalModel("canvas-image-a", "画布图片 A", "e2e-image"),
-        logicalModel("canvas-image-b", "画布图片 B", "e2e-image-fallback"),
-        logicalModel("canvas-image-c", "画布图片 C", "e2e-image"),
-    ];
+    const logicalModels = [logicalModel("canvas-image-a", "画布图片 A", "e2e-image"), logicalModel("canvas-image-b", "画布图片 B", "e2e-image-fallback"), logicalModel("canvas-image-c", "画布图片 C", "e2e-image")];
     let projectId = "";
     try {
-        const seeded = await request.patch("/api/admin/settings", { data: { logicalModels: logicalModels.map((model) => ({ ...model, bindings: model.bindings.map((binding) => ({ ...binding, channelId: channel!.id })) })), defaultModels: { ...before.settings.defaultModels, imageModel: "canvas-image-a" } } });
+        const seeded = await request.patch("/api/admin/settings", {
+            data: { logicalModels: logicalModels.map((model) => ({ ...model, bindings: model.bindings.map((binding) => ({ ...binding, channelId: channel!.id })) })), defaultModels: { ...before.settings.defaultModels, imageModel: "canvas-image-a" } },
+        });
         expect(seeded.ok(), await seeded.text()).toBe(true);
 
         await page.goto("/admin?section=channels", { waitUntil: "domcontentloaded" });
@@ -374,7 +375,10 @@ test("administrator orders and hides Canvas node models from the logical model c
         await page.setViewportSize({ width: 1280, height: 720 });
 
         const created = await request.post("/api/canvas/projects", {
-            data: { title: "节点模型排序 E2E", project: { nodes: [{ id: "model-order-config", type: "config", title: "生成配置", position: { x: 120, y: 120 }, width: 320, height: 220, metadata: { generationMode: "image", model: "canvas-image-c" } }], connections: [] } },
+            data: {
+                title: "节点模型排序 E2E",
+                project: { nodes: [{ id: "model-order-config", type: "config", title: "生成配置", position: { x: 120, y: 120 }, width: 320, height: 220, metadata: { generationMode: "image", model: "canvas-image-c" } }], connections: [] },
+            },
         });
         expect(created.ok(), await created.text()).toBe(true);
         projectId = ((await created.json()) as { data: { project: { id: string } } }).data.project.id;

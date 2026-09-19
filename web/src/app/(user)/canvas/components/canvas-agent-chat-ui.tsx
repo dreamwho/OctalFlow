@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type ReactNode, type RefObject } from "react";
 import { Button, Popover, Tooltip } from "antd";
-import { ArrowUp, Check, CheckCircle2, Circle, CircleAlert, Crosshair, FileText, LoaderCircle, Maximize2, Minimize2, MousePointer2, Pause, Play, RotateCcw, Sparkles, Upload, Wrench, X, XCircle } from "lucide-react";
+import { ArrowUp, Check, CheckCircle2, Circle, CircleAlert, Crosshair, LoaderCircle, Maximize2, Minimize2, MousePointer2, Pause, Play, RotateCcw, Sparkles, Upload, Wrench, X, XCircle } from "lucide-react";
 
 import { AgentMessageActions } from "@/components/agent/agent-message-actions";
 import { AgentMarkdown } from "@/components/agent/agent-markdown";
 import { AgentMediaPreview } from "@/components/agent/agent-media-preview";
-import { DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
+import { DreamyoIcon, DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { clipboardImageFiles } from "@/lib/clipboard-image-files";
@@ -132,7 +132,7 @@ export function AgentChatMessage({
     return (
         <div className="canvas-agent-message group/message flex min-w-0 items-start justify-start gap-3">
             <AgentAvatar theme={theme} />
-            <div className="min-w-0 max-w-[82%] text-left text-sm leading-6" style={{ color }}>
+            <div data-canvas-agent-result-card className="min-w-0 max-w-[82%] rounded-xl border px-3 py-2.5 text-left text-sm leading-6" style={{ borderColor: theme.node.stroke, background: theme.node.panel, color }}>
                 <div className="flex min-w-0 items-start gap-1">
                     <div className="min-w-0 flex-1" style={item.role === "error" ? agentErrorFlowTextStyle(theme) : undefined}>
                         <AgentMarkdown className="text-left">{item.text}</AgentMarkdown>
@@ -323,7 +323,16 @@ export function AgentWorkingMessage({
                             子任务进度 {taskProgressItems.filter((task) => task.status === "completed").length}/{taskProgressItems.length}
                         </div>
                         {taskProgressItems.map((task) => (
-                            <AgentTaskTimingRow key={task.id} task={task} fallbackStartedAt={startedAt} now={displayEndAt} theme={theme} terminal={terminal} onLocate={task.nodeId ? () => onLocateNode?.(task.nodeId!) : undefined} onRetry={task.status === "failed" ? () => onRetryTask?.(task.retryTaskId) : undefined} />
+                            <AgentTaskTimingRow
+                                key={task.id}
+                                task={task}
+                                fallbackStartedAt={startedAt}
+                                now={displayEndAt}
+                                theme={theme}
+                                terminal={terminal}
+                                onLocate={task.nodeId ? () => onLocateNode?.(task.nodeId!) : undefined}
+                                onRetry={task.status === "failed" ? () => onRetryTask?.(task.retryTaskId) : undefined}
+                            />
                         ))}
                     </div>
                 ) : null}
@@ -338,7 +347,22 @@ function expandAgentTaskProgress(tasks: CreativeAgentRun["tasks"], runId?: strin
     return tasks.flatMap((task) => {
         const taskIndex = tasks.indexOf(task);
         const outputNodeId = (copyIndex: number) => (runId && task.type !== "text" ? `output-${runId}-${taskIndex}-${copyIndex}` : undefined);
-        if (!task.childTasks?.length) return [{ id: task.id, title: task.title, type: task.type, status: task.status, error: task.error, startedAt: task.startedAt, completedAt: task.completedAt, retryAfterAt: task.retryAfterAt, submittedParameters: task.submittedParameters, retryTaskId: task.id, nodeId: outputNodeId(0) }];
+        if (!task.childTasks?.length)
+            return [
+                {
+                    id: task.id,
+                    title: task.title,
+                    type: task.type,
+                    status: task.status,
+                    error: task.error,
+                    startedAt: task.startedAt,
+                    completedAt: task.completedAt,
+                    retryAfterAt: task.retryAfterAt,
+                    submittedParameters: task.submittedParameters,
+                    retryTaskId: task.id,
+                    nodeId: outputNodeId(0),
+                },
+            ];
         const type = task.type === "image" ? "生图" : task.type === "video" ? "生视频" : task.type === "audio" ? "音频" : "文本";
         return task.childTasks.map((child, index) => ({
             id: `${task.id}:${child.id}`,
@@ -427,7 +451,15 @@ function AgentTaskTimingRow({
             ) : null}
             {(task.status === "failed" || task.retryAfterAt) && task.submittedParameters ? <AgentSubmittedParameters parameters={task.submittedParameters} theme={theme} /> : null}
             {onRetry ? (
-                <button type="button" className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium transition hover:opacity-70" style={{ color: theme.node.infoText }} onClick={(event) => { event.stopPropagation(); onRetry(); }}>
+                <button
+                    type="button"
+                    className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium transition hover:opacity-70"
+                    style={{ color: theme.node.infoText }}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onRetry();
+                    }}
+                >
                     <RotateCcw className="size-3" />
                     重新尝试
                 </button>
@@ -437,7 +469,13 @@ function AgentTaskTimingRow({
 }
 
 function AgentSubmittedParameters({ parameters, theme }: { parameters: NonNullable<AgentTaskProgressItem["submittedParameters"]>; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
-    const entries = [parameters.model ? `模型 ${parameters.model}` : "", parameters.ratio ? `比例 ${parameters.ratio}` : "", parameters.quality ? `清晰度 ${parameters.quality}` : "", parameters.duration ? `时长 ${parameters.duration} 秒` : "", parameters.referenceMode ? parameters.referenceMode : ""].filter(Boolean);
+    const entries = [
+        parameters.model ? `模型 ${parameters.model}` : "",
+        parameters.ratio ? `比例 ${parameters.ratio}` : "",
+        parameters.quality ? `清晰度 ${parameters.quality}` : "",
+        parameters.duration ? `时长 ${parameters.duration} 秒` : "",
+        parameters.referenceMode ? parameters.referenceMode : "",
+    ].filter(Boolean);
     if (!entries.length) return null;
     return (
         <div data-agent-task-submitted-parameters className="mt-2 rounded-md border px-2 py-1.5 text-[10px] leading-4" style={{ borderColor: theme.node.infoBorder, background: theme.node.infoSurface, color: theme.node.text }}>
@@ -472,7 +510,12 @@ function MessageTime({ createdAt, align }: { createdAt?: string; align: "start" 
     const timestamp = Date.parse(createdAt);
     if (!Number.isFinite(timestamp)) return null;
     return (
-        <time dateTime={createdAt} data-canvas-agent-message-time title={new Date(timestamp).toLocaleString("zh-CN")} className={`mt-1 block text-[11px] font-medium leading-4 opacity-65 ${align === "center" ? "text-center" : align === "end" ? "text-right" : "text-left"}`}>
+        <time
+            dateTime={createdAt}
+            data-canvas-agent-message-time
+            title={new Date(timestamp).toLocaleString("zh-CN")}
+            className={`mt-1 block text-[11px] font-medium leading-4 opacity-65 ${align === "center" ? "text-center" : align === "end" ? "text-right" : "text-left"}`}
+        >
             {formatAgentClock(timestamp, false)}
         </time>
     );
@@ -507,10 +550,23 @@ export function insertCanvasAgentSkillToken(value: string, cursor: number, skill
 }
 
 export function stripCanvasAgentSkillTokens(value: string) {
-    return value.replace(/\[\[skill:[^\]]+\]\]/gu, "").replace(/[ \t]{2,}/gu, " ").trim();
+    return value
+        .replace(/\[\[skill:[^\]]+\]\]/gu, "")
+        .replace(/[ \t]{2,}/gu, " ")
+        .trim();
 }
 
-function CanvasAgentSkillPreview({ prompt, skillsById, previewRef, theme }: { prompt: string; skillsById: ReadonlyMap<string, CanvasAgentSkillToken>; previewRef: RefObject<HTMLDivElement | null>; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+function CanvasAgentSkillPreview({
+    prompt,
+    skillsById,
+    previewRef,
+    theme,
+}: {
+    prompt: string;
+    skillsById: ReadonlyMap<string, CanvasAgentSkillToken>;
+    previewRef: RefObject<HTMLDivElement | null>;
+    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+}) {
     const parts: ReactNode[] = [];
     let offset = 0;
     for (const match of prompt.matchAll(/\[\[skill:([^\]]+)\]\]/gu)) {
@@ -529,7 +585,11 @@ function CanvasAgentSkillPreview({ prompt, skillsById, previewRef, theme }: { pr
             parts.push(
                 <span key={`skill-${start}`} className="relative inline-block align-baseline font-normal text-transparent">
                     <span className="whitespace-pre">{match[0]}</span>
-                    <span data-canvas-agent-inline-skill className="absolute left-0 top-0 inline-flex h-5 w-max max-w-full items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] font-medium whitespace-nowrap" style={{ color: theme.node.text, background: theme.toolbar.itemHover, borderColor: theme.toolbar.border }}>
+                    <span
+                        data-canvas-agent-inline-skill
+                        className="absolute left-0 top-0 inline-flex h-5 w-max max-w-full items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] font-medium whitespace-nowrap"
+                        style={{ color: theme.node.text, background: theme.toolbar.itemHover, borderColor: theme.toolbar.border }}
+                    >
                         <Sparkles className="size-3 shrink-0" />
                         <span className="min-w-0 truncate">{skill.name}</span>
                     </span>
@@ -540,7 +600,13 @@ function CanvasAgentSkillPreview({ prompt, skillsById, previewRef, theme }: { pr
     }
     if (offset < prompt.length) parts.push(<span key={`text-${offset}`}>{prompt.slice(offset)}</span>);
     return (
-        <div ref={previewRef} aria-hidden="true" data-testid="canvas-agent-skill-preview" className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 text-sm leading-5 [font-family:inherit]" style={{ color: theme.node.text }}>
+        <div
+            ref={previewRef}
+            aria-hidden="true"
+            data-testid="canvas-agent-skill-preview"
+            className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 text-sm leading-5 [font-family:inherit]"
+            style={{ color: theme.node.text }}
+        >
             {parts}
         </div>
     );
@@ -679,7 +745,12 @@ export function AgentChatComposer({
         <div data-canvas-agent-composer className="shrink-0 px-4 pb-4 pt-2" data-canvas-agent-composer-expanded={expanded || undefined} style={expanded ? { width: "100%", padding: 0 } : undefined} onWheelCapture={(event) => event.stopPropagation()}>
             <div
                 className="relative flex flex-col rounded-2xl border px-3 pb-3 pt-3 shadow-none transition"
-                style={{ background: theme.toolbar.panel, borderColor: isDragActive ? "#22d3ee" : theme.node.stroke, boxShadow: expanded ? "0 16px 50px rgba(15,23,42,.32)" : undefined, height: expanded ? `min(${CANVAS_AGENT_EXPANDED_COMPOSER_MAX_HEIGHT}px, calc(100dvh - 4rem))` : undefined }}
+                style={{
+                    background: theme.toolbar.panel,
+                    borderColor: isDragActive ? "#22d3ee" : theme.node.stroke,
+                    boxShadow: expanded ? "0 16px 50px rgba(15,23,42,.32)" : undefined,
+                    height: expanded ? `min(${CANVAS_AGENT_EXPANDED_COMPOSER_MAX_HEIGHT}px, calc(100dvh - 4rem))` : undefined,
+                }}
                 onDragEnter={handleDragOver}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -753,7 +824,7 @@ export function AgentChatComposer({
                                     <div className="size-full overflow-hidden rounded-[5px]" style={{ background: theme.node.fill }}>
                                         {item.type === "text" ? (
                                             <span className="grid size-full place-items-center" style={{ color: theme.node.muted }}>
-                                                <FileText className="size-4" strokeWidth={1.7} />
+                                                <DreamyoIcon name="document" size={18} />
                                             </span>
                                         ) : item.type === "video" ? (
                                             <>
@@ -822,7 +893,11 @@ export function AgentChatComposer({
                         content={<CanvasAgentMentionPicker assets={mentionCandidates} selectedNodeIds={selectedReferenceIds} theme={theme} onSelect={selectMentionAsset} />}
                     >
                         <div className={`relative min-w-0 ${hasAttachments ? "w-full" : "min-w-0 flex-1"}`} style={expanded ? { minHeight: 0, flex: 1 } : undefined}>
-                            {hasSkillTokens ? <CanvasAgentSkillPreview prompt={prompt} skillsById={skillsById} previewRef={mentionHighlightRef} theme={theme} /> : hasMentionReferences ? <CanvasAgentMentionPreview segments={mentionSegments} assetsById={mentionAssetsById} previewRef={mentionHighlightRef} theme={theme} /> : null}
+                            {hasSkillTokens ? (
+                                <CanvasAgentSkillPreview prompt={prompt} skillsById={skillsById} previewRef={mentionHighlightRef} theme={theme} />
+                            ) : hasMentionReferences ? (
+                                <CanvasAgentMentionPreview segments={mentionSegments} assetsById={mentionAssetsById} previewRef={mentionHighlightRef} theme={theme} />
+                            ) : null}
                             <textarea
                                 ref={textareaRef}
                                 value={prompt}
@@ -958,7 +1033,7 @@ function AgentMessageAttachments({ attachments, align = "start" }: { attachments
             {attachments.map((item) =>
                 item.type === "text" ? (
                     <span key={item.id} className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-lg border px-2 text-xs" title={item.name}>
-                        <FileText className="size-3.5 shrink-0" />
+                        <DreamyoIcon name="document" size={16} />
                         <span className="truncate">{item.name}</span>
                     </span>
                 ) : (

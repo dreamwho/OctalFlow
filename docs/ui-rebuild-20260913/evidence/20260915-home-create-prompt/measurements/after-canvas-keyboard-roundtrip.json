@@ -1,0 +1,18 @@
+{
+  "backspace": {
+    "removed": true,
+    "undoRestored": true
+  },
+  "shiftEnter": {
+    "breaks": 2,
+    "paragraphs": 1,
+    "skillTokens": 1,
+    "text": "请帮我生成一个 \n图片1\n ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。\n自然美颜精修\n\n\n"
+  },
+  "undo": {
+    "breaks": 1,
+    "paragraphs": 1,
+    "skillTokens": 1,
+    "text": "请帮我生成一个 \n图片1\n ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。\n自然美颜精修\n\n"
+  }
+}

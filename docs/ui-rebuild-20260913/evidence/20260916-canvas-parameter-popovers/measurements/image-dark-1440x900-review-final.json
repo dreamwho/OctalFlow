@@ -1,0 +1,33 @@
+{
+  "apply": {
+    "bottom": 602,
+    "height": 36,
+    "right": 568,
+    "width": 84,
+    "x": 484,
+    "y": 566
+  },
+  "bodyOverflowX": false,
+  "documentOverflowX": false,
+  "heading": "图片生成参数",
+  "panel": {
+    "bottom": 615,
+    "clientHeight": 594,
+    "height": 596,
+    "overflowY": "visible",
+    "right": 585,
+    "scrollHeight": 594,
+    "width": 522,
+    "x": 63,
+    "y": 19
+  },
+  "route": "/canvas/canvas-ui-after-20260915",
+  "state": "configured-16x9-high-2-review",
+  "theme": "dark",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "zoom": "100",
+  "buildId": "dK6POYeiax5lYEoGNtr-j"
+}

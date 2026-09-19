@@ -16,13 +16,29 @@ export async function POST(request: Request) {
         const bytes = await readRequestBodyBytes(request, 20 * 1024 * 1024 + 64 * 1024);
         const form = await new Response(bytes, { headers: { "content-type": contentType } }).formData();
         const file = form.get("file");
-        const name = String(form.get("name") || "我的复刻音色").trim().slice(0, 80) || "我的复刻音色";
-        const description = String(form.get("description") || "").trim().slice(0, 500);
+        const name =
+            String(form.get("name") || "我的复刻音色")
+                .trim()
+                .slice(0, 80) || "我的复刻音色";
+        const description = String(form.get("description") || "")
+            .trim()
+            .slice(0, 500);
         if (!(file instanceof File) || !file.size) return NextResponse.json({ error: "音色复刻需要音频文件" }, { status: 400 });
         if (!(await isMiniMaxVoiceFeatureEnabled("voice-clone"))) return NextResponse.json({ error: "MiniMax 音色复刻已在控制台关闭，请改用阿里云百炼模型" }, { status: 403 });
         if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "复刻音频不能超过 20MB" }, { status: 400 });
 
-        const log = await appendMiniMaxRequestLog({ userId: user.id, capability: "voice", method: "POST", path: "/v1/voice_clone", model: "voice-cloning", statusCode: 0, durationMs: 0, phase: "queued", requestPreview: JSON.stringify({ mode: "voice-cloning" }), lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "音色复刻请求已提交" }] }).catch(() => undefined);
+        const log = await appendMiniMaxRequestLog({
+            userId: user.id,
+            capability: "voice",
+            method: "POST",
+            path: "/v1/voice_clone",
+            model: "voice-cloning",
+            statusCode: 0,
+            durationMs: 0,
+            phase: "queued",
+            requestPreview: JSON.stringify({ mode: "voice-cloning" }),
+            lifecycle: [{ at: new Date().toISOString(), phase: "queued", message: "音色复刻请求已提交" }],
+        }).catch(() => undefined);
         const startedAt = Date.now();
         if (log) await updateMiniMaxRequestLog(log.id, { statusCode: 0, durationMs: 0, phase: "running", lifecycle: [{ at: new Date().toISOString(), phase: "running", message: "正在上传复刻音频" }] }).catch(() => undefined);
         let statusCode = 0;
@@ -44,7 +60,8 @@ export async function POST(request: Request) {
                 if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error, lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: error }] }).catch(() => undefined);
                 return NextResponse.json({ error }, { status: uploadResponse.ok ? 502 : uploadResponse.status || 502 });
             }
-            if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "running", lifecycle: [{ at: new Date().toISOString(), phase: "running", message: "音频上传完成，正在创建复刻音色" }] }).catch(() => undefined);
+            if (log)
+                await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "running", lifecycle: [{ at: new Date().toISOString(), phase: "running", message: "音频上传完成，正在创建复刻音色" }] }).catch(() => undefined);
 
             const voiceId = `dreamyo_${user.id.slice(0, 8)}_${Date.now().toString(36)}`;
             const cloneResponse = await requestMiniMax("/v1/voice_clone", {
@@ -68,16 +85,26 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error }, { status: cloneResponse.ok ? 502 : cloneResponse.status || 502 });
             }
             const voice = await saveMiniMaxVoice({ userId: user.id, remoteVoiceId: voiceId, name, voiceName: name, description, providerCreatedTime: "", voiceType: "voice_cloning", visible: true, category: classifyMiniMaxVoice(name, description) });
-            if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "success", responsePreview: "MiniMax 复刻音色已创建并保存", lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色复刻完成" }] }).catch(() => undefined);
+            if (log)
+                await updateMiniMaxRequestLog(log.id, {
+                    statusCode,
+                    durationMs: Date.now() - startedAt,
+                    phase: "success",
+                    responsePreview: "MiniMax 复刻音色已创建并保存",
+                    lifecycle: [{ at: new Date().toISOString(), phase: "success", message: "音色复刻完成" }],
+                }).catch(() => undefined);
             return NextResponse.json({ voice, fileId });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : "MiniMax 音色复刻失败";
-        if (isVoiceSubmissionUncertain(statusCode)) {
-            const review = "MiniMax 音色复刻提交结果待确认，请先查看请求日志，确认前不要重复提交";
-            await markVoiceSubmissionNeedsReview(log?.id, startedAt, review, statusCode);
-            return NextResponse.json({ error: review, needsReview: true, logId: log?.id }, { status: 409 });
-        }
-        if (log) await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error: message.slice(0, 500), lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: message.slice(0, 200) }] }).catch(() => undefined);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "MiniMax 音色复刻失败";
+            if (isVoiceSubmissionUncertain(statusCode)) {
+                const review = "MiniMax 音色复刻提交结果待确认，请先查看请求日志，确认前不要重复提交";
+                await markVoiceSubmissionNeedsReview(log?.id, startedAt, review, statusCode);
+                return NextResponse.json({ error: review, needsReview: true, logId: log?.id }, { status: 409 });
+            }
+            if (log)
+                await updateMiniMaxRequestLog(log.id, { statusCode, durationMs: Date.now() - startedAt, phase: "failed", error: message.slice(0, 500), lifecycle: [{ at: new Date().toISOString(), phase: "failed", message: message.slice(0, 200) }] }).catch(
+                    () => undefined,
+                );
             return NextResponse.json({ error: message }, { status: statusCode || 502 });
         }
     } catch (error) {

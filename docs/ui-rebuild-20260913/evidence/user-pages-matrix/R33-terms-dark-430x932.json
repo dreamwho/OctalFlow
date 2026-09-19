@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/terms",
+  "actualPath": "/terms",
+  "responseStatus": 200,
+  "route": "/terms",
+  "theme": "dark",
+  "title": "服务条款 | dreamyo",
+  "heading": "服务条款",
+  "viewport": {
+    "width": 430,
+    "height": 932,
+    "visualWidth": 430,
+    "visualHeight": 932,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 430,
+    "height": 932
+  },
+  "overflow": false,
+  "state": "服务条款",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

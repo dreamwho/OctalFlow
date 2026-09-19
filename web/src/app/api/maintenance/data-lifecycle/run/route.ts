@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 
 import { runDataLifecycleMaintenance } from "@/lib/server/data-lifecycle-service";
-import { isAuthorizedMaintenanceRequest, isMaintenanceTokenConfigured } from "@/lib/server/maintenance-auth";
+import { isAuthorizedMaintenanceRequest, isAuthorizedWorkerRequest, isMaintenanceTokenConfigured, isWorkerTokenConfigured } from "@/lib/server/maintenance-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-    if (!isMaintenanceTokenConfigured()) return NextResponse.json({ code: 503, data: null, msg: "维护任务令牌未配置" }, { status: 503 });
-    if (!isAuthorizedMaintenanceRequest(request)) return NextResponse.json({ code: 401, data: null, msg: "维护任务认证失败" }, { status: 401 });
+    const workerAuthorized = isWorkerTokenConfigured() && isAuthorizedWorkerRequest(request);
+    if (!workerAuthorized) {
+        if (!isMaintenanceTokenConfigured()) return NextResponse.json({ code: 503, data: null, msg: "维护任务令牌未配置" }, { status: 503 });
+        if (!isAuthorizedMaintenanceRequest(request)) return NextResponse.json({ code: 401, data: null, msg: "维护任务认证失败" }, { status: 401 });
+    }
 
     try {
         const data = await runDataLifecycleMaintenance();

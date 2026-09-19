@@ -2,9 +2,10 @@
 
 import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, MessageSquare, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
 import { capabilityLabel, isLogicalModelResolvable, normalizeDefaultModelsConfig, resolveLogicalModelConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
@@ -15,6 +16,7 @@ type Props = {
     logicalModels: LogicalModel[];
     defaultModels: SystemDefaultModels;
     onChange: (value: { logicalModels: LogicalModel[]; defaultModels: SystemDefaultModels }) => void;
+    onPersist: (next: { systemChannels: SystemModelChannel[]; logicalModels: LogicalModel[]; defaultModels: SystemDefaultModels }, successText: string) => Promise<boolean>;
 };
 
 const capabilityOptions: Array<{ label: string; value: LogicalModelCapability }> = [
@@ -24,6 +26,14 @@ const capabilityOptions: Array<{ label: string; value: LogicalModelCapability }>
     { label: "音频", value: "audio" },
 ];
 
+/* 能力类型彩色标签：不同能力一目了然 */
+const CAPABILITY_TAG_COLORS: Record<LogicalModelCapability, string> = {
+    text: "blue",
+    image: "purple",
+    video: "cyan",
+    audio: "magenta",
+};
+
 const defaultFields: Array<{ capability: LogicalModelCapability; key: keyof SystemDefaultModels; label: string }> = [
     { capability: "text", key: "textModel", label: "默认文本模型" },
     { capability: "image", key: "imageModel", label: "默认图片模型" },
@@ -31,21 +41,43 @@ const defaultFields: Array<{ capability: LogicalModelCapability; key: keyof Syst
     { capability: "audio", key: "audioModel", label: "默认音频模型" },
 ];
 
-export function AdminLogicalModelManager({ channels, logicalModels, defaultModels, onChange }: Props) {
+export function AdminLogicalModelManager({ channels, logicalModels, defaultModels, onChange, onPersist }: Props) {
     const { message } = App.useApp();
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editingId, setEditingId] = useState("");
     const [draft, setDraft] = useState<LogicalModel | null>(null);
     const [query, setQuery] = useState("");
     const [capabilityFilter, setCapabilityFilter] = useState<LogicalModelCapability | "all">("all");
+    const [modelStats, setModelStats] = useState<Record<string, { avgDurationMs: number; samples: number }>>({});
     const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+    const resolveRank = (model: LogicalModel) => {
+        if (!model.enabled) return 2;
+        return resolveLogicalModelConfig(logicalModels, channels, model.capability, model.id) ? 0 : 1;
+    };
     const visibleModels = useMemo(
         () =>
-            logicalModels.filter(
-                (model) => (capabilityFilter === "all" || model.capability === capabilityFilter) && (!deferredQuery || `${model.id} ${model.name} ${model.bindings.map((binding) => binding.upstreamModel).join(" ")}`.toLowerCase().includes(deferredQuery)),
-            ),
-        [capabilityFilter, deferredQuery, logicalModels],
+            logicalModels
+                .filter(
+                    (model) => (capabilityFilter === "all" || model.capability === capabilityFilter) && (!deferredQuery || `${model.id} ${model.name} ${model.bindings.map((binding) => binding.upstreamModel).join(" ")}`.toLowerCase().includes(deferredQuery)),
+                )
+                // 排序：已启用且有可用渠道 → 已启用但无渠道 → 未启用；同组内保持手动排序
+                .sort((left, right) => resolveRank(left) - resolveRank(right)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [capabilityFilter, deferredQuery, logicalModels, channels],
     );
+
+    useEffect(() => {
+        let active = true;
+        void fetch("/api/admin/generation-logs/model-stats", { cache: "no-store" })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload: { data?: Record<string, { avgDurationMs: number; samples: number }> } | null) => {
+                if (active && payload?.data) setModelStats(payload.data);
+            })
+            .catch(() => undefined);
+        return () => {
+            active = false;
+        };
+    }, [logicalModels.length]);
     const availableDefaultFields = defaultFields.filter(({ capability }) => logicalModels.some((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)));
     const readyCount = availableDefaultFields.filter(({ capability, key }) => isLogicalModelResolvable(logicalModels, channels, capability, defaultModels[key])).length;
 
@@ -86,15 +118,18 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
         const saved = cloneLogicalModel({ ...draft, id, name });
         const nextModels = editingId ? logicalModels.map((model) => (model.id === editingId ? saved : model)) : [...logicalModels, saved];
         const renamedDefaults = Object.fromEntries(Object.entries(defaultModels).map(([key, value]) => [key, editingId && value === editingId ? id : value])) as SystemDefaultModels;
-        onChange({ logicalModels: nextModels, defaultModels: normalizeDefaultModelsConfig(renamedDefaults, nextModels, channels) });
+        const nextDefaultModels = normalizeDefaultModelsConfig(renamedDefaults, nextModels, channels);
+        onChange({ logicalModels: nextModels, defaultModels: nextDefaultModels });
         setDrawerOpen(false);
-        message.success(editingId ? "逻辑模型已更新，请保存渠道配置" : "逻辑模型已创建，请保存渠道配置");
+        // 直接持久化，避免「应用修改」只停留在本地草稿、刷新后丢失
+        void onPersist({ systemChannels: channels, logicalModels: nextModels, defaultModels: nextDefaultModels }, editingId ? "逻辑模型已保存" : "逻辑模型已创建并保存");
     };
 
     const deleteModel = (modelId: string) => {
         const nextModels = logicalModels.filter((model) => model.id !== modelId);
-        onChange({ logicalModels: nextModels, defaultModels: normalizeDefaultModelsConfig(defaultModels, nextModels, channels) });
-        message.success("逻辑模型已删除，请保存渠道配置");
+        const nextDefaultModels = normalizeDefaultModelsConfig(defaultModels, nextModels, channels);
+        onChange({ logicalModels: nextModels, defaultModels: nextDefaultModels });
+        void onPersist({ systemChannels: channels, logicalModels: nextModels, defaultModels: nextDefaultModels }, "逻辑模型已删除并保存");
     };
 
     const syncChannelModels = () => {
@@ -137,50 +172,79 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                         <Input allowClear value={query} prefix={<Search className="size-4 text-stone-400" />} placeholder="搜索模型昵称、ID 或上游模型" onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} />
                         <Select value={capabilityFilter} options={[{ label: "全部能力", value: "all" }, ...capabilityOptions]} onChange={(value: LogicalModelCapability | "all") => setCapabilityFilter(value)} />
                     </div>
-                    <div className="space-y-2">
+                    <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                         {visibleModels.map((model) => {
                             const resolved = resolveLogicalModelConfig(logicalModels, channels, model.capability, model.id);
                             const isDefault = Object.values(defaultModels).some((value) => value.toLowerCase() === model.id.toLowerCase());
+                            const stat = modelStats[model.id] || Object.values(model.bindings).reduce((found, binding) => found || modelStats[binding.upstreamModel], null as (typeof modelStats)[string] | null);
                             return (
-                                <div key={model.id} className="flex min-w-0 flex-col gap-3 rounded-lg border border-stone-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:border-stone-800 dark:bg-stone-950">
-                                    <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="truncate text-sm font-semibold text-stone-950 dark:text-stone-100">{model.name}</span>
-                                            <Tag className="m-0">{capabilityLabel(model.capability)}</Tag>
-                                            <Tag color={model.enabled ? "green" : "default"} className="m-0">
-                                                {model.enabled ? "启用" : "停用"}
-                                            </Tag>
-                                            {model.pickerVisible === false ? <Tag className="m-0">节点隐藏</Tag> : null}
-                                            {isDefault ? (
-                                                <Tag color="blue" className="m-0">
-                                                    默认
-                                                </Tag>
-                                            ) : null}
+                                <article key={model.id} className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-stone-200 bg-white p-4 transition hover:border-indigo-300 dark:border-stone-800 dark:bg-stone-950 dark:hover:border-indigo-500/50">
+                                    <div className="flex min-w-0 items-start justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-2.5">
+                                            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-stone-100 text-stone-600 dark:bg-stone-900 dark:text-stone-300">
+                                                {model.capability === "text" ? <MessageSquare className="size-4.5" /> : <DreamyoIcon name={model.capability} size={20} />}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                                    <span className="truncate font-mono text-sm font-semibold text-stone-950 dark:text-stone-100" title={model.name}>
+                                                        {model.name}
+                                                    </span>
+                                                    {isDefault ? (
+                                                        <Tag color="blue" className="m-0">
+                                                            默认
+                                                        </Tag>
+                                                    ) : null}
+                                                </div>
+                                                <p className="mt-0.5 truncate text-xs text-stone-400 dark:text-stone-500">{model.id}</p>
+                                            </div>
                                         </div>
-                                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500 dark:text-stone-400">
-                                            <span>ID：{model.id}</span>
-                                            <span>{model.bindings.length} 个渠道绑定</span>
-                                            <span className={resolved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>{resolved ? `${resolved.channel.name} / ${resolved.binding.upstreamModel}` : "当前无可用渠道"}</span>
-                                        </div>
+                                        <Tag color={model.enabled ? "green" : "default"} className="m-0 shrink-0">
+                                            {model.enabled ? "启用" : "停用"}
+                                        </Tag>
                                     </div>
-                                    <Space size={4} className="shrink-0">
-                                        <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEdit(model)}>
-                                            编辑
-                                        </Button>
-                                        <Popconfirm
-                                            title="删除逻辑模型"
-                                            description={`删除后前端将不再显示「${model.name}」，对应默认模型会自动清理。`}
-                                            okText="删除"
-                                            cancelText="取消"
-                                            okButtonProps={{ danger: true }}
-                                            onConfirm={() => deleteModel(model.id)}
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <Tag
+                                            color={resolved ? "success" : model.bindings.length ? "warning" : "default"}
+                                            className="m-0"
+                                            title={resolved ? `实际路由：${resolved.channel.name} / ${resolved.binding.upstreamModel}` : undefined}
                                         >
-                                            <Button danger size="small" icon={<Trash2 className="size-3.5" />}>
-                                                删除
+                                            {resolved ? `${resolved.channel.name} / ${resolved.binding.upstreamModel}` : model.bindings.length ? "已启用但无可用渠道" : "未绑定渠道"}
+                                        </Tag>
+                                        <Tag color={CAPABILITY_TAG_COLORS[model.capability]} className="m-0">
+                                            {capabilityLabel(model.capability)}
+                                        </Tag>
+                                        {model.pickerVisible === false ? <Tag className="m-0">节点隐藏</Tag> : null}
+                                    </div>
+                                    <div className="mt-auto flex items-center justify-between gap-2 border-t border-stone-100 pt-2.5 dark:border-stone-800/70">
+                                        <span className="min-w-0 truncate text-xs text-stone-500 dark:text-stone-400">
+                                            {stat && stat.samples > 0 ? (
+                                                <>
+                                                    最近平均生成 <span className="font-semibold tabular-nums text-stone-700 dark:text-stone-200">{formatAvgDuration(stat.avgDurationMs)}</span>
+                                                    <span className="ml-1 text-stone-400">（{stat.samples} 次）</span>
+                                                </>
+                                            ) : (
+                                                "暂无生成记录"
+                                            )}
+                                        </span>
+                                        <Space size={4} className="shrink-0">
+                                            <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEdit(model)} aria-label={`编辑 ${model.name}`}>
+                                                编辑
                                             </Button>
-                                        </Popconfirm>
-                                    </Space>
-                                </div>
+                                            <Popconfirm
+                                                title="删除逻辑模型"
+                                                description={`删除后前端将不再显示「${model.name}」，对应默认模型会自动清理。`}
+                                                okText="删除"
+                                                cancelText="取消"
+                                                okButtonProps={{ danger: true }}
+                                                onConfirm={() => deleteModel(model.id)}
+                                            >
+                                                <Button danger size="small" icon={<Trash2 className="size-3.5" />} aria-label={`删除 ${model.name}`}>
+                                                    删除
+                                                </Button>
+                                            </Popconfirm>
+                                        </Space>
+                                    </div>
+                                </article>
                             );
                         })}
                         {!visibleModels.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={logicalModels.length ? "没有匹配的逻辑模型" : "渠道尚未同步到模型目录"} /> : null}
@@ -600,4 +664,10 @@ function uniqueDraftId(base: string, models: LogicalModel[]) {
     let suffix = 2;
     while (ids.has(candidate.toLowerCase())) candidate = `${base}-${suffix++}`;
     return candidate;
+}
+
+function formatAvgDuration(avgDurationMs: number) {
+    if (!Number.isFinite(avgDurationMs) || avgDurationMs <= 0) return "-";
+    if (avgDurationMs < 1000) return `${Math.round(avgDurationMs)}ms`;
+    return `${(avgDurationMs / 1000).toFixed(1)}s`;
 }

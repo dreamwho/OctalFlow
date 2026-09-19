@@ -1,0 +1,34 @@
+{
+  "route": "/admin?section=adminHelp",
+  "section": "adminHelp",
+  "theme": "light",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844,
+    "zoom": 1
+  },
+  "heading": "使用文档",
+  "shell": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 4685.015625
+  },
+  "content": {
+    "left": 0,
+    "top": 66,
+    "width": 390,
+    "height": 4619.015625
+  },
+  "headingRect": {
+    "left": 31,
+    "top": 102,
+    "width": 328,
+    "height": 24.140625
+  },
+  "overflow": false,
+  "state": "后台默认分区",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

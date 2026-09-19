@@ -1,0 +1,95 @@
+{
+  "capturedAt": "2026-09-14T01:00:40+08:00",
+  "buildId": "i-5UbRQrq6PiE-fr5kfZZ",
+  "baseUrl": "http://127.0.0.1:3333",
+  "checks": [
+    {
+      "route": "/api/health",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 54,
+      "body": {
+        "code": 0,
+        "data": {
+          "status": "ok"
+        },
+        "msg": "服务正常"
+      }
+    },
+    {
+      "route": "/api/health/live",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 59,
+      "body": {
+        "code": 0,
+        "data": {
+          "status": "live"
+        },
+        "msg": "服务运行中"
+      }
+    },
+    {
+      "route": "/api/health/ready",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 289,
+      "body": {
+        "code": 0,
+        "data": {
+          "ready": true,
+          "provider": "file",
+          "database": {
+            "healthy": true,
+            "schemaReady": true
+          },
+          "encryptionReady": true,
+          "firstAdminRequired": false,
+          "generationWorker": {
+            "required": true,
+            "healthy": true,
+            "lastHeartbeatAt": "2026-09-13T17:00:41.946Z",
+            "staleAfterMs": 90000
+          }
+        },
+        "msg": "服务已就绪"
+      }
+    },
+    {
+      "route": "/brand/dreamyo/generation/button-surface.png",
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1937006
+    },
+    {
+      "route": "/brand/dreamyo/generation/generate-glyph.png",
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 2427
+    },
+    {
+      "route": "/brand/dreamyo/generation/manifest.json",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8",
+      "bytes": 619,
+      "body": {
+        "version": "B01-20260913",
+        "source": "docs/ui-rebuild-20260913/evidence/09-generation-button-v21.png",
+        "assets": {
+          "button-reference.png": {
+            "sha256": "571df8c4621206c14ccc23afdf9580a27b5041f71c3e51584bcc8478ecaeeb37",
+            "role": "审计用原始参考图"
+          },
+          "button-surface.png": {
+            "sha256": "a0f25e54bedb6f38e9db8be114aa89edd25df55bc57336bd97bcf27f715faee0",
+            "role": "生成按钮透明底板"
+          },
+          "generate-glyph.png": {
+            "sha256": "9d10763555658ef476caa36bdd5884edf126cdea07dd3a1b691946c2f51e57b6",
+            "role": "B01白色四角星与圆点图标"
+          }
+        }
+      }
+    }
+  ]
+}

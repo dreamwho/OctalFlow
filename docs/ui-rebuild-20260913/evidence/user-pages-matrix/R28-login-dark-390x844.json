@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/login",
+  "actualPath": "/login",
+  "responseStatus": 200,
+  "route": "/login",
+  "theme": "dark",
+  "title": "登录 | dreamyo",
+  "heading": "回到你的视觉创作台",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "overflow": false,
+  "state": "登录表单",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

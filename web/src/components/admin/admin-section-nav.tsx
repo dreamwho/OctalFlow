@@ -93,6 +93,7 @@ export function AdminSectionNav({
                     type="button"
                     title={desktopCollapsed ? section.label : undefined}
                     aria-label={section.label}
+                    data-admin-section-key={section.key}
                     className={`admin-section-nav-item relative flex h-9 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition ${active ? "is-active font-medium text-[#102044] dark:text-[#eff8ff]" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"}`}
                     onPointerEnter={() => onIntent?.(section.key)}
                     onPointerDown={() => onIntent?.(section.key)}
@@ -109,7 +110,10 @@ export function AdminSectionNav({
         });
 
     return (
-        <aside className={`admin-section-nav h-dvh min-w-0 border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:sticky lg:top-0 lg:z-40 ${mobileOpen ? "is-open" : ""} ${desktopCollapsed ? "is-collapsed" : ""}`}>
+        <aside
+            data-admin-navigation="true"
+            className={`admin-section-nav h-dvh min-w-0 border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:sticky lg:top-0 lg:z-40 ${mobileOpen ? "is-open" : ""} ${desktopCollapsed ? "is-collapsed" : ""}`}
+        >
             <div className="admin-section-nav-shell flex h-full max-w-full flex-col overflow-hidden">
                 <div className="admin-section-mobile-head flex h-[58px] shrink-0 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800 lg:hidden">
                     <button
@@ -122,19 +126,19 @@ export function AdminSectionNav({
                         {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
                     </button>
                     <Link href="/" className="admin-section-mobile-brand flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-1 text-zinc-950 dark:text-zinc-100" onClick={onMobileClose}>
-                        <SiteLogo logoUrl={site.logoUrl} className="size-7" />
+                        <SiteLogo logoUrl={site.logoUrl} className="admin-section-brand-logo size-8" />
                         <span className="min-w-0">
                             <span className="block truncate text-sm font-semibold">{site.title}</span>
-                            <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">管理控制台</span>
+                            <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">管理后台</span>
                         </span>
                     </Link>
                 </div>
                 <div className="admin-section-desktop-head hidden h-[58px] shrink-0 min-w-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800 lg:flex">
                     <Link href="/" className="admin-section-brand flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-zinc-950 dark:text-zinc-100">
-                        <SiteLogo logoUrl={site.logoUrl} className="size-7" />
+                        <SiteLogo logoUrl={site.logoUrl} className="admin-section-brand-logo size-8" />
                         <span className="admin-section-brand-copy min-w-0">
                             <span className="block truncate text-sm font-semibold">{site.title}</span>
-                            <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">管理控制台</span>
+                            <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">管理后台</span>
                         </span>
                     </Link>
                     <button
@@ -172,6 +176,16 @@ export function AdminSectionNav({
                         );
                     })}
                 </div>
+                {!desktopCollapsed ? (
+                    <div className="admin-section-nav-promo shrink-0">
+                        <div className="admin-section-nav-promo-art" aria-hidden="true" />
+                        <div className="relative z-[1]">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/75">dreamyo creative ops</p>
+                            <p className="mt-2 max-w-[170px] text-base font-semibold leading-5 text-white">Turn Ideas Into A Brighter Tomorrow</p>
+                            <span className="mt-3 inline-flex items-center text-[11px] font-medium text-white/80">创作运营工作台</span>
+                        </div>
+                    </div>
+                ) : null}
             </div>
         </aside>
     );
@@ -197,6 +211,7 @@ export const adminSections: AdminSection[] = [
     { key: "genericProxy", label: "通用代理", description: "管理通用代理分组与节点，查看经代理出口提交的请求日志。", shortDescription: "代理分组", icon: <Globe className="size-4" /> },
     { key: "runninghub", label: "RunningHub", description: "管理 RunningHub 账户、应用工作流、功能绑定、任务监控和请求日志。", shortDescription: "应用与任务", icon: <Workflow className="size-4" /> },
     { key: "geminiai", label: "GeminiAIStudio", description: "授权 Google AI Studio 账号，同步 Gemini AI Studio 模型并进行单模型实测。", shortDescription: "账号与模型", icon: <Bot className="size-4" /> },
+    { key: "dolaApi", label: "Dola API", description: "导入 Dola Cookie 账号，管理 Camoufox 页面 Provider、Seedance 视频模型、请求日志和通用代理出口。", shortDescription: "账号与视频", icon: <Bot className="size-4" /> },
     { key: "geminiTools", label: "GeminiTools", description: "使用当前浏览器授权 Google 账号，管理 Antigravity 文本模型、额度、网关、API 密钥和请求日志。", shortDescription: "Antigravity 网关", icon: <KeyRound className="size-4" /> },
     { key: "chatgptApi", label: "GPTAPI", description: "管理 ChatGPT 账号、模型目录、代理来源、兼容网关、API 密钥和请求日志。", shortDescription: "ChatGPT 网关", icon: <Bot className="size-4" /> },
     { key: "minimax", label: "MiniMax 音频", description: "管理 MiniMax 语音、音乐模型、音色目录和请求日志。", shortDescription: "语音与音乐", icon: <Music2 className="size-4" /> },
@@ -220,7 +235,7 @@ export const adminSectionGroups: AdminSectionGroup[] = [
     { title: "经营分析", items: sectionsFor(["overview", "users", "logs", "generationOperations"]) },
     { title: "商品运营", items: sectionsFor(["products", "orders", "promotions", "coupons", "referrals"]) },
     { title: "财务管理", items: sectionsFor(["points", "payments", "cdk", "wallet"]) },
-    { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "genericProxy", "runninghub", "geminiai", "geminiTools", "chatgptApi", "minimax", "tencentMusic", "qwenAudio", "dreamina", "skills"]) },
+    { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "genericProxy", "runninghub", "geminiai", "dolaApi", "geminiTools", "chatgptApi", "minimax", "tencentMusic", "qwenAudio", "dreamina", "skills"]) },
     { title: "系统管理", items: sectionsFor(["site", "settings", "accountDeletion", "mediaStorage", "externalStorage", "backup", "updates", "adminHelp"]) },
     { title: "内容运营", items: sectionsFor(["works", "announcements", "prompts"]) },
 ];

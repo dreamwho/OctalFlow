@@ -16,6 +16,8 @@ import { type CanvasAssistantSession, type CanvasConnection, type CanvasNodeData
 
 import { CanvasClipboard, CanvasGenerationRequest, CanvasHistoryEntry, PendingConnectionCreate } from "./canvas-page-elements";
 
+export type CanvasDolaVerification = { nodeId: string; taskId: string; verificationId: string };
+
 export function useCanvasPageState() {
     const { message, modal } = App.useApp();
     const params = useParams<{ id: string }>();
@@ -98,6 +100,7 @@ export function useCanvasPageState() {
     const [collapsingBatchIds, setCollapsingBatchIds] = useState<Set<string>>(new Set());
     const [openingBatchIds, setOpeningBatchIds] = useState<Set<string>>(new Set());
     const [isNodeDragging, setIsNodeDragging] = useState(false);
+    const [dolaVerification, setDolaVerification] = useState<CanvasDolaVerification | null>(null);
 
     const nodesRef = useRef(nodes);
     const connectionsRef = useRef(connections);
@@ -229,6 +232,8 @@ export function useCanvasPageState() {
         setOpeningBatchIds,
         isNodeDragging,
         setIsNodeDragging,
+        dolaVerification,
+        setDolaVerification,
         nodesRef,
         connectionsRef,
         selectedNodeIdsRef,

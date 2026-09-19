@@ -2,6 +2,44 @@
   "version": 1,
   "logs": [
     {
+      "id": "f8cb0379-fcf0-4bb7-8ee0-bf55ed4cf902",
+      "action": "auth.login",
+      "status": "failure",
+      "actor": {
+        "username": "e2e_admin",
+        "role": "user",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36"
+      },
+      "target": {
+        "type": "user",
+        "label": "e2e_admin"
+      },
+      "metadata": {
+        "error": "用户名或密码不正确"
+      },
+      "createdAt": "2026-09-13T13:55:20.849Z"
+    },
+    {
+      "id": "997b4dfc-7316-4fc6-9807-697e0c3a402a",
+      "action": "auth.login",
+      "status": "failure",
+      "actor": {
+        "username": "e2e_admin",
+        "role": "user",
+        "ip": "unknown",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36"
+      },
+      "target": {
+        "type": "user",
+        "label": "e2e_admin"
+      },
+      "metadata": {
+        "error": "用户名或密码不正确"
+      },
+      "createdAt": "2026-09-13T13:54:03.249Z"
+    },
+    {
       "id": "8025b8b9-7e36-47dd-9b30-bba12b26db5d",
       "action": "admin.generic_proxy.get",
       "status": "success",

@@ -1,0 +1,51 @@
+{
+  "applyRect": {
+    "bottom": 441.390625,
+    "height": 36,
+    "right": 515,
+    "width": 84,
+    "x": 431,
+    "y": 405.390625
+  },
+  "bodyOverflowX": 0,
+  "clientHeight": 358,
+  "documentOverflowX": 0,
+  "fields": [
+    {
+      "label": null,
+      "role": "combobox",
+      "text": ""
+    },
+    {
+      "label": null,
+      "role": "combobox",
+      "text": ""
+    },
+    {
+      "label": null,
+      "role": "combobox",
+      "text": ""
+    },
+    {
+      "label": null,
+      "role": "slider",
+      "text": ""
+    }
+  ],
+  "rect": {
+    "bottom": 454.390625,
+    "height": 359.75,
+    "right": 532,
+    "width": 520,
+    "x": 12,
+    "y": 94.640625
+  },
+  "route": "/canvas/canvas-ui-after-20260915",
+  "scrollHeight": 358,
+  "theme": "light",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "zoom": 1
+}

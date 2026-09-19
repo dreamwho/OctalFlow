@@ -1,0 +1,52 @@
+{
+  "route": "/admin?section=generationOperations",
+  "theme": "light",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "state": "generation operations loaded",
+  "buildId": "dd6ezvU18AJ6w0hEjdkHA",
+  "evidenceVersion": "admin-c01-v2",
+  "capturedAt": "2026-09-13T17:56:05.686Z",
+  "title": "管理后台 | dreamyo",
+  "nav": {
+    "left": 0,
+    "top": 0,
+    "right": 220,
+    "bottom": 900,
+    "width": 220,
+    "height": 900
+  },
+  "intro": {
+    "left": 268,
+    "top": 94,
+    "right": 1404,
+    "bottom": 217.1875,
+    "width": 1136,
+    "height": 123.1875
+  },
+  "metricCards": [],
+  "modelStatusCount": 0,
+  "queueCount": 0,
+  "channelCardCount": 4,
+  "generationSurface": {
+    "left": 268,
+    "top": 237.1875,
+    "right": 1404,
+    "bottom": 2277.375,
+    "width": 1136,
+    "height": 2040.1875
+  },
+  "table": {
+    "left": 286,
+    "top": 637.875,
+    "right": 1386,
+    "bottom": 850.71875,
+    "width": 1100,
+    "height": 212.84375
+  },
+  "bodyOverflow": false,
+  "outOfViewportButtons": 0
+}

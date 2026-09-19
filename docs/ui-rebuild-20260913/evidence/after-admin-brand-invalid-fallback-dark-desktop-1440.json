@@ -1,0 +1,13 @@
+{
+  "route": "/admin?section=site",
+  "theme": "dark",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "fallback": true,
+  "overflow": false,
+  "state": "无效Logo深色主题回退",
+  "buildId": "l9LAF9ZLIY-o1bJMxJAaW"
+}

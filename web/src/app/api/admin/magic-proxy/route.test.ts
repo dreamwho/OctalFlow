@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
     getOverview: vi.fn(),
     updateBinding: vi.fn(),
     importSubscription: vi.fn(),
+    testDola: vi.fn(),
 }));
 
 vi.mock("@/lib/server/magic-proxy-admin", () => ({
@@ -37,9 +38,10 @@ vi.mock("@/lib/server/magic-proxy-service", () => ({
     getMagicProxyOverview: mocks.getOverview,
     updateMagicProxyBinding: mocks.updateBinding,
     importMagicProxySubscription: mocks.importSubscription,
+    testMagicProxyDolaAccess: mocks.testDola,
 }));
 
-import { GET, PATCH } from "./route";
+import { GET, PATCH, POST as proxyPOST } from "./route";
 import { POST } from "./subscription/route";
 
 describe("magic proxy admin routes", () => {
@@ -49,6 +51,7 @@ describe("magic proxy admin routes", () => {
         mocks.getOverview.mockResolvedValue(overview);
         mocks.updateBinding.mockResolvedValue({ provider: "geminiTools", binding: { enabled: true, node: "Tokyo-01" } });
         mocks.importSubscription.mockResolvedValue({ nodeCount: 1, nodes: [{ name: "Tokyo-01", type: "ss" }], bindings: overview.bindings, lastUpdatedAt: overview.lastUpdatedAt });
+        mocks.testDola.mockResolvedValue({ targetUrl: "https://www.dola.com", testedAt: overview.lastUpdatedAt, overallOk: true, items: [{ service: "dola", serviceTitle: "Dola API", group: "dreamyo-DolaAPI", activeNode: "Tokyo-01", enabled: true, ok: true, delay: 42 }] });
     });
 
     it("returns the full public overview from GET", async () => {
@@ -91,5 +94,14 @@ describe("magic proxy admin routes", () => {
         expect(mocks.readJson).toHaveBeenCalledWith(expect.any(Request), 4 * 1024 * 1024);
         expect(mocks.importSubscription).toHaveBeenCalledWith({ content });
         expect(mocks.auditAction).toHaveBeenLastCalledWith(expect.any(Request), user, "admin.magic_proxy.subscription.file_import", { type: "magic_proxy_subscription", id: "default" }, { nodeCount: 1 });
+    });
+
+    it("runs the Dola-specific origin connectivity test", async () => {
+        mocks.readJson.mockResolvedValue({ action: "testDola" });
+        const response = await proxyPOST(new Request("http://localhost/api/admin/magic-proxy", { method: "POST", body: JSON.stringify({ action: "testDola" }) }));
+
+        expect(await response!.json()).toMatchObject({ code: 0, data: { targetUrl: "https://www.dola.com", overallOk: true } });
+        expect(mocks.testDola).toHaveBeenCalledOnce();
+        expect(mocks.auditAction).toHaveBeenLastCalledWith(expect.any(Request), user, "admin.magic_proxy.dola_test", { type: "magic_proxy", id: "dola" }, { ok: true });
     });
 });

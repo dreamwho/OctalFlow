@@ -1,0 +1,24 @@
+{
+  "route": "/admin?section=site",
+  "theme": "light",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "logo": {
+    "left": -272,
+    "top": 30.5,
+    "width": 32,
+    "height": 32
+  },
+  "shell": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 3384.640625
+  },
+  "overflow": false,
+  "state": "自定义Logo已持久化",
+  "buildId": "l9LAF9ZLIY-o1bJMxJAaW"
+}

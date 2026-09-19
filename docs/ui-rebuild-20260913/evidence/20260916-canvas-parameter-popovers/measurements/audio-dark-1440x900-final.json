@@ -1,0 +1,57 @@
+{
+  "apply": {
+    "bottom": 605.5,
+    "height": 36,
+    "right": 1013.65625,
+    "visible": true,
+    "width": 84,
+    "x": 929.65625,
+    "y": 569.5
+  },
+  "buildId": "dK6POYeiax5lYEoGNtr-j",
+  "containedX": true,
+  "devicePixelRatio": 1,
+  "document": {
+    "bodyScrollWidth": 1440,
+    "documentScrollWidth": 1440,
+    "innerWidth": 1440
+  },
+  "kind": "audio",
+  "overflowX": false,
+  "panel": {
+    "background": "rgba(0, 0, 0, 0)",
+    "borderColor": "rgba(0, 0, 0, 0)",
+    "bottom": 618.5,
+    "clientHeight": 481,
+    "clientWidth": 518,
+    "color": "rgb(238, 246, 255)",
+    "height": 482.53125,
+    "right": 1030.65625,
+    "scrollHeight": 481,
+    "scrollTop": 0,
+    "scrollWidth": 518,
+    "width": 520,
+    "x": 510.65625,
+    "y": 135.96875
+  },
+  "route": "/canvas/canvas-ui-after-20260915",
+  "selected": [
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(112, 217, 255, 0.42)",
+      "color": "rgb(234, 247, 255)",
+      "text": "自适应"
+    }
+  ],
+  "state": "minimax-tts-unselected-voice",
+  "sticky": {
+    "footer": "sticky",
+    "header": "sticky"
+  },
+  "theme": "dark",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "zoom": 100
+}

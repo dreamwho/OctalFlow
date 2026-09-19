@@ -1,0 +1,34 @@
+{
+  "route": "/admin?section=dreamina",
+  "section": "dreamina",
+  "theme": "dark",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844,
+    "zoom": 1
+  },
+  "heading": "即梦 CLI",
+  "shell": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 2009.484375
+  },
+  "content": {
+    "left": 0,
+    "top": 66,
+    "width": 390,
+    "height": 1943.484375
+  },
+  "headingRect": {
+    "left": 31,
+    "top": 102,
+    "width": 328,
+    "height": 24.140625
+  },
+  "overflow": false,
+  "state": "后台默认分区",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

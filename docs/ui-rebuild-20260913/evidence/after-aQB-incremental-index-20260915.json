@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-09-15",
+  "incrementalBuildId": "kGZdoDp7z-FYM3e6_C8e5",
+  "previousIncrementalBuildId": "aQB-g8MoX5r075GO9Zwkw",
+  "baselineBuildId": "nSTS_Kms_ikgtSS2hh3wH",
+  "incrementalEvidence": {
+    "build": "evidence/after-build-home-dark-caret-20260915.log",
+    "core": "evidence/after-core-aQB-20260915.log",
+    "responsive": "evidence/after-responsive-aQB-20260915.log",
+    "secondary": "evidence/after-secondary-aQB-20260915.log",
+    "creativeVideo": "evidence/after-creative-video-aQB-20260915.log",
+    "fullE2E": "evidence/after-full-e2e-kGZ-20260915.log",
+    "defaultViewportMatrix": "evidence/after-full-e2e-kGZ-20260915.log",
+    "typecheck": "evidence/after-typecheck-kGZ-20260915.log",
+    "lint": "evidence/after-lint-kGZ-20260915.log",
+    "vitest": "evidence/after-full-vitest-kGZ-20260915.log",
+    "format": "evidence/after-format-check-kGZ-20260915.log",
+    "releaseAudit": "evidence/after-release-check-kGZ-20260915.log",
+    "homeDarkContrast": "evidence/after-home-dark-screenshot-kGZ-20260915.log",
+    "docsTypes": "evidence/after-docs-types-kGZ-20260915.log",
+    "docsBuild": "evidence/after-docs-build-kGZ-20260915.log",
+    "gitDiff": "evidence/after-git-diff-check-kGZ-final-20260915.log",
+    "package": "evidence/after-package-manifest-final-20260915.json",
+    "playwrightList": "evidence/after-playwright-list-kGZ-20260915.txt"
+  },
+  "results": {
+    "core": "62 passed (previous aQB scoped run)",
+    "responsive": "51 passed (previous aQB scoped run)",
+    "secondary": "24 passed (previous aQB scoped run)",
+    "creativeVideo": "25 passed,17 skipped (previous aQB scoped run)",
+    "fullE2E": "175 passed, 1 failed, 17 skipped, 10 not run; only GeminiAI external authorization/hydration failure",
+    "defaultViewportMatrix": "994 JSON (434 user/public + 504 admin sections + 56 admin entries), all kGZ current build",
+    "vitest": "631 files passed, 4 skipped; 3105 passed, 10 skipped",
+    "homeDarkContrast": "9 passed; screenshots for chromium/mobile-390/mobile-430",
+    "typecheck": "exit 0",
+    "lint": "exit 0",
+    "docs": "types:check/build exit 0",
+    "package": "source 2609 selected/2611 total/2610 hashes/321900703 bytes; build 5934 selected/5936 total/5935 hashes/130172477 bytes; closureComplete true",
+    "playwrightList": "203 tests in 18 files; --list exit 0"
+  },
+  "status": "kGZ 当前构建已修复首页暗色正文/光标并完成真实截图，完整 E2E 为175通过、1失败、17跳过、10未执行；唯一失败为 GeminiAI 外部授权/水合依赖。994默认矩阵已重跑并刷新标题/配色证据；有效、加载、失败、弹层、保存状态、后台完整业务状态、短剧音频/合成链路、外部服务、全仓格式与依赖审计仍未完成或阻塞。源码/构建包已按执行日重建并完成资源闭包校验。"
+}

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "buildId": "ZkMiGzfnlgA6lGj0wMzQk",
+  "route": "/canvas/canvas-ui-after-20260915",
+  "files": [
+    "before-mixed-tokens-390x844.png",
+    "after-mixed-tokens-light-1440x900.png",
+    "after-mixed-tokens-light-1440x900-reload.png",
+    "after-mixed-tokens-dark-390x844.png",
+    "measurements.json",
+    "manifest.json",
+    "qa-worklog.md",
+    "vitest.log",
+    "tsc.log",
+    "eslint.log",
+    "diff-check.log",
+    "prettier.log",
+    "build.log",
+    "health-check.log"
+  ],
+  "sourceReferences": [
+    "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-76877fe5-cd50-4f2f-9900-bf2907c87d1f.png",
+    "/var/folders/97/2n0mls2n6bj7_14_pycydfz00000gn/T/codex-clipboard-d9cc60ae-0025-41c3-bc2a-c9b9973fcc65.png"
+  ],
+  "notes": "Screenshots use an isolated fixture and local protocol configuration; no paid generation was submitted."
+}

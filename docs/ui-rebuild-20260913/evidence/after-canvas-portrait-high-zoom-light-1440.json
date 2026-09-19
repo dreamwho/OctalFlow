@@ -1,0 +1,71 @@
+{
+  "route": "/canvas/canvas-Vw_VhccwyxQw48HVgDrT9",
+  "theme": "light",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "canvasZoom": 1.75,
+  "node": {
+    "left": 523.125,
+    "top": 72,
+    "right": 916.875,
+    "bottom": 772,
+    "width": 393.75,
+    "height": 700
+  },
+  "frame": {
+    "left": 523.125,
+    "top": 72,
+    "right": 916.875,
+    "bottom": 772,
+    "width": 393.75,
+    "height": 700
+  },
+  "content": {
+    "left": 523.125,
+    "top": 72,
+    "right": 916.875,
+    "bottom": 772,
+    "width": 393.75,
+    "height": 700
+  },
+  "media": {
+    "left": 524.875,
+    "top": 73.75,
+    "right": 915.125,
+    "bottom": 770.25,
+    "width": 390.25,
+    "height": 696.5
+  },
+  "mediaNatural": {
+    "width": 360,
+    "height": 640
+  },
+  "toolbar": {
+    "left": 399,
+    "top": 20,
+    "right": 1041,
+    "bottom": 60,
+    "width": 642,
+    "height": 40
+  },
+  "grid": {
+    "count": 1,
+    "backgroundSize": "38.5px 38.5px",
+    "backgroundPosition": "348.125px 2px"
+  },
+  "frameBorder": {
+    "top": "1px",
+    "right": "1px",
+    "bottom": "1px",
+    "left": "1px",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  "genericToolbarCount": 0,
+  "overflow": false,
+  "state": "竖图真实固有尺寸、高缩放、图片节点顶部工具栏",
+  "buildId": "skNq3_iBgO4rSqUuV-XE4",
+  "capturedAt": "2026-09-15T08:40:35.973Z"
+}

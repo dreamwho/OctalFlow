@@ -10,6 +10,7 @@ import {
     type GenerationQualityOption,
     type GenerationRatioOption,
     type MediaCapability,
+    friendlyImageSizeLabel,
 } from "@/components/creative-generation-preferences";
 import { ModelIcon } from "@/components/model-picker";
 import type { CreativeGenerationPreferences } from "@/lib/creative-runtime-contract";
@@ -186,7 +187,11 @@ export function CompactAgentGenerationSettings({
             allowCustomSize={capability === "image" ? (imageCapabilities?.allowCustomSize ?? true) : (videoCapabilities?.allowCustomSize ?? !videoCapabilities)}
             allowCustomVideoQuality={!videoCapabilities}
             showPreferenceFields={Boolean(activeModel)}
-            emptyPreferenceState={<p className="rounded-lg border border-dashed border-[#dce2e7] bg-[#fafbfc] px-3 py-5 text-center text-xs leading-5 text-[#7b8591] dark:border-[#3a424c] dark:bg-[#1c2026] dark:text-[#98a2ae]">请选择一个模型后查看可用的比例、清晰度和时长。</p>}
+            emptyPreferenceState={
+                <p className="rounded-lg border border-dashed border-[#dce2e7] bg-[#fafbfc] px-3 py-5 text-center text-xs leading-5 text-[#7b8591] dark:border-[#3a424c] dark:bg-[#1c2026] dark:text-[#98a2ae]">
+                    请选择一个模型后查看可用的比例、清晰度和时长。
+                </p>
+            }
             onCapabilityChange={changeCapability}
             onChange={(patch) => onChange(updateAgentGenerationPreferences(preferences, capability, patch))}
         />
@@ -241,5 +246,6 @@ function isExactSize(value?: string) {
 }
 
 function agentImageSizeLabel(value?: string) {
-    return value && value !== "auto" ? value.replace("x", "×") : "智能";
+    if (!value || value === "auto") return "智能";
+    return friendlyImageSizeLabel(value) || value.replace("x", "×");
 }

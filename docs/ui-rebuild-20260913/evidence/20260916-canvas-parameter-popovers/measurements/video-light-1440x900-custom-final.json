@@ -1,0 +1,75 @@
+{
+  "apply": {
+    "bottom": 625,
+    "height": 36,
+    "right": 853,
+    "visible": true,
+    "width": 84,
+    "x": 769,
+    "y": 589
+  },
+  "buildId": "dK6POYeiax5lYEoGNtr-j",
+  "containedX": true,
+  "devicePixelRatio": 1,
+  "document": {
+    "bodyScrollWidth": 1440,
+    "documentScrollWidth": 1440,
+    "innerWidth": 1440
+  },
+  "kind": "video",
+  "overflowX": false,
+  "panel": {
+    "background": "oklab(0.999994 0.0000455678 0.0000200868 / 0.96)",
+    "borderColor": "rgb(216, 226, 242)",
+    "bottom": 637,
+    "clientHeight": 617,
+    "clientWidth": 520,
+    "color": "rgb(31, 43, 70)",
+    "height": 617,
+    "right": 869,
+    "scrollHeight": 771,
+    "scrollTop": 107,
+    "scrollWidth": 520,
+    "width": 520,
+    "x": 349,
+    "y": 20
+  },
+  "route": "/canvas/canvas-ui-after-20260915",
+  "selected": [
+    {
+      "background": "rgb(237, 245, 255)",
+      "borderColor": "rgb(19, 32, 59)",
+      "color": "rgb(94, 127, 241)",
+      "text": "普通参考"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(47, 111, 255, 0.34)",
+      "color": "rgb(30, 77, 183)",
+      "text": "自定义像素尺寸"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(47, 111, 255, 0.34)",
+      "color": "rgb(30, 77, 183)",
+      "text": "1080P"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(47, 111, 255, 0.34)",
+      "color": "rgb(30, 77, 183)",
+      "text": "10 秒"
+    }
+  ],
+  "state": "custom-1280x720",
+  "sticky": {
+    "footer": "sticky",
+    "header": "sticky"
+  },
+  "theme": "light",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "zoom": 100
+}

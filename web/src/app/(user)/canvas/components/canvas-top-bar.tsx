@@ -93,6 +93,7 @@ export function CanvasTopBar({
             <div className="canvas-topbar pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between gap-2 px-3 pt-3 sm:px-5 sm:pt-4" data-save-status={saveState?.status || "saved"} style={{ color: theme.node.text }}>
                 <div className="canvas-topbar-left pointer-events-auto flex min-w-0 items-center gap-2 sm:gap-3">
                     <Dropdown
+                        overlayClassName="octal-dark-overlay dark"
                         open={menuOpen}
                         onOpenChange={setMenuOpen}
                         trigger={["click"]}
@@ -142,6 +143,7 @@ export function CanvasTopBar({
                                     <span className="truncate">{title}</span>
                                 </button>
                                 <Dropdown
+                                    overlayClassName="octal-dark-overlay dark"
                                     open={projectMenuOpen}
                                     onOpenChange={setProjectMenuOpen}
                                     trigger={["click"]}

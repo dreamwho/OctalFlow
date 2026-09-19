@@ -1,0 +1,43 @@
+{
+  "applyRect": {
+    "bottom": 560.171875,
+    "height": 36,
+    "right": 515,
+    "width": 84,
+    "x": 431,
+    "y": 524.171875
+  },
+  "bodyOverflowX": 0,
+  "clientHeight": 477,
+  "documentOverflowX": 0,
+  "labels": [
+    "调整音色、语速、音量、音高与情感等输出参数",
+    "正在获取音色目录",
+    "自适应",
+    "快乐的",
+    "悲伤的",
+    "愤怒的",
+    "恐惧的",
+    "厌恶的",
+    "惊讶的",
+    "中性的",
+    "应用"
+  ],
+  "rect": {
+    "bottom": 573.171875,
+    "height": 478.53125,
+    "right": 532,
+    "width": 520,
+    "x": 12,
+    "y": 94.640625
+  },
+  "route": "/canvas/canvas-ui-after-20260915",
+  "scrollHeight": 477,
+  "sliderCount": 3,
+  "theme": "light",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "zoom": 1
+}

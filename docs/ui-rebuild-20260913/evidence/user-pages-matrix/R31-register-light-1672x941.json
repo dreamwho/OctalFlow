@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/register",
+  "actualPath": "/register",
+  "responseStatus": 200,
+  "route": "/register",
+  "theme": "light",
+  "title": "注册 | dreamyo",
+  "heading": "从一个入口开始视觉创作",
+  "viewport": {
+    "width": 1672,
+    "height": 941,
+    "visualWidth": 1672,
+    "visualHeight": 941,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1672,
+    "height": 941
+  },
+  "overflow": false,
+  "state": "注册表单",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

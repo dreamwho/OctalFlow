@@ -1,0 +1,37 @@
+{
+  "input": {
+    "caret": "rgb(79, 114, 233)",
+    "color": "rgb(19, 33, 63)",
+    "rect": {
+      "bottom": 489.125,
+      "h": 120,
+      "right": 404,
+      "w": 314,
+      "x": 90,
+      "y": 369.125
+    }
+  },
+  "scroll": {
+    "body": 430,
+    "bodyClient": 430,
+    "html": 430,
+    "htmlClient": 430
+  },
+  "send": {
+    "hit": true,
+    "rect": {
+      "bottom": 541.125,
+      "h": 44,
+      "right": 402,
+      "w": 44,
+      "x": 358,
+      "y": 497.125
+    },
+    "visible": true
+  },
+  "theme": "light",
+  "viewport": {
+    "height": 932,
+    "width": 430
+  }
+}

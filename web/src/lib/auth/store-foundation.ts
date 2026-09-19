@@ -99,6 +99,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     privacyVersion: "1.0",
     friendLinks: DEFAULT_SITE_FRIEND_LINKS,
     socials: DEFAULT_SITE_SOCIALS,
+    announcementBar: { enabled: false, text: "", href: "" },
+    frontendTheme: "dark",
+    adminTheme: "dark",
 };
 export const DEFAULT_MAIL_SETTINGS: MailSettings = {
     provider: "QQ 邮箱",
@@ -163,7 +166,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
     generationCostControl: DEFAULT_GENERATION_COST_CONTROL,
     dataLifecycle: DEFAULT_DATA_LIFECYCLE,
     entitlements: DEFAULT_ENTITLEMENT_SETTINGS,
-    generationConcurrency: { agent: 2, image: 4, video: 1, audio: 2, text: 4, render: 1 },
+    generationConcurrency: { agent: 2, image: 4, video: 1, audio: 2, text: 4, render: 1, workerLanes: 4 },
     generationDefaults: {
         canvasImageCount: 1,
         imageSize: "1:1",

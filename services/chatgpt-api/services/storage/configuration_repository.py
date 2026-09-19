@@ -14,7 +14,12 @@ from services.application_database import (
     initialize_application_database,
     resolve_database_url,
 )
-from services.secret_crypto import decrypt_configuration, encrypt_configuration
+from services.secret_crypto import (
+    decrypt_configuration,
+    encrypt_configuration,
+    is_legacy_configuration,
+    migrate_configuration,
+)
 
 
 class SystemSettingsModel(DatabaseBase):
@@ -49,6 +54,7 @@ class _DictionaryRepository:
         self.database_url = database_url or resolve_database_url()
         self.engine = initialize_application_database(self.database_url)
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self._migrate_legacy_configuration()
 
     @staticmethod
     def _dictionary(value: object | None) -> dict[str, object]:
@@ -57,6 +63,27 @@ class _DictionaryRepository:
     @staticmethod
     def _stored_dictionary(value: Mapping[str, object]) -> dict[str, str]:
         return encrypt_configuration(value)
+
+    def _migrate_legacy_configuration(self) -> None:
+        session = self.Session()
+        try:
+            row = session.get(self.model, 1)
+            if row is None or not is_legacy_configuration(row.data):
+                return
+            self._lock(session)
+            row = session.get(self.model, 1, with_for_update=True)
+            if row is None or not is_legacy_configuration(row.data):
+                session.rollback()
+                return
+            row.data = migrate_configuration(row.data)
+            row.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            print(f"[storage] Migrated legacy {self.lock_name} configuration encryption")
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def _lock(self, session: Any) -> None:
         if self.engine.dialect.name == "sqlite":

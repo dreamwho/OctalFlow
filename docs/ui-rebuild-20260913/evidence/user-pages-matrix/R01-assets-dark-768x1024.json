@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/assets",
+  "actualPath": "/assets",
+  "responseStatus": 200,
+  "route": "/assets",
+  "theme": "dark",
+  "title": "资产库 | dreamyo",
+  "heading": "我的素材",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "main": {
+    "left": 0,
+    "top": 56,
+    "width": 768,
+    "height": 968
+  },
+  "overflow": false,
+  "state": "默认已登录",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

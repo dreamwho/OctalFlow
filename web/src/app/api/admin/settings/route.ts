@@ -34,7 +34,7 @@ export async function PATCH(request: Request) {
         if (socialValidationError) throw new AuthInputError(socialValidationError);
         const currentSettings = await getFreshAuthSettings();
         const patch: Partial<AuthSettings> = {};
-        if (body.site) patch.site = body.site;
+        if (body.site) patch.site = { ...body.site, frontendTheme: normalizeThemeName(body.site.frontendTheme), adminTheme: normalizeThemeName(body.site.adminTheme) };
         if (typeof body.registrationEnabled === "boolean") patch.registrationEnabled = body.registrationEnabled;
         if (typeof body.emailRegistrationEnabled === "boolean") patch.emailRegistrationEnabled = body.emailRegistrationEnabled;
         if (typeof body.freeDailyPointsEnabled === "boolean") patch.freeDailyPointsEnabled = body.freeDailyPointsEnabled;
@@ -132,4 +132,9 @@ function siteSocialValidationError(socials: Partial<SiteSocialSettings> | undefi
         if (!normalizeSiteSocial(key, social).url) return `${labels[key]} 地址无效，请填写完整链接或 @用户名`;
     }
     return "";
+}
+
+/** 主题只允许深色或浅色；写入边界收敛，避免未知值只被读取端修正而在公开会话里渲染成浅色。 */
+function normalizeThemeName(theme: unknown) {
+    return theme === "light" ? "light" : "dark";
 }

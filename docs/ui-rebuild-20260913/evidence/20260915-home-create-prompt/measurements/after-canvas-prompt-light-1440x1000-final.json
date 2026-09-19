@@ -1,0 +1,59 @@
+{
+  "editor": {
+    "background": "rgba(0, 0, 0, 0)",
+    "bottom": 699,
+    "color": "rgb(19, 32, 59)",
+    "height": 122,
+    "overflowX": "auto",
+    "overflowY": "auto",
+    "right": 1037,
+    "width": 634,
+    "x": 403,
+    "y": 577
+  },
+  "generate": {
+    "bottom": 747.5,
+    "height": 40,
+    "hit": false,
+    "right": 1037,
+    "width": 40,
+    "x": 997,
+    "y": 707.5
+  },
+  "genericCanvasToolbarVisible": false,
+  "nodeSpecificToolbarVisible": true,
+  "overflow": {
+    "body": 0,
+    "html": 0
+  },
+  "skillSummary": "Skill · 1",
+  "theme": "light",
+  "tokens": [
+    {
+      "bottom": 615,
+      "height": 34,
+      "right": 617.140625,
+      "text": "图片1",
+      "type": "reference",
+      "width": 108.34375,
+      "x": 508.796875,
+      "y": 581
+    },
+    {
+      "bottom": 649,
+      "height": 34,
+      "right": 557,
+      "text": "自然美颜精修",
+      "type": "skill",
+      "width": 150,
+      "x": 407,
+      "y": 615
+    }
+  ],
+  "url": "http://127.0.0.1:3102/canvas/canvas-ui-after-20260915",
+  "viewport": {
+    "devicePixelRatio": 1,
+    "height": 1000,
+    "width": 1440
+  }
+}

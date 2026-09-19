@@ -1,0 +1,31 @@
+{
+  "editor": {
+    "bottom": 663,
+    "caret": "rgb(238, 246, 255)",
+    "color": "rgb(238, 246, 255)",
+    "h": 122,
+    "right": 365,
+    "w": 340,
+    "x": 25,
+    "y": 541
+  },
+  "generate": {
+    "bottom": 711.5,
+    "h": 40,
+    "right": 365,
+    "w": 40,
+    "x": 325,
+    "y": 671.5
+  },
+  "panelText": "请帮我生成一个 图片1 ，风格的家居客厅场景， ，在柔和的自然光下，展示温馨氛围。自然美颜精修 ",
+  "scroll": {
+    "body": 390,
+    "bodyClient": 390,
+    "html": 390,
+    "htmlClient": 390
+  },
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

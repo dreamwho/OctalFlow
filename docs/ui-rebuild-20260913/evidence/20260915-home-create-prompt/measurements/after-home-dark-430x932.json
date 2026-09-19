@@ -1,0 +1,67 @@
+{
+  "modes": [
+    {
+      "bottom": 472.09375,
+      "display": "grid",
+      "h": 20,
+      "right": 79.125,
+      "visible": true,
+      "w": 20,
+      "x": 59.125,
+      "y": 452.09375
+    },
+    {
+      "bottom": 472.09375,
+      "display": "grid",
+      "h": 20,
+      "right": 158.375,
+      "visible": true,
+      "w": 20,
+      "x": 138.375,
+      "y": 452.09375
+    },
+    {
+      "bottom": 472.09375,
+      "display": "grid",
+      "h": 20,
+      "right": 237.625,
+      "visible": true,
+      "w": 20,
+      "x": 217.625,
+      "y": 452.09375
+    },
+    {
+      "bottom": 472.09375,
+      "display": "grid",
+      "h": 20,
+      "right": 316.875,
+      "visible": true,
+      "w": 20,
+      "x": 296.875,
+      "y": 452.09375
+    }
+  ],
+  "scroll": {
+    "body": 430,
+    "bodyClient": 430,
+    "html": 430,
+    "htmlClient": 430
+  },
+  "submit": {
+    "hit": true,
+    "rect": {
+      "bottom": 484.09375,
+      "h": 44,
+      "right": 403,
+      "w": 44,
+      "x": 359,
+      "y": 440.09375
+    }
+  },
+  "theme": "dark",
+  "url": "http://127.0.0.1:3102/",
+  "viewport": {
+    "height": 932,
+    "width": 430
+  }
+}

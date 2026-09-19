@@ -249,7 +249,7 @@ def _redact_proxy_reference(reference: ProxyReference | None) -> ProxyReference 
 
 
 def _redact_proxy_node(node: ProxyNode) -> ProxyNode:
-    return node
+    return node.model_copy(update={"url": _redact_proxy_url(node.url)})
 
 
 def _redact_proxy_group(group: ProxyGroup) -> ProxyGroup:

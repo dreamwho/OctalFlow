@@ -16,7 +16,10 @@ export default defineConfig({
     timeout: 120_000,
     forbidOnly: Boolean(process.env.CI),
     retries: process.env.CI ? 1 : 0,
-    workers: process.env.CI || !databaseUrl ? 1 : undefined,
+    // All projects share the same isolated data directory, database (when
+    // configured), and fixture media limiter. Keep every run serial so one
+    // project cannot mutate or exhaust shared state while another asserts it.
+    workers: 1,
     reporter: process.env.CI ? [["github"], ["html", { open: "never", outputFolder: "playwright-report" }]] : "list",
     use: {
         baseURL,
@@ -26,14 +29,26 @@ export default defineConfig({
     },
     projects: [
         { name: "setup", testMatch: /installation\.spec\.ts/ },
-        { name: "chromium", testMatch: [/(?:all-pages|canvas|commerce|core|creative-video-result|home|responsive)\.spec\.ts/], dependencies: ["setup"], use: { ...devices["Desktop Chrome"], storageState } },
+        {
+            name: "chromium",
+            testMatch: [
+                /(?:admin-brand-visual|admin-commerce-visual|admin-entry-matrix|admin-sections-matrix|all-pages|canvas|commerce|content-account-visual|core|creative-video-result|drama-visual|home|responsive|static-brand-visual|ui-rebuild|user-pages-matrix)\.spec\.ts/,
+            ],
+            dependencies: ["setup"],
+            use: { ...devices["Desktop Chrome"], storageState },
+        },
         { name: "my-prompts", testMatch: /my-prompts\.spec\.ts/, dependencies: ["setup"], use: { ...devices["Desktop Chrome"] } },
         { name: "my-prompts-390", testMatch: /my-prompts\.spec\.ts/, dependencies: ["setup"], use: { ...devices["iPhone 13"], browserName: "chromium", viewport: { width: 390, height: 844 } } },
         { name: "my-prompts-430", testMatch: /my-prompts\.spec\.ts/, dependencies: ["setup"], use: { ...devices["iPhone 14 Pro Max"], browserName: "chromium", viewport: { width: 430, height: 932 } } },
-        { name: "mobile-390", testMatch: /(?:all-pages|commerce|creative-video-result|home|responsive)\.spec\.ts/, dependencies: ["setup"], use: { ...devices["iPhone 13"], browserName: "chromium", viewport: { width: 390, height: 844 }, storageState } },
+        {
+            name: "mobile-390",
+            testMatch: /(?:all-pages|commerce|content-account-visual|creative-video-result|drama-visual|home|responsive|static-brand-visual|ui-rebuild)\.spec\.ts/,
+            dependencies: ["setup"],
+            use: { ...devices["iPhone 13"], browserName: "chromium", viewport: { width: 390, height: 844 }, storageState },
+        },
         {
             name: "mobile-430",
-            testMatch: /(?:all-pages|commerce|creative-video-result|home|responsive)\.spec\.ts/,
+            testMatch: /(?:all-pages|commerce|content-account-visual|creative-video-result|drama-visual|home|responsive|static-brand-visual|ui-rebuild)\.spec\.ts/,
             dependencies: ["setup"],
             use: { ...devices["iPhone 14 Pro Max"], browserName: "chromium", viewport: { width: 430, height: 932 }, storageState },
         },
@@ -79,6 +94,7 @@ export default defineConfig({
                 DREAMYO_PAYPLY_REFUND_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund`,
                 DREAMYO_PAYPLY_REFUND_QUERY_URL: `http://127.0.0.1:${paymentFixturePort}/payply/refund-query?refundId={{providerRefundId}}`,
                 DREAMYO_PAYPLY_WEBHOOK_SECRET: "dreamyo-e2e-payply-webhook-secret",
+                DREAMYO_PAYPLY_WEBHOOK_SIGNATURE_HEADER: "x-dreamyo-signature",
             },
         },
     ],

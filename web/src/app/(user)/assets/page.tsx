@@ -2,12 +2,13 @@
 
 import { FileAudio, FileDown, FileUp, Film, Plus, Search, Upload } from "lucide-react";
 import { useRef, useState, type DragEvent as ReactDragEvent } from "react";
-import { App, Button, Form, Input, Modal, Pagination, Segmented, Select, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import { App, Button, Form, Input, Modal, Pagination, Segmented, Select, Space, Tag, Tooltip, Typography } from "antd";
 import { saveAs } from "file-saver";
 import { useRouter } from "next/navigation";
 
 import { useCopyText } from "@/hooks/use-copy-text";
 import { CompactEmptyState } from "@/components/compact-empty-state";
+import { DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 import { droppedFiles, leftDropTarget, preventFileDragEvent } from "@/lib/file-drop";
 import { formatBytes } from "@/lib/image-utils";
 import { mediaDownloadFileName } from "@/lib/media-file";
@@ -259,7 +260,7 @@ export default function AssetsPage() {
 
     return (
         <div className="h-full min-h-0 overflow-hidden bg-background text-foreground">
-            <main className="h-full min-h-0 overflow-y-auto px-3 py-3 sm:px-6 sm:py-6">
+            <main className="asset-library-page h-full min-h-0 overflow-y-auto px-3 py-3 sm:px-6 sm:py-6">
                 <div className="mx-auto max-w-[1560px]">
                     <header className="border-b border-border pb-3 sm:pb-4">
                         <div className="flex items-start justify-between gap-3">
@@ -329,7 +330,10 @@ export default function AssetsPage() {
 
                         {loading && !assets.length ? (
                             <section className="flex min-h-32 items-center justify-center sm:min-h-56">
-                                <Spin description="正在加载素材" />
+                                <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground" role="status" aria-label="正在加载素材">
+                                    <DreamyoWaitingIcon frame={3} size={34} label="正在加载素材" />
+                                    <span>正在加载素材</span>
+                                </div>
                             </section>
                         ) : error ? (
                             <section className="flex min-h-32 flex-col items-center justify-center gap-3 border-y border-border px-4 text-center sm:min-h-56">
@@ -359,7 +363,21 @@ export default function AssetsPage() {
                 </div>
             </main>
 
-            <Modal title={editingAsset ? "编辑素材" : "新增素材"} open={isAssetOpen} width={980} onCancel={() => setIsAssetOpen(false)} onOk={() => void saveAsset()} confirmLoading={saving} okText="保存" cancelText="取消" destroyOnHidden>
+            <Modal
+                title={editingAsset ? "编辑素材" : "新增素材"}
+                open={isAssetOpen}
+                width="min(980px, calc(100vw - 24px))"
+                styles={{
+                    container: { display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - 24px)" },
+                    body: { minHeight: 0, overflowY: "auto" },
+                }}
+                onCancel={() => setIsAssetOpen(false)}
+                onOk={() => void saveAsset()}
+                confirmLoading={saving}
+                okText="保存"
+                cancelText="取消"
+                destroyOnHidden
+            >
                 <div className="grid gap-3 pt-1 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
                     <Form form={form} layout="vertical" requiredMark={false} initialValues={{ kind: "text", tags: [] }}>
                         <Form.Item name="kind" label="类型">

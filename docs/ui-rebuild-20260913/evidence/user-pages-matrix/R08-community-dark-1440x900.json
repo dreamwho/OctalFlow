@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/community",
+  "actualPath": "/community",
+  "responseStatus": 200,
+  "route": "/community",
+  "theme": "dark",
+  "title": "作品广场 | dreamyo",
+  "heading": "灵感发现",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "visualWidth": 1440,
+    "visualHeight": 900,
+    "zoom": 1
+  },
+  "main": {
+    "left": 168,
+    "top": 56,
+    "width": 1272,
+    "height": 844
+  },
+  "overflow": false,
+  "state": "社区默认",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

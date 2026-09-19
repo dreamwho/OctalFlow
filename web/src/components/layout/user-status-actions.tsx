@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { MenuProps } from "antd";
 import { App, Button, Dropdown, Input, Popover } from "antd";
 
-import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
+import { AccountActionsCluster } from "@/components/layout/account-actions-cluster";
 import { BillingPlansModal } from "@/components/billing/billing-plans-modal";
 import { AnnouncementNotificationCenter } from "@/components/layout/announcement-notification-center";
 import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
@@ -176,6 +176,7 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
         return () => mediaQuery.removeEventListener("change", syncViewport);
     }, []);
 
+
     const handleMenuClick: MenuProps["onClick"] = async ({ key }) => {
         if (key !== "logout") return;
         try {
@@ -186,6 +187,10 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
         } catch (error) {
             message.error(error instanceof Error ? error.message : "退出登录失败");
         }
+    };
+
+    const handleLogoutClick = () => {
+        void handleMenuClick({ key: "logout", keyPath: ["logout"], item: null as never, domEvent: null as never, itemData: null as never } as never);
     };
 
     const handleAccountMenuClick: MenuProps["onClick"] = (info) => {
@@ -226,8 +231,52 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
         </button>
     ) : null;
 
+    if (variant === "canvas") {
+        return (
+            <div ref={rootRef} className="canvas-user-status-actions inline-flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <AnnouncementNotificationCenter
+                    compact={isCompactViewport}
+                    dark
+                    buttonClassName={cn(naturalIconClass, "canvas-notification-action")}
+                    buttonStyle={iconStyle}
+                    onOpen={() => {
+                        setPointsOpen(false);
+                        setAccountOpen(false);
+                    }}
+                />
+                <AccountActionsCluster
+                    authenticated={Boolean(user)}
+                    displayName={user?.displayName || user?.username}
+                    accountId={user?.accountId}
+                    avatarUrl={avatarUrl}
+                    pointsBalance={user?.pointsBalance || 0}
+                    onBilling={() => {
+                        setAccountOpen(false);
+                        setPlansOpen(true);
+                    }}
+                    onInvite={() => router.push("/profile")}
+                    onNavigate={(path) => router.push(path)}
+                    onLogout={() => void handleLogoutClick()}
+                    onLogin={() => router.push("/login")}
+                />
+                {onOpenShortcuts ? (
+                    <button type="button" className={cn(naturalIconClass, "canvas-shortcuts-action")} style={iconStyle} onClick={onOpenShortcuts} aria-label="快捷键" title="快捷键">
+                        <Keyboard className="size-4" />
+                    </button>
+                ) : null}
+                <BillingPlansModal
+                    open={plansOpen}
+                    onClose={() => setPlansOpen(false)}
+                    onSelect={(product) => {
+                        router.push(`/billing/checkout?product=${encodeURIComponent(product.id)}`);
+                    }}
+                />
+            </div>
+        );
+    }
+
     return (
-        <div ref={rootRef} className={cn("user-status-actions inline-flex max-w-full items-center gap-1.5 sm:gap-2", variant === "canvas" ? "canvas-user-status-actions shrink-0" : "app-user-status-actions min-w-0")}>
+        <div ref={rootRef} className="app-user-status-actions inline-flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
             {user ? (
                 <Popover
                     rootClassName="user-points-popover"
@@ -252,34 +301,13 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
                     {pointsButton}
                 </Popover>
             ) : null}
-            <AnnouncementNotificationCenter
-                compact={isCompactViewport}
-                buttonClassName={cn(naturalIconClass, variant === "canvas" ? "canvas-notification-action" : "app-notification-action")}
-                buttonStyle={iconStyle}
-                onOpen={() => {
-                    setPointsOpen(false);
-                    setAccountOpen(false);
-                }}
-            />
-            <AnimatedThemeToggler
-                theme={theme}
-                onThemeChange={setTheme}
-                className={cn(naturalIconClass, variant === "canvas" && "canvas-theme-action")}
-                style={iconStyle}
-                aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
-                title={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
-            />
+            <AnnouncementNotificationCenter compact={isCompactViewport} buttonClassName={cn(naturalIconClass, "app-notification-action")} buttonStyle={iconStyle} />
             {user ? (
                 <>
                     <Dropdown rootClassName="account-menu-dropdown" open={accountOpen} onOpenChange={handleAccountOpenChange} menu={{ items: accountItems, onClick: handleAccountMenuClick }} trigger={["click"]} placement="bottomRight">
                         <button
                             type="button"
-                            className={cn(
-                                variant === "canvas" ? canvasControlClass : defaultControlClass,
-                                variant === "canvas"
-                                    ? "canvas-account-action size-9 rounded-full border-0 bg-transparent p-0 hover:bg-transparent"
-                                    : "app-account-action size-8 rounded-full border-0 bg-transparent p-0 hover:bg-transparent dark:bg-transparent dark:hover:bg-transparent",
-                            )}
+                            className={cn(defaultControlClass, "app-account-action size-8 rounded-full border-0 bg-transparent p-0 hover:bg-transparent dark:bg-transparent dark:hover:bg-transparent")}
                             style={iconStyle}
                             aria-label="账户菜单"
                             title={user.displayName || user.username}
@@ -298,13 +326,13 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
                     </Dropdown>
                 </>
             ) : (
-                <Link href="/login" className={cn(variant === "canvas" ? canvasControlClass : defaultControlClass, "gap-2 px-2.5", variant === "canvas" && "canvas-account-action")} style={iconStyle}>
+                <Link href="/login" className={cn(defaultControlClass, "gap-2 px-2.5")} style={iconStyle}>
                     <UserCircle className="size-4" />
                     <span className="hidden sm:inline">登录</span>
                 </Link>
             )}
             {onOpenShortcuts ? (
-                <button type="button" className={cn(naturalIconClass, variant === "canvas" && "canvas-shortcuts-action")} style={iconStyle} onClick={onOpenShortcuts} aria-label="快捷键" title="快捷键">
+                <button type="button" className={cn(naturalIconClass, "app-shortcuts-action")} style={iconStyle} onClick={onOpenShortcuts} aria-label="快捷键" title="快捷键">
                     <Keyboard className="size-4" />
                 </button>
             ) : null}

@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-09-15T11:56:29.368Z",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "status": "BLOCKED",
+  "realUpstreamRequests": false,
+  "paidProviderCalls": false,
+  "runtime": {
+    "geminiai": {
+      "configuredUrl": false,
+      "configuredKey": false,
+      "localPython": true,
+      "port18080": false,
+      "ready": false
+    },
+    "chatgptApi": {
+      "enabled": true,
+      "configuredUrl": false,
+      "configuredKey": false,
+      "localPython": true,
+      "port8046": false,
+      "ready": false
+    },
+    "magicProxy": {
+      "controller": false,
+      "secret": false,
+      "geminiaiUrl": false,
+      "geminiToolsUrl": false,
+      "chatgptUrl": false,
+      "ports": {
+        "controller": false,
+        "geminiai": false,
+        "geminiTools": false,
+        "chatgpt": false
+      },
+      "ready": false
+    }
+  },
+  "objectStorage": {
+    "databaseChecked": true,
+    "enabled": false,
+    "configured": false,
+    "endpointConfigured": false,
+    "bucketConfigured": false,
+    "accessKeyConfigured": false,
+    "secretKeyConfigured": false,
+    "error": null
+  },
+  "reasons": [
+    "真实 GeminiAI：当前没有已授权的外部 URL/API key，且本次验收未启动可用的 GeminiAI 账号运行时；loopback 拒绝地址仅用于验证未授权错误态。",
+    "代理：magic-proxy Controller、控制密钥、订阅/provider 文件和独立监听端口未同时提供，无法验证真实代理链路。",
+    "外部存储与备份：隔离库中的对象存储未形成 enabled + bucket + accessKey + secretKey 的完整可用配置，因此不能创建或恢复真实外部恢复点。",
+    "上游账号：真实 GeminiAI、ChatGPT API、外部模型渠道账号和付费额度未授权；本轮只使用本地协议/支付 fixture，不调用真实付费上游。"
+  ],
+  "decision": "继续完成本地隔离 fixture 可验证的前端与状态证据；T19 保持 BLOCKED，待外部授权、运行时和可访问配置提供后再执行真实链路验收。"
+}

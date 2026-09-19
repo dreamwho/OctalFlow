@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("create Agent home layout", () => {
-    it("keeps Agent input, recent work and reusable public inspiration in one flow", async () => {
-        const [page, composer, messages, conversationList, generationControls, preferences, overview, inspiration, previewModal] = await Promise.all([
-            readFile(resolve(process.cwd(), "src/app/(user)/create/page.tsx"), "utf8"),
+    it("sunset the /create route and keeps shared creation components intact", async () => {
+        const [createRoute, composer, messages, conversationList, generationControls, preferences, overview, inspiration, previewModal] = await Promise.all([
+            readFile(resolve(process.cwd(), "src/app/create/page.tsx"), "utf8"),
             readFile(resolve(process.cwd(), "src/app/(user)/create/components/creative-composer.tsx"), "utf8"),
             readFile(resolve(process.cwd(), "src/app/(user)/create/components/creative-messages.tsx"), "utf8"),
             readFile(resolve(process.cwd(), "src/app/(user)/create/components/creative-conversation-list.tsx"), "utf8"),
@@ -16,39 +16,13 @@ describe("create Agent home layout", () => {
             readFile(resolve(process.cwd(), "src/components/works/public-work-preview-modal.tsx"), "utf8"),
         ]);
 
-        expect(page).toContain("从灵感");
-        expect(page).toContain("DREAMYO CREATIVE OS");
-        expect(page).toContain("create-studio.module.css");
-        expect(page).toContain("createAgentDraftFromHash");
-        expect(page).toContain("setCreationMode(incomingDraft.mode)");
-        expect(page).toContain('data-testid="creative-conversation-scroll"');
-        expect(page).toContain("updateConversationScrollState");
-        expect(page).toContain("onWheelCapture");
-        expect(page).toContain("distanceFromLatest > 48");
-        expect(page).toContain("awayFromLatestRef.current = false");
-        expect(page).toContain("setAwayFromLatestState(true)");
-        expect(page).toContain("回到底部");
-        expect(page).toContain("conversationWasLoadingRef");
-        expect(page).toContain("if (wasLoading)");
-        expect(page).toContain("resizeObserver.observe(content)");
+        expect(createRoute).toContain('from "next/navigation"');
+        expect(createRoute).toContain('redirect("/")');
+        expect(createRoute).not.toContain("create-studio.module.css");
         expect(messages).toContain('data-testid="creative-message-list"');
         expect(messages).toContain("[assets.length, followLatest, lastMessageId, loading]");
-        expect(page).toContain("historyOpen && screens.lg");
-        expect(page).toContain("historyOpen && screens.lg !== true");
-        expect(page).toContain("aria-expanded={historyOpen}");
-        const pageTools = page.match(/className="([^"]+)" data-testid="creative-page-tools"/)?.[1] || "";
-        expect(pageTools).toContain("absolute");
-        expect(pageTools).toContain("top-3");
-        expect(pageTools).not.toContain("h-14");
-        expect(pageTools).not.toContain("bg-");
-        expect(page).toContain("w-[min(280px,24vw)]");
-        expect(page).not.toContain("w-[320px]");
         expect(conversationList).toContain('className="flex h-9 w-full');
         expect(conversationList).toContain("group flex min-h-13");
-        expect(page).not.toContain("最近创作");
-        expect(page).toContain("<CreateInspirationGallery");
-        expect(page.indexOf("<CreateWorkbenchOverview")).toBeLessThan(page.indexOf("<CreateInspirationGallery"));
-        expect(page).toContain("usePublicImage");
         expect(composer).toContain('centered ? "max-w-[1080px]"');
         expect(composer).toContain('data-compact="true"');
         expect(composer).toContain('data-compact="false"');
@@ -58,8 +32,6 @@ describe("create Agent home layout", () => {
         expect(composer).toContain("<CreativeGenerationControls");
         expect(composer).toContain('>Skill</p>');
         expect(composer).toContain('aria-label={optimizing ? "正在优化提示词" : "优化提示词"}');
-        expect(page).toContain("optimizePrompt");
-        expect(page).toContain("mode: creationMode");
         expect(composer).toContain('aria-label={mediaAttachments.length ? "继续添加参考素材" : "添加素材"}');
         expect(composer).toContain("创作类型");
         expect(composer).toContain("transition hover:bg-[#eef3f6] dark:hover:bg-[#29323a]");

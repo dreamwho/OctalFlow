@@ -1,0 +1,25 @@
+{
+  "requestedPath": "/profile",
+  "actualPath": "/profile",
+  "responseStatus": 200,
+  "route": "/profile",
+  "theme": "light",
+  "title": "个人资料 | dreamyo",
+  "heading": "个人中心",
+  "viewport": {
+    "width": 1366,
+    "height": 768,
+    "visualWidth": 1366,
+    "visualHeight": 768,
+    "zoom": 1
+  },
+  "main": {
+    "left": 168,
+    "top": 56,
+    "width": 1198,
+    "height": 712
+  },
+  "overflow": false,
+  "state": "个人资料",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

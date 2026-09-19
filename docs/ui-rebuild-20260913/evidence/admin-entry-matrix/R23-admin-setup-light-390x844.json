@@ -1,0 +1,24 @@
+{
+  "requestedPath": "/admin/setup",
+  "actualPath": "/admin/setup",
+  "responseStatus": 200,
+  "title": "后台初始化 | dreamyo",
+  "theme": "light",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844,
+    "zoom": 1
+  },
+  "heading": "把站点配置到可以上线运营",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "overflow": false,
+  "state": "后台初始化入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

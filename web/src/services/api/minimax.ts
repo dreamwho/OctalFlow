@@ -40,7 +40,19 @@ export type MiniMaxRequestLog = {
     lifecycle: Array<{ at: string; phase: string; message: string }>;
 };
 
-export type MiniMaxMusicRecord = { id: string; userId: string; name: string; model: string; prompt: string; lyrics: string; resultUrl?: string; status: "pending" | "success" | "failed"; metadata: Record<string, unknown>; createdAt: string; updatedAt: string };
+export type MiniMaxMusicRecord = {
+    id: string;
+    userId: string;
+    name: string;
+    model: string;
+    prompt: string;
+    lyrics: string;
+    resultUrl?: string;
+    status: "pending" | "success" | "failed";
+    metadata: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+};
 
 export type MiniMaxAdminState = {
     channels: Array<{ id: string; name: string; baseUrl: string; models: string[]; enabled: boolean; hasApiKey?: boolean }>;

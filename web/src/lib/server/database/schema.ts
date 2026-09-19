@@ -193,6 +193,8 @@ CREATE TABLE IF NOT EXISTS magic_proxy_settings (
     gemini_tools_node text,
     chatgpt_api_enabled boolean NOT NULL DEFAULT false,
     chatgpt_api_node text,
+    dola_enabled boolean NOT NULL DEFAULT false,
+    dola_node text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT magic_proxy_settings_singleton CHECK (id = 'default')
@@ -205,6 +207,10 @@ ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS gemini_tools_mode text
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS gemini_tools_chained_config jsonb;
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_mode text;
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_chained_config jsonb;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_enabled boolean NOT NULL DEFAULT false;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_node text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_mode text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_chained_config jsonb;
 INSERT INTO magic_proxy_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS gemini_tools_accounts (
@@ -350,6 +356,123 @@ CREATE TABLE IF NOT EXISTS geminiai_gateway_settings (
     CONSTRAINT geminiai_gateway_singleton CHECK (id = 'default')
 );
 INSERT INTO geminiai_gateway_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS dola_accounts (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    email text,
+    status text NOT NULL DEFAULT 'unverified',
+    enabled boolean NOT NULL DEFAULT true,
+    credential_version integer NOT NULL DEFAULT 1,
+    cookie_ciphertext text NOT NULL,
+    cookie_fingerprint text NOT NULL UNIQUE,
+    quota jsonb NOT NULL DEFAULT '[]'::jsonb,
+    request_count bigint NOT NULL DEFAULT 0,
+    success_count bigint NOT NULL DEFAULT 0,
+    error_count bigint NOT NULL DEFAULT 0,
+    active_attempts integer NOT NULL DEFAULT 0,
+    last_used_at timestamptz,
+    last_verified_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT dola_accounts_status_check CHECK (status IN ('unverified','ready','needs_login','verification_required','quota_exhausted','rate_limited','restricted','disabled'))
+);
+CREATE INDEX IF NOT EXISTS dola_accounts_route_idx ON dola_accounts (enabled, status, active_attempts, last_used_at ASC);
+CREATE INDEX IF NOT EXISTS dola_accounts_fingerprint_idx ON dola_accounts (cookie_fingerprint);
+
+CREATE TABLE IF NOT EXISTS dola_api_keys (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    prefix text NOT NULL,
+    key_hash text NOT NULL UNIQUE,
+    status text NOT NULL DEFAULT 'active',
+    expires_at timestamptz,
+    allowed_ips jsonb NOT NULL DEFAULT '[]'::jsonb,
+    request_count bigint NOT NULL DEFAULT 0,
+    last_used_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT dola_api_keys_status_check CHECK (status IN ('active','disabled'))
+);
+CREATE INDEX IF NOT EXISTS dola_api_keys_status_idx ON dola_api_keys (status, expires_at);
+
+CREATE TABLE IF NOT EXISTS dola_gateway_settings (
+    id text PRIMARY KEY DEFAULT 'default',
+    enabled boolean NOT NULL DEFAULT false,
+    auto_watermark boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT dola_gateway_singleton CHECK (id = 'default')
+);
+INSERT INTO dola_gateway_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS dola_request_logs (
+    id text PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    source text NOT NULL,
+    capability text NOT NULL DEFAULT 'video',
+    method text NOT NULL DEFAULT 'POST',
+    path text NOT NULL,
+    model text NOT NULL,
+    account_id text,
+    account_name text,
+    attempt_id text,
+    task_id text,
+    verification_id text,
+    status_code integer NOT NULL DEFAULT 0,
+    duration_ms integer NOT NULL DEFAULT 0,
+    phase text NOT NULL DEFAULT 'queued',
+    requested_duration integer,
+    ratio text,
+    request_bytes integer,
+    response_bytes integer,
+    content_type text,
+    quota_remaining numeric,
+    quota_limit numeric,
+    client_ip text,
+    user_agent text,
+    headers jsonb NOT NULL DEFAULT '{}'::jsonb,
+    error text,
+    request_preview text,
+    response_preview text,
+    proxy_egress jsonb NOT NULL DEFAULT '{}'::jsonb,
+    lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb
+);
+CREATE INDEX IF NOT EXISTS dola_request_logs_created_idx ON dola_request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS dola_request_logs_status_idx ON dola_request_logs (status_code, created_at DESC);
+CREATE INDEX IF NOT EXISTS dola_request_logs_model_idx ON dola_request_logs (model, created_at DESC);
+CREATE INDEX IF NOT EXISTS dola_request_logs_account_idx ON dola_request_logs (account_id, created_at DESC);
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS capability text NOT NULL DEFAULT 'video';
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT 'POST';
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS account_name text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS task_id text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS verification_id text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS requested_duration integer;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS ratio text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS request_bytes integer;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS response_bytes integer;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS content_type text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS quota_remaining numeric;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS quota_limit numeric;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS client_ip text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS user_agent text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS headers jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS dola_attempts (
+    id text PRIMARY KEY,
+    task_id text,
+    account_id text,
+    credential_version integer NOT NULL,
+    proxy_reference text NOT NULL DEFAULT 'direct',
+    lease_epoch integer NOT NULL DEFAULT 1,
+    sequence integer NOT NULL DEFAULT 0,
+    state text NOT NULL DEFAULT 'submitting',
+    upstream_task_id text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS dola_attempts_task_idx ON dola_attempts (task_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS minimax_voices (
     id text PRIMARY KEY,

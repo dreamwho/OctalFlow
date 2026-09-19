@@ -1,0 +1,260 @@
+{
+  "generatedAt": "2026-09-15T12:30:26.512996+00:00",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "taskStatusCounts": {
+    "PASS": 18,
+    "IN_PROGRESS": 7,
+    "BLOCKED": 1
+  },
+  "taskStatusById": {
+    "T00": "PASS",
+    "T01": "PASS",
+    "T02": "PASS",
+    "T03": "PASS",
+    "T04": "PASS",
+    "T05": "PASS",
+    "T06": "PASS",
+    "T07": "PASS",
+    "T08": "PASS",
+    "T09": "PASS",
+    "T10": "PASS",
+    "T11": "PASS",
+    "T12": "PASS",
+    "T13": "PASS",
+    "T14": "IN_PROGRESS",
+    "T15": "IN_PROGRESS",
+    "T16": "IN_PROGRESS",
+    "T17": "IN_PROGRESS",
+    "T18": "IN_PROGRESS",
+    "T19": "BLOCKED",
+    "T20": "PASS",
+    "T21": "PASS",
+    "T22": "IN_PROGRESS",
+    "T23": "IN_PROGRESS",
+    "T24": "PASS",
+    "T25": "PASS"
+  },
+  "playwright": {
+    "discovered": "218 tests / 18 files",
+    "executed": "201 passed / 17 skipped (218 total; 3 setup checks)",
+    "exitCode": 0,
+    "listEvidence": "evidence/after-playwright-list-current-20260915.log",
+    "fullEvidence": "evidence/after-full-e2e-live-finaldb-20260915.log",
+    "matrixEvidence": "evidence/after-matrix-current-build-final-20260915.log"
+  },
+  "matrices": {
+    "user-pages-matrix": {
+      "jsonCount": 434,
+      "buildIds": {
+        "9sMLb0KxOZx3vl8L7_ez-": 434
+      }
+    },
+    "admin-sections-matrix": {
+      "jsonCount": 504,
+      "buildIds": {
+        "9sMLb0KxOZx3vl8L7_ez-": 504
+      }
+    },
+    "admin-entry-matrix": {
+      "jsonCount": 56,
+      "buildIds": {
+        "9sMLb0KxOZx3vl8L7_ez-": 56
+      }
+    }
+  },
+  "package": {
+    "generatedAt": "2026-09-15T12:29:28.331Z",
+    "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+    "packages": {
+      "本次修改需上传文件_20260915": {
+        "fileCount": 2998,
+        "selectedFileCount": 2996,
+        "hashCount": 2997,
+        "totalBytes": 387581777,
+        "hashMismatches": [],
+        "invalidUtf8Files": [],
+        "unexpectedReplacementMarkerFiles": [],
+        "intentionalReplacementMarkerFiles": [
+          "AGENTS.md"
+        ]
+      },
+      "本次构建产物_20260915": {
+        "fileCount": 6075,
+        "selectedFileCount": 6073,
+        "hashCount": 6074,
+        "totalBytes": 176551683,
+        "hashMismatches": [],
+        "invalidUtf8Files": [],
+        "unexpectedReplacementMarkerFiles": [],
+        "intentionalReplacementMarkerFiles": [
+          "standalone/.next/server/chunks/0tld_parse5_dist_index_0pqumj-.js",
+          "standalone/.next/server/chunks/[root-of-the-server]__0ktbn70._.js",
+          "standalone/.next/server/chunks/[root-of-the-server]__0tq4464._.js",
+          "standalone/.next/server/chunks/[root-of-the-server]__17i8-z7._.js",
+          "standalone/.next/server/chunks/[root-of-the-server]__1sxaagw._.js",
+          "standalone/.next/server/chunks/_0wo0wm-._.js",
+          "standalone/.next/server/chunks/_15w5ymf._.js",
+          "standalone/.next/server/chunks/_17v39nx._.js",
+          "standalone/.next/server/chunks/_1g-8gcj._.js",
+          "standalone/.next/server/chunks/_1p82_qd._.js",
+          "standalone/.next/server/chunks/src_lib_1ab4c_j._.js",
+          "standalone/.next/server/chunks/ssr/[root-of-the-server]__0ynj0ch._.js",
+          "standalone/.next/server/chunks/ssr/[root-of-the-server]__17149ug._.js",
+          "standalone/.next/server/chunks/ssr/_1zbv__e._.js",
+          "standalone/.next/static/chunks/0cz1d0mv5g_q7.js",
+          "standalone/.next/static/chunks/35e6sojez5zly.js",
+          "standalone/node_modules/.pnpm/next@16.3.3_@babel+core@7.29.7_supports-color@7.2.0__@playwright+test@1.62.1_@types+nod_cd3d6151a6cfcef900a0b86240bfb581/node_modules/next/dist/compiled/send/index.js"
+        ]
+      }
+    },
+    "utf8": {
+      "invalidFiles": [],
+      "unexpectedReplacementMarkerFiles": [],
+      "intentionalReplacementMarkerFiles": [
+        {
+          "path": "本次修改需上传文件_20260915/AGENTS.md",
+          "reason": "instruction literal explicitly showing the replacement marker"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/0tld_parse5_dist_index_0pqumj-.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/[root-of-the-server]__0ktbn70._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/[root-of-the-server]__0tq4464._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/[root-of-the-server]__17i8-z7._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/[root-of-the-server]__1sxaagw._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/_0wo0wm-._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/_15w5ymf._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/_17v39nx._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/_1g-8gcj._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/_1p82_qd._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/src_lib_1ab4c_j._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/ssr/[root-of-the-server]__0ynj0ch._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/ssr/[root-of-the-server]__17149ug._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/server/chunks/ssr/_1zbv__e._.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/static/chunks/0cz1d0mv5g_q7.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/.next/static/chunks/35e6sojez5zly.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        },
+        {
+          "path": "本次构建产物_20260915/standalone/node_modules/.pnpm/next@16.3.3_@babel+core@7.29.7_supports-color@7.2.0__@playwright+test@1.62.1_@types+nod_cd3d6151a6cfcef900a0b86240bfb581/node_modules/next/dist/compiled/send/index.js",
+          "reason": "runtime fallback literal emitted by Next/HTML parser libraries"
+        }
+      ]
+    },
+    "resources": {
+      "required": [
+        {
+          "rel": "standalone/server.js",
+          "exists": true
+        },
+        {
+          "rel": "standalone/.next/BUILD_ID",
+          "exists": true
+        },
+        {
+          "rel": "standalone/.next/static",
+          "exists": true
+        },
+        {
+          "rel": "standalone/public/logo.svg",
+          "exists": true
+        },
+        {
+          "rel": "standalone/public/icon.svg",
+          "exists": true
+        },
+        {
+          "rel": "standalone/public/brand/dreamyo/generation/button-surface.png",
+          "exists": true
+        },
+        {
+          "rel": "standalone/public/brand/dreamyo/generation/generate-glyph.png",
+          "exists": true
+        }
+      ],
+      "dataExcluded": true,
+      "closureComplete": true
+    }
+  },
+  "health": {
+    "evidence": "evidence/after-standalone-health-final-20260915.log",
+    "json": "evidence/after-standalone-health-final-20260915.json",
+    "live": 200,
+    "ready": 200
+  },
+  "remaining": {
+    "inProgress": [
+      "T14",
+      "T15",
+      "T16",
+      "T17",
+      "T18",
+      "T22",
+      "T23"
+    ],
+    "blocked": [
+      "T19"
+    ],
+    "reasons": [
+      "有效/加载/失败/弹层/保存状态尚未覆盖全部70页面入口与36后台分区",
+      "真实外部上游/sidecar/账号授权未接入"
+    ]
+  },
+  "latestFollowup": "evidence/after-front-end-followup-audit-20260915.json",
+  "externalBlockerAudit": "evidence/after-t19-external-blocker-audit-20260915.json",
+  "followupResults": {
+    "staticBrand": "9 passed",
+    "contentAccount": "15 passed",
+    "drama": "6 passed",
+    "adminBrandCommerce": "4 passed",
+    "adminSections": "1 passed",
+    "adminEntries": "1 passed",
+    "uiRebuild": "24 passed",
+    "releaseCheck": "exit 0"
+  },
+  "consistencyAudit": "evidence/after-final-followup-consistency-20260915.json"
+}

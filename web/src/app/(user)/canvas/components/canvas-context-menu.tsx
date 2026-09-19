@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Popover } from "antd";
-import { Camera, ChevronRight, Clapperboard, House, LayoutGrid, Pencil, Plus, ScanLine, ScanSearch, Trash2 } from "lucide-react";
+import { Camera, ChevronRight, Clapperboard, Droplets, House, LayoutGrid, Pencil, Plus, ScanLine, ScanSearch, Trash2 } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -16,6 +16,7 @@ export function CanvasNodeContextMenu({
     canUpscale = false,
     canStoryboard = false,
     canUseVideoTools = false,
+    canDolaWatermark = false,
     onClose,
     onArrange,
     onDuplicate,
@@ -27,6 +28,7 @@ export function CanvasNodeContextMenu({
     onCaptureFrames,
     onDepthExtract,
     onAnalyzeVideo,
+    onDolaWatermark,
 }: {
     menu: ContextMenuState;
     canArrange?: boolean;
@@ -34,6 +36,7 @@ export function CanvasNodeContextMenu({
     canUpscale?: boolean;
     canStoryboard?: boolean;
     canUseVideoTools?: boolean;
+    canDolaWatermark?: boolean;
     onClose: () => void;
     onArrange?: () => void;
     onDuplicate: () => void;
@@ -45,6 +48,7 @@ export function CanvasNodeContextMenu({
     onCaptureFrames?: () => void;
     onDepthExtract?: () => void;
     onAnalyzeVideo?: () => void;
+    onDolaWatermark?: () => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const menuRef = useRef<HTMLDivElement>(null);
@@ -86,6 +90,7 @@ export function CanvasNodeContextMenu({
             {menu.type === "node" && canUseVideoTools ? <MenuButton icon={<Camera className="size-4" />} label="捕捉帧" onClick={onCaptureFrames} /> : null}
             {menu.type === "node" && canUseVideoTools ? <MenuButton icon={<ScanLine className="size-4" />} label="深度提取" onClick={onDepthExtract} /> : null}
             {menu.type === "node" && canUseVideoTools ? <MenuButton icon={<ScanSearch className="size-4" />} label="分析" onClick={onAnalyzeVideo} /> : null}
+            {menu.type === "node" && canDolaWatermark ? <MenuButton icon={<Droplets className="size-4" />} label="Dola 去水印" onClick={onDolaWatermark} /> : null}
             <MenuButton icon={<Trash2 className="size-4" />} label="删除" onClick={onDelete} danger />
         </div>
     );

@@ -11,7 +11,16 @@ from services.application_database import (
     display_database_url,
     initialize_application_database,
 )
-from services.secret_crypto import account_index_key, decrypt_json, encrypt_json
+from services.secret_crypto import (
+    ACCOUNT_INDEX_PREFIX,
+    LEGACY_ACCOUNT_INDEX_PREFIX,
+    SecretCryptoError,
+    account_index_key,
+    decrypt_json,
+    encrypt_json,
+    is_legacy_encrypted_text,
+    migrate_encrypted_json,
+)
 from services.storage.base import (
     StorageBackend,
     StorageCapabilities,
@@ -55,6 +64,7 @@ class DatabaseStorageBackend(StorageBackend):
         self.engine = initialize_application_database(database_url)
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self._ensure_revision_rows()
+        self._migrate_legacy_rows()
 
     @staticmethod
     def _spec(collection: StorageCollection) -> tuple[type[Any], str]:
@@ -86,6 +96,57 @@ class DatabaseStorageBackend(StorageBackend):
                 session.rollback()
             finally:
                 session.close()
+
+    def _migrate_legacy_rows(self) -> None:
+        """Migrate the provider database written before the Dreamyo rename."""
+        session = self.Session()
+        try:
+            self._begin_write(session)
+            account_rows = session.query(AccountModel).order_by(AccountModel.id.asc()).all()
+            account_keys = {str(row.access_token) for row in account_rows}
+            legacy_account_rows = [
+                row
+                for row in account_rows
+                if str(row.access_token).startswith(LEGACY_ACCOUNT_INDEX_PREFIX)
+            ]
+            targets = {
+                f"{ACCOUNT_INDEX_PREFIX}{str(row.access_token)[len(LEGACY_ACCOUNT_INDEX_PREFIX):]}"
+                for row in legacy_account_rows
+            }
+            current_account_keys = account_keys - {
+                str(row.access_token) for row in legacy_account_rows
+            }
+            if targets & current_account_keys or len(targets) != len(legacy_account_rows):
+                raise SecretCryptoError(
+                    "cannot migrate account index: duplicate Dreamyo account key"
+                )
+
+            changed = 0
+            for row in account_rows:
+                if str(row.access_token).startswith(LEGACY_ACCOUNT_INDEX_PREFIX):
+                    row.access_token = (
+                        f"{ACCOUNT_INDEX_PREFIX}{str(row.access_token)[len(LEGACY_ACCOUNT_INDEX_PREFIX):]}"
+                    )
+                    changed += 1
+                if is_legacy_encrypted_text(row.data):
+                    row.data = migrate_encrypted_json(row.data)
+                    changed += 1
+
+            for row in session.query(AuthKeyModel).order_by(AuthKeyModel.id.asc()).all():
+                if is_legacy_encrypted_text(row.data):
+                    row.data = migrate_encrypted_json(row.data)
+                    changed += 1
+
+            if changed:
+                session.commit()
+                print(f"[storage] Migrated {changed} legacy provider encryption rows")
+            else:
+                session.rollback()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def _begin_write(self, session: Any) -> None:
         if self.engine.dialect.name == "sqlite":

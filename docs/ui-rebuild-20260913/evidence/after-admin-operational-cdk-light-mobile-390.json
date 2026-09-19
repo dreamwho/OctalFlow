@@ -1,0 +1,20 @@
+{
+  "route": "/admin?section=cdk",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "zoom": 1
+  },
+  "theme": "light",
+  "entityVisible": true,
+  "card": {
+    "left": 25,
+    "top": 934.640625,
+    "width": 340,
+    "height": 685
+  },
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "state": "隔离真实后台实体/配置已加载",
+  "entity": "CDK 密钥管理"
+}

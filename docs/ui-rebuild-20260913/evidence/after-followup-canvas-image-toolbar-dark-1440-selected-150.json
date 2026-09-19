@@ -1,0 +1,25 @@
+{
+  "route": "/canvas/canvas-0me-BXL6-ZIKM4h0DnZjc",
+  "theme": "dark",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "state": "image-node-selected-with-prompt",
+  "surfaceBackground": "rgb(8, 15, 32)",
+  "zoom": 1.5,
+  "grid": {
+    "backgroundSize": "33px 33px",
+    "backgroundPosition": "45px -94px"
+  },
+  "nodeToolbar": {
+    "left": 619,
+    "top": 124,
+    "width": 202,
+    "height": 40
+  },
+  "genericToolbarCount": 0,
+  "buildId": "i-5UbRQrq6PiE-fr5kfZZ",
+  "evidenceVersion": "follow-up-20260914",
+  "capturedAt": "2026-09-14T00:55:30+08:00"
+}

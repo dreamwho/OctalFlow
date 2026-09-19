@@ -1,0 +1,26 @@
+{
+  "composer": null,
+  "generate": {
+    "bottom": 59,
+    "height": 46,
+    "hit": true,
+    "right": 1386,
+    "width": 108,
+    "x": 1278,
+    "y": 13
+  },
+  "heading": [
+    "让想象发生创意因 AI 而更闪耀"
+  ],
+  "logo": null,
+  "overflow": {
+    "body": 0,
+    "html": 0
+  },
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/",
+  "viewport": {
+    "height": 1000,
+    "width": 1440
+  }
+}

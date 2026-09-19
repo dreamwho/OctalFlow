@@ -81,7 +81,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PrivacyPage() {
     const site = await getPublicSiteSettings();
     return (
-        <main className="app-scroll-page bg-[#f7f8fa] text-stone-800 dark:bg-[#0f1114] dark:text-stone-200">
+        <main className="dreamyo-legal-page app-scroll-page bg-[#f4f8ff] text-[#13213f] dark:bg-[#090f1f] dark:text-[#eef6ff]">
             <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-8 sm:py-8">
                 <Link
                     href="/"

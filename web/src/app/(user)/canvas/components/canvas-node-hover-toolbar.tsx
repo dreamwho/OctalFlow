@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { App, Modal, Popover, Segmented, Tooltip } from "antd";
-import { Camera, Clapperboard, Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Pencil, Plus, RefreshCw, ScanLine, ScanSearch, Settings2, Trash2, Upload, Video } from "lucide-react";
+import { Camera, Clapperboard, Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Pencil, Plus, RefreshCw, ScanLine, ScanSearch, Settings2, Sparkles, Trash2, Upload, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
@@ -39,6 +39,7 @@ type CanvasNodeHoverToolbarProps = {
     onDepthExtract?: (node: CanvasNodeData) => void;
     onCaptureFrames?: (node: CanvasNodeData) => void;
     onAnalyzeVideo?: (node: CanvasNodeData) => void;
+    onRemoveWatermark?: (node: CanvasNodeData) => void;
     onRetry: (node: CanvasNodeData) => void;
     onToggleFreeResize: (node: CanvasNodeData) => void;
     onDelete: (node: CanvasNodeData) => void;
@@ -81,6 +82,7 @@ export function CanvasNodeHoverToolbar({
     onDepthExtract,
     onCaptureFrames,
     onAnalyzeVideo,
+    onRemoveWatermark,
     onRetry,
     onToggleFreeResize,
     onDelete,
@@ -145,6 +147,13 @@ export function CanvasNodeHoverToolbar({
     const isConfig = node.type === CanvasNodeType.Config;
     const canOpenDialog = isText || isImage || isVideo || isAudio;
     const canRetry = node.metadata?.status === "error";
+    const isDolaVideo = Boolean(
+        node.metadata?.dolaVodPayload ||
+        (typeof node.metadata?.model === "string" && node.metadata.model.startsWith("dola-")) ||
+        (typeof node.metadata?.sourceModel === "string" && node.metadata.sourceModel.startsWith("dola-")) ||
+        node.metadata?.provider === "dola"
+    );
+    const canRemoveWatermark = Boolean(onRemoveWatermark && (isDolaVideo || node.metadata?.dolaVodPayload));
     const quickImageToolIdSet = new Set(quickImageToolIds);
     const copyImagePrompt = (target: CanvasNodeData) => {
         const prompt = target.metadata?.prompt?.trim();
@@ -183,6 +192,7 @@ export function CanvasNodeHoverToolbar({
         ...(hasVideo ? [{ id: "captureFrames", title: "捕捉视频帧", label: "捕捉帧", icon: <Camera className="size-4" />, onClick: () => onCaptureFrames?.(node) }] : []),
         ...(hasVideo ? [{ id: "depthExtract", title: "提取深度视频", label: "深度提取", icon: <ScanLine className="size-4" />, onClick: () => onDepthExtract?.(node) }] : []),
         ...(hasVideo ? [{ id: "analyzeVideo", title: "详细分析视频", label: "分析", icon: <ScanSearch className="size-4" />, onClick: () => onAnalyzeVideo?.(node) }] : []),
+        ...(hasVideo && canRemoveWatermark ? [{ id: "removeWatermark", title: node.metadata?.unwatermarked ? "已去水印（点击重新解析）" : "Dola 视频去水印", label: "去水印", icon: <Sparkles className="size-4" />, onClick: () => onRemoveWatermark?.(node) }] : []),
         ...(isAudio ? [{ id: "uploadAudio", title: hasAudio ? "替换音频" : "上传音频", label: hasAudio ? "替换音频" : "上传音频", icon: <Music2 className="size-4" />, onClick: () => onUpload(node) }] : []),
         ...(hasImage && !isPanorama ? imageTools.map((tool) => ({ id: tool.id, title: tool.title, label: tool.label, icon: tool.icon, active: tool.active, onClick: tool.onClick })) : []),
     ];

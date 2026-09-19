@@ -1,0 +1,24 @@
+{
+  "requestedPath": "/admin/billing",
+  "actualPath": "/admin/billing",
+  "responseStatus": 200,
+  "title": "财务管理 | dreamyo",
+  "theme": "light",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "visualWidth": 1440,
+    "visualHeight": 900,
+    "zoom": 1
+  },
+  "heading": "财务钱包",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 1440,
+    "height": 900
+  },
+  "overflow": false,
+  "state": "后台财务入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

@@ -18,6 +18,14 @@ from services.internal_runtime import encryption_key_bytes
 
 PREFIX = "dreamyo-secret:v1:"
 CONFIGURATION_ENVELOPE_KEY = "_dreamyo_encrypted_v1"
+
+# The local provider database predates the product rename.  Keep the legacy
+# envelope readable long enough to migrate it in place; all new writes use the
+# Dreamyo prefix above.
+LEGACY_PREFIX = "octalaicanvas-secret:v1:"
+LEGACY_CONFIGURATION_ENVELOPE_KEY = "_octalaicanvas_encrypted_v1"
+LEGACY_ACCOUNT_INDEX_PREFIX = "octalaicanvas-account:v1:"
+ACCOUNT_INDEX_PREFIX = "dreamyo-account:v1:"
 _B64URL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -53,9 +61,15 @@ def encrypt_text(value: str) -> str:
 
 
 def decrypt_text(value: str) -> str:
-    if not isinstance(value, str) or not value.startswith(PREFIX):
+    if not isinstance(value, str):
         raise SecretCryptoError("provider secret row is not encrypted")
-    payload = value.removeprefix(PREFIX)
+    prefix = next(
+        (candidate for candidate in (PREFIX, LEGACY_PREFIX) if value.startswith(candidate)),
+        None,
+    )
+    if prefix is None:
+        raise SecretCryptoError("provider secret row is not encrypted")
+    payload = value.removeprefix(prefix)
     parts = payload.split(".")
     if len(parts) != 3:
         raise SecretCryptoError("invalid encrypted-secret payload")
@@ -96,9 +110,17 @@ def encrypt_configuration(value: Mapping[str, object]) -> dict[str, str]:
 def decrypt_configuration(value: object | None) -> dict[str, object]:
     if not isinstance(value, Mapping):
         return {}
-    if set(value) != {CONFIGURATION_ENVELOPE_KEY}:
+    envelope_key = next(
+        (
+            candidate
+            for candidate in (CONFIGURATION_ENVELOPE_KEY, LEGACY_CONFIGURATION_ENVELOPE_KEY)
+            if set(value) == {candidate}
+        ),
+        None,
+    )
+    if envelope_key is None:
         raise SecretCryptoError("provider configuration row is not encrypted")
-    encrypted = value.get(CONFIGURATION_ENVELOPE_KEY)
+    encrypted = value.get(envelope_key)
     if not isinstance(encrypted, str):
         raise SecretCryptoError("invalid provider configuration envelope")
     return dict(decrypt_json(encrypted))
@@ -111,4 +133,33 @@ def account_index_key(access_token: str) -> str:
     digest = hmac.new(
         encryption_key_bytes(), access_token.encode("utf-8"), hashlib.sha256
     ).hexdigest()
-    return f"dreamyo-account:v1:{digest}"
+    return f"{ACCOUNT_INDEX_PREFIX}{digest}"
+
+
+def is_legacy_encrypted_text(value: object) -> bool:
+    return isinstance(value, str) and value.startswith(LEGACY_PREFIX)
+
+
+def migrate_encrypted_json(value: str) -> str:
+    """Re-encrypt one legacy payload using the current product prefix/key."""
+    if not is_legacy_encrypted_text(value):
+        return value
+    return encrypt_json(decrypt_json(value))
+
+
+def is_legacy_configuration(value: object | None) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    if set(value) == {LEGACY_CONFIGURATION_ENVELOPE_KEY}:
+        return True
+    if set(value) != {CONFIGURATION_ENVELOPE_KEY}:
+        return False
+    encrypted = value.get(CONFIGURATION_ENVELOPE_KEY)
+    return is_legacy_encrypted_text(encrypted)
+
+
+def migrate_configuration(value: object | None) -> dict[str, str] | object | None:
+    """Re-encrypt a legacy configuration envelope without touching new rows."""
+    if not is_legacy_configuration(value):
+        return value
+    return encrypt_configuration(decrypt_configuration(value))

@@ -1,0 +1,74 @@
+{
+  "route": "/",
+  "theme": "light",
+  "state": "reduced-motion and flow-light 404 fallback, then /create performance trace",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844
+  },
+  "reduced": {
+    "viewport": {
+      "width": 390,
+      "height": 844,
+      "visualWidth": 390,
+      "visualHeight": 844
+    },
+    "visualDisplay": "block",
+    "visualAnimation": "none",
+    "layerAnimations": [
+      "none",
+      "none",
+      "none",
+      "none"
+    ],
+    "imageSources": [
+      {
+        "src": "http://127.0.0.1:3200/brand/dreamyo/flow-light.png",
+        "naturalWidth": 1672,
+        "naturalHeight": 941
+      },
+      {
+        "src": "http://127.0.0.1:3200/brand/dreamyo/flow-dark.png",
+        "naturalWidth": 1672,
+        "naturalHeight": 941
+      }
+    ]
+  },
+  "fallback": {
+    "brokenLightHidden": true,
+    "stageBackground": "none"
+  },
+  "visibility": {
+    "homeHidden": {
+      "pageHidden": "true",
+      "visualAnimationPlayState": "paused",
+      "ringAnimationPlayStates": [
+        "paused",
+        "paused",
+        "paused"
+      ]
+    },
+    "createHidden": {
+      "pageHidden": "true",
+      "visualAnimationPlayState": "paused",
+      "veilAnimationPlayState": "paused"
+    }
+  },
+  "performance": [
+    {
+      "name": "http://127.0.0.1:3200/brand/dreamyo/flow-dark.png",
+      "duration": 13,
+      "transferSize": 300
+    },
+    {
+      "name": "http://127.0.0.1:3200/brand/dreamyo/flow-light.png",
+      "duration": 13,
+      "transferSize": 300
+    }
+  ],
+  "trace": "/Users/dream/Desktop/Vibe Coding/PythonProject/Octal-Canvas/docs/ui-rebuild-20260913/evidence/after-v21-motion-performance-mobile-390.zip",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "capturedAt": "2026-09-15T11:58:32.020Z"
+}

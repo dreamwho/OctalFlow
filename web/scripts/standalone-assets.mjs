@@ -1,5 +1,6 @@
 import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export async function prepareStandaloneAssets({ webRoot, distDir = ".next" }) {
     const buildRoot = resolveChildPath(webRoot, distDir, "build directory");
@@ -23,6 +24,21 @@ export async function prepareStandaloneAssets({ webRoot, distDir = ".next" }) {
 
     await copyDirectoryContents(sourceStatic, targetStatic);
     await copyDirectoryContents(sourcePublic, targetPublic);
+
+    const nestedWebDir = path.join(standaloneOutputRoot, "web");
+    try {
+        const webStat = await stat(nestedWebDir);
+        if (webStat.isDirectory()) {
+            await copyDirectoryContents(sourceStatic, path.join(nestedWebDir, distDir, "static"));
+            await copyDirectoryContents(sourcePublic, path.join(nestedWebDir, "public"));
+            const nestedServerEntry = path.join(nestedWebDir, "server.js");
+            try {
+                await stat(nestedServerEntry);
+            } catch {
+                await cp(serverEntry, nestedServerEntry);
+            }
+        }
+    } catch {}
 
     const targetStaticFiles = await listRelativeFiles(targetStatic);
     const targetPublicFiles = await listRelativeFiles(targetPublic);
@@ -63,15 +79,19 @@ async function copySharpRuntimePackages(webRoot, standaloneRoot) {
     }
 
     await mkdir(targetPnpmRoot, { recursive: true });
-    await Promise.all(
-        packages.map(async (entry) => {
-            const sourcePackageRoot = path.join(sourcePnpmRoot, entry.name);
-            const targetPackageRoot = path.join(targetPnpmRoot, entry.name);
-            await rm(targetPackageRoot, { recursive: true, force: true });
-            await cp(sourcePackageRoot, targetPackageRoot, { recursive: true, force: true });
-            await hydrateTracedSharpPackages(sourcePackageRoot, standaloneRoot);
-        }),
-    );
+    // The traced output can contain more than one copy of the same @img
+    // package. Copying all native packages concurrently makes those copies
+    // race while replacing shared files such as versions.json, which leaves
+    // start-standalone with an intermittent ENOENT. Keep the operation
+    // deterministic and idempotent by replacing and hydrating one package at
+    // a time.
+    for (const entry of packages.sort((a, b) => a.name.localeCompare(b.name))) {
+        const sourcePackageRoot = path.join(sourcePnpmRoot, entry.name);
+        const targetPackageRoot = path.join(targetPnpmRoot, entry.name);
+        await rm(targetPackageRoot, { recursive: true, force: true });
+        await cp(sourcePackageRoot, targetPackageRoot, { recursive: true, force: true });
+        await hydrateTracedSharpPackages(sourcePackageRoot, standaloneRoot);
+    }
     return packages.map((entry) => entry.name).sort();
 }
 
@@ -141,4 +161,11 @@ function resolveChildPath(root, child, label) {
     const resolved = path.resolve(resolvedRoot, child);
     if (resolved === resolvedRoot || !resolved.startsWith(`${resolvedRoot}${path.sep}`)) throw new Error(`Invalid ${label}: ${child}`);
     return resolved;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const distDir = process.env.NEXT_DIST_DIR?.trim() || ".next";
+    const result = await prepareStandaloneAssets({ webRoot, distDir });
+    console.log(`Standalone assets prepared successfully: ${result.staticFiles} static files, ${result.publicFiles} public files copied.`);
 }

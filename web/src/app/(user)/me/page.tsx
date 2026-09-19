@@ -147,7 +147,7 @@ export default function MyCreatorPage() {
 
     if (!user) {
         return (
-            <main className="grid h-full min-h-0 place-items-center bg-background text-foreground">
+            <main className="me-profile-page grid h-full min-h-0 place-items-center bg-background text-foreground">
                 <Spin size="small" />
             </main>
         );
@@ -165,7 +165,7 @@ export default function MyCreatorPage() {
     };
 
     return (
-        <main className="h-full min-h-0 overflow-y-auto bg-background text-foreground">
+        <main className="me-profile-page h-full min-h-0 overflow-y-auto bg-background text-foreground">
             <div className="mx-auto w-full max-w-[1280px] px-3 pb-12 sm:px-6 sm:pb-16 lg:px-8">
                 <section className="flex min-w-0 flex-col items-center pb-5 pt-6 text-center sm:pb-7 sm:pt-8" aria-labelledby="my-profile-name">
                     <span className="grid size-24 place-items-center overflow-hidden rounded-full bg-foreground text-xl font-semibold text-background ring-1 ring-border sm:size-28 sm:text-2xl" aria-hidden="true">

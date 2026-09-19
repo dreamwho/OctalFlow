@@ -5,28 +5,14 @@ import { ArrowRight, CheckCircle2, Network, RefreshCw, ShieldCheck, Zap } from "
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
-import {
-    getMagicProxy,
-    testChatGptChain,
-    testMagicProxyGoogle,
-    updateMagicProxyBinding,
-    type MagicProxyGoogleTestReport,
-    type MagicProxyNode,
-    type MagicProxyProvider,
-    type MagicProxyState,
-} from "@/services/api/magic-proxy";
-import {
-    genericProxyRequest,
-    getGenericProxyBindings,
-    saveGenericProxyBinding,
-    type ChatGptProxyView,
-    type GenericProxyBindings,
-} from "@/services/api/generic-proxy";
+import { getMagicProxy, testChatGptChain, testMagicProxyDola, testMagicProxyGoogle, updateMagicProxyBinding, type MagicProxyGoogleTestReport, type MagicProxyNode, type MagicProxyProvider, type MagicProxyState } from "@/services/api/magic-proxy";
+import { genericProxyRequest, getGenericProxyBindings, saveGenericProxyBinding, type ChatGptProxyView, type GenericProxyBindings } from "@/services/api/generic-proxy";
 
 const providerLabels: Record<MagicProxyProvider, string> = {
     geminiai: "GeminiAIStudio",
     geminiTools: "GeminiTools",
     chatgptApi: "GPTAPI",
+    dola: "Dola API",
 };
 
 export function magicProxyBindingValidationMessage(enabled: boolean, node?: string) {
@@ -56,11 +42,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         setLoading(true);
         setError("");
         try {
-            const [nextState, nextGeneric, nextGenericView] = await Promise.all([
-                getMagicProxy(),
-                getGenericProxyBindings().catch(() => null),
-                genericProxyRequest<ChatGptProxyView>("proxies").catch(() => null),
-            ]);
+            const [nextState, nextGeneric, nextGenericView] = await Promise.all([getMagicProxy(), getGenericProxyBindings().catch(() => null), genericProxyRequest<ChatGptProxyView>("proxies").catch(() => null)]);
             setState(nextState);
             setGenericBindings(nextGeneric);
             setGenericView(nextGenericView);
@@ -147,11 +129,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         setSource(nextSource);
     };
 
-    const persist = async (
-        nextEnabled: boolean,
-        nextSource: ProxySource,
-        overrides: { node?: string; target?: string; hopNode?: string; landingNodeId?: string } = {}
-    ) => {
+    const persist = async (nextEnabled: boolean, nextSource: ProxySource, overrides: { node?: string; target?: string; hopNode?: string; landingNodeId?: string } = {}) => {
         const effectiveNode = overrides.node ?? node;
         const effectiveTarget = overrides.target ?? target;
         const effectiveHop = overrides.hopNode ?? hopNode;
@@ -220,17 +198,17 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         setTesting(true);
         setTestReport(null);
         try {
-            const report = provider === "chatgptApi" ? await testChatGptChain() : await testMagicProxyGoogle();
+            const report = provider === "chatgptApi" ? await testChatGptChain() : provider === "dola" ? await testMagicProxyDola() : await testMagicProxyGoogle();
             setTestReport(report);
             const currentItem = report.items.find((i) => i.service === provider) || report.items[0];
-            const serviceTarget = provider === "chatgptApi" ? "ChatGPT" : "Google";
+            const serviceTarget = provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google";
             if (currentItem?.ok) {
                 message.success(`${providerLabels[provider]} ${serviceTarget} 连通性测试通过 (${currentItem.delay} ms)`);
             } else {
                 message.warning(currentItem?.error || `${serviceTarget} 连通性测试未通过，请检查节点状态`);
             }
         } catch (testErr) {
-            message.error(testErr instanceof Error ? testErr.message : `测试 ${provider === "chatgptApi" ? "ChatGPT" : "Google"} 连通性失败`);
+            message.error(testErr instanceof Error ? testErr.message : `测试 ${provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"} 连通性失败`);
         } finally {
             setTesting(false);
         }
@@ -380,21 +358,15 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                 <span>链式代理数据链路 (dialer-proxy 级联拓扑)</span>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-                                <span className="rounded bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                    {providerLabels[provider]}
-                                </span>
+                                <span className="rounded bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{providerLabels[provider]}</span>
                                 <ArrowRight className="size-3 text-sky-500 shrink-0" />
-                                <span className="rounded bg-sky-100 px-2 py-0.5 font-medium text-sky-800 dark:bg-sky-900/60 dark:text-sky-200">
-                                    跳板: {hopNode || "未选择魔法节点"}
-                                </span>
+                                <span className="rounded bg-sky-100 px-2 py-0.5 font-medium text-sky-800 dark:bg-sky-900/60 dark:text-sky-200">跳板: {hopNode || "未选择魔法节点"}</span>
                                 <ArrowRight className="size-3 text-sky-500 shrink-0" />
                                 <span className="rounded bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
                                     落地: {landingOptions.find((o) => o.value === landingNodeId)?.label.split(" · ")[0] || "未选择通用落地节点"}
                                 </span>
                                 <ArrowRight className="size-3 text-sky-500 shrink-0" />
-                                <span className="rounded bg-purple-100 px-2 py-0.5 font-medium text-purple-800 dark:bg-purple-900/60 dark:text-purple-200">
-                                    Google 官方服务
-                                </span>
+                                <span className="rounded bg-purple-100 px-2 py-0.5 font-medium text-purple-800 dark:bg-purple-900/60 dark:text-purple-200">{provider === "chatgptApi" ? "ChatGPT 官方服务" : provider === "dola" ? "Dola 官方服务" : "Google 官方服务"}</span>
                             </div>
                             <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
                                 💡 <strong>工作原理</strong>：国内服务器经由 Clash 加密隧道出海连接至境外跳板节点，跳板节点在境外直连 IPWO 等住宅代理落地并鉴权，彻底规避运营商防火墙重置阻断 (curl 56)，获得纯净住宅出口。
@@ -417,9 +389,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     disabled={loading || saving || !configured || !runtimeAvailable || !nodes.length}
                                     onChange={(value: string) => setHopNode(value)}
                                 />
-                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                                    流量第一跳：通过加密隧道出海，建议选择低延迟专线。
-                                </div>
+                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">流量第一跳：通过加密隧道出海，建议选择低延迟专线。</div>
                             </div>
 
                             <div className="min-w-0">
@@ -436,9 +406,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     disabled={loading || saving || !landingOptions.length}
                                     onChange={(value: string) => setLandingNodeId(value)}
                                 />
-                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                                    流量终点站：由境外跳板连接此节点，最终以该纯净住宅 IP 访问 {provider === "chatgptApi" ? "ChatGPT" : "Google"}。
-                                </div>
+                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">流量终点站：由境外跳板连接此节点，最终以该纯净住宅 IP 访问 {provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"}。</div>
                             </div>
                         </div>
 
@@ -456,23 +424,10 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                 ) : null}
                             </div>
                             <div className="flex items-center gap-2">
-                                <Button
-                                    size="small"
-                                    icon={<Zap className="size-3.5 text-amber-500" />}
-                                    loading={testing}
-                                    disabled={saving || !hopNode || !landingNodeId}
-                                    onClick={() => void handleGoogleTest()}
-                                >
-                                    测试 {provider === "chatgptApi" ? "ChatGPT" : "Google"} 连通性
+                                <Button size="small" icon={<Zap className="size-3.5 text-amber-500" />} loading={testing} disabled={saving || !hopNode || !landingNodeId} onClick={() => void handleGoogleTest()}>
+                                    测试 {provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"} 连通性
                                 </Button>
-                                <Button
-                                    type="primary"
-                                    size="small"
-                                    icon={<CheckCircle2 className="size-3.5" />}
-                                    loading={saving}
-                                    disabled={!hopNode || !landingNodeId}
-                                    onClick={() => void persist(true, "chained", { hopNode, landingNodeId })}
-                                >
+                                <Button type="primary" size="small" icon={<CheckCircle2 className="size-3.5" />} loading={saving} disabled={!hopNode || !landingNodeId} onClick={() => void persist(true, "chained", { hopNode, landingNodeId })}>
                                     保存并启用链式代理
                                 </Button>
                             </div>
@@ -482,7 +437,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                         {testReport ? (
                             <div className="mt-2 rounded-lg border border-zinc-200/80 bg-white/80 p-2.5 text-xs dark:border-zinc-800 dark:bg-zinc-900/80">
                                 <div className="font-medium text-zinc-800 dark:text-zinc-200">
-                                    {provider === "chatgptApi" ? "ChatGPT" : "Google"} 连通性测试报告 ({testReport.testedAt}):
+                                    {provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"} 连通性测试报告 ({testReport.testedAt}):
                                 </div>
                                 <div className="mt-1.5 space-y-1">
                                     {testReport.items
@@ -492,15 +447,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                                 <span className="text-zinc-600 dark:text-zinc-400">
                                                     {item.serviceTitle} ({item.group} ➔ {item.activeNode}):
                                                 </span>
-                                                {item.ok ? (
-                                                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                                        连通正常 · 延迟 {item.delay} ms
-                                                    </span>
-                                                ) : (
-                                                    <span className="font-medium text-rose-500">
-                                                        异常: {item.error || "连接超时"}
-                                                    </span>
-                                                )}
+                                                {item.ok ? <span className="font-medium text-emerald-600 dark:text-emerald-400">连通正常 · 延迟 {item.delay} ms</span> : <span className="font-medium text-rose-500">异常: {item.error || "连接超时"}</span>}
                                             </div>
                                         ))}
                                 </div>

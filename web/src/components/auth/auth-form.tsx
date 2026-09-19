@@ -8,6 +8,8 @@ import { ArrowLeft, ArrowRight, Gift, LockKeyhole, Mail, ShieldCheck, UserRound 
 import { App, Button, Checkbox, Input } from "antd";
 
 import { SiteLogo } from "@/components/layout/site-logo";
+import { SiteWordmark } from "@/components/layout/site-wordmark";
+import { SiteHorizontalLogo } from "@/components/layout/site-horizontal-logo";
 import { DEFAULT_SITE_TITLE, resolveSiteTitle } from "@/lib/site-brand";
 import { usePublicSessionStore } from "@/stores/use-public-session-store";
 import { type LocalUser, useUserStore } from "@/stores/use-user-store";
@@ -334,8 +336,7 @@ export function AuthForm({
                 <section className="auth-page-brand-panel flex min-h-[220px] flex-col justify-between gap-5 border-b p-5 text-stone-950 sm:min-h-[360px] sm:gap-8 sm:p-8 md:border-b-0 md:border-r dark:text-white">
                     <div className="flex items-start justify-between gap-4">
                         <Link href="/" className="inline-flex items-center gap-4 text-base font-semibold">
-                            <SiteLogo logoUrl={site.logoUrl} className="size-16 sm:size-20" />
-                            <span className="text-3xl">{site.title}</span>
+                            <SiteHorizontalLogo className="h-14 sm:h-16" title={site.title} />
                         </Link>
                         <Link
                             href="/"

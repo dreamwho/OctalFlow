@@ -1,0 +1,30 @@
+{
+  "input": {
+    "caretColor": "rgb(79, 114, 233)",
+    "color": "rgb(19, 33, 63)",
+    "height": 120,
+    "width": 970,
+    "x": 357,
+    "y": 314.203125
+  },
+  "overflow": {
+    "body": 0,
+    "html": 0
+  },
+  "send": {
+    "bottom": 486.203125,
+    "disabled": true,
+    "height": 44,
+    "hit": true,
+    "right": 1325,
+    "width": 44,
+    "x": 1281,
+    "y": 442.203125
+  },
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/create",
+  "viewport": {
+    "height": 1000,
+    "width": 1440
+  }
+}

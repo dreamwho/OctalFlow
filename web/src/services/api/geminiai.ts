@@ -197,7 +197,9 @@ export function getGeminiAiTestStatus(input: Pick<GeminiAiTestResult, "taskId" |
     return requestGeminiAi<GeminiAiTestResult>(`/api/admin/geminiai/test?taskId=${encodeURIComponent(input.taskId)}&channelId=${encodeURIComponent(input.channelId)}`);
 }
 
-export function getGeminiAiLogs(input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search"; source?: "runtime" | "admin-test" | "external"; model?: string; accountId?: string } = {}) {
+export function getGeminiAiLogs(
+    input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search"; source?: "runtime" | "admin-test" | "external"; model?: string; accountId?: string } = {},
+) {
     const search = new URLSearchParams();
     if (input.page) search.set("page", String(input.page));
     if (input.pageSize) search.set("pageSize", String(input.pageSize));

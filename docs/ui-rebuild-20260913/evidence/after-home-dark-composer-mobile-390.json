@@ -1,0 +1,20 @@
+{
+  "route": "/",
+  "theme": "dark",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "visualWidth": 390,
+    "visualHeight": 844,
+    "zoom": 1
+  },
+  "state": "暗色主题真实输入与光标",
+  "text": "暗色主题真实输入可读性验收",
+  "colors": {
+    "text": "rgb(237, 247, 255)",
+    "webkitTextFill": "rgb(237, 247, 255)",
+    "caret": "rgb(88, 222, 201)",
+    "panel": "rgba(7, 16, 37, 0.9)"
+  },
+  "buildId": "skNq3_iBgO4rSqUuV-XE4"
+}

@@ -1,0 +1,201 @@
+Listing tests:
+  [setup] › installation.spec.ts:9:1 › fresh deployments enter the installation flow
+  [setup] › installation.spec.ts:18:1 › public session omits internal configuration fields
+  [setup] › installation.spec.ts:30:1 › initialization rejects a wrong token and creates the first administrator once
+  [chromium] › admin-brand-visual.spec.ts:11:1 › admin brand settings persist, render in both themes, and recover from a bad logo
+  [chromium] › admin-commerce-visual.spec.ts:11:1 › admin commerce sections render isolated products, promotions and coupons in C01
+  [chromium] › admin-commerce-visual.spec.ts:137:1 › admin operational sections render isolated user, CDK, points, wallet and referral states
+  [chromium] › admin-commerce-visual.spec.ts:223:1 › admin orders render refund and reconciliation states with isolated payment data
+  [chromium] › admin-entry-matrix.spec.ts:23:1 › admin entry routes render their real redirects and layouts across the matrix
+  [chromium] › admin-sections-matrix.spec.ts:19:1 › all admin sections render C01 default states across the required viewport matrix
+  [chromium] › all-pages.spec.ts:22:1 › all authenticated pages reach their real routes and stay usable
+  [chromium] › all-pages.spec.ts:61:1 › every administrator section renders its server-backed surface
+  [chromium] › all-pages.spec.ts:73:1 › signed-out, legal, installation and invalid public detail routes fail safely
+  [chromium] › canvas.spec.ts:19:5 › confirmed success-50 handles estimated mid-progress without an abrupt successful result
+  [chromium] › canvas.spec.ts:19:5 › confirmed success-70 handles estimated mid-progress without an abrupt successful result
+  [chromium] › canvas.spec.ts:19:5 › confirmed failure handles estimated mid-progress without an abrupt successful result
+  [chromium] › canvas.spec.ts:19:5 › confirmed reduced handles estimated mid-progress without an abrupt successful result
+  [chromium] › canvas.spec.ts:70:1 › estimated generation progress advances and survives reload without claiming completion
+  [chromium] › canvas.spec.ts:104:1 › local depth extraction streams real frame progress and appears in generation operations
+  [chromium] › canvas.spec.ts:153:1 › canvas generation progress stays in the top-left on desktop and mobile
+  [chromium] › canvas.spec.ts:182:1 › canvas keeps one zoomed world grid and prioritizes the image node toolbar
+  [chromium] › canvas.spec.ts:262:1 › canvas portrait media keeps its outer frame and node toolbar at high zoom
+  [chromium] › canvas.spec.ts:384:1 › canvas keeps editing, selection, linking and persistence fluid
+  [chromium] › canvas.spec.ts:567:1 › canvas arranges a right-clicked selection, closes prompts on blank space, and creates an interior design node
+  [chromium] › canvas.spec.ts:741:1 › canvas video first and last frame roles persist and retry from the output snapshot
+  [chromium] › canvas.spec.ts:862:1 › canvas opens the Agent rail at the intended width and keeps a fresh chat after deletion
+  [chromium] › canvas.spec.ts:972:1 › canvas Agent toolbar stays ordered and its generation settings fit narrow viewports
+  [chromium] › canvas.spec.ts:1054:1 › canvas keeps project chat state isolated during client-side project navigation
+  [chromium] › canvas.spec.ts:1095:1 › canvas separates project management from the command menu and keeps assets in a four-column rail
+  [chromium] › canvas.spec.ts:1190:1 › canvas Agent keeps simultaneous runs bound to separate chats
+  [chromium] › canvas.spec.ts:1262:1 › canvas remains operable with 2000 nodes and 5000 connections
+  [chromium] › canvas.spec.ts:1319:1 › canvas restores all nine node types and opens text editing on a single click
+  [chromium] › canvas.spec.ts:1476:1 › canvas Agent attachment remove badge stays compact and theme readable
+  [chromium] › commerce.spec.ts:162:1 › coupon wallet paginates claimable templates and owned coupons independently
+  [chromium] › commerce.spec.ts:183:1 › referral progress and rewards retain separate server pages
+  [chromium] › commerce.spec.ts:204:1 › billing result applies the paid SSE event and closes the subscription
+  [chromium] › content-account-visual.spec.ts:12:1 › content library renders persisted assets in C01
+  [chromium] › content-account-visual.spec.ts:62:1 › works and public share render a persisted media publication
+  [chromium] › core.spec.ts:12:1 › site footer deletions remain deleted after settings and public-session reloads
+  [chromium] › core.spec.ts:41:1 › admin site form persists social addresses, publishes them to the home footer, and deletes friend links
+  [chromium] › core.spec.ts:122:1 › admin data lifecycle settings persist without password re-verification
+  [chromium] › core.spec.ts:149:1 › GeminiAI authorization opens a fresh session after the previous account completes
+  [chromium] › core.spec.ts:192:1 › text tasks return content, fail over automatically, and surface terminal failures
+  [chromium] › core.spec.ts:210:1 › image task persists a real media result and reuses the same request identity
+  [chromium] › core.spec.ts:235:1 › unified creative page reaches the local planning and image protocols
+  [chromium] › core.spec.ts:271:1 › video request replay and cancellation keep one upstream task
+  [chromium] › core.spec.ts:290:1 › legacy image and video routes hand off to the unified creative Agent
+  [chromium] › core.spec.ts:299:1 › audio task stores a valid audio result
+  [chromium] › core.spec.ts:306:1 › canvas projects round-trip two nodes and one connection
+  [chromium] › core.spec.ts:326:1 › administrator orders and hides Canvas node models from the logical model catalog
+  [chromium] › core.spec.ts:403:1 › new Agent Skill is saved before leaving the administrator page
+  [chromium] › core.spec.ts:433:1 › PostgreSQL payment flow verifies missing fields, rejects trade reuse, and refunds
+  [chromium] › creative-video-result.spec.ts:37:1 › image results shrink to their real 1:1, 9:16, 16:9 and long-image sizes
+  [chromium] › creative-video-result.spec.ts:65:1 › multiple image results share one switcher and actions follow the selected result
+  [chromium] › creative-video-result.spec.ts:183:1 › copy prompt refreshes a restored run whose cached details omit the public prompt
+  [chromium] › creative-video-result.spec.ts:202:1 › a 100-result batch stays complete inside the bounded result rail
+  [chromium] › creative-video-result.spec.ts:239:1 › a long-running media task uses warm elapsed-time feedback
+  [chromium] › creative-video-result.spec.ts:259:1 › single video results keep real ratios and retain complete player controls
+  [chromium] › creative-video-result.spec.ts:305:1 › natural media dimensions replace stale ratio metadata when persisted dimensions are missing
+  [chromium] › creative-video-result.spec.ts:331:1 › multiple videos switch src, poster and size while releasing the previous player
+  [chromium] › creative-video-result.spec.ts:363:1 › failed image and video generations expose only in-place retry
+  [chromium] › creative-video-result.spec.ts:381:1 › partial image and video runs keep every successful result visible with a failed-task retry
+  [chromium] › creative-video-result.spec.ts:401:1 › asset mentions stay as inline thumbnail references while the editor is focused
+  [chromium] › creative-video-result.spec.ts:479:1 › prompt library searches, filters and scrolls through bounded server pages
+  [chromium] › creative-video-result.spec.ts:536:1 › result layouts remain contained at 390px and 430px
+  [chromium] › drama-visual.spec.ts:9:1 › short drama real project keeps four production stages and project assets coherent
+  [chromium] › home.spec.ts:18:1 › public homepage is functional for signed-out visitors
+  [chromium] › home.spec.ts:217:1 › signed-in homepage restores the selected creation mode and prompt
+  [chromium] › home.spec.ts:232:1 › homepage gallery hides internal service errors from visitors
+  [chromium] › home.spec.ts:248:1 › homepage hero stays centered and responsive
+  [chromium] › home.spec.ts:367:1 › front-end and administrator theme choices remain independent
+  [chromium] › responsive.spec.ts:377:1 › creative composer controls return to a neutral palette after selection
+  [chromium] › responsive.spec.ts:427:1 › creative composer optimizes the current prompt without sending it
+  [chromium] › responsive.spec.ts:457:1 › creative composer ignores an optimization response after the user sends
+  [chromium] › responsive.spec.ts:492:1 › Agent generation inputs apply immediately and reveal video frame slots
+  [chromium] › responsive.spec.ts:552:1 › creative composer renders uploaded images as thumbnails instead of filename chips
+  [chromium] › responsive.spec.ts:627:1 › creative conversation keeps successful media rounds copy-only
+  [chromium] › responsive.spec.ts:755:1 › creative conversation uses the shared switcher only for multiple media results
+  [chromium] › responsive.spec.ts:802:1 › creative composer opens menus upward after entering a conversation
+  [chromium] › responsive.spec.ts:814:1 › switching conversations keeps the previous Agent run isolated and resumable
+  [chromium] › responsive.spec.ts:849:1 › creative video first and last frame controls support upload, removal and reselection
+  [chromium] › responsive.spec.ts:926:1 › Agent text assets with emoji remain visible after hydration and refresh
+  [chromium] › responsive.spec.ts:995:1 › creative workspaces remain usable without horizontal overflow in light and dark themes
+  [chromium] › responsive.spec.ts:1210:1 › admin user editor groups permission controls and keeps the footer visible
+  [chromium] › responsive.spec.ts:1278:1 › conversation and Canvas deletion stay deleted after refresh
+  [chromium] › responsive.spec.ts:1335:1 › eight billing plans remain dense and usable across desktop and mobile
+  [chromium] › responsive.spec.ts:1380:1 › inspiration works fill each row before continuing down the shortest masonry column
+  [chromium] › static-brand-visual.spec.ts:8:1 › static brand and installation entry states keep C01 readable
+  [chromium] › ui-rebuild.spec.ts:52:5 › dreamyo UI rebuild V2.1 › 认证、法务与 404 静态入口在双主题保持可读且无溢出
+  [chromium] › ui-rebuild.spec.ts:144:5 › dreamyo UI rebuild V2.1 › C01 composer and B01 action keep readable geometry in both themes
+  [chromium] › ui-rebuild.spec.ts:249:5 › dreamyo UI rebuild V2.1 › Canvas toolbar uses semantic line icons and selection frame stays outside media
+  [chromium] › ui-rebuild.spec.ts:311:5 › dreamyo UI rebuild V2.1 › public title smoke test keeps brand and page titles distinct
+  [chromium] › ui-rebuild.spec.ts:330:5 › dreamyo UI rebuild V2.1 › home C01 hero keeps a light surface and B01 action in both themes
+  [chromium] › ui-rebuild.spec.ts:380:5 › dreamyo UI rebuild V2.1 › C01 background has a reduced-motion and resource-failure fallback
+  [chromium] › ui-rebuild.spec.ts:448:5 › dreamyo UI rebuild V2.1 › admin C01 reference board keeps overview and operations visually coherent
+  [chromium] › user-pages-matrix.spec.ts:21:1 › user and public route matrix renders real default states across C01 themes and viewports
+  [mobile-390] › admin-brand-visual.spec.ts:11:1 › admin brand settings persist, render in both themes, and recover from a bad logo
+  [mobile-390] › all-pages.spec.ts:22:1 › all authenticated pages reach their real routes and stay usable
+  [mobile-390] › all-pages.spec.ts:61:1 › every administrator section renders its server-backed surface
+  [mobile-390] › all-pages.spec.ts:73:1 › signed-out, legal, installation and invalid public detail routes fail safely
+  [mobile-390] › commerce.spec.ts:162:1 › coupon wallet paginates claimable templates and owned coupons independently
+  [mobile-390] › commerce.spec.ts:183:1 › referral progress and rewards retain separate server pages
+  [mobile-390] › commerce.spec.ts:204:1 › billing result applies the paid SSE event and closes the subscription
+  [mobile-390] › content-account-visual.spec.ts:12:1 › content library renders persisted assets in C01
+  [mobile-390] › content-account-visual.spec.ts:62:1 › works and public share render a persisted media publication
+  [mobile-390] › creative-video-result.spec.ts:37:1 › image results shrink to their real 1:1, 9:16, 16:9 and long-image sizes
+  [mobile-390] › creative-video-result.spec.ts:65:1 › multiple image results share one switcher and actions follow the selected result
+  [mobile-390] › creative-video-result.spec.ts:183:1 › copy prompt refreshes a restored run whose cached details omit the public prompt
+  [mobile-390] › creative-video-result.spec.ts:202:1 › a 100-result batch stays complete inside the bounded result rail
+  [mobile-390] › creative-video-result.spec.ts:239:1 › a long-running media task uses warm elapsed-time feedback
+  [mobile-390] › creative-video-result.spec.ts:259:1 › single video results keep real ratios and retain complete player controls
+  [mobile-390] › creative-video-result.spec.ts:305:1 › natural media dimensions replace stale ratio metadata when persisted dimensions are missing
+  [mobile-390] › creative-video-result.spec.ts:331:1 › multiple videos switch src, poster and size while releasing the previous player
+  [mobile-390] › creative-video-result.spec.ts:363:1 › failed image and video generations expose only in-place retry
+  [mobile-390] › creative-video-result.spec.ts:381:1 › partial image and video runs keep every successful result visible with a failed-task retry
+  [mobile-390] › creative-video-result.spec.ts:401:1 › asset mentions stay as inline thumbnail references while the editor is focused
+  [mobile-390] › creative-video-result.spec.ts:479:1 › prompt library searches, filters and scrolls through bounded server pages
+  [mobile-390] › creative-video-result.spec.ts:536:1 › result layouts remain contained at 390px and 430px
+  [mobile-390] › drama-visual.spec.ts:9:1 › short drama real project keeps four production stages and project assets coherent
+  [mobile-390] › home.spec.ts:18:1 › public homepage is functional for signed-out visitors
+  [mobile-390] › home.spec.ts:217:1 › signed-in homepage restores the selected creation mode and prompt
+  [mobile-390] › home.spec.ts:232:1 › homepage gallery hides internal service errors from visitors
+  [mobile-390] › home.spec.ts:248:1 › homepage hero stays centered and responsive
+  [mobile-390] › home.spec.ts:367:1 › front-end and administrator theme choices remain independent
+  [mobile-390] › responsive.spec.ts:377:1 › creative composer controls return to a neutral palette after selection
+  [mobile-390] › responsive.spec.ts:427:1 › creative composer optimizes the current prompt without sending it
+  [mobile-390] › responsive.spec.ts:457:1 › creative composer ignores an optimization response after the user sends
+  [mobile-390] › responsive.spec.ts:492:1 › Agent generation inputs apply immediately and reveal video frame slots
+  [mobile-390] › responsive.spec.ts:552:1 › creative composer renders uploaded images as thumbnails instead of filename chips
+  [mobile-390] › responsive.spec.ts:627:1 › creative conversation keeps successful media rounds copy-only
+  [mobile-390] › responsive.spec.ts:755:1 › creative conversation uses the shared switcher only for multiple media results
+  [mobile-390] › responsive.spec.ts:802:1 › creative composer opens menus upward after entering a conversation
+  [mobile-390] › responsive.spec.ts:814:1 › switching conversations keeps the previous Agent run isolated and resumable
+  [mobile-390] › responsive.spec.ts:849:1 › creative video first and last frame controls support upload, removal and reselection
+  [mobile-390] › responsive.spec.ts:926:1 › Agent text assets with emoji remain visible after hydration and refresh
+  [mobile-390] › responsive.spec.ts:995:1 › creative workspaces remain usable without horizontal overflow in light and dark themes
+  [mobile-390] › responsive.spec.ts:1210:1 › admin user editor groups permission controls and keeps the footer visible
+  [mobile-390] › responsive.spec.ts:1278:1 › conversation and Canvas deletion stay deleted after refresh
+  [mobile-390] › responsive.spec.ts:1335:1 › eight billing plans remain dense and usable across desktop and mobile
+  [mobile-390] › responsive.spec.ts:1380:1 › inspiration works fill each row before continuing down the shortest masonry column
+  [mobile-390] › static-brand-visual.spec.ts:8:1 › static brand and installation entry states keep C01 readable
+  [mobile-390] › ui-rebuild.spec.ts:52:5 › dreamyo UI rebuild V2.1 › 认证、法务与 404 静态入口在双主题保持可读且无溢出
+  [mobile-390] › ui-rebuild.spec.ts:144:5 › dreamyo UI rebuild V2.1 › C01 composer and B01 action keep readable geometry in both themes
+  [mobile-390] › ui-rebuild.spec.ts:249:5 › dreamyo UI rebuild V2.1 › Canvas toolbar uses semantic line icons and selection frame stays outside media
+  [mobile-390] › ui-rebuild.spec.ts:311:5 › dreamyo UI rebuild V2.1 › public title smoke test keeps brand and page titles distinct
+  [mobile-390] › ui-rebuild.spec.ts:330:5 › dreamyo UI rebuild V2.1 › home C01 hero keeps a light surface and B01 action in both themes
+  [mobile-390] › ui-rebuild.spec.ts:380:5 › dreamyo UI rebuild V2.1 › C01 background has a reduced-motion and resource-failure fallback
+  [mobile-390] › ui-rebuild.spec.ts:448:5 › dreamyo UI rebuild V2.1 › admin C01 reference board keeps overview and operations visually coherent
+  [mobile-430] › admin-brand-visual.spec.ts:11:1 › admin brand settings persist, render in both themes, and recover from a bad logo
+  [mobile-430] › all-pages.spec.ts:22:1 › all authenticated pages reach their real routes and stay usable
+  [mobile-430] › all-pages.spec.ts:61:1 › every administrator section renders its server-backed surface
+  [mobile-430] › all-pages.spec.ts:73:1 › signed-out, legal, installation and invalid public detail routes fail safely
+  [mobile-430] › commerce.spec.ts:162:1 › coupon wallet paginates claimable templates and owned coupons independently
+  [mobile-430] › commerce.spec.ts:183:1 › referral progress and rewards retain separate server pages
+  [mobile-430] › commerce.spec.ts:204:1 › billing result applies the paid SSE event and closes the subscription
+  [mobile-430] › content-account-visual.spec.ts:12:1 › content library renders persisted assets in C01
+  [mobile-430] › content-account-visual.spec.ts:62:1 › works and public share render a persisted media publication
+  [mobile-430] › creative-video-result.spec.ts:37:1 › image results shrink to their real 1:1, 9:16, 16:9 and long-image sizes
+  [mobile-430] › creative-video-result.spec.ts:65:1 › multiple image results share one switcher and actions follow the selected result
+  [mobile-430] › creative-video-result.spec.ts:183:1 › copy prompt refreshes a restored run whose cached details omit the public prompt
+  [mobile-430] › creative-video-result.spec.ts:202:1 › a 100-result batch stays complete inside the bounded result rail
+  [mobile-430] › creative-video-result.spec.ts:239:1 › a long-running media task uses warm elapsed-time feedback
+  [mobile-430] › creative-video-result.spec.ts:259:1 › single video results keep real ratios and retain complete player controls
+  [mobile-430] › creative-video-result.spec.ts:305:1 › natural media dimensions replace stale ratio metadata when persisted dimensions are missing
+  [mobile-430] › creative-video-result.spec.ts:331:1 › multiple videos switch src, poster and size while releasing the previous player
+  [mobile-430] › creative-video-result.spec.ts:363:1 › failed image and video generations expose only in-place retry
+  [mobile-430] › creative-video-result.spec.ts:381:1 › partial image and video runs keep every successful result visible with a failed-task retry
+  [mobile-430] › creative-video-result.spec.ts:401:1 › asset mentions stay as inline thumbnail references while the editor is focused
+  [mobile-430] › creative-video-result.spec.ts:479:1 › prompt library searches, filters and scrolls through bounded server pages
+  [mobile-430] › creative-video-result.spec.ts:536:1 › result layouts remain contained at 390px and 430px
+  [mobile-430] › drama-visual.spec.ts:9:1 › short drama real project keeps four production stages and project assets coherent
+  [mobile-430] › home.spec.ts:18:1 › public homepage is functional for signed-out visitors
+  [mobile-430] › home.spec.ts:217:1 › signed-in homepage restores the selected creation mode and prompt
+  [mobile-430] › home.spec.ts:232:1 › homepage gallery hides internal service errors from visitors
+  [mobile-430] › home.spec.ts:248:1 › homepage hero stays centered and responsive
+  [mobile-430] › home.spec.ts:367:1 › front-end and administrator theme choices remain independent
+  [mobile-430] › responsive.spec.ts:377:1 › creative composer controls return to a neutral palette after selection
+  [mobile-430] › responsive.spec.ts:427:1 › creative composer optimizes the current prompt without sending it
+  [mobile-430] › responsive.spec.ts:457:1 › creative composer ignores an optimization response after the user sends
+  [mobile-430] › responsive.spec.ts:492:1 › Agent generation inputs apply immediately and reveal video frame slots
+  [mobile-430] › responsive.spec.ts:552:1 › creative composer renders uploaded images as thumbnails instead of filename chips
+  [mobile-430] › responsive.spec.ts:627:1 › creative conversation keeps successful media rounds copy-only
+  [mobile-430] › responsive.spec.ts:755:1 › creative conversation uses the shared switcher only for multiple media results
+  [mobile-430] › responsive.spec.ts:802:1 › creative composer opens menus upward after entering a conversation
+  [mobile-430] › responsive.spec.ts:814:1 › switching conversations keeps the previous Agent run isolated and resumable
+  [mobile-430] › responsive.spec.ts:849:1 › creative video first and last frame controls support upload, removal and reselection
+  [mobile-430] › responsive.spec.ts:926:1 › Agent text assets with emoji remain visible after hydration and refresh
+  [mobile-430] › responsive.spec.ts:995:1 › creative workspaces remain usable without horizontal overflow in light and dark themes
+  [mobile-430] › responsive.spec.ts:1210:1 › admin user editor groups permission controls and keeps the footer visible
+  [mobile-430] › responsive.spec.ts:1278:1 › conversation and Canvas deletion stay deleted after refresh
+  [mobile-430] › responsive.spec.ts:1335:1 › eight billing plans remain dense and usable across desktop and mobile
+  [mobile-430] › responsive.spec.ts:1380:1 › inspiration works fill each row before continuing down the shortest masonry column
+  [mobile-430] › static-brand-visual.spec.ts:8:1 › static brand and installation entry states keep C01 readable
+  [mobile-430] › ui-rebuild.spec.ts:52:5 › dreamyo UI rebuild V2.1 › 认证、法务与 404 静态入口在双主题保持可读且无溢出
+  [mobile-430] › ui-rebuild.spec.ts:144:5 › dreamyo UI rebuild V2.1 › C01 composer and B01 action keep readable geometry in both themes
+  [mobile-430] › ui-rebuild.spec.ts:249:5 › dreamyo UI rebuild V2.1 › Canvas toolbar uses semantic line icons and selection frame stays outside media
+  [mobile-430] › ui-rebuild.spec.ts:311:5 › dreamyo UI rebuild V2.1 › public title smoke test keeps brand and page titles distinct
+  [mobile-430] › ui-rebuild.spec.ts:330:5 › dreamyo UI rebuild V2.1 › home C01 hero keeps a light surface and B01 action in both themes
+  [mobile-430] › ui-rebuild.spec.ts:380:5 › dreamyo UI rebuild V2.1 › C01 background has a reduced-motion and resource-failure fallback
+  [mobile-430] › ui-rebuild.spec.ts:448:5 › dreamyo UI rebuild V2.1 › admin C01 reference board keeps overview and operations visually coherent
+Total: 199 tests in 17 files

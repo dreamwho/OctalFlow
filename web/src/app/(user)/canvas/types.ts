@@ -159,6 +159,7 @@ export type CanvasNodeMetadata = {
     sourcePrompt?: string;
     executionPrompt?: string;
     selectedSkillIds?: string[];
+    promptSkillPositions?: Array<{ id: string; start: number; end: number }>;
     remakeMode?: "universal" | "vlog" | "drama" | "talking-head" | "product" | "tutorial";
     status?: CanvasNodeStatus;
     generationProgress?: number;
@@ -228,7 +229,12 @@ export type CanvasNodeMetadata = {
     mimeType?: string;
     bytes?: number;
     durationMs?: number;
-    derivedVideoOperation?: "depth";
+    dolaVodPayload?: unknown;
+    unwatermarked?: boolean;
+    provider?: string;
+    sourceModel?: string;
+    resolverRevision?: string;
+    derivedVideoOperation?: "depth" | "dola-watermark";
     derivedFromNodeId?: string;
     videoTask?: {
         id: string;

@@ -1,0 +1,55 @@
+{
+  "composer": {
+    "bottom": 657.90625,
+    "height": 260,
+    "right": 1260,
+    "width": 1080,
+    "x": 180,
+    "y": 397.90625
+  },
+  "scroll": {
+    "body": 1440,
+    "bodyClient": 1440,
+    "html": 1440,
+    "htmlClient": 1440
+  },
+  "submit": {
+    "hit": true,
+    "icon": {
+      "bottom": 615.75,
+      "height": 17.703125,
+      "naturalHeight": 179,
+      "naturalWidth": 182,
+      "right": 1179,
+      "width": 18,
+      "x": 1161,
+      "y": 598.046875
+    },
+    "rect": {
+      "bottom": 628.90625,
+      "height": 44,
+      "right": 1231,
+      "width": 86,
+      "x": 1145,
+      "y": 584.90625
+    }
+  },
+  "textarea": {
+    "caret": "rgb(53, 204, 225)",
+    "color": "rgb(19, 33, 63)",
+    "rect": {
+      "bottom": 523.90625,
+      "height": 98,
+      "right": 1231,
+      "width": 1022,
+      "x": 209,
+      "y": 425.90625
+    }
+  },
+  "theme": "light",
+  "url": "http://127.0.0.1:3102/",
+  "viewport": {
+    "height": 1000,
+    "width": 1440
+  }
+}

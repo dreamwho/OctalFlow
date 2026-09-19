@@ -1,0 +1,3 @@
+HEAD=78fa27966eae9c1d50e1ee0e2d9dfcbd888dcf6d
+STATUS_SHA256=2f8a4da483894763fb5bb4d2c6e06b30c89b22081aaf2243cb2bea0012d8a872
+SERVER={"code":0,"data":{"status":"ok"},"msg":"服务正常"}

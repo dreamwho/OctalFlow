@@ -34,7 +34,6 @@ export default async function GalleryPage({ searchParams }: { searchParams: Gall
                         <span className="truncate text-sm font-semibold sm:text-base">{site.title}</span>
                     </Link>
                     <div className="flex shrink-0 items-center gap-2">
-                        <GalleryThemeToggle />
                         <GalleryPublishLink className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md !bg-foreground px-3 text-sm font-medium !text-background transition hover:opacity-80 sm:px-4" />
                     </div>
                 </div>

@@ -8,4 +8,4 @@ python-dotenv>=1.0.0
 PyYAML>=6.0.0
 python-multipart>=0.0.9
 cloakbrowser
-camoufox[geoip]==0.4.11
+camoufox[geoip]==0.5.6

@@ -69,7 +69,10 @@ export function e2eSettingsPatch() {
             name: model,
             capability: modelCapabilities[model],
             enabled: true,
-            bindings: [{ id: `e2e-primary:${model}`, channelId: "e2e-primary", upstreamModel: model, enabled: true, priority: index + 1 }],
+            bindings: [
+                { id: `e2e-primary:${model}`, channelId: "e2e-primary", upstreamModel: model, enabled: true, priority: index + 1 },
+                { id: `e2e-backup:${model}`, channelId: "e2e-backup", upstreamModel: model, enabled: true, priority: index + 101 },
+            ],
         })),
         defaultModels: { textModel: "e2e-text", imageModel: "e2e-image", videoModel: "e2e-video", audioModel: "e2e-audio" },
         modelPointCosts: Object.fromEntries(models.map((model) => [model, 0])),

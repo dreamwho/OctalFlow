@@ -1,0 +1,108 @@
+{
+  "route": "/",
+  "theme": "light",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "state": "浏览器元数据、品牌资源、B01资源解码与透明度",
+  "metadata": [
+    {
+      "rel": "icon",
+      "href": "http://127.0.0.1:3190/brand/dreamyo/mark.png"
+    },
+    {
+      "rel": "shortcut icon",
+      "href": "http://127.0.0.1:3190/brand/dreamyo/mark.png"
+    },
+    {
+      "rel": "apple-touch-icon",
+      "href": "http://127.0.0.1:3190/brand/dreamyo/mark.png"
+    }
+  ],
+  "manifest": {
+    "name": "dreamyo",
+    "short_name": "dreamyo",
+    "description": "面向 Agent、图片、视频、画布与短剧生产的一体化 AI 创作工作台",
+    "start_url": "/",
+    "display": "standalone",
+    "lang": "zh-CN",
+    "background_color": "#ffffff",
+    "theme_color": "#2f6fff",
+    "icons": [
+      {
+        "src": "/brand/dreamyo/mark.png",
+        "sizes": "1254x1254",
+        "type": "image/png",
+        "purpose": "maskable"
+      }
+    ]
+  },
+  "resourceChecks": [
+    {
+      "path": "/icon.svg",
+      "status": 200,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    {
+      "path": "/logo.svg",
+      "status": 200,
+      "contentType": "image/svg+xml",
+      "bytes": 2642
+    },
+    {
+      "path": "/brand/dreamyo/mark.png",
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 482026
+    },
+    {
+      "path": "/brand/dreamyo/generation/button-surface.png",
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 1937006
+    },
+    {
+      "path": "/brand/dreamyo/generation/generate-glyph.png",
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 2427
+    }
+  ],
+  "decoded": [
+    {
+      "path": "/icon.svg",
+      "width": 150,
+      "height": 150,
+      "transparentPixels": 3076
+    },
+    {
+      "path": "/logo.svg",
+      "width": 150,
+      "height": 150,
+      "transparentPixels": 3076
+    },
+    {
+      "path": "/brand/dreamyo/mark.png",
+      "width": 1254,
+      "height": 1254,
+      "transparentPixels": 2869
+    },
+    {
+      "path": "/brand/dreamyo/generation/button-surface.png",
+      "width": 1774,
+      "height": 887,
+      "transparentPixels": 2217
+    },
+    {
+      "path": "/brand/dreamyo/generation/generate-glyph.png",
+      "width": 182,
+      "height": 179,
+      "transparentPixels": 3060
+    }
+  ],
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "capturedAt": "2026-09-15T11:38:40.704Z"
+}

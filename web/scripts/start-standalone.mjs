@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { localGeminiAiRuntime } from "./geminiai-local-runtime.mjs";
 import { localChatGptApiRuntime } from "./chatgpt-api-local-runtime.mjs";
+import { localDolaApiRuntime } from "./dola-api-local-runtime.mjs";
 import { generationRuntimeEnvironment, superviseGenerationRuntime } from "./generation-runtime.mjs";
 import { prepareStandaloneAssets } from "./standalone-assets.mjs";
 
@@ -12,12 +13,14 @@ const distDir = process.env.NEXT_DIST_DIR?.trim() || ".next";
 const { standaloneRoot } = await prepareStandaloneAssets({ webRoot, distDir });
 const geminiAi = localGeminiAiRuntime({ repoRoot, webRoot });
 const chatGptApi = localChatGptApiRuntime({ repoRoot, webRoot, environment: geminiAi.environment });
+const dolaApi = localDolaApiRuntime({ repoRoot, webRoot, environment: chatGptApi.environment });
 
 const runtime = generationRuntimeEnvironment({
     allowEphemeralToken: true,
     environment: {
         ...process.env,
         ...chatGptApi.environment,
+        ...dolaApi.environment,
         PORT: process.env.PORT || "3333",
         HOSTNAME: process.env.HOSTNAME || "0.0.0.0",
         DREAMYO_DATA_DIR: process.env.DREAMYO_DATA_DIR || path.join(webRoot, ".data"),
@@ -31,5 +34,5 @@ process.exitCode = await superviseGenerationRuntime({
     app: { command: process.execPath, args: ["server.js"], cwd: standaloneRoot },
     workerScript: path.join(webRoot, "scripts", "generation-worker.mjs"),
     environment: runtime.environment,
-    services: [geminiAi.service, chatGptApi.service].filter(Boolean),
+    services: [geminiAi.service, chatGptApi.service, dolaApi.service].filter(Boolean),
 });

@@ -13,6 +13,7 @@ import {
     expandCanvasDragNodeIds,
     findConnectionTarget,
     isBlockedConnectionDrop,
+    connectionAnchors,
     nodeAnchor,
     previewPath,
     PROMPT_COMPOSER_GAP,
@@ -115,7 +116,9 @@ function isInteractiveTarget(target: EventTarget | null) {
     return (
         target instanceof Element &&
         Boolean(
-            target.closest("button,input,textarea,select,video,audio,[data-canvas-agent-composer],[data-canvas-agent-scroll],[data-canvas-no-drag],[data-canvas-no-zoom],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel]"),
+            target.closest(
+                "button,input,textarea,select,video,audio,[data-canvas-agent-composer],[data-canvas-agent-scroll],[data-canvas-no-drag],[data-canvas-no-zoom],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel]",
+            ),
         )
     );
 }
@@ -186,6 +189,7 @@ export function CanvasSurface({
     const wheelFrameRef = useRef<WheelFrame | null>(null);
     const wheelCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const focusViewportKeyRef = useRef("");
+    const focusRestoreViewportRef = useRef<ViewportTransform | null>(null);
     const boxSelectionRef = useRef<BoxSelection | null>(null);
     const temporaryPanRef = useRef(false);
     const [localTransforms, setLocalTransforms] = useState<Record<string, CanvasNodeTransform>>({});
@@ -240,8 +244,7 @@ export function CanvasSurface({
                 const from = nodesById.get(item.fromNodeId);
                 const to = nodesById.get(item.toNodeId);
                 if (!from || !to || hiddenNodeIds.has(from.id) || hiddenNodeIds.has(to.id)) return false;
-                const start = nodeAnchor(from, "source");
-                const end = nodeAnchor(to, "target");
+                const { start, end } = connectionAnchors(from, to);
                 return Math.min(start.x, end.x) < viewBounds.right && Math.max(start.x, end.x) > viewBounds.left && Math.min(start.y, end.y) < viewBounds.bottom && Math.max(start.y, end.y) > viewBounds.top;
             }),
         [connections, hiddenNodeIds, nodesById, viewBounds],
@@ -318,6 +321,14 @@ export function CanvasSurface({
 
     useEffect(() => {
         if (!focusNodeId || surfaceSize.width < 768) {
+            if (!focusNodeId && focusRestoreViewportRef.current) {
+                const restoreViewport = focusRestoreViewportRef.current;
+                focusRestoreViewportRef.current = null;
+                displayViewportRef.current = restoreViewport;
+                previousViewportPropRef.current = restoreViewport;
+                setDisplayViewport(restoreViewport);
+                onViewportCommit(restoreViewport);
+            }
             focusViewportKeyRef.current = "";
             return;
         }
@@ -326,6 +337,12 @@ export function CanvasSurface({
         const focusKey = `${node.id}:${surfaceSize.width}x${surfaceSize.height}`;
         if (focusViewportKeyRef.current === focusKey) return;
         const current = displayViewportRef.current;
+        // Preserve the last committed viewport when temporarily focusing a
+        // prompt node. `displayViewportRef` may already contain a transient
+        // focus/pan frame; restoring that frame can leave the user at an
+        // unexpected offset and even move sibling nodes outside the pointer
+        // viewport. The prop ref tracks the committed project viewport.
+        focusRestoreViewportRef.current ||= previousViewportPropRef.current;
         const clusterHeight = node.height * current.k + PROMPT_COMPOSER_GAP + PROMPT_COMPOSER_HEIGHT;
         const desiredTop = Math.max(72, (surfaceSize.height - clusterHeight) / 2);
         const next = {
@@ -418,6 +435,11 @@ export function CanvasSurface({
 
     const handleNodeMouseDown = useCallback(
         (event: CanvasPointerEvent, nodeId: string) => {
+            // Holding Space temporarily switches the surface to pan mode.
+            // The pointer capture handler starts that pan before React's
+            // mouse event reaches the node; never let the follow-up node
+            // mouse event replace the active pan interaction with a drag.
+            if (temporaryPanRef.current) return;
             const nextSelection = resolveCanvasNodePointerSelection(selectedNodeIdsRef.current, nodeId, event.button, event.shiftKey || event.ctrlKey || event.metaKey);
             if (!nextSelection) return;
             const node = displayNodesRef.current.find((item) => item.id === nodeId);
@@ -443,10 +465,15 @@ export function CanvasSurface({
         (event: ReactPointerEvent<HTMLDivElement>) => {
             const target = event.target instanceof Element ? event.target : null;
             if (agentReferencePicker) {
-                if (event.button === 0 && !target?.closest("[data-node-id],[data-connection-id],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel],[data-canvas-agent-reference-picker]")) onPaneClick();
+                if (
+                    event.button === 0 &&
+                    !target?.closest("[data-node-id],[data-connection-id],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel],[data-canvas-agent-reference-picker]")
+                )
+                    onPaneClick();
                 return;
             }
-            if (target?.closest("[data-node-id],[data-connection-id],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel],[data-canvas-agent-reference-picker]")) return;
+            if (target?.closest("[data-node-id],[data-connection-id],[data-canvas-minimap],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-node-prompt-panel],[data-canvas-upscale-panel],[data-canvas-agent-reference-picker]"))
+                return;
             if (event.pointerType === "touch") {
                 event.currentTarget.setPointerCapture?.(event.pointerId);
                 touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -478,7 +505,7 @@ export function CanvasSurface({
                 event.currentTarget.setPointerCapture?.(event.pointerId);
             }
         },
-        [agentReferencePicker, interactionMode, screenToWorld],
+        [agentReferencePicker, interactionMode, onPaneClick, screenToWorld],
     );
 
     const handlePointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -738,6 +765,20 @@ export function CanvasSurface({
         };
         const handleKeyUp = (event: KeyboardEvent) => {
             if (event.code !== "Space") return;
+            // A temporary pan can finish with the pointer still captured by
+            // the surface. In that sequence Chromium may deliver the Space
+            // keyup after the pointerup has already been routed away from
+            // the window listener, leaving only the visual preview dirty.
+            // Flush the last frame and commit here as an idempotent fallback;
+            // normal pointerup/lost-capture paths have already cleared the
+            // dirty flag, so they remain no-ops.
+            flushFrame();
+            const interaction = interactionRef.current;
+            if (interaction?.kind === "pan" && interaction.moved) {
+                commitViewport();
+                interactionRef.current = null;
+                if (surfaceRef.current?.hasPointerCapture(interaction.pointerId)) surfaceRef.current.releasePointerCapture(interaction.pointerId);
+            }
             temporaryPanRef.current = false;
             setTemporaryPan(false);
         };
@@ -754,7 +795,7 @@ export function CanvasSurface({
             window.removeEventListener("keyup", handleKeyUp);
             window.removeEventListener("blur", handleBlur);
         };
-    }, [agentReferencePicker, cancelTransientInteraction, onCancelAgentReferencePicker]);
+    }, [agentReferencePicker, cancelTransientInteraction, commitViewport, flushFrame, onCancelAgentReferencePicker]);
 
     const activeSelectedNodeIds = boxSelection?.nodeIds || selectedNodeIds;
     const connectionStartNode = connection ? nodesById.get(connection.nodeId) : null;
@@ -796,6 +837,7 @@ export function CanvasSurface({
             <div className="pointer-events-none absolute inset-0" style={{ background: theme.canvas.glow }} aria-hidden="true" />
             {backgroundMode !== "blank" ? (
                 <div
+                    data-canvas-world-grid
                     className="pointer-events-none absolute inset-0 opacity-80"
                     style={{
                         backgroundImage: `radial-gradient(circle, ${theme.canvas.dot} ${dotRadius}px, transparent ${dotRadius + 0.25}px)`,
@@ -807,13 +849,34 @@ export function CanvasSurface({
             <div className="pointer-events-none absolute inset-0 overflow-visible" style={worldStyle}>
                 <svg className="absolute left-0 top-0 h-full w-full overflow-visible" shapeRendering="geometricPrecision" style={{ pointerEvents: "none" }} aria-hidden="true">
                     <defs>
-                        <linearGradient id="canvas-edge-flow-gradient" x1="0%" y1="0%" x2="100%" y2="0%" spreadMethod="repeat">
-                            <stop offset="0%" stopColor="#67e8f9" />
-                            <stop offset="35%" stopColor="#818cf8" />
-                            <stop offset="70%" stopColor="#c084fc" />
-                            <stop offset="100%" stopColor="#67e8f9" />
-                            <animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="2.4s" repeatCount="indefinite" />
+                        {/* 八进制科技与视频参考：多级高饱和深紫蓝激光导轨 */}
+                        <linearGradient id="octal-laser-track" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="rgba(99, 102, 241, 0.35)" />
+                            <stop offset="30%" stopColor="rgba(129, 140, 248, 0.75)" />
+                            <stop offset="70%" stopColor="rgba(168, 85, 247, 0.82)" />
+                            <stop offset="100%" stopColor="rgba(56, 189, 248, 0.35)" />
                         </linearGradient>
+
+                        {/* 参考视频高亮流光激光：极光紫、白光核与青蓝辉光 */}
+                        <linearGradient id="canvas-edge-flow-gradient" x1="0%" y1="0%" x2="100%" y2="0%" spreadMethod="repeat">
+                            <stop offset="0%" stopColor="transparent" stopOpacity="0" />
+                            <stop offset="15%" stopColor="rgba(168, 85, 247, 0.4)" />
+                            <stop offset="42%" stopColor="#ffffff" stopOpacity="1" />
+                            <stop offset="50%" stopColor="#a5f3fc" stopOpacity="1" />
+                            <stop offset="62%" stopColor="rgba(99, 102, 241, 0.95)" />
+                            <stop offset="85%" stopColor="rgba(192, 132, 252, 0.5)" />
+                            <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+                            <animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="2.0s" repeatCount="indefinite" />
+                        </linearGradient>
+
+                        {/* 节点连接端点高能辉光滤镜 */}
+                        <filter id="octal-pulse-glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+                            <feMerge>
+                                <feMergeNode in="blur" />
+                                <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                        </filter>
                     </defs>
                     {flowConnections.map((item) => {
                         const from = nodesById.get(item.fromNodeId);
@@ -842,20 +905,37 @@ export function CanvasSurface({
                                         onEdgeContextMenu(event, item.id);
                                     }}
                                 />
-                                <path d={path} fill="none" stroke={theme.canvas.background} strokeWidth={4.5} strokeOpacity={0.7} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ pointerEvents: "none" }} />
+                                <path d={path} fill="none" stroke={theme.canvas.background} strokeWidth={5} strokeOpacity={0.8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ pointerEvents: "none" }} />
                                 <path
                                     d={path}
                                     fill="none"
-                                    stroke={flowing ? "#818cf8" : theme.node.muted}
-                                    strokeWidth={generating ? 2.35 : active ? 2.15 : 1.75}
-                                    strokeOpacity={generating || active ? 1 : 0.75}
+                                    stroke="url(#octal-laser-track)"
+                                    strokeWidth={generating ? 2.8 : active ? 2.4 : 1.9}
+                                    strokeOpacity={generating || active ? 1 : 0.8}
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
                                     vectorEffect="non-scaling-stroke"
-                                    style={{ pointerEvents: "none" }}
+                                    style={{
+                                        pointerEvents: "none",
+                                        filter: active || generating ? "drop-shadow(0 0 6px rgba(57, 128, 255, 0.5))" : undefined,
+                                    }}
                                 />
                                 {flowing ? (
-                                    <path data-canvas-edge-flowing d={path} fill="none" stroke="url(#canvas-edge-flow-gradient)" strokeWidth={generating ? 2.75 : 2.35} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className={generating ? "canvas-edge-generating canvas-edge-flowing" : "canvas-edge-flowing"} style={{ pointerEvents: "none" }} />
+                                    <path
+                                        data-canvas-edge-flowing
+                                        d={path}
+                                        fill="none"
+                                        stroke="url(#canvas-edge-flow-gradient)"
+                                        strokeWidth={generating ? 3.4 : 2.8}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        vectorEffect="non-scaling-stroke"
+                                        className={generating ? "canvas-edge-generating canvas-edge-flowing" : "canvas-edge-flowing"}
+                                        style={{
+                                            pointerEvents: "none",
+                                            filter: "drop-shadow(0 0 5px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 10px rgba(168, 85, 247, 0.9)) drop-shadow(0 0 20px rgba(99, 102, 241, 0.7))",
+                                        }}
+                                    />
                                 ) : null}
                             </g>
                         );
@@ -863,8 +943,10 @@ export function CanvasSurface({
                     {connection && connectionStartNode ? (
                         <path
                             d={previewPath(
-                                nodeAnchor(connectionStartNode, connection.handleType),
-                                connection.targetNodeId && nodesById.get(connection.targetNodeId) ? nodeAnchor(nodesById.get(connection.targetNodeId)!, connection.handleType === "source" ? "target" : "source") : connection.world,
+                                connection.targetNodeId && nodesById.get(connection.targetNodeId)
+                                    ? connectionAnchors(connectionStartNode, nodesById.get(connection.targetNodeId)!).start
+                                    : nodeAnchor(connectionStartNode, connection.handleType),
+                                connection.targetNodeId && nodesById.get(connection.targetNodeId) ? connectionAnchors(connectionStartNode, nodesById.get(connection.targetNodeId)!).end : connection.world,
                                 connection.handleType,
                             )}
                             fill="none"

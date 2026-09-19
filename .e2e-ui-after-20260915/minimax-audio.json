@@ -1,0 +1,423 @@
+{
+  "voices": [],
+  "logs": [
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 1350,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-16T08:23:30.712Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-16T08:23:30.713Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-16T08:23:32.063Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "6c9afd6e-6acf-4234-9d10-33cb932f2c6a",
+      "createdAt": "2026-09-16T08:23:30.712Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 299,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T18:17:15.328Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T18:17:15.328Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T18:17:15.627Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "a14f8c1e-29ea-427a-b7fb-b956a4a849a7",
+      "createdAt": "2026-09-15T18:17:15.328Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 215,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T18:16:37.658Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T18:16:37.658Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T18:16:37.873Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "ae0e2f99-4832-40fe-a6f9-d3ad5ac41356",
+      "createdAt": "2026-09-15T18:16:37.658Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 471,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T18:13:23.730Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T18:13:23.730Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T18:13:24.201Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "4c73319d-48cb-42c8-be76-02cf4436724a",
+      "createdAt": "2026-09-15T18:13:23.730Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 529,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T18:12:18.525Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T18:12:18.526Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T18:12:19.055Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "17c14a1e-bb53-4ff3-87b8-13535c8421ec",
+      "createdAt": "2026-09-15T18:12:18.525Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 230,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T18:11:26.987Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T18:11:26.987Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T18:11:27.217Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "d91a67a2-2985-4935-b27b-4072b16fa79d",
+      "createdAt": "2026-09-15T18:11:26.987Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 212,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T17:55:39.662Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T17:55:39.662Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T17:55:39.874Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "cbd6b2d3-2501-4be1-928e-fdb3e0732965",
+      "createdAt": "2026-09-15T17:55:39.662Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 471,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T17:54:40.202Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T17:54:40.203Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T17:54:40.674Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "96762fc8-2df0-4037-8255-b83858a44a81",
+      "createdAt": "2026-09-15T17:54:40.202Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 200,
+      "durationMs": 310,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T17:34:12.922Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T17:34:12.922Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T17:34:13.232Z",
+          "phase": "failed",
+          "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+        }
+      ],
+      "id": "55f8a77a-db7b-4a86-b427-ca05b322b378",
+      "createdAt": "2026-09-15T17:34:12.922Z",
+      "error": "login fail: Please carry the API secret key in the 'Authorization' field of the request header"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 0,
+      "durationMs": 1,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T17:29:58.642Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T17:29:58.642Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T17:29:58.643Z",
+          "phase": "failed",
+          "message": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+        }
+      ],
+      "id": "6a4f3208-50d1-492b-8975-4baff23e4937",
+      "createdAt": "2026-09-15T17:29:58.642Z",
+      "error": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 0,
+      "durationMs": 1,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T17:25:49.775Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T17:25:49.775Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T17:25:49.776Z",
+          "phase": "failed",
+          "message": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+        }
+      ],
+      "id": "f3b434a1-c84b-46e6-b37b-ec8cb42aca5f",
+      "createdAt": "2026-09-15T17:25:49.775Z",
+      "error": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 0,
+      "durationMs": 0,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T17:18:09.253Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T17:18:09.253Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T17:18:09.253Z",
+          "phase": "failed",
+          "message": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+        }
+      ],
+      "id": "2f280f35-05f1-4c23-88d3-7b3d42031056",
+      "createdAt": "2026-09-15T17:18:09.253Z",
+      "error": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+    },
+    {
+      "provider": "minimax",
+      "userId": "623c1d05-8edb-43fb-9044-c08c8503061f",
+      "capability": "voice",
+      "method": "POST",
+      "path": "/v1/get_voice",
+      "model": "voice-catalog",
+      "statusCode": 0,
+      "durationMs": 1,
+      "phase": "failed",
+      "requestPreview": "{\"mode\":\"voice-catalog\"}",
+      "lifecycle": [
+        {
+          "at": "2026-09-15T16:59:32.293Z",
+          "phase": "queued",
+          "message": "音色目录同步已提交"
+        },
+        {
+          "at": "2026-09-15T16:59:32.293Z",
+          "phase": "running",
+          "message": "正在获取 MiniMax 音色目录"
+        },
+        {
+          "at": "2026-09-15T16:59:32.294Z",
+          "phase": "failed",
+          "message": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+        }
+      ],
+      "id": "741107f9-d1e9-4ae8-8d68-06f81684983b",
+      "createdAt": "2026-09-15T16:59:32.293Z",
+      "error": "尚未配置启用的 MiniMax 音频渠道或 API Key"
+    }
+  ],
+  "music": [],
+  "audio": []
+}

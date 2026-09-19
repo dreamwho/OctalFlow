@@ -1,0 +1,54 @@
+{
+  "composer": {
+    "background": "rgba(2, 9, 23, 0.9)",
+    "border": "rgba(0, 0, 0, 0)",
+    "caretColor": "rgb(244, 247, 255)",
+    "color": "rgb(244, 247, 255)",
+    "height": 208,
+    "left": 264,
+    "overflowX": "visible",
+    "top": 297.203125,
+    "width": 1080
+  },
+  "input": {
+    "background": "rgba(0, 0, 0, 0)",
+    "border": "rgb(244, 248, 255)",
+    "caretColor": "rgb(101, 226, 208)",
+    "color": "rgb(244, 248, 255)",
+    "height": 120,
+    "left": 357,
+    "overflowX": "auto",
+    "top": 314.203125,
+    "width": 970
+  },
+  "pageOverflow": false,
+  "route": "/create",
+  "send": {
+    "background": "rgb(41, 46, 54)",
+    "border": "rgb(52, 58, 67)",
+    "caretColor": "rgb(115, 125, 138)",
+    "color": "rgb(115, 125, 138)",
+    "height": 44,
+    "left": 1281,
+    "overflowX": "hidden",
+    "top": 442.203125,
+    "width": 44
+  },
+  "theme": "dark",
+  "toolbar": {
+    "background": "rgba(0, 0, 0, 0)",
+    "border": "rgb(38, 61, 104)",
+    "caretColor": "rgb(244, 247, 255)",
+    "color": "rgb(244, 247, 255)",
+    "height": 54,
+    "left": 281,
+    "overflowX": "visible",
+    "top": 434.203125,
+    "width": 1046
+  },
+  "viewport": {
+    "height": 1000,
+    "scale": 1,
+    "width": 1440
+  }
+}

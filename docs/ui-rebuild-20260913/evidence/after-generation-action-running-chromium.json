@@ -1,0 +1,25 @@
+{
+  "route": "/create?conversationId=e2e-running-a-6bc78ede-64fa-4d07-a84f-5461993247f7",
+  "theme": "light",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "visualWidth": 1280,
+    "visualHeight": 720,
+    "zoom": 1
+  },
+  "state": "running",
+  "tone": "danger",
+  "label": "停止生成",
+  "disabled": false,
+  "width": 44,
+  "height": 44,
+  "icon": {
+    "width": 14,
+    "height": 14,
+    "svgCount": 1
+  },
+  "overflow": false,
+  "buildId": "skNq3_iBgO4rSqUuV-XE4",
+  "capturedAt": "2026-09-15T08:42:43.622Z"
+}

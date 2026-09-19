@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-import { resolveModelIcon } from "./model-picker";
+import { filterModelOptions, groupModelOptions, modelProviderLabel, resolveModelIcon, type ModelOption } from "./model-picker";
 
 describe("model picker brand icons", () => {
     it.each([
@@ -37,5 +37,39 @@ describe("model picker brand icons", () => {
         expect(source).not.toContain("currentColor");
         expect(qwen).toContain("linearGradient");
         expect(qwen).not.toContain("<rect");
+    });
+});
+
+describe("model picker presentation helpers", () => {
+    const options: ModelOption[] = [
+        { id: "gemini-3-pro-image", label: "gemini-3-pro-image", modelName: "gemini-3-pro-image", provider: modelProviderLabel("gemini-3-pro-image") },
+        { id: "Seedream 5.0", label: "Seedream 5.0", modelName: "Seedream 5.0", provider: modelProviderLabel("Seedream 5.0") },
+        { id: "gpt-image-2", label: "OpenAI Image", modelName: "gpt-image-2", provider: modelProviderLabel("gpt-image-2") },
+    ];
+
+    it("uses the provider hierarchy shown in the model selection board", () => {
+        expect(modelProviderLabel("gemini-3-pro-image")).toBe("Google Gemini");
+        expect(modelProviderLabel("Seedream 5.0")).toBe("ByteDance Seedream");
+        expect(modelProviderLabel("gpt-image-2")).toBe("OpenAI");
+    });
+
+    it("filters by the visible name, upstream model name, or provider without adding options", () => {
+        expect(filterModelOptions(options, "openai").map((option) => option.id)).toEqual(["gpt-image-2"]);
+        expect(filterModelOptions(options, "seedream").map((option) => option.id)).toEqual(["Seedream 5.0"]);
+        expect(filterModelOptions(options, "missing")).toEqual([]);
+    });
+
+    it("preserves configured order inside vendor groups", () => {
+        const groups = groupModelOptions(options);
+        expect(Array.from(groups.keys())).toEqual(["Google Gemini", "ByteDance Seedream", "OpenAI"]);
+        expect(groups.get("Google Gemini")?.map((option) => option.id)).toEqual(["gemini-3-pro-image"]);
+    });
+
+    it("keeps the searchable, grouped and selected states in the rendered picker", () => {
+        const source = readFileSync(new URL("./model-picker.tsx", import.meta.url), "utf8");
+        expect(source).toContain("data-model-picker-panel");
+        expect(source).toContain('aria-label="搜索模型名称或厂商"');
+        expect(source).toContain('title="最近使用"');
+        expect(source).toContain('data-state={selected ? "selected" : ""}');
     });
 });

@@ -1,0 +1,63 @@
+{
+  "route": "/admin",
+  "theme": "dark",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": 1
+  },
+  "state": "admin overview loaded",
+  "buildId": "dd6ezvU18AJ6w0hEjdkHA",
+  "evidenceVersion": "admin-c01-v2",
+  "capturedAt": "2026-09-13T17:56:04.666Z",
+  "title": "管理后台 | dreamyo",
+  "nav": {
+    "left": 0,
+    "top": 0,
+    "right": 220,
+    "bottom": 900,
+    "width": 220,
+    "height": 900
+  },
+  "intro": {
+    "left": 268,
+    "top": 94,
+    "right": 1404,
+    "bottom": 217.1875,
+    "width": 1136,
+    "height": 123.1875
+  },
+  "metricCards": [
+    {
+      "left": 268,
+      "top": 237.1875,
+      "width": 275,
+      "height": 122
+    },
+    {
+      "left": 555,
+      "top": 237.1875,
+      "width": 275,
+      "height": 122
+    },
+    {
+      "left": 842,
+      "top": 237.1875,
+      "width": 275,
+      "height": 122
+    },
+    {
+      "left": 1129,
+      "top": 237.1875,
+      "width": 275,
+      "height": 122
+    }
+  ],
+  "modelStatusCount": 5,
+  "queueCount": 0,
+  "channelCardCount": 0,
+  "generationSurface": null,
+  "table": null,
+  "bodyOverflow": false,
+  "outOfViewportButtons": 0
+}

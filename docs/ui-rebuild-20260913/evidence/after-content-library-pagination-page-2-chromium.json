@@ -1,0 +1,19 @@
+{
+  "route": "/assets",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "theme": "light",
+  "state": "分页第 2 页",
+  "main": {
+    "left": 168,
+    "top": 56,
+    "width": 1112,
+    "height": 664
+  },
+  "overflow": false,
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-",
+  "entity": "内容库状态素材 bc62295e"
+}

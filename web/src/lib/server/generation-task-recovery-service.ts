@@ -315,9 +315,7 @@ export function pendingAgentChildTaskIds(run: Pick<AgentRun, "tasks">) {
 }
 
 export function nextAgentRetryAt(run: Pick<AgentRun, "tasks">, now = Date.now()) {
-    const due = run.tasks
-        .filter((task) => (task.status === "ready" || task.status === "running") && typeof task.retryAfterAt === "number" && task.retryAfterAt > now)
-        .map((task) => task.retryAfterAt!);
+    const due = run.tasks.filter((task) => (task.status === "ready" || task.status === "running") && typeof task.retryAfterAt === "number" && task.retryAfterAt > now).map((task) => task.retryAfterAt!);
     return due.length ? Math.min(...due) : undefined;
 }
 
@@ -646,7 +644,10 @@ async function processVideoLease(lease: GenerationTaskLease, workerId: string, o
                 nextPollAt: undefined,
                 lastPollAt: now,
                 lastUpstreamStatus: step.status,
-                resultPayload: { reviewReason: step.error.slice(0, 500) },
+                resultPayload: {
+                    reviewReason: step.error.slice(0, 500),
+                    ...(step.verificationId ? { verificationId: step.verificationId } : {}),
+                },
             });
             return "needs_review";
         }
@@ -662,7 +663,7 @@ async function processVideoLease(lease: GenerationTaskLease, workerId: string, o
                 lastPollAt: now,
                 lastUpstreamStatus: step.status,
                 queryPath: task.upstream.queryPath || task.config?.advancedConfig?.queryPath,
-                resultPayload: { url: step.resultUrl },
+                resultPayload: { url: step.resultUrl, ...(step.watermarkPayload !== undefined ? { dolaVodPayload: step.watermarkPayload } : {}) },
             });
             return "result_ready";
         }
@@ -699,7 +700,7 @@ async function persistVideoLease(task: VideoTask, lease: GenerationTaskLease, wo
     }
     await scheduleGenerationTask("video", task.id, { executionPhase: "persisting", nextPollAt: lease.nextPollAt });
     try {
-        const completed = await persistVideoTaskResult(task, resultUrl, origin, cookie, cookie ? "" : task.userId);
+        const completed = await persistVideoTaskResult(task, resultUrl, origin, cookie, cookie ? "" : task.userId, lease.resultPayload?.dolaVodPayload);
         if (!completed || completed.status !== "success") throw new Error("视频结果保存后未进入成功状态");
         await releaseGenerationTaskLease("video", task.id, workerId, { executionPhase: "completed", nextPollAt: undefined, lastUpstreamStatus: "persisted" });
         return "completed";

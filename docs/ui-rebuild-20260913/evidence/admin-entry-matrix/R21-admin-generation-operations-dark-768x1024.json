@@ -1,0 +1,24 @@
+{
+  "requestedPath": "/admin/generation-operations",
+  "actualPath": "/admin?section=generationOperations",
+  "responseStatus": 200,
+  "title": "管理后台 | dreamyo",
+  "theme": "dark",
+  "viewport": {
+    "width": 768,
+    "height": 1024,
+    "visualWidth": 768,
+    "visualHeight": 1024,
+    "zoom": 1
+  },
+  "heading": "生成运维",
+  "main": {
+    "left": 0,
+    "top": 0,
+    "width": 768,
+    "height": 1024
+  },
+  "overflow": false,
+  "state": "后台生成运维入口",
+  "buildId": "9sMLb0KxOZx3vl8L7_ez-"
+}

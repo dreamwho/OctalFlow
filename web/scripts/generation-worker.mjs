@@ -8,7 +8,8 @@ const token = process.env.DREAMYO_WORKER_TOKEN?.trim() || "";
 const origin = resolveGenerationWorkerOrigin();
 const workerId = (process.env.DREAMYO_GENERATION_WORKER_ID?.trim() || `generation-worker:${hostname()}:${process.pid}:${randomUUID()}`).slice(0, 150);
 const idleDelayMs = boundedNumber(process.env.DREAMYO_GENERATION_WORKER_INTERVAL_MS, 2_000, 500, 30_000);
-const lanes = boundedNumber(process.env.DREAMYO_GENERATION_WORKER_LANES, 2, 1, 8);
+const minLanes = boundedNumber(process.env.DREAMYO_GENERATION_WORKER_LANES, 4, 1, 8);
+let desiredLanes = minLanes;
 const heartbeatIntervalMs = boundedNumber(process.env.DREAMYO_GENERATION_WORKER_HEARTBEAT_MS, 15_000, 5_000, 60_000);
 let stopping = false;
 let heartbeatPending = false;
@@ -21,7 +22,24 @@ process.once("SIGINT", stop);
 console.log(`Generation worker started: ${workerId}`);
 void sendHeartbeat();
 const heartbeatTimer = setInterval(() => void sendHeartbeat(), heartbeatIntervalMs);
-await Promise.all([...Array.from({ length: lanes }, (_, index) => runLane(index + 1)), runRefundLane()]);
+const runningLanes = new Map();
+const startLane = (index) => {
+    if (runningLanes.has(index)) return;
+    const lanePromise = runLane(index).finally(() => runningLanes.delete(index));
+    runningLanes.set(index, lanePromise);
+};
+for (let index = 1; index <= desiredLanes; index += 1) startLane(index);
+// 通道数监管：按后台「生成处理通道数」设置动态扩缩，超编通道在下个批次前自行退出
+const supervisor = (async () => {
+    while (!stopping) {
+        for (let index = 1; runningLanes.size < desiredLanes && index <= 8; index += 1) startLane(index);
+        await delay(500);
+    }
+})();
+runRefundLane();
+void runLifecycleLane();
+await supervisor;
+while (runningLanes.size) await Promise.allSettled([...runningLanes.values()]);
 clearInterval(heartbeatTimer);
 console.log("Generation worker stopped");
 
@@ -30,6 +48,7 @@ async function runLane(index) {
     let consecutiveErrors = 0;
     let idleBatches = 0;
     while (!stopping) {
+        if (index > desiredLanes) break;
         try {
             const response = await fetch(`${origin}/api/maintenance/generation-tasks/run`, {
                 method: "POST",
@@ -56,6 +75,23 @@ async function runLane(index) {
     }
 }
 
+async function runLifecycleLane() {
+    while (!stopping) {
+        await delay(5 * 60_000);
+        if (stopping) break;
+        try {
+            const response = await fetch(`${origin}/api/maintenance/data-lifecycle/run`, {
+                method: "POST",
+                headers: { authorization: `Bearer ${token}` },
+                signal: AbortSignal.timeout(10 * 60_000),
+            });
+            if (!response.ok) throw new Error(`Lifecycle endpoint returned HTTP ${response.status}`);
+        } catch (error) {
+            if (!stopping) console.error("Generation worker lifecycle lane failed", error instanceof Error ? error.message : error);
+        }
+    }
+}
+
 async function sendHeartbeat() {
     if (stopping || heartbeatPending) return;
     heartbeatPending = true;
@@ -72,6 +108,9 @@ async function sendHeartbeat() {
             const payload = await response.json().catch(() => null);
             throw new Error(payload?.msg || `Heartbeat endpoint returned HTTP ${response.status}`);
         }
+        const payload = await response.json().catch(() => null);
+        const lanes = Math.max(0, Math.min(8, Math.floor(Number(payload?.data?.lanes) || 0)));
+        if (lanes) desiredLanes = lanes;
     } catch (error) {
         if (!stopping) console.error("Generation worker heartbeat failed", error instanceof Error ? error.message : error);
     } finally {

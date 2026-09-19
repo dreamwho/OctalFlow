@@ -185,7 +185,7 @@ export default function WorksPage() {
     };
 
     return (
-        <main className="h-full min-h-0 overflow-y-auto bg-background text-foreground">
+        <main className="works-library-page h-full min-h-0 overflow-y-auto bg-background text-foreground">
             <div className="mx-auto w-full max-w-7xl px-2 py-2 sm:px-6 sm:py-8">
                 <header className="flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-5 sm:pb-6">
                     <div className="min-w-0">
