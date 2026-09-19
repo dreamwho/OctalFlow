@@ -65,10 +65,16 @@ RUN groupadd --gid 10001 geminiai \
 WORKDIR /app
 
 COPY requirements.txt ./
+# 浏览器束体积大且来源跨国，瞬断常见：最多重试 5 次
 RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m cloakbrowser install \
-    && HOME=/home/geminiai python -m camoufox fetch \
-    && chown -R geminiai:geminiai /home/geminiai
+    && ok=""; \
+    for attempt in 1 2 3 4 5; do \
+        if python -m cloakbrowser install \
+           && HOME=/home/geminiai python -m camoufox fetch; then ok=1; break; fi; \
+        echo "browser bundle attempt $attempt failed, retrying in 20s"; sleep 20; \
+    done; \
+    [ -n "$ok" ] || { echo "browser bundle download failed" >&2; exit 1; }; \
+    chown -R geminiai:geminiai /home/geminiai
 
 COPY src ./src
 COPY config.yaml ./config.yaml

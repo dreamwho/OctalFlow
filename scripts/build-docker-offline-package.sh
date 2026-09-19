@@ -218,7 +218,9 @@ else
         "$REPO_ROOT/services/geminiai"
 
     printf '拉取 Mihomo 镜像（不重新构建）：%s（平台 %s）\n' "$MAGIC_PROXY_IMAGE" "$PLATFORM"
-    docker pull --platform "$PLATFORM" "$MAGIC_PROXY_IMAGE"
+    # 本地已有该镜像时跳过拉取（国际网络不可达时仍可打包）
+    docker image inspect --platform "$PLATFORM" "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || \
+        docker pull --platform "$PLATFORM" "$MAGIC_PROXY_IMAGE"
 
     if [[ "$DATABASE_MODE" == embedded ]]; then
         printf '拉取 PostgreSQL 基础镜像：%s（平台 %s）\n' "$POSTGRES_IMAGE" "$PLATFORM"

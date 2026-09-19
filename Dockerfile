@@ -14,9 +14,9 @@ RUN python3 -m venv /opt/video-depth \
     && /opt/video-depth/bin/pip install --no-cache-dir --upgrade pip \
     && /opt/video-depth/bin/pip install --no-cache-dir --no-deps torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu \
     && /opt/video-depth/bin/pip install --no-cache-dir -r requirements.txt
-COPY services/video-depth/download_model.py ./download_model.py
-RUN DREAMYO_VIDEO_DEPTH_MODEL=/opt/video-depth-model /opt/video-depth/bin/python download_model.py \
-    && /opt/video-depth/bin/python -c "from transformers import AutoImageProcessor, AutoModelForDepthEstimation; p='/opt/video-depth-model'; AutoImageProcessor.from_pretrained(p, local_files_only=True); AutoModelForDepthEstimation.from_pretrained(p, local_files_only=True)"
+# 深度模型直接取自仓库内已下载副本，构建期无需访问 HuggingFace（国内网络下 snapshot_download 会 TLS EOF）
+COPY services/video-depth/models/depth-anything-v2-small-hf /opt/video-depth-model
+RUN /opt/video-depth/bin/python -c "from transformers import AutoImageProcessor, AutoModelForDepthEstimation; p='/opt/video-depth-model'; AutoImageProcessor.from_pretrained(p, local_files_only=True); AutoModelForDepthEstimation.from_pretrained(p, local_files_only=True)"
 
 FROM python:3.13-slim-bookworm AS chatgpt-build
 WORKDIR /app/services/chatgpt-api
