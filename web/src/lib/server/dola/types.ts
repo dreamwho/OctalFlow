@@ -26,6 +26,8 @@ export type DolaAccount = {
     activeAttempts: number;
     lastUsedAt?: string;
     lastVerifiedAt?: string;
+    /** 最近一次被上游标记 rate_limited 的时间（冷却期内不参与调度） */
+    rateLimitedAt?: string;
     createdAt: string;
     updatedAt: string;
 };

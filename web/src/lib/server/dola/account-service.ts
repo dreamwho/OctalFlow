@@ -108,6 +108,11 @@ export async function setDolaAccountStatus(id: string, status: DolaAccountStatus
     return mutateAccount(id, (account) => ({ ...account, status, lastVerifiedAt: new Date().toISOString() }));
 }
 
+/** 上游判定账号触发频率限制：标记 rate_limited 进入冷却，调度器自动避开，到期恢复 */
+export async function markDolaAccountRateLimited(id: string) {
+    return mutateAccount(id, (account) => ({ ...account, status: "rate_limited" as DolaAccountStatus, rateLimitedAt: new Date().toISOString(), lastUsedAt: new Date().toISOString() }));
+}
+
 export async function markDolaAccountUsed(id: string, success: boolean, releaseAttempt = true) {
     return mutateAccount(id, (account) => ({ ...account, activeAttempts: releaseAttempt ? Math.max(0, account.activeAttempts - 1) : account.activeAttempts, requestCount: account.requestCount + 1, successCount: account.successCount + (success ? 1 : 0), errorCount: account.errorCount + (success ? 0 : 1), lastUsedAt: new Date().toISOString() }));
 }
@@ -173,8 +178,15 @@ function summarizeImportResults(results: DolaAccountImportResult[]) {
     }, {});
 }
 
+/** rate_limited 冷却时间：到期后账号自动恢复调度，无需人工重新启用 */
+const RATE_LIMIT_COOLDOWN_MS = 10 * 60 * 1000;
+
 function availableForModel(account: StoredDolaAccount, model?: string) {
-    if (!account.enabled || ["disabled", "needs_login", "verification_required", "quota_exhausted", "rate_limited", "restricted"].includes(account.status)) return false;
+    if (!account.enabled || ["disabled", "needs_login", "verification_required", "quota_exhausted", "restricted"].includes(account.status)) return false;
+    if (account.status === "rate_limited") {
+        const limitedAt = Date.parse(account.rateLimitedAt || "");
+        if (!Number.isFinite(limitedAt) || Date.now() - limitedAt < RATE_LIMIT_COOLDOWN_MS) return false;
+    }
     const requested = (model || "").trim().toLowerCase();
     if (!requested || !account.quota?.length) return true;
     const profile = dolaModelProfile(requested);

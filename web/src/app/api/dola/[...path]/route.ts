@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { authorizeDolaApiKey, getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
-import { getDolaAccountCookie, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount } from "@/lib/server/dola/account-service";
-import { bindDolaExternalTask, getDolaExternalTask, releaseDolaExternalTask } from "@/lib/server/dola/external-task-store";
+import { getDolaAccountCookie, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount } from "@/lib/server/dola/account-service";
+import { bindDolaExternalTask, getDolaExternalTask, releaseDolaExternalTask, resolveDolaExternalTask, updateDolaExternalTask } from "@/lib/server/dola/external-task-store";
 import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, markDolaRequestLogRunning, openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
 import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
 import { dolaRuntimeRequest, isDolaPublicRuntimePath } from "@/lib/server/dola/provider";
@@ -21,6 +21,84 @@ export async function GET(request: Request, context: Context) { return proxy(req
 export async function HEAD(request: Request, context: Context) { return proxy(request, context); }
 export async function POST(request: Request, context: Context) { return proxy(request, context); }
 
+
+/** 识别上游账号级限流错误（Dola 协议约定错误码：rate_limited / too many requests） */
+function isDolaRateLimitError(text: string) {
+    return /rate[_ ]?limited|rate limit|too many requests/i.test(text || "");
+}
+
+/** Dola 协议错误码中英双语说明，便于第一时间定位问题 */
+function describeDolaFailure(code: string) {
+    const raw = (code || "").trim() || "unknown";
+    const table: Array<[RegExp, string]> = [
+        [/rate[_ ]?limited|rate limit|too many requests/i, "上游账号触发生成频率/数量限制 (upstream account rate-limited)"],
+        [/quota/i, "上游账号配额已耗尽 (upstream account quota exhausted)"],
+        [/login|auth|cookie|credential/i, "账号登录态失效，请重新验证 Cookie (account session expired; re-verify the cookie)"],
+        [/task[_ ]?not[_ ]?found/i, "任务不存在或已被 Provider 清理 (task not found; it may have been cleaned up)"],
+        [/timeout|timed out/i, "上游处理超时 (upstream timeout)"],
+        [/sensitive|risk|moderation|blocked/i, "内容被上游风控拦截 (content blocked by upstream risk control)"],
+    ];
+    const hit = table.find(([re]) => re.test(raw));
+    return `${raw}${hit ? `（${hit[1]}）` : "（上游返回未知错误 unknown upstream error）"}`;
+}
+
+const DOLA_MAX_ACCOUNT_ROTATIONS = 2;
+
+/** 上游账号触发限额：标记账号冷却，并自动用下一个可用账号重新提交同一请求 */
+async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: string; accountId: string; rotations: number; originalPayload?: Record<string, unknown>; model: string }) {
+    await markDolaAccountRateLimited(input.accountId).catch(() => undefined);
+    if (!input.originalPayload || input.rotations >= DOLA_MAX_ACCOUNT_ROTATIONS) return null;
+    const newAccount = await reserveDolaAccount(input.model || undefined);
+    if (!newAccount) return null;
+    const cookie = await getDolaAccountCookie(newAccount.id);
+    if (!cookie) return null;
+    let proxy: Awaited<ReturnType<typeof resolveDolaProxyEgress>>;
+    try {
+        proxy = await resolveDolaProxyEgress();
+    } catch {
+        return null;
+    }
+    const body = JSON.stringify({
+        ...input.originalPayload,
+        accountId: newAccount.id,
+        credentialVersion: newAccount.credentialVersion,
+        cookie,
+        transport: "camoufox-page",
+        proxyMode: dolaProviderProxyMode(proxy.egress),
+        proxySource: proxy.egress.mode,
+        proxyTarget: proxy.egress.target,
+        ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+        dolaHold: true,
+    });
+    let upstream: Response;
+    try {
+        upstream = await dolaRuntimeRequest("/v1/videos", { method: "POST", headers: { "content-type": "application/json" }, body });
+    } catch {
+        return null;
+    }
+    const bytes = new Uint8Array(await upstream.arrayBuffer());
+    let parsed: Record<string, unknown> | null = null;
+    try {
+        parsed = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+    } catch {
+        parsed = null;
+    }
+    const newTaskId = stringValue(parsed?.taskId || parsed?.id);
+    if (!upstream.ok || !newTaskId) return null;
+    await updateDolaExternalTask(input.taskId, input.principalId, { redirectToTaskId: newTaskId, accountId: newAccount.id, rotations: input.rotations + 1 });
+    await releaseDolaAccountAttempt(input.accountId).catch(() => undefined);
+    return {
+        newTaskId,
+        newAccountId: newAccount.id,
+        payload: parsed,
+        status: upstream.status,
+        responseBytes: bytes.byteLength,
+        responsePreview: summarizeResponse(parsed, bytes),
+        message: "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)",
+        detail: `原账号已标记限额并冷却 10 分钟 (previous account marked and cooling down)；新账号 (new account): ${newAccount.id}，新任务 (new task): ${newTaskId}`,
+    };
+}
+
 async function proxy(request: Request, context: Context) {
     const gateway = await getDolaGatewaySettings();
     if (!gateway.enabled) return NextResponse.json({ error: "Dola API 网关未启用" }, { status: 503 });
@@ -35,11 +113,22 @@ async function proxy(request: Request, context: Context) {
     const normalizedPath = runtimePath.split("?", 1)[0].replace(/\/+$/, "") || "/";
     const contentMatch = normalizedPath.match(/^\/v1\/videos\/([^/]+)\/content$/);
     const queryMatch = normalizedPath.match(/^\/v1\/(?:videos|images)\/([^/]+)$/);
+    let effectiveTaskId = "";
+    let externalTaskRow: Awaited<ReturnType<typeof resolveDolaExternalTask>> = null;
     if (contentMatch || queryMatch) {
         const taskId = decodeURIComponent((contentMatch || queryMatch)![1]);
         const externalTask = await getDolaExternalTask(taskId, principalId);
         if (!externalTask) return NextResponse.json({ error: "任务不存在或无权访问" }, { status: 404 });
         if (contentMatch) return serveDolaVideoContent(request, taskId, principalId, externalTask.accountId);
+        // 账号限额自动换号后，旧任务 id 会重定向到新任务：查询与日志都跟随旧 id，对调用方透明
+        const resolved = await resolveDolaExternalTask(taskId, principalId);
+        externalTaskRow = resolved;
+        effectiveTaskId = resolved?.effectiveTaskId || taskId;
+    }
+    let upstreamPath = runtimePath;
+    if (effectiveTaskId && queryMatch) {
+        const queriedTaskId = decodeURIComponent(queryMatch[1]);
+        if (effectiveTaskId !== queriedTaskId) upstreamPath = normalizedPath.replace(queriedTaskId, effectiveTaskId) + (runtimePath.split("?")[1] ? `?${runtimePath.split("?")[1]}` : "");
     }
     const startedAt = Date.now();
     const lifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(startedAt).toISOString(), phase: "queued", message: "接收到 Dola 外部 API 请求", durationMs: 0, detail: `${request.method} ${normalizedPath}` }];
@@ -118,7 +207,7 @@ async function proxy(request: Request, context: Context) {
     }
     let upstream: Response;
     try {
-        upstream = await dolaRuntimeRequest(runtimePath, { method: request.method, headers, body, signal: request.signal });
+        upstream = await dolaRuntimeRequest(upstreamPath, { method: request.method, headers, body, signal: request.signal });
     } catch (error) {
         if (accountId) await markDolaAccountUsed(accountId, false).catch(() => undefined);
         await safeSettleLog(logId, { statusCode: 502, durationMs: Date.now() - startedAt, phase: "failed", error: error instanceof Error ? error.message : "Dola Provider 请求失败", model: requestModel || undefined, accountId: accountId || undefined, requestedDuration, ratio: requestedRatio || undefined, proxyEgress: requestProxyEgress, lifecycle: [...lifecycle, logLifecycleEntry("failed", error instanceof Error ? error.message : "Dola Provider 请求失败", startedAt)] });
@@ -134,13 +223,34 @@ async function proxy(request: Request, context: Context) {
             if (upstream.ok) {
                 const phase = dolaTaskLogPhase(stringValue(payload?.status), Boolean(verificationId));
                 const errorText = stringValue(payload?.error);
+                if (phase === "failed" && isDolaRateLimitError(errorText) && externalTaskRow) {
+                    // 账号级限额：标记当前账号冷却，并自动用下一个可用账号重新提交同一请求
+                    const rotation = await rotateDolaRateLimitedTask({
+                        taskId: decodeURIComponent(queryMatch![1]),
+                        principalId,
+                        accountId: externalTaskRow.record.accountId,
+                        rotations: externalTaskRow.record.rotations || 0,
+                        originalPayload: externalTaskRow.record.originalPayload,
+                        model: requestModel,
+                    });
+                    if (rotation) {
+                        await safeAdvanceTaskLog(attachedTaskLogId, {
+                            phase: "generating",
+                            message: rotation.message,
+                            detail: rotation.detail,
+                            statusCode: upstream.status,
+                            responsePreview: rotation.responsePreview,
+                        });
+                        return new Response(JSON.stringify({ ...(rotation.payload || {}), taskId }), { status: upstream.status, headers: { "content-type": "application/json" } });
+                    }
+                }
                 await safeAdvanceTaskLog(attachedTaskLogId, {
                     phase,
                     message:
                         phase === "success"
                             ? "生成完成，最终结果已返回"
                             : phase === "failed"
-                              ? `生成失败${errorText ? `：${errorText}` : ""}`
+                              ? `生成失败：${errorText ? describeDolaFailure(errorText) : "上游未返回错误原因 (no error detail from upstream)"}`
                               : phase === "needs_review"
                                 ? "任务等待人工确认（滑块验证）"
                                 : phase === "generating"
@@ -158,8 +268,11 @@ async function proxy(request: Request, context: Context) {
             }
         } else {
             const phase = classifyDolaPhase(upstream, payload, verificationId);
+            if (upstream.ok && stringValue(payload?.status) === "failed" && isDolaRateLimitError(stringValue(payload?.error)) && accountId) {
+                await markDolaAccountRateLimited(accountId).catch(() => undefined);
+            }
             lifecycle.push({ time: new Date().toISOString(), phase, message: phase === "needs_review" ? "Provider 返回待人工确认状态" : phase === "submitted" ? "已提交到 Dola 上游，任务排队中" : upstream.ok ? "Provider 已返回任务响应" : "Provider 请求失败", durationMs: Date.now() - startedAt, detail: `HTTP ${upstream.status}${taskId ? `, 任务: ${taskId}` : ""}` });
-            await safeSettleLog(logId, { statusCode: upstream.status, durationMs: Date.now() - startedAt, phase, ...(upstream.ok ? {} : { error: stringValue(payload?.error) || "Dola Provider 请求失败" }), model: requestModel || stringValue(payload?.model) || undefined, requestBytes, requestPreview, responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, accountId: accountId || undefined, taskId: taskId || undefined, verificationId: verificationId || undefined, requestedDuration: requestedDuration || numberValue(payload?.duration), ratio: requestedRatio || stringValue(payload?.ratio) || undefined, ...quotaObservation(payload), proxyEgress: requestProxyEgress, responsePreview: summarizeResponse(payload, bytes), lifecycle });
+            await safeSettleLog(logId, { statusCode: upstream.status, durationMs: Date.now() - startedAt, phase, ...(upstream.ok ? {} : { error: stringValue(payload?.error) ? describeDolaFailure(stringValue(payload?.error)) : "Dola Provider 请求失败" }), model: requestModel || stringValue(payload?.model) || undefined, requestBytes, requestPreview, responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, accountId: accountId || undefined, taskId: taskId || undefined, verificationId: verificationId || undefined, requestedDuration: requestedDuration || numberValue(payload?.duration), ratio: requestedRatio || stringValue(payload?.ratio) || undefined, ...quotaObservation(payload), proxyEgress: requestProxyEgress, responsePreview: summarizeResponse(payload, bytes), lifecycle });
         }
         if (videoCreate && upstream.ok && taskId) await bindDolaExternalTask({ taskId, apiKeyId: principalId, accountId });
         if (queryMatch && upstream.ok && terminalDolaStatus(stringValue(payload?.status))) {
