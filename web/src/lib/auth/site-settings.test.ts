@@ -40,7 +40,24 @@ describe("site settings", () => {
         expect(settings.friendLinks).toContainEqual(expect.objectContaining({ id: "dreamyo-home", label: "无限创作" }));
     });
 
-    it("migrates legacy VOZEB defaults to the dreamyo brand", () => {
+    it("keeps administrator-entered titles that contain the brand and AI keywords", () => {
+        const titles = ["dreamyo AI", "dreamyo AI 平台", "dreamyo,AI 绘图", "AI 创作平台", "我的创作站"];
+        for (const title of titles) {
+            const settings = normalizeSiteSettings({
+                title,
+                seoTitle: `${title} 搜索`,
+                seoDescription: `${title} 描述`,
+                friendLinks: [{ id: "custom", label: title, url: "https://example.com", enabled: true }],
+            });
+
+            expect(settings.title).toBe(title);
+            expect(settings.seoTitle).toBe(`${title} 搜索`);
+            expect(settings.seoDescription).toBe(`${title} 描述`);
+            expect(settings.friendLinks[0]?.label).toBe(title);
+        }
+    });
+
+    it("migrates legacy VOZEB titles to the dreamyo brand and keeps other copy untouched", () => {
         const settings = normalizeSiteSettings({
             title: "VOZEB PRO",
             logoUrl: "/logo.svg",
@@ -58,9 +75,9 @@ describe("site settings", () => {
             logoUrl: "/brand/dreamyo/mark.png",
             iconUrl: "/brand/dreamyo/mark.png",
             seoTitle: "dreamyo",
-            footerCopyright: "© 2026 dreamyo. All rights reserved.",
+            footerCopyright: "© 2026 VOZEB PRO. All rights reserved.",
         });
-        expect(settings.friendLinks.map((link) => link.label)).toEqual(["dreamyo", "dreamyo 开源交流 QQ 群"]);
+        expect(settings.friendLinks.map((link) => link.label)).toEqual(["VOZEB PRO", "VOZEB 开源交流 QQ 群"]);
     });
 
     it("preserves explicitly customized brand copy when the title changes", () => {

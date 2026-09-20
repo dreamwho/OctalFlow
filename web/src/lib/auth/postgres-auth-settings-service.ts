@@ -59,6 +59,7 @@ function postgresSettingsPatch(patch: Partial<AuthSettings>, settings: AuthSetti
     if (patch.site !== undefined) result.site = asJson(settings.site);
     if (patch.registrationEnabled !== undefined) result.registrationEnabled = settings.registrationEnabled;
     if (patch.emailRegistrationEnabled !== undefined) result.emailRegistrationEnabled = settings.emailRegistrationEnabled;
+    if (patch.loginMethods !== undefined) result.loginMethods = asJson(settings.loginMethods);
     if (patch.freeDailyPointsEnabled !== undefined) result.freeDailyPointsEnabled = settings.freeDailyPointsEnabled;
     if (patch.freeDailyPoints !== undefined) result.freeDailyPoints = settings.freeDailyPoints;
     if (patch.mail !== undefined) result.mail = asJson(settings.mail);

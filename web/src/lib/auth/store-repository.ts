@@ -114,10 +114,6 @@ import {
     normalizeMailSettings,
     normalizeSecretText,
     normalizeText,
-    repairKnownMojibakeText,
-    repairUtf8MojibakeText,
-    looksLikeUtf8Mojibake,
-    textQualityScore,
     normalizeLogoUrl,
     normalizeLinkUrl,
     normalizeSystemChannel,
@@ -337,6 +333,7 @@ export function mapPostgresSettings(settingsRow: Record<string, unknown> | undef
         site: normalizeSiteSettings(dbJson(settingsRow?.site, fallback.site)),
         registrationEnabled: dbBool(settingsRow?.registration_enabled, fallback.registrationEnabled),
         emailRegistrationEnabled: dbBool(settingsRow?.email_registration_enabled, fallback.emailRegistrationEnabled),
+        loginMethods: dbJson(settingsRow?.login_methods, fallback.loginMethods),
         freeDailyPointsEnabled: dbBool(settingsRow?.free_daily_points_enabled, fallback.freeDailyPointsEnabled),
         freeDailyPoints: dbNumber(settingsRow?.free_daily_points, fallback.freeDailyPoints),
         mail: dbJson(settingsRow?.mail, fallback.mail),
@@ -535,15 +532,16 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
     await db.query(
         `
         INSERT INTO app_settings (
-            id, site, registration_enabled, email_registration_enabled, free_daily_points_enabled, mail, allow_user_api_config,
+            id, site, registration_enabled, email_registration_enabled, login_methods, free_daily_points_enabled, mail, allow_user_api_config,
             model_point_costs, generation_point_multipliers, generation_cost_control, data_lifecycle, entitlements_enabled, default_plan_id, generation_concurrency, generation_defaults,
             logical_models, default_models, agent_skills, free_daily_points
         )
-        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         ON CONFLICT (id) DO UPDATE SET
             site = EXCLUDED.site,
             registration_enabled = EXCLUDED.registration_enabled,
             email_registration_enabled = EXCLUDED.email_registration_enabled,
+            login_methods = EXCLUDED.login_methods,
             free_daily_points_enabled = EXCLUDED.free_daily_points_enabled,
             mail = EXCLUDED.mail,
             allow_user_api_config = EXCLUDED.allow_user_api_config,
@@ -564,6 +562,7 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             dbJsonParam(settings.site),
             settings.registrationEnabled,
             settings.emailRegistrationEnabled,
+            dbJsonParam(settings.loginMethods),
             settings.freeDailyPointsEnabled,
             dbJsonParam(settings.mail),
             settings.allowUserApiConfig,

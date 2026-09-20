@@ -169,6 +169,7 @@ type GenerationConcurrencySettings = {
 
 export type PublicSystemSettings = {
     modelPointCosts?: Record<string, number>;
+    loginMethods?: { password: boolean; wechat: boolean; defaultMethod: "password" | "wechat" };
     generationPointMultipliers?: GenerationPointMultipliers;
     generationConcurrency?: GenerationConcurrencySettings;
     generationDefaults?: {

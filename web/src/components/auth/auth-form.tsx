@@ -30,6 +30,8 @@ type AuthFormProps = {
     initialReferralCode?: string;
     referralSource?: string;
     inviteError?: string;
+    /** 覆盖提交按钮文案（如弹窗内只显示「登录」），MFA 校验步骤仍显示动态码文案 */
+    submitLabel?: string;
 };
 
 export function AuthForm({
@@ -47,6 +49,7 @@ export function AuthForm({
     initialReferralCode = "",
     referralSource = "registration-form",
     inviteError,
+    submitLabel,
 }: AuthFormProps) {
     const router = useRouter();
     const { message } = App.useApp();
@@ -297,10 +300,11 @@ export function AuthForm({
                     block
                     loading={submitting}
                     disabled={disabled || !installTokenReady || (isRegister && !firstUser && !policyAccepted)}
-                    icon={<ArrowRight className="size-4" />}
+                    icon={submitLabel && !mfaRequired ? undefined : <ArrowRight className="size-4" />}
                     iconPlacement="end"
+                    autoInsertSpace={submitLabel && !mfaRequired ? false : undefined}
                 >
-                    {firstUser ? "创建管理员并进入后台" : isRegister ? "注册并开始创作" : mfaRequired ? "验证并登录" : "登录并继续"}
+                    {submitLabel && !mfaRequired ? submitLabel : firstUser ? "创建管理员并进入后台" : isRegister ? "注册并开始创作" : mfaRequired ? "验证并登录" : "登录并继续"}
                 </Button>
 
                 <div className="auth-switch-link pt-2 text-center text-sm text-stone-500 dark:text-stone-400">

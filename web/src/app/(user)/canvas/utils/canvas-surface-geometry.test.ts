@@ -34,6 +34,13 @@ describe("canvas surface geometry", () => {
         expect(edgePath(source, target)).toBe("M 340 200 C 420 200, 420 320, 500 320");
     });
 
+    it("keeps flat horizontal connections renderable with a non-degenerate bounding box", () => {
+        const flatTarget = { ...target, position: { x: 500, y: 80 }, width: 340, height: 240 };
+        const path = edgePath(source, flatTarget);
+
+        expect(path).toBe("M 340 200 C 420 202, 420 198, 500 200");
+    });
+
     it("uses two background grid cells for new-node spacing", () => {
         expect(CANVAS_GRID_SIZE).toBe(22);
         expect(CANVAS_NODE_GAP).toBe(CANVAS_GRID_SIZE * 2);

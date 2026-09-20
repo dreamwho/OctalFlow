@@ -7,6 +7,7 @@ import { type ChangeEvent, type DragEvent, useCallback, useDeferredValue, useEff
 
 import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
+import { formatDurationMinSec } from "@/lib/duration-format";
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
 import { capabilityLabel, isLogicalModelResolvable, normalizeDefaultModelsConfig, resolveLogicalModelConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
 import { moveLogicalModel, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
@@ -219,7 +220,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                         <span className="min-w-0 truncate text-xs text-stone-500 dark:text-stone-400">
                                             {stat && stat.samples > 0 ? (
                                                 <>
-                                                    最近平均生成 <span className="font-semibold tabular-nums text-stone-700 dark:text-stone-200">{formatAvgDuration(stat.avgDurationMs)}</span>
+                                                    最近平均生成 <span className="font-semibold tabular-nums text-stone-700 dark:text-stone-200">{formatDurationMinSec(stat.avgDurationMs)}</span>
                                                     <span className="ml-1 text-stone-400">（{stat.samples} 次）</span>
                                                 </>
                                             ) : (
@@ -664,10 +665,4 @@ function uniqueDraftId(base: string, models: LogicalModel[]) {
     let suffix = 2;
     while (ids.has(candidate.toLowerCase())) candidate = `${base}-${suffix++}`;
     return candidate;
-}
-
-function formatAvgDuration(avgDurationMs: number) {
-    if (!Number.isFinite(avgDurationMs) || avgDurationMs <= 0) return "-";
-    if (avgDurationMs < 1000) return `${Math.round(avgDurationMs)}ms`;
-    return `${(avgDurationMs / 1000).toFixed(1)}s`;
 }

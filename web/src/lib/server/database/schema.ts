@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     site jsonb NOT NULL DEFAULT '{}'::jsonb,
     registration_enabled boolean NOT NULL DEFAULT true,
     email_registration_enabled boolean NOT NULL DEFAULT false,
+    login_methods jsonb NOT NULL DEFAULT '{}'::jsonb,
     free_daily_points_enabled boolean NOT NULL DEFAULT true,
     free_daily_points numeric(18, 2) NOT NULL DEFAULT 0,
     mail jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -96,6 +97,7 @@ VALUES ('default')
 ON CONFLICT (id) DO NOTHING;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS agent_skills jsonb NOT NULL DEFAULT '[{"id":"ecommerce-image","name":"电商生图","description":"为商品主图、场景图和详情页视觉生成结构化方案。","instructions":"识别商品卖点、目标人群、平台与画幅。优先规划白底主图、核心卖点场景图、细节特写和详情页横幅；保持商品外观、材质、颜色、Logo 与包装一致。提示词必须写清主体、构图、光线、背景、镜头、商业质感、尺寸比例与禁止变形要求。","enabled":true,"keywords":["电商","商品","主图","详情页","淘宝","京东","亚马逊"]}]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS logical_models jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS login_methods jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points_enabled boolean NOT NULL DEFAULT true;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points numeric(18, 2) NOT NULL DEFAULT 0;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS generation_cost_control jsonb NOT NULL DEFAULT '{}'::jsonb;

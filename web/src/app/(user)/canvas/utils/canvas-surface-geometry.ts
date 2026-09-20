@@ -261,8 +261,11 @@ export function isBlockedConnectionDrop(world: Position, draft: { nodeId: string
 
 function smoothCurve(start: Position, end: Position, direction: 1 | -1) {
     const curvature = Math.min(Math.abs(end.x - start.x) * 0.5, 240);
-    const c1 = { x: start.x + direction * curvature, y: start.y };
-    const c2 = { x: end.x - direction * curvature, y: end.y };
+    // 完全水平的连线包围盒高度为 0，SVG 会忽略 objectBoundingBox 渐变，
+    // 激光色轨与流光都会消失（只剩深色底线）；给控制点一个极小的反向偏移打破退化，视觉上仍近似直线。
+    const flatten = start.y === end.y ? 2 * direction : 0;
+    const c1 = { x: start.x + direction * curvature, y: start.y + flatten };
+    const c2 = { x: end.x - direction * curvature, y: end.y - flatten };
     return `M ${format(start.x)} ${format(start.y)} C ${format(c1.x)} ${format(c1.y)}, ${format(c2.x)} ${format(c2.y)}, ${format(end.x)} ${format(end.y)}`;
 }
 

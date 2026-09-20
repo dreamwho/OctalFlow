@@ -1,9 +1,10 @@
 "use client";
 
 import { Popover } from "antd";
-import { Check, ChevronDown, Clock3, Cpu, Search } from "lucide-react";
+import { Check, ChevronDown, Clock3, Cpu, Search, Timer } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { formatDurationMinSec } from "@/lib/duration-format";
 import { cn } from "@/lib/utils";
 import { modelOptionLabel, modelOptionName, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 
@@ -30,6 +31,8 @@ export type ModelOption = {
 const RECENT_MODEL_LIMIT = 4;
 /* 搜索框 + 列表内边距等面板固定占用高度 */
 const PANEL_CHROME_HEIGHT = 74;
+type ModelDurationStats = Record<string, { avgDurationMs: number; samples: number }>;
+const DURATION_STATS_TTL_MS = 60_000;
 
 export function ModelPicker({ config, value, onChange, capability, className, fullWidth = false, placeholder = "选择模型", onMissingConfig, options: allowedOptions, getModelLabel }: ModelPickerProps) {
     const pickerId = useId();
@@ -39,6 +42,8 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
     const triggerRef = useRef<HTMLButtonElement>(null);
     const [listMaxHeight, setListMaxHeight] = useState<number>();
     const [placement, setPlacement] = useState<"bottomLeft" | "topLeft">("bottomLeft");
+    const [durationStats, setDurationStats] = useState<ModelDurationStats>({});
+    const durationStatsFetchedAtRef = useRef(0);
 
     const configuredOptions = useMemo(() => {
         const configured = selectableModelsByCapability(config, capability);
@@ -111,8 +116,19 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
             window.dispatchEvent(new CustomEvent("model-picker-open", { detail: pickerId }));
             setQuery("");
             measureAvailableHeight();
+            loadDurationStats();
         }
         setOpen(nextOpen);
+    };
+    const loadDurationStats = () => {
+        if (Date.now() - durationStatsFetchedAtRef.current < DURATION_STATS_TTL_MS) return;
+        durationStatsFetchedAtRef.current = Date.now();
+        fetch("/api/model-generation-stats")
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload: { data?: ModelDurationStats } | null) => {
+                if (payload?.data) setDurationStats(payload.data);
+            })
+            .catch(() => {});
     };
     const handleSelect = (model: string) => {
         updateRecent(model);
@@ -153,9 +169,9 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
                 </div>
             </div>
             <div className="hide-scrollbar max-h-[min(28rem,calc(100dvh-132px))] overflow-y-auto overscroll-contain p-2" style={listMaxHeight ? { maxHeight: `${listMaxHeight}px` } : undefined} role="listbox" aria-label="模型列表">
-                {filteredRecentOptions.length ? <ModelOptionGroup title="最近使用" icon={<Clock3 className="size-3.5" />} options={filteredRecentOptions} current={current} capability={capability} onSelect={handleSelect} /> : null}
+                {filteredRecentOptions.length ? <ModelOptionGroup title="最近使用" icon={<Clock3 className="size-3.5" />} options={filteredRecentOptions} current={current} capability={capability} durationStats={durationStats} onSelect={handleSelect} /> : null}
                 {Array.from(groupedOptions.entries()).map(([provider, providerOptions]) => (
-                    <ModelOptionGroup key={provider} title={provider} options={providerOptions} current={current} capability={capability} onSelect={handleSelect} />
+                    <ModelOptionGroup key={provider} title={provider} options={providerOptions} current={current} capability={capability} durationStats={durationStats} onSelect={handleSelect} />
                 ))}
                 {!filteredOptions.length ? <div className="rounded-xl border border-dashed border-border/80 px-3 py-6 text-center text-xs text-muted-foreground">{query.trim() ? "没有匹配的模型" : emptyModelLabel(config, capability)}</div> : null}
             </div>
@@ -201,7 +217,7 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
     );
 }
 
-function ModelOptionGroup({ title, icon, options, current, capability, onSelect }: { title: string; icon?: ReactNode; options: ModelOption[]; current: string; capability?: ModelCapability; onSelect: (model: string) => void }) {
+function ModelOptionGroup({ title, icon, options, current, capability, durationStats, onSelect }: { title: string; icon?: ReactNode; options: ModelOption[]; current: string; capability?: ModelCapability; durationStats: ModelDurationStats; onSelect: (model: string) => void }) {
     return (
         <section className="mb-2 last:mb-0" aria-label={title}>
             <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -211,6 +227,7 @@ function ModelOptionGroup({ title, icon, options, current, capability, onSelect 
             <div className="space-y-0.5">
                 {options.map((option) => {
                     const selected = current === option.id;
+                    const stat = durationStats[option.id] || durationStats[option.modelName];
                     return (
                         <button
                             key={option.id}
@@ -231,6 +248,15 @@ function ModelOptionGroup({ title, icon, options, current, capability, onSelect 
                             <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium">{option.label}</span>
                             </span>
+                            {stat ? (
+                                <span
+                                    className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-400/15 px-2 py-1 text-xs font-semibold leading-none text-emerald-300 tabular-nums ring-1 ring-emerald-400/25 ring-inset"
+                                    title={`最近 ${stat.samples} 次生成平均耗时`}
+                                >
+                                    <Timer className="size-3.5" aria-hidden="true" />
+                                    {formatDurationMinSec(stat.avgDurationMs)}
+                                </span>
+                            ) : null}
                             {capability ? <span className="hidden shrink-0 rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline-flex">{modelCapabilityLabel(capability)}</span> : null}
                             <span className={cn("grid size-5 shrink-0 place-items-center rounded-md border border-transparent text-primary", selected && "border-primary/35 bg-primary/10")} aria-hidden="true">
                                 {selected ? <Check className="size-3.5" /> : null}

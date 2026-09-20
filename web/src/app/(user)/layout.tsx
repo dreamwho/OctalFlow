@@ -14,7 +14,7 @@ export default async function UserLayout({ children }: { children: ReactNode }) 
     const access = await getAuthenticatedPageAccess();
     if (!access.user) {
         if (!access.install.database.healthy || access.install.firstAdminRequired) redirect("/install");
-        redirect("/login");
+        redirect("/");
     }
     const user = access.user;
 

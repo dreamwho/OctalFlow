@@ -73,7 +73,7 @@
         padding: clamp(22px, 4vw, 58px) clamp(10px, 2vw, 32px);
     }
 
-    .landing-auth-modal .ant-modal-content {
+    .landing-auth-modal .ant-modal-container, .landing-auth-modal .ant-modal-content {
         background: rgba(255, 255, 255, 0.99);
         border: 1px solid rgba(72, 67, 99, 0.13);
         border-radius: 8px;
@@ -82,7 +82,7 @@
         box-shadow: 0 28px 84px rgba(31, 29, 43, 0.16);
     }
 
-    .dark .landing-auth-modal .ant-modal-content {
+    .dark .landing-auth-modal .ant-modal-container, .landing-auth-modal .ant-modal-content {
         background: rgba(20, 21, 26, 0.99);
         border-color: rgba(255, 255, 255, 0.1);
         box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
@@ -361,4 +361,311 @@
     .auth-switch-link {
         margin-top: 4px;
     }
+
+    /* 弹窗主登录按钮：全局紫色 + 右上角按钮同款光影动效 */
+    .landing-auth-jiaotu .auth-submit-button.ant-btn {
+        background: linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 0 18px rgba(98, 82, 255, 0.45), inset 0 1px rgba(255, 255, 255, 0.35) !important;
+        color: #ffffff !important;
+        font-size: 15px;
+        font-weight: 600;
+        height: 52px;
+        margin-top: 6px;
+        overflow: hidden !important;
+        position: relative !important;
+    }
+
+    .landing-auth-jiaotu .auth-submit-button.ant-btn:hover {
+        background: linear-gradient(125deg, #574ff7, #785dfa 55%, #9486ff) !important;
+        box-shadow: 0 0 26px rgba(110, 83, 246, 0.65), inset 0 1px rgba(255, 255, 255, 0.45) !important;
+        color: #ffffff !important;
+    }
+
+    .landing-auth-jiaotu .auth-submit-button.ant-btn:disabled,
+    .landing-auth-jiaotu .auth-submit-button.ant-btn:disabled:hover {
+        background: #3a4152 !important;
+        border-color: rgba(255, 255, 255, 0.12) !important;
+        box-shadow: none !important;
+        color: #aab4c8 !important;
+    }
+}
+
+/* 登录弹窗（参考站结构）：首页主屏顶部光影 hero + 居中纯图标 LOGO + 表单 + 微信登录 + 法务行 */
+.landing-auth-jiaotu.ant-modal {
+    max-width: calc(100vw - 24px);
+}
+
+.landing-auth-jiaotu .ant-modal-body {
+    padding: 0;
+}
+
+.landing-auth-jiaotu .ant-modal-container {
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px !important;
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+    overflow: hidden !important;
+    background:
+        radial-gradient(2px 2px at 21% 7%, rgba(255, 255, 255, 0.5), transparent 100%),
+        radial-gradient(1.5px 1.5px at 34% 15%, rgba(255, 255, 255, 0.4), transparent 100%),
+        radial-gradient(2px 2px at 57% 4%, rgba(255, 255, 255, 0.45), transparent 100%),
+        radial-gradient(1.5px 1.5px at 73% 11%, rgba(255, 255, 255, 0.35), transparent 100%),
+        radial-gradient(1.5px 1.5px at 88% 6%, rgba(255, 255, 255, 0.3), transparent 100%),
+        linear-gradient(115deg, transparent 20%, rgba(67, 56, 202, 0.5) 36%, rgba(59, 66, 200, 0.22) 46%, transparent 58%),
+        linear-gradient(104deg, transparent 42%, rgba(108, 99, 255, 0.4) 55%, transparent 66%),
+        linear-gradient(180deg, #1a2038 0%, #141928 32%, #12151a 50%),
+        #12151a;
+}
+
+.landing-auth-jiaotu .landing-auth-jiaotu-hero {
+    background: transparent;
+    padding: 54px 24px 20px;
+    position: relative;
+    text-align: center;
+}
+
+.landing-auth-jiaotu-mark {
+    display: block;
+    height: 72px;
+    margin: 0 auto 14px;
+    width: auto;
+}
+
+.landing-auth-jiaotu-body {
+    padding: 24px clamp(28px, 16%, 95px) 34px;
+}
+
+.landing-auth-jiaotu .landing-auth-jiaotu-title {
+    color: #ffffff;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.landing-auth-jiaotu-close {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 0;
+    border-radius: 9999px;
+    color: #9aa5bd;
+    cursor: pointer;
+    display: inline-flex;
+    height: 28px;
+    justify-content: center;
+    position: absolute;
+    right: 14px;
+    top: 14px;
+    transition: all 160ms ease;
+    width: 28px;
+}
+
+.landing-auth-jiaotu-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.landing-auth-jiaotu .auth-form-header,
+.landing-auth-jiaotu .auth-form-description {
+    display: none;
+}
+
+.landing-auth-jiaotu .auth-panel label > span:not(.ant-input-affix-wrapper) {
+    display: none;
+}
+
+.landing-auth-jiaotu .ant-input,
+.landing-auth-jiaotu .ant-input-affix-wrapper,
+.landing-auth-jiaotu .ant-select-selector {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #f2f6ff !important;
+}
+
+.landing-auth-jiaotu .ant-input-affix-wrapper,
+.landing-auth-jiaotu .auth-panel .ant-input {
+    border-radius: 12px;
+    font-size: 15px;
+    height: 52px;
+}
+
+.landing-auth-jiaotu .ant-input-affix-wrapper {
+    align-items: center;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.landing-auth-jiaotu .ant-input-affix-wrapper .ant-input {
+    height: 50px;
+    padding: 0;
+    background: transparent;
+}
+
+.landing-auth-jiaotu .auth-panel {
+    padding: 0 !important;
+}
+
+.landing-auth-jiaotu .auth-panel form {
+    max-width: 400px;
+    margin-inline: auto;
+}
+
+.landing-auth-jiaotu .ant-input::placeholder,
+.landing-auth-jiaotu .ant-input-password-icon,
+.landing-auth-jiaotu .ant-input-prefix,
+.landing-auth-jiaotu .ant-input-suffix {
+    color: #7c88a0 !important;
+}
+
+.landing-auth-jiaotu .ant-btn-primary {
+    background: linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 0 18px rgba(98, 82, 255, 0.45) !important;
+    font-weight: 600;
+}
+
+.landing-auth-jiaotu .auth-submit-button.ant-btn::after {
+    animation: landing-auth-btn-shine 3.4s ease-in-out infinite;
+    background: linear-gradient(100deg, transparent 12%, rgba(255, 255, 255, 0.42) 50%, transparent 88%);
+    content: "";
+    height: 100%;
+    left: 0;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    transform: translateX(-160%) skewX(-18deg);
+    width: 46%;
+}
+
+.landing-auth-jiaotu .auth-submit-button.ant-btn:disabled::after {
+    display: none;
+}
+
+@keyframes landing-auth-btn-shine {
+    0% {
+        transform: translateX(-170%) skewX(-18deg);
+    }
+    60%,
+    100% {
+        transform: translateX(340%) skewX(-18deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .landing-auth-jiaotu .auth-submit-button.ant-btn::after {
+        animation: none;
+        display: none;
+    }
+}
+
+/* 微信登录入口胶囊与扫码面板 */
+.landing-auth-wechat-pill {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+    color: #e8eefc;
+    cursor: pointer;
+    display: flex;
+    font-size: 14px;
+    font-weight: 600;
+    gap: 8px;
+    height: 42px;
+    justify-content: center;
+    margin: 16px auto 0;
+    min-width: 170px;
+    padding: 0 24px;
+    transition: background 160ms ease;
+}
+
+.landing-auth-wechat-pill svg {
+    color: #4ecb63;
+}
+
+.landing-auth-wechat-pill:hover {
+    background: rgba(255, 255, 255, 0.11);
+}
+
+.landing-auth-wechat-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 0 6px;
+}
+
+.landing-auth-wechat-title {
+    color: #eef3ff;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 14px;
+}
+
+.landing-auth-wechat-qr {
+    align-items: center;
+    background: #ffffff;
+    border-radius: 14px;
+    display: flex;
+    height: 260px;
+    justify-content: center;
+    overflow: hidden;
+    width: 260px;
+}
+
+.landing-auth-wechat-qr iframe {
+    border: 0;
+    height: 100%;
+    width: 100%;
+}
+
+.landing-auth-wechat-state {
+    color: #6b7280;
+    font-size: 13px;
+    padding: 0 18px;
+    text-align: center;
+}
+
+.landing-auth-wechat-error {
+    color: #f87171;
+}
+
+.landing-auth-wechat-tip {
+    color: #8f9ab0;
+    font-size: 12px;
+    margin: 12px 0 0;
+}
+
+.landing-auth-wechat-back {
+    background: transparent;
+    border: 0;
+    color: #9db4ff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 10px;
+}
+
+.landing-auth-wechat-back:hover {
+    color: #c7d3ff;
+}
+
+.landing-auth-jiaotu-legal,
+.landing-auth-jiaotu-register {
+    color: #8f9ab0;
+    font-size: 12px;
+    margin: 10px 6px 0;
+    text-align: center;
+}
+
+.landing-auth-jiaotu-link,
+.landing-auth-jiaotu-register-link {
+    color: #9db4ff;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.landing-auth-jiaotu-link:hover,
+.landing-auth-jiaotu-register-link:hover {
+    color: #c7d3ff;
 }

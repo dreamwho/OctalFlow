@@ -78,26 +78,31 @@ export function AccountActionsCluster({ authenticated, displayName, accountId, a
 
     return (
         <div className="inline-flex items-center gap-2">
-            <button type="button" className="octal-header-pill" onClick={onBilling} aria-label="积分与限时特惠">
-                <CreditSymbol className="text-amber-300" />
-                {authenticated ? <span className="tabular-nums">{formatCreditAmount(pointsBalance)}</span> : null}
-                <span>限时特惠</span>
-            </button>
-            <button type="button" className="octal-header-pill" onClick={onInvite} aria-label="邀请赠积分">
-                <Gift className="size-4 text-pink-400" aria-hidden="true" />
-                <span>邀请赠积分</span>
-            </button>
-            <button ref={avatarRef} type="button" className="octal-avatar-button" aria-label={authenticated ? "打开账号菜单" : "登录"} aria-expanded={open} aria-haspopup="dialog" onClick={() => (authenticated ? toggle() : onLogin())}>
-                {authenticated ? (
-                    avatarUrl ? (
-                        <img src={avatarUrl} alt="" className="size-full rounded-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                        <span>{(displayName || "D").slice(0, 2).toUpperCase()}</span>
-                    )
-                ) : (
-                    <User aria-hidden="true" className="size-4" />
-                )}
-            </button>
+            {!authenticated ? (
+                <button type="button" className="octal-header-pill" onClick={onLogin} aria-label="登录">
+                    <User className="size-4" aria-hidden="true" />
+                    <span>登录</span>
+                </button>
+            ) : (
+                <>
+                    <button type="button" className="octal-header-pill" onClick={onBilling} aria-label="积分与限时特惠">
+                        <CreditSymbol className="text-amber-300" />
+                        <span className="tabular-nums">{formatCreditAmount(pointsBalance)}</span>
+                        <span>限时特惠</span>
+                    </button>
+                    <button type="button" className="octal-header-pill" onClick={onInvite} aria-label="邀请赠积分">
+                        <Gift className="size-4 text-pink-400" aria-hidden="true" />
+                        <span>邀请赠积分</span>
+                    </button>
+                    <button ref={avatarRef} type="button" className="octal-avatar-button" aria-label="打开账号菜单" aria-expanded={open} aria-haspopup="dialog" onClick={toggle}>
+                        {avatarUrl ? (
+                            <img src={avatarUrl} alt="" className="size-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                            <span>{(displayName || "D").slice(0, 2).toUpperCase()}</span>
+                        )}
+                    </button>
+                </>
+            )}
 
             {open && anchor
                 ? createPortal(

@@ -60,6 +60,8 @@ import {
     type StoredEmailCode,
     type AuthSettings,
     type AuthDatabase,
+    type LoginMethodId,
+    type LoginMethodSettings,
 } from "./store-types";
 import {
     AuthInputError,
@@ -248,6 +250,7 @@ export function normalizeSettings(settings: AuthSettings): AuthSettings {
         site,
         registrationEnabled: Boolean(settings.registrationEnabled),
         emailRegistrationEnabled: Boolean(settings.emailRegistrationEnabled),
+        loginMethods: normalizeLoginMethods(settings.loginMethods),
         freeDailyPointsEnabled: settings.freeDailyPointsEnabled !== false,
         freeDailyPoints: normalizePoints(settings.freeDailyPoints, 0),
         mail: normalizeMailSettings(settings.mail, site.title),
@@ -583,7 +586,7 @@ export function normalizeSiteSettings(settings: Partial<SiteSettings> | undefine
         seoTitle,
         seoDescription: normalizeText(settings?.seoDescription, DEFAULT_SITE_SETTINGS.seoDescription, 180),
         seoKeywords: normalizeBrandDefault(settings?.seoKeywords, DEFAULT_SITE_SETTINGS.seoKeywords, title, DEFAULT_SITE_SETTINGS.seoKeywords.replace(DEFAULT_SITE_SETTINGS.title, title), 240),
-        footerCopyright: normalizeBrandDefault(replaceLegacyBrand(settings?.footerCopyright, title), DEFAULT_SITE_SETTINGS.footerCopyright, title, DEFAULT_SITE_SETTINGS.footerCopyright.replace(DEFAULT_SITE_SETTINGS.title, title), 120),
+        footerCopyright: normalizeBrandDefault(settings?.footerCopyright, DEFAULT_SITE_SETTINGS.footerCopyright, title, DEFAULT_SITE_SETTINGS.footerCopyright.replace(DEFAULT_SITE_SETTINGS.title, title), 120),
         termsUrl: normalizeLinkUrl(settings?.termsUrl, DEFAULT_SITE_SETTINGS.termsUrl),
         termsVersion: normalizeText(settings?.termsVersion, DEFAULT_SITE_SETTINGS.termsVersion, 80),
         privacyUrl: normalizeLinkUrl(settings?.privacyUrl, DEFAULT_SITE_SETTINGS.privacyUrl),
@@ -619,7 +622,7 @@ export function normalizeSiteFriendLinks(settings: unknown, siteTitle = DEFAULT_
             const defaultHomeLink = value.id === "dreamyo-home" && value.url?.replace(/\/$/, "") === "https://www.dreamyo.com";
             return {
                 id: normalizeText(value.id, `friend-${index + 1}`, 80),
-                label: normalizeText(defaultHomeLink && (!value.label || value.label === DEFAULT_SITE_SETTINGS.title || isLegacySiteTitle(value.label)) ? siteTitle : replaceLegacyBrand(value.label, siteTitle), "友情链接", 32),
+                label: normalizeText(defaultHomeLink && (!value.label || value.label === DEFAULT_SITE_SETTINGS.title || isLegacySiteTitle(value.label)) ? siteTitle : value.label, "友情链接", 32),
                 url: normalizeLinkUrl(value.url, ""),
                 enabled: value.enabled !== false,
             };
@@ -665,6 +668,17 @@ function normalizeSiteSocialUrl(key: SiteSocialKey, value: unknown) {
     return normalizeLinkUrl(url, "");
 }
 
+/** 登录方式规范化：至少保留一种可用方式，默认方式必须属于已启用方式。 */
+export function normalizeLoginMethods(value: unknown): LoginMethodSettings {
+    const raw = (value && typeof value === "object" ? value : {}) as Partial<LoginMethodSettings>;
+    const password = raw.password !== false;
+    const wechat = raw.wechat === true;
+    const fallback: LoginMethodSettings = { password: true, wechat: false, defaultMethod: "password" };
+    if (!password && !wechat) return fallback;
+    const defaultMethod: LoginMethodId = raw.defaultMethod === "wechat" && wechat ? "wechat" : password ? "password" : "wechat";
+    return { password, wechat, defaultMethod };
+}
+
 export function normalizeMailSettings(settings: Partial<MailSettings> | undefined, siteTitle = DEFAULT_SITE_SETTINGS.title): MailSettings {
     const port = Math.max(1, Math.min(65535, Math.floor(Number(settings?.port) || DEFAULT_MAIL_SETTINGS.port)));
     return {
@@ -683,11 +697,6 @@ function isLegacySiteTitle(value: unknown) {
     return value === "dreamyo" || value === "VOZEB PRO";
 }
 
-function replaceLegacyBrand(value: unknown, siteTitle: string) {
-    if (typeof value !== "string") return value;
-    return value.replaceAll("dreamyo", siteTitle).replaceAll("VOZEB PRO", siteTitle).replaceAll("VOZEB 开源交流", `${siteTitle} 开源交流`);
-}
-
 export function normalizeSecretText(value: unknown, fallback: string, maxPlainLength: number) {
     const text = typeof value === "string" ? value.trim() : "";
     if (!text) return fallback;
@@ -700,11 +709,6 @@ export function normalizeText(value: unknown, fallback: string, maxLength: numbe
 }
 
 export function repairKnownMojibakeText(value: string) {
-    if (value === DEFAULT_SITE_SETTINGS.title || value === DEFAULT_SITE_SETTINGS.seoTitle || value === DEFAULT_SITE_SETTINGS.seoKeywords) return value;
-    if (value.includes("dreamyo") && value.includes("AI") && !value.includes("绘图") && value.includes(",")) return DEFAULT_SITE_SETTINGS.seoKeywords;
-    if (value.includes("dreamyo") && value.includes("AI") && !value.includes("工作台")) return DEFAULT_SITE_SETTINGS.seoDescription;
-    if (value.includes("2026 dreamyo") && !value.startsWith("©")) return DEFAULT_SITE_SETTINGS.footerCopyright;
-    if (value.startsWith("QQ ") && !value.includes("邮箱")) return "QQ 邮箱";
     return repairUtf8MojibakeText(value);
 }
 

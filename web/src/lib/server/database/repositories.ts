@@ -183,6 +183,7 @@ class SettingsRepository {
         if (input.site !== undefined) add("site", jsonParam(input.site));
         if (input.registrationEnabled !== undefined) add("registration_enabled", input.registrationEnabled);
         if (input.emailRegistrationEnabled !== undefined) add("email_registration_enabled", input.emailRegistrationEnabled);
+        if (input.loginMethods !== undefined) add("login_methods", jsonParam(input.loginMethods));
         if (input.freeDailyPointsEnabled !== undefined) add("free_daily_points_enabled", input.freeDailyPointsEnabled);
         if (input.mail !== undefined) add("mail", jsonParam(input.mail));
         if (input.allowUserApiConfig !== undefined) add("allow_user_api_config", input.allowUserApiConfig);
@@ -284,6 +285,7 @@ function mapSettings(row: Record<string, unknown>): AppSettingsRecord {
         site: jsonValue(row.site),
         registrationEnabled: row.registration_enabled !== false,
         emailRegistrationEnabled: row.email_registration_enabled === true,
+        loginMethods: jsonValue(row.login_methods),
         freeDailyPointsEnabled: row.free_daily_points_enabled !== false,
         freeDailyPoints: numberValue(row.free_daily_points),
         mail: jsonValue(row.mail),

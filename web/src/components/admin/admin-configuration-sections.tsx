@@ -364,6 +364,45 @@ export function AdminSettingsSection({ controller }: { controller: AdminDashboar
                                                 unCheckedChildren="关闭"
                                                 onChange={(emailRegistrationEnabled) => setSettings((current) => ({ ...current, emailRegistrationEnabled }))}
                                             />
+                                            <SettingToggle
+                                                title="账号密码登录"
+                                                description="关闭后，登录弹窗不再展示账号密码表单（至少保留一种登录方式）。"
+                                                checked={settings.loginMethods.password}
+                                                checkedChildren="开启"
+                                                unCheckedChildren="关闭"
+                                                onChange={(password) =>
+                                                    setSettings((current) => {
+                                                        const wechat = password ? current.loginMethods.wechat : true;
+                                                        const defaultMethod = password ? (current.loginMethods.defaultMethod === "password" || !wechat ? "password" : "wechat") : "wechat";
+                                                        return { ...current, loginMethods: { password, wechat, defaultMethod } };
+                                                    })
+                                                }
+                                            />
+                                            <SettingToggle
+                                                title="微信登录"
+                                                description="开启后，登录弹窗提供微信扫码方式（需服务端配置微信开放平台凭据）。"
+                                                checked={settings.loginMethods.wechat}
+                                                checkedChildren="开启"
+                                                unCheckedChildren="关闭"
+                                                onChange={(wechat) =>
+                                                    setSettings((current) => {
+                                                        const password = current.loginMethods.password || !wechat;
+                                                        const defaultMethod = wechat && current.loginMethods.defaultMethod === "wechat" ? "wechat" : password ? "password" : "wechat";
+                                                        return { ...current, loginMethods: { password, wechat, defaultMethod } };
+                                                    })
+                                                }
+                                            />
+                                            <LabeledControl label="默认登录方式">
+                                                <Radio.Group
+                                                    value={settings.loginMethods.defaultMethod}
+                                                    onChange={(event) => setSettings((current) => ({ ...current, loginMethods: { ...current.loginMethods, defaultMethod: event.target.value } }))}
+                                                    optionType="button"
+                                                    buttonStyle="solid"
+                                                >
+                                                    <Radio.Button value="password" disabled={!settings.loginMethods.password}>账号密码</Radio.Button>
+                                                    <Radio.Button value="wechat" disabled={!settings.loginMethods.wechat}>微信扫码</Radio.Button>
+                                                </Radio.Group>
+                                            </LabeledControl>
                                         </div>
                                     </div>
 

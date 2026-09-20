@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CanvasLibraryPage() {
     const [access, site] = await Promise.all([getAuthenticatedPageAccess(), getPublicSiteSettings()]);
-    if (!access.user) redirect("/login");
+    if (!access.user) redirect("/");
     const user = access.user;
 
     return (

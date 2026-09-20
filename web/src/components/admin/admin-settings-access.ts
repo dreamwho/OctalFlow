@@ -25,6 +25,7 @@ export function buildAdminSettingsPatch(settings: AuthSettings, access: AdminSet
             ? {
                   registrationEnabled: settings.registrationEnabled,
                   emailRegistrationEnabled: settings.emailRegistrationEnabled,
+                  loginMethods: settings.loginMethods,
                   mail: settings.mail,
                   dataLifecycle: settings.dataLifecycle,
               }

@@ -157,6 +157,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
     site: DEFAULT_SITE_SETTINGS,
     registrationEnabled: true,
     emailRegistrationEnabled: false,
+    loginMethods: { password: true, wechat: false, defaultMethod: "password" },
     freeDailyPointsEnabled: true,
     freeDailyPoints: 0,
     mail: DEFAULT_MAIL_SETTINGS,

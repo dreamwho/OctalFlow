@@ -521,10 +521,19 @@ export type StoredEmailCode = {
     attempts?: number;
 };
 
+export type LoginMethodId = "password" | "wechat";
+
+export type LoginMethodSettings = {
+    password: boolean;
+    wechat: boolean;
+    defaultMethod: LoginMethodId;
+};
+
 export type AuthSettings = {
     site: SiteSettings;
     registrationEnabled: boolean;
     emailRegistrationEnabled: boolean;
+    loginMethods: LoginMethodSettings;
     freeDailyPointsEnabled: boolean;
     freeDailyPoints: number;
     mail: MailSettings;

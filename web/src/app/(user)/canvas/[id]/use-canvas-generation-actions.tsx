@@ -20,6 +20,7 @@ import { buildNodeGenerationContext, buildNodeGenerationInputs, buildNodeRespons
 import { type CanvasNodeGenerationMode } from "../components/canvas-node-prompt-panel";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "../constants";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasAssistantImage, type CanvasNodeData } from "../types";
+import { getGenerationResourceNodes } from "../utils/canvas-resource-references";
 import { applyCameraPrompt } from "../utils/canvas-camera";
 import { applyCameraMotionPrompt } from "../utils/canvas-camera-motion";
 import { fitCanvasImageNodeSize, fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
@@ -126,7 +127,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             let plannedPrompt = interiorDesignConfig ? sourceNode.metadata?.executionPrompt?.trim() || prompt.trim() : mode === "video" ? applyCameraMotionPrompt(userPrompt, sourceNode?.metadata?.cameraMotions) : userPrompt;
             const runController = startGenerationRequest(nodeId, nodeId, nodeId);
             // 先创建输出节点并进入“生成中”状态，Skill 优化与上下文解析期间用户即可看到新节点
-            let imageCreation: { rootId: string; childIds: string[]; targetIds: string[]; isEmptyImageNode: boolean; isConfigNode: boolean } | null = null;
+            let imageCreation: { rootId: string; childIds: string[]; targetIds: string[]; isEmptyImageNode: boolean; isConfigNode: boolean; inheritReferenceSources: boolean } | null = null;
             let videoCreation: { videoId: string; isEmptyVideoNode: boolean } | null = null;
             const discardCreatedNodes = () => {
                 const created = pendingChildIds.filter((id) => id !== nodeId);
@@ -204,7 +205,19 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         ...(sourceNode?.metadata?.cameraControl ? { cameraControl: sourceNode.metadata.cameraControl } : {}),
                     },
                 }));
-                const batchConnections = [...(isEmptyImageNode ? [] : [{ id: nanoid(), fromNodeId: nodeId, toNodeId: rootId }]), ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: rootId, toNodeId: childId }))];
+                // 已生成完成的图片节点再生成：新输出节点改为继承该节点索引过的参考图节点连线，
+                // 与当前节点之间不再建立连线，否则参考图会被当前节点的结果图顶掉。
+                // 生成完成节点都带 model/generationType 元数据（上传图节点没有），以此区分两类节点。
+                const inheritReferenceSources = isImageNode && Boolean(sourceNode?.metadata?.model || sourceNode?.metadata?.generationType);
+                const inheritedResourceNodes = inheritReferenceSources ? getGenerationResourceNodes(nodeId, nodesRef.current, connectionsRef.current) : [];
+                const batchConnections = [
+                    ...(isEmptyImageNode
+                        ? []
+                        : inheritReferenceSources
+                          ? inheritedResourceNodes.map((node) => ({ id: nanoid(), fromNodeId: node.id, toNodeId: rootId }))
+                          : [{ id: nanoid(), fromNodeId: nodeId, toNodeId: rootId }]),
+                    ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: rootId, toNodeId: childId })),
+                ];
                 setNodes((prev) => [
                     ...prev.map((node) =>
                         node.id === nodeId
@@ -229,7 +242,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 setSelectedNodeIds(new Set([nodeId]));
                 setSelectedConnectionId(null);
                 setDialogNodeId(nodeId);
-                imageCreation = { rootId, childIds, targetIds, isEmptyImageNode, isConfigNode };
+                imageCreation = { rootId, childIds, targetIds, isEmptyImageNode, isConfigNode, inheritReferenceSources };
             } else if (mode === "video") {
                 const isEmptyVideoNode = sourceNode?.type === CanvasNodeType.Video && !sourceNode.metadata?.content && sourceNode.metadata?.status !== NODE_STATUS_LOADING;
                 const spec = nodeSizeFromRatio(generationConfig.size, NODE_DEFAULT_SIZE[CanvasNodeType.Video].width, NODE_DEFAULT_SIZE[CanvasNodeType.Video].height) || NODE_DEFAULT_SIZE[CanvasNodeType.Video];
@@ -316,7 +329,8 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const rootId = imageCreation?.rootId || nodeId;
                     const childIds = imageCreation?.childIds || [];
                     const targetIds = imageCreation?.targetIds || [rootId];
-                    const sourceReference = isImageNode && sourceNode?.metadata?.content ? [canvasNodeReferenceImage(sourceNode)] : [];
+                    const inheritReferenceSources = imageCreation?.inheritReferenceSources ?? false;
+                    const sourceReference = !inheritReferenceSources && isImageNode && sourceNode?.metadata?.content ? [canvasNodeReferenceImage(sourceNode)] : [];
                     const referenceImages = sourceReference.length ? sourceReference : generationContext.referenceImages;
                     const imageGenerationConfig = {
                         ...generationConfig,

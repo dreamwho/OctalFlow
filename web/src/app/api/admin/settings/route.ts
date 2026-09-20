@@ -37,6 +37,7 @@ export async function PATCH(request: Request) {
         if (body.site) patch.site = { ...body.site, frontendTheme: normalizeThemeName(body.site.frontendTheme), adminTheme: normalizeThemeName(body.site.adminTheme) };
         if (typeof body.registrationEnabled === "boolean") patch.registrationEnabled = body.registrationEnabled;
         if (typeof body.emailRegistrationEnabled === "boolean") patch.emailRegistrationEnabled = body.emailRegistrationEnabled;
+        if (body.loginMethods && typeof body.loginMethods === "object") patch.loginMethods = body.loginMethods;
         if (typeof body.freeDailyPointsEnabled === "boolean") patch.freeDailyPointsEnabled = body.freeDailyPointsEnabled;
         if (typeof body.freeDailyPoints === "number") patch.freeDailyPoints = body.freeDailyPoints;
         if (body.mail) patch.mail = body.mail;
@@ -98,6 +99,7 @@ const SETTINGS_PERMISSION_BY_FIELD = {
     site: "system.manage",
     registrationEnabled: "system.manage",
     emailRegistrationEnabled: "system.manage",
+    loginMethods: "system.manage",
     mail: "system.manage",
     dataLifecycle: "system.manage",
     freeDailyPointsEnabled: "billing.manage",

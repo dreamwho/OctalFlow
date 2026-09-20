@@ -118,6 +118,7 @@ export type AppSettingsRecord = {
     site: JsonValue;
     registrationEnabled: boolean;
     emailRegistrationEnabled: boolean;
+    loginMethods: JsonValue;
     freeDailyPointsEnabled: boolean;
     freeDailyPoints: number;
     mail: JsonValue;
