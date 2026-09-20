@@ -459,9 +459,33 @@ export async function ensurePostgresSchema() {
     if (globalForPostgres.__dreamyoProPostgresSchemaReady) return globalForPostgres.__dreamyoProPostgresSchemaReady;
 
     const result = await getPostgresPool().query<{ table_name: string | null }>("SELECT to_regclass('public.dreamyo_users')::text AS table_name");
-    if (!result.rows[0]?.table_name) throw new Error("PostgreSQL schema has not been initialized");
+    if (!result.rows[0]?.table_name) {
+        // 项目改名（octalaicanvas → dreamyo）后的存量库自动迁移表前缀，
+        // 避免老部署升级后被当成全新安装、原数据在库里却不可见。
+        await migrateLegacyTablePrefix();
+        const migrated = await getPostgresPool().query<{ table_name: string | null }>("SELECT to_regclass('public.dreamyo_users')::text AS table_name");
+        if (!migrated.rows[0]?.table_name) throw new Error("PostgreSQL schema has not been initialized");
+    }
 
     return initializePostgresSchema();
+}
+
+/** 一次性迁移：老前缀（octalaicanvas_）业务表存在且新前缀未初始化时，整批改名为新前缀。 */
+async function migrateLegacyTablePrefix() {
+    const legacy = await getPostgresPool().query<{ table_name: string | null }>("SELECT to_regclass('public.octalaicanvas_users')::text AS table_name");
+    if (!legacy.rows[0]?.table_name) return;
+    await withPostgresTransaction(async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["dreamyo:legacy-prefix-migration"]);
+        await client.query(`
+            DO $$
+            DECLARE t record;
+            BEGIN
+                FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'octalaicanvas\_%' LOOP
+                    EXECUTE format('ALTER TABLE public.%I RENAME TO %I', t.tablename, 'dreamyo_' || substr(t.tablename, length('octalaicanvas_') + 1));
+                END LOOP;
+            END $$;
+        `);
+    });
 }
 
 export async function initializePostgresSchema() {

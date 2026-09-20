@@ -1282,7 +1282,15 @@ async function readSettings(): Promise<DecodedMagicProxySettings | null> {
     if (!stored?.subscriptionUrlCiphertext || !stored.nodesCiphertext) return null;
     try {
         const storedSubscriptionUrl = decryptSecretValue(stored.subscriptionUrlCiphertext);
-        const subscriptionUrl = storedSubscriptionUrl === LOCAL_FILE_SUBSCRIPTION_URL ? storedSubscriptionUrl : normalizeSubscriptionUrl(storedSubscriptionUrl);
+        let subscriptionUrl = storedSubscriptionUrl;
+        if (storedSubscriptionUrl !== LOCAL_FILE_SUBSCRIPTION_URL) {
+            try {
+                subscriptionUrl = normalizeSubscriptionUrl(storedSubscriptionUrl);
+            } catch {
+                // 存量配置可能保存了旧版本允许的 http 订阅地址：读取时原样保留，
+                // 严格 https 校验只在重新导入订阅时执行，避免整份配置因此不可读。
+            }
+        }
         const nodes = normalizeSubscriptionNodes(JSON.parse(decryptSecretValue(stored.nodesCiphertext)));
         return {
             subscriptionUrl,

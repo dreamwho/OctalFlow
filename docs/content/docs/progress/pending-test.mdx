@@ -5,7 +5,14 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
-### 首页 hero 全分辨率适配（2K/高分屏缩放不再截断）
+### 魔法代理存量订阅宽容读取 + 数据库表前缀自动迁移
+
+- 问题一（魔法代理/Dola API 代理管理报错）：存量魔法代理配置里保存的旧版允许的 http（或带凭据）订阅地址，会让 `readSettings` 在每次读取时抛「订阅地址必须是未包含账号密码的 HTTPS 地址」——魔法代理页读取、Dola API 代理绑定读取/保存、本地 YAML 文件导入（导入流程内部也会读一次存量配置）全部被连带拦截。修复：读取存量配置时不再执行严格校验（原样保留旧地址），严格 https 校验只在重新导入订阅时执行；本地文件导入恢复可用。
+- 问题二（升级后进入安装向导、历史配置/账号不可见）：项目改名（octalaicanvas → dreamyo）后数据库表前缀从 `octalaicanvas_` 换成 `dreamyo_`，新应用在旧库里找不到 `dreamyo_users` 即视为全新安装。修复：`ensurePostgresSchema` 在新前缀表缺失而旧前缀表存在时，自动把旧前缀业务表整批改名迁移（事务 + advisory lock），老部署升级不再丢数据视图；空库行为不变（不执行任何 DDL）。
+- 附带恢复脚本：`scripts/legacy-table-prefix-recovery.sql`——针对「新旧前缀表并存」（已完成安装向导后又想找回历史数据）的服务器，以旧数据为准删除新空表并改名。执行前先 pg_dump 备份；本地媒体/geminiai 账号等文件数据还需按旧应用数据卷向 `dreamyo-data` 卷拷贝一次。
+- 已实测：魔法代理宽容读取回归单测 2/2（http 订阅存量可读、空库返回未配置）、postgres 生命周期 8/8（含新前缀迁移用例）、home/canvas/admin 相关 104/104 通过；类型检查 0 错误、构建成功、服务已重启。
+
+### 首页 hero 全分辨率适配（2K/高分屏缩放不再截断）（2K/高分屏缩放不再截断）
 
 - 问题：2K 分辨率 + Windows 系统缩放（125%/150%/175%/200%）下 CSS 视口变小，首页 hero 的垂直间距下限过大（padding-top 最低 150px、面板上边距固定 48px），标题/LOGO/提示词面板整体偏大，输入框底部操作行被折叠线截断。
 - 修复：hero 最终生效块的垂直间距全部改为随视口高度伸缩（svh clamp）——padding-top `clamp(150px, 22svh, 240px)`、padding-bottom `clamp(32px, 9svh, 88px)`、LOGO 高度 `clamp(64px, 13svh, 116px)`、面板上边距 `clamp(16px, 5svh, 48px)`；并新增 `max-height: 820px` 矮视口块进一步收紧。1440×900 开发基线视觉基本不变（composer 底部 772 → 768）。

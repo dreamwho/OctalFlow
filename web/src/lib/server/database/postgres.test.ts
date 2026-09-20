@@ -78,13 +78,34 @@ describe("PostgreSQL schema lifecycle", () => {
     });
 
     it("does not execute schema DDL when an ordinary caller reaches an empty database", async () => {
-        mocks.query.mockResolvedValueOnce({ rows: [{ table_name: null }] });
+        mocks.query.mockResolvedValue({ rows: [] });
 
         await expect(ensurePostgresSchema()).rejects.toThrow("PostgreSQL schema has not been initialized");
 
-        expect(mocks.query).toHaveBeenCalledTimes(1);
-        expect(mocks.query.mock.calls[0]?.[0]).toContain("to_regclass");
-        expect(mocks.query.mock.calls[0]?.[0]).not.toContain("CREATE TABLE");
+        expect(mocks.query).toHaveBeenCalledTimes(3);
+        expect(String(mocks.query.mock.calls[0]?.[0])).toContain("to_regclass('public.dreamyo_users')");
+        expect(String(mocks.query.mock.calls[1]?.[0])).toContain("to_regclass('public.octalaicanvas_users')");
+        expect(String(mocks.query.mock.calls[2]?.[0])).toContain("to_regclass('public.dreamyo_users')");
+        expect(mocks.query.mock.calls.every((call) => !String(call[0]).includes("CREATE TABLE"))).toBe(true);
+    });
+
+    it("migrates legacy octalaicanvas tables to the dreamyo prefix before initialization", async () => {
+        // 事务内的 BEGIN/advisory/DO/COMMIT 也走同一个 query mock，
+        // 因此用按语句分派的有状态实现：改名后 dreamyo_users 视为存在
+        let legacyMigrated = false;
+        mocks.query.mockImplementation(async (sql: string) => {
+            if (sql.includes("RENAME TO") && sql.includes("octalaicanvas_")) legacyMigrated = true;
+            if (sql.includes("to_regclass")) {
+                if (sql.includes("octalaicanvas_users")) return { rows: [{ table_name: "octalaicanvas_users" }] };
+                return { rows: [{ table_name: legacyMigrated ? "dreamyo_users" : null }] };
+            }
+            return { rows: [], rowCount: 0 };
+        });
+
+        await ensurePostgresSchema();
+
+        const migration = mocks.query.mock.calls.map((call) => String(call[0])).find((sql) => sql.includes("RENAME TO") && sql.includes("octalaicanvas_"));
+        expect(migration).toContain("dreamyo_");
     });
 
     it("prefixes SQL identifiers without rewriting ordinary string literals", async () => {
