@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, CircleHelp, Gift, History, LogOut, ShoppingBag, User, UserCog } from "lucide-react";
+import { BookOpen, CircleHelp, Gift, History, LogOut, ShoppingBag, User, UserCog, LayoutDashboard } from "lucide-react";
 
 import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
+import { useUserStore } from "@/stores/use-user-store";
 import { cn } from "@/lib/utils";
 
 type AccountActionsClusterProps = {
@@ -30,6 +31,7 @@ export function AccountActionsCluster({ authenticated, displayName, accountId, a
     const avatarRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const paddedAccountId = String(accountId || "").padStart(4, "0");
+    const isAdmin = useUserStore((state) => state.user?.role === "admin");
 
     const toggle = () => {
         const rect = avatarRef.current?.getBoundingClientRect();
@@ -67,6 +69,7 @@ export function AccountActionsCluster({ authenticated, displayName, accountId, a
 
     const menuItems: Array<{ key: string; label: string; icon: ReactNode; onClick: () => void; danger?: boolean }> = authenticated
         ? [
+              ...(isAdmin ? [{ key: "admin", label: "后台管理", icon: <LayoutDashboard className="size-4" />, onClick: () => onNavigate("/admin") }] : []),
               { key: "profile", label: "账号管理", icon: <UserCog className="size-4" />, onClick: () => onNavigate("/profile") },
               { key: "billing", label: "购买记录", icon: <ShoppingBag className="size-4" />, onClick: () => onNavigate("/billing") },
               { key: "usage", label: "使用记录", icon: <History className="size-4" />, onClick: () => onNavigate("/me") },

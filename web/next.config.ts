@@ -42,7 +42,10 @@ export default function nextConfig(phase: string): NextConfig {
             return {
                 beforeFiles: [{ source: "/favicon.ico", destination: "/api/site-icon" }],
                 afterFiles: [],
-                fallback: [],
+                fallback: [
+                    // 项目改名（OctaFlow → dreamyo）前入库的品牌图路径兼容，避免历史站点配置裂图
+                    { source: "/brand/octaflow-:file", destination: "/brand/dreamyo/:file" },
+                ],
             };
         },
         async headers() {

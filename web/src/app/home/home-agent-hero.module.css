@@ -2228,8 +2228,10 @@
 /* jiaotu.ai 首屏结构对齐（文件末尾规则优先生效）：
    居中品牌图形 → 主标题（约 38% 视口）→ 副标题 → 提示词面板（约 52% 起，宽约 780px）→ 灵感发现 */
 .hero {
+    /* 全分辨率适配：垂直间距全部随视口高度伸缩（svh），
+       2K/4K + 系统缩放导致 CSS 视口偏小时自动收紧，保证标题与提示词面板完整落在首屏内 */
     min-height: min(100svh, 960px);
-    padding: clamp(150px, 22vh, 240px) 24px 88px;
+    padding: clamp(150px, 22svh, 240px) 24px clamp(32px, 9svh, 88px);
 }
 
 .heroCopy {
@@ -2239,8 +2241,8 @@
 }
 
 .heroMark {
-    height: 116px;
-    margin: 0 0 28px;
+    height: clamp(64px, 13svh, 116px);
+    margin: 0 0 clamp(12px, 3svh, 28px);
     width: auto;
 }
 
@@ -2250,6 +2252,22 @@
 }
 
 .composerWrap {
-    margin-top: 48px;
+    margin-top: clamp(16px, 5svh, 48px);
     max-width: 780px;
+}
+
+/* 矮视口（高分屏 + 系统缩放后 CSS 高度不足 820px）：进一步收紧垂直间距 */
+@media (max-height: 820px) {
+    .hero {
+        padding: clamp(64px, 9svh, 130px) 24px clamp(20px, 3svh, 40px);
+    }
+
+    .heroMark {
+        height: clamp(56px, 9svh, 96px);
+        margin: 0 0 14px;
+    }
+
+    .composerWrap {
+        margin-top: 16px;
+    }
 }

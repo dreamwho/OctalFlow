@@ -371,6 +371,7 @@ if [[ -f "$ENV_FILE" ]]; then
 elif [[ ! -e "$ENV_FILE" ]]; then
     umask 077
     : > "$ENV_FILE"
+    printf '警告：部署目录中没有旧 .env（重新上传部署包会覆盖它），数据库等连接信息需要重新配置；脚本会尝试从 .env.bak.* 备份恢复。\n' >&2
 fi
 [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || die ".env 必须是部署包中的常规文件"
 chmod 0600 "$ENV_FILE"
@@ -453,6 +454,15 @@ if [[ "$DATABASE_MODE" == external ]]; then
     if [[ -n "${DREAMYO_DATABASE_URL:-}" ]]; then
         database_url="$DREAMYO_DATABASE_URL"
         set_env_value DATABASE_URL "$database_url"
+    elif [[ -z "$database_url" ]]; then
+        # 重新上传部署包会覆盖目录内 .env 并丢失数据库连接；优先从最新备份恢复
+        newest_env_backup="$(ls -1t "$SCRIPT_DIR"/.env.bak.* 2>/dev/null | head -n 1 || true)"
+        if [[ -n "$newest_env_backup" ]]; then
+            database_url="$(grep -E '^DATABASE_URL=' "$newest_env_backup" 2>/dev/null | tail -n 1 | cut -d= -f2-)"
+            if [[ -n "$database_url" ]]; then
+                printf '已从备份 %s 恢复数据库连接 DATABASE_URL\n' "$newest_env_backup" >&2
+            fi
+        fi
     elif [[ "$database_url" == *"f777653747bf2d4abc4ae46e3c06d1cc"* ]]; then
         # 自动纠正误带入的开发机测试连接为服务器真实凭据
         database_url="postgres://user_nAEKtB:password_NXbGBn@127.0.0.1:5432/user_nAEKtB"
@@ -467,7 +477,7 @@ if [[ "$DATABASE_MODE" == external ]]; then
             printf '\n' >&2
         fi
     fi
-    [[ "$database_url" =~ ^postgres(ql)?:// ]] || die "external 模式必须提供有效的 DATABASE_URL，例如 postgres://用户:密码@127.0.0.1:5432/数据库"
+    [[ "$database_url" =~ ^postgres(ql)?:// ]] || die "external 模式必须提供有效的 DATABASE_URL（例如 postgres://用户:密码@127.0.0.1:5432/数据库）。重新上传部署包会覆盖目录内 .env，请从 .env.bak.* 备份或数据库控制台找回原连接串后重试"
     set_env_value DATABASE_URL "$database_url"
 fi
 
