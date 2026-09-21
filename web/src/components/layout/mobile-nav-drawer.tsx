@@ -24,6 +24,7 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
     const router = useRouter();
     const previousPathnameRef = useRef(pathname);
     const site = usePublicSessionStore((state) => state.payload?.settings?.site) || { title: DEFAULT_SITE_TITLE, logoUrl: "/logo.svg" };
+    const adminLocal = usePublicSessionStore((state) => state.payload?.desktop?.edition === "admin");
     const siteTitle = resolveSiteTitle(site.title);
     const helpActive = pathname.startsWith("/help");
 
@@ -53,7 +54,7 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
                     <div className="mb-1 px-3 text-[11px] font-medium text-[#9aa2ad] dark:text-[#737d89]">{group.label}</div>
                     <div className="space-y-1">
                         {navigationTools
-                            .filter((tool) => tool.group === group.id)
+                            .filter((tool) => tool.group === group.id && (!adminLocal || !["works", "prompts", "community", "me"].includes(tool.slug)))
                             .map((tool) => {
                                 const Icon = tool.icon;
                                 const active = tool.slug === activeToolSlug;

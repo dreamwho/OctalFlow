@@ -14,11 +14,13 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
     }
 
     const providerRoot = path.join(repoRoot, "services", "geminiai");
-    const python = source.DREAMYO_GEMINIAI_PYTHON?.trim() || path.join(providerRoot, ".venv", "bin", "python");
+    const executable = source.DREAMYO_GEMINIAI_EXECUTABLE?.trim() || "";
+    const python = executable || source.DREAMYO_GEMINIAI_PYTHON?.trim() || path.join(providerRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
     if (!existsSync(python)) throw new Error(`本地 GeminiAI Provider 运行环境不存在：${python}`);
     const port = validPort(source.DREAMYO_GEMINIAI_PORT) || DEFAULT_PORT;
-    const apiKey = obtainStableKey(webRoot, tokenFactory);
-    const accountsDir = source.DREAMYO_GEMINIAI_ACCOUNTS_DIR?.trim() || path.join(webRoot, ".data", "geminiai", "accounts");
+    const dataRoot = source.DREAMYO_DATA_DIR || path.join(webRoot, ".data");
+    const apiKey = obtainStableKey(dataRoot, tokenFactory);
+    const accountsDir = source.DREAMYO_GEMINIAI_ACCOUNTS_DIR?.trim() || path.join(dataRoot, "geminiai", "accounts");
     const providerEnvironment = {
         ...source,
         AISTUDIO_API_KEY: apiKey,
@@ -39,7 +41,7 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
             name: "geminiai",
             port,
             command: python,
-            args: [path.join(providerRoot, "main.py"), "server", "--port", String(port)],
+            args: executable ? ["server", "--port", String(port)] : [path.join(providerRoot, "main.py"), "server", "--port", String(port)],
             cwd: providerRoot,
             environment: providerEnvironment,
         },
@@ -47,8 +49,8 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
 }
 
 /** 内部密钥按数据目录持久化：web 与 sidecar 分别重启时不会因随机密钥不同而互相 401。 */
-function obtainStableKey(webRoot, tokenFactory) {
-    const keyPath = path.join(webRoot, ".data", "geminiai", "runtime-api-key");
+function obtainStableKey(dataRoot, tokenFactory) {
+    const keyPath = path.join(dataRoot, "geminiai", "runtime-api-key");
     try {
         const existing = readFileSync(keyPath, "utf8").trim();
         if (existing.length >= 32) return existing;

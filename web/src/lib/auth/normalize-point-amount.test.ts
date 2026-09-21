@@ -105,4 +105,16 @@ describe("normalizePointAmount allows negative values", () => {
         expect(consumption).toMatchObject({ cost: 0, remaining: 0 });
         expect(consumption.recordId).not.toBe("");
     });
+
+    it("records local administrator generation without consuming points", async () => {
+        await createAdmin();
+        const user = await createUser({ username: "tester", password: "password123", policyAccepted: true });
+        await setAuthSettings({ modelPointCosts: { "paid-video": 8 } });
+        vi.stubEnv("DREAMYO_DESKTOP_EDITION", "admin");
+
+        const consumption = await consumeUserPoints(user.id, "paid-video", 1, "video", "desktop-local-video");
+
+        expect(consumption).toMatchObject({ cost: 0, multiplier: 0, remaining: 0 });
+        expect(consumption.recordId).toBeTruthy();
+    });
 });

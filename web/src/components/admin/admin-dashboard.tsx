@@ -26,6 +26,7 @@ type AdminDashboardProps = {
     initialPromptCount: number;
     currentUser: PublicUser;
     initialSection?: AdminSectionKey;
+    desktopEdition?: "commercial" | "admin" | null;
     setupSummary?: AdminSetupSummary;
     headerActions?: ReactNode;
 };
@@ -199,6 +200,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
             {mobileNavOpen ? <button type="button" className="admin-section-nav-backdrop lg:hidden" aria-label="收起后台侧边栏" onClick={() => setMobileNavOpen(false)} /> : null}
             <AdminSectionNav
                 activeKey={activeSection}
+                desktopEdition={props.desktopEdition}
                 currentUser={currentUser}
                 onChange={setActiveSection}
                 onIntent={(section) => void sectionLoaders[section]?.()}
@@ -275,7 +277,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                         />
                     ) : null}
                     {activeSection === "site" ? <AdminSiteSection controller={controller} /> : null}
-                    {activeSection === "settings" ? <AdminSettingsSection controller={controller} /> : null}
+                    {activeSection === "settings" ? <AdminSettingsSection controller={controller} desktopEdition={props.desktopEdition} /> : null}
                     {activeSection === "accountDeletion" ? <AdminAccountDeletionSection active /> : null}
                     {activeSection === "mediaStorage" ? <AdminMediaStorageSection controller={controller} /> : null}
                     {activeSection === "externalStorage" ? <AdminExternalStorageSection controller={controller} /> : null}

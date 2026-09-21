@@ -1,0 +1,21 @@
+{
+  "name": "dreamyo-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main/index.mjs",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev:commercial": "node scripts/launch.mjs commercial",
+    "dev:admin": "node scripts/launch.mjs admin",
+    "test": "node --test src/**/*.test.mjs scripts/*.test.mjs",
+    "pack:commercial:mac": "node scripts/build.mjs commercial mac",
+    "pack:commercial:win": "node scripts/build.mjs commercial win",
+    "pack:admin:mac": "node scripts/build.mjs admin mac",
+    "pack:admin:win": "node scripts/build.mjs admin win"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  }
+}

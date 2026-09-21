@@ -214,7 +214,7 @@ export function AdminSiteSection({ controller }: { controller: AdminDashboardCon
     );
 }
 
-export function AdminSettingsSection({ controller }: { controller: AdminDashboardController }) {
+export function AdminSettingsSection({ controller, desktopEdition }: { controller: AdminDashboardController; desktopEdition?: "commercial" | "admin" | null }) {
     const {
         settings,
         setSettings,
@@ -236,6 +236,7 @@ export function AdminSettingsSection({ controller }: { controller: AdminDashboar
         testMailSettings,
     } = controller;
     const access = resolveAdminSettingsAccess(currentUser);
+    if (desktopEdition === "admin") access.system = false;
     if (activeSection !== "settings" || (!access.system && !access.upstream)) return null;
     const description = access.system && access.upstream ? "管理主题外观、账号注册、邮箱服务、生成与数据维护。" : access.system ? "管理主题外观、账号注册、邮箱服务与数据维护。" : "管理生成并发、成本保护与默认参数。";
     const navigationClass =

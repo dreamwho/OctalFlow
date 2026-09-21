@@ -12,7 +12,8 @@ export function localChatGptApiRuntime({ repoRoot, webRoot, environment = proces
         return { environment: source };
     }
     const providerRoot = path.join(repoRoot, "services", "chatgpt-api");
-    const python = source.DREAMYO_CHATGPT_API_PYTHON?.trim() || path.join(providerRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+    const executable = source.DREAMYO_CHATGPT_API_EXECUTABLE?.trim() || "";
+    const python = executable || source.DREAMYO_CHATGPT_API_PYTHON?.trim() || path.join(providerRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
     if (source.DREAMYO_CHATGPT_API_ENABLED === "0") return { environment: source };
     if (!exists(python)) {
         if (source.DREAMYO_CHATGPT_API_ENABLED === "1") throw new Error("ChatGPT API Python 运行环境未安装，请运行 services/chatgpt-api 中的安装脚本");
@@ -30,6 +31,6 @@ export function localChatGptApiRuntime({ repoRoot, webRoot, environment = proces
     };
     return {
         environment: { ...source, DREAMYO_CHATGPT_API_URL: `http://127.0.0.1:${port}`, DREAMYO_CHATGPT_API_KEY: apiKey },
-        service: { name: "chatgpt-api", port, command: python, args: [path.join(providerRoot, "main.py"), "--port", String(port)], cwd: providerRoot, environment: providerEnvironment },
+        service: { name: "chatgpt-api", port, command: python, args: executable ? ["--port", String(port)] : [path.join(providerRoot, "main.py"), "--port", String(port)], cwd: providerRoot, environment: providerEnvironment },
     };
 }

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { DEFAULT_SITE_SETTINGS, getAuthSettings } from "@/lib/auth/store";
 import { getCurrentUser, serializeCurrentUser, serializePublicSettings } from "@/lib/auth/session";
 import { getInstallStatus } from "@/lib/server/install-status";
+import { getDesktopRuntimeInfo } from "@/lib/server/desktop-runtime";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ export async function GET() {
             const settings = await getAuthSettings();
             return NextResponse.json({
                 user: serializeCurrentUser(user),
+                desktop: getDesktopRuntimeInfo(),
                 settings: serializePublicSettings(settings),
                 install: { ready: true, firstAdminRequired: false, database: { healthy: true, schemaReady: true } },
             });
@@ -29,12 +31,13 @@ export async function GET() {
 
     const install = await getInstallStatus();
     if (!install.database.healthy || !install.database.schemaReady) {
-        return NextResponse.json({ user: null, settings: { site: DEFAULT_SITE_SETTINGS }, install });
+        return NextResponse.json({ user: null, desktop: getDesktopRuntimeInfo(), settings: { site: DEFAULT_SITE_SETTINGS }, install });
     }
 
     const settings = await getAuthSettings();
     return NextResponse.json({
         user: null,
+        desktop: getDesktopRuntimeInfo(),
         settings: serializePublicSettings(settings),
         install,
     });

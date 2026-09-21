@@ -8,6 +8,15 @@ export function proxy(request: NextRequest) {
     requestHeaders.set("x-nonce", nonce);
     requestHeaders.set("content-security-policy", contentSecurityPolicy);
 
+    if (process.env.DREAMYO_DESKTOP_EDITION === "admin") {
+        const pathname = request.nextUrl.pathname;
+        if (pathname === "/admin/setup") return NextResponse.redirect(new URL("/admin?section=channels", process.env.DREAMYO_INTERNAL_ORIGIN || request.url));
+        if (["/", "/login", "/register", "/install"].includes(pathname)) {
+            return NextResponse.redirect(new URL("/api/desktop/bootstrap?next=/canvas", process.env.DREAMYO_INTERNAL_ORIGIN || request.url));
+        }
+        if (isAdminLocalCloudPath(pathname)) return securedJsonResponse({ code: 403, data: null, msg: "管理员本地版不提供云端账户与商业服务" }, 403, contentSecurityPolicy);
+    }
+
     if (!request.nextUrl.pathname.startsWith("/api/") || request.nextUrl.pathname.startsWith("/api/billing/webhooks/") || ["GET", "HEAD", "OPTIONS"].includes(request.method)) {
         return securedNextResponse(requestHeaders, contentSecurityPolicy);
     }
@@ -26,6 +35,11 @@ export function proxy(request: NextRequest) {
     }
 
     return securedNextResponse(requestHeaders, contentSecurityPolicy);
+}
+
+function isAdminLocalCloudPath(pathname: string) {
+    const roots = ["/billing", "/works", "/community", "/gallery", "/me", "/announcements", "/prompts", "/profile", "/u", "/share", "/api/billing", "/api/works", "/api/community", "/api/public", "/api/announcements", "/api/prompts", "/api/cdk", "/api/points", "/api/referrals", "/api/auth/account-deletion", "/api/auth/logout", "/api/auth/profile", "/api/auth/password", "/api/auth/mfa", "/api/auth/data-export", "/api/auth/email-code", "/api/auth/login", "/api/auth/register", "/api/auth/wechat", "/api/admin/billing", "/api/admin/users", "/api/admin/announcements", "/api/admin/works", "/api/admin/prompts", "/api/admin/referrals", "/api/admin/object-storage"];
+    return roots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 
 export const config = {

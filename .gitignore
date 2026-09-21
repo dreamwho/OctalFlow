@@ -3,6 +3,8 @@
 .next-*/
 out/
 node_modules/
+apps/desktop/build/
+apps/desktop/dist/
 .pnpm-store/
 /pnpm-lock.yaml
 .env*

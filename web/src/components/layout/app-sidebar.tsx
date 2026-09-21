@@ -15,6 +15,7 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
     const pathname = usePathname();
     const router = useRouter();
     const site = usePublicSessionStore((state) => state.payload?.settings?.site) || { title: DEFAULT_SITE_TITLE, logoUrl: "/logo.svg" };
+    const adminLocal = usePublicSessionStore((state) => state.payload?.desktop?.edition === "admin");
     const siteTitle = resolveSiteTitle(site.title);
     const helpActive = pathname.startsWith("/help");
     const isCreateRoute = pathname === "/create";
@@ -27,7 +28,7 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
             </Link>
 
             <nav className={cn("hide-scrollbar min-h-0 flex-1 overflow-y-auto py-4", expanded ? "px-2.5" : "px-2")} aria-label="工作空间导航">
-                {isCreateRoute ? <CreateSidebarNavigation activeToolSlug={activeToolSlug} expanded={expanded} router={router} /> : <DefaultSidebarNavigation activeToolSlug={activeToolSlug} expanded={expanded} router={router} />}
+                {isCreateRoute ? <CreateSidebarNavigation activeToolSlug={activeToolSlug} expanded={expanded} router={router} adminLocal={adminLocal} /> : <DefaultSidebarNavigation activeToolSlug={activeToolSlug} expanded={expanded} router={router} adminLocal={adminLocal} />}
             </nav>
 
             <div className={cn("app-sidebar-footer shrink-0", expanded ? "px-2.5 pb-3 pt-2.5" : "p-2")}>
@@ -60,11 +61,12 @@ export function AppSidebar({ activeToolSlug, expanded }: { activeToolSlug?: Navi
     );
 }
 
-function DefaultSidebarNavigation({ activeToolSlug, expanded, router }: { activeToolSlug?: NavigationToolSlug; expanded: boolean; router: ReturnType<typeof useRouter> }) {
+function DefaultSidebarNavigation({ activeToolSlug, expanded, router, adminLocal }: { activeToolSlug?: NavigationToolSlug; expanded: boolean; router: ReturnType<typeof useRouter>; adminLocal: boolean }) {
     return (
         <>
             {navigationGroups.map((group, groupIndex) => {
-                const tools = navigationTools.filter((tool) => tool.group === group.id);
+                const tools = navigationTools.filter((tool) => tool.group === group.id && (!adminLocal || !["works", "prompts", "community", "me"].includes(tool.slug)));
+                if (!tools.length) return null;
                 return (
                     <div key={group.id} className={cn(groupIndex > 0 && "mt-4")}>
                         {expanded ? <div className="mb-1 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8d9aad] dark:text-[#68768b]">{group.label}</div> : null}
@@ -80,7 +82,7 @@ function DefaultSidebarNavigation({ activeToolSlug, expanded, router }: { active
     );
 }
 
-function CreateSidebarNavigation({ activeToolSlug, expanded, router }: { activeToolSlug?: NavigationToolSlug; expanded: boolean; router: ReturnType<typeof useRouter> }) {
+function CreateSidebarNavigation({ activeToolSlug, expanded, router, adminLocal }: { activeToolSlug?: NavigationToolSlug; expanded: boolean; router: ReturnType<typeof useRouter>; adminLocal: boolean }) {
     const groups = [
         { label: "创作", tools: [{ slug: "create", label: "创作", icon: PencilLine, primary: true }] },
         {
@@ -94,7 +96,7 @@ function CreateSidebarNavigation({ activeToolSlug, expanded, router }: { activeT
             label: "资产",
             tools: [
                 { slug: "assets", label: "素材", icon: Images },
-                { slug: "works", label: "作品", icon: GalleryVerticalEnd },
+                ...(!adminLocal ? [{ slug: "works", label: "作品", icon: GalleryVerticalEnd }] : []),
                 { slug: "my-prompts", label: "提示词", icon: BookMarked },
                 { slug: "profile", label: "设置", icon: Settings },
             ],
@@ -112,7 +114,7 @@ function CreateSidebarNavigation({ activeToolSlug, expanded, router }: { activeT
                     </div>
                 </div>
             ))}
-            {expanded ? (
+            {expanded && !adminLocal ? (
                 <div className="create-sidebar-workspace mt-5 border-t border-[#e7edf5] pt-4 dark:border-[#29323e]">
                     <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8d9aad] dark:text-[#68768b]">我的空间</div>
                     <div className="space-y-1">

@@ -53,6 +53,16 @@ describe("application proxy security", () => {
         expect(policy).not.toContain("http://[::1]:*");
         expect(policy).not.toContain("upgrade-insecure-requests");
     });
+
+    it("blocks cloud commerce in the administrator edition without changing web routes", () => {
+        const request = new NextRequest("http://127.0.0.1:3333/api/billing/orders", { method: "POST" });
+        expect(proxy(request).status).toBe(200);
+        vi.stubEnv("DREAMYO_DESKTOP_EDITION", "admin");
+        expect(proxy(request).status).toBe(403);
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/api/admin/dola/accounts")).status).toBe(200);
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/")).status).toBe(307);
+        expect(new URL(proxy(new NextRequest("http://127.0.0.1:3333/admin/setup")).headers.get("location") || "http://invalid").searchParams.get("section")).toBe("channels");
+    });
 });
 
 function writeRequest(headers: Record<string, string>) {

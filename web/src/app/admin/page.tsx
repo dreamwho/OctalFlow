@@ -10,6 +10,8 @@ import { getFreshAuthSettings, getPublicUserSummary } from "@/lib/auth/store";
 import { getAdminSetupSummary } from "@/lib/server/admin-setup-status";
 import { serializeAdminSettingsForUser } from "@/lib/server/admin-channel-config";
 import { getAuthenticatedPageAccess } from "@/lib/server/page-access";
+import { getDesktopEdition } from "@/lib/server/desktop-runtime";
+import { isAdminLocalSectionEnabled } from "@/lib/desktop-edition-policy";
 
 export const metadata: Metadata = { title: "管理后台 | dreamyo" };
 
@@ -27,11 +29,12 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     }
     const currentUser = access.user;
     if (currentUser.role !== "admin") redirect("/");
-    const initialSection = resolveAdminSection(currentUser, requestedSection);
+    const desktopEdition = getDesktopEdition();
+    const initialSection = resolveAdminSection(currentUser, isAdminLocalSectionEnabled(requestedSection, desktopEdition) ? requestedSection : "channels");
     if (!initialSection) redirect("/");
 
     const [settings, userSummary] = await Promise.all([getFreshAuthSettings(), getPublicUserSummary()]);
-    const setup = await getAdminSetupSummary({ settings, userSummary });
+    const setup = desktopEdition === "admin" ? undefined : await getAdminSetupSummary({ settings, userSummary });
 
     return (
         <AuthUserHydrator
@@ -60,6 +63,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                     initialPromptCount={0}
                     currentUser={currentUser}
                     initialSection={initialSection}
+                    desktopEdition={desktopEdition}
                     setupSummary={setup}
                     headerActions={
                         <>

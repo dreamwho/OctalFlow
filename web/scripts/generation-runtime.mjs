@@ -35,7 +35,7 @@ export function resolveGenerationWorkerOrigin({ environment = process.env, fallb
 }
 
 export function superviseGenerationRuntime({ app, workerScript, environment, services = [] }) {
-    services.forEach((service) => freeServicePort(service?.port));
+    if (!environment.DREAMYO_DESKTOP_EDITION) services.forEach((service) => freeServicePort(service?.port));
     const definitions = [...services, { name: "web", command: app.command, args: app.args, cwd: app.cwd }, { name: "generation-worker", command: process.execPath, args: [workerScript], cwd: app.cwd }];
     const children = definitions.map((definition) => ({
         ...definition,

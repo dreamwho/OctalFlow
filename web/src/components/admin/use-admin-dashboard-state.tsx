@@ -22,6 +22,7 @@ export type AdminDashboardProps = {
     initialPromptCount: number;
     currentUser: PublicUser;
     initialSection?: AdminSectionKey;
+    desktopEdition?: "commercial" | "admin" | null;
     setupSummary?: AdminSetupSummary;
     headerActions?: ReactNode;
 };

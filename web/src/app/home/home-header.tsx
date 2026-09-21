@@ -12,6 +12,7 @@ import { AccountActionsCluster } from "@/components/layout/account-actions-clust
 import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
 import { resetClientSessionState } from "@/lib/client-session-reset";
 import { useUserStore } from "@/stores/use-user-store";
+import { usePublicSessionStore } from "@/stores/use-public-session-store";
 import { HOME_NAVIGATION, type HomeNavigationItem } from "./home-data";
 import { useHomeActions } from "./home-actions";
 import styles from "./home.module.css";
@@ -25,6 +26,7 @@ export function HomeHeader() {
     const { message } = App.useApp();
     const { authenticated, site, openLogin, openBillingPlans, openProtectedPath } = useHomeActions();
     const storeUser = useUserStore((state) => state.user);
+    const adminLocal = usePublicSessionStore((state) => state.payload?.desktop?.edition === "admin");
     const announcement = site.announcementBar;
     const announcementVisible = announcement?.enabled === true && Boolean(announcement.text?.trim()) && !announcementDismissed;
     const accountId = String(storeUser?.accountId || "").padStart(4, "0");
@@ -93,6 +95,7 @@ export function HomeHeader() {
                 </div>
 
                 <div className={styles.headerActions}>
+                    {adminLocal ? <Link href="/admin?section=channels" className="rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-100">本地模式 · 上游配置</Link> :
                     <AccountActionsCluster
                         authenticated={authenticated}
                         displayName={storeUser?.displayName || storeUser?.username}
@@ -104,14 +107,14 @@ export function HomeHeader() {
                         onNavigate={openProtectedPath}
                         onLogout={handleLogout}
                         onLogin={() => openLogin()}
-                    />
+                    />}
                 </div>
             </div>
 
 
             {mobileOpen ? (
                 <nav id="home-navigation-menu" className={styles.mobileNav} aria-label="首页导航菜单">
-                    {HOME_NAVIGATION.map((item) =>
+                    {HOME_NAVIGATION.filter((item) => !adminLocal || ["/canvas", "/assets", "/drama"].includes(item.href)).map((item) =>
                         item.action !== "link" ? (
                             <button key={item.href} type="button" onClick={() => activate(item)}>
                                 {item.label}

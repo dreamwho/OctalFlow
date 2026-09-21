@@ -16,7 +16,8 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
     }
 
     const providerRoot = path.join(repoRoot, "services", "dola-api");
-    const python = source.DREAMYO_DOLA_PROVIDER_PYTHON?.trim() || path.join(providerRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+    const executable = source.DREAMYO_DOLA_PROVIDER_EXECUTABLE?.trim() || "";
+    const python = executable || source.DREAMYO_DOLA_PROVIDER_PYTHON?.trim() || path.join(providerRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
     if (!exists(python)) {
         if (source.DREAMYO_DOLA_API_ENABLED === "1" || configuredUrl) throw new Error(`本地 Dola Provider 运行环境不存在：${python}`);
         return { environment: source };
@@ -27,7 +28,7 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
     if (!port) throw new Error("Dola Provider 运行时端口无效");
     const apiKey = configuredKey || tokenFactory();
     const dataRoot = source.DREAMYO_DATA_DIR || path.join(webRoot, ".data");
-    const dotenv = readDotenv(path.join(providerRoot, ".env"));
+    const dotenv = source.DREAMYO_DESKTOP_EDITION ? {} : readDotenv(path.join(providerRoot, ".env"));
     const providerEnvironment = {
         ...source,
         ...dotenv,
@@ -46,7 +47,7 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
             name: "dola-api",
             port,
             command: python,
-            args: ["-m", "uvicorn", "dola_api.app:app", "--host", "127.0.0.1", "--port", String(port)],
+            args: executable ? [] : ["-m", "uvicorn", "dola_api.app:app", "--host", "127.0.0.1", "--port", String(port)],
             cwd: providerRoot,
             environment: providerEnvironment,
         },

@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, CreditCard, Crown, Gift, Keyboard, LogOut, ShieldCheck, UserCircle } from "lucide-react";
+import { ChevronRight, CreditCard, Crown, Gift, Keyboard, LogOut, Settings, ShieldCheck, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MenuProps } from "antd";
@@ -19,6 +19,7 @@ import type { ThemeScope } from "@/lib/theme-scope";
 import { useAdminThemeStore, useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore, type LocalUser } from "@/stores/use-user-store";
 import { resetClientSessionState } from "@/lib/client-session-reset";
+import { usePublicSessionStore } from "@/stores/use-public-session-store";
 
 type UserStatusActionsProps = {
     variant?: "default" | "canvas";
@@ -36,6 +37,7 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
     const [plansOpen, setPlansOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
     const storeUser = useUserStore((state) => state.user);
+    const desktopEdition = usePublicSessionStore((state) => state.payload?.desktop?.edition);
     const user = storeUser || initialUser || null;
     const frontendTheme = useThemeStore((state) => state.theme);
     const setFrontendTheme = useThemeStore((state) => state.setTheme);
@@ -231,6 +233,13 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
         </button>
     ) : null;
 
+    if (desktopEdition === "admin") return (
+        <div className="inline-flex items-center gap-2">
+            <span className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-800 dark:border-sky-700/50 dark:bg-sky-900/25 dark:text-sky-200">本地模式 · 无积分消耗</span>
+            <Link href="/admin?section=channels" className={cn(defaultControlClass, "gap-1.5 px-2.5 text-xs")}><Settings className="size-4" />上游配置</Link>
+        </div>
+    );
+
     if (variant === "canvas") {
         return (
             <div ref={rootRef} className="canvas-user-status-actions inline-flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -346,6 +355,7 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
         </div>
     );
 }
+
 
 function PointsSummaryPanel({ user, onClose, onUpgrade }: { user: LocalUser; onClose: () => void; onUpgrade: () => void }) {
     const { message } = App.useApp();

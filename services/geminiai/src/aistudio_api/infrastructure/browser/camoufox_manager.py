@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import importlib.util
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -71,12 +72,8 @@ class CamoufoxManager:
             logger.info("Port %s already has a browser, switching login flow to free port %s", old_port, self.port)
 
         logger.info("Starting Camoufox on port %s...", self.port)
-        cmd = [
-            self.python_executable,
-            str(LAUNCHER_PATH),
-            "--port",
-            str(self.port),
-        ]
+        launcher = os.getenv("AISTUDIO_BROWSER_LAUNCHER_EXECUTABLE", "").strip()
+        cmd = ([launcher] if launcher else [self.python_executable, str(LAUNCHER_PATH)]) + ["--port", str(self.port)]
         if self.headless:
             cmd.append("--headless")
 

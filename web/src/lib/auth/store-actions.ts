@@ -687,7 +687,7 @@ export async function consumeUserPoints(userId: string, model: string, amount = 
     const user = db?.users.find((item) => item.id === userId);
     if (db && (!user || user.status !== "active")) throw new AuthInputError("用户不可用");
     const settings = db ? db.settings : await getAuthSettings();
-    const multiplier = resolveModelPointCost(settings.modelPointCosts, normalizedModel, settings.logicalModels);
+    const multiplier = process.env.DREAMYO_DESKTOP_EDITION === "admin" ? 0 : resolveModelPointCost(settings.modelPointCosts, normalizedModel, settings.logicalModels);
     const units = Math.min(1000, normalizePointAmount(amount, 1));
     const cost = normalizePointAmount(units * multiplier, 0);
     const operationKey = idempotencyKey?.trim() || `points-consume:${randomUUID()}`;

@@ -10,7 +10,9 @@ import { prepareStandaloneAssets } from "./standalone-assets.mjs";
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "..");
 const distDir = process.env.NEXT_DIST_DIR?.trim() || ".next";
-const { standaloneRoot } = await prepareStandaloneAssets({ webRoot, distDir });
+const { standaloneRoot } = process.env.DREAMYO_DESKTOP_PACKAGED === "1"
+    ? { standaloneRoot: path.join(webRoot, distDir, "standalone") }
+    : await prepareStandaloneAssets({ webRoot, distDir });
 const geminiAi = localGeminiAiRuntime({ repoRoot, webRoot });
 const chatGptApi = localChatGptApiRuntime({ repoRoot, webRoot, environment: geminiAi.environment });
 const dolaApi = localDolaApiRuntime({ repoRoot, webRoot, environment: chatGptApi.environment });

@@ -45,6 +45,7 @@ import { SiteLogo } from "@/components/layout/site-logo";
 import type { PublicUser } from "@/lib/auth/store";
 import { DEFAULT_SITE_TITLE } from "@/lib/site-brand";
 import { usePublicSessionStore } from "@/stores/use-public-session-store";
+import { isAdminLocalSectionEnabled } from "@/lib/desktop-edition-policy";
 
 type AdminSection = { key: AdminSectionKey; label: string; description: string; shortDescription: string; icon: ReactNode };
 type AdminSectionGroup = { title: string; items: AdminSection[] };
@@ -59,6 +60,7 @@ export function AdminSectionNav({
     onMobileToggle,
     onMobileClose,
     currentUser,
+    desktopEdition,
 }: {
     activeKey: AdminSectionKey;
     onChange: (key: AdminSectionKey) => void;
@@ -69,8 +71,9 @@ export function AdminSectionNav({
     onMobileToggle: () => void;
     onMobileClose: () => void;
     currentUser: PublicUser;
+    desktopEdition?: "commercial" | "admin" | null;
 }) {
-    const allowedGroups = adminSectionGroups.map((group) => ({ ...group, items: group.items.filter((section) => canAccessAdminSection(currentUser, section.key)) })).filter((group) => group.items.length);
+    const allowedGroups = adminSectionGroups.map((group) => ({ ...group, items: group.items.filter((section) => canAccessAdminSection(currentUser, section.key) && isAdminLocalSectionEnabled(section.key, desktopEdition || null)) })).filter((group) => group.items.length);
     const activeGroup = allowedGroups.find((group) => group.items.some((section) => section.key === activeKey));
     const activeGroupTitle = activeGroup?.title;
     const site = usePublicSessionStore((state) => state.payload?.settings?.site) || { title: DEFAULT_SITE_TITLE, logoUrl: "/brand/dreamyo/mark.png" };
