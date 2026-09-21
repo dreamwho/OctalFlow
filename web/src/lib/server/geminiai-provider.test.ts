@@ -1,10 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { fetch as undiciFetch } from "undici";
+import { vi as vitestVi } from "vitest";import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     appendLog: vi.fn(),
     ensureMagicProxy: vi.fn(),
     openedLogs: new Map<string, Record<string, unknown>>(),
 }));
+vi.mock("undici", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("undici")>();
+    return { ...actual, fetch: vi.fn() };
+});
+
+const mockUndiciFetch = (fetchMock: unknown) => {
+    vi.mocked(undiciFetch).mockImplementation(fetchMock as never);
+    return fetchMock as never;
+};
+
 vi.mock("@/lib/server/geminiai-request-log-store", () => ({
     appendGeminiAiRequestLog: mocks.appendLog,
     openGeminiAiRequestLog: vi.fn((input) => {
@@ -58,7 +70,7 @@ describe("GeminiAI sidecar provider", () => {
         vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test/internal");
         vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi.fn().mockResolvedValue(Response.json({ ok: true }));
-        vi.stubGlobal("fetch", fetchMock);
+        mockUndiciFetch(fetchMock);
 
         await geminiAiSidecarRequest("/accounts", { headers: { authorization: "Bearer browser-secret", "x-api-key": "browser-key", cookie: "session=browser" } });
 
@@ -73,7 +85,7 @@ describe("GeminiAI sidecar provider", () => {
         vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
         vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi.fn().mockResolvedValue(Response.json({ choices: [] }));
-        vi.stubGlobal("fetch", fetchMock);
+        mockUndiciFetch(fetchMock);
 
         await geminiAiRuntimeRequest("/chat/completions", { method: "POST" });
         await geminiAiRuntimeRequest("/models", { method: "GET" });
@@ -91,7 +103,7 @@ describe("GeminiAI sidecar provider", () => {
             .fn()
             .mockResolvedValueOnce(Response.json({ choices: [{ message: { content: "外部结果" } }] }))
             .mockResolvedValueOnce(Response.json({ id: "account-one", email: "owner@example.com" }));
-        vi.stubGlobal("fetch", fetchMock);
+        mockUndiciFetch(fetchMock);
 
         await geminiAiRuntimeRequest(
             "/v1/chat/completions",
@@ -122,8 +134,7 @@ describe("GeminiAI sidecar provider", () => {
             events.push("ensure");
             return { enabled: true };
         });
-        vi.stubGlobal(
-            "fetch",
+        mockUndiciFetch(
             vi.fn(async () => {
                 events.push("sidecar");
                 return Response.json({ choices: [] });
@@ -140,7 +151,7 @@ describe("GeminiAI sidecar provider", () => {
         vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
         vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
         const fetchMock = vi.fn().mockResolvedValue(Response.json({ status: "ok" }));
-        vi.stubGlobal("fetch", fetchMock);
+        mockUndiciFetch(fetchMock);
 
         await expect(geminiAiHealth()).resolves.toBe(true);
 
@@ -154,7 +165,7 @@ describe("GeminiAI sidecar provider", () => {
             .fn()
             .mockResolvedValueOnce(Response.json({ choices: [{ message: { content: "真实文本结果" } }] }))
             .mockResolvedValueOnce(Response.json({ id: "account-one", email: "owner@example.com" }));
-        vi.stubGlobal("fetch", fetchMock);
+        mockUndiciFetch(fetchMock);
 
         await geminiAiRuntimeRequest("/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "你好" }] }) });
 
@@ -180,7 +191,7 @@ describe("GeminiAI sidecar provider", () => {
                 headers: { "content-type": "application/json", "x-aistudio-account-id": "account-two", "x-aistudio-account-email": "two@example.com" },
             }),
         );
-        vi.stubGlobal("fetch", fetchMock);
+        mockUndiciFetch(fetchMock);
 
         await geminiAiRuntimeRequest("/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "你好" }] }) });
 
@@ -195,7 +206,7 @@ describe("GeminiAI sidecar provider", () => {
             .fn()
             .mockResolvedValueOnce(Response.json({ data: [{ b64_json: "secret-image-base64" }] }))
             .mockResolvedValueOnce(Response.json({ id: "account-one", email: "owner@example.com" }));
-        vi.stubGlobal("fetch", fetchMock);
+        mockUndiciFetch(fetchMock);
 
         await geminiAiRuntimeRequest("/images/generations", { method: "POST", body: JSON.stringify({ model: "gemini-3-pro-image", prompt: "一只橘猫" }) });
 

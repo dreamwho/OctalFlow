@@ -18,7 +18,15 @@ reference fixture is available.
 
 Set `DOLA_PROVIDER_KEY`, `DOLA_WEB_URL` (normally
 `https://www.dola.com/chat/create-image`), and `DOLA_BROWSER_ENGINE=camoufox` in
-the internal service environment. When the existing GeminiAIStudio-style proxy
+the internal service environment. `DOLA_CAMOUFOX_BROWSER` may pin an installed
+Camoufox browser build for Dola without changing the globally active build used
+by GeminiAIStudio. `DOLA_CAMOUFOX_OS` can explicitly select `macos`, `windows`,
+or `linux`; otherwise the provider always uses a macOS fingerprint. The provider stores one
+real fingerprint preset and stable canvas/audio/font-noise seeds per account in
+`DOLA_PROFILE_DIR`, instead of rotating the apparent device on every request.
+`DOLA_CAMOUFOX_LOCALE` defaults to `zh-CN`. When a managed proxy is active,
+Camoufox GeoIP aligns WebRTC, timezone, and geolocation with that egress. When
+the existing GeminiAIStudio-style proxy
 manager is enabled, Next.js resolves the selected magic node, generic
 node/group, or chained hop/landing egress for each request and passes the
 short-lived proxy URL to this provider; it is encrypted in durable task state

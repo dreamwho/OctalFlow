@@ -159,7 +159,15 @@ let authDbCache: { db: AuthDatabase; mtimeMs: number } | null = null;
 
 export async function readAuthDb(): Promise<AuthDatabase> {
     if (isPostgresDatabaseEnabled()) throw new Error("PostgreSQL auth reads must use entity repositories");
-    if (authDbCache) return structuredClone(authDbCache.db);
+    if (!authDbCache) return readAuthDbUncached();
+    // 多 worker / 多进程部署下，其他 worker 写入 auth.json 后本进程缓存不会收到失效通知；
+    // 这里必须比对 mtime，命中才复用缓存，否则会拿到过期用户/设置快照。
+    try {
+        const info = await statFile(resolveDataPath(AUTH_DATA_FILE));
+        if (info.mtimeMs === authDbCache.mtimeMs) return structuredClone(authDbCache.db);
+    } catch {
+        if (authDbCache.mtimeMs === 0) return structuredClone(authDbCache.db);
+    }
     return readAuthDbUncached();
 }
 
@@ -207,6 +215,7 @@ export async function mutateAuthDb<T>(mutator: (db: AuthDatabase) => T | Promise
 export async function writeAuthDb(db: AuthDatabase) {
     if (isPostgresDatabaseEnabled()) throw new Error("Full PostgreSQL auth writes are reserved for explicit backup restore");
     await writeJsonDataFile(AUTH_DATA_FILE, encryptAuthDbSecretsForStorage(db));
+    invalidateAuthDbCache();
 }
 
 /** Full authentication snapshot for the explicit administrator backup transaction only. */
@@ -372,6 +381,7 @@ export function mapPostgresSettings(settingsRow: Record<string, unknown> | undef
         logicalModels: dbJson(settingsRow?.logical_models, fallback.logicalModels),
         defaultModels: dbJson(settingsRow?.default_models, fallback.defaultModels),
         agentSkills: dbJson(settingsRow?.agent_skills, fallback.agentSkills),
+        canvasQuickActions: dbJson(settingsRow?.canvas_quick_actions, fallback.canvasQuickActions),
     });
 }
 
@@ -534,7 +544,7 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
         INSERT INTO app_settings (
             id, site, registration_enabled, email_registration_enabled, login_methods, free_daily_points_enabled, mail, allow_user_api_config,
             model_point_costs, generation_point_multipliers, generation_cost_control, data_lifecycle, entitlements_enabled, default_plan_id, generation_concurrency, generation_defaults,
-            logical_models, default_models, agent_skills, free_daily_points
+            logical_models, default_models, agent_skills, canvas_quick_actions, free_daily_points
         )
         VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         ON CONFLICT (id) DO UPDATE SET
@@ -556,6 +566,7 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             logical_models = EXCLUDED.logical_models,
             default_models = EXCLUDED.default_models,
             agent_skills = EXCLUDED.agent_skills,
+            canvas_quick_actions = EXCLUDED.canvas_quick_actions,
             free_daily_points = EXCLUDED.free_daily_points
         `,
         [

@@ -34,6 +34,7 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
         DOLA_PROVIDER_KEY: apiKey,
         DOLA_ENABLE_BROWSER: source.DOLA_ENABLE_BROWSER?.trim() || dotenv.DOLA_ENABLE_BROWSER || "1",
         DOLA_BROWSER_ENGINE: source.DOLA_BROWSER_ENGINE?.trim() || dotenv.DOLA_BROWSER_ENGINE || "camoufox",
+        DOLA_CAMOUFOX_BROWSER: source.DOLA_CAMOUFOX_BROWSER?.trim() || dotenv.DOLA_CAMOUFOX_BROWSER || "",
         DOLA_PROVIDER_PORT: String(port),
         DOLA_TASK_STATE_PATH: source.DOLA_TASK_STATE_PATH?.trim() || dotenv.DOLA_TASK_STATE_PATH || path.join(dataRoot, "dola", "provider-tasks.json"),
         DOLA_PROFILE_DIR: source.DOLA_PROFILE_DIR?.trim() || dotenv.DOLA_PROFILE_DIR || path.join(dataRoot, "dola", "profiles"),
@@ -43,6 +44,7 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
         environment: { ...source, DREAMYO_DOLA_PROVIDER_URL: `http://127.0.0.1:${port}`, DREAMYO_DOLA_PROVIDER_KEY: apiKey },
         service: {
             name: "dola-api",
+            port,
             command: python,
             args: ["-m", "uvicorn", "dola_api.app:app", "--host", "127.0.0.1", "--port", String(port)],
             cwd: providerRoot,

@@ -25,10 +25,12 @@ export class GeminiAiGatewayRepository {
             CREATE TABLE IF NOT EXISTS geminiai_gateway_settings (
                 id text PRIMARY KEY DEFAULT 'default',
                 enabled boolean NOT NULL DEFAULT true,
+                rotation_limit integer NOT NULL DEFAULT 2,
                 created_at timestamptz NOT NULL DEFAULT now(),
                 updated_at timestamptz NOT NULL DEFAULT now(),
                 CONSTRAINT geminiai_gateway_singleton CHECK (id = 'default')
             );
+            ALTER TABLE geminiai_gateway_settings ADD COLUMN IF NOT EXISTS rotation_limit integer NOT NULL DEFAULT 2;
             INSERT INTO geminiai_gateway_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
         `,
             )
@@ -37,13 +39,16 @@ export class GeminiAiGatewayRepository {
 
     async getGateway() {
         const result = await this.db.query("SELECT * FROM geminiai_gateway_settings WHERE id = 'default'");
-        return result.rows[0] ? mapGateway(result.rows[0]) : { enabled: true };
+        return result.rows[0] ? mapGateway(result.rows[0]) : { enabled: true, rotationLimit: 2 };
     }
 
     async updateGateway(patch: Partial<GeminiAiGatewaySettings>) {
-        if (patch.enabled === undefined) return this.getGateway();
-        const result = await this.db.query("UPDATE geminiai_gateway_settings SET enabled=$1, updated_at=now() WHERE id='default' RETURNING *", [patch.enabled]);
-        return result.rows[0] ? mapGateway(result.rows[0]) : { enabled: patch.enabled === true };
+        if (patch.enabled === undefined && patch.rotationLimit === undefined) return this.getGateway();
+        const current = await this.getGateway();
+        const enabled = patch.enabled === undefined ? current.enabled : patch.enabled;
+        const rotationLimit = patch.rotationLimit === undefined ? current.rotationLimit : patch.rotationLimit;
+        const result = await this.db.query("UPDATE geminiai_gateway_settings SET enabled=$1, rotation_limit=$2::integer, updated_at=now() WHERE id='default' RETURNING *", [enabled, rotationLimit]);
+        return result.rows[0] ? mapGateway(result.rows[0]) : { enabled, rotationLimit };
     }
 
     async listApiKeys() {
@@ -103,7 +108,8 @@ function addPatch(assignments: string[], values: unknown[], column: string, valu
 }
 
 function mapGateway(row: Record<string, unknown>): GeminiAiGatewaySettings {
-    return { enabled: row.enabled !== false };
+    const rotationLimit = Number(row.rotation_limit);
+    return { enabled: row.enabled !== false, rotationLimit: Number.isFinite(rotationLimit) && rotationLimit >= 0 ? Math.floor(rotationLimit) : 2 };
 }
 
 function mapApiKey(row: Record<string, unknown>): StoredGeminiAiApiKey {

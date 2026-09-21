@@ -1,4 +1,4 @@
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 
 import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-lifecycle";
 import { toUndiciRequestBody } from "@/lib/server/undici-request-body";
@@ -13,8 +13,10 @@ import {
     type GeminiAiRequestLifecycleEntry,
 } from "@/lib/server/geminiai-request-log-store";
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
+import { getGeminiAiGatewaySettings } from "@/lib/server/geminiai-gateway-store";
 
 const GEMINIAI_REQUEST_PATHS = new Set(["/v1/models", "/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
+const GEMINIAI_GENERATION_PATHS = new Set(["/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
 
 export const GEMINIAI_PROTOCOL = "geminiai" as const;
 export const GEMINIAI_CHANNEL_ID = "geminiai";
@@ -51,6 +53,12 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
     headers.delete("x-api-key");
     headers.delete("cookie");
     if (!options.unauthenticated) headers.set("authorization", `Bearer ${config.apiKey}`);
+    // 方案A：生成请求把后台配置的换号次数预算下发给 sidecar，sidecar 在限流/鉴权类错误时自动切换账号。
+    if (GEMINIAI_GENERATION_PATHS.has(normalizedPath)) {
+        const gateway = await getGeminiAiGatewaySettings().catch(() => ({ enabled: true, rotationLimit: 2 }));
+        const rotationLimit = Number(gateway.rotationLimit);
+        headers.set("x-aistudio-rotation-limit", String(Number.isFinite(rotationLimit) && rotationLimit > 0 ? Math.floor(rotationLimit) : 1));
+    }
 
     const metadata = requestLogMetadata(normalizedPath, init, options.logSource);
     const startedAt = Date.now();
@@ -85,40 +93,45 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
             detail: `目标地址: ${sidecarUrl(config.baseUrl, normalizedPath)}, 认证: ${options.unauthenticated ? "未鉴权请求" : "Bearer Token 授权"}`,
         });
 
-        const response = await fetch(sidecarUrl(config.baseUrl, normalizedPath), {
+        // 必须用 npm undici 的 fetch：Node 内置 fetch 的 dispatcher 与 npm undici Agent 接口不兼容
+        // （报 invalid onRequestStart method / fetch failed）。
+        const response = await undiciFetch(sidecarUrl(config.baseUrl, normalizedPath), {
             method: init.method,
             headers,
             body: await toUndiciRequestBody(init.body),
-            cache: "no-store",
             redirect: "error",
             signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(GENERATION_TRANSPORT_TIMEOUT_MS)]) : AbortSignal.timeout(GENERATION_TRANSPORT_TIMEOUT_MS),
-            // Node 全局 fetch 即 undici：dispatcher 覆盖默认 300s headersTimeout，避免长生成被掐断
             dispatcher: sidecarDispatcher,
-        } as RequestInit & { dispatcher: unknown });
+        } as never);
 
+        const rotations = Number(response.headers.get("x-aistudio-rotations"));
         lifecycle.push({
             phase: "response",
             message: `收到上游响应 HTTP ${response.status}`,
             time: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
-            detail: `状态码: ${response.status}, Content-Type: ${response.headers.get("content-type") || "未知"}`,
+            detail: `状态码: ${response.status}, Content-Type: ${response.headers.get("content-type") || "未知"}${Number.isFinite(rotations) && rotations > 0 ? `, 已自动换号 ${Math.floor(rotations)} 次` : ""}`,
         });
 
-        if (metadata) await recordRequestLog(config, metadata, response, startedAt, openLogId, lifecycle);
-        return response;
+        if (metadata) await recordRequestLog(config, metadata, response as unknown as Response, startedAt, openLogId, lifecycle);
+        return response as unknown as Response;
     } catch (error) {
+        // undici 的 "fetch failed" 只有 cause 才带真实原因（ECONNREFUSED/ECONNRESET 等），必须单独记录。
+        const cause = (error as { cause?: unknown })?.cause;
         lifecycle.push({
             phase: "failed",
             message: providerErrorMessage(error),
             time: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
-            detail: error instanceof Error ? error.stack || error.message : String(error),
+            detail: `${error instanceof Error ? error.stack || error.message : String(error)}${cause ? `\ncause: ${cause instanceof Error ? `${(cause as { code?: string }).code || ""} ${cause.message}` : String(cause)}` : ""}`,
         });
         if (metadata) await safeSettleError(openLogId, metadata, error, startedAt, lifecycle);
         if (error instanceof GeminiAiProviderError) throw error;
         if (error instanceof MagicProxyError) throw new GeminiAiProviderError(error.message, error.status);
         if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) throw new GeminiAiProviderError("GeminiAI 服务请求超时", 504);
-        throw new GeminiAiProviderError("GeminiAI 服务暂时不可用", 502);
+        const causeText = (error as { cause?: unknown })?.cause;
+        const causeTextMessage = causeText instanceof Error ? causeText.message : causeText ? String(causeText) : "";
+        throw new GeminiAiProviderError(causeTextMessage ? `GeminiAI 服务暂时不可用（${causeTextMessage}）` : "GeminiAI 服务暂时不可用", 502);
     }
 }
 
@@ -164,7 +177,7 @@ export async function syncGeminiAiRuntimeProxy(proxyUrl: string) {
     if (lastSyncedGeminiAiProxy === desired) return;
     const config = readProviderConfig();
     if (!config) throw new GeminiAiProviderError("GeminiAI 服务尚未配置", 503);
-    const response = await fetch(sidecarUrl(config.baseUrl, "/runtime/proxy"), {
+    const response = await undiciFetch(sidecarUrl(config.baseUrl, "/runtime/proxy"), {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${config.apiKey}` },
         body: JSON.stringify({ proxy_url: desired }),
@@ -193,7 +206,9 @@ export async function geminiAiHealth() {
     try {
         const response = await geminiAiSidecarRequest("/health", { signal: AbortSignal.timeout(10_000) }, { unauthenticated: true });
         return response.ok;
-    } catch {
+    } catch (error) {
+        const cause = (error as { cause?: unknown })?.cause;
+        console.warn("[geminiai] sidecar health check failed:", error instanceof Error ? error.message : error, cause ? `cause: ${cause instanceof Error ? `${(cause as { code?: string }).code || ""} ${cause.message}` : String(cause)}` : "");
         return false;
     }
 }
@@ -403,7 +418,7 @@ function extractResponseMetrics(value: unknown, capability: GeminiAiRequestCapab
 
 async function activeAccount(config: NonNullable<ReturnType<typeof readProviderConfig>>) {
     try {
-        const response = await fetch(sidecarUrl(config.baseUrl, "/accounts/active"), {
+        const response = await undiciFetch(sidecarUrl(config.baseUrl, "/accounts/active"), {
             headers: { authorization: `Bearer ${config.apiKey}` },
             cache: "no-store",
         });

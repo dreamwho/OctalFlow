@@ -21,7 +21,7 @@
     background: radial-gradient(ellipse 74% 42% at 50% 14%, rgba(83, 217, 255, 0.14), transparent 70%), linear-gradient(180deg, #f4f8ff 0%, #edf6ff 38%, #ffffff 100%);
     color: var(--home-text);
     letter-spacing: 0;
-    scroll-behavior: smooth;
+    scroll-behavior: smooth;    zoom: var(--home-resolution-scale, 1);
 }
 
 :global(.dark) .root {

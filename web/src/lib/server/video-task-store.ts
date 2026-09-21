@@ -33,6 +33,10 @@ export type VideoTask = GenerationTaskContext & {
         credentialVersion?: number;
         proxyMode?: "direct" | "managed";
         proxyTarget?: string;
+        /** Dola 原始创建请求体（不含 Cookie）：账号触发限额后供 worker 自动换号重提 */
+        rotationPayload?: Record<string, unknown>;
+        /** 已自动换号重试次数 */
+        rotations?: number;
     };
     requestedDurationSeconds?: number;
     source?: string;
@@ -77,7 +81,20 @@ export function transitionVideoTask(
     return transitionStoredGenerationTask<VideoTask>("video", task.id, task.userId, ["running"], patch, GENERATION_TASK_RETENTION_MS, executionPatch);
 }
 
-export function updateVideoTask(id: string, patch: Partial<Pick<VideoTask, "config" | "upstream" | "requestedDurationSeconds" | "attempts" | "result">>) {
+export function reconcileRunningVideoTask(id: string, upstream: Partial<VideoTask["upstream"]> = {}) {
+    return mutateStoredGenerationTask<VideoTask>("video", id, GENERATION_TASK_RETENTION_MS, (task) => {
+        if (!canReconcileVideoTask(task)) return null;
+        return {
+            ...task,
+            status: "running",
+            upstream: { ...task.upstream, ...upstream },
+            error: undefined,
+            retryable: undefined,
+        };
+    });
+}
+
+export function updateVideoTask(id: string, patch: Partial<Pick<VideoTask, "config" | "upstream" | "requestedDurationSeconds" | "attempts" | "result" | "error" | "retryable">>) {
     return mutateStoredGenerationTask<VideoTask>("video", id, GENERATION_TASK_RETENTION_MS, (task) => ({ ...task, ...patch }));
 }
 

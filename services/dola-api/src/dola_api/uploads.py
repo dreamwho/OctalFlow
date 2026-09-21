@@ -157,12 +157,19 @@ def _check_source_size(content: bytes) -> bytes:
 
 async def _prepare_upload(page: Any) -> dict[str, Any]:
     result = await page.evaluate(PREPARE_UPLOAD_SCRIPT, {"body": PREPARE_UPLOAD_BODY})
-    if not isinstance(result, dict) or not result.get("ok"):
-        status = result.get("status") if isinstance(result, dict) else "unknown"
+    if not isinstance(result, dict):
+        raise RuntimeError("prepare_upload_invalid_result")
+    if not result.get("ok"):
+        status = result.get("status", "unknown")
         raise RuntimeError(f"prepare_upload_http_{status}")
     data = result.get("json")
-    if not isinstance(data, dict) or data.get("code") != 0 or not isinstance(data.get("data"), dict):
-        raise RuntimeError("prepare_upload_invalid_response")
+    if not isinstance(data, dict):
+        raise RuntimeError("prepare_upload_invalid_json")
+    if data.get("code") != 0:
+        code = str(data.get("code") if data.get("code") is not None else "unknown")
+        raise RuntimeError(f"prepare_upload_rejected_{code}")
+    if not isinstance(data.get("data"), dict):
+        raise RuntimeError("prepare_upload_config_missing")
     return data["data"]
 
 

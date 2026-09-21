@@ -19,6 +19,7 @@ import { CanvasSkillSelector } from "./canvas-skill-selector";
 import { CanvasAudioModePicker, CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
 import { CanvasRichPromptEditor, type CanvasPromptEditorHandle, type CanvasPromptTokenSnapshot } from "./canvas-rich-prompt-editor";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
+import { CanvasVideoDurationPopover } from "./canvas-video-duration-popover";
 import { CanvasCameraControl } from "./canvas-camera-control";
 import { CanvasCameraMotionPicker } from "./canvas-camera-motion-picker";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasGenerationMode, type CanvasNodeData } from "../types";
@@ -90,8 +91,10 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
 
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = isCanvasImageNodeType(node.type) && Boolean(node.metadata?.content);
+    const hasVideoContent = node.type === CanvasNodeType.Video && Boolean(node.metadata?.content);
+    const hasAudioContent = node.type === CanvasNodeType.Audio && Boolean(node.metadata?.content);
     const isPanorama = node.type === CanvasNodeType.Panorama;
-    const isEditingExistingContent = hasTextContent || hasImageContent;
+    const isEditingExistingContent = hasTextContent || hasImageContent || hasVideoContent || hasAudioContent;
     const activeMentionReferences = mentionReferences.filter((reference) => reference.active);
     const [prompt, setPrompt] = useState(publicNodePrompt(node));
     const [expanded, setExpanded] = useState(false);
@@ -262,7 +265,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         if ((!text && !optionalSkill) || missingRequiredReference || isAudioCreationMode || isRunning) return false;
         const executionSeed = text || optionalSkill?.promptHint || `按「${optionalSkill?.name || "所选 Skill"}」默认流程生成`;
         void onGenerate(node.id, mode, executionSeed, eligibleSelectedSkillIds);
-        setPrompt("");
+        setPrompt(isEditingExistingContent ? publicNodePrompt(node) : "");
         selectedSkillIdsRef.current = [];
         setSelectedSkillIds([]);
         setPromptTokenSnapshot([]);
@@ -326,6 +329,14 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         buttonClassName="canvas-composer-settings !inline-flex !h-7 !w-auto !shrink-0 !flex-nowrap !items-center !justify-start !overflow-hidden !rounded-lg !px-2.5 [&>span:last-child]:!inline-flex [&>span:last-child]:!min-w-0 [&>span:last-child]:!items-center [&>span:last-child]:!gap-1 [&>span:last-child]:!whitespace-nowrap [&>span:last-child>svg]:!shrink-0"
                         onConfigChange={(key, value) => onConfigChange(node.id, canvasVideoConfigPatch(key, value))}
                         onMetadataChange={(patch) => onConfigChange(node.id, patch)}
+                    />
+                    <CanvasVideoDurationPopover
+                        config={config}
+                        metadata={node.metadata}
+                        references={mentionReferences}
+                        seconds={Number(config.videoSeconds || 5)}
+                        buttonClassName="canvas-composer-settings !inline-flex !h-7 !w-auto !shrink-0 !flex-nowrap !items-center !gap-1 !rounded-lg !px-2.5"
+                        onSecondsChange={(seconds) => onConfigChange(node.id, canvasVideoConfigPatch("videoSeconds", String(seconds)))}
                     />
                 </>
             ) : mode === "audio" ? (

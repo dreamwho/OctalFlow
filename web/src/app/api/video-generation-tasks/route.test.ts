@@ -177,6 +177,29 @@ describe("video generation candidate failover", () => {
         expect(mocks.createVideoTask).toHaveBeenCalledOnce();
     });
 
+    it("keeps a pre-submission Dola account failure out of manual review", async () => {
+        mocks.fetchInternalApi.mockImplementation(async () =>
+            new Response(JSON.stringify({ error: "没有可用的 Dola Cookie 账号", submissionState: "not_started" }), {
+                status: 503,
+                headers: { "content-type": "application/json", "x-dreamyo-submission-state": "not-started" },
+            }),
+        );
+
+        const response = await POST(request());
+
+        expect(response.status).toBe(502);
+        expect(await response.json()).toMatchObject({ error: "没有可用的 Dola Cookie 账号", canRetry: true });
+        expect(mocks.scheduleGenerationTask).not.toHaveBeenCalledWith(
+            "video",
+            "local-task",
+            expect.objectContaining({ executionPhase: "needs_review" }),
+        );
+        expect(mocks.transitionVideoTask).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "local-task" }),
+            expect.objectContaining({ status: "error", error: "没有可用的 Dola Cookie 账号", retryable: true }),
+        );
+    });
+
     it("surfaces an explicit HTTP 200 business failure after safe candidate fallback", async () => {
         mocks.fetchInternalApi.mockImplementation(async () => json({ code: "204", msg: "登录验证失败" }));
 

@@ -442,6 +442,7 @@ export async function createUpstream(
         const text = await response.text();
         if (!response.ok) {
             lastError = readVideoProviderHttpError(text, response.status);
+            if (response.headers.get("x-dreamyo-submission-state") === "not-started") throw new SafeCandidateFailure(lastError);
             if (!SAFE_CREATE_FAILURE_STATUSES.has(response.status)) throw new Error(lastError);
             continue;
         }
@@ -482,6 +483,8 @@ export async function createUpstream(
                       credentialVersion: Number.isSafeInteger(Number((data as Record<string, unknown>).credentialVersion)) ? Number((data as Record<string, unknown>).credentialVersion) : undefined,
                       proxyMode: (data as Record<string, unknown>).proxyMode === "managed" || (data as Record<string, unknown>).proxyMode === "direct" ? (data as Record<string, unknown>).proxyMode : undefined,
                       proxyTarget: typeof (data as Record<string, unknown>).proxyTarget === "string" ? String((data as Record<string, unknown>).proxyTarget) : undefined,
+                      rotationPayload: payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : undefined,
+                      rotations: 0,
                   }
                 : {}),
             pointsCost: billedPointsCost(response.headers.get("x-dreamyo-points-cost")),

@@ -130,6 +130,8 @@ export function CreativeGenerationPreferences({
     allowCustomSize = true,
     allowCustomVideoQuality = true,
     videoDurationRange,
+    videoDurationSnapPoints,
+    showVideoDuration,
     capabilityNotice,
     panelHeader,
     panelFooter,
@@ -169,6 +171,8 @@ export function CreativeGenerationPreferences({
     allowCustomSize?: boolean;
     allowCustomVideoQuality?: boolean;
     videoDurationRange?: { min: number; max: number };
+    videoDurationSnapPoints?: readonly number[];
+    showVideoDuration?: boolean;
     capabilityNotice?: string;
     panelHeader?: ReactNode;
     panelFooter?: ReactNode;
@@ -308,6 +312,8 @@ export function CreativeGenerationPreferences({
                                 allowCustomSize={allowCustomSize}
                                 allowCustomVideoQuality={allowCustomVideoQuality}
                                 videoDurationRange={videoDurationRange}
+                                videoDurationSnapPoints={videoDurationSnapPoints}
+                                showVideoDuration={showVideoDuration}
                                 ratioGridClassName={ratioGridClassName}
                                 ratioTileLayout={ratioTileLayout}
                                 onChange={onChange}
@@ -355,6 +361,8 @@ function PreferencePanel({
     allowCustomSize,
     allowCustomVideoQuality,
     videoDurationRange,
+    videoDurationSnapPoints,
+    showVideoDuration,
     ratioGridClassName,
     ratioTileLayout,
     onChange,
@@ -374,6 +382,8 @@ function PreferencePanel({
     allowCustomSize: boolean;
     allowCustomVideoQuality: boolean;
     videoDurationRange?: { min: number; max: number };
+    videoDurationSnapPoints?: readonly number[];
+    showVideoDuration?: boolean;
     ratioGridClassName?: string;
     ratioTileLayout: boolean;
     onChange: (patch: CreativeGenerationPreferencePatch) => void;
@@ -482,8 +492,34 @@ function PreferencePanel({
                 <CompactOptionGroup label="画质" ariaLabel="选择图片画质" value={selectedQuality} options={qualityOptions} compact={compact} onChange={(quality) => onChange({ quality })} />
             )}
             {showCount ? <GenerationCountGroup key={capability} capability={capability} value={selectedCount} onChange={(count) => onChange({ count })} /> : null}
-            {capability === "video" ? (
+            {capability === "video" && showVideoDuration !== false ? (
                 <>
+                    {(() => {
+                        const seconds = preferences.video?.seconds || 5;
+                        const snapPoints = videoDurationSnapPoints;
+                        const rangeMin = snapPoints?.length ? snapPoints[0] : videoDurationRange?.min ?? 5;
+                        const rangeMax = snapPoints?.length ? snapPoints[snapPoints.length - 1] : videoDurationRange?.max ?? 15;
+                        const clamped = Math.min(rangeMax, Math.max(rangeMin, seconds || rangeMin));
+                        const snapTo = (value: number) => (snapPoints?.length ? snapPoints.reduce((a, b) => (Math.abs(b - value) < Math.abs(a - value) ? b : a)) : Math.round(value));
+                        return (
+                            <div className="grid gap-1">
+                                <input
+                                    type="range"
+                                    aria-label="拖动选择视频时长"
+                                    min={rangeMin}
+                                    max={rangeMax}
+                                    step={1}
+                                    value={clamped}
+                                    onChange={(event) => onChange({ seconds: snapTo(Number(event.target.value)) })}
+                                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#e3e8ec] accent-[#3978ff] dark:bg-[#343b44]"
+                                />
+                                <div className="flex justify-between text-[10px] text-[#a0a8b2] dark:text-[#8b96a3]">
+                                    <span>{rangeMin}s</span>
+                                    <span>{rangeMax}s</span>
+                                </div>
+                            </div>
+                        );
+                    })()}
                     <SuggestedPositiveIntegerField
                         label="时长"
                         ariaLabel="输入视频时长"

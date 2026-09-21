@@ -348,6 +348,7 @@ describe("CanvasNode error content", () => {
         const markup = renderImageNode({ data: reviewNode, onRetry: noop });
 
         expect(markup).toContain("上游创建状态待确认");
+        expect(markup).toContain("查看验证页面");
         expect(markup).toContain("检查状态");
         expect(markup).toContain("再次生成");
     });

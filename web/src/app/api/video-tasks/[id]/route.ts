@@ -11,6 +11,7 @@ import { cancellationExecutionPatch, type GenerationCancellationTarget } from "@
 import { refundVideoTask } from "@/lib/server/video-task-refund";
 import { getStoredGenerationTaskRecord } from "@/lib/server/generation-task-store";
 import { writeVideoGenerationLog } from "@/lib/server/video-task-log";
+import { resolveDolaTaskVerification } from "@/lib/server/dola/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,15 +31,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const shouldRefund = Boolean(task.upstream.pointsRecordId && !task.upstream.refunded && task.status === "error");
     const settledTask = shouldRefund ? await refundVideoTask(task) : task;
     const refreshedUser = shouldRefund ? await getCurrentUser(request) : user;
-    const verificationId = executionPhase === "needs_review" && typeof schedule?.resultPayload?.verificationId === "string" ? schedule.resultPayload.verificationId : undefined;
-    const isDola = task.config.advancedConfig?.protocol === "dola";
+    const isDola = task.config?.advancedConfig?.protocol === "dola";
+    let verificationId = executionPhase === "needs_review" && typeof schedule?.resultPayload?.verificationId === "string" ? schedule.resultPayload.verificationId : undefined;
+    if (executionPhase === "needs_review" && isDola && !verificationId) {
+        verificationId = await resolveDolaTaskVerification(task);
+    }
     const reviewReason = executionPhase === "needs_review"
         ? isDola
             ? verificationId
-                ? schedule?.resultPayload?.reviewReason || task.reviewReason
+                ? schedule?.resultPayload?.reviewReason || task.reviewReason || "Dola 需要人工完成页面验证"
                 : schedule?.lastUpstreamStatus === "submission_unknown" || task.error === "submission_unknown"
                     ? "Dola 提交响应未返回任务标识，且未检测到验证页面"
-                    : "Dola 返回待人工确认状态，但未提供验证会话"
+                    : "Dola 需要人工完成页面验证"
             : schedule?.resultPayload?.reviewReason || task.reviewReason || "上游返回待人工确认状态，但未提供验证会话"
         : undefined;
     return NextResponse.json(

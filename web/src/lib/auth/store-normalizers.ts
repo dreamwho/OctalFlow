@@ -1,3 +1,4 @@
+import { normalizeCanvasQuickActionGroups } from "@/lib/canvas-quick-actions";
 import { randomUUID } from "node:crypto";
 
 import { formatAccountId, parseAccountId } from "@/lib/account-id";
@@ -266,6 +267,7 @@ export function normalizeSettings(settings: AuthSettings): AuthSettings {
         logicalModels,
         defaultModels: normalizeDefaultModelsConfig(settings.defaultModels, logicalModels, systemChannels),
         agentSkills: normalizeAgentSkills(settings.agentSkills),
+        canvasQuickActions: normalizeCanvasQuickActionGroups(settings.canvasQuickActions),
     };
 }
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import time
 import uuid
 from typing import Any
 from urllib.parse import urlencode
@@ -226,6 +227,78 @@ def _identity_query(identity: dict[str, str], cookie: str = "") -> str:
     return urlencode(values)
 
 
+def _launch_query(cookie: str) -> str:
+    """Build the unsigned query used by Dola's own account launch request.
+
+    Browser capture confirmed that ``/alice/user/launch`` does not require
+    ``a_bogus``.  It does require the ordinary web identity fields, so account
+    login health can be checked without allocating a Camoufox process.
+    """
+    now_ms = int(time.time() * 1000)
+    web_id = f"{now_ms}{uuid.uuid4().int % 1_000_000:06d}"[:19]
+    region = _cookie_value(cookie, "flow_user_country") or "JP"
+    return urlencode({
+        "aid": "495671",
+        "device_id": web_id,
+        "device_platform": "web",
+        "doubao_device_platform": "web",
+        "doubao_pc_version": "3.36.11",
+        "language": "zh",
+        "pc_version": "3.36.11",
+        "pkg_type": "release_version",
+        "real_aid": "495671",
+        "region": region,
+        "samantha_web": "1",
+        "sys_region": region,
+        "tea_uuid": web_id,
+        "use-olympus-account": "1",
+        "version_code": "20800",
+        "web_id": web_id,
+        "web_platform": "browser",
+        "web_tab_id": str(uuid.uuid4()),
+    })
+
+
+def parse_account_login_state(value: Any) -> str:
+    if not isinstance(value, dict) or value.get("code") != 0:
+        return "unknown"
+    data = value.get("data")
+    extra = data.get("extra") if isinstance(data, dict) else None
+    flag = str(extra.get("is_login") if isinstance(extra, dict) else "").strip().lower()
+    if flag in {"1", "true"}:
+        return "ready"
+    if flag in {"0", "false"}:
+        return "needs_login"
+    return "unknown"
+
+
+async def probe_account_login(cookie: str, proxy_url: str | None = None) -> dict[str, Any]:
+    """Check the Cookie login state through Dola's read-only launch protocol."""
+    timeout = httpx.Timeout(30.0, connect=15.0)
+    client_options: dict[str, Any] = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
+    if proxy_url:
+        client_options["proxy"] = proxy_url
+    try:
+        async with httpx.AsyncClient(**client_options) as client:
+            response = await client.post(
+                f"https://www.dola.com/alice/user/launch?{_launch_query(cookie)}",
+                headers=_headers(cookie),
+                json={"select": {"launch_config": True, "assistant_bot_info": True, "landing_config": True, "user_info": True}},
+            )
+        try:
+            payload = response.json()
+        except (ValueError, json.JSONDecodeError):
+            payload = {}
+        return {
+            "state": parse_account_login_state(payload),
+            "httpStatus": response.status_code,
+            "code": payload.get("code") if isinstance(payload, dict) else None,
+            "transport": "http-launch",
+        }
+    except httpx.HTTPError as error:
+        return {"state": "unknown", "transport": "http-launch", "error": type(error).__name__}
+
+
 def _headers(cookie: str, conversation_id: str = "") -> dict[str, str]:
     return {
         "accept": "application/json, text/plain, */*",
@@ -255,36 +328,45 @@ async def fetch_video_result(cookie: str, conversation_id: str, identity: dict[s
 
 async def fetch_generation_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None) -> dict[str, Any]:
     query = _identity_query(identity, cookie)
-    info = {"cmd": 1110, "uplink_body": {"get_conv_info_uplink_body": {"conversation_id": conversation_id, "ext": {"cold_start": "true"}, "bot_id": "", "conversation_type": 3, "option": {"need_bot_info": True}}}, "sequence_id": conversation_id, "channel": 2, "version": "1"}
-    single = {"cmd": 3100, "uplink_body": {"pull_singe_chain_uplink_body": {"conversation_id": conversation_id, "anchor_index": 9007199254740991, "conversation_type": 3, "direction": 1, "limit": 20, "ext": {}, "filter": {"index_list": []}, "evaluate_ab_params": "", "evaluate_common_params": ""}}, "sequence_id": "111", "channel": 2, "version": "1"}
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
     if proxy_url:
         client_options["proxy"] = proxy_url
-    video_url = ""
-    image_urls: list[str] = []
     payloads: list[Any] = []
-    refusal = ""
     # The info endpoint may only expose the video cover while the chain
     # endpoint carries the finished creation, so both are always consulted and
     # a video result always wins over images collected along the way.
     async with httpx.AsyncClient(**client_options) as client:
-        for path, request_payload in (("/im/conversation/info", info), ("/im/chain/single", single)):
+        for path, request_payload in generation_query_payloads(conversation_id):
             try:
                 response = await client.post(f"https://www.dola.com{path}?{query}", headers=_headers(cookie, conversation_id), json=request_payload)
                 if response.status_code < 200 or response.status_code >= 300:
                     continue
                 body = response.json()
                 payloads.append(body)
-                if not refusal:
-                    refusal = _generation_refused(body)
-                if not video_url:
-                    video_url = decode_main_url(extract_video_url(body) or "")
-                for url in extract_image_urls(body):
-                    if url not in image_urls:
-                        image_urls.append(url)
             except (httpx.HTTPError, ValueError, json.JSONDecodeError):
                 continue
+    return parse_generation_payloads(payloads)
+
+
+def generation_query_payloads(conversation_id: str) -> tuple[tuple[str, dict[str, Any]], ...]:
+    info = {"cmd": 1110, "uplink_body": {"get_conv_info_uplink_body": {"conversation_id": conversation_id, "ext": {"cold_start": "true"}, "bot_id": "", "conversation_type": 3, "option": {"need_bot_info": True}}}, "sequence_id": conversation_id, "channel": 2, "version": "1"}
+    single = {"cmd": 3100, "uplink_body": {"pull_singe_chain_uplink_body": {"conversation_id": conversation_id, "anchor_index": 9007199254740991, "conversation_type": 3, "direction": 1, "limit": 20, "ext": {}, "filter": {"index_list": []}, "evaluate_ab_params": "", "evaluate_common_params": ""}}, "sequence_id": "111", "channel": 2, "version": "1"}
+    return (("/im/conversation/info", info), ("/im/chain/single", single))
+
+
+def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
+    video_url = ""
+    image_urls: list[str] = []
+    refusal = ""
+    for body in payloads:
+        if not refusal:
+            refusal = _generation_refused(body)
+        if not video_url:
+            video_url = decode_main_url(extract_video_url(body) or "")
+        for url in extract_image_urls(body):
+            if url not in image_urls:
+                image_urls.append(url)
     if refusal:
         # Upstream answered with a refusal message (failure or insufficient
         # quota); without this check the task would stay accepted forever.

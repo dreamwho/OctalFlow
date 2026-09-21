@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const DEFAULT_PORT = 18_080;
@@ -17,7 +17,7 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
     const python = source.DREAMYO_GEMINIAI_PYTHON?.trim() || path.join(providerRoot, ".venv", "bin", "python");
     if (!existsSync(python)) throw new Error(`本地 GeminiAI Provider 运行环境不存在：${python}`);
     const port = validPort(source.DREAMYO_GEMINIAI_PORT) || DEFAULT_PORT;
-    const apiKey = tokenFactory();
+    const apiKey = obtainStableKey(webRoot, tokenFactory);
     const accountsDir = source.DREAMYO_GEMINIAI_ACCOUNTS_DIR?.trim() || path.join(webRoot, ".data", "geminiai", "accounts");
     const providerEnvironment = {
         ...source,
@@ -37,12 +37,28 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
         },
         service: {
             name: "geminiai",
+            port,
             command: python,
             args: [path.join(providerRoot, "main.py"), "server", "--port", String(port)],
             cwd: providerRoot,
             environment: providerEnvironment,
         },
     };
+}
+
+/** 内部密钥按数据目录持久化：web 与 sidecar 分别重启时不会因随机密钥不同而互相 401。 */
+function obtainStableKey(webRoot, tokenFactory) {
+    const keyPath = path.join(webRoot, ".data", "geminiai", "runtime-api-key");
+    try {
+        const existing = readFileSync(keyPath, "utf8").trim();
+        if (existing.length >= 32) return existing;
+    } catch {}
+    const key = tokenFactory();
+    try {
+        mkdirSync(path.dirname(keyPath), { recursive: true });
+        writeFileSync(keyPath, key, { encoding: "utf8", mode: 0o600 });
+    } catch {}
+    return key;
 }
 
 function validPort(value) {

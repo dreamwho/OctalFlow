@@ -365,6 +365,32 @@
     box-shadow: none !important;
 }
 
+/* SaaS 标准尺寸：后台管理与弹窗按钮统一保持紧凑规范，防止样式漂移或过大 */
+.admin-console-page .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg),
+.ant-modal .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg),
+.ant-popconfirm .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg),
+.ant-drawer .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg) {
+    min-height: 32px !important;
+    height: 32px !important;
+    min-width: unset !important;
+    padding: 4px 15px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    border-radius: 6px !important;
+}
+
+.admin-console-page .ant-btn-sm,
+.ant-modal .ant-btn-sm,
+.ant-popconfirm .ant-btn-sm,
+.ant-drawer .ant-btn-sm {
+    min-height: 24px !important;
+    height: 24px !important;
+    min-width: unset !important;
+    padding: 1px 8px !important;
+    font-size: 12px !important;
+    border-radius: 4px !important;
+}
+
 .admin-console-page [class~="rounded-xl"],
 .admin-console-page [class~="rounded-2xl"],
 .admin-console-page [class~="rounded-3xl"] {

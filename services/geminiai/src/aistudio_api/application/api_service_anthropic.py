@@ -22,7 +22,7 @@ from aistudio_api.api.responses import (
 from aistudio_api.api.schemas import AnthropicMessageRequest
 from aistudio_api.api.state import runtime_state
 from aistudio_api.application.api_service_common import (
-    MAX_RETRIES,
+    effective_retry_attempts,
     account_request_lock,
     ensure_active_account,
     logger,
@@ -183,7 +183,8 @@ async def handle_anthropic_messages(req: AnthropicMessageRequest, client: AIStud
 
     last_error = None
     try:
-        for attempt in range(MAX_RETRIES):
+        attempts = effective_retry_attempts()
+        for attempt in range(attempts):
             async with busy_lock, account_request_lock():
                 await ensure_active_account(attempt)
                 try:
@@ -231,7 +232,7 @@ async def handle_anthropic_messages(req: AnthropicMessageRequest, client: AIStud
                     last_error = exc
                     record_rotator_event("rate_limited")
                     if await try_switch_account():
-                        logger.info("Anthropic 429 限流，已切换账号，重试 %d/%d", attempt + 1, MAX_RETRIES)
+                        logger.info("Anthropic 429 限流，已切换账号，重试 %d/%d", attempt + 1, attempts)
                         continue
                     raise HTTPException(429, detail={"message": str(exc), "type": "rate_limit_error"}) from exc
                 except AistudioError as exc:
@@ -293,7 +294,7 @@ def _build_anthropic_streaming_response(
                     },
                 )
 
-                for stream_attempt in range(MAX_RETRIES):
+                for stream_attempt in range(effective_retry_attempts()):
                     try:
                         has_yielded_model_data = False
                         async for event_type, text in client.stream_generate_content(
@@ -381,8 +382,8 @@ def _build_anthropic_streaming_response(
                     except UsageLimitExceeded as exc:
                         runtime_state.record(model, "rate_limited")
                         record_rotator_event("rate_limited")
-                        if not has_yielded_model_data and stream_attempt < MAX_RETRIES - 1 and await try_switch_account():
-                            logger.warning("Anthropic stream 429 限流，已切换账号，重试 %d/%d", stream_attempt + 1, MAX_RETRIES)
+                        if not has_yielded_model_data and stream_attempt < effective_retry_attempts() - 1 and await try_switch_account():
+                            logger.warning("Anthropic stream 429 限流，已切换账号，重试 %d/%d", stream_attempt + 1, effective_retry_attempts())
                             continue
                         raise exc
                     except RequestError as exc:

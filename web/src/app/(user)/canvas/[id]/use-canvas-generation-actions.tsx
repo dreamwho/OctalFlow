@@ -117,15 +117,31 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 return;
             }
 
-            setRunningNodeId(nodeId);
-            if (runningNodeId === nodeId) {
+            if (sourceNode?.metadata?.status === NODE_STATUS_LOADING || runningNodeId === nodeId) {
                 message.warning("该节点正在生成中，请等待完成或停止后再试");
                 return;
             }
-            const userPrompt = interiorDesignConfig ? sourceNode.metadata?.sourcePrompt?.trim() || "SU直出摄影级照片" : prompt.trim();
+
+            const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
+            const isImageNode = isCanvasImageNodeType(sourceNode?.type);
+            const isEmptyImageNode = isImageNode && !sourceNode?.metadata?.content;
+            const isVideoNode = sourceNode?.type === CanvasNodeType.Video;
+            const isEmptyVideoNode = isVideoNode && !sourceNode?.metadata?.content;
+            const isAudioNode = sourceNode?.type === CanvasNodeType.Audio;
+            const isEmptyAudioNode = isAudioNode && !sourceNode?.metadata?.content;
+
+            // 已生成完成的节点派生新节点时，将运行态绑定到待生成的子节点（如 videoId/rootId），
+            // 避免已完成的父节点及其提示词面板错误进入“生成中...”或停止状态。
+            const preallocatedVideoId = mode === "video" && !isEmptyVideoNode ? nanoid() : undefined;
+            const preallocatedImageRootId = mode === "image" && !isEmptyImageNode && !isConfigNode ? nanoid() : undefined;
+            const preallocatedAudioId = mode === "audio" && !isEmptyAudioNode ? nanoid() : undefined;
+            const targetRunningId = preallocatedVideoId || preallocatedImageRootId || preallocatedAudioId || nodeId;
+
+            setRunningNodeId(targetRunningId);
+            const userPrompt = interiorDesignConfig ? sourceNode?.metadata?.sourcePrompt?.trim() || "SU直出摄影级照片" : prompt.trim();
             let pendingChildIds: string[] = [];
-            let plannedPrompt = interiorDesignConfig ? sourceNode.metadata?.executionPrompt?.trim() || prompt.trim() : mode === "video" ? applyCameraMotionPrompt(userPrompt, sourceNode?.metadata?.cameraMotions) : userPrompt;
-            const runController = startGenerationRequest(nodeId, nodeId, nodeId);
+            let plannedPrompt = interiorDesignConfig ? sourceNode?.metadata?.executionPrompt?.trim() || prompt.trim() : mode === "video" ? applyCameraMotionPrompt(userPrompt, sourceNode?.metadata?.cameraMotions) : userPrompt;
+            const runController = startGenerationRequest(targetRunningId, nodeId, targetRunningId);
             // 先创建输出节点并进入“生成中”状态，Skill 优化与上下文解析期间用户即可看到新节点
             let imageCreation: { rootId: string; childIds: string[]; targetIds: string[]; isEmptyImageNode: boolean; isConfigNode: boolean; inheritReferenceSources: boolean } | null = null;
             let videoCreation: { videoId: string; isEmptyVideoNode: boolean } | null = null;
@@ -145,14 +161,14 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 const isPanoramaNode = sourceNode?.type === CanvasNodeType.Panorama;
                 const count = isPanoramaNode ? 1 : getGenerationCount(generationConfig.count);
                 const isImageNode = isCanvasImageNodeType(sourceNode?.type);
-                // 正在生成中的节点不复用：一律新建输出节点，避免覆盖进行中的生成
-                const isEmptyImageNode = isImageNode && !sourceNode?.metadata?.content && sourceNode.metadata?.status !== NODE_STATUS_LOADING;
+                // 空内容节点可复用自身为输出节点；已有内容的节点派生新节点
+                const isEmptyImageNode = isImageNode && !sourceNode?.metadata?.content;
                 const resultType = isPanoramaNode ? CanvasNodeType.Panorama : CanvasNodeType.Image;
                 const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? resultType : CanvasNodeType.Text];
                 const imageConfig = NODE_DEFAULT_SIZE[resultType];
                 const provisionalSize = nodeSizeFromRatio(generationConfig.size, imageConfig.width, imageConfig.height) || imageConfig;
                 const parentPosition = sourceNode?.position || { x: 0, y: 0 };
-                const rootId = isEmptyImageNode ? nodeId : nanoid();
+                const rootId = isEmptyImageNode ? nodeId : preallocatedImageRootId || nanoid();
                 const childIds = count > 1 ? Array.from({ length: count }, () => nanoid()) : [];
                 const targetIds = count > 1 ? childIds : [rootId];
                 pendingChildIds = isEmptyImageNode ? childIds : [rootId, ...childIds];
@@ -244,16 +260,15 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 setDialogNodeId(nodeId);
                 imageCreation = { rootId, childIds, targetIds, isEmptyImageNode, isConfigNode, inheritReferenceSources };
             } else if (mode === "video") {
-                const isEmptyVideoNode = sourceNode?.type === CanvasNodeType.Video && !sourceNode.metadata?.content && sourceNode.metadata?.status !== NODE_STATUS_LOADING;
                 const spec = nodeSizeFromRatio(generationConfig.size, NODE_DEFAULT_SIZE[CanvasNodeType.Video].width, NODE_DEFAULT_SIZE[CanvasNodeType.Video].height) || NODE_DEFAULT_SIZE[CanvasNodeType.Video];
-                const videoId = isEmptyVideoNode ? nodeId : nanoid();
+                const videoId = isEmptyVideoNode ? nodeId : preallocatedVideoId || nanoid();
                 const parent = sourceNode?.position || { x: 0, y: 0 };
                 pendingChildIds = [videoId];
                 setNodes((prev) =>
                     isEmptyVideoNode
                         ? prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_LOADING, prompt: userPrompt, sourcePrompt: userPrompt, errorDetails: undefined } } : node))
                         : [
-                              ...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)),
+                              ...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: node.metadata?.status || NODE_STATUS_SUCCESS } } : node)),
                               {
                                   id: videoId,
                                   type: CanvasNodeType.Video,
@@ -310,7 +325,13 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 setRunningNodeId(null);
                 return;
             }
-            const markSourceStatus = !isCanvasImageNodeType(sourceNode?.type) && !editingTextNode;
+            const isSourceGeneratingInPlace =
+                sourceNode?.type === CanvasNodeType.Config ||
+                (mode === "image" && (imageCreation?.isEmptyImageNode ?? false)) ||
+                (mode === "video" && (videoCreation?.isEmptyVideoNode ?? false)) ||
+                (mode === "audio" && sourceNode?.type === CanvasNodeType.Audio && !sourceNode.metadata?.content) ||
+                (mode === "text" && !editingTextNode && sourceNode?.type === CanvasNodeType.Text);
+            const markSourceStatus = isSourceGeneratingInPlace;
             const statusPrompt = sourceNode?.type === CanvasNodeType.Config ? effectivePrompt : userPrompt;
             if (!effectivePrompt && (mode === "text" || mode === "audio")) {
                 finishGenerationRequest(nodeId, runController);
@@ -457,7 +478,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         ),
                     );
                     if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
-                    const controller = startGenerationRequest(videoId, nodeId, nodeId, runController);
+                    const controller = startGenerationRequest(videoId, nodeId, targetRunningId, runController);
 
                     try {
                         const task = await createServerVideoGenerationTask(generationConfig, effectivePrompt, videoReferences.images, videoReferences.videos, videoReferences.audios, {
@@ -477,8 +498,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
 
                 if (mode === "audio") {
                     const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
-                    const isEmptyAudioNode = sourceNode?.type === CanvasNodeType.Audio && !sourceNode.metadata?.content;
-                    const audioId = isEmptyAudioNode ? nodeId : nanoid();
+                    const audioId = isEmptyAudioNode ? nodeId : preallocatedAudioId || nanoid();
                     const parent = sourceNode?.position || { x: 0, y: 0 };
                     const audioNode: CanvasNodeData = {
                         id: audioId,
@@ -496,7 +516,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                             : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), audioNode],
                     );
                     if (!isEmptyAudioNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: audioId }]);
-                    const controller = startGenerationRequest(audioId, nodeId, nodeId, runController);
+                    const controller = startGenerationRequest(audioId, nodeId, targetRunningId, runController);
                     try {
                         const task = await createAudioGenerationTask(generationConfig, effectivePrompt, {
                             signal: controller.signal,
@@ -606,7 +626,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     ),
                 );
             } finally {
-                finishGenerationRequest(nodeId, runController);
+                finishGenerationRequest(targetRunningId, runController);
                 setRunningNodeId(null);
             }
         },
@@ -687,13 +707,21 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         const payload = (await response.json().catch(() => ({}))) as { task?: { needsReview?: boolean; verificationId?: string; reviewReason?: string } };
                         if (response.ok && payload.task?.needsReview && payload.task.verificationId) {
                             setDolaVerification({ nodeId: node.id, taskId, verificationId: payload.task.verificationId });
-                            message.info("请完成 Dola 滑块验证后继续生成");
+                            message.info("请完成 Dola 页面验证后继续生成");
                             return;
                         }
                         if (response.ok && payload.task?.needsReview) {
-                            const reviewReason = payload.task.reviewReason || "上游返回待人工确认状态，但未提供验证会话";
+                            const openRes = await fetch(`/api/video-tasks/${encodeURIComponent(taskId)}/verification/open`, { method: "POST", cache: "no-store" }).catch(() => null);
+                            const openPayload = (await openRes?.json().catch(() => ({}))) as { data?: { verificationId?: string } } | undefined;
+                            const resolvedVerificationId = openPayload?.data?.verificationId;
+                            if (resolvedVerificationId) {
+                                setDolaVerification({ nodeId: node.id, taskId, verificationId: resolvedVerificationId });
+                                message.info("请完成 Dola 页面验证后继续生成");
+                                return;
+                            }
+                            const reviewReason = payload.task.reviewReason || "上游返回待人工确认状态，请打开账号页面查看实际情况";
                             setNodes((prev) => prev.map((item) => item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_NEEDS_REVIEW, errorDetails: reviewReason } } : item));
-                            message.info("原任务仍需人工确认，未检测到验证页面");
+                            message.info("原任务需人工确认，请点击「查看验证页面」处理");
                             return;
                         }
                     } catch {

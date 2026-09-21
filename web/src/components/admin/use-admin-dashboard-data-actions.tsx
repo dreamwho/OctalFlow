@@ -51,6 +51,8 @@ export function useAdminDashboardDataActions({ state }: { state: AdminDashboardS
         currentUser,
         message,
         promptForm,
+        editingPromptId,
+        setEditingPromptId,
         promptRequestIdRef,
         userRequestIdRef,
         generationLogRequestIdRef,
@@ -367,21 +369,25 @@ export function useAdminDashboardDataActions({ state }: { state: AdminDashboardS
 
     const createPrompt = async (value: PromptFormValue) => {
         setPromptSaving(true);
+        const editing = Boolean(editingPromptId);
         try {
-            const response = await fetch("/api/admin/prompts", {
-                method: "POST",
+            const response = await fetch(editing ? `/api/admin/prompts/${encodeURIComponent(editingPromptId)}` : "/api/admin/prompts", {
+                method: editing ? "PATCH" : "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ...value, tags: splitTags(value.tags) }),
             });
             const payload = (await response.json()) as { prompt?: Prompt; error?: string };
-            if (!response.ok || !payload.prompt) throw new Error(payload.error || "新增提示词失败");
+            if (!response.ok || !payload.prompt) throw new Error(payload.error || (editing ? "更新提示词失败" : "新增提示词失败"));
             promptForm.resetFields();
-            setPromptPage(1);
-            setPromptSearch("");
-            setDebouncedPromptSearch("");
+            setEditingPromptId("");
+            if (!editing) {
+                setPromptPage(1);
+                setPromptSearch("");
+                setDebouncedPromptSearch("");
+            }
             setPromptModalOpen(false);
-            void loadPrompts(1, "");
-            message.success("公共提示词已新增");
+            void loadPrompts(1, editing ? debouncedPromptSearch : "");
+            message.success(editing ? "公共提示词已更新" : "公共提示词已新增");
         } catch (error) {
             message.error(error instanceof Error ? error.message : "新增提示词失败");
         } finally {
@@ -733,13 +739,27 @@ export function useAdminDashboardDataActions({ state }: { state: AdminDashboardS
         setAnnouncementDraft({ title: "", content: "", enabled: true, popupHome: false, popupAfterLogin: false });
     };
 
-    const openPromptModal = () => {
-        promptForm.resetFields();
+    const openPromptModal = (prompt?: Prompt) => {
+        if (prompt) {
+            setEditingPromptId(prompt.id);
+            promptForm.setFieldsValue({
+                title: prompt.title,
+                prompt: prompt.prompt,
+                category: prompt.category || "",
+                tags: (prompt.tags || []).join(", "),
+                coverUrl: prompt.coverUrl || "",
+                preview: prompt.preview || "",
+            });
+        } else {
+            setEditingPromptId("");
+            promptForm.resetFields();
+        }
         setPromptModalOpen(true);
     };
 
     const closePromptModal = () => {
         if (promptSaving) return;
+        setEditingPromptId("");
         setPromptModalOpen(false);
     };
 

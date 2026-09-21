@@ -17,6 +17,9 @@ type CanvasNodeUpscalePanelProps = {
 };
 
 export function resolveDreaminaUpscaleSubmitStyle(theme: (typeof canvasThemes)[keyof typeof canvasThemes]) {
+    if (theme === canvasThemes.dark) {
+        return { background: "#35cce1", borderColor: "#35cce1", color: "#071224" };
+    }
     return { background: theme.node.activeStroke, borderColor: theme.node.activeStroke, color: theme.node.actionText };
 }
 

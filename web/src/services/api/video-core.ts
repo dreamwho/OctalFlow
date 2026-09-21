@@ -112,7 +112,15 @@ export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGe
     const deadline = Date.now() + VIDEO_GENERATION_WAIT_TIMEOUT_MS;
     while (Date.now() < deadline) {
         if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-        const state = await pollVideoGenerationTask(config, task, options);
+        let state: VideoGenerationTaskState;
+        try {
+            state = await pollVideoGenerationTask(config, task, options);
+        } catch (error) {
+            // 单次轮询的网络/服务端瞬时故障不代表任务失败：后端仍在生成时必须继续等待原任务。
+            if (options?.signal?.aborted) throw error;
+            await delay(delayMs, options?.signal);
+            continue;
+        }
         if (state.status === "completed") {
             await refreshUserPointsIfSystem(resolveModelRequestConfig(config, task.model).apiSource);
             return state.result;
@@ -253,6 +261,8 @@ export async function pollServerVideoTask(task: VideoGenerationTask, options?: R
     throwIfClientSessionExpired(response);
     syncUserPointsFromHeaders(response.headers, "system");
     const payload = (await response.json().catch(() => ({}))) as { task?: GenerationTaskExecutionState & { status?: string; result?: VideoGenerationResult; error?: string; canRetry?: boolean }; error?: string };
+    // 查询接口瞬时故障（5xx/429）不代表任务失败：按继续等待处理，由等待超时兜底。
+    if (response.status >= 500 || response.status === 429) return { status: "pending" };
     if (!response.ok) throw new Error(payload.error || "后台视频任务查询失败");
     if (payload.task?.needsReview) return { status: "failed", error: payload.task.reviewReason || GENERATION_TASK_NEEDS_REVIEW_MESSAGE, needsReview: true, verificationId: payload.task.verificationId };
     if (payload.task?.status === "success") return { status: "completed", result: payload.task.result || {} };

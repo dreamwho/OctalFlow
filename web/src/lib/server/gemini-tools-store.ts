@@ -93,6 +93,8 @@ export type GeminiToolsGatewaySettings = {
     enabled: boolean;
     strategy: "round_robin" | "priority";
     sessionStickiness: boolean;
+    /** 单次请求最多尝试的账号数（0/1 表示只用当前账号不切换），账号类错误（限流/配额/认证失效）时依次切换 */
+    rotationLimit: number;
 };
 
 export type StoredGeminiToolsAccount = GeminiToolsAccount & {
@@ -113,7 +115,7 @@ type GeminiToolsDatabase = {
 
 export type GeminiToolsPrivateAccount = GeminiToolsAccount & { accessToken: string; refreshToken: string; expiresAt: number; projectId?: string };
 
-const EMPTY_DB: GeminiToolsDatabase = { accounts: [], oauthSessions: [], apiKeys: [], logs: [], gateway: { enabled: true, strategy: "round_robin", sessionStickiness: false } };
+const EMPTY_DB: GeminiToolsDatabase = { accounts: [], oauthSessions: [], apiKeys: [], logs: [], gateway: { enabled: true, strategy: "round_robin", sessionStickiness: false, rotationLimit: 2 } };
 
 export async function listGeminiToolsAccounts() {
     if (isPostgresDatabaseEnabled()) return (await postgresRepository()).listAccounts().then((accounts) => accounts.map(publicAccount));
@@ -603,6 +605,7 @@ function normalizeGatewayPatch(patch: Partial<GeminiToolsGatewaySettings>) {
     if (typeof patch.enabled === "boolean") normalized.enabled = patch.enabled;
     if (patch.strategy === "round_robin" || patch.strategy === "priority") normalized.strategy = patch.strategy;
     if (typeof patch.sessionStickiness === "boolean") normalized.sessionStickiness = patch.sessionStickiness;
+    if (Number.isFinite(Number(patch.rotationLimit))) normalized.rotationLimit = Math.max(0, Math.floor(Number(patch.rotationLimit)));
     return normalized;
 }
 

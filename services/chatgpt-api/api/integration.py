@@ -679,7 +679,7 @@ async def resolve_proxy_egress_url(
 ) -> dict[str, Any]:
     _require_admin(authorization)
     try:
-        proxy_url, group_id, node_id, image_concurrency_limit = await run_in_threadpool(
+        proxy_url, group_id, node_id, image_concurrency_limit, node_name = await run_in_threadpool(
             proxy_settings.resolve_egress_url,
             body.group_id.strip(),
             body.node_id.strip(),
@@ -693,7 +693,7 @@ async def resolve_proxy_egress_url(
         else:
             detail = "代理出口不可用，请检查通用代理分组与节点"
         raise HTTPException(status_code=409, detail={"error": detail}) from exc
-    return {"proxy_url": proxy_url, "group_id": group_id, "node_id": node_id, "image_concurrency_limit": image_concurrency_limit}
+    return {"proxy_url": proxy_url, "group_id": group_id, "node_id": node_id, "image_concurrency_limit": image_concurrency_limit, "node_name": node_name}
 
 
 @router.get("/api/generic-proxy/logs")

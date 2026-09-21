@@ -3,6 +3,8 @@ import { readJsonBodyResult } from "@/lib/auth/request";
 import { dolaRouteError, requireDolaAdmin } from "@/lib/server/dola/admin";
 import { dolaRuntimeRequest } from "@/lib/server/dola/provider";
 import { openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry } from "@/lib/server/dola/log-store";
+import { markDolaAccountReady, updateDolaAccountCredentials, updateDolaAccountQuota } from "@/lib/server/dola/account-service";
+import type { DolaQuotaSnapshot } from "@/lib/server/dola/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +22,7 @@ export async function POST(request: Request, context: Context) {
         if (!parsed.ok) return apiCompatError(parsed.status, parsed.message);
         body = parsed.data;
         if (typeof body.leaseToken !== "string" || body.leaseToken.length < 16) return apiCompatError(400, "验证租约无效");
-        if (action === "input" && (body.action !== "down" && body.action !== "move" && body.action !== "up" || typeof body.x !== "number" || typeof body.y !== "number")) return apiCompatError(400, "滑块坐标或动作无效");
+        if (action === "input" && (body.action !== "down" && body.action !== "move" && body.action !== "up" || typeof body.x !== "number" || typeof body.y !== "number")) return apiCompatError(400, "页面坐标或动作无效");
     }
     const started = Date.now();
     const lifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(started).toISOString(), phase: "queued", message: `提交验证操作：${action}`, durationMs: 0, detail: `验证会话: ${verificationId}` }];
@@ -45,7 +47,29 @@ export async function POST(request: Request, context: Context) {
         if (!response.ok) {
             return apiCompatError(response.status, error);
         }
-        return apiSuccess(payload, action === "open" ? "已打开 Dola 验证窗口" : action === "resume" ? "已恢复 Dola 请求" : action === "close" ? "已关闭 Dola 验证" : "验证操作已发送");
+        if (action === "resume" && payload?.status === "accepted" && typeof payload.accountId === "string") {
+            const accountId = payload.accountId;
+            if (typeof payload.cookie === "string" && payload.cookie) {
+                await updateDolaAccountCredentials(accountId, payload.cookie).catch(() => undefined);
+            }
+            if (Array.isArray(payload.quota)) {
+                const quota: DolaQuotaSnapshot[] = payload.quota
+                    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+                    .map((item) => ({
+                        bucket: stringValue(item.bucket) || "video",
+                        model: stringValue(item.model) || undefined,
+                        unit: item.unit === "count" || item.unit === "credit" ? item.unit : "unknown",
+                        remaining: nonNegativeNumber(item.remaining),
+                        limit: nonNegativeNumber(item.limit),
+                        observedAt: new Date().toISOString(),
+                        source: item.source === "upstream" || item.source === "local" ? item.source : "unknown",
+                        version: 1,
+                    }));
+                await updateDolaAccountQuota(accountId, quota).catch(() => undefined);
+            }
+            await markDolaAccountReady(accountId).catch(() => undefined);
+        }
+        return apiSuccess(withoutCredential(payload), action === "open" ? "已打开 Dola 验证窗口" : action === "resume" ? "已恢复 Dola 请求" : action === "close" ? "已关闭 Dola 验证" : "验证操作已发送");
     } catch (error) {
         if (logId) await settleDolaRequestLog(logId, { statusCode: 502, durationMs: Date.now() - started, phase: "failed", error: error instanceof Error ? error.message : "Dola 验证操作失败", verificationId: verificationId.slice(0, 300), lifecycle: [...lifecycle, { time: new Date().toISOString(), phase: "failed", message: error instanceof Error ? error.message : "Dola 验证操作失败", durationMs: Date.now() - started }] });
         return dolaRouteError(error, "Dola 验证操作失败");
@@ -56,6 +80,8 @@ function parseRecord(bytes: Uint8Array) {
     try { const value = JSON.parse(new TextDecoder().decode(bytes)); return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null; } catch { return null; }
 }
 function stringValue(value: unknown) { return typeof value === "string" ? value.slice(0, 800) : ""; }
+function nonNegativeNumber(value: unknown) { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : null; }
+function withoutCredential(value: Record<string, unknown> | null) { if (!value) return value; const { cookie: _cookie, ...safe } = value; return safe; }
 function summarizeResponse(value: Record<string, unknown> | null, bytes: Uint8Array) {
     if (!value) return bytes.byteLength ? "Dola 验证响应无法解析" : "";
     const summary = Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl|video_?url/i.test(key)));

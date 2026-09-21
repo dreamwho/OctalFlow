@@ -23,6 +23,7 @@ describe("admin navigation order", () => {
             "百炼语音",
             "即梦 CLI",
             "Agent Skills",
+            "画布功能菜单",
         ]);
         expect(adminSectionGroups.find((group) => group.title === "系统管理")?.items.map((item) => item.label)).toEqual(["站点资料", "基础设置", "注销申请", "本地媒体", "外部存储", "数据备份", "版本更新", "使用文档"]);
 

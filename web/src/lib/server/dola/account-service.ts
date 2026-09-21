@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
 import { parseDolaImportInputs } from "./account-import";
-import { dolaModelProfile, type DolaAccount, type DolaAccountImportItem, type DolaAccountImportResult, type DolaAccountStatus, type DolaQuotaSnapshot } from "./types";
+import { dolaModelProfile, type DolaAccount, type DolaAccountImportItem, type DolaAccountImportResult, type DolaAccountStatus, type DolaAccountValidation, type DolaQuotaSnapshot } from "./types";
 
 const FILE_NAME = "dola/accounts.json";
 type StoredDolaAccount = DolaAccount & { cookieCiphertext: string; cookieFingerprint: string };
@@ -47,6 +47,7 @@ export async function importDolaAccounts(items: DolaAccountImportItem[]) {
                 existing.updatedAt = new Date().toISOString();
                 if (item.name) existing.name = item.name;
                 if (item.email) existing.email = item.email;
+                if (item.authType) existing.authType = item.authType;
                 results.push({ itemId, ...(item.sourceFileName ? { sourceFileName: item.sourceFileName } : {}), ...(item.sourceOrdinal ? { sourceOrdinal: item.sourceOrdinal } : {}), status: "duplicate", account: publicAccount(existing) });
                 continue;
             }
@@ -55,6 +56,7 @@ export async function importDolaAccounts(items: DolaAccountImportItem[]) {
                 id: `dola-${randomUUID()}`,
                 name: item.name || `Dola 账号 ${db.accounts.length + results.filter((result) => result.status === "created").length + 1}`,
                 ...(item.email ? { email: item.email } : {}),
+                authType: item.authType || "cookie",
                 status: "unverified",
                 enabled: true,
                 credentialVersion: 1,
@@ -76,6 +78,20 @@ export async function importDolaAccounts(items: DolaAccountImportItem[]) {
     return { results, summary: summarizeImportResults(results) };
 }
 
+export async function addOrUpdateGoogleDolaAccount(params: { cookie: string; email?: string; name?: string }) {
+    const importResult = await importDolaAccounts([{
+        cookie: params.cookie,
+        email: params.email,
+        name: params.name || (params.email ? `Google 账号 (${params.email})` : undefined),
+        authType: "google",
+    }]);
+    const first = importResult.results[0];
+    if (first?.account) {
+        return first.account;
+    }
+    throw new Error(first?.message || "Google 授权账号保存失败");
+}
+
 export async function renameDolaAccount(id: string, name: unknown) {
     const value = typeof name === "string" ? name.trim().slice(0, 120) : "";
     if (!value) throw new Error("账号名称不能为空");
@@ -83,7 +99,7 @@ export async function renameDolaAccount(id: string, name: unknown) {
 }
 
 export async function setDolaAccountEnabled(id: string, enabled: boolean) {
-    return mutateAccount(id, (account) => ({ ...account, enabled, status: enabled ? (account.status === "disabled" ? "unverified" : account.status) : "disabled" }));
+    return mutateAccount(id, (account) => ({ ...account, enabled, status: enabled ? (["disabled", "restricted", "rate_limited"].includes(account.status) ? "unverified" : account.status) : "disabled" }));
 }
 
 export async function deleteDolaAccount(id: string) {
@@ -100,17 +116,111 @@ export async function deleteDolaAccount(id: string) {
     return { id, deleted };
 }
 
+/** 批量删除：仍有运行中任务的账号跳过并计数，不中断其余账号的删除。 */
+export async function deleteDolaAccounts(ids: string[]) {
+    const wanted = new Set(ids.map((id) => String(id || "").trim()).filter(Boolean));
+    if (!wanted.size) return { deleted: 0, skipped: 0 };
+    let deleted = 0;
+    let skipped = 0;
+    await withJsonDataFileLock(FILE_NAME, async () => {
+        const db = await readDatabase();
+        const remaining = db.accounts.filter((account) => {
+            if (!wanted.has(account.id)) return true;
+            if (account.activeAttempts > 0) {
+                skipped += 1;
+                return true;
+            }
+            deleted += 1;
+            return false;
+        });
+        if (deleted) {
+            db.accounts = remaining;
+            await writeJsonDataFile(FILE_NAME, db);
+        }
+    });
+    return { deleted, skipped };
+}
+
 export async function updateDolaAccountQuota(id: string, quota: DolaQuotaSnapshot[]) {
-    return mutateAccount(id, (account) => ({ ...account, quota: quota.slice(0, 32), lastVerifiedAt: new Date().toISOString(), status: account.status === "unverified" ? "ready" : account.status }));
+    return mutateAccount(id, (account) => ({ ...account, quota: quota.slice(0, 32), lastVerifiedAt: new Date().toISOString() }));
+}
+
+export async function updateDolaAccountValidation(id: string, validation: DolaAccountValidation) {
+    return mutateAccount(id, (account) => ({ ...account, validation, lastVerifiedAt: validation.checkedAt }));
+}
+
+export async function updateDolaAccountLoginState(id: string, state: "ready" | "needs_login" | "unknown", code?: number) {
+    const checkedAt = new Date().toISOString();
+    return mutateAccount(id, (account) => ({
+        ...account,
+        loginState: state,
+        loginCheckedAt: checkedAt,
+        ...(typeof code === "number" ? { loginProtocolCode: code } : {}),
+        ...(state === "ready"
+            ? { status: "ready" as DolaAccountStatus, restrictedReason: undefined }
+            : state === "needs_login"
+              ? { status: "needs_login" as DolaAccountStatus, quota: [] }
+              : {}),
+    }));
+}
+
+export async function updateDolaAccountGenerationValidation(id: string, generation: NonNullable<DolaAccountValidation["generation"]>) {
+    return mutateAccount(id, (account) => ({
+        ...account,
+        validation: account.validation
+            ? { ...account.validation, generation }
+            : { checkedAt: generation.checkedAt, ready: false, login: false, signerReady: false, requestObserved: false, signed: false, httpStatus: 0, proxyMode: "direct", generation },
+    }));
+}
+
+export async function updateDolaAccountCredentials(id: string, cookie: string) {
+    const fingerprint = createHash("sha256").update(cookie).digest("hex");
+    const cookieCiphertext = encryptSecretValue(cookie);
+    return mutateAccount(id, (account) => ({
+        ...account,
+        cookieCiphertext,
+        cookieFingerprint: fingerprint,
+        credentialVersion: (account.credentialVersion || 1) + 1,
+        status: "ready",
+        lastVerifiedAt: new Date().toISOString(),
+        restrictedReason: undefined,
+    }));
+}
+
+export async function markDolaAccountReady(id: string, quota?: DolaQuotaSnapshot[]) {
+    return mutateAccount(id, (account) => ({
+        ...account,
+        status: "ready",
+        ...(quota ? { quota: quota.slice(0, 32) } : {}),
+        lastVerifiedAt: new Date().toISOString(),
+        restrictedReason: undefined,
+    }));
 }
 
 export async function setDolaAccountStatus(id: string, status: DolaAccountStatus) {
     return mutateAccount(id, (account) => ({ ...account, status, lastVerifiedAt: new Date().toISOString() }));
 }
 
-/** 上游判定账号触发频率限制：标记 rate_limited 进入冷却，调度器自动避开，到期恢复 */
-export async function markDolaAccountRateLimited(id: string) {
-    return mutateAccount(id, (account) => ({ ...account, status: "rate_limited" as DolaAccountStatus, rateLimitedAt: new Date().toISOString(), lastUsedAt: new Date().toISOString() }));
+/** 上游判定账号登录失效或需要验证：更新状态并清空已过期的额度快照，避免误导调度与展示 */
+export async function markDolaAccountUnusable(id: string, status: Extract<DolaAccountStatus, "needs_login" | "verification_required">) {
+    const now = new Date().toISOString();
+    return mutateAccount(id, (account) => ({ ...account, status, quota: [], lastVerifiedAt: now, ...(status === "needs_login" ? { loginState: "needs_login" as const, loginCheckedAt: now } : {}) }));
+}
+
+/** 上游判定账号触发频率限制：标记 restricted 进入风控分类，调度器与换号候选永久剔除，需管理员停用后重新启用才会恢复 */
+export async function markDolaAccountRestricted(id: string, reason?: string) {
+    return mutateAccount(id, (account) => ({ ...account, status: "restricted" as DolaAccountStatus, rateLimitedAt: new Date().toISOString(), lastUsedAt: new Date().toISOString(), restrictedReason: (reason || account.restrictedReason || "").trim().slice(0, 300) || account.restrictedReason }));
+}
+
+/** 频率限制是临时状态，冷却到期后账号自动重新参与调度。 */
+export async function markDolaAccountRateLimited(id: string, reason?: string) {
+    return mutateAccount(id, (account) => ({
+        ...account,
+        status: account.loginState === "needs_login" ? "needs_login" as DolaAccountStatus : "ready" as DolaAccountStatus,
+        rateLimitedAt: new Date().toISOString(),
+        lastUsedAt: new Date().toISOString(),
+        restrictedReason: (reason || "").trim().slice(0, 300) || undefined,
+    }));
 }
 
 export async function markDolaAccountUsed(id: string, success: boolean, releaseAttempt = true) {
@@ -178,15 +288,8 @@ function summarizeImportResults(results: DolaAccountImportResult[]) {
     }, {});
 }
 
-/** rate_limited 冷却时间：到期后账号自动恢复调度，无需人工重新启用 */
-const RATE_LIMIT_COOLDOWN_MS = 10 * 60 * 1000;
-
 function availableForModel(account: StoredDolaAccount, model?: string) {
-    if (!account.enabled || ["disabled", "needs_login", "verification_required", "quota_exhausted", "restricted"].includes(account.status)) return false;
-    if (account.status === "rate_limited") {
-        const limitedAt = Date.parse(account.rateLimitedAt || "");
-        if (!Number.isFinite(limitedAt) || Date.now() - limitedAt < RATE_LIMIT_COOLDOWN_MS) return false;
-    }
+    if (!account.enabled || account.status !== "ready" || account.loginState === "needs_login") return false;
     const requested = (model || "").trim().toLowerCase();
     if (!requested || !account.quota?.length) return true;
     const profile = dolaModelProfile(requested);

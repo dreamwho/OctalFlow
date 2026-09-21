@@ -16,8 +16,10 @@ import { refundVideoTask } from "@/lib/server/video-task-refund";
 import { geminiVideoQueryPath, parseGeminiVideoOperation } from "@/lib/server/gemini-video-provider";
 import { isDreaminaCliVideoTask, isDreaminaCliPersistedResultUrl, queryDreaminaCliVideoTask } from "@/lib/server/dreamina-cli-video-task";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
-import { releaseDolaAccountAttempt, setDolaAccountStatus } from "@/lib/server/dola/account-service";
+import { getDolaAccount, releaseDolaAccountAttempt, markDolaAccountRateLimited, markDolaAccountRestricted, setDolaAccountStatus } from "@/lib/server/dola/account-service";
 import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
+import { advanceDolaTaskLog, findDolaTaskLogIdByTaskId, retargetDolaRequestLogTask } from "@/lib/server/dola/log-store";
+import { isDolaRateLimitError, shouldRotateAccountForError } from "@/lib/dola-errors";
 import { resolveDolaWatermarkUrlRemote } from "@/lib/server/dola/watermark-url";
 import { resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
 
@@ -39,9 +41,98 @@ export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: stri
         });
         return getVideoTask(claimed.id);
     }
-    if (step.state === "failed") return failVideoTask(claimed, step.error);
+    if (step.state === "failed") {
+        if (claimed.config.advancedConfig?.protocol === "dola" && shouldRotateAccountForError(step.error)) {
+            const rotated = await rotateDolaRateLimitedVideoTask(claimed, origin, cookie, "", step.error);
+            if (rotated) return rotated;
+            if (isDolaRateLimitError(step.error)) {
+                // 限流只是账号级瞬时状态，上游任务可能仍在生成：保持轮询等待真实终态。
+                await scheduleGenerationTask("video", claimed.id, { executionPhase: "polling", lastUpstreamStatus: "rate_limited_polling", nextPollAt: Date.now() + taskPollingPolicy(claimed).intervalMs });
+                return getVideoTask(claimed.id);
+            }
+            // 其余基础设施错误（如浏览器导航中断）上游任务通常已终止且换号配额用尽：判失败。
+        }
+        return failVideoTask(claimed, step.error);
+    }
     if (step.state === "result_ready") return persistVideoTaskResult(claimed, step.resultUrl, origin, cookie, "", step.watermarkPayload);
     return getVideoTask(claimed.id);
+}
+
+/** 账号级错误允许换号；只有真实账号状态错误才写回账号池，浏览器/代理故障不污染账号。 */
+export async function rotateDolaRateLimitedVideoTask(task: VideoTask, origin: string, cookie: string, workerUserId: string, error: string) {
+    if (task.upstream.accountId) {
+        if (isDolaRateLimitError(error)) await markDolaAccountRateLimited(task.upstream.accountId, error.slice(0, 300)).catch(() => undefined);
+        else if (/proxy_region_blocked|country restricted|region-restricted/i.test(error)) await markDolaAccountRestricted(task.upstream.accountId, error.slice(0, 300)).catch(() => undefined);
+        else if (/login|auth|cookie|credential|unauthorized|\b401\b/i.test(error)) await setDolaAccountStatus(task.upstream.accountId, "needs_login").catch(() => undefined);
+        await releaseDolaAccountAttempt(task.upstream.accountId).catch(() => undefined);
+    }
+    const { rotationLimit } = await getDolaGatewaySettings();
+    const payload = task.upstream.rotationPayload;
+    if (!payload || (task.upstream.rotations || 0) >= rotationLimit) {
+        console.warn(`[dola-rotate] 视频任务 ${task.id} 无法继续换号：${!payload ? "缺少原始请求载荷（旧任务）" : `已用尽 ${rotationLimit} 次轮换配额`}`);
+        return null;
+    }
+    const createPath = task.config.advancedConfig?.createPath || "/v1/videos";
+    let record: Record<string, unknown> | null;
+    try {
+        const response = await fetchInternalApi(`${origin}${task.config.baseUrl.replace(/\/+$/, "")}${createPath.startsWith("/") ? createPath : `/${createPath}`}`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-dola-rotation-task": task.upstream.id, ...videoProxyHeaders(task, cookie, workerUserId) },
+            body: JSON.stringify(payload),
+            cache: "no-store",
+            signal: AbortSignal.timeout(Math.min(resolveModelRequestTimeoutMs(task.config, "video"), 60_000)),
+        });
+        const text = await response.text();
+        if (!response.ok) {
+            console.warn(`[dola-rotate] 视频任务 ${task.id} 换号重提失败：HTTP ${response.status} ${text.slice(0, 200)}`);
+            return null;
+        }
+        const parsed: unknown = parseVideoProviderJson(text);
+        record = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+    } catch (submitError) {
+        console.warn(`[dola-rotate] 视频任务 ${task.id} 换号重提异常：`, submitError instanceof Error ? submitError.message : submitError);
+        return null;
+    }
+    const newTaskId = typeof record?.taskId === "string" ? record.taskId : typeof record?.id === "string" ? record.id : "";
+    if (!newTaskId || newTaskId === task.upstream.id) return null;
+    const { resultUrl: _dropped, ...upstreamRest } = task.upstream;
+    const nextAccountId = typeof record?.accountId === "string" && record.accountId ? record.accountId : task.upstream.accountId;
+    const upstream = { ...upstreamRest, id: newTaskId, ...(nextAccountId ? { accountId: nextAccountId } : {}), rotations: (task.upstream.rotations || 0) + 1 };
+    await updateVideoTask(task.id, { upstream });
+    await scheduleGenerationTask("video", task.id, { executionPhase: "submitted", lastUpstreamStatus: "submitted", nextPollAt: Date.now() + taskPollingPolicy(task).intervalMs });
+    // 把换号事件写回原任务的请求日志：请求日志详情的生命周期会显示 生成失败 → 已自动切换账号 → 继续生成
+    const originalLogId = await safeFindDolaRuntimeTaskLog(task.upstream.id);
+    if (originalLogId) {
+        await safeAdvanceDolaRotateLog(originalLogId, {
+            phase: "generating",
+            message: "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)",
+            detail: `原账号 ${task.upstream.accountId || "未识别"} 已按真实错误分类处理；新账号 ${nextAccountId || "未识别"}，新任务 ${newTaskId}，第 ${upstream.rotations as number} 次轮换。本条日志不再更新，后续进度请按新任务 ID 查询对应请求日志`,
+            statusCode: 200,
+        });
+    }
+    console.log(`[dola-rotate] 视频任务 ${task.id} 上游账号限额（${error.slice(0, 120)}），已自动切换账号重试：新任务 ${newTaskId}，账号 ${nextAccountId || "未识别"}`);
+    // 轮换叠加日志：原请求日志转接到新任务 ID，账号名同步为新账号，后续轮询与结果继续写同一份日志。
+    const nextAccountName = nextAccountId ? (await getDolaAccount(nextAccountId).catch(() => null))?.name : undefined;
+    await retargetDolaRequestLogTask(task.upstream.id, newTaskId, nextAccountName).catch(() => undefined);
+    return getVideoTask(task.id);
+}
+
+async function safeFindDolaRuntimeTaskLog(taskId: string) {
+    try {
+        return await findDolaTaskLogIdByTaskId(taskId, "runtime");
+    } catch (error) {
+        console.error("Failed to locate Dola runtime task log for rotation", error);
+        return "";
+    }
+}
+
+async function safeAdvanceDolaRotateLog(id: string, advance: Parameters<typeof advanceDolaTaskLog>[1]) {
+    if (!id) return;
+    try {
+        await advanceDolaTaskLog(id, advance);
+    } catch (error) {
+        console.error("Failed to record Dola rotation into task log", error);
+    }
 }
 
 export async function queryVideoTaskUpstream(task: VideoTask, origin: string, cookie = "", workerUserId = ""): Promise<VideoUpstreamStep> {
@@ -50,17 +141,20 @@ export async function queryVideoTaskUpstream(task: VideoTask, origin: string, co
     if (isGeminiVideoTask(task)) return queryGeminiVideoUpstream(task, origin, cookie, workerUserId);
     const data = await queryVideoUpstream(task, origin, cookie, workerUserId);
     const status = readVideoProviderStatus(data, task.config.advancedConfig?.statusField);
-    const verificationId = data && typeof data === "object" && typeof (data as Record<string, unknown>).verificationId === "string" ? String((data as Record<string, unknown>).verificationId) : undefined;
+    const rawVerificationId = data && typeof data === "object" ? (data as Record<string, unknown>).verificationId ?? (data as Record<string, unknown>).verification_id : undefined;
+    const verificationId = typeof rawVerificationId === "string" && rawVerificationId.trim() ? rawVerificationId.trim() : undefined;
     const isDola = task.config.advancedConfig?.protocol === "dola";
     if (status === "needs_review" || status === "verification_required" || (isDola && status === "submission_unknown")) {
-        const error = verificationId
-            ? isDola ? "Dola 需要人工完成滑块验证" : "上游需要人工完成验证"
-            : isDola
-                ? status === "submission_unknown"
-                    ? "Dola 提交响应未返回任务标识，且未检测到验证页面"
-                    : "Dola 返回待人工确认状态，但未提供验证会话"
-                : "上游返回待人工确认状态，但未提供验证会话";
-        return { state: "needs_review", status, error, ...(verificationId ? { verificationId } : {}) };
+        if (verificationId) {
+            const error = isDola ? "Dola 需要人工完成页面验证" : "上游需要人工完成验证";
+            return { state: "needs_review", status, error, verificationId };
+        }
+        const error = isDola
+            ? status === "submission_unknown"
+                ? "Dola 提交响应未返回任务标识，且未检测到验证页面"
+                : "Dola 返回待确认状态，但未提供验证会话"
+            : "上游返回待确认状态，但未提供验证会话";
+        return { state: "failed", status: status || "failed", error };
     }
     const resultUrl = readVideoProviderUrl(data, task.config.advancedConfig?.resultField) || contentEndpointResultUrl(task, status);
     if (resultUrl || VIDEO_PROVIDER_SUCCESS.has(status)) {
@@ -250,6 +344,7 @@ async function queryVideoUpstream(task: VideoTask, origin: string, cookie: strin
               `/result?id=${encodeURIComponent(task.upstream.id)}`,
           ]);
     let lastError = "";
+    const isDola = task.config.advancedConfig?.protocol === "dola";
     for (const path of paths) {
         const response = await fetchInternalApi(`${origin}${task.config.baseUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`, {
             headers: videoProxyHeaders(task, cookie, workerUserId),
@@ -263,6 +358,12 @@ async function queryVideoUpstream(task: VideoTask, origin: string, cookie: strin
         const text = await response.text();
         if (!response.ok) {
             lastError = readVideoProviderHttpError(text, response.status);
+            // Dola 轮询 404 且明确返回 task not found：上游任务已丢失（Provider 重启清理），属终态失败。
+            if (isDola && response.status === 404 && /task not found/i.test(text)) {
+                const notFoundError = new Error("Dola 任务在 Provider 中不存在（可能已被服务重启清理）");
+                (notFoundError as { code?: string }).code = "DOLA_TASK_NOT_FOUND";
+                throw notFoundError;
+            }
             continue;
         }
         try {

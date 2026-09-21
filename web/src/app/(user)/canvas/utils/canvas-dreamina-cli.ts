@@ -79,7 +79,10 @@ export function canvasDreaminaVideoProfile(modelId: string, command: CanvasDream
             fixedRatio: true,
         } as const;
     }
-    const fixedRatio = command === "image2video" || command === "frames2video";
+    // Seedance 2.x 系列支持 multimodal2video：图生视频也可指定比例（服务端自动切换命令）；
+    // 1.x 系列图/帧生视频比例跟随参考素材。
+    const supportsMultimodal = modelId !== "dreamina-seedance-1-0-fast" && modelId !== "dreamina-seedance-1-5-pro";
+    const fixedRatio = command === "frames2video" || (command === "image2video" && !supportsMultimodal);
     if (modelId === "dreamina-seedance-2-5") {
         return {
             ratios: VIDEO_RATIOS,

@@ -135,6 +135,7 @@ export type AppSettingsRecord = {
     logicalModels: JsonValue;
     defaultModels: JsonValue;
     agentSkills: JsonValue;
+    canvasQuickActions: JsonValue;
     createdAt: string;
     updatedAt: string;
 };

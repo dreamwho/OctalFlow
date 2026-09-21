@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
 const MIN_TOKEN_LENGTH = 32;
@@ -35,6 +35,7 @@ export function resolveGenerationWorkerOrigin({ environment = process.env, fallb
 }
 
 export function superviseGenerationRuntime({ app, workerScript, environment, services = [] }) {
+    services.forEach((service) => freeServicePort(service?.port));
     const definitions = [...services, { name: "web", command: app.command, args: app.args, cwd: app.cwd }, { name: "generation-worker", command: process.execPath, args: [workerScript], cwd: app.cwd }];
     const children = definitions.map((definition) => ({
         ...definition,
@@ -88,6 +89,20 @@ export function superviseGenerationRuntime({ app, workerScript, environment, ser
             });
         }
     });
+}
+
+/** 本地固定端口上若有上次运行残留的 sidecar 进程（未随上次关闭），先清理再启动，
+ *  避免新 sidecar 绑定失败或新旧进程密钥不一致导致整栈不可用。 */
+function freeServicePort(port) {
+    if (!port) return;
+    try {
+        const out = execFileSync("lsof", ["-ti", `-i:${port}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5_000 });
+        const pids = out.split("\n").map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0);
+        pids.forEach((pid) => {
+            try { process.kill(pid, "SIGKILL"); } catch {}
+        });
+        if (pids.length) console.log(`[runtime] 端口 ${port} 存在残留进程 ${pids.join(", ")}，已清理后重启服务`);
+    } catch {}
 }
 
 function validPort(value) {

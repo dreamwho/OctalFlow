@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from aistudio_api.api.schemas import ImageRequest
 from aistudio_api.application.api_service import handle_image_edit, handle_image_generation
+from aistudio_api.application import api_service_common
 from aistudio_api.domain.errors import AuthError, RequestError
 
 
@@ -284,7 +285,7 @@ def test_image_permission_denial_rotates_across_the_account_pool(monkeypatch):
         switches += 1
         return True
 
-    monkeypatch.setattr(api_service_openai, "MAX_RETRIES", 3)
+    api_service_common.set_request_rotation_limit("3")
     monkeypatch.setattr(api_service_openai, "require_busy_lock", lambda: asyncio.Semaphore(1))
     monkeypatch.setattr(api_service_openai, "ensure_active_account", _noop)
     monkeypatch.setattr(api_service_openai, "try_switch_account", _switch)
@@ -331,7 +332,7 @@ def _patch_image_account_rotation(monkeypatch, switches):
         switches.append(True)
         return True
 
-    monkeypatch.setattr(api_service_openai, "MAX_RETRIES", 3)
+    api_service_common.set_request_rotation_limit("3")
     monkeypatch.setattr(api_service_openai, "require_busy_lock", lambda: asyncio.Semaphore(1))
     monkeypatch.setattr(api_service_openai, "ensure_active_account", _noop)
     monkeypatch.setattr(api_service_openai, "try_switch_account", _switch)

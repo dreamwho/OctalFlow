@@ -119,13 +119,13 @@ export class GeminiToolsRepository {
 
     async getGateway() {
         const result = await this.db.query("SELECT * FROM gemini_tools_gateway_settings WHERE id = 'default'");
-        return result.rows[0] ? mapGateway(result.rows[0]) : { enabled: true, strategy: "round_robin" as const, sessionStickiness: false };
+        return result.rows[0] ? mapGateway(result.rows[0]) : { enabled: true, strategy: "round_robin" as const, sessionStickiness: false, rotationLimit: 2 };
     }
 
     async updateGateway(patch: Partial<GeminiToolsGatewaySettings>) {
         const current = await this.getGateway();
         const value = { ...current, ...patch };
-        const result = await this.db.query("UPDATE gemini_tools_gateway_settings SET enabled=$1,strategy=$2,session_stickiness=$3 WHERE id='default' RETURNING *", [value.enabled, value.strategy, value.sessionStickiness]);
+        const result = await this.db.query("UPDATE gemini_tools_gateway_settings SET enabled=$1,strategy=$2,session_stickiness=$3,rotation_limit=$4::integer WHERE id='default' RETURNING *", [value.enabled, value.strategy, value.sessionStickiness, value.rotationLimit]);
         return mapGateway(result.rows[0]);
     }
 
@@ -334,7 +334,8 @@ function mapOAuthSession(row: Record<string, unknown>): GeminiToolsOAuthSession 
     return { state: string(row.state), redirectUri: string(row.redirect_uri), openerOrigin: string(row.opener_origin), createdAt: Date.parse(date(row.created_at) || "") || 0 };
 }
 function mapGateway(row: Record<string, unknown>): GeminiToolsGatewaySettings {
-    return { enabled: row.enabled !== false, strategy: row.strategy === "priority" ? "priority" : "round_robin", sessionStickiness: row.session_stickiness === true };
+    const rotationLimit = Number(row.rotation_limit);
+    return { enabled: row.enabled !== false, strategy: row.strategy === "priority" ? "priority" : "round_robin", sessionStickiness: row.session_stickiness === true, rotationLimit: Number.isFinite(rotationLimit) && rotationLimit >= 0 ? Math.floor(rotationLimit) : 2 };
 }
 function mapApiKey(row: Record<string, unknown>): StoredGeminiToolsApiKey {
     return {

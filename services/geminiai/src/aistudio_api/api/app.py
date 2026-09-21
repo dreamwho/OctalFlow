@@ -95,6 +95,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Studio API", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def _capture_rotation_limit(request: Request, call_next):
+    """Read the gateway-provided rotation budget once per request.
+
+    BaseHTTPMiddleware creates the downstream task inside `call_next`, so the
+    ContextVar set here is visible to route handlers and service code.
+    """
+    from aistudio_api.application.api_service_common import set_request_rotation_limit
+
+    set_request_rotation_limit(request.headers.get("x-aistudio-rotation-limit"))
+    return await call_next(request)
+
+
 @app.exception_handler(HTTPException)
 async def _http_exception_with_account(request: Request, exc: HTTPException):
     response = await http_exception_handler(request, exc)

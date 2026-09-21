@@ -96,6 +96,7 @@ INSERT INTO app_settings (id)
 VALUES ('default')
 ON CONFLICT (id) DO NOTHING;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS agent_skills jsonb NOT NULL DEFAULT '[{"id":"ecommerce-image","name":"电商生图","description":"为商品主图、场景图和详情页视觉生成结构化方案。","instructions":"识别商品卖点、目标人群、平台与画幅。优先规划白底主图、核心卖点场景图、细节特写和详情页横幅；保持商品外观、材质、颜色、Logo 与包装一致。提示词必须写清主体、构图、光线、背景、镜头、商业质感、尺寸比例与禁止变形要求。","enabled":true,"keywords":["电商","商品","主图","详情页","淘宝","京东","亚马逊"]}]'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS canvas_quick_actions jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS logical_models jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS login_methods jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points_enabled boolean NOT NULL DEFAULT true;
@@ -271,11 +272,13 @@ CREATE TABLE IF NOT EXISTS gemini_tools_gateway_settings (
     enabled boolean NOT NULL DEFAULT true,
     strategy text NOT NULL DEFAULT 'round_robin',
     session_stickiness boolean NOT NULL DEFAULT false,
+    rotation_limit integer NOT NULL DEFAULT 2,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT gemini_tools_gateway_singleton CHECK (id = 'default'),
     CONSTRAINT gemini_tools_gateway_strategy_check CHECK (strategy IN ('round_robin', 'priority'))
 );
+ALTER TABLE gemini_tools_gateway_settings ADD COLUMN IF NOT EXISTS rotation_limit integer NOT NULL DEFAULT 2;
 INSERT INTO gemini_tools_gateway_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS gemini_tools_request_logs (
@@ -402,6 +405,7 @@ CREATE TABLE IF NOT EXISTS dola_gateway_settings (
     id text PRIMARY KEY DEFAULT 'default',
     enabled boolean NOT NULL DEFAULT false,
     auto_watermark boolean NOT NULL DEFAULT false,
+    capture_verification_screenshot boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT dola_gateway_singleton CHECK (id = 'default')
@@ -437,6 +441,7 @@ CREATE TABLE IF NOT EXISTS dola_request_logs (
     error text,
     request_preview text,
     response_preview text,
+    screenshot_base64 text,
     proxy_egress jsonb NOT NULL DEFAULT '{}'::jsonb,
     lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb
 );
@@ -444,11 +449,13 @@ CREATE INDEX IF NOT EXISTS dola_request_logs_created_idx ON dola_request_logs (c
 CREATE INDEX IF NOT EXISTS dola_request_logs_status_idx ON dola_request_logs (status_code, created_at DESC);
 CREATE INDEX IF NOT EXISTS dola_request_logs_model_idx ON dola_request_logs (model, created_at DESC);
 CREATE INDEX IF NOT EXISTS dola_request_logs_account_idx ON dola_request_logs (account_id, created_at DESC);
+ALTER TABLE dola_gateway_settings ADD COLUMN IF NOT EXISTS capture_verification_screenshot boolean NOT NULL DEFAULT true;
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS capability text NOT NULL DEFAULT 'video';
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT 'POST';
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS account_name text;
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS task_id text;
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS verification_id text;
+ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS screenshot_base64 text;
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS requested_duration integer;
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS ratio text;
 ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS request_bytes integer;

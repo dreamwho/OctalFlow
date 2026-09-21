@@ -45,7 +45,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
     const [error, setError] = useState("");
     const [action, setAction] = useState("");
     const [selectedModels, setSelectedModels] = useState<string[]>([]);
-    const [gateway, setGateway] = useState<GeminiToolsGateway>({ enabled: true, strategy: "round_robin", sessionStickiness: false });
+    const [gateway, setGateway] = useState<GeminiToolsGateway>({ enabled: true, strategy: "round_robin", sessionStickiness: false, rotationLimit: 2 });
     const [testOpen, setTestOpen] = useState(false);
     const [testModel, setTestModel] = useState("");
     const [testPrompt, setTestPrompt] = useState("请用一句中文说明当前模型已通过 GeminiTools 真实调用。");
@@ -373,6 +373,9 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                         </SettingRow>
                         <SettingRow label="会话粘性" description="预留网关会话策略；关闭时每次按当前调度规则选择">
                             <Switch checked={gateway.sessionStickiness} onChange={(checked: boolean) => setGateway((current) => ({ ...current, sessionStickiness: checked }))} />
+                        </SettingRow>
+                        <SettingRow label="换号次数上限" description="请求遇账号级错误（限流/配额/认证失效）时最多依次尝试的账号数；0/1 表示只用当前账号不切换；内容风控等错误立即失败不切换">
+                            <InputNumber className="w-36" min={0} precision={0} value={gateway.rotationLimit} onChange={(value: number | null) => setGateway((current) => ({ ...current, rotationLimit: value ?? 2 }))} />
                         </SettingRow>
                         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs leading-6 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
                             <div>
@@ -825,7 +828,9 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-zinc-500 dark:text-zinc-400">
                     <span className="truncate">{log.accountEmail || "未分配账号"}</span>
-                    {log.proxyEgress?.address ? <span>· 出口: {log.proxyEgress.address}</span> : null}
+                    {log.proxyEgress ? (
+                        <span className="text-blue-600 dark:text-blue-400">· 节点: {log.proxyEgress.node_name || log.proxyEgress.address || "已配置"}</span>
+                    ) : null}
                     {log.error ? <span className="text-red-500">· {log.error}</span> : null}
                 </div>
             </div>
@@ -973,6 +978,22 @@ function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | n
 
                             <dt className="text-zinc-500">请求路径</dt>
                             <dd className="break-all font-mono text-xs text-zinc-700 dark:text-zinc-300">{log.path}</dd>
+
+                            {log.proxyEgress ? (
+                                <>
+                                    <dt className="text-zinc-500">代理节点名称</dt>
+                                    <dd className="break-all text-xs font-medium text-zinc-800 dark:text-zinc-200">
+                                        {log.proxyEgress.node_name || log.proxyEgress.address || "未命名节点"}
+                                        <span className="ml-1.5 text-zinc-400 font-normal">({log.proxyEgress.mode === "magic" ? "魔法代理" : log.proxyEgress.mode === "chained" ? "链式代理" : "通用代理"})</span>
+                                    </dd>
+                                    {log.proxyEgress.address && log.proxyEgress.address !== log.proxyEgress.node_name ? (
+                                        <>
+                                            <dt className="text-zinc-500">代理出口地址</dt>
+                                            <dd className="break-all font-mono text-xs text-zinc-700 dark:text-zinc-300">{log.proxyEgress.address}</dd>
+                                        </>
+                                    ) : null}
+                                </>
+                            ) : null}
 
                             {log.clientIp ? (
                                 <>

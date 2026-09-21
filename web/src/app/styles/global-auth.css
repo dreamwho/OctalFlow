@@ -392,6 +392,12 @@
     }
 }
 
+/* 登录弹窗跟随首页等比缩放，2K/4K 下与页面显示比例一致 */
+.landing-auth-jiaotu.ant-modal,
+.landing-auth-modal.ant-modal {
+    zoom: var(--home-resolution-scale, 1);
+}
+
 /* 登录弹窗（参考站结构）：首页主屏顶部光影 hero + 居中纯图标 LOGO + 表单 + 微信登录 + 法务行 */
 .landing-auth-jiaotu.ant-modal {
     max-width: calc(100vw - 24px);

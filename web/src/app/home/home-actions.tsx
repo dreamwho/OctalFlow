@@ -16,7 +16,7 @@ import { useUserStore } from "@/stores/use-user-store";
 import type { HomeSiteSettings } from "./home-data";
 import { resolveSiteBrandName, resolveSiteTitle } from "@/lib/site-brand";
 import { createCanvasProject } from "@/services/api/canvas-projects";
-import { CanvasNodeType } from "@/app/(user)/canvas/types";
+import { CanvasNodeType, type CanvasNodeData } from "@/app/(user)/canvas/types";
 
 export type HomeCreateGenerateParams = {
     prompt: string;
@@ -103,7 +103,7 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
             height = 300;
         }
 
-        const node = {
+        const node: CanvasNodeData = {
             id: nodeId,
             type: isVideo ? CanvasNodeType.Video : CanvasNodeType.Image,
             title: isVideo ? "视频生成" : "图片生成",
@@ -123,7 +123,7 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
         const res = await createCanvasProject({
             title: title || "新创意画布",
             project: {
-                nodes: [node as any],
+                nodes: [node],
             },
         });
 

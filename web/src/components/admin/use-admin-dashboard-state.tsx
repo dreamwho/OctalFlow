@@ -81,6 +81,7 @@ export function useAdminDashboardState({ initialUsers, initialUserSummary, initi
     const [mailTestTo, setMailTestTo] = useState("");
     const [fetchingModelId, setFetchingModelId] = useState("");
     const [promptSaving, setPromptSaving] = useState(false);
+    const [editingPromptId, setEditingPromptId] = useState("");
     const [promptsLoading, setPromptsLoading] = useState(false);
     const [deletingPromptId, setDeletingPromptId] = useState("");
     const [promptSearch, setPromptSearch] = useState("");
@@ -223,6 +224,8 @@ export function useAdminDashboardState({ initialUsers, initialUserSummary, initi
         fetchingModelId,
         setFetchingModelId,
         promptSaving,
+        editingPromptId,
+        setEditingPromptId,
         setPromptSaving,
         promptsLoading,
         setPromptsLoading,

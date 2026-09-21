@@ -141,6 +141,26 @@ export async function getStoredGenerationTaskByUpstream(type: GenerationTaskType
     return (await readFileTasks()).find((task) => task.userId === userId && task.type === type && task.channelId === normalizedChannelId && task.upstreamTaskId === normalizedUpstreamTaskId && task.expiresAt > Date.now()) || null;
 }
 
+/** 管理员按上游任务 ID 检索对应的生成任务（不限用户/状态），用于后台查询与强制取消。 */
+export async function findStoredGenerationTaskByUpstream<T>(type: GenerationTaskType, upstreamTaskId: string): Promise<T | null> {
+    const normalized = cleanUpstreamTaskId(upstreamTaskId);
+    if (!normalized) return null;
+    if (getDatabaseProvider() === "postgres") {
+        await ensurePostgresSchema();
+        const result = await postgresQuery<{ payload: T }>(
+            `SELECT payload FROM generation_tasks
+             WHERE task_type = $1 AND upstream_task_id = $2 AND expires_at > now()
+             ORDER BY updated_at DESC LIMIT 1`,
+            [type, normalized],
+        );
+        return result.rows[0]?.payload || null;
+    }
+    const task = (await readFileTasks()).find(
+        (task) => task.type === type && task.upstreamTaskId === normalized && task.expiresAt > Date.now(),
+    );
+    return (task?.payload as T | undefined) || null;
+}
+
 export async function listStoredGenerationTasks<T>(type: GenerationTaskType, userId: string, limit = 20): Promise<T[]> {
     return queryStoredGenerationTasks<T>(type, { userId, limit });
 }

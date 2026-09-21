@@ -2230,8 +2230,10 @@
 .hero {
     /* 全分辨率适配：垂直间距全部随视口高度伸缩（svh），
        2K/4K + 系统缩放导致 CSS 视口偏小时自动收紧，保证标题与提示词面板完整落在首屏内 */
-    min-height: min(100svh, 960px);
-    padding: clamp(150px, 22svh, 240px) 24px clamp(32px, 9svh, 88px);
+    /* 桌面端由首页等比缩放（--home-resolution-scale）统一放大，此处保持 1440×900 设计基准的固定尺寸；
+       min-height 扣除底部提示行空间并按缩放比例折算，确保主体内容整体偏上、底部留有间隙 */
+    min-height: min(calc((100svh - 56px) / var(--home-resolution-scale, 1)), 960px);
+    padding: 150px 24px 88px;
 }
 
 .heroCopy {
@@ -2241,8 +2243,8 @@
 }
 
 .heroMark {
-    height: clamp(64px, 13svh, 116px);
-    margin: 0 0 clamp(12px, 3svh, 28px);
+    height: 116px;
+    margin: 0 0 28px;
     width: auto;
 }
 
@@ -2252,7 +2254,7 @@
 }
 
 .composerWrap {
-    margin-top: clamp(16px, 5svh, 48px);
+    margin-top: 48px;
     max-width: 780px;
 }
 

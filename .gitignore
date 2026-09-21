@@ -11,6 +11,7 @@ node_modules/
 .e2e-data/
 .e2e-artifacts/
 playwright-report/
+web/test-results/
 .tmp/
 web/.tmp/
 .tmp_*.txt

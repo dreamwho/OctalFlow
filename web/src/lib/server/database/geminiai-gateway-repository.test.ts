@@ -35,14 +35,12 @@ describe("GeminiAiGatewayRepository", () => {
     });
 
     it("patches the singleton gateway row and defaults a missing row to enabled", async () => {
-        const query = vi.fn().mockResolvedValueOnce({
-            rows: [{ id: "default", enabled: false, created_at: new Date(), updated_at: new Date() }],
-            rowCount: 1,
-        });
+        const row = { id: "default", enabled: false, rotation_limit: 2, created_at: new Date(), updated_at: new Date() };
+        const query = vi.fn().mockResolvedValueOnce({ rows: [row], rowCount: 1 }).mockResolvedValueOnce({ rows: [row], rowCount: 1 });
 
-        await expect(repositoryWith(query).updateGateway({ enabled: false })).resolves.toEqual({ enabled: false });
-        expect(query).toHaveBeenCalledWith("UPDATE geminiai_gateway_settings SET enabled=$1, updated_at=now() WHERE id='default' RETURNING *", [false]);
+        await expect(repositoryWith(query).updateGateway({ enabled: false })).resolves.toEqual({ enabled: false, rotationLimit: 2 });
+        expect(query).toHaveBeenCalledWith("UPDATE geminiai_gateway_settings SET enabled=$1, rotation_limit=$2::integer, updated_at=now() WHERE id='default' RETURNING *", [false, 2]);
 
-        await expect(repositoryWith(vi.fn().mockResolvedValue({ rows: [], rowCount: 0 })).updateGateway({ enabled: false })).resolves.toEqual({ enabled: false });
+        await expect(repositoryWith(vi.fn().mockResolvedValue({ rows: [], rowCount: 0 })).updateGateway({ enabled: false })).resolves.toEqual({ enabled: false, rotationLimit: 2 });
     });
 });

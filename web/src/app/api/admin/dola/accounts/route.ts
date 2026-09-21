@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const items = rawItems.flatMap((item) => {
         if (!item || typeof item !== "object") return [];
         const value = item as Record<string, unknown>;
-        return [{ cookie: typeof (value.cookie ?? value.cookies) === "string" ? String(value.cookie ?? value.cookies) : "", name: typeof value.name === "string" ? value.name : undefined, email: typeof value.email === "string" ? value.email : undefined, sourceFileName: typeof value.sourceFileName === "string" ? value.sourceFileName : undefined, sourceOrdinal: typeof value.sourceOrdinal === "number" ? value.sourceOrdinal : undefined } satisfies DolaAccountImportItem];
+        return [{ cookie: typeof (value.cookie ?? value.cookies) === "string" ? String(value.cookie ?? value.cookies) : "", name: typeof value.name === "string" ? value.name : undefined, email: typeof value.email === "string" ? value.email : undefined, authType: value.authType === "google" ? "google" : value.authType === "cookie" ? "cookie" : undefined, sourceFileName: typeof value.sourceFileName === "string" ? value.sourceFileName : undefined, sourceOrdinal: typeof value.sourceOrdinal === "number" ? value.sourceOrdinal : undefined } satisfies DolaAccountImportItem];
     });
     try {
         const result = await importDolaAccounts(items);

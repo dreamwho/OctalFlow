@@ -77,6 +77,35 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
         tasks.clear();
         return sendJson(response, 200, { ok: true });
     }
+    // Dola Camoufox Provider fixture：结果由导入账号的 Cookie 值驱动（expired→needs_login、verify→verification_required、boom→上游 500，其余 ready）。
+    if (path.startsWith("/internal/runtime/v1/")) {
+        const payload = jsonBody(body);
+        const cookie = String(payload.cookie || "");
+        if (request.method === "POST" && path === "/internal/runtime/v1/accounts/inspect") {
+            const loginProbe = { state: cookie.includes("expired") ? "needs_login" : "ready", httpStatus: 200, code: 0, transport: "http-launch" };
+            if (payload.authOnly === true) return sendJson(response, 200, { status: loginProbe.state === "ready" ? "ready" : "needs_login", quota: [], loginProbe });
+            if (cookie.includes("boom")) return sendJson(response, 500, { error: "upstream_rate_limited" });
+            if (cookie.includes("expired")) return sendJson(response, 200, { status: "needs_login", quota: [], loginProbe });
+            if (cookie.includes("verify")) return sendJson(response, 200, { status: "verification_required", quota: [], loginProbe });
+            return sendJson(response, 200, { status: "ready", loginProbe, protocol: { ready: true, login: true, signerReady: true, requestObserved: true, signed: true, httpStatus: 200, identitySource: "/alice/user/launch" }, quota: [{ bucket: "video", remaining: 5, limit: 100, unit: "count", source: "upstream" }] });
+        }
+        if (request.method === "POST" && path === "/internal/runtime/v1/videos") {
+            if (String(payload.model || "").includes("fail")) return sendJson(response, 500, { error: "upstream_error" });
+            if (cookie.includes("limited")) return sendJson(response, 200, { id: `dola-limited-${Date.now()}`, taskId: `dola-limited-${Date.now()}`, status: "failed", error: "rate_limited", accountId: String(payload.accountId || "") });
+            const taskId = nextTaskId("dola-video");
+            tasks.set(taskId, { status: "completed", videoUrl: `${url.origin}/media/fixture.mp4`, accountId: String(payload.accountId || "") });
+            return sendJson(response, 200, { id: taskId, taskId, status: "submitted", accountId: String(payload.accountId || "") });
+        }
+        if (request.method === "POST" && path === "/internal/runtime/v1/images") {
+            return sendJson(response, 200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: (await fixtureImage(options)).toString("base64") }] });
+        }
+        const videoQuery = request.method === "GET" ? path.match(/^\/internal\/runtime\/v1\/videos\/([^/]+)$/) : null;
+        if (videoQuery) {
+            const task = tasks.get(decodeURIComponent(videoQuery[1]));
+            if (!task) return sendJson(response, 404, { error: "task_not_found" });
+            return sendJson(response, 200, { status: task.status, taskId: decodeURIComponent(videoQuery[1]), videoUrl: task.videoUrl });
+        }
+    }
     if (request.method === "GET" && ["/models", "/api/v3/models"].includes(path)) {
         const catalog = url.searchParams.has("protocol") ? [...models, { id: "opaque-catalog-model" }] : models;
         return sendJson(response, 200, { object: "list", data: catalog });
@@ -146,6 +175,9 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
         const model = requestedModel(body, request.headers["content-type"] || "");
         if (options.failImage || shouldFailRequest(request, model)) return sendJson(response, options.failImage || model.includes("-fail") ? 400 : 503, { error: { message: "fixture image failure" } });
         return sendJson(response, 200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: (await fixtureImage(options)).toString("base64"), revised_prompt: "protocol fixture" }] });
+    }
+    if (request.method === "POST" && path === "/images") {
+        return sendJson(response, 200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: (await fixtureImage(options)).toString("base64") }] });
     }
     if (request.method === "POST" && ["/sdapi/v1/txt2img", "/sdapi/v1/img2img"].includes(path)) {
         return sendJson(response, 200, { images: [(await fixtureImage(options)).toString("base64")], info: "{}" });

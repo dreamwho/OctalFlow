@@ -40,21 +40,23 @@ describe("active media protocols over TCP fixtures", () => {
     it.each(STRICT_IMAGE_PROTOCOLS)("completes $id image creation with its registered request shape", async (definition) => {
         const model = definition.builtInModels?.find((item) => item.capability === "image")?.id || "mock-image";
         const operation = definition.operations.image!;
-        const baseUrl = operation.createPath === "/images/generations" ? `${origin}/v1` : origin;
+        const createPath = operation.createPath!;
+        const baseUrl = createPath.startsWith("/images") ? `${origin}/v1` : origin;
         const task = imageTask(baseUrl, model, definition.id, imageConfig(definition.id));
         const result = await runImageTask(task, definition.id);
         await expectImageResult(result);
-        expectCreateRequest(new URL(`${baseUrl}${operation.createPath}`).pathname, false);
+        expectCreateRequest(new URL(`${baseUrl}${createPath}`).pathname, false);
     });
 
     it.each(STRICT_IMAGE_PROTOCOLS.filter((definition) => definition.operations.image?.supportsReferenceImage))("completes $id image editing with a transmitted reference", async (definition) => {
         const model = definition.builtInModels?.find((item) => item.capability === "image")?.id || "mock-image";
         const operation = definition.operations.image!;
-        const baseUrl = operation.createPath === "/images/generations" ? `${origin}/v1` : origin;
+        const createPath = operation.createPath!;
+        const baseUrl = createPath.startsWith("/images") ? `${origin}/v1` : origin;
         const task = imageTask(baseUrl, model, definition.id, imageConfig(definition.id), true);
         const result = await runImageTask(task, definition.id);
         await expectImageResult(result);
-        expectCreateRequest(new URL(`${baseUrl}${operation.editPath || operation.createPath}`).pathname, true);
+        expectCreateRequest(new URL(`${baseUrl}${operation.editPath || createPath}`).pathname, true);
     });
 
     it.each(STRICT_VIDEO_PROTOCOLS)("completes $id video creation and polling without path fallback", async (definition) => {

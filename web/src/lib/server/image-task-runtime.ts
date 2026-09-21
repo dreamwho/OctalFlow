@@ -17,6 +17,8 @@ import { getImageTask, transitionImageTask, updateImageTask, type ImageTask } fr
 import { maintenanceWorkerContext } from "@/lib/server/maintenance-auth";
 import { isDreaminaCliImageTask, isDreaminaCliImageUpscaleTask, isDreaminaCliSeedreamImageTask, queryDreaminaCliImageTask, runDreaminaCliImageUpscaleTask, runDreaminaCliSeedreamImageTask } from "@/lib/server/dreamina-cli-image-runtime";
 import { isDreaminaCliConfig } from "@/lib/server/dreamina-cli-service";
+import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
+import { shouldRotateAccountForError } from "@/lib/dola-errors";
 import { cancelRunningHubTask, queryRunningHubImageTask, RunningHubError, submitRunningHubImageTask } from "@/lib/server/runninghub-service";
 
 export type ImageUpstreamStep =
@@ -77,15 +79,33 @@ export async function createImageTaskUpstreamStep(task: ImageTask, origin: strin
         });
         try {
             if (isDreaminaCliConfig(candidate.config) && !isDreaminaCliImageTask(candidate)) throw new GenerationSubmissionSafeFailure("即梦 CLI 图片任务必须使用受支持的 Seedream 模型或图片超清 operation");
-            const result = isDreaminaCliImageUpscaleTask(candidate)
-                ? await runDreaminaCliImageUpscaleTask(candidate, origin, authContext)
-                : isDreaminaCliSeedreamImageTask(candidate)
-                  ? await runDreaminaCliSeedreamImageTask(candidate, origin, authContext)
-                  : usesDeclarativeImageProtocol(config.advancedConfig?.protocol)
-                    ? await runCustomImageTask(candidate, origin, publicOrigin, authContext, true)
-                    : config.apiFormat === "gemini"
-                      ? await runGeminiImageTask(candidate, origin, authContext)
-                      : await runOpenAiImageTask(candidate, origin, publicOrigin, authContext, true);
+            // Dola 等账号池协议的账号级错误（限流/配额/登录态）在提交阶段按后台换号次数上限重试：
+            // 每次重试经 runtime 路由会自动选择下一个可用账号；内容风控/参数错误立即失败不重试。
+            const rotationLimit = candidate.config.advancedConfig?.protocol === "dola" ? (await getDolaGatewaySettings()).rotationLimit : 0;
+            let rotations = 0;
+            const runCandidate = async (): Promise<ImageTaskRunResult> =>
+                isDreaminaCliImageUpscaleTask(candidate)
+                    ? await runDreaminaCliImageUpscaleTask(candidate, origin, authContext)
+                    : isDreaminaCliSeedreamImageTask(candidate)
+                      ? await runDreaminaCliSeedreamImageTask(candidate, origin, authContext)
+                      : usesDeclarativeImageProtocol(config.advancedConfig?.protocol)
+                        ? await runCustomImageTask(candidate, origin, publicOrigin, authContext, true)
+                        : config.apiFormat === "gemini"
+                          ? await runGeminiImageTask(candidate, origin, authContext)
+                          : await runOpenAiImageTask(candidate, origin, publicOrigin, authContext, true);
+            let result: ImageTaskRunResult;
+            for (;;) {
+                try {
+                    result = await runCandidate();
+                    break;
+                } catch (error) {
+                    if (error instanceof GenerationSubmissionSafeFailure && shouldRotateAccountForError(error.message) && rotations < rotationLimit) {
+                        rotations += 1;
+                        continue;
+                    }
+                    throw error;
+                }
+            }
             return await handleImageProviderResult(candidate, result, origin, authContext);
         } catch (error) {
             if (!(error instanceof GenerationSubmissionSafeFailure)) throw generationSubmissionUncertainError(error, "图片任务创建结果未知");
@@ -121,7 +141,11 @@ export async function queryImageTaskUpstreamStep(task: ImageTask, origin: string
         return await handleImageProviderResult(task, { ...result, pointsCost: task.billing?.pointsCost, pointsRecordId: task.billing?.pointsRecordId }, origin, authContext);
     } catch (error) {
         if (error instanceof ImageQueryContractError) return { state: "needs_review", reason: error.message, status: "query_contract_invalid" };
-        if (error instanceof ImageUpstreamTerminalError) return { state: "failed", error: error.message, status: "failed" };
+        if (error instanceof ImageUpstreamTerminalError) {
+            // Dola 账号级限流只是瞬时状态，上游任务可能仍在生成：保持轮询等待真实终态，不写终态失败。
+            if (task.config.advancedConfig?.protocol === "dola" && shouldRotateAccountForError(error.message)) return { state: "pending", upstream, status: "rate_limited_polling" };
+            return { state: "failed", error: error.message, status: "failed" };
+        }
         if (error instanceof GenerationSubmissionSafeFailure) return { state: "failed", error: error.message, status: "failed" };
         throw error;
     }

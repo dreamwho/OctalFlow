@@ -28,7 +28,7 @@ type CanvasVideoSettingsPopoverProps = {
     placement?: CreativeComposerPopoverPlacement;
 };
 
-export function CanvasVideoSettingsPopover({ config, metadata, references, onConfigChange, onMetadataChange, buttonClassName, placement = "topLeft" }: CanvasVideoSettingsPopoverProps) {
+export function CanvasVideoSettingsPopover({ config, metadata, references, onConfigChange, onMetadataChange, buttonClassName, placement = "top" }: CanvasVideoSettingsPopoverProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const responsivePlacement = useCreativeComposerPopoverPlacement(placement);
     const dreaminaModelId = resolveCanvasDreaminaModelId(config);
@@ -36,6 +36,7 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
     const dreamina = canvasDreaminaVideoProfile(dreaminaModelId, dreaminaCommand);
     const dola = canvasDolaVideoProfile(resolveCanvasDolaModelId(config));
     const videoProfile = dola || dreamina;
+    const minimaxDurationRange = /minimax/i.test(config.model || "") ? { min: 5, max: 15 } : undefined;
     const preferences: GenerationPreferences = {
         mode: "video",
         video: {
@@ -83,9 +84,11 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
             ratioOptions={videoProfile?.ratios}
             videoQualityOptions={videoProfile?.qualities}
             videoDurationOptions={videoProfile?.durations}
-            videoDurationRange={videoProfile?.durationRange}
+            videoDurationRange={videoProfile?.durationRange || minimaxDurationRange}
+            videoDurationSnapPoints={dola?.durations.map((duration) => duration.value)}
             allowCustomSize={!videoProfile}
             allowCustomVideoQuality={!videoProfile}
+            showVideoDuration={false}
             ratioGridClassName="grid-cols-2 sm:grid-cols-4"
             ratioTileLayout
             videoReferenceContent={<CanvasVideoReferenceSettings metadata={metadata} references={references} theme={theme} compact onChange={onMetadataChange} />}
@@ -98,9 +101,9 @@ export function canvasVideoPreferenceSummary(preferences: GenerationPreferences)
     const video = preferences.video;
     const size = !video?.size || video.size === "auto" ? "智能" : video.size.replace("x", "×");
     const quality = !video?.quality || video.quality === "auto" ? "智能" : `${video.quality.replace(/p$/i, "")}P`;
-    const seconds = video?.seconds ? `${video.seconds}s` : "";
-    if (/^\d+x\d+$/i.test(video?.size || "")) return [size, seconds].filter(Boolean).join(" · ");
-    return [size, quality, seconds].filter(Boolean).join(" · ");
+    // 时长是独立入口（CanvasVideoDurationPopover），不再挤进参数摘要。
+    if (/^\d+x\d+$/i.test(video?.size || "")) return [size].filter(Boolean).join(" · ");
+    return [size, quality].filter(Boolean).join(" · ");
 }
 
 function applyVideoPreferencePatch(patch: CreativeGenerationPreferencePatch, onChange: (key: keyof AiConfig, value: string) => void) {

@@ -22,6 +22,7 @@ import { CanvasNodeSplitDialog } from "../components/canvas-node-split-dialog";
 import { CanvasNodeUpscaleDialog } from "../components/canvas-node-upscale-dialog";
 import { CanvasNodeUpscalePanel } from "../components/canvas-node-upscale-panel";
 import { CanvasStoryboardDialog } from "../components/canvas-storyboard-dialog";
+import { useCanvasQuickActions } from "../utils/canvas-quick-actions-client";
 import { CanvasVideoFrameCaptureDialog } from "../components/canvas-video-frame-capture-dialog";
 import { CanvasAudioUploadDialog } from "../components/canvas-audio-upload-dialog";
 import { CanvasImageComparison } from "../components/canvas-image-comparison";
@@ -270,7 +271,7 @@ function DreamyoCanvasPage() {
         maskEditImageNode,
         upscaleImageNode,
         generateAngleNode,
-        generateCharacterThreeViewNode,
+        generateQuickActionNode,
         handleFontSizeChange,
         handleUploadRequest,
         replaceAudioNodeFile,
@@ -302,6 +303,8 @@ function DreamyoCanvasPage() {
     const previewUpscaleSourceNode = useMemo(() => resolveDreaminaUpscaleSourceNode(previewNode, nodes), [nodes, previewNode]);
     const contextNode = useMemo(() => (contextMenu?.type === "node" ? nodes.find((node) => node.id === contextMenu.nodeId) || null : null), [contextMenu, nodes]);
     const storyboardNode = useMemo(() => nodes.find((node) => node.id === storyboardNodeId && isCanvasImageNodeType(node.type)) || null, [nodes, storyboardNodeId]);
+    const [preselectedQuickActionId, setPreselectedQuickActionId] = useState("");
+    const quickActions = useCanvasQuickActions();
     const captureFrameNode = useMemo(() => nodes.find((node) => node.id === captureFrameNodeId && node.type === CanvasNodeType.Video) || null, [captureFrameNodeId, nodes]);
     const canArrangeContextSelection = canArrangeCanvasSelection(contextMenu, selectedNodeIds);
     const interiorDesignTargetNode = useMemo(() => (interiorDesignTarget ? nodes.find((node) => node.id === interiorDesignTarget.nodeId) || null : null), [interiorDesignTarget, nodes]);
@@ -537,6 +540,37 @@ function DreamyoCanvasPage() {
         },
         [connectionsRef, extractVideoDepth, handleRetryNode, message, nodesRef],
     );
+    const handleVerifyNode = useCallback(
+        async (node: (typeof nodes)[number]) => {
+            const taskId = node.metadata?.videoTask?.serverTaskId || node.metadata?.videoTask?.id;
+            if (!taskId) {
+                retryCanvasNode(node);
+                return;
+            }
+            try {
+                const response = await fetch(`/api/video-tasks/${encodeURIComponent(taskId)}`, { cache: "no-store" });
+                const payload = (await response.json().catch(() => ({}))) as { task?: { needsReview?: boolean; verificationId?: string; reviewReason?: string } };
+                const verificationId = payload.task?.verificationId;
+                if (verificationId) {
+                    setDolaVerification({ nodeId: node.id, taskId, verificationId });
+                    message.info("请完成 Dola 页面验证后继续生成");
+                    return;
+                }
+                const openRes = await fetch(`/api/video-tasks/${encodeURIComponent(taskId)}/verification/open`, { method: "POST", cache: "no-store" });
+                const openPayload = (await openRes.json().catch(() => ({}))) as { code?: number; data?: { verificationId?: string }; error?: string };
+                const openedId = openPayload.data?.verificationId || (openRes.ok ? taskId : undefined);
+                if (openedId) {
+                    setDolaVerification({ nodeId: node.id, taskId, verificationId: openedId });
+                    message.info("请完成 Dola 页面验证后继续生成");
+                    return;
+                }
+                message.warning(openPayload.error || "未检测到可处理的页面验证会话");
+            } catch (error) {
+                message.error(error instanceof Error ? error.message : "无法打开 Dola 验证页面");
+            }
+        },
+        [message, retryCanvasNode, setDolaVerification],
+    );
     const analyzeVideoNode = useCallback(
         async (sourceNode: (typeof nodes)[number]) => {
             if (sourceNode.type !== CanvasNodeType.Video || analysisSourceNodeIds.has(sourceNode.id)) return;
@@ -736,6 +770,7 @@ function DreamyoCanvasPage() {
                         onSetBatchPrimary: setBatchPrimary,
                         onRetry: retryCanvasNode,
                         onRegenerate: (node) => retryCanvasNode(node, { forceNew: true }),
+                        onVerify: handleVerifyNode,
                         onGenerateImage: generateImageFromTextNode,
                         onOpenPanel: (node) => {
                             setSelectedNodeIds(new Set([node.id]));
@@ -897,7 +932,11 @@ function DreamyoCanvasPage() {
                     onUpscale={(node) => setUpscaleNodeId(node.id)}
                     onSuperResolve={(node) => setUpscaleNodeId(node.id)}
                     onAngle={(node) => setAngleNodeId(node.id)}
-                    onStoryboard={(node) => setStoryboardNodeId(node.id)}
+                    quickActions={quickActions}
+                    onQuickActionSelect={(node, action) => {
+                        setStoryboardNodeId(node.id);
+                        setPreselectedQuickActionId(action.id);
+                    }}
                     onViewImage={(node) => setPreviewNodeId(node.id)}
                     onReversePrompt={createImageReversePromptNodes}
                     onCaptureFrames={(node) => setCaptureFrameNodeId(node.id)}
@@ -981,9 +1020,11 @@ function DreamyoCanvasPage() {
                             setUpscaleNodeId(contextNode.id);
                             setContextMenu(null);
                         }}
-                        onStoryboard={() => {
+                        quickActions={quickActions}
+                        onQuickActionSelect={(action) => {
                             if (!contextNode) return;
                             setStoryboardNodeId(contextNode.id);
+                            setPreselectedQuickActionId(action.id);
                             setContextMenu(null);
                         }}
                         onCaptureFrames={() => {
@@ -1118,8 +1159,10 @@ function DreamyoCanvasPage() {
                         open={Boolean(storyboardNode)}
                         config={effectiveConfig}
                         initialModel={storyboardNode.metadata.model}
+                        actions={quickActions}
+                        preselectedActionId={preselectedQuickActionId}
                         onClose={() => setStoryboardNodeId(null)}
-                        onConfirm={(params) => void generateCharacterThreeViewNode(storyboardNode, params)}
+                        onConfirm={(action, model) => void generateQuickActionNode(storyboardNode, action, model)}
                     />
                 ) : null}
 

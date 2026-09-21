@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultConfig } from "@/stores/use-config-store";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
-import { CHARACTER_THREE_VIEW_PROMPT, buildCharacterThreeViewGenerationConfig, createCharacterThreeViewNode } from "./canvas-storyboard";
+import { CHARACTER_THREE_VIEW_PROMPT } from "@/lib/canvas-quick-actions";
+import { createQuickActionNode } from "./canvas-storyboard";
 
 const source: CanvasNodeData = {
     id: "source",
@@ -30,12 +30,10 @@ describe("Canvas 分镜大师", () => {
 使用 100mm 微距镜头以 f/2.8 拍摄的极限微距照片，景深极浅，焦点锐利地落在眼睛上，鼻部和嘴唇平滑地虚化。未经磨皮滤镜、自然面部结构、真实发丝和胡茬细节、克制色彩、宽容度高、眼部焦点极其锐利、自然解剖准确、无美颜滤镜、获奖级编辑摄影。面部瑕疵真实可见。纯白极简空间，完全无地面线条。`);
     });
 
-    it("uses fixed hidden generation defaults and appends a connected 16:9 image node", () => {
-        const config = buildCharacterThreeViewGenerationConfig({ ...defaultConfig, model: "fallback", size: "1:1", quality: "low", count: "4" }, "logical-image");
+    it("creates a connected 16:9 image node from the quick-action entry", () => {
         const snapshot = structuredClone(source);
-        const created = createCharacterThreeViewNode({ source, nodes: [source], nodeId: "three-view", connectionId: "edge", metadata: { status: "loading", prompt: CHARACTER_THREE_VIEW_PROMPT } });
+        const created = createQuickActionNode({ source, nodes: [source], nodeId: "three-view", connectionId: "edge", nodeType: CanvasNodeType.Image, title: "人物三视图", ratio: "16:9", metadata: { status: "loading", prompt: CHARACTER_THREE_VIEW_PROMPT } });
 
-        expect(config).toMatchObject({ model: "logical-image", size: "16:9", quality: "high", count: "1" });
         expect(created.node).toMatchObject({ id: "three-view", type: CanvasNodeType.Image, title: "人物三视图", metadata: { status: "loading", prompt: CHARACTER_THREE_VIEW_PROMPT } });
         expect(created.node.width / created.node.height).toBeCloseTo(16 / 9);
         expect(created.node.position.x).toBeGreaterThan(source.position.x + source.width);

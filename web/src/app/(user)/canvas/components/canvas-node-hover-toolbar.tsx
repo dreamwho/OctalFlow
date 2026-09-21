@@ -5,6 +5,7 @@ import { App, Modal, Popover, Segmented, Tooltip } from "antd";
 import { Camera, Clapperboard, Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Pencil, Plus, RefreshCw, ScanLine, ScanSearch, Settings2, Sparkles, Trash2, Upload, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import type { CanvasQuickActionEntry } from "../utils/canvas-quick-actions-client";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -33,7 +34,8 @@ type CanvasNodeHoverToolbarProps = {
     onUpscale: (node: CanvasNodeData) => void;
     onSuperResolve: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
-    onStoryboard: (node: CanvasNodeData) => void;
+    quickActions: CanvasQuickActionEntry[];
+    onQuickActionSelect: (node: CanvasNodeData, action: CanvasQuickActionEntry) => void;
     onViewImage: (node: CanvasNodeData) => void;
     onReversePrompt: (node: CanvasNodeData) => void;
     onDepthExtract?: (node: CanvasNodeData) => void;
@@ -76,7 +78,8 @@ export function CanvasNodeHoverToolbar({
     onUpscale,
     onSuperResolve,
     onAngle,
-    onStoryboard,
+    quickActions,
+    onQuickActionSelect,
     onViewImage,
     onReversePrompt,
     onDepthExtract,
@@ -237,7 +240,7 @@ export function CanvasNodeHoverToolbar({
                 {toolbarTools.map((tool) => (
                     <ToolbarAction key={tool.id} {...tool} theme={theme} />
                 ))}
-                {hasStoryboardSource ? (
+                {hasStoryboardSource && quickActions.length ? (
                     <Tooltip title="分镜大师" placement="top" mouseEnterDelay={0.2}>
                         <Popover
                             trigger="click"
@@ -248,19 +251,11 @@ export function CanvasNodeHoverToolbar({
                                 if (open) onKeep(node.id);
                             }}
                             content={
-                                <div data-canvas-storyboard-action-menu className="w-36 p-1">
-                                    <button
-                                        type="button"
-                                        role="menuitem"
-                                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/10"
-                                        onClick={() => {
-                                            setStoryboardMenuOpen(false);
-                                            onStoryboard(node);
-                                        }}
-                                    >
-                                        <Clapperboard className="size-4" />
-                                        人物三视图
-                                    </button>
+                                <div data-canvas-storyboard-action-menu className="max-h-72 w-52 overflow-y-auto p-1">
+                                    {renderQuickActionGroups(quickActions, (action) => {
+                                        setStoryboardMenuOpen(false);
+                                        onQuickActionSelect(node, action);
+                                    })}
                                 </div>
                             }
                         >
@@ -401,4 +396,33 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
             <span className="min-w-0 whitespace-pre-wrap break-words">{value}</span>
         </div>
     );
+}
+
+
+export function renderQuickActionGroups(actions: CanvasQuickActionEntry[], onSelect: (action: CanvasQuickActionEntry) => void) {
+    const groups: Array<{ name: string; actions: CanvasQuickActionEntry[] }> = [];
+    actions.forEach((action) => {
+        const last = groups[groups.length - 1];
+        if (last && last.name === action.groupName) last.actions.push(action);
+        else groups.push({ name: action.groupName, actions: [action] });
+    });
+    return groups.map((group) => (
+        <div key={group.name} className="mb-1 last:mb-0">
+            <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-zinc-400">{group.name}</div>
+            {group.actions.map((action) => (
+                <button
+                    key={action.id}
+                    type="button"
+                    role="menuitem"
+                    data-canvas-quick-action-menu-item
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/10"
+                    onClick={() => onSelect(action)}
+                >
+                    <Clapperboard className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{action.name}</span>
+                    {action.capability !== "image" ? <span className="shrink-0 text-[10px] text-zinc-400">{action.capability}</span> : null}
+                </button>
+            ))}
+        </div>
+    ));
 }

@@ -12,7 +12,7 @@ from aistudio_api.api.responses import to_gemini_parts, to_gemini_usage_metadata
 from aistudio_api.api.schemas import GeminiGenerateContentRequest
 from aistudio_api.api.state import runtime_state
 from aistudio_api.application.api_service_common import (
-    MAX_RETRIES,
+    effective_retry_attempts,
     account_request_lock,
     account_access_denied_detail,
     ensure_active_account,
@@ -35,8 +35,9 @@ async def handle_gemini_generate_content(
 ):
     busy_lock = require_busy_lock()
     last_error = None
+    attempts = effective_retry_attempts()
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(attempts):
         async with busy_lock, account_request_lock():
             if not stream:
                 await ensure_active_account(attempt)
@@ -98,7 +99,7 @@ async def handle_gemini_generate_content(
 
                 record_rotator_event("rate_limited")
                 if await try_switch_account():
-                    logger.info("Gemini 429 限流，已切换账号，重试 %d/%d", attempt + 1, MAX_RETRIES)
+                    logger.info("Gemini 429 限流，已切换账号，重试 %d/%d", attempt + 1, attempts)
                     continue
                 logger.warning("Gemini 429 限流，无法切换账号")
                 raise HTTPException(429, detail={"message": str(exc), "type": "rate_limit_exceeded"}) from exc
@@ -106,8 +107,8 @@ async def handle_gemini_generate_content(
                 runtime_state.record(model_path, "errors")
                 last_error = exc
                 record_rotator_event("error")
-                if attempt < MAX_RETRIES - 1 and await try_switch_account():
-                    logger.info("Gemini 模型无账号权限，已切换账号，重试 %d/%d", attempt + 1, MAX_RETRIES)
+                if attempt < attempts - 1 and await try_switch_account():
+                    logger.info("Gemini 模型无账号权限，已切换账号，重试 %d/%d", attempt + 1, attempts)
                     continue
                 raise HTTPException(403, detail=account_access_denied_detail(model_path.removeprefix("models/"))) from exc
             except AistudioError as exc:
@@ -138,7 +139,7 @@ def _build_gemini_streaming_response(*, client: AIStudioClient, normalized: dict
             await ensure_active_account(0)
             try:
                 final_usage = None
-                for stream_attempt in range(MAX_RETRIES):
+                for stream_attempt in range(effective_retry_attempts()):
                     try:
                         has_yielded_data = False
                         async for event_type, text in client.stream_generate_content(
@@ -228,7 +229,7 @@ def _build_gemini_streaming_response(*, client: AIStudioClient, normalized: dict
                         runtime_state.record(normalized["model"], "rate_limited")
                         record_rotator_event("rate_limited")
                         if not has_yielded_data and await try_switch_account():
-                            logger.warning("Gemini stream 429 限流，已切换账号，重试 %d/%d", stream_attempt + 1, MAX_RETRIES)
+                            logger.warning("Gemini stream 429 限流，已切换账号，重试 %d/%d", stream_attempt + 1, attempts)
                             continue
                         raise
                     except RequestError as exc:

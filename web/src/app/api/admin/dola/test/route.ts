@@ -8,7 +8,16 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
     const access = await requireDolaAdmin();
     if ("error" in access) return access.error;
-    const parsed = await readJsonBodyResult<{ model?: unknown; prompt?: unknown; duration?: unknown; ratio?: unknown; references?: unknown }>(request);
+    const parsed = await readJsonBodyResult<{
+        model?: unknown;
+        prompt?: unknown;
+        duration?: unknown;
+        ratio?: unknown;
+        references?: unknown;
+        headless?: unknown;
+        customCookie?: unknown;
+        accountId?: unknown;
+    }>(request);
     if (!parsed.ok) return apiCompatError(parsed.status, parsed.message);
     if (typeof parsed.data.model !== "string" || typeof parsed.data.prompt !== "string") return apiCompatError(400, "模型和提示词不能为空");
     let references: Array<{ dataUrl?: string; url?: string; role?: string; name?: string; mime?: string }>;
@@ -17,8 +26,21 @@ export async function POST(request: Request) {
     } catch (error) {
         return apiCompatError(400, error instanceof Error ? error.message : "测试参考图格式无效");
     }
+    const headless = typeof parsed.data.headless === "boolean" ? parsed.data.headless : undefined;
+    const customCookie = typeof parsed.data.customCookie === "string" && parsed.data.customCookie.trim() ? parsed.data.customCookie.trim() : undefined;
+    const accountId = typeof parsed.data.accountId === "string" && parsed.data.accountId.trim() ? parsed.data.accountId.trim() : undefined;
+
     try {
-        const result = await testDolaVideo({ model: parsed.data.model, prompt: parsed.data.prompt, duration: Number(parsed.data.duration), ratio: typeof parsed.data.ratio === "string" ? parsed.data.ratio : "16:9", references });
+        const result = await testDolaVideo({
+            model: parsed.data.model,
+            prompt: parsed.data.prompt,
+            duration: Number(parsed.data.duration),
+            ratio: typeof parsed.data.ratio === "string" ? parsed.data.ratio : "16:9",
+            references,
+            headless,
+            customCookie,
+            accountId,
+        });
         await auditDolaAdminAction(request, access.user, "admin.dola.test", { type: "dola_test", id: result.taskId || parsed.data.model });
         return apiSuccess(result, "Dola 测试请求已提交");
     } catch (error) {

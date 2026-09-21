@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 import { publicNodePrompt, updateCanvasSelectedSkillIds } from "./canvas-node-prompt-panel";
 
@@ -34,12 +33,11 @@ describe("publicNodePrompt", () => {
         expect(source).toContain("tokenSnapshot={promptTokenSnapshot}");
         expect(source).toContain("onTokenSnapshotChange={updatePromptTokenSnapshot}");
         expect(source).toContain("data-canvas-credit-cost");
-        expect(source).toContain("<Coins className=\"size-3.5 shrink-0\" strokeWidth={2} />");
-        expect(source).toContain("text-[13px] font-semibold tabular-nums text-white/95");
+        expect(source).toContain("<Layers className=\"size-4 shrink-0 text-zinc-300\"");
+        expect(source).toContain("formatCreditAmount(credits)");
         expect(source).not.toContain("rgba(255, 255, 255, 0.15)");
         expect(source).not.toContain("<CreditSymbol");
         expect(source).toContain("onDoubleClick={stopCanvasInteraction}");
-        expect(source).toContain("<GenerationActionButton");
         expect(source).toContain("box-border flex h-14 min-w-0 shrink-0 items-center");
         expect(source).toContain("flex-nowrap items-center");
         expect(source).toContain("overflow-x-auto overflow-y-hidden whitespace-nowrap");
@@ -115,5 +113,18 @@ describe("Canvas prompt Skill persistence", () => {
         expect(source).toContain("onConfigChange(node.id, { selectedSkillIds: normalized.length ? normalized : undefined })");
         expect(source).toContain("selectedSkillIdsRef.current");
         expect(source).toContain("onRemoveSkill={removeSkill}");
+    });
+
+    it("isolates prompt editing on existing video and audio nodes so source content and status are not mutated", () => {
+        const source = readFileSync(new URL("./canvas-node-prompt-panel.tsx", import.meta.url), "utf8");
+        expect(source).toContain("const hasVideoContent = node.type === CanvasNodeType.Video && Boolean(node.metadata?.content);");
+        expect(source).toContain("const hasAudioContent = node.type === CanvasNodeType.Audio && Boolean(node.metadata?.content);");
+        expect(source).toContain("const isEditingExistingContent = hasTextContent || hasImageContent || hasVideoContent || hasAudioContent;");
+        expect(source).toContain("setPrompt(isEditingExistingContent ? publicNodePrompt(node) : \"\");");
+
+        const actionsSource = readFileSync(new URL("../[id]/use-canvas-generation-actions.tsx", import.meta.url), "utf8");
+        expect(actionsSource).toContain("isSourceGeneratingInPlace");
+        expect(actionsSource).toContain("mode === \"video\" && (videoCreation?.isEmptyVideoNode ?? false)");
+        expect(actionsSource).toContain("const markSourceStatus = isSourceGeneratingInPlace;");
     });
 });

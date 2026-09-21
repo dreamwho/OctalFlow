@@ -1,3 +1,4 @@
+import { CHARACTER_THREE_VIEW_PROMPT } from "@/lib/canvas-quick-actions";
 import { ECOMMERCE_IMAGE_SKILL } from "@/lib/server/agent-skills/ecommerce-image";
 import { YANAI_BEAUTY_SKILL } from "@/lib/server/agent-skills/yanai-beauty";
 import { DEFAULT_CREATIVE_SHORTCUT_SKILLS } from "@/lib/server/agent-skills/creative-shortcuts";
@@ -190,6 +191,24 @@ export const DEFAULT_SETTINGS: AuthSettings = {
         ...PORTRAIT_IMAGE_SKILLS.map((skill) => ({ ...skill, keywords: [...skill.keywords], workspaces: [...skill.workspaces], defaultConfig: { ...skill.defaultConfig } })),
         { ...CHARACTER_CASTING_SKILL, keywords: [...CHARACTER_CASTING_SKILL.keywords], workspaces: [...(CHARACTER_CASTING_SKILL.workspaces || [])], defaultConfig: { ...CHARACTER_CASTING_SKILL.defaultConfig } },
         ...MINIMAX_H3_OFFICIAL_STYLE_SKILLS.map(cloneMinimaxH3OfficialStyleSkill),
+    ],
+    canvasQuickActions: [
+        {
+            id: "storyboard",
+            name: "分镜大师",
+            enabled: true,
+            sortOrder: 0,
+            actions: [
+                {
+                    id: "character-three-view",
+                    name: "人物三视图",
+                    prompt: CHARACTER_THREE_VIEW_PROMPT,
+                    capability: "image",
+                    enabled: true,
+                    defaults: { size: "16:9", quality: "high", count: "1" },
+                },
+            ],
+        },
     ],
 };
 export const AUTH_DATA_FILE = "auth.json";

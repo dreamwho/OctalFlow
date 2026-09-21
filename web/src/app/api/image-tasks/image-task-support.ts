@@ -219,7 +219,9 @@ export function matchesApiHost(baseUrl: string, hostname: string) {
 export function taskUrl(config: ImageTaskConfig, path: string, origin: string) {
     const protocol = resolveChannelModelConfig(config.advancedConfig, config.model)?.protocol || config.advancedConfig?.protocol;
     const apiBase = protocol === "custom" || protocol === "stable-diffusion" || protocol === "yumeng" ? absoluteApiBaseUrl(config.baseUrl, origin) : normalizeApiBaseUrl(config.baseUrl, config.apiFormat, origin);
-    return `${apiBase}${path}`;
+    const baseVersion = new URL(apiBase).pathname.match(/\/(v1|v1beta)$/i)?.[1];
+    const normalizedPath = baseVersion ? path.replace(new RegExp(`^/${baseVersion}(?=/)`, "i"), "") : path;
+    return `${apiBase}${normalizedPath}`;
 }
 
 export function normalizeApiBaseUrl(baseUrl: string, apiFormat: "openai" | "gemini", origin: string) {

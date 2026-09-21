@@ -948,7 +948,7 @@ class ProxySettingsStore:
         if lower.startswith("node:"):
             wanted_node = _clean(raw.split(":", 1)[1])
             try:
-                url, group_id_value, node_id_value, image_limit = self.resolve_egress_url(node_id=wanted_node)
+                url, group_id_value, node_id_value, image_limit, node_name_value = self.resolve_egress_url(node_id=wanted_node)
             except ValueError as exc:
                 raise ProxyReferenceUnavailableError(str(exc)) from exc
             return ResolvedProxyReference(
@@ -959,6 +959,7 @@ class ProxySettingsStore:
                 egress_label=f"{source}_node",
                 proxy_group_id=group_id_value,
                 proxy_node_id=node_id_value,
+                proxy_node_name=node_name_value,
                 image_concurrency_limit=image_limit,
             )
         return ResolvedProxyReference(
@@ -1041,8 +1042,8 @@ class ProxySettingsStore:
                     )
         return ProxyGroupSelection()
 
-    def resolve_egress_url(self, group_id: str = "", node_id: str = "") -> tuple[str, str, str, int]:
-        """Resolve a concrete (proxy_url, group_id, node_id, image_concurrency_limit) for surface egress bindings.
+    def resolve_egress_url(self, group_id: str = "", node_id: str = "") -> tuple[str, str, str, int, str]:
+        """Resolve a concrete (proxy_url, group_id, node_id, image_concurrency_limit, node_name) for surface egress bindings.
 
         With ``group_id`` the same capacity-aware rotation as upstream requests picks
         the node; with ``node_id`` the exact enabled node is returned.
@@ -1053,7 +1054,7 @@ class ProxySettingsStore:
             selection = self._resolve_proxy_group(wanted_group)
             if not selection.proxy_url:
                 raise ValueError(f"proxy group is unavailable: {wanted_group}")
-            return selection.proxy_url, selection.group_id, selection.node_id, selection.image_concurrency_limit
+            return selection.proxy_url, selection.group_id, selection.node_id, selection.image_concurrency_limit, selection.node_name
         if wanted_node:
             for group in self._proxy_dict_list("proxy_groups"):
                 if not isinstance(group, dict) or group.get("enabled") is False:
@@ -1065,7 +1066,8 @@ class ProxySettingsStore:
                     url = _clean(node.get("url"))
                     if url:
                         node_id_value = _clean(node.get("id")) or f"node-{index + 1}"
-                        return url, group_id_value, node_id_value, proxy_node_image_concurrency_limit(node)
+                        node_name_value = _clean(node.get("name")) or node_id_value
+                        return url, group_id_value, node_id_value, proxy_node_image_concurrency_limit(node), node_name_value
         raise ValueError("proxy egress is unavailable")
 
     def _proxy_node_has_image_capacity(self, group_id: str, node: Mapping[str, object], index: int) -> bool:

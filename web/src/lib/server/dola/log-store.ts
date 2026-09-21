@@ -49,6 +49,7 @@ export type DolaRequestLog = {
     error?: string;
     requestPreview?: string;
     responsePreview?: string;
+    screenshotBase64?: string;
     proxyEgress?: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string; address?: string };
     lifecycle?: DolaRequestLifecycleEntry[];
 };
@@ -107,9 +108,10 @@ export async function markDolaRequestLogRunning(id: string, entry: Omit<DolaRequ
 /** Map a Provider task status (queued/running/accepted/completed/failed/needs_review) onto the task lifecycle log phase. */
 export function dolaTaskLogPhase(status: string, hasVerification = false): DolaRequestLogPhase {
     const value = (status || "").toLowerCase();
-    if (hasVerification || ["needs_review", "verification_required", "submission_unknown", "pending_verification"].includes(value)) return "needs_review";
+    if (hasVerification) return "needs_review";
     if (value === "completed" || value === "succeeded") return "success";
-    if (value === "failed") return "failed";
+    if (value === "failed" || value === "submission_unknown") return "failed";
+    if (value === "needs_review" || value === "verification_required" || value === "pending_verification") return "failed";
     if (value === "queued") return "submitted";
     return "generating";
 }
@@ -141,6 +143,7 @@ export async function advanceDolaTaskLog(
         contentType?: string;
         error?: string;
         verificationId?: string;
+        screenshotBase64?: string;
         requestedDuration?: number;
         ratio?: string;
         quotaRemaining?: number | null;
@@ -155,6 +158,7 @@ export async function advanceDolaTaskLog(
         if (advance.contentType) log.contentType = truncate(advance.contentType, 160);
         if (advance.error) log.error = truncate(advance.error, 1_000);
         if (advance.verificationId) log.verificationId = truncate(advance.verificationId, 300);
+        if (advance.screenshotBase64) log.screenshotBase64 = advance.screenshotBase64;
         if (advance.requestedDuration !== undefined) log.requestedDuration = advance.requestedDuration;
         if (advance.ratio) log.ratio = truncate(advance.ratio, 32);
         if (advance.quotaRemaining !== undefined) log.quotaRemaining = advance.quotaRemaining;
@@ -188,6 +192,7 @@ export async function settleDolaRequestLog(
         accountName?: string;
         taskId?: string;
         verificationId?: string;
+        screenshotBase64?: string;
         requestedDuration?: number;
         ratio?: string;
         quotaRemaining?: number | null;
@@ -212,12 +217,26 @@ export async function settleDolaRequestLog(
         if (settle.accountName) log.accountName = truncate(settle.accountName, 160);
         if (settle.taskId) log.taskId = truncate(settle.taskId, 300);
         if (settle.verificationId) log.verificationId = truncate(settle.verificationId, 300);
+        if (settle.screenshotBase64) log.screenshotBase64 = settle.screenshotBase64;
         if (settle.requestedDuration !== undefined) log.requestedDuration = settle.requestedDuration;
         if (settle.ratio) log.ratio = truncate(settle.ratio, 32);
         if (settle.quotaRemaining !== undefined) log.quotaRemaining = settle.quotaRemaining;
         if (settle.quotaLimit !== undefined) log.quotaLimit = settle.quotaLimit;
         if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
         log.lifecycle = settle.lifecycle?.length ? settle.lifecycle : [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: log.phase === "success" ? "请求处理完成" : log.error || phaseLabel(log.phase) }];
+    });
+}
+
+/** 换号续生成：把原任务的请求日志转接到新任务 ID，之后新任务的轮询继续叠加在同一份日志里。 */
+export async function retargetDolaRequestLogTask(oldTaskId: string, newTaskId: string, newAccountName?: string) {
+    const source = (oldTaskId || "").trim();
+    const target = (newTaskId || "").trim();
+    if (!source || !target || source === target) return;
+    const logId = await findDolaTaskLogIdByTaskId(source, "runtime");
+    if (!logId) return;
+    await patchDolaRequestLog(logId, (log) => {
+        log.taskId = target.slice(0, 300);
+        if (newAccountName) log.accountName = newAccountName.slice(0, 160);
     });
 }
 
@@ -307,6 +326,7 @@ function normalizeLog(input: DolaRequestLog): DolaRequestLog {
         ...(input.headers ? { headers: sanitizeHeaders(input.headers) } : {}),
         ...(input.requestPreview ? { requestPreview: sanitizePreview(input.requestPreview) } : {}),
         ...(input.responsePreview ? { responsePreview: sanitizePreview(input.responsePreview) } : {}),
+        ...(input.screenshotBase64 ? { screenshotBase64: input.screenshotBase64 } : {}),
         ...(input.error ? { error: truncate(input.error, 1_000) } : {}),
     };
 }

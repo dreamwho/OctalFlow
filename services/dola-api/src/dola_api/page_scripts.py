@@ -70,7 +70,7 @@ async ({body}) => {
   const aBogus = sign(url); if (aBogus) { params.set("a_bogus", aBogus); url = `${location.origin}/alice/resource/prepare_upload?${params.toString()}`; }
   const response = await fetch(url, { method: "POST", credentials: "include", headers: { accept: "application/json, text/plain, */*", "accept-language": "zh-CN,zh;q=0.9", "agw-js-conv": "str", "content-type": "application/json", "x-flow-trace": `04-${hex(32)}-${hex(16)}-01` }, body: JSON.stringify(body) });
   const text = await response.text(); let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
-  return { ok: response.ok, status: response.status, json };
+  return { ok: response.ok, status: response.status, contentType: response.headers.get("content-type") || "", responseBytes: text.length, json };
 }
 """
 
@@ -281,19 +281,52 @@ async ({prompt, ratio, duration, model, attachments}) => {
 MAIN_WORLD_SUBMIT_SCRIPT = r"""
 (() => {
   const cfg = window.__DOLA_SUBMIT_CONFIG__ || {};
+  const previous = document.getElementById("__dola_submit_result__");
+  if (previous) previous.remove();
   const el = document.createElement("textarea");
   el.id = "__dola_submit_result__";
   el.style.display = "none";
   document.documentElement.appendChild(el);
   const done = (info) => { try { el.value = JSON.stringify(info); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); } };
   try {
-    // The bdms chunk may attach the a_bogus signature while patching open OR
-    // only inside send, depending on the variant the page is serving; both
-    // transmit a signed request once the hook is live, so we only wait for the
-    // hook object itself and let the server response judge the outcome.
-    const send = () => {
+    const completionKeys = new Set([
+      "aid", "device_id", "device_platform", "doubao_device_platform",
+      "doubao_pc_version", "fp", "language", "pc_version", "pkg_type",
+      "real_aid", "region", "samantha_web", "sys_region", "tea_uuid",
+      "tz_name", "use-olympus-account", "version_code", "web_id",
+      "web_platform", "web_tab_id"
+    ]);
+    const liveRequest = () => {
+      const resources = performance.getEntriesByType("resource");
+      let best = null;
+      let bestScore = -1;
+      for (let index = resources.length - 1; index >= 0; index -= 1) {
+        try {
+          const candidate = new URL(resources[index].name, location.origin);
+          if (candidate.origin !== location.origin) continue;
+          const identityScore = ["device_id", "web_id", "tea_uuid", "web_tab_id", "fp"].reduce((total, key) => total + (candidate.searchParams.get(key) ? 1 : 0), 0);
+          if (identityScore <= bestScore || !candidate.searchParams.get("device_id") || !candidate.searchParams.get("web_id")) continue;
+          best = candidate;
+          bestScore = identityScore;
+          if (identityScore >= 5) break;
+        } catch (_) {}
+      }
+      if (!best) return null;
+      const params = new URLSearchParams();
+      for (const [key, value] of best.searchParams.entries()) if (completionKeys.has(key) && value) params.set(key, value);
+      const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name"].map((key) => [key, params.get(key) || ""]));
+      return { url: `${location.origin}/chat/completion?${params.toString()}`, identity, identitySource: best.pathname };
+    };
+    const fallbackRequest = () => {
+      if (!cfg.fallbackQuery) return null;
+      const params = new URLSearchParams(String(cfg.fallbackQuery));
+      if (!params.get("device_id") || !params.get("web_id")) return null;
+      const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name"].map((key) => [key, params.get(key) || ""]));
+      return { url: `${location.origin}/chat/completion?${params.toString()}`, identity, identitySource: "provider_fresh_identity" };
+    };
+    const send = (request) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", cfg.url);
+      xhr.open("POST", request.url);
       xhr.setRequestHeader("accept", "*/*");
       xhr.setRequestHeader("accept-language", "zh-CN,zh;q=0.9");
       xhr.setRequestHeader("agw-js-conv", "str, str");
@@ -307,7 +340,9 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
         clearTimeout(settleTimer);
         let text = "";
         try { text = xhr.responseText || ""; } catch (_) {}
-        done({ status: xhr.status, contentType: (xhr.getResponseHeader && xhr.getResponseHeader("content-type")) || "", responseBytes: text.length, text: text.slice(0, 262144) });
+        let signed = false;
+        try { signed = new URL(xhr.responseURL || request.url, location.origin).searchParams.has("a_bogus"); } catch (_) {}
+        done({ status: xhr.status, contentType: (xhr.getResponseHeader && xhr.getResponseHeader("content-type")) || "", responseBytes: text.length, text: text.slice(0, 262144), identity: request.identity, identitySource: request.identitySource, signed });
       };
       xhr.onreadystatechange = () => {
         if (xhr.readyState === 3 && /event:\s*SSE_REPLY_END/.test(xhr.responseText || "")) {
@@ -320,13 +355,173 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
       xhr.send(cfg.body);
       setTimeout(finish, cfg.timeoutMs || 60000);
     };
-    const waitHook = () => {
-      if (typeof window.bdms === "object" || Date.now() >= (cfg.hookDeadline || 0)) return send();
-      return setTimeout(waitHook, 500);
+    const waitReady = () => {
+      const signerReady = typeof window.bdms === "object";
+      const deadlineReached = Date.now() >= (cfg.hookDeadline || 0);
+      const request = liveRequest() || (deadlineReached ? fallbackRequest() : null);
+      if (request && (signerReady || deadlineReached)) return send(request);
+      if (deadlineReached) return done({ fatal: "page_identity_unavailable", pageUrl: location.href, pageTitle: document.title || "" });
+      return setTimeout(waitReady, 250);
     };
-    waitHook();
+    waitReady();
   } catch (e) {
     done({ fatal: String(e && e.message || e).slice(0, 300) });
   }
+})();
+"""
+
+
+# Performs a read-only request through the exact page signer and identity used
+# by video submission. It is used for account validation and signed result
+# polling; paths and bodies are supplied only by the provider implementation.
+MAIN_WORLD_JSON_REQUEST_SCRIPT = r"""
+(() => {
+  const cfg = window.__DOLA_JSON_REQUEST_CONFIG__ || {};
+  const resultId = String(cfg.resultId || "__dola_json_request_result__");
+  const previous = document.getElementById(resultId);
+  if (previous) previous.remove();
+  const el = document.createElement("textarea");
+  el.id = resultId;
+  el.style.display = "none";
+  document.documentElement.appendChild(el);
+  const done = (value) => { try { el.value = JSON.stringify(value); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); } };
+  try {
+    const identityKeys = new Set([
+      "aid", "device_id", "device_platform", "doubao_device_platform",
+      "doubao_pc_version", "fp", "language", "pc_version", "pkg_type",
+      "real_aid", "region", "samantha_web", "sys_region", "tea_uuid",
+      "tz_name", "use-olympus-account", "version_code", "web_id",
+      "web_platform", "web_tab_id"
+    ]);
+    const liveRequest = () => {
+      const resources = performance.getEntriesByType("resource");
+      let best = null;
+      let bestScore = -1;
+      for (let index = resources.length - 1; index >= 0; index -= 1) {
+        try {
+          const candidate = new URL(resources[index].name, location.origin);
+          if (candidate.origin !== location.origin) continue;
+          const identityScore = ["device_id", "web_id", "tea_uuid", "web_tab_id", "fp"].reduce((total, key) => total + (candidate.searchParams.get(key) ? 1 : 0), 0);
+          const pathScore = candidate.pathname === "/chat/completion" ? 50 : candidate.pathname.includes("/samantha/user/") ? 40 : candidate.pathname.includes("/im/chain/") ? 30 : candidate.pathname.includes("/alice/") ? 20 : candidate.pathname === "/im/project/list" ? 0 : 10;
+          const score = identityScore * 100 + pathScore;
+          if (score <= bestScore || !candidate.searchParams.get("device_id") || !candidate.searchParams.get("web_id")) continue;
+          best = candidate;
+          bestScore = score;
+        } catch (_) {}
+      }
+      if (!best) return null;
+      const params = new URLSearchParams();
+      for (const [key, value] of best.searchParams.entries()) if (identityKeys.has(key) && value) params.set(key, value);
+      const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name"].map((key) => [key, params.get(key) || ""]));
+      return { url: `${location.origin}${cfg.path}?${params.toString()}`, identity, identitySource: best.pathname };
+    };
+    const send = (request) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(String(cfg.method || "POST"), request.url);
+      xhr.setRequestHeader("accept", "application/json, text/plain, */*");
+      xhr.setRequestHeader("accept-language", "zh-CN,zh;q=0.9");
+      xhr.setRequestHeader("agw-js-conv", "str");
+      xhr.setRequestHeader("content-type", "application/json; encoding=utf-8");
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        let text = "";
+        try { text = xhr.responseText || ""; } catch (_) {}
+        let signed = false;
+        try { signed = new URL(xhr.responseURL || request.url, location.origin).searchParams.has("a_bogus"); } catch (_) {}
+        done({ status: xhr.status, contentType: (xhr.getResponseHeader && xhr.getResponseHeader("content-type")) || "", responseBytes: text.length, text: text.slice(0, 524288), identity: request.identity, identitySource: request.identitySource, signed });
+      };
+      xhr.onloadend = finish;
+      xhr.onerror = finish;
+      xhr.send(String(cfg.body || "{}"));
+      setTimeout(finish, cfg.timeoutMs || 30000);
+    };
+    const waitReady = () => {
+      const request = liveRequest();
+      const signerReady = typeof window.bdms === "object";
+      const deadlineReached = Date.now() >= (cfg.hookDeadline || 0);
+      if (request && (signerReady || deadlineReached)) return send(request);
+      if (deadlineReached) return done({ fatal: "page_identity_unavailable", signerReady, pageUrl: location.href, pageTitle: document.title || "" });
+      setTimeout(waitReady, 250);
+    };
+    waitReady();
+  } catch (e) {
+    done({ fatal: String(e && e.message || e).slice(0, 300) });
+  }
+})();
+"""
+
+
+# Reads Dola's commerce credit balance through the same live page identity and
+# signed main-world XHR path as the web app. This endpoint is read only.
+MAIN_WORLD_CREDIT_SCRIPT = r"""
+(() => {
+  const cfg = window.__DOLA_CREDIT_CONFIG__ || {};
+  const previous = document.getElementById("__dola_credit_result__");
+  if (previous) previous.remove();
+  const el = document.createElement("textarea");
+  el.id = "__dola_credit_result__";
+  el.style.display = "none";
+  document.documentElement.appendChild(el);
+  const done = (value) => { try { el.value = JSON.stringify(value); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); } };
+  const routerMarkup = Array.from(document.scripts).map((script) => script.textContent || "").find((text) => text.includes("enableCommerceCredit")) || "";
+  const creditEnabled = /["']enableCommerceCredit["']\s*:\s*["'](?:1|true)["']/i.test(routerMarkup);
+  if (!creditEnabled) {
+    done({ fatal: "upstream_quota_not_exposed", pageUrl: location.href, pageTitle: document.title || "" });
+    return;
+  }
+  const completionKeys = new Set([
+    "aid", "device_id", "device_platform", "doubao_device_platform",
+    "doubao_pc_version", "fp", "language", "pc_version", "pkg_type",
+    "real_aid", "region", "samantha_web", "sys_region", "tea_uuid",
+    "tz_name", "use-olympus-account", "version_code", "web_id",
+    "web_platform", "web_tab_id"
+  ]);
+  const liveRequest = () => {
+    const resources = performance.getEntriesByType("resource");
+    let best = null;
+    let bestScore = -1;
+    for (let index = resources.length - 1; index >= 0; index -= 1) {
+      try {
+        const candidate = new URL(resources[index].name, location.origin);
+        if (candidate.origin !== location.origin) continue;
+        const score = ["device_id", "web_id", "tea_uuid", "web_tab_id", "fp"].reduce((total, key) => total + (candidate.searchParams.get(key) ? 1 : 0), 0);
+        if (score <= bestScore || !candidate.searchParams.get("device_id") || !candidate.searchParams.get("web_id")) continue;
+        best = candidate;
+        bestScore = score;
+        if (score >= 5) break;
+      } catch (_) {}
+    }
+    if (!best) return null;
+    const params = new URLSearchParams();
+    for (const [key, value] of best.searchParams.entries()) if (completionKeys.has(key) && value) params.set(key, value);
+    return { url: `${location.origin}/commerce/benefit_supply/credit/get_credit_num_optional_tasks?${params.toString()}`, identitySource: best.pathname };
+  };
+  const send = (request) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", request.url);
+    xhr.setRequestHeader("accept", "application/json, text/plain, */*");
+    xhr.setRequestHeader("content-type", "application/json");
+    xhr.setRequestHeader("agw-js-conv", "str");
+    xhr.withCredentials = true;
+    xhr.onloadend = () => {
+      let text = "";
+      try { text = xhr.responseText || ""; } catch (_) {}
+      let signed = false;
+      try { signed = new URL(xhr.responseURL || request.url, location.origin).searchParams.has("a_bogus"); } catch (_) {}
+      done({ status: xhr.status, contentType: (xhr.getResponseHeader && xhr.getResponseHeader("content-type")) || "", responseBytes: text.length, text: text.slice(0, 131072), identitySource: request.identitySource, signed });
+    };
+    xhr.send(JSON.stringify({ need_tasks: true }));
+  };
+  const waitReady = () => {
+    const request = liveRequest();
+    const signerReady = typeof window.bdms === "object";
+    const deadlineReached = Date.now() >= (cfg.hookDeadline || 0);
+    if (request && (signerReady || deadlineReached)) return send(request);
+    if (deadlineReached) return done({ fatal: "page_identity_unavailable" });
+    setTimeout(waitReady, 250);
+  };
+  waitReady();
 })();
 """

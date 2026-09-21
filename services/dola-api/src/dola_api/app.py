@@ -4,7 +4,7 @@ import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from .contracts import AccountInspectRequest, VerificationInput, VerificationLease, VideoRequest
+from .contracts import AccountInspectRequest, GoogleLoginRequest, VerificationInput, VerificationLease, VideoRequest
 from .session import CamoufoxSessionPool
 
 app = FastAPI(title="dreamyo Dola Camoufox Provider")
@@ -42,6 +42,16 @@ async def inspect_account(request: AccountInspectRequest) -> dict:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
+@app.post("/internal/runtime/v1/accounts/verify", dependencies=[Depends(require_internal)])
+async def verify_account(request: AccountInspectRequest) -> dict:
+    try:
+        return await pool.verify_account(request)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
 @app.post("/internal/runtime/v1/videos", dependencies=[Depends(require_internal)])
 async def submit(request: VideoRequest) -> dict:
     try:
@@ -59,6 +69,8 @@ async def submit(request: VideoRequest) -> dict:
         "proxyTarget": task.proxyTarget,
         **({"conversationId": task.conversationId, "conversation_id": task.conversationId} if task.conversationId else {}),
         **({"verificationId": task.verificationId} if task.verificationId else {}),
+        **({"screenshotBase64": task.screenshotBase64} if task.screenshotBase64 else {}),
+        **({"diagnostics": task.diagnostics} if task.diagnostics else {}),
         **({"videoUrl": task.videoUrl, "video_url": task.videoUrl} if task.videoUrl else {}),
         **({"imageUrls": task.imageUrls} if task.imageUrls else {}),
         "transport": "protocol-page-signed",
@@ -135,6 +147,22 @@ async def close_verification(verification_id: str, request: VerificationLease) -
     except ValueError as error:
         status = 404 if str(error) == "verification_not_found" else 409
         raise HTTPException(status_code=status, detail=str(error)) from error
+
+
+@app.post("/internal/runtime/v1/accounts/google-login", dependencies=[Depends(require_internal)])
+async def google_login(request: GoogleLoginRequest) -> dict:
+    try:
+        return await pool.start_google_login(
+            proxy_mode=request.proxyMode,
+            proxy_url=request.proxyUrl,
+            timeout_seconds=request.timeoutSeconds,
+        )
+    except TimeoutError as error:
+        raise HTTPException(status_code=408, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
 
 
 def main() -> None:

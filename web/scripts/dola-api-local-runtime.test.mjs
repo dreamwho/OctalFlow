@@ -6,10 +6,10 @@ const options = { repoRoot: "/project", webRoot: "/project/web", exists: () => t
 
 describe("Dola API local runtime", () => {
     it("starts the bundled provider for the local configured endpoint", () => {
-        const result = localDolaApiRuntime({ ...options, environment: { DREAMYO_DOLA_PROVIDER_URL: "http://127.0.0.1:18082", DREAMYO_DOLA_PROVIDER_KEY: "configured-key", DREAMYO_DATA_DIR: "/data" } });
+        const result = localDolaApiRuntime({ ...options, environment: { DREAMYO_DOLA_PROVIDER_URL: "http://127.0.0.1:18082", DREAMYO_DOLA_PROVIDER_KEY: "configured-key", DREAMYO_DATA_DIR: "/data", DOLA_CAMOUFOX_BROWSER: "135.0.1-beta.24" } });
         expect(result.environment).toMatchObject({ DREAMYO_DOLA_PROVIDER_URL: "http://127.0.0.1:18082", DREAMYO_DOLA_PROVIDER_KEY: "configured-key" });
         expect(result.service).toMatchObject({ name: "dola-api", cwd: "/project/services/dola-api", args: ["-m", "uvicorn", "dola_api.app:app", "--host", "127.0.0.1", "--port", "18082"] });
-        expect(result.service.environment).toMatchObject({ DOLA_PROVIDER_KEY: "configured-key", DOLA_ENABLE_BROWSER: "1", DOLA_TASK_STATE_PATH: "/data/dola/provider-tasks.json" });
+        expect(result.service.environment).toMatchObject({ DOLA_PROVIDER_KEY: "configured-key", DOLA_ENABLE_BROWSER: "1", DOLA_CAMOUFOX_BROWSER: "135.0.1-beta.24", DOLA_TASK_STATE_PATH: "/data/dola/provider-tasks.json" });
     });
 
     it("keeps an explicitly configured remote provider external", () => {

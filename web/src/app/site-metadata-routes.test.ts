@@ -56,7 +56,7 @@ describe("site metadata routes", () => {
         expect(rewrites).toEqual({
             beforeFiles: [{ source: "/favicon.ico", destination: "/api/site-icon" }],
             afterFiles: [],
-            fallback: [],
+            fallback: [{ source: "/brand/octaflow-:file", destination: "/brand/dreamyo/:file" }],
         });
     });
 

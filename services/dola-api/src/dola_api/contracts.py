@@ -20,6 +20,7 @@ class VideoRequest(BaseModel):
     proxyUrl: str | None = None
     cookie: str | None = None
     requestId: str | None = None
+    headless: bool | None = None
 
 
 class VideoTask(BaseModel):
@@ -37,6 +38,8 @@ class VideoTask(BaseModel):
     videoUrl: str | None = None
     imageUrls: list[str] | None = None
     vodPayload: dict | list | None = None
+    screenshotBase64: str | None = None
+    diagnostics: dict | None = None
 
 
 class AccountInspectRequest(BaseModel):
@@ -47,6 +50,8 @@ class AccountInspectRequest(BaseModel):
     proxyTarget: str | None = None
     proxyUrl: str | None = None
     cookie: str
+    headless: bool | None = None
+    authOnly: bool = False
 
 
 class AccountQuota(BaseModel):
@@ -67,3 +72,11 @@ class VerificationInput(BaseModel):
 
 class VerificationLease(BaseModel):
     leaseToken: str = Field(min_length=16, max_length=256)
+
+
+class GoogleLoginRequest(BaseModel):
+    proxyMode: Literal["direct", "managed"] = "direct"
+    proxySource: Literal["direct", "magic", "generic", "chained"] | None = None
+    proxyTarget: str | None = None
+    proxyUrl: str | None = None
+    timeoutSeconds: int = 180

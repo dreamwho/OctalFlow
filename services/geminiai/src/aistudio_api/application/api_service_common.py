@@ -27,6 +27,36 @@ from aistudio_api.infrastructure.gateway.wire_types import AistudioPart
 logger = logging.getLogger("aistudio.server")
 MAX_RETRIES = 3
 _current_request_account: ContextVar[tuple[str, str | None] | None] = ContextVar("aistudio_request_account", default=None)
+# 方案A：由 Next.js 网关把后台配置的换号预算经请求头下发（0/1 = 不切换），
+# sidecar 按预算收敛重试上限，并把实际换号次数经响应头回传。
+_request_rotation_limit: ContextVar[int | None] = ContextVar("aistudio_rotation_limit", default=None)
+_request_rotations: ContextVar[int] = ContextVar("aistudio_rotations", default=0)
+
+
+def set_request_rotation_limit(raw: Any) -> None:
+    """Record the per-request rotation budget from the `x-aistudio-rotation-limit` header."""
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        value = -1
+    _request_rotation_limit.set(value if value >= 0 else None)
+    _request_rotations.set(0)
+
+
+def effective_retry_attempts(default: int = MAX_RETRIES) -> int:
+    """Retry-attempt bound for the current request: configured budget capped by the hard limit."""
+    limit = _request_rotation_limit.get()
+    if limit is None:
+        return default
+    return max(1, min(limit, default))
+
+
+def note_rotation() -> None:
+    _request_rotations.set(_request_rotations.get() + 1)
+
+
+def rotations_count() -> int:
+    return _request_rotations.get()
 
 
 def current_request_account() -> tuple[str, str | None] | None:
@@ -105,6 +135,7 @@ async def try_switch_account() -> bool:
     )
     if result is not None:
         _remember_request_account(result)
+        note_rotation()
     return result is not None
 
 

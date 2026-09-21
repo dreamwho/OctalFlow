@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminCanvasActionsSection } from "@/components/admin/admin-canvas-actions-section";
 import { GenerationLogDetail } from "@/components/admin/admin-generation-log";
 import { AdminOverview } from "@/components/admin/admin-overview";
 import { AdminSectionNav } from "@/components/admin/admin-section-nav";
@@ -185,6 +186,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
         loadBillingSummary,
         loadOperationsSummary,
         createPrompt,
+        editingPromptId,
         copyCdkPlainCode,
         closePromptModal,
         uploadSiteLogo,
@@ -300,6 +302,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "genericProxy" ? <AdminGenericProxySection /> : null}
                     {activeSection === "dreamina" ? <AdminDreaminaSection /> : null}
                     {activeSection === "skills" ? <AdminSkillsSection controller={controller} /> : null}
+                    {activeSection === "canvasActions" ? <AdminCanvasActionsSection /> : null}
                     {activeSection === "cdk" ? <AdminCdkSection controller={controller} /> : null}
                     {activeSection === "announcements" ? <AdminAnnouncementsSection controller={controller} /> : null}
                     {activeSection === "works" ? <AdminWorksSection /> : null}
@@ -312,7 +315,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
             </div>
 
             <Modal
-                title="添加公共提示词"
+                title={editingPromptId ? "编辑公共提示词" : "添加公共提示词"}
                 open={promptModalOpen}
                 okText="保存提示词"
                 cancelText="取消"
@@ -328,7 +331,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                         <div className="admin-prompt-note mb-5 rounded-xl p-4">
                             <div className="flex items-center gap-2 text-sm font-semibold text-stone-950 dark:text-stone-100">
                                 <Plus className="size-4 text-stone-600 dark:text-stone-300" />
-                                新增公共提示词
+                                {editingPromptId ? "编辑公共提示词" : "新增公共提示词"}
                             </div>
                             <p className="mt-1 text-xs leading-5 text-stone-600 dark:text-stone-400">建议填写远程图片封面 URL，用户端会直接显示封面，不走本地素材存储。</p>
                         </div>

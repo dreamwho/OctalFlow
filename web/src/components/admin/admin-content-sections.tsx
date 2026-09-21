@@ -4,7 +4,7 @@ import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
 import { Button, Checkbox, DatePicker, Input, Modal, Pagination, Popconfirm, Space, Switch, Table, Tag } from "antd";
 import dayjs from "dayjs";
-import { Database, ExternalLink, Plus, RefreshCw, Save, Search, Trash2 } from "lucide-react";
+import { Database, ExternalLink, Pencil, Plus, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 
 import { imagePreviewUrl } from "@/lib/media-image-url";
 
@@ -199,7 +199,7 @@ export function AdminPromptsSection({ controller }: { controller: AdminDashboard
                 title="提示词运营"
                 description="维护用户端提示词库展示的公共提示词，沉淀可复用的内容资产。"
                 actions={
-                    <Button type="primary" icon={<Plus className="size-4" />} onClick={openPromptModal}>
+                    <Button type="primary" icon={<Plus className="size-4" />} onClick={() => openPromptModal()}>
                         添加提示词
                     </Button>
                 }
@@ -213,7 +213,7 @@ export function AdminPromptsSection({ controller }: { controller: AdminDashboard
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                             <span className="rounded-md bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-600 dark:bg-white/10 dark:text-stone-300">{promptListTotal ? `${promptListStart}-${promptListEnd} / ${promptListTotal} 条` : "0 条"}</span>
-                            <Button size="small" icon={<Plus className="size-3.5" />} onClick={openPromptModal}>
+                            <Button size="small" icon={<Plus className="size-3.5" />} onClick={() => openPromptModal()}>
                                 添加
                             </Button>
                         </div>
@@ -274,7 +274,10 @@ export function AdminPromptsSection({ controller }: { controller: AdminDashboard
                                                 </Tag>
                                             ))}
                                         </div>
-                                        <div className="mt-3 flex justify-end">
+                                        <div className="mt-3 flex justify-end gap-1">
+                                            <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openPromptModal(prompt)}>
+                                                编辑
+                                            </Button>
                                             <Popconfirm title="删除公共提示词？" okText="删除" cancelText="取消" onConfirm={() => deletePrompt(prompt.id)}>
                                                 <Button size="small" danger loading={deletingPromptId === prompt.id} icon={<Trash2 className="size-3.5" />}>
                                                     删除
@@ -288,7 +291,7 @@ export function AdminPromptsSection({ controller }: { controller: AdminDashboard
                         {!prompts.length && !promptsLoading ? (
                             <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-stone-300 py-12 text-center text-sm text-stone-500 dark:border-stone-700">
                                 <span>暂无提示词</span>
-                                <Button type="primary" icon={<Plus className="size-4" />} onClick={openPromptModal}>
+                                <Button type="primary" icon={<Plus className="size-4" />} onClick={() => openPromptModal()}>
                                     添加第一条提示词
                                 </Button>
                             </div>

@@ -3,7 +3,6 @@
 .octal-button,
 .octal-btn-primary,
 .octal-button--primary,
-.ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text),
 .btn-primary-octal {
   position: relative;
   display: inline-flex;
@@ -28,7 +27,6 @@
 /* Light Theme Button UI */
 :root:not(.dark) .octal-button,
 :root:not(.dark) .octal-btn-primary,
-:root:not(.dark) .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text),
 :root:not(.dark) .btn-primary-octal {
   color: #ffffff !important;
   background: #1b1d25 !important;
@@ -37,7 +35,6 @@
 
 :root:not(.dark) .octal-button:hover,
 :root:not(.dark) .octal-btn-primary:hover,
-:root:not(.dark) .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text):hover,
 :root:not(.dark) .btn-primary-octal:hover {
   transform: translateY(-2px);
   box-shadow: 0 18px 34px rgba(20, 24, 45, 0.28) !important;
@@ -47,12 +44,10 @@
 .dark .octal-button--primary,
 .dark .octal-button,
 .dark .octal-btn-primary,
-.dark .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text),
 .dark .btn-primary-octal,
 [data-theme='dark'] .octal-button--primary,
 [data-theme='dark'] .octal-button,
 [data-theme='dark'] .octal-btn-primary,
-[data-theme='dark'] .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text),
 [data-theme='dark'] .btn-primary-octal {
   color: #ffffff !important;
   background: linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff) !important;
@@ -63,12 +58,10 @@
 .dark .octal-button--primary:hover,
 .dark .octal-button:hover,
 .dark .octal-btn-primary:hover,
-.dark .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text):hover,
 .dark .btn-primary-octal:hover,
 [data-theme='dark'] .octal-button--primary:hover,
 [data-theme='dark'] .octal-button:hover,
 [data-theme='dark'] .octal-btn-primary:hover,
-[data-theme='dark'] .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text):hover,
 [data-theme='dark'] .btn-primary-octal:hover {
   transform: translateY(-2px);
   background: linear-gradient(125deg, #574ff7, #785dfa 55%, #9486ff) !important;
@@ -78,12 +71,10 @@
 .dark .octal-button--primary:active,
 .dark .octal-button:active,
 .dark .octal-btn-primary:active,
-.dark .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text):active,
 .dark .btn-primary-octal:active,
 [data-theme='dark'] .octal-button--primary:active,
 [data-theme='dark'] .octal-button:active,
 [data-theme='dark'] .octal-btn-primary:active,
-[data-theme='dark'] .ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):not(.ant-btn-text):active,
 [data-theme='dark'] .btn-primary-octal:active {
   transform: translateY(0);
   box-shadow: 0 0 16px rgba(98, 82, 255, 0.4), inset 0 1px rgba(255, 255, 255, 0.25) !important;

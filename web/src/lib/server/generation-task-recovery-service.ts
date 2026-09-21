@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { generationTaskNextPollAt, claimDueGenerationTasks, releaseGenerationTaskLease, renewGenerationTaskLeases, scheduleGenerationTask, type GenerationTaskLease } from "@/lib/server/generation-task-scheduler";
-import { failVideoTaskFromWorker, persistVideoTaskResult, queryVideoTaskUpstream } from "@/lib/server/video-task-runtime";
+import { failVideoTaskFromWorker, persistVideoTaskResult, queryVideoTaskUpstream, rotateDolaRateLimitedVideoTask } from "@/lib/server/video-task-runtime";
+import { isDolaRateLimitError, shouldRotateAccountForError } from "@/lib/dola-errors";
 import { getVideoTask, type VideoTask } from "@/lib/server/video-task-store";
 import { createAudioTaskUpstreamStep, markAudioTaskFailed, persistAudioTaskResult, queryAudioTaskUpstreamStep } from "@/lib/server/audio-task-runtime";
 import { getAudioTask, updateAudioTask, type AudioTask } from "@/lib/server/audio-task-store";
@@ -18,6 +19,7 @@ import { resolveModelRequestTimeoutMs } from "@/lib/server/model-request-policy"
 import { refundAudioTask } from "@/lib/server/audio-task-refund";
 import { refundImageTask } from "@/lib/server/image-task-refund";
 import { refundTextTask } from "@/lib/server/text-task-refund";
+import { setDolaAccountStatus } from "@/lib/server/dola/account-service";
 import { refundVideoTask } from "@/lib/server/video-task-refund";
 import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
 import { getAuthSettings } from "@/lib/auth/store";
@@ -639,6 +641,28 @@ async function processVideoLease(lease: GenerationTaskLease, workerId: string, o
         const step = await queryVideoTaskUpstream(task, origin, cookie, cookie ? "" : task.userId);
         const now = Date.now();
         if (step.state === "needs_review") {
+            // Dola 页面验证优先自动换号：配额内换下一个正常账号重提（原账号已标记并剔除出轮询池）；
+            // 换号不可行（配额用尽/无可用账号）时退回人工验证路径，由前端弹窗完成滑块。
+            if (task.config?.advancedConfig?.protocol === "dola" && task.upstream?.accountId) {
+                await setDolaAccountStatus(task.upstream.accountId, "verification_required").catch(() => undefined);
+            }
+            if (task.config?.advancedConfig?.protocol === "dola") {
+                // 仅确认存在验证会话（带 verificationId、上游任务未创建）时才换号重提，
+                // 避免“提交结果未知”场景重复创建上游任务。
+                const rotated = step.verificationId ? await rotateDolaRateLimitedVideoTask(task, origin, cookie, cookie ? "" : task.userId, step.error || "页面验证") : null;
+                if (rotated) {
+                    await releaseGenerationTaskLease("video", task.id, workerId, {
+                        executionPhase: "submitted",
+                        upstreamTaskId: rotated.upstream.id,
+                        channelId: task.config?.channelId,
+                        provider: task.config?.advancedConfig?.protocol || task.config?.apiFormat,
+                        nextPollAt: Date.now(),
+                        lastPollAt: now,
+                        lastUpstreamStatus: "verification_rotated",
+                    });
+                    return "pending";
+                }
+            }
             await releaseGenerationTaskLease("video", task.id, workerId, {
                 executionPhase: "needs_review",
                 nextPollAt: undefined,
@@ -652,6 +676,34 @@ async function processVideoLease(lease: GenerationTaskLease, workerId: string, o
             return "needs_review";
         }
         if (step.state === "failed") {
+            if (task.config?.advancedConfig?.protocol === "dola" && shouldRotateAccountForError(step.error)) {
+                const rotated = await rotateDolaRateLimitedVideoTask(task, origin, cookie, cookie ? "" : task.userId, step.error);
+                if (rotated) {
+                    await releaseGenerationTaskLease("video", task.id, workerId, {
+                        executionPhase: "submitted",
+                        upstreamTaskId: rotated.upstream.id,
+                        channelId: task.config?.channelId,
+                        provider: task.config?.advancedConfig?.protocol || task.config?.apiFormat,
+                        nextPollAt: Date.now(),
+                        lastPollAt: now,
+                        lastUpstreamStatus: "rate_limited_rotated",
+                    });
+                    return "pending";
+                }
+                if (isDolaRateLimitError(step.error)) {
+                    // 换号配额用尽时上游任务可能仍在生成：保持轮询等待，不提前判失败。
+                    await releaseGenerationTaskLease("video", task.id, workerId, {
+                        executionPhase: "polling",
+                        upstreamTaskId: task.upstream.id || lease.upstreamTaskId,
+                        queryPath: task.upstream.queryPath || task.config?.advancedConfig?.queryPath,
+                        nextPollAt: generationTaskNextPollAt({ submittedAt: lease.submittedAt, now }),
+                        lastPollAt: now,
+                        lastUpstreamStatus: "rate_limited_polling",
+                    });
+                    return "pending";
+                }
+                // 其余基础设施错误（如浏览器导航中断）上游任务通常已终止且换号配额用尽：判失败。
+            }
             await failVideoTaskFromWorker(task, step.error, true);
             await releaseGenerationTaskLease("video", task.id, workerId, { executionPhase: "completed", nextPollAt: undefined, lastPollAt: now, lastUpstreamStatus: step.status });
             return "failed";
@@ -677,6 +729,12 @@ async function processVideoLease(lease: GenerationTaskLease, workerId: string, o
         });
         return "pending";
     } catch (error) {
+        // Dola 上游任务已丢失（Provider 返回 task not found）：终态失败并提示重新生成，不再无限等待。
+        if (task.config?.advancedConfig?.protocol === "dola" && (error as { code?: string })?.code === "DOLA_TASK_NOT_FOUND") {
+            await failVideoTaskFromWorker(task, "上游任务已丢失（Provider 已重启清理），请重新生成", false);
+            await releaseGenerationTaskLease("video", task.id, workerId, { executionPhase: "completed", nextPollAt: undefined, lastPollAt: Date.now(), lastUpstreamStatus: "task_not_found" });
+            return "failed";
+        }
         const count = errorCount(lease.lastUpstreamStatus) + 1;
         await releaseGenerationTaskLease("video", task.id, workerId, {
             executionPhase: "polling",

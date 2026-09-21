@@ -84,3 +84,6 @@ def set_active_account_headers(response: Response) -> None:
     response.headers["X-AIStudio-Account-Id"] = account_id
     if account_email:
         response.headers["X-AIStudio-Account-Email"] = account_email
+    from aistudio_api.application.api_service_common import rotations_count
+
+    response.headers["X-AIStudio-Rotations"] = str(rotations_count())

@@ -4,9 +4,11 @@ import { saveAs } from "file-saver";
 import { useCallback } from "react";
 
 import { getDataUrlByteSize } from "@/lib/image-utils";
+import { createAudioGenerationTask } from "@/services/api/audio";
 import { isGenerationTaskNeedsReviewError } from "@/services/api/generation-task-state";
 import { type UploadedImage } from "@/services/image-storage";
-import { defaultConfig } from "@/stores/use-config-store";
+import { defaultConfig, type AiConfig } from "@/stores/use-config-store";
+import { createFreshGenerationTaskContext } from "@/lib/generation-request-context";
 import { nanoid } from "nanoid";
 import { type CanvasImageAngleParams } from "../components/canvas-node-angle-dialog";
 import { type CanvasImageCropRect } from "../components/canvas-node-crop-dialog";
@@ -14,11 +16,14 @@ import { type CanvasImageMaskEditPayload } from "../components/canvas-node-mask-
 import { type CanvasImageSplitParams } from "../components/canvas-node-split-dialog";
 import { type CanvasImageUpscaleParams } from "../components/canvas-node-upscale-dialog";
 import { NODE_DEFAULT_SIZE } from "../constants";
+import { createTextGenerationTask } from "@/services/api/text";
+import { createServerVideoGenerationTask } from "@/services/api/video";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasNodeData } from "../types";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "../utils/canvas-image-data";
 import { fitCanvasImageNodeSize } from "../utils/canvas-node-size";
 import { CANVAS_NODE_GAP, resolveCanvasNodePlacement } from "../utils/canvas-surface-geometry";
-import { CHARACTER_THREE_VIEW_PROMPT, buildCharacterThreeViewGenerationConfig, createCharacterThreeViewNode, type CanvasCharacterThreeViewParams } from "../utils/canvas-storyboard";
+import { CANVAS_QUICK_ACTION_NODE_TYPES, createQuickActionNode } from "../utils/canvas-storyboard";
+import type { CanvasQuickActionEntry } from "../utils/canvas-quick-actions-client";
 
 import { IMAGE_PROMPT_REVERSE_PRESET, NODE_STATUS_ERROR, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS, createCanvasNode } from "./canvas-page-elements";
 import { prepareCanvasNodeDownload } from "./canvas-node-download";
@@ -41,6 +46,7 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
     const {
         message,
         params,
+        projectId,
         effectiveConfig,
         isAiConfigReady,
         openConfigDialog,
@@ -546,56 +552,98 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startAndCompleteImageTask, startGenerationRequest],
     );
 
-    const generateCharacterThreeViewNode = useCallback(
-        async (node: CanvasNodeData, params: CanvasCharacterThreeViewParams) => {
+    const generateQuickActionNode = useCallback(
+        async (node: CanvasNodeData, entry: CanvasQuickActionEntry, model: string) => {
             if (!isCanvasImageNodeType(node.type) || !node.metadata?.content?.trim()) return;
-            const baseConfig = buildGenerationConfig(effectiveConfig, node, "image");
-            const generationConfig = buildCharacterThreeViewGenerationConfig(baseConfig, params.model || baseConfig.model);
+            const capability = entry.capability;
+            const defaults = entry.defaults || {};
+            const source = canvasNodeReferenceImage(node);
+            const generationConfig: AiConfig = { ...buildGenerationConfig(effectiveConfig, node, capability), model: model || effectiveConfig.model };
+            if ((capability === "image" || capability === "video") && defaults.size) generationConfig.size = defaults.size;
+            if (capability === "image") {
+                if (defaults.quality) generationConfig.quality = defaults.quality;
+                if (defaults.count) generationConfig.count = defaults.count;
+            }
+            if (capability === "video") {
+                if (defaults.quality) generationConfig.vquality = defaults.quality;
+                if (defaults.videoSeconds) generationConfig.videoSeconds = String(defaults.videoSeconds);
+                if (typeof defaults.generateAudio === "boolean") generationConfig.videoGenerateAudio = defaults.generateAudio ? "true" : "false";
+            }
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                 openConfigDialog(true);
                 return;
             }
             const childId = nanoid();
-            const source = canvasNodeReferenceImage(node);
-            const created = createCharacterThreeViewNode({
+            const created = createQuickActionNode({
                 source: node,
                 nodes: nodesRef.current,
                 nodeId: childId,
                 connectionId: nanoid(),
-                metadata: {
-                    prompt: CHARACTER_THREE_VIEW_PROMPT,
-                    sourcePrompt: CHARACTER_THREE_VIEW_PROMPT,
-                    executionPrompt: CHARACTER_THREE_VIEW_PROMPT,
-                    status: NODE_STATUS_LOADING,
-                    ...buildImageGenerationMetadata("edit", generationConfig, 1, [source]),
-                },
+                nodeType: CANVAS_QUICK_ACTION_NODE_TYPES[capability],
+                title: entry.name,
+                ratio: defaults.size || generationConfig.size,
+                metadata: { prompt: entry.prompt, sourcePrompt: entry.prompt, executionPrompt: entry.prompt, status: NODE_STATUS_LOADING },
             });
             setStoryboardNodeId(null);
             setRunningNodeId(childId);
             setNodes((prev) => [...prev, created.node]);
             setConnections((prev) => [...prev, created.connection]);
             setSelectedNodeIds(new Set([childId]));
-            setSelectedConnectionId(null);
             setDialogNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                await startAndCompleteImageTask(childId, generationConfig, CHARACTER_THREE_VIEW_PROMPT, [source], undefined, controller, CHARACTER_THREE_VIEW_PROMPT);
+                if (capability === "image") {
+                    setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, ...buildImageGenerationMetadata("edit", generationConfig, 1, [source]) } } : item)));
+                    await startAndCompleteImageTask(childId, generationConfig, entry.prompt, [source], undefined, controller, entry.prompt);
+                } else if (capability === "video") {
+                    const task = await createServerVideoGenerationTask(generationConfig, entry.prompt, [source], [], [], {
+                        signal: controller.signal,
+                        surface: "canvas",
+                        projectId,
+                        ...createFreshGenerationTaskContext("canvas-video", [projectId, childId]),
+                    });
+                    setNodes((prev) =>
+                        prev.map((item) =>
+                            item.id === childId
+                                ? {
+                                      ...item,
+                                      metadata: { ...item.metadata, videoTask: task, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, generateAudio: generationConfig.videoGenerateAudio },
+                                  }
+                                : item,
+                        ),
+                    );
+                    await tasks.completeVideoTask(childId, generationConfig, task, controller, entry.prompt);
+                } else if (capability === "audio") {
+                    const task = await createAudioGenerationTask(generationConfig, entry.prompt, { signal: controller.signal });
+                    setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, audioTask: task } } : item)));
+                    await tasks.completeAudioTask(childId, generationConfig, task, controller, entry.prompt);
+                } else {
+                    const task = await createTextGenerationTask(generationConfig, [{ role: "user", content: entry.prompt }], { signal: controller.signal });
+                    setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, textTask: { id: task.id, model: task.model } } } : item)));
+                    await tasks.completeTextTask(childId, generationConfig, task, controller, entry.prompt);
+                }
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
-                const errorDetails = error instanceof Error ? error.message : "人物三视图生成失败";
+                const errorDetails = error instanceof Error ? error.message : "功能动作生成失败";
                 const needsReview = isGenerationTaskNeedsReviewError(error);
                 if (needsReview) {
                     setNodes((prev) => pauseCanvasGenerationReview(prev, [childId], errorDetails));
                     return;
                 }
                 message.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, imageTask: undefined } } : item)));
+                setNodes((prev) =>
+                    prev.map((item) =>
+                        item.id === childId
+                            ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, imageTask: undefined, videoTask: undefined, audioTask: undefined, textTask: undefined } }
+                            : item,
+                    ),
+                );
             } finally {
                 finishGenerationRequest(childId, controller);
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startAndCompleteImageTask, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, projectId, startAndCompleteImageTask, startGenerationRequest, tasks],
     );
 
     const handleFontSizeChange = useCallback((nodeId: string, fontSize: number) => {
@@ -618,7 +666,7 @@ export function useCanvasNodeMediaActions({ state, tasks, interactions }: { stat
         maskEditImageNode,
         upscaleImageNode,
         generateAngleNode,
-        generateCharacterThreeViewNode,
+        generateQuickActionNode,
         handleFontSizeChange,
     };
 }

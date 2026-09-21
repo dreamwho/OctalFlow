@@ -6,8 +6,8 @@ describe("canvas theme backgrounds", () => {
     it("uses a warm-white light workspace and a dark workspace", () => {
         expect(canvasThemes.light.canvas.background).toBe("#f4f8ff");
         expect(canvasThemes.light.canvas.backdrop).toBe("#f4f8ff");
-        expect(canvasThemes.dark.canvas.background).toBe("#080f20");
-        expect(canvasThemes.dark.canvas.backdrop).toBe("#080f20");
+        expect(canvasThemes.dark.canvas.background).toBe("#060913");
+        expect(canvasThemes.dark.canvas.backdrop).toBe("#060913");
     });
 
     it("keeps the established cool blue-gray canvas palette", () => {
@@ -15,8 +15,8 @@ describe("canvas theme backgrounds", () => {
         expect(canvasThemes.light.node.stroke).toBe("#d8e2f2");
         expect(canvasThemes.light.toolbar.itemHover).toBe("#edf5ff");
         expect(canvasThemes.light.node.activeStroke).toBe("#5e7ff1");
-        expect(canvasThemes.dark.node.fill).toBe("#0e1c3a");
-        expect(canvasThemes.dark.node.activeStroke).toBe("#35cce1");
+        expect(canvasThemes.dark.node.fill).toBe("#0e1324");
+        expect(canvasThemes.dark.node.activeStroke).toBe("#a855f7");
     });
 
     it("shares the selected-node gradient and glow with canvas popovers", () => {

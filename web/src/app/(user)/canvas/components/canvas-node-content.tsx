@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Button, Dropdown, Modal } from "antd";
-import { BriefcaseBusiness, ChevronDown, ChevronRight, CircleCheck, CircleX, Clock3, Copy, Expand, Film, Globe2, Image as ImageIcon, ListChecks, Minimize2, Palette, Pencil, RefreshCw, ShieldCheck, Sparkles, Star } from "lucide-react";
+import { BriefcaseBusiness, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, Clock3, Copy, Expand, Film, Globe2, Image as ImageIcon, ListChecks, Minimize2, Palette, Pencil, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles, Star } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -37,6 +37,7 @@ export type NodeContentRendererProps = {
     mentionReferences: CanvasResourceReference[];
     onRetry?: (node: CanvasNodeData) => void;
     onRegenerate?: (node: CanvasNodeData) => void;
+    onVerify?: (node: CanvasNodeData) => void;
     onGenerateImage?: (node: CanvasNodeData) => void;
     onToggleBatch?: () => void;
     onSetBatchPrimary?: () => void;
@@ -58,7 +59,7 @@ export function NodeContent(props: NodeContentRendererProps) {
     if (props.isBatchRoot) return <ImageNodeContent {...props} />;
     if (props.node.metadata?.status === "loading") return <LoadingContent key={key} theme={props.theme} scale={props.scale} node={props.node} />;
     if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} scale={props.scale} onRetry={props.onRetry} onRegenerate={props.onRegenerate} />;
-    if (props.node.metadata?.status === "needs_review") return <ReviewContent node={props.node} theme={props.theme} onRetry={props.onRetry} onRegenerate={props.onRegenerate} />;
+    if (props.node.metadata?.status === "needs_review") return <ReviewContent node={props.node} theme={props.theme} onRetry={props.onRetry} onRegenerate={props.onRegenerate} onVerify={props.onVerify} />;
     if (props.node.metadata?.status === "cancelled") return <CancelledContent theme={props.theme} />;
 
     const Renderer = nodeContentRenderers[props.node.type];
@@ -235,18 +236,23 @@ export function ErrorContent({ node, theme, onRetry, onRegenerate, scale = 1 }: 
     const fontSize = Math.max(12, 12 / readableScale);
     const lineHeight = Math.max(20, 20 / readableScale);
     const controlHeight = Math.max(32, 32 / readableScale);
-    const errorDetails = node.metadata?.errorDetails || "生成失败";
+    const rawDetails = (node.metadata?.errorDetails || "").trim();
+    const errorDetails = rawDetails || "生成失败，请重试";
     const handleAction = onRegenerate || onRetry;
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden px-5 py-4 text-center">
             <div
                 data-canvas-node-error-details
                 role="alert"
-                title={errorDetails}
-                className="thin-scrollbar max-h-[60%] w-[86%] overflow-y-auto rounded-lg border px-3 py-2 text-left font-medium whitespace-pre-wrap break-words"
+                title={rawDetails}
+                className="thin-scrollbar max-h-[60%] w-[86%] overflow-y-auto rounded-lg border px-3 py-2.5 text-left whitespace-pre-wrap break-words"
                 style={{ color: theme.node.danger, background: theme.node.dangerSurface, borderColor: theme.node.dangerBorder, fontSize, lineHeight }}
             >
-                {errorDetails}
+                <div className="flex items-center gap-1.5 font-semibold">
+                    <CircleAlert className="size-3.5 shrink-0" />
+                    生成失败
+                </div>
+                {rawDetails ? <div className="mt-1 font-normal leading-5 opacity-90">{rawDetails}</div> : null}
             </div>
             <button
                 type="button"
@@ -265,7 +271,7 @@ export function ErrorContent({ node, theme, onRetry, onRegenerate, scale = 1 }: 
     );
 }
 
-export function ReviewContent({ node, theme, onRetry, onRegenerate }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry" | "onRegenerate">) {
+export function ReviewContent({ node, theme, onRetry, onRegenerate, onVerify }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry" | "onRegenerate" | "onVerify">) {
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden px-5 py-4 text-center">
             <Clock3 className="size-6 shrink-0" style={{ color: theme.node.warningText }} />
@@ -273,6 +279,19 @@ export function ReviewContent({ node, theme, onRetry, onRegenerate }: Pick<NodeC
                 {node.metadata?.errorDetails || "任务创建结果待确认，系统未重复提交。"}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                    type="button"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold shadow-sm transition hover:brightness-110 active:scale-95"
+                    style={{ background: "#6366f1", borderColor: "#4f46e5", color: "#ffffff" }}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        (onVerify || onRetry)?.(node);
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                >
+                    <SlidersHorizontal className="size-3.5" />
+                    查看验证页面
+                </button>
                 <button
                     type="button"
                     className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition hover:brightness-95"

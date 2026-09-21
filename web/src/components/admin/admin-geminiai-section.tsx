@@ -66,6 +66,7 @@ export function AdminGeminiAiSection() {
     const [keyDraft, setKeyDraft] = useState<GeminiAiKeyDraft>({ name: "外部调用密钥", expiresAt: "", allowedIps: "" });
     const [rawKey, setRawKey] = useState("");
     const [gatewaySaving, setGatewaySaving] = useState(false);
+    const [rotationLimitDraft, setRotationLimitDraft] = useState(2);
     const [logPage, setLogPage] = useState<GeminiAiLogPage | null>(null);
     const [logsLoading, setLogsLoading] = useState(false);
     const [logPageNumber, setLogPageNumber] = useState(1);
@@ -82,7 +83,9 @@ export function AdminGeminiAiSection() {
         setLoading(true);
         setLoadError("");
         try {
-            setState(await getGeminiAiAdminState());
+            const nextState = await getGeminiAiAdminState();
+            setState(nextState);
+            setRotationLimitDraft(nextState.gateway?.rotationLimit ?? 2);
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : "无法读取 GeminiAIStudio 配置");
         } finally {
@@ -171,6 +174,19 @@ export function AdminGeminiAiSection() {
             message.success(enabled ? "网关已启用" : "网关已停用");
         } catch (error) {
             message.error(error instanceof Error ? error.message : "保存网关设置失败");
+        } finally {
+            setGatewaySaving(false);
+        }
+    };
+
+    const saveRotationLimit = async (limit: number) => {
+        setGatewaySaving(true);
+        try {
+            await updateGeminiAiGateway({ rotationLimit: limit });
+            await loadState();
+            message.success("换号次数上限已保存");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "保存换号次数上限失败");
         } finally {
             setGatewaySaving(false);
         }
@@ -406,6 +422,24 @@ export function AdminGeminiAiSection() {
                         <div className="flex items-center justify-between gap-3">
                             <span>启用网关</span>
                             <Switch aria-label="启用 GeminiAIStudio 网关" checked={Boolean(state?.gateway?.enabled)} disabled={gatewaySaving || loading} onChange={(enabled) => void saveGateway(enabled)} />
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <div>换号次数上限</div>
+                                <div className="mt-0.5 text-xs leading-5 text-zinc-500 dark:text-zinc-400">生成请求遇限流/鉴权类错误时最多切换到的账号数；0/1 表示不切换；内容风控等错误立即失败。</div>
+                            </div>
+                            <InputNumber
+                                aria-label="GeminiAIStudio 换号次数上限"
+                                className="w-28 shrink-0"
+                                min={0}
+                                precision={0}
+                                value={rotationLimitDraft}
+                                disabled={gatewaySaving || loading}
+                                onChange={(value) => setRotationLimitDraft(value ?? 2)}
+                            />
+                            <Button type="primary" ghost className="shrink-0" loading={gatewaySaving} disabled={loading || rotationLimitDraft === (state?.gateway?.rotationLimit ?? 2)} onClick={() => void saveRotationLimit(rotationLimitDraft)}>
+                                保存
+                            </Button>
                         </div>
                         <div className="break-all text-xs leading-6 text-zinc-500 dark:text-zinc-400">
                             Base URL：<code>{typeof window !== "undefined" ? window.location.origin : ""}/api/geminiai/v1</code>
@@ -805,10 +839,10 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
                             <span className="font-mono">{log.clientIp}</span>
                         </>
                     ) : null}
-                    {log.proxyEgress?.address ? (
+                    {log.proxyEgress ? (
                         <>
                             <span>·</span>
-                            <span className="font-mono text-zinc-400">{log.proxyEgress.address}</span>
+                            <span className="text-blue-600 dark:text-blue-400" title={`代理节点: ${log.proxyEgress.node_name || log.proxyEgress.address}`}>节点: {log.proxyEgress.node_name || log.proxyEgress.address || "已配置"}</span>
                         </>
                     ) : null}
                 </div>
@@ -925,10 +959,16 @@ function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | 
                             <DetailItem label="能力类型" value={capabilityLabel(log.capability)} />
                             <DetailItem label="调用来源" value={geminiAiSourceLabel(log.source)} />
                             {log.proxyEgress ? (
-                                <DetailItem
-                                    label="代理出口"
-                                    value={`${log.proxyEgress.mode === "magic" ? "魔法代理" : "通用代理"}${log.proxyEgress.node_name ? ` · ${log.proxyEgress.node_name}` : ""}${log.proxyEgress.address ? ` · ${log.proxyEgress.address}` : ""}`}
-                                />
+                                <>
+                                    <DetailItem
+                                        label="代理节点名称"
+                                        value={log.proxyEgress.node_name || log.proxyEgress.address || "未命名节点"}
+                                    />
+                                    <DetailItem
+                                        label="代理出口"
+                                        value={`${log.proxyEgress.mode === "magic" ? "魔法代理" : log.proxyEgress.mode === "chained" ? "链式代理" : "通用代理"}${log.proxyEgress.node_name ? ` · 节点: ${log.proxyEgress.node_name}` : ""}${log.proxyEgress.address && log.proxyEgress.address !== log.proxyEgress.node_name ? ` · 地址: ${log.proxyEgress.address}` : ""}`}
+                                    />
+                                </>
                             ) : null}
                             <DetailItem label="状态码" value={String(log.statusCode)} />
                             <DetailItem label="耗时" value={formatDuration(log.durationMs)} />

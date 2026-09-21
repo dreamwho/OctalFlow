@@ -140,14 +140,14 @@ export function ChatGptLogRow({ log, onClick }: { log: ChatGptLogSummary; onClic
                 <Tag color={status.color}>{log.status_code ? `${status.label} · ${log.status_code}` : status.label}</Tag>
                 {log.proxy_egress ? (
                     <Tag color="geekblue" className="m-0" aria-label={`经${log.proxy_egress.mode === "magic" ? "魔法代理" : "通用代理"}提交`}>
-                        {log.proxy_egress.mode === "magic" ? "魔法" : "通用"}
+                        {log.proxy_egress.mode === "magic" ? `魔法·${log.proxy_egress.node_name || "节点"}` : `通用·${log.proxy_egress.node_name || "节点"}`}
                     </Tag>
                 ) : null}
                 <span className="uppercase text-zinc-500">OPENAI</span>
-                {log.proxy_egress?.address ? (
+                {log.proxy_egress?.node_name ? (
+                    <span className="mt-0.5 block break-all text-[11px] leading-4 text-blue-600 dark:text-blue-400" title={log.proxy_egress.address}>节点: {log.proxy_egress.node_name}</span>
+                ) : log.proxy_egress?.address ? (
                     <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxy_egress.address}</span>
-                ) : log.proxy_egress?.node_name ? (
-                    <span className="mt-0.5 block break-all text-[11px] leading-4 text-zinc-400">{log.proxy_egress.node_name}</span>
                 ) : null}
             </div>
             <div className="min-w-0">

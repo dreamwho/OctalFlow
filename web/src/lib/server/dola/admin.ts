@@ -15,9 +15,9 @@ export async function auditDolaAdminAction(request: Request, user: Awaited<Retur
     await safeRecordAuditLog({ action, actor: auditActorFromRequest(request, user), target, ...(metadata ? { metadata } : {}) });
 }
 
-export async function auditDolaAdminFailure(request: Request, user: Awaited<ReturnType<typeof getCurrentUser>>, action: string, target: { type: string; id?: string }) {
+export async function auditDolaAdminFailure(request: Request, user: Awaited<ReturnType<typeof getCurrentUser>>, action: string, target: { type: string; id?: string }, metadata?: Record<string, unknown>) {
     if (!user) return;
-    await safeRecordAuditLog({ action, status: "failure", actor: auditActorFromRequest(request, user), target, metadata: { error: "request_failed" } });
+    await safeRecordAuditLog({ action, status: "failure", actor: auditActorFromRequest(request, user), target, metadata: metadata || { error: "request_failed" } });
 }
 
 export function dolaRouteError(error: unknown, fallback: string) {

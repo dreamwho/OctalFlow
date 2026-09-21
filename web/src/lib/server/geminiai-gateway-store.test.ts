@@ -45,10 +45,12 @@ describe("GeminiAIStudio gateway store", () => {
         await expect(listGeminiAiApiKeys()).resolves.toHaveLength(1);
     });
 
-    it("persists the gateway enabled toggle", async () => {
-        await expect(getGeminiAiGatewaySettings()).resolves.toEqual({ enabled: true });
-        await expect(updateGeminiAiGatewaySettings({ enabled: false })).resolves.toEqual({ enabled: false });
-        await expect(getGeminiAiGatewaySettings()).resolves.toEqual({ enabled: false });
-        await expect(updateGeminiAiGatewaySettings({})).resolves.toEqual({ enabled: false });
+    it("persists the gateway enabled toggle and rotation limit", async () => {
+        await expect(getGeminiAiGatewaySettings()).resolves.toEqual({ enabled: true, rotationLimit: 2 });
+        await expect(updateGeminiAiGatewaySettings({ enabled: false })).resolves.toEqual({ enabled: false, rotationLimit: 2 });
+        await expect(getGeminiAiGatewaySettings()).resolves.toEqual({ enabled: false, rotationLimit: 2 });
+        await expect(updateGeminiAiGatewaySettings({})).resolves.toEqual({ enabled: false, rotationLimit: 2 });
+        await expect(updateGeminiAiGatewaySettings({ rotationLimit: 3 })).resolves.toEqual({ enabled: false, rotationLimit: 3 });
+        await expect(updateGeminiAiGatewaySettings({ rotationLimit: 99 })).resolves.toEqual({ enabled: false, rotationLimit: 99 });
     });
 });

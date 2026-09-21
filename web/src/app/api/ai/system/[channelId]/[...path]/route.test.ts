@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     release: vi.fn(),
     mediaAccess: vi.fn(),
     taskAccess: vi.fn(),
+    geminiAiRuntime: vi.fn(),
     geminiToolsRuntime: vi.fn(),
     geminiToolsConfigured: vi.fn(() => true),
     chatGptRuntime: vi.fn(),
@@ -44,6 +45,12 @@ vi.mock("@/lib/server/gemini-tools-service", () => ({
     geminiToolsOAuthConfigured: mocks.geminiToolsConfigured,
     geminiToolsRuntimeRequest: mocks.geminiToolsRuntime,
     isGeminiToolsRuntimePath: (path: string) => path === "/chat/completions" || path === "/v1/chat/completions" || path === "/v1/models" || path === "/v1/messages",
+}));
+vi.mock("@/lib/server/geminiai-provider", () => ({
+    GEMINIAI_PROTOCOL: "geminiai",
+    geminiAiProviderConfigured: () => Boolean(process.env.DREAMYO_GEMINIAI_URL && process.env.DREAMYO_GEMINIAI_API_KEY),
+    geminiAiRuntimeRequest: mocks.geminiAiRuntime,
+    isGeminiAiRuntimePath: (path: string) => ["/chat/completions", "/v1/chat/completions", "/v1/models", "/v1/images/generations", "/v1/images/edits"].includes(path.split("?", 1)[0] || ""),
 }));
 vi.mock("@/lib/server/chatgpt-api-service", () => ({
     chatGptErrorMessage: mocks.chatGptErrorMessage,
@@ -1069,6 +1076,7 @@ describe("GeminiAI provider-managed proxy", () => {
         mocks.consumeUserPoints.mockReset().mockResolvedValue(undefined);
         mocks.refundUserPoints.mockReset();
         mocks.safeUrl.mockReset().mockResolvedValue(true);
+        mocks.geminiAiRuntime.mockReset().mockResolvedValue(Response.json({ choices: [{ message: { content: "GeminiAI OK" } }] }));
         mocks.ensureMagicProxy.mockReset().mockResolvedValue({ enabled: false });
         mocks.getAuthSettings.mockResolvedValue({
             generationPointMultipliers: {},
@@ -1095,14 +1103,12 @@ describe("GeminiAI provider-managed proxy", () => {
         vi.unstubAllEnvs();
     });
 
-    it("keeps the sidecar credential server-only while routing a real text runtime request", async () => {
-        const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ choices: [{ message: { content: "GeminiAI OK" } }] }));
-
+    it("delegates GeminiAI runtime requests without exposing the sidecar credential", async () => {
         const response = await POST(chatRequest({ model: "gemini-3.1-pro-preview", messages: [{ role: "user", content: "hello" }] }), textContext());
 
         expect(response.status).toBe(200);
-        expect(fetchMock.mock.calls[0]?.[0]).toBe("http://geminiai.test/v1/chat/completions");
-        expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Bearer test-sidecar-key");
+        expect(mocks.geminiAiRuntime).toHaveBeenCalledWith("/chat/completions", expect.objectContaining({ method: "POST" }));
+        expect(new Headers(mocks.geminiAiRuntime.mock.calls[0]?.[1]?.headers).has("authorization")).toBe(false);
         expect(mocks.safeUrl).not.toHaveBeenCalled();
         expect(response.headers.get("x-dreamyo-upstream-url")).toBeNull();
     });

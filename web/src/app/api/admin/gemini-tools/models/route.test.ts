@@ -6,7 +6,7 @@ const syncResult = {
     discoveredModels: [{ id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash High" }],
     newModels: [{ id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash High" }],
     enabledNewModelIds: ["gemini-3.8-flash-high"],
-    overview: { configured: true, healthy: true, accounts: [], apiKeys: [], gateway: { enabled: true, strategy: "round_robin" as const, sessionStickiness: false }, logs: { items: [], total: 0, page: 1, pageSize: 8 }, models: [] },
+    overview: { configured: true, healthy: true, accounts: [], apiKeys: [], gateway: { enabled: true, strategy: "round_robin" as const, sessionStickiness: false, rotationLimit: 2 }, logs: { items: [], total: 0, page: 1, pageSize: 8 }, models: [] },
 };
 const mocks = vi.hoisted(() => ({
     requireAdmin: vi.fn(),

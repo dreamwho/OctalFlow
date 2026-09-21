@@ -1,3 +1,4 @@
+import type { CanvasQuickActionEntry } from "../utils/canvas-quick-actions-client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -17,7 +18,7 @@ const imageNode: CanvasNodeData = {
 
 const noop = () => undefined;
 
-function renderToolbar(node = imageNode) {
+function renderToolbar(node = imageNode, quickActions: CanvasQuickActionEntry[] = []) {
     return renderToStaticMarkup(
         <CanvasNodeHoverToolbar
             node={node}
@@ -40,7 +41,8 @@ function renderToolbar(node = imageNode) {
             onUpscale={noop}
             onSuperResolve={noop}
             onAngle={noop}
-            onStoryboard={noop}
+            quickActions={quickActions}
+            onQuickActionSelect={noop}
             onViewImage={noop}
             onReversePrompt={noop}
             onRetry={noop}
@@ -69,9 +71,12 @@ describe("CanvasNodeHoverToolbar", () => {
         expect(markup).toContain('aria-label="详细分析视频"');
     });
 
-    it("exposes 分镜大师 only for an image node with content", () => {
-        expect(renderToolbar()).toContain("data-canvas-storyboard-trigger");
-        expect(renderToolbar({ ...imageNode, metadata: {} })).not.toContain("data-canvas-storyboard-trigger");
-        expect(renderToolbar({ ...imageNode, id: "video", type: CanvasNodeType.Video, metadata: { content: "/api/reference-assets/video.mp4" } })).not.toContain("data-canvas-storyboard-trigger");
+    it("exposes 分镜大师 only for an image node with content when quick actions exist", () => {
+        const actions: CanvasQuickActionEntry[] = [
+            { id: "character-three-view", groupId: "storyboard", groupName: "分镜大师", name: "人物三视图", prompt: "根据参考图生成三视图", capability: "image", enabled: true, defaults: {} },
+        ];
+        expect(renderToolbar(imageNode, actions)).toContain("data-canvas-storyboard-trigger");
+        expect(renderToolbar({ ...imageNode, metadata: {} }, actions)).not.toContain("data-canvas-storyboard-trigger");
+        expect(renderToolbar({ ...imageNode, id: "video", type: CanvasNodeType.Video, metadata: { content: "/api/reference-assets/video.mp4" } }, actions)).not.toContain("data-canvas-storyboard-trigger");
     });
 });

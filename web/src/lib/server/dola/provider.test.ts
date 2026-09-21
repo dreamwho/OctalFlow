@@ -6,8 +6,10 @@ import { dolaProviderProxyMode } from "./proxy";
 describe("Dola provider paths", () => {
     it("keeps internal account inspection out of the public gateway", () => {
         expect(isDolaRuntimePath("/v1/accounts/inspect")).toBe(true);
+        expect(isDolaRuntimePath("/v1/accounts/verify")).toBe(true);
         expect(isDolaRuntimePath("/v1/verifications/dola-verification-1/open")).toBe(true);
         expect(isDolaPublicRuntimePath("/v1/accounts/inspect")).toBe(false);
+        expect(isDolaPublicRuntimePath("/v1/accounts/verify")).toBe(false);
         expect(isDolaPublicRuntimePath("/v1/verifications/dola-verification-1/open")).toBe(false);
         expect(isDolaPublicRuntimePath("/v1/chat/completions")).toBe(false);
         expect(isDolaPublicRuntimePath("/v1/videos/task-1/content")).toBe(true);

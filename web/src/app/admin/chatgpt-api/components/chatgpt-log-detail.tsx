@@ -103,8 +103,9 @@ function baseFields(detail: ChatGptLogDetail): ChatGptLogField[] {
         field("实际账号", detail.account_email || "未分配账号"),
         field("API 密钥", detail.key_name || "站内调用"),
         field("角色", detail.role),
+        detail.proxy_egress?.node_name ? field("代理节点名称", detail.proxy_egress.node_name) : null,
         detail.proxy_egress
-            ? field("代理出口", `${detail.proxy_egress.mode === "magic" ? "魔法代理" : "通用代理"}${detail.proxy_egress.node_name ? ` · ${detail.proxy_egress.node_name}` : ""}${detail.proxy_egress.address ? ` · ${detail.proxy_egress.address}` : ""}`)
+            ? field("代理出口", `${detail.proxy_egress.mode === "magic" ? "魔法代理" : "通用代理"}${detail.proxy_egress.node_name ? ` · 节点: ${detail.proxy_egress.node_name}` : ""}${detail.proxy_egress.address && detail.proxy_egress.address !== detail.proxy_egress.node_name ? ` · 地址: ${detail.proxy_egress.address}` : ""}`)
             : null,
         field("请求状态", detail.display_status || detail.outcome),
         field("状态码", detail.status_code && detail.status_code > 0 ? detail.status_code : undefined),

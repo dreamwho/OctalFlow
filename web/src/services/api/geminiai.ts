@@ -118,7 +118,7 @@ export type GeminiAiRequestLog = {
 
 export type GeminiAiRequestStats = { total: number; success: number; failed: number; averageDurationMs: number };
 export type GeminiAiLogPage = { items: GeminiAiRequestLog[]; total: number; page: number; pageSize: number; stats: GeminiAiRequestStats };
-export type GeminiAiGatewaySettings = { enabled: boolean };
+export type GeminiAiGatewaySettings = { enabled: boolean; rotationLimit: number };
 export type GeminiAiApiKey = { id: string; name: string; prefix: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
 
 type ApiEnvelope<T> = { code?: number; data?: T; msg?: string; error?: string };

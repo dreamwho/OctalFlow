@@ -12,6 +12,21 @@ export type DolaQuotaSnapshot = {
     version: number;
 };
 
+export type DolaAccountValidation = {
+    checkedAt: string;
+    ready: boolean;
+    login: boolean;
+    signerReady: boolean;
+    requestObserved: boolean;
+    signed: boolean;
+    httpStatus: number;
+    identitySource?: string;
+    proxyMode: "direct" | "magic" | "generic" | "chained";
+    proxyTarget?: string;
+    error?: string;
+    generation?: { status: "success" | "failed" | "unknown"; checkedAt: string; taskId: string; model?: string; error?: string };
+};
+
 export type DolaAccount = {
     id: string;
     name: string;
@@ -26,8 +41,18 @@ export type DolaAccount = {
     activeAttempts: number;
     lastUsedAt?: string;
     lastVerifiedAt?: string;
+    /** 只读启动协议返回的实时 Cookie 登录态；与生成协议可用性分开记录。 */
+    loginState?: "ready" | "needs_login" | "unknown";
+    loginCheckedAt?: string;
+    loginProtocolCode?: number;
     /** 最近一次被上游标记 rate_limited 的时间（冷却期内不参与调度） */
     rateLimitedAt?: string;
+    /** 判定风控时上游返回的原始错误/标记值，用于在后台展示风控原因 */
+    restrictedReason?: string;
+    /** 最近一次使用该账号当前代理出口执行的页面签名协议验证。 */
+    validation?: DolaAccountValidation;
+    /** 账号授权类型：Cookie 导入 或 Google 浏览器授权登录 */
+    authType?: "cookie" | "google";
     createdAt: string;
     updatedAt: string;
 };
@@ -36,6 +61,7 @@ export type DolaAccountImportItem = {
     cookie: string;
     name?: string;
     email?: string;
+    authType?: "cookie" | "google";
     sourceFileName?: string;
     sourceOrdinal?: number;
 };
@@ -124,4 +150,3 @@ export function dolaPublicModels() {
         revision: profile.revision,
     }));
 }
-

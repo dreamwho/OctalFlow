@@ -10,6 +10,8 @@ vi.mock("@/lib/server/data-lifecycle-service", () => ({ runDataLifecycleMaintena
 vi.mock("@/lib/server/maintenance-auth", () => ({
     isMaintenanceTokenConfigured: () => mocks.configured,
     isAuthorizedMaintenanceRequest: () => mocks.authorized,
+    isWorkerTokenConfigured: () => false,
+    isAuthorizedWorkerRequest: () => false,
 }));
 
 import { POST } from "./route";

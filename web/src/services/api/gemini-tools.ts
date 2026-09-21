@@ -52,7 +52,7 @@ export type GeminiToolsLog = {
         durationMs?: number;
     }>;
 };
-export type GeminiToolsGateway = { enabled: boolean; strategy: "round_robin" | "priority"; sessionStickiness: boolean };
+export type GeminiToolsGateway = { enabled: boolean; strategy: "round_robin" | "priority"; sessionStickiness: boolean; rotationLimit: number };
 export type GeminiToolsModel = { id: string; name: string; enabled: boolean; available: boolean };
 export type GeminiToolsOverview = {
     configured: boolean;

@@ -19,12 +19,12 @@ export type GeminiAiApiKey = {
     createdAt: string;
 };
 
-export type GeminiAiGatewaySettings = { enabled: boolean };
+export type GeminiAiGatewaySettings = { enabled: boolean; /** 生成请求下发给 sidecar 的账号换号预算：0/1 不切换，N 最多切换到第 N 个账号 */ rotationLimit: number };
 
 export type StoredGeminiAiApiKey = GeminiAiApiKey & { hash: string };
 type GeminiAiGatewayDatabase = { apiKeys: StoredGeminiAiApiKey[]; gateway: GeminiAiGatewaySettings };
 
-const EMPTY_DB: GeminiAiGatewayDatabase = { apiKeys: [], gateway: { enabled: true } };
+const EMPTY_DB: GeminiAiGatewayDatabase = { apiKeys: [], gateway: { enabled: true, rotationLimit: 2 } };
 
 export async function getGeminiAiGatewaySettings() {
     if (isPostgresDatabaseEnabled()) return (await postgresRepository()).getGateway();
@@ -34,6 +34,7 @@ export async function getGeminiAiGatewaySettings() {
 export async function updateGeminiAiGatewaySettings(patch: Partial<GeminiAiGatewaySettings>) {
     const normalized: Partial<GeminiAiGatewaySettings> = {};
     if (typeof patch.enabled === "boolean") normalized.enabled = patch.enabled;
+    if (Number.isFinite(Number(patch.rotationLimit))) normalized.rotationLimit = Math.max(0, Math.floor(Number(patch.rotationLimit)));
     if (isPostgresDatabaseEnabled()) return (await postgresRepository()).updateGateway(normalized);
     let result!: GeminiAiGatewaySettings;
     await mutateDatabase((db) => {

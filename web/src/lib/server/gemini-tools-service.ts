@@ -350,7 +350,9 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
     }
     let lastError: GeminiToolsError | null = null;
     let failedAccount: Pick<GeminiToolsPrivateAccount, "id" | "email"> | null = null;
-    for (const account of accounts) {
+    // 换号次数上限：rotationLimit=0/1 只用当前账号；N 最多依次尝试 N 个账号（认证失效/429 才切换，模糊失败立即停止避免重复生成）。
+    const maxAccountTries = gateway.rotationLimit > 0 ? Math.min(gateway.rotationLimit, accounts.length) : 1;
+    for (const account of accounts.slice(0, maxAccountTries)) {
         try {
             const token = await validAccessToken(account);
             const project = account.projectId ? { projectId: account.projectId, planType: account.planType } : await loadCodeAssist(token.accessToken);

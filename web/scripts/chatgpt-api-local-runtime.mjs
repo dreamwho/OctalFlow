@@ -30,6 +30,6 @@ export function localChatGptApiRuntime({ repoRoot, webRoot, environment = proces
     };
     return {
         environment: { ...source, DREAMYO_CHATGPT_API_URL: `http://127.0.0.1:${port}`, DREAMYO_CHATGPT_API_KEY: apiKey },
-        service: { name: "chatgpt-api", command: python, args: [path.join(providerRoot, "main.py"), "--port", String(port)], cwd: providerRoot, environment: providerEnvironment },
+        service: { name: "chatgpt-api", port, command: python, args: [path.join(providerRoot, "main.py"), "--port", String(port)], cwd: providerRoot, environment: providerEnvironment },
     };
 }

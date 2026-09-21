@@ -296,8 +296,8 @@ export function HomeAgentHero() {
                 aspectRatio,
                 duration: isVideo ? duration : undefined,
             });
-        } catch (err: any) {
-            message.error(err?.message || "创建画布失败，请重试");
+        } catch (err: unknown) {
+            message.error(err instanceof Error ? err.message : "创建画布失败，请重试");
         } finally {
             setSubmitting(false);
         }

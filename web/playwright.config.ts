@@ -32,7 +32,7 @@ export default defineConfig({
         {
             name: "chromium",
             testMatch: [
-                /(?:admin-brand-visual|admin-commerce-visual|admin-entry-matrix|admin-sections-matrix|all-pages|canvas|commerce|content-account-visual|core|creative-video-result|drama-visual|home|responsive|static-brand-visual|ui-rebuild|user-pages-matrix)\.spec\.ts/,
+                /(?:admin-brand-visual|admin-commerce-visual|admin-entry-matrix|admin-sections-matrix|all-pages|canvas|commerce|content-account-visual|core|creative-video-result|dola-admin|drama-visual|home|responsive|static-brand-visual|ui-rebuild|user-pages-matrix)\.spec\.ts/,
             ],
             dependencies: ["setup"],
             use: { ...devices["Desktop Chrome"], storageState },
@@ -87,6 +87,9 @@ export default defineConfig({
                 DREAMYO_WORKER_TOKEN: "dreamyo-e2e-worker-token-separate-32chars",
                 DREAMYO_ALLOW_PRIVATE_UPSTREAMS: "1",
                 DREAMYO_PRIVATE_UPSTREAM_HOSTS: "127.0.0.1",
+                DREAMYO_DOLA_API_ENABLED: "0",
+                DREAMYO_DOLA_PROVIDER_URL: `http://127.0.0.1:${protocolFixturePort}`,
+                DREAMYO_DOLA_PROVIDER_KEY: "dreamyo-e2e-dola-provider-key",
                 ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
                 DREAMYO_PAYPLY_API_KEY: "dreamyo-e2e-payply-production-key",
                 DREAMYO_PAYPLY_CHECKOUT_URL: `http://127.0.0.1:${paymentFixturePort}/payply/checkout`,

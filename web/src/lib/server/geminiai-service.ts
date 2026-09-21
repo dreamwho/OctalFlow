@@ -565,7 +565,8 @@ async function quiet<T>(promise: Promise<T>, fallback: T) {
 async function settled<T>(promise: Promise<T>, fallback: T) {
     try {
         return { available: true, value: await promise };
-    } catch {
+    } catch (error) {
+        console.warn("[geminiai] sidecar 数据读取失败:", error instanceof Error ? error.message : error);
         return { available: false, value: fallback };
     }
 }

@@ -3,17 +3,19 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 
 const FILE_NAME = "dola/gateway.json";
-export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean };
+export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; captureVerificationScreenshot: boolean };
 export type DolaApiKey = { id: string; name: string; prefix: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
 type StoredKey = DolaApiKey & { hash: string };
 type Database = { gateway: DolaGatewaySettings; apiKeys: StoredKey[] };
-const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true }, apiKeys: [] };
+const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, captureVerificationScreenshot: true }, apiKeys: [] };
 
 export async function getDolaGatewaySettings() {
     const db = await readDatabase();
     return {
         enabled: db.gateway?.enabled ?? false,
         autoWatermark: db.gateway?.autoWatermark ?? true,
+        rotationLimit: db.gateway?.rotationLimit ?? 2,
+        captureVerificationScreenshot: db.gateway?.captureVerificationScreenshot ?? true,
     };
 }
 
@@ -22,6 +24,8 @@ export async function updateDolaGatewaySettings(patch: Partial<DolaGatewaySettin
     await mutate((db) => {
         if (typeof patch.enabled === "boolean") db.gateway.enabled = patch.enabled;
         if (typeof patch.autoWatermark === "boolean") db.gateway.autoWatermark = patch.autoWatermark;
+        if (typeof patch.rotationLimit === "number" && Number.isSafeInteger(patch.rotationLimit) && patch.rotationLimit >= 0) db.gateway.rotationLimit = patch.rotationLimit;
+        if (typeof patch.captureVerificationScreenshot === "boolean") db.gateway.captureVerificationScreenshot = patch.captureVerificationScreenshot;
         value = { ...db.gateway };
     });
     return value;
@@ -82,9 +86,18 @@ function publicKey(value: StoredKey): DolaApiKey {
     const { hash: _hash, ...rest } = value;
     return structuredClone(rest);
 }
-async function readDatabase() {
+async function readDatabase(): Promise<Database> {
     const value = await readJsonDataFile<Partial<Database>>(FILE_NAME, EMPTY);
-    return { gateway: { enabled: value.gateway?.enabled === true, autoWatermark: value.gateway?.autoWatermark === true }, apiKeys: Array.isArray(value.apiKeys) ? structuredClone(value.apiKeys) : [] };
+    const rotationLimit = value.gateway?.rotationLimit;
+    return {
+        gateway: {
+            enabled: value.gateway?.enabled === true,
+            autoWatermark: value.gateway?.autoWatermark === true,
+            rotationLimit: Number.isSafeInteger(rotationLimit) && (rotationLimit ?? 0) >= 0 ? rotationLimit as number : 2,
+            captureVerificationScreenshot: value.gateway?.captureVerificationScreenshot !== false,
+        },
+        apiKeys: Array.isArray(value.apiKeys) ? structuredClone(value.apiKeys) : [],
+    };
 }
 async function mutate(callback: (db: Database) => void) {
     await withJsonDataFileLock(FILE_NAME, async () => {

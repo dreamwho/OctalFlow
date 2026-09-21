@@ -88,6 +88,7 @@ export type CanvasNodeProps = {
     onSetBatchPrimary?: (node: CanvasNodeData) => void;
     onRetry?: (node: CanvasNodeData) => void;
     onRegenerate?: (node: CanvasNodeData) => void;
+    onVerify?: (node: CanvasNodeData) => void;
     onGenerateImage?: (node: CanvasNodeData) => void;
     onOpenPanel?: (node: CanvasNodeData) => void;
     onImageDimensions?: (nodeId: string, naturalWidth: number, naturalHeight: number) => void;
@@ -152,6 +153,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onSetBatchPrimary,
     onRetry,
     onRegenerate,
+    onVerify,
     onGenerateImage,
     onOpenPanel,
     onImageDimensions,
@@ -561,6 +563,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onStopEditing={() => setIsEditingContent(false)}
                         onRetry={onRetry}
                         onRegenerate={onRegenerate}
+                        onVerify={onVerify}
                         onGenerateImage={onGenerateImage}
                         onImageDimensions={onImageDimensions}
                         upscaleSourceUrl={upscaleSourceUrl}

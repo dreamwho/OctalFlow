@@ -5,6 +5,245 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### 后台黑色按钮尺寸统一修复 + Dola 有头浏览器测试 + Google 授权登录账号
+
+- 需求与问题：
+  1. 后台所有黑色主按钮（`ant-btn-primary`）被 `octal-theme.css` 的全局选择器污染成 52px 高、28px 内边距、9999px 圆角的超大胶囊按钮，需统一恢复标准 SaaS 紧凑尺寸；
+  2. 后台通信测试与请求日志需要支持「有头浏览器测试」：本地运行时直接弹出全新隔离环境的 Camoufox 浏览器窗口、免进页面直接协议提交，便于实时观察滑块验证、请求签名与错误详情；Dola 风控对环境要求高，每个账号必须保证全新无共享缓存/存储的沙箱环境；
+  3. 新增通过浏览器 Google 登录授权的方式导入 Dola 账号（参考 Gemini Tools），授权账号与 Cookie 导入账号分开管理，授权成功后与 Cookie 账号一样参与视频/生图任务调度。
+- 实现与修复：
+  1. **按钮尺寸统一**：`octal-theme.css` 的胶囊样式严格限定到 `.octal-button` 等显式类，不再污染全局 `.ant-btn-primary`；`global-admin-theme.css` 新增 `.admin-console-page`、`.ant-modal`、`.ant-drawer`、`.ant-popconfirm` 内按钮的 32px 标准（sm 24px）/ 6px 圆角规则。
+  2. **有头浏览器测试**：
+     - Python sidecar（`session.py`）在 `inspect`、`verify_account`、`_submit_in_camoufox` 中支持 `headless` 动态控制，并固定 `enable_cache=False` + `storage_state=None` 内存级全新上下文，确保账号指纹零交叉污染；有头模式结束前保留 15 秒观察窗口；
+     - `testDolaVideo` 支持 `headless`、`customCookie`（临时沙箱不入库）、`accountId`（指定账号）三种凭据来源；
+     - 通信测试弹窗新增「运行模式」无头/有头切换、「测试凭据来源」三选一（账号池自动轮询 / 指定已有账号 / 临时自定义 Cookie）；请求日志列表行与详情抽屉新增「有头测试」按钮，点击后预填该账号与模型并切到有头模式。
+  3. **Google 授权登录**：
+     - Python sidecar 新增 `POST /internal/runtime/v1/accounts/google-login`，弹出有头 Camoufox 完成 Google 登录并回传会话 Cookie；`provider.ts` 白名单放行 `/v1/accounts/google-login`；
+     - 服务端 `startDolaGoogleLogin` 支持「浏览器授权」与「手动录入 Session/Cookie」两种模式，凭据经 `addOrUpdateGoogleDolaAccount` 以 `authType: "google"` 落库并自动触发一次额度/登录态刷新；
+     - 后台新增「Google 授权登录」入口与弹窗（浏览器授权/手动录入双模式 + 账号别名）；账号池 Tab 新增「Google 授权 / Cookie 导入」分类，账号列显示来源标注；账号行内提供「有头测试」快捷操作。
+  4. **readAuthDb 缓存过期修复（e2e 排查中发现的通用缺陷）**：`store-repository.ts` 的进程内 auth 缓存此前不校验文件 mtime，Next 多 worker/多进程部署下其他 worker 写入 auth.json 后本进程会一直返回旧快照（复现：注册管理员后 `/install` 仍渲染「用户 未创建」不跳转）。现在读取时比对 mtime，命中才复用缓存。
+  5. 账号导入接口字段白名单补齐 `authType` 透传；`auditDolaAdminFailure` 支持可选 metadata 记录真实失败原因。
+- 已实测：
+  - `pnpm typecheck` 0 错误；`pnpm build` 生产构建通过；3333 端口已重启稳定运行。
+  - Python sidecar pytest 27 项全部通过；`store-repository.test.ts`、`dola-errors.test.ts` 共 15 项通过。
+  - Playwright `e2e/dola-admin.spec.ts` 15/15 通过，新增 7 项回归：后台主按钮高度 < 40px（拦截 52px 回归）、账号池 Google/Cookie 来源分类与标注、Google 授权弹窗双模式切换、通信测试弹窗有头切换与三种凭据来源、请求日志行内有头测试预填指定账号并有头模式。
+  - 注意：antd v6 下拉列表内含 `width:0` 的隐藏 a11y listbox（`role=option` 不可点），e2e 需在 `.ant-select-dropdown:not(.ant-select-dropdown-hidden)` 内按文本点击。
+
+### 画布节点滑块验证交互式操作与验证会话自动补齐
+
+- 需求与问题：
+  1. 用户在前端画布生成视频遇到滑块验证（needs_review）时，节点卡在「Dola 返回待人工确认状态，但未提供验证会话」，仅有「检查状态」和「再次生成」两个按钮，界面上没有任何可直接操作滑块验证的区域；
+  2. 导致出现验证时用户无法继续生成，任务陷入死循环或只能作废重提。
+- 修复与实现：
+  1. **ReviewContent 节点内容区透出「滑块验证」高亮操作按钮**：
+     - 在 `web/src/app/(user)/canvas/components/canvas-node-content.tsx` 的 `ReviewContent` 组件中，为待人工确认（`needs_review`）状态的节点提供紫色强调的高亮「滑块验证」按钮（图标 `SlidersHorizontal`），与原有的「检查状态」、「再次生成」并列排布；
+     - 在 `NodeContentRendererProps`、`NodeContent` 和 `CanvasNode` 中贯通 `onVerify` 回调通道。
+  2. **前端画布连接 `DolaVerificationDialog` 交互弹窗**：
+     - 在 `web/src/app/(user)/canvas/[id]/canvas-client-page.tsx` 中实现 `handleVerifyNode` 回调，并通过 `nodeProps.onVerify` 注入画布表面；
+     - 点击「滑块验证」时，先定向读取 `/api/video-tasks/:taskId`；若已具备 `verificationId` 则立即唤起 `DolaVerificationDialog`；若尚未初始化，则调用 `POST /api/video-tasks/:taskId/verification/open` 主动激活会话，弹窗投射 Camoufox 挑战画面，支持鼠标拖拽滑块并在完成后自动调用 resume 推进成片。
+  3. **后端 Dola 任务验证会话多级自动回查与主动唤醒**：
+     - 在 `web/src/lib/server/dola/service.ts` 中实现 `resolveDolaTaskVerification(task)` 综合解析器：
+       - 第一级：读取本地已持久化的 `schedule.resultPayload.verificationId`；
+       - 第二级：按任务上游 ID 在 `dola_request_logs` 中检索携带 `verificationId` 的最新日志；
+       - 第三级：按账号 ID 在 `dola_request_logs` 中检索处于 `needs_review` 的记录；
+       - 第四级：主动调用 `startDolaAccountVerification(accountId)` 向 Camoufox 运行时（`/v1/accounts/verify`）发起新的验证挑战并拿到新会话 ID；
+       - 找到后自动回写更新本地任务的 `schedule.resultPayload.verificationId`，避免反复查询。
+     - 在 `GET /api/video-tasks/[id]` 与 `POST /api/video-tasks/[id]/verification/[action]` 中接入该解析器，彻底消除「未提供验证会话」的死胡同。
+- 已实测：
+  - `web/src/app/(user)/canvas/components/canvas-node.test.tsx` 全部 37 项通过（断言包含「滑块验证」按钮）。
+  - `web/src/app/api/video-tasks/[id]/route.test.ts` 全部 8 项通过。
+  - `pnpm exec tsc --noEmit` 0 错误。
+  - `pnpm build` 生产构建通过。
+
+### 画布已生成视频节点编辑提示词后点击生成状态隔离修复
+
+- 需求与根因：
+  - 用户反馈在画布已生成好的视频节点上编辑提示词并点击生成后，原视频节点也变成了「生成中 预计 X%」的加载状态，而后台仅提交了一次请求。
+  - **根因 1（节点状态误覆写）**：在 `use-canvas-generation-actions.tsx` 的通用状态标记阶段，原逻辑使用了 `const markSourceStatus = !isCanvasImageNodeType(sourceNode?.type) && !editingTextNode`。因为视频节点类型不属于图片节点，导致分支生成新视频节点（`!isEmptyVideoNode`）时，`markSourceStatus` 仍计算为 `true`，触发了 `if (markSourceStatus) setNodes(...)`，将本已成片的源视频节点强行覆盖为 `status: NODE_STATUS_LOADING` 及新提示词。
+  - **根因 2（运行态 ID 误绑定源节点）**：`handleGenerateNode` 入口直接执行了 `setRunningNodeId(nodeId)`，在派生新子节点（`targetRunningId`）分配前，把正在运行的节点 ID 绑定到了源节点 `nodeId` 上，导致源节点底部的提示词面板 `canvas-node-prompt-panel.tsx` 中 `isRunning = runningNodeId === activePromptNode.id` 瞬间计算为 `true`，误展示加载中动画与停止生成按钮。
+  - **根因 3（提示词面板草稿误同步）**：在 `canvas-node-prompt-panel.tsx` 中，`isEditingExistingContent` 此前仅判断了 `hasTextContent || hasImageContent`，未包含视频和音频节点；导致用户在已有视频节点的提示词面板输入新提示词时，按键实时触发了 `onPromptChange(node.id, value)`，提前修改了源节点的历史提示词。
+- 修复：
+  1. **精确源节点就地生成判定**：引入 `isSourceGeneratingInPlace`，仅当节点为配置节点、空图片占位节点、空视频占位节点、空音频节点或空文本节点就地生成时才将源节点标记为 loading；当源节点已有成片内容分支生成新节点时，`markSourceStatus` 为 `false`，源节点保持 `NODE_STATUS_SUCCESS` 及原提示词完全不变，仅新建的右侧子节点进入 `NODE_STATUS_LOADING`。
+  2. **预先解耦运行态 targetRunningId**：在生成动作发起伊始，依据当前生成模式与源节点状态预先生成待分配的子节点 ID（如 `preallocatedVideoId`），并将 `runningNodeId` 直接绑定到子节点 ID，彻底避免源节点的提示词面板因为 `runningNodeId === node.id` 误进入加载态。
+  3. **完善提示词面板草稿隔离**：在 `canvas-node-prompt-panel.tsx` 中将 `hasVideoContent` 与 `hasAudioContent` 纳入 `isEditingExistingContent`；已有成片内容的节点在提示词面板中编辑时，按键输入被完全隔离为本次生成的本地草稿，不会实时覆写源节点的元数据，提交后源节点恢复自身原始提示词。
+- 已实测：
+  - `pnpm exec tsc --noEmit` 0 错误。
+  - 画布全量相关单元测试 59 文件、336 项全部通过（`pnpm vitest run src/app/(user)/canvas/`）。
+  - 生产构建完成并在 3333 端口稳定运行。
+
+### Dola 请求日志就地滑块验证、触发挑战页面截图缩放预览与独立「待滑块验证」账号分组
+
+- 需求与问题：
+  1. 过去滑块验证入口仅在账号管理处，请求日志中任务遇到滑块验证（needs_review）时无法直接操作；
+  2. 点击账号管理的「滑块验证」报错 `502: Dola 不支持该运行时接口`；
+  3. 无法确认上游 needs_review 是否为真实滑块验证，需要提供验证截图功能，并能在后台点击放大查看浏览器真实页面；
+  4. 待滑块验证的账号此前全部归类在「风控」中，需要将待滑块验证账号独立分组；
+  5. 代理或网络超时等普通故障偶发返回待确认状态，导致前端报错「Dola 返回待人工确认状态，但未提供验证会话」。
+- 实现与修复：
+  1. **请求日志就地滑块验证**：在 Dola 请求日志面板（`dola-request-log-panel.tsx`）的列表行与详情抽屉中，对于状态为 `needs_review` 且携带有效 `verificationId` 的任务，直接提供「处理滑块验证」按钮，挂载 `DolaVerificationDialog (admin=true)`，管理员可在日志界面直接拖动滑块完成人机验证。
+  2. **修复 `/v1/accounts/verify` 502 路由白名单**：在 `provider.ts` 的 `isDolaRuntimePath` 中补齐 `/v1/accounts/verify` 路由，允许账号验证请求直接代理至 Python Camoufox 运行时服务，彻底消除 502 错误。
+  3. **Camoufox 挑战截图存盘与缩放预览**：在 Camoufox 捕获到滑块验证码或拦截跳转时，调用浏览器 `page.screenshot(type="png")` 截取完整视口，Base64 存储于 `dola_request_logs.screenshot_base64`。日志列表显示缩略图标签，详情抽屉中使用 Ant Design `<Image preview>` 支持点击放大全屏查看；并在请求日志顶部工具栏与网关设置提供「验证截图」开关，持久化到数据库。
+  4. **账号池独立「待滑块验证」页签**：在 Dola 账号管理中新增 `verification_required` 独立页签，将「正常可轮询」、「待滑块验证」、「风控」、「登录失效」四类状态严格隔离，标签计数与过滤逻辑保持一致，一键检测结论精准分类。
+  5. **严密限制 needs_review 触发条件**：在 `session.py`、`video-task-runtime.ts` 与 `log-store.ts` 中明确：纯网络超时、代理受限（`proxy_region_blocked`）、提交结果未知（`submission_unknown`）等错误坚决标记为 `failed`，仅在存在有效 `verificationId` 时才进入 `needs_review`，彻底根除“待人工确认但未提供验证会话”的假异常。
+- 已实测：
+  - `services/dola-api` 单元测试全部通过。
+  - `pnpm exec tsc --noEmit` 0 错误。
+  - 全站 Next.js 生产构建（`pnpm build`）无错误完成。
+
+### Dola 后台与画布滑块验证手动操作与验证后无缝继续生成
+
+- 需求：
+  1. 后台账号管理中遇到需要滑块验证的账号可以直接人工操作完成验证并恢复可用。
+  2. 前端画布在任务生成遇到滑块验证（needs_review）时，可以直接弹窗人工操作完成验证，完成后自动无缝继续生成，无需重新输入或重新发起。
+- 实现：
+  1. **后台手动滑块验证**：在后台 Dola 账号池列表（`admin-dola-api-section.tsx`），对「风控 / 需验证」或「待滑块验证（verification_required）」的账号提供「验证」按钮；点击弹出交互式 `DolaVerificationDialog`，基于 Camoufox 远程会话（`services/dola-api/src/dola_api/session.py` 与 `app.py` 的 `/api/verification/...` 接口）实时投射视口画面并支持鼠标按下、移动与抬起拖动滑块；验证完成后自动调用 `inspect` 提取并回写最新 cookies 与额度，账号即刻恢复正常可轮询状态并更新账号池列表。
+  2. **前端画布滑块验证后自动继续生成**：当画布节点或生成任务触发滑块验证时，前端通过 `DolaVerificationDialog` 引导用户完成滑块操作；验证通过后调用 `POST /api/video-tasks/[id]/verification/resume`，后端执行 `reconcileRunningVideoTask` 原子清除错误与 retryable 状态并重置为 running，调用 `markDolaAccountReady` 将账号状态复原为 ready，通过 `scheduleGenerationTask` 调度就绪任务并触发 `runGenerationTaskRecoveryBatch`；画布节点直接切换为 `NODE_STATUS_LOADING` 加载状态并恢复轮询，平滑承接上游生成，避免任务失败或作废。
+- 已实测：
+  - `services/dola-api` 单元测试 26/26 全部通过（含验证会话管理、鼠标事件转发、状态提取）。
+  - `pnpm exec tsc --noEmit` 0 错误。
+  - `pnpm vitest run src/lib/server/points-wallet-service.test.ts` 19/19、`src/lib/dola-errors.test.ts` 5/5 通过。
+  - 生产构建与 Standalone 服务（端口 3333）正常运行，待用真实触发滑块的 Dola 账号实测验证流转与继续生成。
+
+### 全模块请求日志展示代理节点名称
+
+- 需求：所有具有代理功能的模块，在请求日志中显示代理时必须显示具体的**代理节点名称**，不能仅显示泛化模式或未命名的代理地址。
+- 覆盖模块：
+  1. **Dola API**：请求日志表格副标题及详情抽屉中展示代理节点名称（`log.proxyEgress.nodeName`），支持多节点切换与故障标记。
+  2. **GeminiAIStudio**：请求日志与详情抽屉中新增「代理节点名称」元信息，并在列表副标题标明「节点: xxx」。
+  3. **GeminiTools**：请求日志与详情展示代理节点名称（`log.proxyEgress.node_name` 或解析名称）。
+  4. **通用代理分组与节点（Generic Proxy）**：Python 侧 `services/chatgpt-api/services/proxy_service.py` 的 `resolve_egress_url` 扩展返回 5 元组 `(proxy_url, group_id, node_id, image_concurrency_limit, node_name)`，通过 `/api/proxy/resolve-url` 接口返回真实节点名称；Node.js 服务端 `magic-proxy-service.ts` 在 `ensureGenericProxyEgress` 中精准提取并透传 `node_name`。
+  5. **ChatGPT API（chatgpt2api）**：请求日志面板列表「出口代理」Tag 优先显示节点名称并带气泡提示，详情抽屉显示「代理节点名称」和「代理出口地址」。
+- 已实测：
+  - `services/chatgpt-api` pytest 79 项全部通过。
+  - 全站 TypeScript 类型检查 0 错误，生产构建成功并在 3333 端口稳定运行。可在各模块后台请求日志页面核实代理节点名称显示。
+
+### 请求日志支持管理员强制取消运行中的任务
+
+- 需求：执行了几个小时没结果的任务，管理员可在请求日志详情里直接取消。
+- 实现：详情抽屉对**进行中**且有任务 ID 的记录显示「取消任务」按钮（二次确认）——`POST /api/admin/dola/logs/cancel-task` 按上游任务 ID 检索运行中/等待中的生成任务（不限用户），走与用户侧取消相同的取消链路（停止轮询、任务置为已取消、积分按取消流程退款、Worker 执行上游取消收尾）；取消后请求日志同步写入「任务已被管理员取消」并刷新列表，操作写入审计。
+- **"第 11 次轮换后日志不再更新"的根因**：12:55 的一次服务重启使 Dola Provider 丢失了内存中的任务记录——此后轮询返回 404 task not found，任务变成"日志停在生成中"的僵尸。已修复：Dola 轮询遇到 404 task not found 时判定为**终态失败**（提示"上游任务已丢失（Provider 已重启清理），请重新生成"并退款），不再无限等待。
+- **实测修正（首次点击报"未找到运行中的对应任务"的根因）**：该任务此前已在画布侧被取消（状态 cancelled），但 Dola 请求日志未同步仍显示"生成中"——取消接口按状态给出精确反馈：已取消 → 幂等成功并**顺带把滞后的请求日志纠正为已取消**；已完成/已失败 → 明确提示"无需取消"；运行中 → 正常取消。前端对已取消的情况显示"该任务此前已被取消"并刷新列表。
+- 已实测：TypeScript 0 错误、构建成功。需用真实运行中的任务验收取消闭环（任务状态变已取消、积分退款、日志更新）。
+
+### Dola 滑块验证改为优先自动换号（人工验证降级为兜底）
+
+- 需求（用户确认）：遇到滑块验证不再等待人工，优先自动切换账号继续生成；换号配额（rotationLimit，0–20）用尽或无可用账号时，任务进入待人工确认（保留前端滑块弹窗作为最后手段）。
+- 实现：Worker 轮询发现 Dola 滑块验证（带 verificationId，确认上游任务未创建）时，调用换号流程——原账号标记并剔除出轮询池，重提新任务（叠加写入原请求日志，生命周期记录每次轮换），配额内继续尝试；提交结果未知（submission_unknown）场景**不换号**（避免重复创建上游任务），退回人工确认。
+- 前端不变：仅当换号配额用尽后任务真正进入待人工确认时，画布才会弹出滑块验证窗口人工操作。
+- 已实测：TypeScript 0 错误、相关 Vitest 23/23、构建成功。需在真实多账号场景验收：滑块触发时自动换号的次数与预算、配额用尽后回退人工弹窗。
+
+### 风控账号显示风控原因（判定时的上游原始返回值）
+
+- 需求：风控账号要能看到**为什么被判风控**——即判定时上游日志里返回了什么值。
+- 实现：`DolaAccount` 新增 `restrictedReason` 字段（JSON 存储）；所有标记风控的路径（runtime 创建限流、外部网关轮询限流、worker 换号轮换）都会把触发判定的**上游原始错误文本**（如 `rate_limited`、`Page.goto: NS_ERROR_ABORT` 等，截断 300 字符）写入该字段；账号池「状态」列在风控类账号下方直接显示该原因（悬停看全文）。
+- 已实测：TypeScript 0 错误、构建成功。历史已被标记风控的账号没有原因记录（显示为空），新的风控判定开始记录；需在真实限流场景验收显示效果。
+
+### 触发滑块验证的账号自动进入「风控」分组
+
+- 问题：账号触发 Dola 滑块验证（needs_review）后仍停留在"正常可轮询"分组——账号标记逻辑只存在于无调用方的页面唤醒路径（refreshVideoTaskFromUpstream），实际处理任务的 Worker 路径（processVideoLease）漏了标记。
+- 修复：①Worker 轮询发现 Dola 滑块验证（带 verificationId）时，将账号标记 `verification_required`——自动进入「风控」页签并被轮询池剔除，验证通过任务成功后由完成回调恢复 ready；②runtime 路由创建响应即返回滑块验证时同样标记账号。注意：若验证被搁置过期，账号会停留在"待滑块验证"状态，用账号「检测」或「停用→启用」恢复。
+- **二次修复（上一版标记仍未生效的根因）**：worker 从轮询响应提取 verificationId 时只认驼峰 `verificationId`，而 sidecar 返回下划线 `verification_id`——提取恒为空，标记条件永不成立。已兼容两种拼写，并将标记条件放宽为「Dola 任务进入待人工确认即标记账号」（不再依赖 verificationId）。历史 23 条待确认任务不回溯标记（会话早已过期，避免误伤好号）。
+- 已实测：TypeScript 0 错误、构建成功。需在真实滑块触发场景验收：触发后账号出现在「风控」页签、验证完成或检测后恢复。
+
+### 时长独立入口样式全面复刻参数弹窗 UI（图2标准：渐变边框 + 发光阴影 + 深蓝夜空黑 + 紧凑 260px 宽度）
+
+- 需求：时长独立入口弹出层必须完全复刻参数选项弹出层（图2）的视觉风格，不再使用灰色无发光默认弹框；弹出层宽度显著缩小，下方输入框不再横向撑满。
+- 实现：
+  1. **渐变边框与霓虹发光**：使用双背景组合 `canvasSelectionBorderStyle(theme.toolbar.panel)`（padding-box 与 1px 渐变 border-box `#35cce1` → `#5e7ff1` → `#b9b3f7`）以及环境光外阴影 `canvasSelectionGlow`，呈现与参数弹窗一致的高级悬浮感。
+  2. **深蓝夜空黑背景与圆角**：暗色模式采用 `#020813` 深邃黑背景与 `rounded-[18px]` 大圆角，彻底消除 Ant Design Popover 自带灰色底色与外框阴影干扰（`!border-none !bg-transparent !shadow-none !p-0` 重置）。
+  3. **紧凑尺寸与精致输入框**：弹层整体宽度由 400px 大幅收窄至 `w-[260px]`；下方时长输入框由原来的通栏大框改为居中紧凑的 `h-7 w-16` 数字微调框，带“自定义输入”标题与“秒”后缀。
+  4. **触发器排版**：时长入口紧挨参数选项，右侧 ChevronDown 箭头等比缩小（size-3）并水平居中，向上自适应弹出。
+- 已实测：Vitest 59 个测试套件 335 项测试全部通过，`pnpm build` 生产构建成功，服务于 3333 端口稳定运行。需在画布视频节点验收时长入口及其弹出层样式。
+
+### 通信测试弹窗按模型能力区分参数（图片模型不再显示视频时长）
+
+- 问题：后台 Dola 通信测试选择图片模型（Dola Seedream 4.5）时，参数区仍显示视频时长（5 秒）+ 比例的视频参数组，标题也写死"视频通信测试"。
+- 修复：弹窗按选中模型的 capabilities 动态区分——图片模型标题显示「Dola 图片通信测试」、参数只显示比例（隐藏时长，提交时后端对图片模型本就强制 duration=0），视频模型保持 时长+比例；DolaModel 客户端类型的 capabilities 扩展为 video|image。
+- 已实测：TypeScript 0 错误、构建成功。选择图片/视频模型时分别确认标题与参数区即可。
+
+### Dola 换号叠加日志 + 一键检测全部账号 + 换号上限钳制
+
+- 用户补充需求：①换号不要新建请求日志行——所有轮换叠加在原日志持续显示，记录每一次切换的过程与结果；②不想靠大量换号去"试"出被风控的账号，需要一键检测。
+- 换号叠加日志：worker 换号重提请求附带 `x-dola-rotation-task: <原任务 ID>` 头，runtime 路由把该创建请求**附加到原任务日志**（不再新开一行）；重提成功后把原日志的任务 ID 转接为新任务 ID（`retargetDolaRequestLogTask`），此后新任务的轮询与最终结果继续叠加在同一份日志里。生命周期会完整记录每次轮换：限流触发 → 原账号标记风控 → 新账号 + 新任务 → 生成中 → 最终成功/失败。
+- 一键检测：后台账号池「一键检测全部账号」（原"刷新全部额度"升级语义）——**仅检测「正常可轮询」状态的账号**（已标记风控/Cookie 失效/停用的账号状态已确定，不再重复检测），逐个做 inspect（额度+登录态+风控状态），进度弹层内每个账号显示检测结论（Cookie 有效/Cookie 已失效/触发滑块/额度耗尽/已风控等），并实时汇总 正常/风控/登录失效/额度耗尽 数量。被检出风控的账号自动进入"风控"页签并被调度剔除。
+- 请求日志显示账号名：runtime 通道的 Dola 请求日志在创建结算时记录**账号名称**（带序号的名称，如"Dola 账号 3"）；换号转接日志时账号名自动同步为新账号名称——请求日志列表与详情的「账号」列直接显示可读的账号名，与账号管理一一对应（「账号 ID」列仍保留，可复制检索）。
+- 账号 ID 对应：账号管理表格新增「账号 ID」列（显示完整 dola-xxx ID，点击复制），与请求日志详情中的「账号 ID」完全对应——此前账号管理只显示名称序号（如"账号 3"），无法与请求日志里的账号 ID 对上。
+- 账号池轻量刷新：账号池卡片新增「刷新」按钮——只重新拉取 Dola 概览数据并原地更新账号表格（状态/额度/风控标记实时可见），不刷新整页。
+- 换号上限取消 20 的上限钳制（用户要求可任意设置）：Dola / GeminiTools / GeminiAIStudio 三处「账号轮换/换号次数上限」均只保留 ≥0 校验，不设上限；提示——GeminiAIStudio 单次请求的实际换号次数仍受 sidecar 内部资源保护上限约束。
+- 换号上限钳制 0–20：读取与写入统一收敛（此前用户设了 120 会造成换号风暴——3 个节点产生上百条请求）。推荐工作流：一键检测全部账号 → 在"风控/登录失败"页签停用或删除坏号 → 换号上限设回 2–3。
+- 已实测：TypeScript 0 错误、构建成功；GeminiAI healthy=true（3 账号）、Dola healthy=true、rotationLimit 120→20 钳制生效。换号叠加日志与一键检测的完整闭环需在真实多账号限流场景验收。
+
+### GeminiAI Provider 不可用修复 + Dola 换号语义完善 + 生成失败节点 UI 调优
+
+- **GeminiAI「服务暂时不可用」根因与修复**：`geminiAiSidecarRequest` 用 Node 内置 fetch 传 npm undici 的 Agent——Node 25 内置 undici 与 npm undici@8.9 的 dispatcher 接口不兼容，请求直接抛 `invalid onRequestStart method`（表现为 fetch failed / 服务不可用 / 授权账号读取失败 / 无法添加授权）。修复：改用 npm undici 的 `fetch`（与 internal-origin.ts 同一模式），并在失败日志与错误消息中带上底层 cause。另将 sidecar 内部密钥持久化到 `.data/geminiai/runtime-api-key`（`geminiai-local-runtime.mjs`），web 与 sidecar 分别重启不再因随机密钥不同互相 401。
+- **局部重启引发的连锁故障（重要运维结论）**：`pkill start-standalone/next-server` 不会杀掉 python sidecar 进程——旧 sidecar 占住固定端口，新 sidecar 绑定失败（Errno 48）会让 supervisor 整栈退出，或新旧进程密钥不一致导致 Provider 全线 401。`generation-runtime.mjs` 现在会在启动每个 sidecar 前**预清理其固定端口上的残留监听进程**。
+- **Dola 换号语义完善**：①换号次数上限统一钳制 0–20（后端读取/写入与后台输入框同步；此前存了 120 的配置会被收敛为 20）——回答用户疑问：**每次换号都会新建一条上游请求（设计如此）**，旧请求日志停止更新并在生命周期里标注新任务 ID，按新任务 ID 可查后续进度；换号上限 120 会造成 3 个节点产生上百条请求的"请求风暴"。②「生成失败：Page.goto: NS_ERROR_ABORT」这类 Camoufox 浏览器导航中断属于基础设施瞬态错误，现已归入可换号重试类（`shouldRotateAccountForError` 扩展），换号配额内用新账号+新代理重试；限流类错误配额用尽仍保持轮询等待，其他错误配额用尽判失败。这解释了"同一批节点一个失败一个生成中"：失败的节点遇到的是导航中断类错误（旧逻辑立即判失败），另一个遇到的是限流类（保持轮询）。
+- **生成失败节点 UI 调优**：画布失败内容框从"空红框"改为 分层结构——警示图标 + 「生成失败」标题 + 具体原因正文（无原因时显示兜底文案），避免深色主题下空红框的困惑。
+- 已实测：TypeScript 0 错误；相关 Vitest 28+23 通过；生产构建成功；干净重启后 GeminiAI healthy=true（3 个授权账号）、Dola healthy=true、rotationLimit 已钳制为 20。需要用户验收：①后台 GeminiAIStudio 分区恢复"正常"并能添加授权；②Dola 视频生成在导航中断类错误下自动换号重试；③失败节点的新 UI 文案展示。
+
+### 提示词运营编辑 + 画布功能菜单配置化（分组/条目 CRUD + 动作类型）
+
+- 需求（用户确认的 5 项决策）：后台菜单名定为「画布功能菜单」；动作类型含 图片/视频/音频/文本 四种；默认参数 图片=比例+画质+数量、视频=比例+清晰度+时长+音效；分组本身可增删改查（"分镜大师"不再写死）；本期不做提示词占位符语法（参考图由前端固定注入）。
+- 提示词运营补编辑：列表行新增「编辑」按钮，弹窗改为 添加/编辑 双模式（预填标题/正文/分类/标签/封面），编辑走既有 `PATCH /api/admin/prompts/[id]`；更新后保持当前搜索与页码。
+- 画布功能菜单：新增设置结构 `canvasQuickActions`（AuthSettings，PG 列 `app_settings.canvas_quick_actions` jsonb，规范化 `normalizeCanvasQuickActionGroups`）；种子数据把原硬编码的 分镜大师→人物三视图（含完整三视图提示词与 16:9/high 参数）迁移为预置配置，升级后行为不变；后台上游配置组新增「画布功能菜单」分区（`upstream.manage` 权限），支持 分组增删改查/启停/排序 与 条目增删改查/启停/编辑（名称、动作类型、提示词、默认参数）；下发接口 `GET /api/canvas-quick-actions`（仅登录用户、只返回启用项）。
+- 画布消费端：右键菜单、悬浮工具栏、功能弹窗全部改为数据驱动渲染（`useCanvasQuickActions` 登录后拉取一次模块缓存）；功能弹窗按分组列出动作卡片、按动作能力类型切换逻辑模型选择；`generateQuickActionNode` 支持四种动作——图片/视频（以当前图为参考新建对应节点并自动生成，应用后台默认参数）、音频/文本（以提示词为内容生成对应节点）。
+- 已实测：TypeScript 0 错误；相关 Vitest（storyboard/弹窗/悬浮工具栏）6/6 通过；生产构建成功；`GET /api/canvas-quick-actions` 已实测返回种子数据（分镜大师→人物三视图，参数正确）。**待验收**：后台「画布功能菜单」分区的增删改查与保存闭环、画布右键/悬浮/弹窗三类入口的菜单渲染与四类动作真实生成，需以真实管理员/用户账号在浏览器中验收（本机 Playwright 合成会话在页面级鉴权上出现环境性异常，无法完成 UI 级自动化验证）。
+
+### 「取回无水印视频」失败修复（fallback_api 误取顶层播放地址 + 错误原因透出）
+
+- 真实根因：取回接口把 Provider 完整响应传给 `resolveDolaWatermarkUrlRemote`，而 `extractDolaFallbackApi` 的深度优先遍历会先命中响应**顶层的 `videoUrl`**（带水印播放地址，URL 形态字符串即被视为候选），误当 `fallback_api` 使用——CDN 对该地址直接回 MP4 二进制而非 JSON 变体列表，解析报"无效 JSON"失败。生成链路未受影响是因为它只传 `vodPayload` 子对象。
+- 修复：①取回接口与生成链路对齐，优先取 `payload.vodPayload` 传入解析器；②路由透出具体失败原因（`DolaWatermarkError` 的错误码 + 说明直接返回给后台，不再吞成通用 500），并输出 `[dola-unwatermark]` 服务端日志便于排查。
+- 已实测（真实任务 dola-d5aac2b1…，即用户验收时失败的那条）：修复前稳定复现"取回失败：Dola 无水印 VOD 返回了无效 JSON"；修复后 API 返回 `lr=unwatermarked` 的无水印地址，实际下载 200 / 41.9MB（30s 720p）。需用户在后台重试"取回无水印视频"确认。
+
+### 后台 Dola 分区打开报错修复（React #185 无限重渲染）
+
+- 真实根因（上一轮误判为缓存残留）：账号池新增的选中项清理 effect 直接以 `accounts`（`state?.accounts || []`，state 未加载时每次渲染都是新引用）为依赖，并在 effect 里无条件 `setSelectedAccountIds(filter(...))`——`filter` 恒返回新数组 → setState → 重渲染 → effect 再触发，形成死循环，React 抛 #185（Maximum update depth exceeded）并被全局错误边界接住，表现为打开 `/admin?section=dolaApi` 直接显示"页面加载失败"。
+- 修复：effect 内改为"内容未变时返回原引用"的 bail-out 写法（`next.length === current.length ? current : next`），React 检测到相同引用会跳过更新，循环消除。
+- 复现与验收方式：本地 `.data/auth.json` 临时把 `ui_inspector` 提升为 admin 并授予 13 项职责权限（验证后已恢复 user + 清空权限），Playwright 真实登录打开 `/admin?section=dolaApi`——修复前稳定复现错误页，修复后账号池完整渲染：状态页签 全部 106 / 正常可轮询 101 / 登录失败 1 / 风控 4、批量删除按钮、行多选框、轮换上限文案均正常，控制台无错误。
+- 附带说明：上一轮的全局错误页品牌/配色修复（新 LOGO、自包含样式、深浅主题）仍然有效，本次截图中的错误页即为修复后的新样式。
+
+### 全局错误页品牌与配色修复（LOGO 旧字形 + 深浅主题）
+
+- 问题：后台打开出现"页面加载失败"恢复页时，页面顶部 LOGO 仍是旧"无限进化"∞ 字形（`public/icon.svg` 品牌替换时漏改），按钮样式也与应用当前视觉不符（客户端替换 DOM 时残留的应用层 @layer important 覆盖了 antd Button 颜色，出现黑色胶囊按钮）。
+- 报错来源确认：该页是 `global-error.tsx` 的站点更新缓存恢复页——服务端重建/重启后，浏览器旧页面引用的已失效 chunk 触发 ChunkLoadError 时显示，并自动尝试恢复（30 秒节流）；服务端日志无错误、后台路由 200/401 全部正常，不是服务端故障。
+- 修复：①`public/icon.svg` 重新生成为 dreamyo 品牌图形（`pure-mark.png` 256px 内嵌 SVG，65KB），旧路径仍可访问但字形已替换；②错误页 LOGO 改用站点品牌源 `/brand/dreamyo/mark.png`（`(user)/error.tsx` 同步）；③`global-error.tsx` 改为完全自包含样式（不再使用 antd Button/Tailwind——global-error 自带 html/body，应用 CSS 与主题 Provider 不可用），浅色 C01 蓝青紫渐变底 + 白卡片 + 渐变胶囊主按钮，深色主题按 `prefers-color-scheme` 适配（深海蓝渐变 + 半透明深卡），双主题已浏览器实测截图确认。
+- 顺手修正预存失败断言：`site-metadata-routes.test.ts` 的 rewrites fallback 期望未同步 573712a 引入的旧品牌路径兼容规则（`/brand/octaflow-:file`），已更新，11/11 通过。
+- 已实测：TypeScript 0 错误、生产构建成功、Playwright 真实触发全局错误页（阻断导航资源→客户端导航失败）浅色/深色双主题截图验收。需用户强刷浏览器后在浅/深主题确认实际观感。
+
+### 反代协议统一换号失败判定（Dola 生图 + GeminiTools + GeminiAIStudio 方案A）
+
+- 契约（用户确认）：反代账号池协议不再用超时判生成成败——账号类错误（限流/配额/登录失效/429/5xx）按后台配置的换号次数预算依次切换账号，预算用尽仍报错才判失败并同步前端；内容风控与参数错误换号无意义，立即失败不消耗预算；无报错的慢生成保持轮询等待上游真实终态（沿用上一轮修复）。
+- 阶段1（Dola 生图）：共享错误分类模块 `web/src/lib/dola-errors.ts` 新增 `shouldRotateAccountForError`（账号类错误换号、内容类立即失败）；生图提交阶段遇账号类错误按 Dola"账号轮换次数上限"在同一渠道内重试（每次重试经 runtime 路由自动选下一个可用账号，与视频提交链路同一机制）；生图轮询遇 Dola 账号类错误保持轮询（`rate_limited_polling`）等待上游真实终态，不写终态失败。说明：生图轮询阶段不做换号重提——上游任务已被受理，重提会重复生成图片，这与视频链路"轮询期换号重提"的差异是有意为之。
+- 阶段2（GeminiTools）：网关设置新增独立"换号次数上限"（`rotation_limit` 列，默认 2，0/1=只用当前账号）；账号循环原已按"认证失效/429 才切换、模糊失败立即停止"运行，本次加预算上限（`accounts.slice(0, maxTries)`），语义与 Dola 对齐；后台 GeminiTools → 反代网关新增该设置项。
+- 阶段3（GeminiAIStudio 方案A）：web 在生成请求（chat/completions、images/generations、images/edits）下发 `x-aistudio-rotation-limit` 预算头（后台 GeminiAIStudio → 反代网关新增"换号次数上限"配置，默认 2，独立 `rotation_limit` 列）；sidecar 用 HTTP 中间件读取预算，三个协议处理器（OpenAI/Gemini/Anthropic）的重试上限改为 `effective_retry_attempts()`（预算与硬上限 3 取小），`try_switch_account` 成功后计数，响应头新增 `X-AIStudio-Rotations`；web 读取该头写入请求日志生命周期（"已自动换号 N 次"）。sidecar 原有"429/鉴权类错误才换号、内容与未知错误立即失败"的语义不变。
+- 已实测：web 相关 Vitest 36/36（dola-errors 含新增分类断言、image-task-runtime、gemini-tools-service、geminiai-provider/gateway-store）、gemini sidecar pytest 119/119（含新增换号预算 5 例）、TypeScript 0 错误、生产构建成功。真实上游多账号限额场景（生图换号、GeminiTools/GeminiAIStudio 预算内切换与预算用尽判失败、X-AIStudio-Rotations 回传）需用户实测验收。
+
+### Dola 生成前后端状态同步修复 + 请求日志取回无水印视频 + 账号状态分组与批量删除
+
+- 问题（前端提前显示生成失败、后端仍在生成并成功）：Dola 任务轮询遇 rate_limited 且换号配额已用尽时，Worker 会立即把任务写成 error 终态，前端据此把节点显示为"生成失败"并停止等待；但 rate_limited 只是账号级瞬时限流，被换号弃用的原上游任务在 Dola 侧并未终止，仍会继续生成并最终成功——出现"前端失败、后端请求日志生成完成"的割裂，成功视频也被浪费。另外前端轮询接口一旦遇到瞬时 5xx/网络错误会直接抛错提前失败。
+- 修复（后端）：视频任务轮询（页面唤醒与生成 Worker 两条路径）遇 Dola rate_limited 且无法继续换号时，不再写终态失败，改为按正常间隔继续轮询原任务（调度状态 `rate_limited_polling`），直到上游真实终态；账号仍照旧标记 restricted 剔除调度。
+- 修复（前端）：视频任务查询的瞬时故障（5xx/429/单次网络错误）改为按"继续等待"处理，由既有的 30 分钟等待上限与后台任务恢复兜底；后端真实终态失败仍如实展示。
+- 新增（后台请求日志）：请求日志详情抽屉对"生成完成"且有上游任务 ID 的记录提供"取回无水印视频"按钮——服务端按任务 ID 重新查询 Provider、按既有 `fallback_api → channel=no/codec_type=8/logo_type=unwatermarked` 契约解析无水印地址（`POST /api/admin/dola/logs/unwatermark`），取回后自动复制地址并展示（上游签发地址有时效）。前端未正常返回的成功视频可在后台补救，不再浪费。
+- 新增（账号管理）：账号池增加状态分组页签 全部/正常可轮询/登录失败/风控（带数量）；表格支持多选与"批量删除"（仍有运行中任务的账号自动跳过并提示，`POST /api/admin/dola/accounts/batch-delete`）；"正常可轮询"口径与后端调度一致——只有该分组中的账号会参与轮询与换号（服务端 `availableForModel` 既有约束，UI 分组与其对齐）。
+- 已实测：TypeScript 0 错误；视频任务相关 Vitest 35/35（video-api 12、video-task-runtime 15、video-tasks 路由 8）；生产构建成功。取回无水印视频需在真实上游完成的记录上验收；账号分组/批量删除与轮询只选正常账号需在后台实际操作确认。
+
+### Dola 账号轮换补全站内链路 + 风控分类 + 轮换次数后台可配 + 刷新全部额度弹层
+
+- 问题一（站内生成遇 rate_limited 不换号）：此前的自动换号只实现在外部 API 网关轮询层，Canvas/工作台实际走站内 runtime 通道与生成 Worker，两条链路都没有换号逻辑，账号触发上游限额后任务直接失败。
+- 修复：①runtime 通道创建响应携带账号级限额时，就地标记当前账号风控并自动换下一个可用账号同步重试；②视频任务记录持久化 Dola 原始创建请求体（不含 Cookie），生成 Worker 轮询发现 rate_limited 失败时按同一方式自动重提并沿用原任务记录（新任务 id 透明替换）；后续修复进一步规定：配额耗尽时任务保持轮询等待上游真实终态，不再提前判失败（见顶部"前后端状态同步修复"）。首版把 Worker 换号挂在了无调用方的 refreshVideoTaskFromUpstream 上且重提请求缺少 Worker 鉴权头——已改为接入真实的生成任务恢复器（generation-task-recovery-service）失败分支，鉴权沿用轮询同款 Worker 头，并在服务端控制台输出 `[dola-rotate]` 日志便于排查。
+- 问题二（风控分类）：上游触发 rate_limited 的账号不再走 10 分钟自动冷却，改为标记 `restricted`（已风控）——调度器与换号候选池永久剔除，账号列表红色"已风控"标签；管理员对该账号"停用→启用"后恢复为未验证重新参与调度。
+- 问题三（轮换次数可配）：后台"账号与渠道"页签 Dola API 卡片新增"账号轮换次数上限"（不设上限，0 表示不切换，默认 2），对画布/工作台与外部 API 全站生效，网关、runtime、Worker 三条链路共用同一配置；设 N 次则最多切换 N 个账号。输入框加宽至 224px，服务端只校验非负整数，不再钳制上限数值。
+- 问题四（刷新全部额度交互）：点击后弹出进度弹层，逐账号显示 等待中/刷新中/已完成/失败/已停止；弹层内提供"停止刷新"（未转入后台时关闭弹层同样停止）与"转入后台"；转入后台后账号池按钮变为"正在刷新额度 n/m"（可点击重新打开弹层查看进度）。
+- 已实测：隔离实例 + 本地 fixture 实测——两个限额账号创建视频时路由连续换号至耗尽后返回 rate_limited，两账号均被标记 restricted，停用/启用恢复 unverified，rotationLimit 修改生效；浏览器回归 7/7 通过（含弹层进度/转后台/停止）。Worker 轮询层换号的端到端场景（创建成功、轮询时限额）需在真实上游多账号环境回归。
+
+### Dola 后台账号检测/额度刷新等待动画与一键刷新/协议错误展示
+
+- 协议错误可读展示：把外部网关的错误码双语说明表提取为共享模块 `web/src/lib/dola-errors.ts`（`describeDolaFailure`/`dolaErrorHint`/`isDolaRateLimitError`），网关路由改为共用；后台"通信测试"弹窗失败时和请求日志详情抽屉（"错误分类"提示块）都会在原始错误码之外显示对应双语分类说明，已翻译的文本自动去重不重复拼接。
+- 账号池操作等待动画：单账号 启用/停用、刷新额度、检测、删除 按钮操作期间显示 loading 并互斥；新增"检测"按钮，复用账号 inspect 通道并弹出结论（Cookie 有效可用 / Cookie 已失效需重新导入或登录 / 触发滑块验证 / 额度用尽 / 限流冷却 / 已风控）。
+- 一键刷新全部额度：账号池卡片新增"刷新全部额度"按钮，前端按并发 2（每次刷新在 Provider 侧启动一个 Camoufox 浏览器实例的资源保护上限）逐个刷新，按钮 loading + "刷新中 n/m"进度文案，逐个完成后即时更新行内状态与额度。
+- Provider 登录态检测：`services/dola-api` 的 `accounts/inspect` 在人机验证判定之后新增登录态判定（跳转登录 URL 或出现登录/注册按钮即 `needs_login`，协议口径见 `docs/dola-api-plan/15`），Cookie 过期账号不再误报 `ready`；`refreshDolaAccount` 同步映射 `needs_login` 并在登录失效/需验证时清空过期额度快照；账号状态列改为中文语义标签（可用/未验证/登录失效/待滑块验证/额度用尽/限流冷却/已风控/已停用）；账号删除增加二次确认。
+- 已实测：前端 vitest 17/17（含新增 dola-errors 单测）、Provider pytest 26/26（含新增登录态判定 4 例）、类型检查 0 错误；隔离实例 + 本地协议 fixture（fixture 新增 `/internal/runtime/v1/accounts/inspect|videos` 端点，由 Cookie 值驱动 ready/needs_login/verification_required/上游 500）浏览器回归 7/7 通过，覆盖检测结论、登录失效清额度、删除二次确认、一键刷新进度、日志错误分类、通信测试端到端。真实失效 Cookie 的登录页特征需在真实上游环境抽 1-2 个账号人工复核。
+
 ### Dola 账号限额自动换号重试 + 协议错误双语化
 
 - 问题：Canvas 走 Dola 生成失败仅显示 `rate_limited`，无法判断原因；且该错误为账号级频率限制，任务直接失败而不会换用其他账号。
@@ -24,6 +263,8 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 - 问题：2K 分辨率 + Windows 系统缩放（125%/150%/175%/200%）下 CSS 视口变小，首页 hero 的垂直间距下限过大（padding-top 最低 150px、面板上边距固定 48px），标题/LOGO/提示词面板整体偏大，输入框底部操作行被折叠线截断。
 - 修复：hero 最终生效块的垂直间距全部改为随视口高度伸缩（svh clamp）——padding-top `clamp(150px, 22svh, 240px)`、padding-bottom `clamp(32px, 9svh, 88px)`、LOGO 高度 `clamp(64px, 13svh, 116px)`、面板上边距 `clamp(16px, 5svh, 48px)`；并新增 `max-height: 820px` 矮视口块进一步收紧。1440×900 开发基线视觉基本不变（composer 底部 772 → 768）。
 - 已实测：1440×900、1366×768、1920×1080、2K@150%（1707×960）、2K@175%（1463×823）、2K@200%（1280×720）、2K@100%（2560×1440）七种视口下 composer 均完整落在首屏内且底部工具行可见（截图确认 1707×960 与 1280×720）；home 套件单测 3/3 通过；类型检查 0 错误、构建成功、服务已重启。
+- 二次调整（等比显示比例）：上述方案在大屏上内容整体偏小，改为「设计锁定等比缩放」——新增 HomeResolutionScale 客户端组件，视口宽 ≥1440 时按 `min(宽/1440, 高/810, 2.5)` 对首页根容器设置 zoom（CSS 变量 --home-resolution-scale），2K/4K 下整页（含顶栏/侧栏/页脚）与 1440 基线保持完全一致的显示比例；hero 最终块相应恢复固定设计基准尺寸；<1440 宽沿用既有响应式布局；登录弹窗通过同一变量同步缩放。实测 1440/1080p/2K 下标题与输入框占视口宽度比例恒定（0.303/0.542）、composer 完整可见，移动端不受影响。
+- 三次调整（主体上移留白）：hero min-height 改为 `min(calc((100svh - 56px) / var(--home-resolution-scale, 1)), 960px)`——按缩放比例折算视口高度并预留底部提示行空间，顶部留白 198→150px；2K 下主体整体上移约 100px，composer 底部与提示行之间恢复呼吸间隙，各分辨率效果一致。实测 2K composer 底部 1283（视口 1440，余量 157）、1080p 964、基线 724。
 
 ### 画布已完成节点再次生成改为继承参考图节点
 

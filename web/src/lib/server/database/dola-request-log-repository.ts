@@ -39,6 +39,7 @@ export class DolaRequestLogRepository {
             ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS client_ip varchar(128);
             ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS user_agent text;
             ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS headers jsonb;
+            ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS screenshot_base64 text;
             ALTER TABLE dola_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb;
             CREATE INDEX IF NOT EXISTS dola_request_logs_model_idx ON dola_request_logs (model, created_at DESC);
             CREATE INDEX IF NOT EXISTS dola_request_logs_account_idx ON dola_request_logs (account_id, created_at DESC);
@@ -57,8 +58,8 @@ export class DolaRequestLogRepository {
             `INSERT INTO dola_request_logs (
                 id,created_at,source,capability,method,path,model,account_id,account_name,attempt_id,task_id,verification_id,
                 status_code,duration_ms,phase,requested_duration,ratio,request_bytes,response_bytes,content_type,quota_remaining,quota_limit,
-                client_ip,user_agent,headers,error,request_preview,response_preview,proxy_egress,lifecycle
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::numeric,$22::numeric,$23,$24,$25::jsonb,$26,$27,$28,$29::jsonb,$30::jsonb)`,
+                client_ip,user_agent,headers,error,request_preview,response_preview,screenshot_base64,proxy_egress,lifecycle
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::numeric,$22::numeric,$23,$24,$25::jsonb,$26,$27,$28,$29,$30::jsonb,$31::jsonb)`,
             valuesForLog(log),
         );
         await this.db.query("DELETE FROM dola_request_logs WHERE id IN (SELECT id FROM dola_request_logs ORDER BY created_at DESC OFFSET $1)", [maxLogs]);
@@ -69,7 +70,7 @@ export class DolaRequestLogRepository {
             `UPDATE dola_request_logs SET
                 status_code=$2,duration_ms=$3,phase=$4,error=$5,request_preview=$6,response_preview=$7,proxy_egress=$8::jsonb,lifecycle=$9::jsonb,
                 model=$10,account_id=$11,account_name=$12,task_id=$13,verification_id=$14,requested_duration=$15,ratio=$16,request_bytes=$17,response_bytes=$18,content_type=$19,
-                quota_remaining=$20::numeric,quota_limit=$21::numeric
+                quota_remaining=$20::numeric,quota_limit=$21::numeric,screenshot_base64=$22
              WHERE id=$1`,
             [
                 log.id,
@@ -93,6 +94,7 @@ export class DolaRequestLogRepository {
                 log.contentType || null,
                 log.quotaRemaining ?? null,
                 log.quotaLimit ?? null,
+                log.screenshotBase64 || null,
             ],
         );
     }
@@ -180,6 +182,7 @@ function valuesForLog(log: DolaRequestLog) {
         log.error || null,
         log.requestPreview || null,
         log.responsePreview || null,
+        log.screenshotBase64 || null,
         JSON.stringify(log.proxyEgress || { mode: "direct" }),
         JSON.stringify(log.lifecycle || []),
     ];
@@ -214,6 +217,7 @@ function mapLog(row: Record<string, unknown>): DolaRequestLog {
         ...(string(row.error) ? { error: string(row.error) } : {}),
         ...(string(row.request_preview) ? { requestPreview: string(row.request_preview) } : {}),
         ...(string(row.response_preview) ? { responsePreview: string(row.response_preview) } : {}),
+        ...(string(row.screenshot_base64) ? { screenshotBase64: string(row.screenshot_base64) } : {}),
         ...(row.proxy_egress ? { proxyEgress: parseJson(row.proxy_egress) as DolaRequestLog["proxyEgress"] } : {}),
         ...(row.lifecycle ? { lifecycle: parseJson(row.lifecycle) as DolaRequestLog["lifecycle"] } : {}),
     };

@@ -35,4 +35,19 @@ describe("Canvas model parameter popover variants", () => {
         expect(shell).not.toContain('aria-label="关闭参数设置"');
         expect(shell).not.toContain("应用参数设置");
     });
+
+    it("replicates the parameter popover styling in the duration popover with glowing gradient border and compact width", () => {
+        const duration = source("canvas-video-duration-popover.tsx");
+
+        expect(duration).toContain("w-[260px]");
+        expect(duration).not.toContain("w-[400px]");
+        expect(duration).toContain("canvasSelectionBorderStyle(theme.toolbar.panel)");
+        expect(duration).toContain("canvasSelectionGlow");
+        expect(duration).toContain("dark:bg-[#020813]/[.98]");
+        expect(duration).toContain("rounded-[18px]");
+        expect(duration).toContain("h-7 w-16");
+        expect(duration).not.toContain('className="h-9 w-full');
+        expect(duration).toContain("选择视频生成时长");
+        expect(duration).toContain("自定义输入");
+    });
 });

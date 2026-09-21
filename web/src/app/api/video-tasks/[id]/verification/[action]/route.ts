@@ -1,12 +1,16 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { readJsonBodyResult } from "@/lib/auth/request";
-import { getVideoTask } from "@/lib/server/video-task-store";
+import { getVideoTask, reconcileRunningVideoTask } from "@/lib/server/video-task-store";
 import { getStoredGenerationTaskRecord } from "@/lib/server/generation-task-store";
+import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { dolaRuntimeRequest } from "@/lib/server/dola/provider";
-import { releaseDolaAccountAttempt } from "@/lib/server/dola/account-service";
+import { markDolaAccountReady, releaseDolaAccountAttempt, updateDolaAccountCredentials } from "@/lib/server/dola/account-service";
+import { resolveDolaTaskVerification } from "@/lib/server/dola/service";
 import { markDolaRequestLogRunning, openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry } from "@/lib/server/dola/log-store";
+import { resolveInternalOrigin } from "@/lib/server/internal-origin";
+import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-recovery-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +26,10 @@ export async function POST(request: Request, context: Context) {
     if (!task || (task.userId !== user.id && user.role !== "admin")) return NextResponse.json({ error: "视频任务不存在" }, { status: 404 });
     const schedule = await getStoredGenerationTaskRecord("video", task.id);
     const payload = schedule?.resultPayload && typeof schedule.resultPayload === "object" ? schedule.resultPayload : {};
-    const verificationId = typeof payload.verificationId === "string" ? payload.verificationId : "";
+    let verificationId = typeof payload.verificationId === "string" ? payload.verificationId : "";
+    if (!verificationId && task.config?.advancedConfig?.protocol === "dola") {
+        verificationId = (await resolveDolaTaskVerification(task)) || "";
+    }
     if (!verificationId) return NextResponse.json({ error: "当前任务没有待处理的 Dola 验证" }, { status: 409 });
     let body: Record<string, unknown> = {};
     if (action !== "open") {
@@ -30,7 +37,7 @@ export async function POST(request: Request, context: Context) {
         if (!parsed.ok) return NextResponse.json({ error: parsed.message }, { status: parsed.status });
         body = parsed.data;
         if (typeof body.leaseToken !== "string" || body.leaseToken.length < 16) return NextResponse.json({ error: "验证租约无效" }, { status: 400 });
-        if (action === "input" && (body.action !== "down" && body.action !== "move" && body.action !== "up" || typeof body.x !== "number" || typeof body.y !== "number")) return NextResponse.json({ error: "滑块坐标或动作无效" }, { status: 400 });
+        if (action === "input" && (body.action !== "down" && body.action !== "move" && body.action !== "up" || typeof body.x !== "number" || typeof body.y !== "number")) return NextResponse.json({ error: "页面坐标或动作无效" }, { status: 400 });
     }
     const started = Date.now();
     const verificationPath = `/v1/verifications/${encodeURIComponent(verificationId)}/${action}`;
@@ -74,7 +81,25 @@ export async function POST(request: Request, context: Context) {
         lifecycle.push({ time: new Date().toISOString(), phase, message: upstream.ok ? "验证操作已返回" : "验证操作失败", durationMs: Date.now() - started, detail: `HTTP ${upstream.status}` });
         if (logId) await settleDolaRequestLog(logId, { statusCode: upstream.status, durationMs: Date.now() - started, phase, ...(errorMessage ? { error: errorMessage } : {}), responsePreview: summarizeResponse(response, bytes), responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, taskId: task.upstream.id || undefined, verificationId: verificationId.slice(0, 300), lifecycle });
         if (action === "close" && task.config.advancedConfig?.protocol === "dola" && task.upstream.accountId) await releaseDolaAccountAttempt(task.upstream.accountId).catch(() => undefined);
-        return NextResponse.json(response, { status: upstream.status });
+        if (action === "resume" && upstream.ok && (response?.status === "accepted" || response?.status === "completed")) {
+            await scheduleGenerationTask("video", task.id, {
+                executionPhase: "submitted",
+                nextPollAt: Date.now(),
+                lastUpstreamStatus: "submitted",
+                resultPayload: undefined,
+            }).catch((err) => console.error("Failed to reschedule video task after verification", err));
+            await reconcileRunningVideoTask(task.id, {}).catch(() => undefined);
+            if (task.upstream.accountId) {
+                if (typeof response.cookie === "string" && response.cookie) {
+                    await updateDolaAccountCredentials(task.upstream.accountId, response.cookie).catch(() => undefined);
+                }
+                await markDolaAccountReady(task.upstream.accountId).catch(() => undefined);
+            }
+            const origin = resolveInternalOrigin(new URL(request.url).origin);
+            const cookie = request.headers.get("cookie") || "";
+            after(() => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [task.id] }));
+        }
+        return NextResponse.json(withoutCredential(response), { status: upstream.status });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Dola 验证服务不可用";
         lifecycle.push({ time: new Date().toISOString(), phase: "failed", message, durationMs: Date.now() - started });
@@ -101,6 +126,12 @@ function parseRecord(bytes: Uint8Array) {
 
 function stringValue(value: unknown) {
     return typeof value === "string" ? value.slice(0, 800) : "";
+}
+
+function withoutCredential(value: Record<string, unknown> | null) {
+    if (!value) return value;
+    const { cookie: _cookie, ...safe } = value;
+    return safe;
 }
 
 function summarizeResponse(value: Record<string, unknown> | null, bytes: Uint8Array) {

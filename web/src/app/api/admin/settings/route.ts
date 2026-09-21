@@ -70,6 +70,7 @@ export async function PATCH(request: Request) {
             patch.defaultModels = normalizedDefaults;
         }
         if (Array.isArray(body.agentSkills)) patch.agentSkills = body.agentSkills;
+        if (Array.isArray(body.canvasQuickActions)) patch.canvasQuickActions = body.canvasQuickActions;
         if (!Object.keys(patch).length) return NextResponse.json({ error: "没有可更新的设置" }, { status: 400 });
 
         const settings = await setAuthSettings(patch);
@@ -114,6 +115,7 @@ const SETTINGS_PERMISSION_BY_FIELD = {
     logicalModels: "upstream.manage",
     defaultModels: "upstream.manage",
     agentSkills: "upstream.manage",
+    canvasQuickActions: "upstream.manage",
 } as const satisfies Partial<Record<keyof AuthSettings, AdminPermission>>;
 
 function settingsPermissionsForPatch(patch: Partial<AuthSettings>) {

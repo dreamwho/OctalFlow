@@ -5,6 +5,7 @@ import { getPublicSiteSettings } from "@/lib/server/site-metadata";
 import { AmbientBackground } from "@/components/ui/ambient-background";
 import { HomeActionsProvider } from "./home/home-actions";
 import { HomeAgentHero } from "./home/home-agent-hero";
+import { HomeResolutionScale } from "./home/home-resolution-scale";
 import { HomeFooter } from "./home/home-footer";
 import { HomeGallery } from "./home/home-gallery";
 import { HomeHeader } from "./home/home-header";
@@ -19,6 +20,7 @@ export default async function HomePage() {
 
     return (
         <HomeActionsProvider initialSite={site}>
+            <HomeResolutionScale />
             <AmbientBackground />
             <main className={`app-scroll-page ${styles.root}`}>
                 <HomeHeader />

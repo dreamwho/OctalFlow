@@ -39,6 +39,8 @@ export function isDolaRuntimePath(path: string) {
         normalized === "/v1/images" ||
         /^\/v1\/images\/[^/]+$/.test(normalized) ||
         normalized === "/v1/accounts/inspect" ||
+        normalized === "/v1/accounts/verify" ||
+        normalized === "/v1/accounts/google-login" ||
         /^\/v1\/verifications\/[^/]+\/(?:open|input|resume|close)$/.test(normalized)
     );
 }

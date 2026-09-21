@@ -637,17 +637,19 @@ async function ensureGenericProxyEgress(provider: MagicProxyProvider): Promise<{
         throw new MagicProxyError("GeminiAIStudio 通用代理仅支持选择单个节点", 400);
     }
     if (binding.target.startsWith("group:")) {
-        const resolved = await chatGptRuntimeJson<{ proxy_url?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ group_id: binding.target.slice("group:".length) }) });
-        return resolved.proxy_url ? { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url) } } : { enabled: false };
+        const resolved = await chatGptRuntimeJson<{ proxy_url?: string; node_name?: string; node_id?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ group_id: binding.target.slice("group:".length) }) });
+        const nodeName = resolved.node_name || resolved.node_id || binding.target.slice("group:".length);
+        return resolved.proxy_url ? { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url), node_name: nodeName } } : { enabled: false };
     }
     if (binding.target.startsWith("node:")) {
-        const resolved = await chatGptRuntimeJson<{ proxy_url?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ node_id: binding.target.slice("node:".length) }) });
+        const resolved = await chatGptRuntimeJson<{ proxy_url?: string; node_name?: string; node_id?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ node_id: binding.target.slice("node:".length) }) });
         if (!resolved.proxy_url) return { enabled: false };
         if (provider === "geminiai") {
             const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
             await syncGeminiAiRuntimeProxy(resolved.proxy_url);
         }
-        return { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url) } };
+        const nodeName = resolved.node_name || resolved.node_id || binding.target.slice("node:".length);
+        return { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url), node_name: nodeName } };
     }
     return { enabled: false };
 }

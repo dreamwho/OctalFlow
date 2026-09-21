@@ -167,6 +167,8 @@ export type SystemDefaultModels = {
     audioModel: string;
 };
 
+import type { CanvasQuickActionGroup } from "@/lib/canvas-quick-actions";
+
 export type AgentSkillWorkspace = "image" | "video" | "canvas" | "drama";
 export type AgentSkillNodeMode = "image" | "video";
 export type AgentSkillModelFamily = "minimax-h3";
@@ -549,6 +551,7 @@ export type AuthSettings = {
     logicalModels: LogicalModel[];
     defaultModels: SystemDefaultModels;
     agentSkills: AgentSkill[];
+    canvasQuickActions: CanvasQuickActionGroup[];
 };
 
 export type AuthDatabase = {

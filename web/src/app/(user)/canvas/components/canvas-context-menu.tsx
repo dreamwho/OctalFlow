@@ -1,5 +1,8 @@
 "use client";
 
+import { renderQuickActionGroups } from "./canvas-node-hover-toolbar";
+import type { CanvasQuickActionEntry } from "../utils/canvas-quick-actions-client";
+import { DEFAULT_CANVAS_QUICK_ACTIONS } from "@/lib/canvas-quick-actions";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Popover } from "antd";
@@ -24,7 +27,8 @@ export function CanvasNodeContextMenu({
     onInteriorDesign,
     onRename,
     onUpscale,
-    onStoryboard,
+    quickActions,
+    onQuickActionSelect,
     onCaptureFrames,
     onDepthExtract,
     onAnalyzeVideo,
@@ -44,7 +48,8 @@ export function CanvasNodeContextMenu({
     onInteriorDesign?: () => void;
     onRename: () => void;
     onUpscale?: () => void;
-    onStoryboard?: () => void;
+    quickActions?: CanvasQuickActionEntry[];
+    onQuickActionSelect?: (action: CanvasQuickActionEntry) => void;
     onCaptureFrames?: () => void;
     onDepthExtract?: () => void;
     onAnalyzeVideo?: () => void;
@@ -86,7 +91,22 @@ export function CanvasNodeContextMenu({
             {menu.type === "node" && canArrange ? <MenuButton icon={<LayoutGrid className="size-4" />} label="一键整理" onClick={onArrange} /> : null}
             {menu.type === "node" && canInteriorDesign ? <MenuButton icon={<House className="size-4" />} label="室内设计" onClick={onInteriorDesign} /> : null}
             {menu.type === "node" && canUpscale ? <MenuButton icon={<ScanLine className="size-4" />} label="图片超分" onClick={onUpscale} /> : null}
-            {menu.type === "node" && canStoryboard ? <StoryboardMenuButton onSelect={onStoryboard} /> : null}
+            {menu.type === "node" && canStoryboard ? (
+                <StoryboardMenuButton
+                    actions={
+                        quickActions?.length
+                            ? quickActions
+                            : DEFAULT_CANVAS_QUICK_ACTIONS.flatMap((group) =>
+                                  group.actions.map((action) => ({
+                                      ...action,
+                                      groupId: group.id,
+                                      groupName: group.name,
+                                  })),
+                              )
+                    }
+                    onSelect={(action) => onQuickActionSelect?.(action)}
+                />
+            ) : null}
             {menu.type === "node" && canUseVideoTools ? <MenuButton icon={<Camera className="size-4" />} label="捕捉帧" onClick={onCaptureFrames} /> : null}
             {menu.type === "node" && canUseVideoTools ? <MenuButton icon={<ScanLine className="size-4" />} label="深度提取" onClick={onDepthExtract} /> : null}
             {menu.type === "node" && canUseVideoTools ? <MenuButton icon={<ScanSearch className="size-4" />} label="分析" onClick={onAnalyzeVideo} /> : null}
@@ -96,7 +116,7 @@ export function CanvasNodeContextMenu({
     );
 }
 
-function StoryboardMenuButton({ onSelect }: { onSelect?: () => void }) {
+function StoryboardMenuButton({ actions, onSelect }: { actions: CanvasQuickActionEntry[]; onSelect: (action: CanvasQuickActionEntry) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [open, setOpen] = useState(false);
     return (
@@ -106,19 +126,10 @@ function StoryboardMenuButton({ onSelect }: { onSelect?: () => void }) {
             open={open}
             onOpenChange={setOpen}
             content={
-                <button
-                    type="button"
-                    role="menuitem"
-                    className="flex min-w-36 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition hover:opacity-80"
-                    style={{ color: theme.node.text }}
-                    onClick={() => {
-                        setOpen(false);
-                        onSelect?.();
-                    }}
-                >
-                    <Clapperboard className="size-4" />
-                    人物三视图
-                </button>
+                <div className="max-h-72 w-52 overflow-y-auto p-1">{renderQuickActionGroups(actions, (action) => {
+                    setOpen(false);
+                    onSelect(action);
+                })}</div>
             }
         >
             <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:opacity-80" style={{ color: theme.node.text }}>
