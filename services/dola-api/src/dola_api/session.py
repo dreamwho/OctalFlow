@@ -1145,6 +1145,14 @@ def _camoufox_browser_options(headless: bool, proxy_url: str | None = None, acco
             "audio:seed": _stable_fingerprint_seed(account_id, "audio"),
             "canvas:seed": _stable_fingerprint_seed(account_id, "canvas"),
         }
+    executable = os.getenv("DOLA_CAMOUFOX_EXECUTABLE", "").strip()
+    if executable:
+        options["executable_path"] = executable
+        major = os.getenv("DOLA_CAMOUFOX_FF_VERSION", "").strip()
+        if not major.isdigit():
+            raise RuntimeError("bundled_camoufox_version_missing")
+        options["ff_version"] = int(major)
+        options["i_know_what_im_doing"] = True
     selected = os.getenv("DOLA_CAMOUFOX_BROWSER", "").strip()
     if selected:
         options["browser"] = selected
@@ -1165,7 +1173,7 @@ def _camoufox_browser_options(headless: bool, proxy_url: str | None = None, acco
 
 def _camoufox_context_options() -> dict[str, object]:
     options: dict[str, object] = {"storage_state": None, "locale": "zh-CN"}
-    if os.getenv("DOLA_CAMOUFOX_BROWSER", "").strip():
+    if os.getenv("DOLA_CAMOUFOX_BROWSER", "").strip() or os.getenv("DOLA_CAMOUFOX_EXECUTABLE", "").strip():
         # Older Camoufox Juggler schemas reject Playwright 1.62's implicit
         # viewport.isMobile field. The launch window above owns the geometry.
         options["no_viewport"] = True

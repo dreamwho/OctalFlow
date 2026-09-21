@@ -25,7 +25,7 @@ Web 对外接口与后台仍保留全部功能。桌面版不能通过更改 URL
 ## 第二阶段：无依赖安装包
 
 1. 对 macOS arm64、macOS x64 和 Windows x64 各自在目标系统构建 Next standalone 与 Sharp 原生库。不要跨架构复用构建结果。构建脚本只打包编译后的运行文件，严格排除 `.env*`、`.data`、Cookie、浏览器 Profile、备份、测试结果。
-2. 将 Dola、GeminiAIStudio、GPTAPI 和独立 Gemini Camoufox launcher 分别冻结为可执行文件。`resources/sidecars/<platform>-<arch>/` 必须包含 `dola-api`、`geminiai`、`chatgpt-api`、`geminiai-browser`（Windows 加 `.exe`）及 `camoufox/` 浏览器目录。冻结时验证动态导入、模板/静态文件、证书、Playwright/Camoufox 包与浏览器匹配；输出 SHA-256 清单。生产进程只使用包内文件。
+2. 将 Dola、GeminiAIStudio、GPTAPI 和独立 Gemini Camoufox launcher 分别冻结为可执行文件。`resources/sidecars/<platform>-<arch>/` 必须包含 `dola-api`、`geminiai`、`chatgpt-api`、`geminiai-browser`（Windows 加 `.exe`）及 `camoufox/` 完整浏览器目录、根目录 `version.json`，macOS 浏览器可执行文件旁另有同版本 `properties.json`。冻结时验证动态导入、模板/静态文件、证书、Playwright/Camoufox 包与浏览器匹配；输出 SHA-256 清单。生产进程只使用包内文件。
 3. 对 GeminiTools OAuth 回调、即梦 CLI 固定版本、Mihomo 魔法/链式代理、FFmpeg/FFprobe 和视频深度推理建立同样的架构独立可执行文件及运行目录。包内缺少任何启用功能所需二进制时启动必须显示准确缺失项，不能静默回退系统 PATH。
 4. 补齐签名与更新：macOS 签名/公证、Windows Authenticode/NSIS；签名更新清单、版本回退与本地数据兼容回归。首次安装和升级必须在一台没有 Node/Python/Docker 的干净虚拟机通过。
 
@@ -54,3 +54,4 @@ Web 对外接口与后台仍保留全部功能。桌面版不能通过更改 URL
 - 桌面执行 `cd apps/desktop && pnpm test`；管理员无账号首次启动、重启后项目持久化、Provider 数据/端口与 Web 隔离、双开拦截、非法外链和 Web 拒绝引导逐项验证。
 - 商用版必须在云端联调环境验证登录、实时计费、云端生成、同步及 OSS；管理员版需验证无需云端服务可打开项目和本地配置。生成视频还需逐模型/比例/时长验证最终媒体而非只看任务受理。
 - 当前阶段实测：管理员本地运行接口 `200`、免登录引导 `303`、健康接口 `200`；Electron 窗口的 Canvas 项目页与后台模型渠道页已通过 `capturePage` 截图复核，管理员页无用户与积分分区；实际创建一个画布项目，完全关闭并重启桌面进程后读到原项目，随后清理测试项目；商用入口无本地登录表单。打包预检按预期拒绝缺失的冻结 Provider 文件。以上不能替代无依赖安装包与商用联调验收。
+- Web 首页在 `1440/390/430px` 的独立无账号浏览器回归中均没有页面横向溢出；现有 Web 生产运行时健康接口 `200`、桌面专用运行接口 `404`。完整 Playwright Canvas/Home 矩阵曾因复用已有 `.e2e-data` 使安装前置断言失败；改用隔离数据重跑时发现测试启动脚本仍预热真实 Gemini 账号，随即终止回归、恢复原测试数据，并单独重启 Web。测试夹具需先隔离所有上游账号及固定 Sidecar 端口，再安全完成全矩阵。

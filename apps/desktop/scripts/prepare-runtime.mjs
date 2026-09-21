@@ -10,7 +10,8 @@ export async function prepareRuntime({ edition, platform = process.platform, arc
     const sidecarRoot = path.join(bundledSidecars, `${platform}-${arch}`);
     const extension = platform === "win32" ? ".exe" : "";
     const required = ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser"].map((name) => path.join(sidecarRoot, `${name}${extension}`));
-    required.push(path.join(sidecarRoot, "camoufox", platform === "win32" ? "camoufox.exe" : "camoufox"));
+    const browserDir = path.join(sidecarRoot, "camoufox", platform === "darwin" ? "Camoufox.app/Contents/MacOS" : "");
+    required.push(path.join(sidecarRoot, "camoufox", "version.json"), path.join(browserDir, "properties.json"), path.join(browserDir, platform === "darwin" ? "camoufox" : "camoufox.exe"));
     for (const file of [path.join(sourceStandalone, "server.js"), ...required]) await assertFile(file);
 
     await rm(outputRoot, { recursive: true, force: true });

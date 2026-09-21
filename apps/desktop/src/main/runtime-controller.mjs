@@ -13,6 +13,8 @@ export async function startDesktopRuntime({ app, edition }) {
     const port = await availableLoopbackPort();
     const [geminiPort, dolaPort, chatGptPort] = await Promise.all([availableLoopbackPort(), availableLoopbackPort(), availableLoopbackPort()]);
     const origin = `http://127.0.0.1:${port}`;
+    const browserMajor = app.isPackaged ? Number(JSON.parse(await readFile(path.join(runtimeRoot, "sidecars", "camoufox", "version.json"), "utf8")).version?.split(".")[0]) : null;
+    if (app.isPackaged && (!Number.isInteger(browserMajor) || browserMajor < 1)) throw new Error("桌面安装包的 Camoufox 版本文件无效");
     const environment = {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",
@@ -43,8 +45,10 @@ export async function startDesktopRuntime({ app, edition }) {
             DREAMYO_GEMINIAI_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("geminiai")),
             DREAMYO_DOLA_PROVIDER_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("dola-api")),
             DREAMYO_CHATGPT_API_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("chatgpt-api")),
-            DOLA_CAMOUFOX_BROWSER: path.join(runtimeRoot, "sidecars", "camoufox", process.platform === "win32" ? "camoufox.exe" : "camoufox"),
-            AISTUDIO_BROWSER_EXECUTABLE: path.join(runtimeRoot, "sidecars", "camoufox", process.platform === "win32" ? "camoufox.exe" : "camoufox"),
+            DOLA_CAMOUFOX_EXECUTABLE: bundledCamoufox(runtimeRoot),
+            DOLA_CAMOUFOX_FF_VERSION: String(browserMajor),
+            AISTUDIO_CAMOUFOX_EXECUTABLE: bundledCamoufox(runtimeRoot),
+            AISTUDIO_CAMOUFOX_FF_VERSION: String(browserMajor),
             AISTUDIO_BROWSER_LAUNCHER_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("geminiai-browser")),
         } : {}),
     };
@@ -123,4 +127,8 @@ function stopChild(child) {
 
 function executableName(name) {
     return process.platform === "win32" ? `${name}.exe` : name;
+}
+
+function bundledCamoufox(runtimeRoot) {
+    return path.join(runtimeRoot, "sidecars", "camoufox", process.platform === "darwin" ? "Camoufox.app/Contents/MacOS/camoufox" : "camoufox.exe");
 }

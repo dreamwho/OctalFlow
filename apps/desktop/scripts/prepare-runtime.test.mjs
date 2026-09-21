@@ -22,7 +22,11 @@ test("packaging copies only compiled runtime and never imports account data or e
         await mkdir(path.join(sidecars, "camoufox"), { recursive: true });
         const extension = process.platform === "win32" ? ".exe" : "";
         for (const binary of ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser"]) await writeFile(path.join(sidecars, `${binary}${extension}`), "binary");
-        await writeFile(path.join(sidecars, "camoufox", process.platform === "win32" ? "camoufox.exe" : "camoufox"), "binary");
+        const camoufox = path.join(sidecars, "camoufox", process.platform === "darwin" ? "Camoufox.app/Contents/MacOS/camoufox" : "camoufox.exe");
+        await mkdir(path.dirname(camoufox), { recursive: true });
+        await writeFile(camoufox, "binary");
+        await writeFile(path.join(path.dirname(camoufox), "properties.json"), "[]");
+        await writeFile(path.join(sidecars, "camoufox", "version.json"), '{"version":"135.0.1"}');
         await writeFile(path.join(standalone, "server.js"), "server");
         await writeFile(path.join(standalone, "package.json"), "{}");
         await writeFile(path.join(standalone, ".data", "cookie.txt"), "never ship me");
@@ -37,6 +41,8 @@ test("packaging copies only compiled runtime and never imports account data or e
         assert.equal(await readFile(path.join(output, "web/.next/standalone/server.js"), "utf8"), "server");
         assert.equal(await stat(path.join(output, "web/.next/standalone/.data")).catch(() => null), null);
         assert.equal(await stat(path.join(output, "web/.env.local")).catch(() => null), null);
+        await rm(path.join(path.dirname(camoufox), "properties.json"));
+        await assert.rejects(() => prepareRuntime({ edition: "admin", sourceRoot: source, outputRoot: output, bundledSidecars: path.join(directory, "sidecars") }), /properties\.json/);
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

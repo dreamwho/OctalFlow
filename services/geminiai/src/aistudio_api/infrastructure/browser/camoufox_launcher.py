@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import os
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
@@ -30,7 +31,11 @@ def _prune_none(value: Any) -> Any:
 
 
 def launch_camoufox_server(*, port: int, headless: bool, proxy: Optional[dict[str, str]] = None):
-    cfg = launch_options(port=port, headless=headless, main_world_eval=True, proxy=proxy)
+    executable = os.getenv("AISTUDIO_CAMOUFOX_EXECUTABLE", "").strip()
+    major = os.getenv("AISTUDIO_CAMOUFOX_FF_VERSION", "").strip()
+    if executable and not major.isdigit():
+        raise RuntimeError("bundled_camoufox_version_missing")
+    cfg = launch_options(port=port, headless=headless, main_world_eval=True, proxy=proxy, executable_path=executable or None, ff_version=int(major) if executable else None, i_know_what_im_doing=bool(executable))
     cfg = _prune_none(cfg)
     nodejs = get_nodejs()
     data = orjson.dumps(to_camel_case_dict(cfg))

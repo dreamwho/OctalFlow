@@ -126,6 +126,17 @@ def test_camoufox_defaults_to_macos_fingerprint(monkeypatch):
     assert _camoufox_browser_options(True)["os"] == "macos"
 
 
+def test_packaged_camoufox_uses_executable_without_treating_path_as_version(monkeypatch):
+    monkeypatch.delenv("DOLA_CAMOUFOX_BROWSER", raising=False)
+    monkeypatch.setenv("DOLA_CAMOUFOX_EXECUTABLE", "/Applications/Camoufox.app/Contents/MacOS/camoufox")
+    monkeypatch.setenv("DOLA_CAMOUFOX_FF_VERSION", "135")
+    options = _camoufox_browser_options(True)
+    assert options["executable_path"] == "/Applications/Camoufox.app/Contents/MacOS/camoufox"
+    assert "browser" not in options
+    assert options["ff_version"] == 135
+    assert _camoufox_context_options()["no_viewport"] is True
+
+
 def test_main_world_json_request_uses_live_identity_and_page_signer():
     assert 'performance.getEntriesByType("resource")' in MAIN_WORLD_JSON_REQUEST_SCRIPT
     assert "new XMLHttpRequest()" in MAIN_WORLD_JSON_REQUEST_SCRIPT
