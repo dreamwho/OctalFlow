@@ -40,8 +40,10 @@ export function isDolaRuntimePath(path: string) {
         /^\/v1\/images\/[^/]+$/.test(normalized) ||
         normalized === "/v1/accounts/inspect" ||
         normalized === "/v1/accounts/verify" ||
+        normalized === "/v1/accounts/headed-test" ||
+        normalized === "/v1/verifications/headed-tests" ||
         normalized === "/v1/accounts/google-login" ||
-        /^\/v1\/verifications\/[^/]+\/(?:open|input|resume|close)$/.test(normalized)
+        /^\/v1\/verifications\/[^/]+\/(?:open|input|keyboard|finalize|resume|close)$/.test(normalized)
     );
 }
 

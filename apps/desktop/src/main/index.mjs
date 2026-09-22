@@ -68,6 +68,11 @@ app.whenReady().then(async () => {
             const navigation = await mainWindow.webContents.executeJavaScript(`({ channel: Boolean(document.querySelector('[data-admin-section-key="channels"]')), users: Boolean(document.querySelector('[data-admin-section-key="users"]')), points: Boolean(document.querySelector('[data-admin-section-key="points"]')), setup: Boolean(document.querySelector('.admin-dashboard-setup-pill')) })`);
             console.log(`[desktop-smoke] admin navigation ${JSON.stringify(navigation)}`);
             if (!navigation.channel || navigation.users || navigation.points || navigation.setup) throw new Error("Administrator desktop navigation exposes cloud sections");
+            if (process.env.DREAMYO_DESKTOP_SMOKE_DOLA === "1") {
+                await mainWindow.loadURL(new URL("/admin?section=dolaApi", runtime.origin).toString());
+                const dola = await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.body.innerText.includes('账号池') && document.body.innerText.includes('Dola API'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Dola account manager did not mount')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, characterData: true }); })`);
+                console.log(`[desktop-smoke] Dola account manager ${JSON.stringify({ mounted: dola })}`);
+            }
             if (process.env.DREAMYO_DESKTOP_SMOKE_SCREENSHOT) {
                 const screenshot = await mainWindow.webContents.capturePage();
                 await writeFile(process.env.DREAMYO_DESKTOP_SMOKE_SCREENSHOT.replace(/\.png$/i, "-admin.png"), screenshot.toPNG());

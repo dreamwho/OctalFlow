@@ -16,6 +16,12 @@ const { standaloneRoot } = process.env.DREAMYO_DESKTOP_PACKAGED === "1"
 const geminiAi = localGeminiAiRuntime({ repoRoot, webRoot });
 const chatGptApi = localChatGptApiRuntime({ repoRoot, webRoot, environment: geminiAi.environment });
 const dolaApi = localDolaApiRuntime({ repoRoot, webRoot, environment: chatGptApi.environment });
+const mihomo = process.env.DREAMYO_DESKTOP_MIHOMO_EXECUTABLE ? {
+    name: "mihomo",
+    command: process.env.DREAMYO_DESKTOP_MIHOMO_EXECUTABLE,
+    args: ["-d", process.env.DREAMYO_DESKTOP_MIHOMO_HOME],
+    cwd: process.env.DREAMYO_DESKTOP_MIHOMO_HOME,
+} : null;
 
 const runtime = generationRuntimeEnvironment({
     allowEphemeralToken: true,
@@ -36,5 +42,5 @@ process.exitCode = await superviseGenerationRuntime({
     app: { command: process.execPath, args: ["server.js"], cwd: standaloneRoot },
     workerScript: path.join(webRoot, "scripts", "generation-worker.mjs"),
     environment: runtime.environment,
-    services: [geminiAi.service, chatGptApi.service, dolaApi.service].filter(Boolean),
+    services: [mihomo, geminiAi.service, chatGptApi.service, dolaApi.service].filter(Boolean),
 });

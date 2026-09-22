@@ -1189,7 +1189,7 @@ async function controllerRequest(runtime: MihomoRuntimeConfig, path: string, ini
     if (!response.ok) {
         await response.body?.cancel().catch(() => undefined);
         if (response.status === 401 || response.status === 403) {
-            throw new MagicProxyError(`魔法代理控制器鉴权失败（HTTP ${response.status}），请检查应用与 magic-proxy 容器的 DREAMYO_MAGIC_PROXY_SECRET 是否一致`, 502);
+            throw new MagicProxyError(`魔法代理控制器鉴权失败（HTTP ${response.status}），请检查应用与 Mihomo 进程的 DREAMYO_MAGIC_PROXY_SECRET 是否一致`, 502);
         }
         throw new MagicProxyError(`魔法代理控制器拒绝了配置请求（HTTP ${response.status}）`, 502);
     }

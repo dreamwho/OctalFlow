@@ -10,7 +10,7 @@ import { getStoredGenerationTaskRecord } from "@/lib/server/generation-task-stor
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import type { VideoTask } from "@/lib/server/video-task-store";
 import { dolaProviderProxyMode, getDolaProxyBinding, resolveDolaProxyEgress, type DolaProxyEgress } from "./proxy";
-import { dolaHealth, dolaProviderConfigured, dolaRuntimeRequest, validateDolaVideoRequest } from "./provider";
+import { DolaProviderError, dolaHealth, dolaProviderConfigured, dolaRuntimeRequest, validateDolaVideoRequest } from "./provider";
 import { dolaPublicModels, type DolaAccountValidation, type DolaQuotaSnapshot } from "./types";
 
 export async function getDolaOverview() {
@@ -453,6 +453,37 @@ export async function startDolaAccountVerification(id: string) {
     if (quota.length) await updateDolaAccountQuota(id, quota);
     if (validation.login) await markDolaAccountReady(id, quota);
     return { status: validation.login ? "ready" : "unverified", account: await getDolaAccount(id), quota, protocol: validation };
+}
+
+export async function startDolaHeadedAccountTest(id: string, selection: { mode: "direct" | "magic" | "generic" | "chained"; target?: string }) {
+    const account = await getDolaAccount(id);
+    if (!account) throw new DolaProviderError("Dola 账号不存在", 404);
+    const cookie = await getDolaAccountCookie(id);
+    if (!cookie) throw new DolaProviderError("Dola 账号 Cookie 无法解密", 503);
+    let proxy: Awaited<ReturnType<typeof resolveDolaProxyEgress>> = { egress: { mode: "direct" } };
+    if (selection.mode === "generic" && selection.target?.startsWith("node:")) {
+        const { resolveGenericProxyNodeUrl } = await import("@/lib/server/chatgpt-api-service");
+        const proxyUrl = await resolveGenericProxyNodeUrl(selection.target.slice(5));
+        if (!proxyUrl) throw new DolaProviderError("所选通用代理节点不可用", 409);
+        proxy = { proxyUrl, egress: { mode: "generic", target: selection.target } };
+    } else if (selection.mode !== "direct") {
+        const { getDolaProxyBinding } = await import("./proxy");
+        const binding = await getDolaProxyBinding();
+        if (!binding.enabled || binding.mode !== selection.mode || !binding.target || binding.target !== selection.target) {
+            throw new DolaProviderError("所选代理节点与 Dola 当前绑定不一致，请先在代理管理保存该出口", 409);
+        }
+        proxy = await resolveDolaProxyEgress();
+        if (proxy.egress.mode !== selection.mode || !proxy.proxyUrl) throw new DolaProviderError("所选 Dola 代理出口尚未就绪", 503);
+    }
+    const response = await dolaRuntimeRequest("/v1/accounts/headed-test", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, cookie,
+            proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target,
+            ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), headless: false }),
+    });
+    const payload = await response.json().catch(() => null) as { verificationId?: string; pageUrl?: string; detail?: string } | null;
+    if (!response.ok || !payload?.verificationId) throw new DolaProviderError(payload?.detail || "Dola 有头测试窗口未能打开", response.status || 502);
+    return { verificationId: payload.verificationId, pageUrl: payload.pageUrl, proxyMode: proxy.egress.mode, proxyTarget: proxy.egress.target || "" };
 }
 
 export async function resolveDolaTaskVerification(task: VideoTask): Promise<string | undefined> {

@@ -5,6 +5,7 @@ out/
 node_modules/
 apps/desktop/build/
 apps/desktop/dist/
+apps/desktop/resources/sidecars/*-*/
 .pnpm-store/
 /pnpm-lock.yaml
 .env*

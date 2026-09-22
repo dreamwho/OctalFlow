@@ -4,7 +4,7 @@ import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from .contracts import AccountInspectRequest, GoogleLoginRequest, VerificationInput, VerificationLease, VideoRequest
+from .contracts import AccountInspectRequest, GoogleLoginRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest
 from .session import CamoufoxSessionPool
 
 app = FastAPI(title="dreamyo Dola Camoufox Provider")
@@ -50,6 +50,20 @@ async def verify_account(request: AccountInspectRequest) -> dict:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/internal/runtime/v1/accounts/headed-test", dependencies=[Depends(require_internal)])
+async def start_headed_test(request: AccountInspectRequest) -> dict:
+    try:
+        return await pool.start_headed_test(request)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+@app.get("/internal/runtime/v1/verifications/headed-tests", dependencies=[Depends(require_internal)])
+async def list_headed_tests() -> dict:
+    return {"items": pool.list_headed_tests()}
 
 
 @app.post("/internal/runtime/v1/videos", dependencies=[Depends(require_internal)])
@@ -121,6 +135,27 @@ async def verification_input(verification_id: str, request: VerificationInput) -
     except ValueError as error:
         status = 404 if str(error) == "verification_not_found" else 422
         raise HTTPException(status_code=status, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/internal/runtime/v1/verifications/{verification_id}/keyboard", dependencies=[Depends(require_internal)])
+async def verification_keyboard(verification_id: str, input: VerificationKeyboardInput) -> dict:
+    try:
+        return await pool.verification_keyboard(verification_id, input)
+    except (ValueError, PermissionError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+@app.post("/internal/runtime/v1/verifications/{verification_id}/finalize", dependencies=[Depends(require_internal)])
+async def finalize_headed_test(verification_id: str, request: VerificationLease) -> dict:
+    try:
+        return await pool.finalize_headed_test(verification_id, request)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 

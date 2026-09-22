@@ -3,7 +3,7 @@ import { readJsonBodyResult } from "@/lib/auth/request";
 import { dolaRouteError, requireDolaAdmin } from "@/lib/server/dola/admin";
 import { dolaRuntimeRequest } from "@/lib/server/dola/provider";
 import { openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry } from "@/lib/server/dola/log-store";
-import { markDolaAccountReady, updateDolaAccountCredentials, updateDolaAccountQuota } from "@/lib/server/dola/account-service";
+import { markDolaAccountReady, refreshDolaAccountCookieIfVersion, updateDolaAccountCredentials, updateDolaAccountQuota } from "@/lib/server/dola/account-service";
 import type { DolaQuotaSnapshot } from "@/lib/server/dola/types";
 
 export const runtime = "nodejs";
@@ -15,20 +15,21 @@ export async function POST(request: Request, context: Context) {
     const access = await requireDolaAdmin();
     if ("error" in access) return access.error;
     const { verificationId, action } = await context.params;
-    if (!/^(open|input|resume|close)$/.test(action)) return apiCompatError(404, "验证操作不存在");
+    if (!/^(open|input|keyboard|finalize|resume|close)$/.test(action)) return apiCompatError(404, "验证操作不存在");
     let body: Record<string, unknown> = {};
     if (action !== "open") {
         const parsed = await readJsonBodyResult<Record<string, unknown>>(request);
         if (!parsed.ok) return apiCompatError(parsed.status, parsed.message);
         body = parsed.data;
         if (typeof body.leaseToken !== "string" || body.leaseToken.length < 16) return apiCompatError(400, "验证租约无效");
-        if (action === "input" && (body.action !== "down" && body.action !== "move" && body.action !== "up" || typeof body.x !== "number" || typeof body.y !== "number")) return apiCompatError(400, "页面坐标或动作无效");
+        if (action === "input" && (!["down", "move", "up", "wheel"].includes(String(body.action)) || typeof body.x !== "number" || typeof body.y !== "number" || (body.action === "wheel" && (typeof body.deltaY !== "number" || !Number.isFinite(body.deltaY))))) return apiCompatError(400, "页面坐标或动作无效");
+        if (action === "keyboard" && (typeof body.text !== "string" || !body.text.length || body.text.length > 500)) return apiCompatError(400, "键盘输入无效");
     }
     const started = Date.now();
     const lifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(started).toISOString(), phase: "queued", message: `提交验证操作：${action}`, durationMs: 0, detail: `验证会话: ${verificationId}` }];
     let logId = "";
     try {
-        logId = await openDolaRequestLog({ source: "admin-test", capability: "video", method: "POST", path: `/v1/verifications/${encodeURIComponent(verificationId)}/${action}`, model: "", verificationId: verificationId.slice(0, 300), requestPreview: JSON.stringify(body), headers: { "content-type": "application/json" }, lifecycle });
+        logId = await openDolaRequestLog({ source: "admin-test", capability: "video", method: "POST", path: `/v1/verifications/${encodeURIComponent(verificationId)}/${action}`, model: "", verificationId: verificationId.slice(0, 300), requestPreview: JSON.stringify({ action, ...(action === "input" ? { pointer: body.action } : {}) }), headers: { "content-type": "application/json" }, lifecycle });
     } catch (error) {
         console.error("Failed to open Dola verification request log", error);
     }
@@ -46,6 +47,22 @@ export async function POST(request: Request, context: Context) {
         if (logId) await settleDolaRequestLog(logId, { statusCode: response.status, durationMs: Date.now() - started, phase: response.ok ? "success" : "failed", ...(error ? { error } : {}), responsePreview: summarizeResponse(payload, bytes), responseBytes: bytes.byteLength, contentType: response.headers.get("content-type") || undefined, verificationId: verificationId.slice(0, 300), lifecycle });
         if (!response.ok) {
             return apiCompatError(response.status, error);
+        }
+        if (action === "finalize") {
+            if (payload?.status !== "ready") return apiSuccess(withoutCredential(payload), "账号尚未确认登录，浏览器保持打开");
+            const accountId = stringValue(payload.accountId);
+            const cookie = typeof payload.cookie === "string" ? payload.cookie : "";
+            if (!accountId || !cookie || !Number.isSafeInteger(payload.credentialVersion)) return apiCompatError(502, "未能取得有效账号 Cookie，浏览器保持打开");
+            let changed = false;
+            try { ({ changed } = await refreshDolaAccountCookieIfVersion(accountId, cookie, Number(payload.credentialVersion))); }
+            catch (error) {
+                if (error instanceof Error && error.message === "cookie_version_conflict") return apiCompatError(409, "账号 Cookie 已由其他操作更新，本次测试不会覆盖它；浏览器保持打开");
+                throw error;
+            }
+            const closed = await dolaRuntimeRequest(`/v1/verifications/${encodeURIComponent(verificationId)}/close`, {
+                method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken: body.leaseToken }),
+            }).then((result) => result.ok).catch(() => false);
+            return apiSuccess({ status: "saved", changed, windowClosed: closed }, closed ? "已保存当前账号 Cookie 并关闭浏览器" : "Cookie 已保存，请手动关闭仍在运行的浏览器");
         }
         if (action === "resume" && payload?.status === "accepted" && typeof payload.accountId === "string") {
             const accountId = payload.accountId;

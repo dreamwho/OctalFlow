@@ -187,6 +187,21 @@ export async function updateDolaAccountCredentials(id: string, cookie: string) {
     }));
 }
 
+export async function refreshDolaAccountCookieIfVersion(id: string, cookie: string, credentialVersion: number) {
+    let changed = false;
+    await mutateAccount(id, (account) => {
+        if (account.credentialVersion !== credentialVersion) throw new Error("cookie_version_conflict");
+        changed = decryptSecretValue(account.cookieCiphertext) !== cookie;
+        const now = new Date().toISOString();
+        return {
+            ...account,
+            ...(changed ? { cookieCiphertext: encryptSecretValue(cookie), cookieFingerprint: createHash("sha256").update(cookie).digest("hex"), credentialVersion: credentialVersion + 1 } : {}),
+            status: "ready", loginState: "ready", loginCheckedAt: now, lastVerifiedAt: now, restrictedReason: undefined,
+        };
+    });
+    return { changed };
+}
+
 export async function markDolaAccountReady(id: string, quota?: DolaQuotaSnapshot[]) {
     return mutateAccount(id, (account) => ({
         ...account,

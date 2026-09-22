@@ -4,6 +4,8 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
+import { prepareDesktopMagicProxy } from "./magic-proxy-runtime.mjs";
+
 export async function startDesktopRuntime({ app, edition }) {
     const runtimeRoot = app.isPackaged ? path.join(process.resourcesPath, "runtime") : path.resolve(import.meta.dirname, "../../../..");
     const webRoot = path.join(runtimeRoot, "web");
@@ -11,10 +13,14 @@ export async function startDesktopRuntime({ app, edition }) {
     const dataRoot = path.join(app.getPath("userData"), "data");
     const secrets = await readOrCreateRuntimeSecrets(path.join(app.getPath("userData"), "runtime-secrets.json"));
     const port = await availableLoopbackPort();
-    const [geminiPort, dolaPort, chatGptPort] = await Promise.all([availableLoopbackPort(), availableLoopbackPort(), availableLoopbackPort()]);
+    const [geminiPort, dolaPort, chatGptPort, controllerPort, proxyGeminiPort, proxyToolsPort, proxyChatPort, proxyDolaPort] = await Promise.all(Array.from({ length: 8 }, () => availableLoopbackPort()));
     const origin = `http://127.0.0.1:${port}`;
     const browserMajor = app.isPackaged ? Number(JSON.parse(await readFile(path.join(runtimeRoot, "sidecars", "camoufox", "version.json"), "utf8")).version?.split(".")[0]) : null;
     if (app.isPackaged && (!Number.isInteger(browserMajor) || browserMajor < 1)) throw new Error("桌面安装包的 Camoufox 版本文件无效");
+    const magicProxy = app.isPackaged ? await prepareDesktopMagicProxy({
+        runtimeRoot, dataRoot, executable: path.join(runtimeRoot, "sidecars", executableName("mihomo")), secret: secrets.installToken,
+        ports: { controller: controllerPort, geminiai: proxyGeminiPort, geminiTools: proxyToolsPort, chatgptApi: proxyChatPort, dola: proxyDolaPort },
+    }) : null;
     const environment = {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",
@@ -40,6 +46,12 @@ export async function startDesktopRuntime({ app, edition }) {
         DREAMYO_DESKTOP_EDITION: edition.id,
         DREAMYO_DESKTOP_CLOUD_ORIGIN: process.env.DREAMYO_DESKTOP_CLOUD_ORIGIN?.trim() || "",
         DREAMYO_COOKIE_SECURE: "0",
+        ...(magicProxy ? { ...magicProxy.environment, DREAMYO_DESKTOP_MIHOMO_EXECUTABLE: magicProxy.service.command, DREAMYO_DESKTOP_MIHOMO_HOME: magicProxy.service.cwd,
+            FFMPEG_PATH: path.join(runtimeRoot, "sidecars", executableName("ffmpeg")),
+            DREAMYO_DREAMINA_CLI_PATH: path.join(runtimeRoot, "sidecars", executableName("dreamina")),
+            DREAMYO_VIDEO_DEPTH_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("video-depth")),
+            DREAMYO_VIDEO_DEPTH_MODEL: path.join(runtimeRoot, "sidecars", "video-depth-model"),
+        } : {}),
         ...(app.isPackaged ? {
             DREAMYO_DESKTOP_PACKAGED: "1",
             DREAMYO_GEMINIAI_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("geminiai")),

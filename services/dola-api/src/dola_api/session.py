@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from .contracts import AccountInspectRequest, VerificationInput, VerificationLease, VideoRequest, VideoTask
+from .contracts import AccountInspectRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
 from .page_scripts import MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from .protocol import PROFILES, canonical_ratio, validate_request
 from .query import decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, generation_query_payloads, parse_generation_payloads, probe_account_login
@@ -237,6 +237,7 @@ class CamoufoxSessionPool:
                     has_challenge = True
                 except Exception:
                     pass
+
             if has_challenge:
                 session = PageSession(
                     account_id=request.accountId,
@@ -325,6 +326,38 @@ class CamoufoxSessionPool:
                 except Exception:
                     pass
 
+    async def start_headed_test(self, request: AccountInspectRequest) -> dict[str, Any]:
+        if not request.cookie:
+            raise ValueError("missing_cookie")
+        if os.getenv("DOLA_ENABLE_BROWSER", "0") != "1":
+            raise RuntimeError("camoufox_runtime_disabled")
+        from camoufox.async_api import AsyncCamoufox  # type: ignore
+
+        proxy_url = _proxy_url_for_request(request.proxyMode, request.proxyUrl)
+        manager = AsyncCamoufox(**_camoufox_browser_options(False, proxy_url, request.accountId))
+        browser = await manager.__aenter__()
+        keep_open = False
+        try:
+            context = await browser.new_context(**_camoufox_context_options())
+            try:
+                await context.add_cookies(_cookie_header_to_playwright(request.cookie))
+                page = await context.new_page()
+                await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
+                session = PageSession(request.accountId, request.credentialVersion, request.proxyMode, request.proxyTarget or "", proxy_url or "", request.cookie)
+                verification_id = await self._register_verification("", None, session, manager, context, page, [], {"type": "inspect", "subtype": "headed_test", "pageState": "manual"})
+                keep_open = True
+                return {"status": "headed_ready", "verificationId": verification_id, "accountId": request.accountId, "pageUrl": str(page.url)[:500]}
+            finally:
+                if not keep_open:
+                    await context.close()
+        finally:
+            if not keep_open:
+                await manager.__aexit__(None, None, None)
+
+    def list_headed_tests(self) -> list[dict[str, str]]:
+        return [{"verificationId": item.verification_id, "accountId": item.page_session.account_id, "createdAt": item.created_at}
+                for item in self._verifications.values() if item.decision.get("subtype") == "headed_test"]
+
     async def get(self, task_id: str) -> VideoTask | None:
         await self._ensure_loaded()
         task = self._tasks.get(task_id)
@@ -350,7 +383,12 @@ class CamoufoxSessionPool:
         viewport = await self._verification_viewport(verification.page)
         if not math.isfinite(input.x) or not math.isfinite(input.y) or input.x < 0 or input.y < 0 or input.x > viewport["width"] or input.y > viewport["height"]:
             raise ValueError("verification_coordinate_invalid")
-        if input.action == "down":
+        if input.action == "wheel":
+            if verification.decision.get("subtype") != "headed_test" or input.deltaY is None or not math.isfinite(input.deltaY):
+                raise ValueError("verification_wheel_invalid")
+            await verification.page.mouse.move(input.x, input.y)
+            await verification.page.mouse.wheel(0, input.deltaY)
+        elif input.action == "down":
             if verification.pointer_down:
                 raise ValueError("verification_pointer_already_down")
             await verification.page.mouse.move(input.x, input.y)
@@ -367,6 +405,37 @@ class CamoufoxSessionPool:
             await verification.page.mouse.up()
             verification.pointer_down = False
         return await self._verification_snapshot(verification)
+
+    async def verification_keyboard(self, verification_id: str, input: VerificationKeyboardInput) -> dict[str, Any]:
+        verification = self._verifications.get(verification_id)
+        if not verification or verification.decision.get("subtype") != "headed_test":
+            raise ValueError("headed_test_not_found")
+        self._check_verification_lease(verification, input.leaseToken)
+        if input.text in {"Enter", "Tab", "Backspace", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"}:
+            await verification.page.keyboard.press(input.text)
+        else:
+            await verification.page.keyboard.insert_text(input.text)
+        return await self._verification_snapshot(verification)
+
+    async def finalize_headed_test(self, verification_id: str, lease: VerificationLease) -> dict[str, Any]:
+        verification = self._verifications.get(verification_id)
+        if not verification or verification.decision.get("subtype") != "headed_test":
+            raise ValueError("headed_test_not_found")
+        self._check_verification_lease(verification, lease.leaseToken)
+        cookies = await verification.context.cookies(["https://www.dola.com/"])
+        fresh_cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name") and item.get("value"))
+        if not fresh_cookie:
+            return {"status": "needs_login", "verificationId": verification_id}
+        probe = await probe_account_login(fresh_cookie, verification.page_session.proxy_url or None)
+        state = probe.get("state")
+        if state == "unknown":
+            state = await _goto_dola_page(verification.page, "https://www.dola.com/chat/create-image")
+            cookies = await verification.context.cookies(["https://www.dola.com/"])
+            fresh_cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name") and item.get("value"))
+        if state != "ready":
+            return {"status": "needs_login" if state == "needs_login" else "unknown", "verificationId": verification_id}
+        return {"status": "ready", "verificationId": verification_id, "accountId": verification.page_session.account_id,
+                "credentialVersion": verification.page_session.credential_version, "cookie": fresh_cookie}
 
     async def resume_verification(self, verification_id: str, lease: VerificationLease) -> dict[str, Any]:
         await self._ensure_loaded()
@@ -1865,7 +1934,7 @@ def _verification_decision(value: Any) -> dict[str, Any]:
     result: dict[str, Any] = {"type": "inspect" if diagnostic else "verify", "subtype": "page" if diagnostic else "unknown"}
     if isinstance(value.get("type"), str) and value["type"] in {"verify", "verification", "inspect"}:
         result["type"] = value["type"]
-    if isinstance(value.get("subtype"), str) and value["subtype"] in {"slide", "unknown", "page", "age_confirmation"}:
+    if isinstance(value.get("subtype"), str) and value["subtype"] in {"slide", "unknown", "page", "age_confirmation", "headed_test"}:
         result["subtype"] = value["subtype"]
     if isinstance(value.get("code"), str) and value["code"].isdigit():
         result["code"] = value["code"][:32]

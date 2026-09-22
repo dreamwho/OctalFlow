@@ -109,8 +109,8 @@ describe("Canvas video depth extraction", () => {
         const child = Object.assign(new EventEmitter(), { stderr: new EventEmitter(), stdout: new PassThrough() });
         mocks.stat
             .mockResolvedValueOnce({ isFile: () => true })
-            .mockResolvedValueOnce({ isFile: () => true })
-            .mockResolvedValueOnce({ isDirectory: () => true });
+            .mockResolvedValueOnce({ isDirectory: () => true })
+            .mockResolvedValueOnce({ isFile: () => true });
         mocks.spawn.mockReturnValue(child);
         const onProgress = vi.fn().mockResolvedValue(undefined);
         const running = runCanvasVideoDepthInference({ interpreter: "/opt/runtime/python", scriptPath: "/app/video-depth/infer_depth_frames.py", modelDir: "/app/models/depth", inputDir: "/tmp/decoded", outputDir: "/tmp/depth", onProgress });
@@ -126,6 +126,17 @@ describe("Canvas video depth extraction", () => {
         child.emit("close", 0);
         await expect(running).resolves.toBeUndefined();
         expect(onProgress.mock.calls.map(([value]) => value.percent)).toEqual([25, 100]);
+    });
+
+    it("starts the packaged depth executable without requiring a system Python or source script", async () => {
+        const child = Object.assign(new EventEmitter(), { stderr: new EventEmitter(), stdout: new PassThrough() });
+        mocks.stat.mockResolvedValueOnce({ isFile: () => true }).mockResolvedValueOnce({ isDirectory: () => true });
+        mocks.spawn.mockReturnValue(child);
+        const running = runCanvasVideoDepthInference({ executable: "/bundle/video-depth", interpreter: "/missing/python", scriptPath: "/missing/source.py", modelDir: "/bundle/model", inputDir: "/tmp/in", outputDir: "/tmp/out" });
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledWith("/bundle/video-depth", ["--input-dir", "/tmp/in", "--output-dir", "/tmp/out", "--model-dir", "/bundle/model"], expect.objectContaining({ shell: false })));
+        child.stdout.end();
+        child.emit("close", 0);
+        await expect(running).resolves.toBeUndefined();
     });
 
     it("returns an actionable 503 only when the configured depth runtime is absent", async () => {

@@ -65,13 +65,18 @@ class AccountQuota(BaseModel):
 
 class VerificationInput(BaseModel):
     leaseToken: str = Field(min_length=16, max_length=256)
-    action: Literal["down", "move", "up"]
+    action: Literal["down", "move", "up", "wheel"]
     x: float
     y: float
+    deltaY: float | None = None
 
 
 class VerificationLease(BaseModel):
     leaseToken: str = Field(min_length=16, max_length=256)
+
+
+class VerificationKeyboardInput(VerificationLease):
+    text: str = Field(min_length=1, max_length=500)
 
 
 class GoogleLoginRequest(BaseModel):

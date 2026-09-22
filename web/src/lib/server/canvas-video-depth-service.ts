@@ -25,6 +25,7 @@ export type CanvasVideoDepthRuntime = {
     interpreter: string;
     scriptPath: string;
     modelDir: string;
+    executable?: string;
 };
 
 export type DepthProgress = { stage: string; percent?: number };
@@ -35,6 +36,7 @@ export function resolveCanvasVideoDepthRuntime(): CanvasVideoDepthRuntime {
         interpreter: process.env.DREAMYO_VIDEO_DEPTH_PYTHON?.trim() || defaultDepthInterpreter(),
         scriptPath: configuredRuntimePath("DREAMYO_VIDEO_DEPTH_SCRIPT", DEFAULT_DEPTH_SCRIPT),
         modelDir: configuredRuntimePath("DREAMYO_VIDEO_DEPTH_MODEL", DEFAULT_DEPTH_MODEL),
+        ...(process.env.DREAMYO_VIDEO_DEPTH_EXECUTABLE?.trim() ? { executable: process.env.DREAMYO_VIDEO_DEPTH_EXECUTABLE.trim() } : {}),
     };
 }
 
@@ -125,7 +127,7 @@ export async function extractCanvasVideoDepth(
 export async function runCanvasVideoDepthInference(input: Parameters<CanvasVideoDepthRunner>[0]) {
     await assertDepthRuntime(input);
     await new Promise<void>((resolvePromise, reject) => {
-        const child = spawn(input.interpreter, [input.scriptPath, "--input-dir", input.inputDir, "--output-dir", input.outputDir, "--model-dir", input.modelDir], {
+        const child = spawn(input.executable || input.interpreter, [...(input.executable ? [] : [input.scriptPath]), "--input-dir", input.inputDir, "--output-dir", input.outputDir, "--model-dir", input.modelDir], {
             shell: false,
             windowsHide: true,
             stdio: ["ignore", "pipe", "pipe"],
@@ -168,8 +170,8 @@ export async function runCanvasVideoDepthInference(input: Parameters<CanvasVideo
 
 async function assertDepthRuntime(runtime: CanvasVideoDepthRuntime) {
     try {
-        const [interpreter, script, model] = await Promise.all([stat(/*turbopackIgnore: true*/ runtime.interpreter), stat(/*turbopackIgnore: true*/ runtime.scriptPath), stat(/*turbopackIgnore: true*/ runtime.modelDir)]);
-        if (!interpreter.isFile() || !script.isFile() || !model.isDirectory()) throw new Error("invalid depth runtime path");
+        const [interpreter, model] = await Promise.all([stat(/*turbopackIgnore: true*/ runtime.executable || runtime.interpreter), stat(/*turbopackIgnore: true*/ runtime.modelDir)]);
+        if (!interpreter.isFile() || !model.isDirectory() || (!runtime.executable && !(await stat(/*turbopackIgnore: true*/ runtime.scriptPath)).isFile())) throw new Error("invalid depth runtime path");
     } catch {
         throw new CanvasVideoOperationError("视频深度推理运行时尚未准备，请先运行 services/video-depth/setup_runtime.sh；也可通过 DREAMYO_VIDEO_DEPTH_* 指定外部运行时", 503);
     }

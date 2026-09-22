@@ -18,10 +18,13 @@ test("packaging copies only compiled runtime and never imports account data or e
         await mkdir(path.join(source, "web/public"), { recursive: true });
         await mkdir(path.join(source, "web/scripts"), { recursive: true });
         for (const service of ["geminiai", "dola-api"]) await mkdir(path.join(source, "services", service, "src"), { recursive: true });
+        await mkdir(path.join(source, "docker", "mihomo"), { recursive: true });
         await mkdir(sidecars, { recursive: true });
         await mkdir(path.join(sidecars, "camoufox"), { recursive: true });
         const extension = process.platform === "win32" ? ".exe" : "";
-        for (const binary of ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser"]) await writeFile(path.join(sidecars, `${binary}${extension}`), "binary");
+        for (const binary of ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser", "mihomo", "ffmpeg", "ffprobe", "dreamina", "video-depth"]) await writeFile(path.join(sidecars, `${binary}${extension}`), "binary");
+        await mkdir(path.join(sidecars, "video-depth-model"), { recursive: true });
+        for (const file of ["config.json", "model.safetensors", "preprocessor_config.json"]) await writeFile(path.join(sidecars, "video-depth-model", file), "model");
         const camoufox = path.join(sidecars, "camoufox", process.platform === "darwin" ? "Camoufox.app/Contents/MacOS/camoufox" : "camoufox.exe");
         await mkdir(path.dirname(camoufox), { recursive: true });
         await writeFile(camoufox, "binary");
@@ -33,6 +36,10 @@ test("packaging copies only compiled runtime and never imports account data or e
         await writeFile(path.join(source, "web/.env.local"), "never ship me");
         await writeFile(path.join(source, "web/.next/BUILD_ID"), "test-build");
         await writeFile(path.join(source, "services/geminiai/config.yaml"), "browser: camoufox");
+        await mkdir(path.join(source, "services/chatgpt-api"), { recursive: true });
+        await writeFile(path.join(source, "services/chatgpt-api/LICENSE.upstream"), "upstream license");
+        await writeFile(path.join(source, "services/chatgpt-api/NOTICE.upstream"), "upstream notice");
+        await writeFile(path.join(source, "docker/mihomo/bootstrap.yaml"), "mode: rule\n");
         await writeFile(path.join(source, "web/scripts/start-standalone.mjs"), "runtime");
 
         const result = await prepareRuntime({ edition: "admin", sourceRoot: source, outputRoot: output, bundledSidecars: path.join(directory, "sidecars") });
@@ -41,6 +48,11 @@ test("packaging copies only compiled runtime and never imports account data or e
         assert.equal(await readFile(path.join(output, "web/.next/standalone/server.js"), "utf8"), "server");
         assert.equal(await stat(path.join(output, "web/.next/standalone/.data")).catch(() => null), null);
         assert.equal(await stat(path.join(output, "web/.env.local")).catch(() => null), null);
+        assert.equal(await readFile(path.join(output, "desktop/mihomo-bootstrap.yaml"), "utf8"), "mode: rule\n");
+        assert.equal(await readFile(path.join(output, "services/chatgpt-api/LICENSE.upstream"), "utf8"), "upstream license");
+        await rm(path.join(sidecars, `mihomo${extension}`));
+        await assert.rejects(() => prepareRuntime({ edition: "admin", sourceRoot: source, outputRoot: output, bundledSidecars: path.join(directory, "sidecars") }), /mihomo/);
+        await writeFile(path.join(sidecars, `mihomo${extension}`), "binary");
         await rm(path.join(path.dirname(camoufox), "properties.json"));
         await assert.rejects(() => prepareRuntime({ edition: "admin", sourceRoot: source, outputRoot: output, bundledSidecars: path.join(directory, "sidecars") }), /properties\.json/);
     } finally {

@@ -9,10 +9,11 @@ export async function prepareRuntime({ edition, platform = process.platform, arc
     const sourceStandalone = path.join(sourceWeb, ".next", "standalone");
     const sidecarRoot = path.join(bundledSidecars, `${platform}-${arch}`);
     const extension = platform === "win32" ? ".exe" : "";
-    const required = ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser"].map((name) => path.join(sidecarRoot, `${name}${extension}`));
+    const required = ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser", "mihomo", "ffmpeg", "ffprobe", "dreamina", "video-depth"].map((name) => path.join(sidecarRoot, `${name}${extension}`));
     const browserDir = path.join(sidecarRoot, "camoufox", platform === "darwin" ? "Camoufox.app/Contents/MacOS" : "");
     required.push(path.join(sidecarRoot, "camoufox", "version.json"), path.join(browserDir, "properties.json"), path.join(browserDir, platform === "darwin" ? "camoufox" : "camoufox.exe"));
     for (const file of [path.join(sourceStandalone, "server.js"), ...required]) await assertFile(file);
+    for (const modelFile of ["config.json", "model.safetensors", "preprocessor_config.json"]) await assertFile(path.join(sidecarRoot, "video-depth-model", modelFile));
 
     await rm(outputRoot, { recursive: true, force: true });
     const targetWeb = path.join(outputRoot, "web");
@@ -32,8 +33,14 @@ export async function prepareRuntime({ edition, platform = process.platform, arc
         await mkdir(target, { recursive: true });
         if (service === "geminiai") await cp(path.join(serviceRoot, "config.yaml"), path.join(target, "config.yaml"));
         if (service === "geminiai" || service === "dola-api") await cp(path.join(serviceRoot, "src"), path.join(target, "src"), { recursive: true });
+        if (service === "chatgpt-api") {
+            await cp(path.join(serviceRoot, "LICENSE.upstream"), path.join(target, "LICENSE.upstream"));
+            await cp(path.join(serviceRoot, "NOTICE.upstream"), path.join(target, "NOTICE.upstream"));
+        }
     }
     await cp(sidecarRoot, path.join(outputRoot, "sidecars"), { recursive: true });
+    await mkdir(path.join(outputRoot, "desktop"), { recursive: true });
+    await cp(path.join(sourceRoot, "docker", "mihomo", "bootstrap.yaml"), path.join(outputRoot, "desktop", "mihomo-bootstrap.yaml"));
     const manifest = { edition, platform, arch, webBuildId: (await readFile(path.join(sourceWeb, ".next", "BUILD_ID"), "utf8")).trim() };
     await writeFile(path.join(outputRoot, "manifest.json"), `${JSON.stringify(manifest)}\n`);
     return { outputRoot, manifest };

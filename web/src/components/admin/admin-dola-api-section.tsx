@@ -5,7 +5,8 @@ import type { UploadProps } from "antd";
 import { Activity, Bot, CheckCircle2, Eye, FileKey2, KeyRound, Play, RefreshCw, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { batchDeleteDolaAccounts, createDolaApiKey, deleteDolaAccount, getDolaAdminState, getDolaTestTask, importDolaAccounts, refreshDolaAccount, startDolaGoogleLogin, testDolaVideo, updateDolaAccount, updateDolaGateway, verifyDolaAccount, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
+import { batchDeleteDolaAccounts, createDolaApiKey, deleteDolaAccount, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, refreshDolaAccount, startDolaGoogleLogin, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
+import { genericProxyRequest, type ChatGptProxyView } from "@/services/api/generic-proxy";
 import { dolaErrorHint } from "@/lib/dola-errors";
 import { DolaVerificationDialog } from "@/app/(user)/canvas/components/dola-verification-dialog";
 import { MagicProxyBindingCard } from "@/components/admin/magic-proxy-binding-card";
@@ -443,23 +444,27 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
             message.info(`检测完成：${DOLA_CHECK_VERDICTS[result.status] || result.status}`);
         });
 
-    const verifyAccount = (row: DolaAccount) =>
-        runFor(row.id, async () => {
-            const result = await verifyDolaAccount(row.id);
-            if (result.verificationId) {
-                setAccountVerification({ verificationId: result.verificationId, accountId: row.id });
-                message.info(result.status === "verification_required" ? "检测到真实安全验证，请在弹层中处理" : `已打开该账号的实际页面（状态：${DOLA_CHECK_VERDICTS[result.pageState || result.status] || result.pageState || result.status}）`);
-            } else if (result.status === "ready") {
-                message.success("该账号页面与协议状态正常，无需人工处理");
-                await onRefresh();
-            } else if (result.status === "needs_login") {
-                message.warning("该账号登录态已失效，请重新导入 Cookie");
-                await onRefresh();
-            } else {
-                message.info(`账号检测结果：${DOLA_CHECK_VERDICTS[result.status] || result.status}`);
-                await onRefresh();
-            }
+    const openHeadedOptions = async (row: DolaAccount) => {
+        setHeadedAccount(row);
+        setHeadedProxy("direct");
+        try {
+            const view = await genericProxyRequest<ChatGptProxyView>("proxies");
+            setHeadedGenericNodes(view.groups.filter((group) => group.enabled).flatMap((group) => group.nodes.filter((node) => node.enabled).map((node) => ({ value: `generic:node:${node.id}`, label: `${group.name} / ${node.name}` }))));
+        } catch { setHeadedGenericNodes([]); message.warning("通用代理列表暂不可用，仍可直接连接或选择已绑定的代理"); }
+    };
+    const launchHeaded = () => {
+        if (!headedAccount) return;
+        const row = headedAccount;
+        const [mode, ...rest] = headedProxy.split(":");
+        const target = mode === "generic" ? rest.join(":") : state?.proxy.target || "";
+        void runFor(row.id, async () => {
+            const result = await startDolaHeadedTest(row.id, { mode: mode as "direct" | "magic" | "generic" | "chained", target });
+            setHeadedAccount(null);
+            setAccountVerification({ verificationId: result.verificationId, accountId: row.id });
+            setHeadedSessions((current) => [...current, { verificationId: result.verificationId, accountId: row.id, createdAt: new Date().toISOString() }]);
+            message.success("独立 Camoufox 窗口已打开，管理员关闭前不会自动结束");
         });
+    };
 
     const startRefreshAll = () => {
         // 旧状态来自早期协议，只跳过管理员已停用账号；其余账号都必须按当前协议重新判定。
@@ -528,6 +533,11 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
     const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
     const [batchDeleting, setBatchDeleting] = useState(false);
     const [accountVerification, setAccountVerification] = useState<{ verificationId: string; accountId: string } | null>(null);
+    const [headedAccount, setHeadedAccount] = useState<DolaAccount | null>(null);
+    const [headedProxy, setHeadedProxy] = useState("direct");
+    const [headedGenericNodes, setHeadedGenericNodes] = useState<Array<{ value: string; label: string }>>([]);
+    const [headedSessions, setHeadedSessions] = useState<Array<{ verificationId: string; accountId: string; createdAt: string }>>([]);
+    useEffect(() => { void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }, []);
     const accountTabCounts = useMemo(() => ({
         all: accounts.length,
         google: accounts.filter((account) => account.authType === "google").length,
@@ -582,7 +592,7 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
 
     return <><Card title="Dola API" extra={<Space wrap><Button icon={<RefreshCw className="size-4" />} onClick={() => void onRefresh()}>刷新</Button><Button icon={<FileKey2 className="size-4" />} onClick={onImport}>导入 Cookie</Button><Button icon={<KeyRound className="size-4" />} onClick={() => setGoogleModalOpen(true)}>Google 授权登录</Button><Button type="primary" icon={<Play className="size-4" />} disabled={!state?.models.length} onClick={onTest}>通信测试</Button></Space>}><Descriptions size="small" column={{ xs: 1, sm: 3 }} items={[{ key: "transport", label: "提交方式", children: <Tag color="blue">Camoufox 页面会话</Tag> }, { key: "provider", label: "Provider", children: state?.healthy ? <Tag color="green">正常</Tag> : <Tag>待连接</Tag> }, { key: "proxy", label: "代理策略", children: <Tag>请在“代理管理”配置</Tag> }]} /><div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">账号轮换次数上限</div><div className="text-xs text-zinc-500">站内画布/工作台与外部 API 生成视频遇账号限额（rate_limited）时自动切换账号的最大次数；0 表示不切换，配额用尽后任务保持轮询等待上游真实结果，不再提前判失败。</div></div><div className="flex shrink-0"><Space.Compact><InputNumber min={0} precision={0} style={{ width: 224 }} value={rotationLimit ?? 0} onChange={(value) => setRotationLimit(value ?? 0)} /><Button type="primary" loading={savingRotation} disabled={rotationLimit === null || rotationLimit === state?.gateway.rotationLimit} onClick={() => void saveRotation()}>保存</Button></Space.Compact></div></div></Card><Card title="账号池" extra={<Space wrap><Button icon={<RefreshCw className={`size-4 ${poolRefreshing ? "animate-spin" : ""}`} />} disabled={poolRefreshing} onClick={() => void refreshPool()}>刷新</Button><Popconfirm title={`删除选中的 ${selectedAccountIds.length} 个 Dola 账号？`} description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void batchDeleteSelected()}><Button danger icon={<Trash2 className="size-4" />} loading={batchDeleting} disabled={!selectedAccountIds.length}>批量删除</Button></Popconfirm><Button icon={<RefreshCw className={`size-4 ${refreshRunning ? "animate-spin" : ""}`} />} disabled={!accounts.filter(isValidatableAccount).length} onClick={() => (refreshRunning ? setRefreshModalOpen(true) : startRefreshAll())}>{refreshAllButtonText}</Button></Space>}><Tabs size="small" className="mb-1" activeKey={accountTab} onChange={(key) => { setAccountTab(key as typeof accountTab); setSelectedAccountIds([]); }} items={accountTabs.map((tab) => ({ key: tab.key, label: tab.label }))} /><Table rowKey="id" size="small" pagination={{ pageSize: 10 }} rowSelection={{ selectedRowKeys: selectedAccountIds, onChange: (keys) => setSelectedAccountIds(keys as string[]) }} dataSource={visibleAccounts} columns={[{ title: "账号", render: (_: unknown, row: DolaAccount) => (<div className="flex flex-col gap-0.5"><div className="flex items-center gap-1.5"><span className="font-medium text-zinc-900 dark:text-zinc-100">{row.name}</span>{row.authType === "google" ? (<Tag color="purple" className="m-0 text-[10px]">Google 授权</Tag>) : (<Tag color="default" className="m-0 text-[10px]">Cookie 导入</Tag>)}</div>{row.email ? <span className="text-[11px] text-zinc-500">{row.email}</span> : null}</div>) }, { title: "账号 ID", render: (_: unknown, row: DolaAccount) => <button type="button" className="max-w-[150px] truncate rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-600 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700" title={`点击复制完整 ID：${row.id}`} onClick={() => { void navigator.clipboard.writeText(row.id); message.success("账号 ID 已复制"); }}>{row.id}</button> }, { title: "登录状态", render: (_: unknown, row: DolaAccount) => row.status === "needs_login" || row.loginState === "needs_login" ? <Tag color="error">Cookie 失效</Tag> : <Tag color="success">登录有效 · 可轮询</Tag> }, { title: "最近生成验证", render: (_: unknown, row: DolaAccount) => row.validation?.generation ? <Tag className="m-0" color={row.validation.generation.status === "success" ? "success" : row.validation.generation.status === "unknown" ? "gold" : "error"}>{row.validation.generation.status === "success" ? "生成通过" : row.validation.generation.status === "unknown" ? "生成结果未知" : "生成失败"}</Tag> : <span className="text-[11px] text-zinc-500">未做真实生成</span> }, { title: "请求", dataIndex: "requestCount" }, { title: "成功", dataIndex: "successCount" }, { title: "额度", render: (_: unknown, row: DolaAccount) => row.quota?.length ? row.quota.map((quota) => quota.remaining === null ? (quota.source === "unknown" ? "上游未公开" : "未知") : `${quota.remaining}/${quota.limit ?? "—"}`).join("、") : "未知" }, { title: "操作", render: (_: unknown, row: DolaAccount) => {
         const busy = busyId === row.id || activeIds.includes(row.id);
-        return <Space wrap><Button size="small" loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { enabled: !row.enabled }).then(() => onRefresh()))}>{row.enabled ? "停用" : "启用"}</Button><Button size="small" loading={busy} onClick={() => void checkAccount(row)}>检测登录状态</Button><Button size="small" icon={<Play className="size-3" />} onClick={() => onTestAccount(row.id, false)}>真实生成验证</Button><Button size="small" loading={busy} onClick={() => void verifyAccount(row)}>查看账号页面</Button><Popconfirm title="删除该 Dola 账号？" description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void runFor(row.id, () => deleteDolaAccount(row.id).then(() => onRefresh()))}><Button danger size="small" loading={busy}>删除</Button></Popconfirm></Space>;
+        return <Space wrap><Button size="small" loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { enabled: !row.enabled }).then(() => onRefresh()))}>{row.enabled ? "停用" : "启用"}</Button><Button size="small" loading={busy} onClick={() => void checkAccount(row)}>检测登录状态</Button><Button size="small" icon={<Play className="size-3" />} onClick={() => onTestAccount(row.id, false)}>真实生成验证</Button><Button size="small" loading={busy} onClick={() => { const active = headedSessions.find((item) => item.accountId === row.id); if (active) setAccountVerification({ verificationId: active.verificationId, accountId: row.id }); else void openHeadedOptions(row); }}>{headedSessions.some((item) => item.accountId === row.id) ? "返回有头测试" : "有头测试"}</Button><Popconfirm title="删除该 Dola 账号？" description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void runFor(row.id, () => deleteDolaAccount(row.id).then(() => onRefresh()))}><Button danger size="small" loading={busy}>删除</Button></Popconfirm></Space>;
     } }]} /></Card><Modal title="检测全部登录状态" open={refreshModalOpen} onCancel={closeRefreshModal} maskClosable={false} footer={<Space wrap><Button danger disabled={!refreshRunning} onClick={stopRefreshAll}>停止验证</Button>{refreshPhase === "running" ? <Button onClick={backgroundRefreshAll}>转入后台</Button> : null}<Button type="primary" onClick={closeRefreshModal}>{refreshPhase === "done" ? "关闭" : "收起"}</Button></Space>}><div className="space-y-3"><div className="flex flex-wrap items-center gap-2 text-sm"><span>{refreshPhase === "done" ? "检测结束" : "正在通过只读启动协议检测全部已启用 Cookie，不启动浏览器"}</span><Tag color={refreshFailed ? "error" : "processing"} className="m-0">{refreshDone}/{refreshItems.length}{refreshFailed ? ` · 失败 ${refreshFailed}` : ""}</Tag></div><div className="max-h-80 divide-y divide-zinc-200 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">{refreshItems.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2"><span className="min-w-0 truncate text-sm" title={item.name}>{item.name}</span><Tag color={REFRESH_ITEM_TAGS[item.state].color} className="m-0">{REFRESH_ITEM_TAGS[item.state].label}</Tag>{item.verdict ? <span className="min-w-0 flex-1 truncate text-right text-xs text-zinc-500" title={item.verdict}>{item.verdict}</span> : null}</div>)}</div>
                                     <div className="flex flex-wrap items-center gap-2 text-xs">
                                         {(() => {
@@ -597,7 +607,7 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
                                                 </>
                                             );
                                         })()}
-                                    </div><div className="text-xs text-zinc-500">关闭弹层（未转入后台）会停止剩余账号的验证；转入后台后可点击「正在验证账号」按钮重新查看进度。</div></div></Modal><DolaVerificationDialog request={accountVerification ? { taskId: "", verificationId: accountVerification.verificationId } : null} admin onClose={() => setAccountVerification(null)} onResolved={async () => { message.success("账号页面已重新检测，并同步当前凭据与状态"); setAccountVerification(null); await onRefresh(); }} /><GoogleLoginModal open={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onSuccess={onRefresh} /></>;
+                                    </div><div className="text-xs text-zinc-500">关闭弹层（未转入后台）会停止剩余账号的验证；转入后台后可点击「正在验证账号」按钮重新查看进度。</div></div></Modal><Modal title={`有头测试 · ${headedAccount?.name || ""}`} open={Boolean(headedAccount)} onCancel={() => setHeadedAccount(null)} onOk={launchHeaded} okText="打开独立窗口" okButtonProps={{ loading: Boolean(headedAccount && busyId === headedAccount.id) }}><div className="space-y-3"><p>选择本次测试的出口；浏览器使用全新实例与空白上下文，仅加载该账号的 Cookie。操作完成后请在后台点击「检测登录并保存 Cookie」，再关闭独立窗口；直接关闭原生窗口可能无法读取新 Cookie。</p><Select className="w-full" value={headedProxy} onChange={setHeadedProxy} options={[{ value: "direct", label: "不使用代理 · 直连" }, ...headedGenericNodes, ...(state?.proxy.enabled && (state.proxy.mode === "magic" || state.proxy.mode === "chained") ? [{ value: state.proxy.mode, label: `${state.proxy.mode === "magic" ? "魔法代理" : "链式代理"} · 当前 Dola 绑定出口 ${state.proxy.target}` }] : [])]} /><p className="text-xs text-zinc-500">魔法代理和链式代理使用代理管理中 Dola 当前已绑定的出口；通用代理可选任一已启用节点，本次选择不修改生成任务的代理绑定。</p></div></Modal><DolaVerificationDialog request={accountVerification ? { taskId: "", verificationId: accountVerification.verificationId } : null} admin headedTest onClose={() => { setAccountVerification(null); void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }} onResolved={async () => { message.success("账号页面已重新检测，并同步当前凭据与状态"); setAccountVerification(null); await listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); await onRefresh(); }} /><GoogleLoginModal open={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onSuccess={onRefresh} /></>;
 }
 
 function StatisticsPanel({ state }: { state: DolaAdminState | null }) { const stats = state?.stats; return <div className="grid gap-4 sm:grid-cols-3"><Card><Statistic title="账号总数" value={stats?.totalAccounts || 0} prefix={<Bot className="size-4" />} /></Card><Card><Statistic title="成功请求" value={stats?.successCount || 0} prefix={<CheckCircle2 className="size-4" />} /></Card><Card><Statistic title="失败请求" value={stats?.errorCount || 0} prefix={<Activity className="size-4" />} /></Card></div>; }
