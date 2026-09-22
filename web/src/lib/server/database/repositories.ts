@@ -97,6 +97,7 @@ export function createPostgresRepositories(executor: QueryExecutor = { query: po
             updateProduct: billingProduct.updateProduct.bind(billingProduct),
             deleteProductIfUnused: billingProduct.deleteProductIfUnused.bind(billingProduct),
             createOrder: billingOrder.createOrder.bind(billingOrder),
+            getStoragePurchaseCounts: billingOrder.getStoragePurchaseCounts.bind(billingOrder),
             getOrderById: billingOrder.getOrderById.bind(billingOrder),
             getOrderByOrderNo: billingOrder.getOrderByOrderNo.bind(billingOrder),
             getOrderByProviderIdentifiers: billingOrder.getOrderByProviderIdentifiers.bind(billingOrder),

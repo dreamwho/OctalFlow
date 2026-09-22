@@ -2,6 +2,22 @@
 
 业务表结构以 `web/src/lib/server/database/schema.ts` 为准，数据库访问由项目 PostgreSQL executor 统一应用 `dreamyo_` 前缀。
 
+## 用户云存储容量账户（开发中）
+
+`dreamyo_cloud_storage_settings` 保存新用户基础空间默认值，初始为 1 GiB。`dreamyo_cloud_storage_accounts` 在用户创建时由数据库触发器写入基础空间快照；修改默认值不会改变既有账户。`dreamyo_cloud_storage_grants` 保存有生效期的套餐权益，付费存储商品在订单中快照容量、叠加、手动续费和限购规则，支付成功后以订单 ID 唯一授予，退款时撤销；到期或撤销仅停止新增上传，不删除已存文件。同款商品可叠加时，购买数量增加同一有效期内的容量；不可叠加但可续费时，每单限一份，新权益从同款未撤销权益的最晚到期时间开始；不可续费时，只能存在一次未取消、未退款的有效购买。限购按该用户同款商品待支付、已支付及退款中订单的购买份数合计；此处不包含自动续订或自动扣款。`dreamyo_cloud_storage_reservations` 保存上传期间的容量预留，`dreamyo_cloud_storage_objects` 按用户和摘要登记实际 OSS 对象；`dreamyo_cloud_storage_object_refs` 保存每次上传形成的素材、项目、备份或作品引用。相同用户的同一文件可被多个引用共享，已用容量只计算一次实际对象，来源统计归到当前最早引用。容量事务按账户行加锁后计算已用、未过期预留及有效权益，同用户并发预留和删除须串行校验。
+
+当前有账户、配额查询、预留核心及用户/管理员查询接口。`POST /api/cloud-storage/objects` 接受原始字节流和 `x-dreamyo-source`、`x-dreamyo-content-bytes`、`x-dreamyo-sha256`，预留后流式写入临时文件，验证摘要，上传到后台配置的 OSS，再读取 OSS 对象校验后登记用量；返回引用 ID 和 `downloadPath`。`GET /api/cloud-storage/objects/[objectId]` 按当前用户拥有的引用签发临时下载地址；`DELETE` 删除一个引用，最后一个引用删除时才移除 OSS 对象并释放容量。OSS 删除失败则数据库事务回滚，容量不释放。该链路通过模拟 OSS/数据库单元测试，存储商品也已接入订单和支付事务；PostgreSQL 实库、真实支付与 OSS 尚未联调，对账和桌面同步仍未接通，不能把这组表视为完整交付。
+
+`GET /api/admin/cloud-storage/users/[userId]` 只允许具有用户管理或系统管理职责的管理员读取指定用户的服务端统计；用户管理弹窗展示已用、上传预留、可用空间、基础/赠送/套餐额度及素材/项目/备份/作品来源。统计按当前有效套餐权益和账户已登记对象实时计算，不采信前端上报的容量。
+
+`dreamyo_cloud_storage_project_backups` 通过引用 ID 关联画布 ZIP 备份、用户、原项目 ID、标题与创建时间，删除最后一个引用时索引级联删除。画布项目卡的“备份到云端”沿用包含持久媒体的画布导出包；上传时除了通用容量/摘要头，还提交 `x-dreamyo-project-id` 和 URI 编码的 `x-dreamyo-project-title`。对象引用与备份索引在同一 PostgreSQL 事务写入。`GET /api/cloud-storage/backups` 按登录用户分页列出备份；`GET /api/cloud-storage/backups/[referenceId]` 按归属流式下载 ZIP；`DELETE` 删除备份引用。WEB 请求沿用 Cookie 身份；商用桌面版仅对云存储用量与备份路由使用有效设备访问令牌，Electron Main 保管令牌并代理用量读取、项目备份上传、列表、下载和删除，管理员本地版不能调用。备份弹窗显示服务端已用、总额及可用空间；恢复前校验字节数与 SHA-256，再导入为新项目，不覆盖原项目。当前仅有模拟数据库/OSS 和桌面 Main 传输测试；真实 PostgreSQL、OSS、大项目传输和双机恢复尚未验收。
+
+## 商用桌面设备授权（开发中）
+
+`dreamyo_desktop_device_requests` 以 SHA-256 摘要保存一次性设备凭据，并保存展示给用户核对的授权码、设备名称、待确认/已确认/已兑换状态和有效期。网页端只有当前登录的活跃云端用户可以确认；兑换须持有原始设备凭据且仅可成功一次。`dreamyo_desktop_device_sessions` 以摘要保存短时访问令牌与可轮换的刷新令牌，绑定云端用户和设备名称；刷新会替换两个摘要，退出登录记录撤销时间。原始令牌不写入数据库或请求日志。
+
+桌面主进程只把刷新令牌经系统 `safeStorage` 加密后写入该版独立用户目录；Canvas 本地账号须先用云端访问令牌调用云端 `me` 接口确认，再建立独立的本地用户映射。当前尚未接入按执行位置区分的模型路由、云端扣费与同步，不能把设备授权视为商用桌面版已经交付。
+
 ## 私有数据迁移回执
 
 `dreamyo_private_migration_receipts` 仅由离线迁移 CLI 在完整导入事务中创建：

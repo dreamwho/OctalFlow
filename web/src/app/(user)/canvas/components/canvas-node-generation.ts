@@ -38,7 +38,7 @@ export type NodeGenerationInput = {
 };
 
 export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
-    const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
+    const inputs = buildNodeGenerationInputs(nodeId, nodes, connections, prompt);
     const sourceNode = nodes.find((node) => node.id === nodeId);
     if (sourceNode?.type === CanvasNodeType.Config && Boolean(sourceNode.metadata?.composerContent?.trim())) {
         return buildComposerGenerationContext(inputs, prompt);
@@ -131,8 +131,17 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
     };
 }
 
-export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
-    const resources = getGenerationResourceNodes(nodeId, nodes, connections);
+export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt?: string): NodeGenerationInput[] {
+    const resources = [...getGenerationResourceNodes(nodeId, nodes, connections)];
+    if (prompt) {
+        for (const match of prompt.matchAll(/@\[node:([^\]]+)\]/g)) {
+            const mentionedId = match[1];
+            if (mentionedId && !resources.some((item) => item.id === mentionedId)) {
+                const node = nodes.find((item) => item.id === mentionedId);
+                if (node) resources.push(node);
+            }
+        }
+    }
     const target = nodes.find((node) => node.id === nodeId);
     const directInputs = connections
         .filter((connection) => connection.toNodeId === nodeId)

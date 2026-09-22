@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BillingOrderRecord, PaymentTransactionRecord, UserPlanAssignmentRecord } from "@/lib/server/database";
+import type { BillingOrderRecord, BillingProductRecord, PaymentTransactionRecord, UserPlanAssignmentRecord } from "@/lib/server/database";
 import type { UserRecord } from "@/lib/server/database/repository-shared";
 
 const mocks = vi.hoisted(() => ({
-    client: {},
+    client: { query: vi.fn(async (_sql?: string) => ({ rows: [] as unknown[] })) },
     order: undefined as BillingOrderRecord | undefined,
     user: undefined as UserRecord | undefined,
     payments: [] as PaymentTransactionRecord[],
     getOrderById: vi.fn(),
+    getProductById: vi.fn(),
+    getStoragePurchaseCounts: vi.fn(),
+    createOrder: vi.fn(),
+    prepareBillingOrderCommerce: vi.fn(),
     upsertPayment: vi.fn(),
     lockPaymentIdentity: vi.fn(),
     getPaymentByProviderIdentifiers: vi.fn(),
@@ -39,6 +43,9 @@ vi.mock("@/lib/server/database", () => ({
     createPostgresRepositories: vi.fn(() => ({
         billing: {
             getOrderById: mocks.getOrderById,
+            getProductById: mocks.getProductById,
+            getStoragePurchaseCounts: mocks.getStoragePurchaseCounts,
+            createOrder: mocks.createOrder,
             upsertPayment: mocks.upsertPayment,
             lockPaymentIdentity: mocks.lockPaymentIdentity,
             getPaymentByProviderIdentifiers: mocks.getPaymentByProviderIdentifiers,
@@ -70,12 +77,17 @@ vi.mock("@/lib/server/database", () => ({
     withPostgresTransaction: vi.fn(async (callback: (client: typeof mocks.client) => unknown) => callback(mocks.client)),
 }));
 vi.mock("@/lib/server/points-wallet-service", () => ({ adjustPermanentPointsInPostgresTransaction: mocks.adjustPoints }));
+vi.mock("@/lib/server/payment-config-store", () => ({ getPaymentRuntimeConfig: vi.fn(async () => ({})), isPaymentRuntimeProviderCheckoutReady: vi.fn(() => true) }));
+vi.mock("@/lib/server/billing-commerce-service", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@/lib/server/billing-commerce-service")>()),
+    prepareBillingOrderCommerce: mocks.prepareBillingOrderCommerce,
+}));
 vi.mock("@/lib/server/billing-service-helpers", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@/lib/server/billing-service-helpers")>()),
     createOrderPlanAssignment: mocks.createOrderPlanAssignment,
 }));
 
-import { completeBillingOrderPayment, refundBillingOrder } from "./billing-service";
+import { completeBillingOrderPayment, createBillingOrder, refundBillingOrder } from "./billing-service";
 
 const now = "2026-07-23T00:00:00.000Z";
 const baseUser = {
@@ -118,10 +130,14 @@ const pointsOrder = {
 describe("billing payment completion", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.client.query.mockImplementation(async () => ({ rows: [] }));
         mocks.order = { ...pointsOrder };
         mocks.user = { ...baseUser };
         mocks.payments = [];
         mocks.getOrderById.mockImplementation(async () => mocks.order);
+        mocks.getStoragePurchaseCounts.mockResolvedValue({ orders: 0, pendingOrders: 0, units: 0 });
+        mocks.prepareBillingOrderCommerce.mockResolvedValue({ price: { listAmountCents: 990, promotionDiscountCents: 0, couponDiscountCents: 0, payableAmountCents: 990 }, pricingSnapshot: {} });
+        mocks.createOrder.mockImplementation(async (order: BillingOrderRecord) => order);
         mocks.getUserById.mockImplementation(async () => mocks.user);
         mocks.upsertPayment.mockImplementation(async (payment: PaymentTransactionRecord) => {
             mocks.payments = [...mocks.payments.filter((item) => item.id !== payment.id), payment];
@@ -222,6 +238,44 @@ describe("billing payment completion", () => {
         expect(mocks.createOrderPlanAssignment).toHaveBeenCalledTimes(1);
     });
 
+    it("grants cloud storage exactly once from the order snapshot without crediting points", async () => {
+        mocks.order = { ...pointsOrder, id: "order-storage", orderNo: "VZ-STORAGE", productKind: "storage", pointsAmount: 0, periodDays: 30, storageBytes: 2_147_483_648 };
+        const first = await completeBillingOrderPayment({ orderId: "order-storage", providerTradeId: "trade-storage", paidAt: now });
+        const duplicate = await completeBillingOrderPayment({ orderId: "order-storage", providerTradeId: "trade-storage", paidAt: now });
+
+        expect(first).toMatchObject({ order: { status: "paid" }, pointsGranted: 0, user: { planId: "existing-plan", pointsBalance: 100 } });
+        expect(duplicate).toMatchObject({ pointsGranted: 0 });
+        expect(mocks.client.query).toHaveBeenCalledTimes(2);
+        expect(mocks.client.query).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO cloud_storage_grants"), [expect.any(String), baseUser.id, 2_147_483_648, "order-storage", now, "2026-08-22T00:00:00.000Z"]);
+        expect(mocks.adjustPoints).not.toHaveBeenCalled();
+        expect(mocks.updateUser).not.toHaveBeenCalled();
+    });
+
+    it("freezes the storage purchase rules and capacity in the order and checks the purchase limit", async () => {
+        const product: BillingProductRecord = { id: "storage-1", productKind: "storage", name: "云存储 1 GiB", description: "", amountCents: 990, currency: "CNY", pointsAmount: 0, dailyPoints: 0, periodDays: 30, storageBytes: 1_073_741_824, storageStackable: true, storageRenewable: true, storagePurchaseLimit: 3, enabled: true, sortOrder: 0, createdAt: now, updatedAt: now };
+        mocks.getProductById.mockResolvedValue(product);
+        mocks.getStoragePurchaseCounts.mockResolvedValue({ orders: 1, pendingOrders: 0, units: 1 });
+
+        const order = await createBillingOrder({ userId: baseUser.id, productId: product.id, quantity: 2, provider: "manual" });
+
+        expect(order).toMatchObject({ productKind: "storage", storageBytes: 2_147_483_648, storageStackable: true, storageRenewable: true, storagePurchaseLimit: 3, periodDays: 30, quantity: 2, pointsAmount: 0 });
+        expect(mocks.getProductById).toHaveBeenCalledWith(product.id, true);
+        expect(mocks.getStoragePurchaseCounts).toHaveBeenCalledWith(baseUser.id, product.id);
+        mocks.getStoragePurchaseCounts.mockResolvedValue({ orders: 2, pendingOrders: 0, units: 3 });
+        await expect(createBillingOrder({ userId: baseUser.id, productId: product.id, quantity: 1, provider: "manual" })).rejects.toThrow("购买次数限制");
+        expect(mocks.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it("schedules a non-stackable renewal after the previous grant ends", async () => {
+        mocks.order = { ...pointsOrder, id: "order-renew", orderNo: "VZ-RENEW", productId: "storage-1", productKind: "storage", pointsAmount: 0, periodDays: 30, storageBytes: 1_073_741_824, storageStackable: false };
+        mocks.client.query.mockImplementation(async (sql = "") => sql.includes("max(grants.ends_at)") ? { rows: [{ ends_at: new Date("2026-08-01T00:00:00.000Z") }] } : { rows: [] });
+
+        await completeBillingOrderPayment({ orderId: "order-renew", providerTradeId: "trade-renew", paidAt: now });
+
+        expect(mocks.client.query).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO cloud_storage_grants"), [expect.any(String), baseUser.id, 1_073_741_824, "order-renew", "2026-08-01T00:00:00.000Z", "2026-08-31T00:00:00.000Z"]);
+        expect(mocks.client.query).toHaveBeenCalledWith(expect.stringContaining("max(grants.ends_at)"), [baseUser.id, "storage-1", now]);
+    });
+
     it("accepts a verified late payment for a system-expired order and clears its closed timestamp", async () => {
         mocks.order = {
             ...pointsOrder,
@@ -265,5 +319,18 @@ describe("billing payment completion", () => {
         expect(mocks.listPlanAssignments).not.toHaveBeenCalled();
         expect(mocks.getActivePlanAssignment).not.toHaveBeenCalled();
         expect(mocks.getSettings).not.toHaveBeenCalled();
+    });
+
+    it("revokes a refunded storage grant without deleting files or changing points", async () => {
+        const paidOrder = { ...pointsOrder, id: "order-storage", productKind: "storage", status: "paid", pointsAmount: 0, periodDays: 30, storageBytes: 1_073_741_824 } satisfies BillingOrderRecord;
+        mocks.order = paidOrder;
+        mocks.payments = [{ id: "payment-storage", orderId: paidOrder.id, userId: paidOrder.userId, provider: "manual", channel: "manual", status: "succeeded", amountCents: paidOrder.amountCents, currency: paidOrder.currency, providerTradeId: "trade-storage", providerPaymentId: "trade-storage", createdAt: now, updatedAt: now }];
+
+        const result = await refundBillingOrder(paidOrder.id);
+
+        expect(result).toMatchObject({ order: { status: "refunded" }, pointsReversed: 0, user: { planId: "existing-plan", pointsBalance: 100 } });
+        expect(mocks.client.query).toHaveBeenCalledWith(expect.stringContaining("UPDATE cloud_storage_grants SET revoked_at"), [paidOrder.id, expect.any(String)]);
+        expect(mocks.adjustPoints).not.toHaveBeenCalled();
+        expect(mocks.updateUser).not.toHaveBeenCalled();
     });
 });

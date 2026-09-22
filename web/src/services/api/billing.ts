@@ -1,6 +1,6 @@
 export type BillingProduct = {
     id: string;
-    productKind: "plan" | "points";
+    productKind: "plan" | "points" | "storage";
     planId?: string;
     name: string;
     description: string;
@@ -9,6 +9,10 @@ export type BillingProduct = {
     pointsAmount: number;
     dailyPoints: number;
     periodDays: number;
+    storageBytes?: number;
+    storageStackable?: boolean;
+    storageRenewable?: boolean;
+    storagePurchaseLimit?: number;
     enabled: boolean;
     sortOrder: number;
     metadata?: unknown;
@@ -38,7 +42,7 @@ export type BillingOrder = {
     userAccountId?: string;
     userUsername?: string;
     userDisplayName?: string;
-    productKind: "plan" | "points";
+    productKind: "plan" | "points" | "storage";
     planId?: string;
     status: BillingOrderStatus;
     subject: string;
@@ -50,6 +54,10 @@ export type BillingOrder = {
     pointsAmount: number;
     dailyPoints: number;
     periodDays: number;
+    storageBytes?: number;
+    storageStackable?: boolean;
+    storageRenewable?: boolean;
+    storagePurchaseLimit?: number;
     quantity: number;
     provider: string;
     providerOrderId?: string;

@@ -525,3 +525,265 @@ MAIN_WORLD_CREDIT_SCRIPT = r"""
   waitReady();
 })();
 """
+
+
+# Injects 15s / 30s options into Dola web interface action bars & intercepts chat completion
+# Derived from doubaokit-main and dola-30s-unlocker-main
+DOLA_30S_UNLOCKER_SCRIPT = r"""
+(() => {
+  if (window.__DOLA_30S_UNLOCKER_INJECTED__) return;
+  window.__DOLA_30S_UNLOCKER_INJECTED__ = true;
+
+  function matchUrl(rawInput, pattern) {
+    if (!rawInput) return false;
+    const rawStr = typeof rawInput === "string" ? rawInput : (rawInput.url || rawInput.href || String(rawInput || ""));
+    if (rawStr.includes(pattern)) return true;
+    try {
+      const absUrl = new URL(rawStr, window.location.origin).href;
+      return absUrl.includes(pattern);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function patchAnyDuration(value, seen = new Set()) {
+    if (value == null || typeof value !== "object" || seen.has(value)) return false;
+    seen.add(value);
+    let changed = false;
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        changed = patchAnyDuration(item, seen) || changed;
+      }
+      return changed;
+    }
+
+    const label = String(value.label || value.name || value.title || value.show_name || value.value || "");
+    const isDuration = label.includes("时长") || label.includes("鏃堕暱") || label.toLowerCase().includes("duration");
+
+    if (Array.isArray(value.option_list)) {
+      const hasDuration = isDuration || value.option_list.some((opt) => opt && (String(opt.option_key) === "5" || String(opt.option_key) === "10" || String(opt.display_text || "").toLowerCase().includes("5s")));
+      if (hasDuration) {
+        for (const d of ["15", "30"]) {
+          if (!value.option_list.some((opt) => opt && (String(opt.option_key) === d || String(opt.value) === d || String(opt.display_text) === d + "s"))) {
+            const maxId = value.option_list.reduce((max, opt) => {
+              const id = Number(opt && opt.id);
+              return Number.isFinite(id) ? Math.max(max, id) : max;
+            }, 0);
+            value.option_list.push({
+              id: maxId + 1,
+              display_text: d === "30" ? "30s" : "15s",
+              show_name: d === "30" ? "30s" : "15s",
+              message_text: "",
+              option_key: d,
+              value: d,
+              is_default: false,
+              sub_display: ""
+            });
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(value.options)) {
+      const hasDuration = isDuration || value.options.some((opt) => opt && (String(opt.value) === "5" || String(opt.value) === "10" || String(opt.option_key) === "10" || String(opt.show_name || "").toLowerCase().includes("5s")));
+      if (hasDuration) {
+        for (const d of ["15", "30"]) {
+          if (!value.options.some((opt) => opt && (String(opt.value) === d || String(opt.option_key) === d || String(opt.show_name) === d + "s"))) {
+            value.options.push({
+              show_name: d === "30" ? "30s" : "15s",
+              display_text: d === "30" ? "30s" : "15s",
+              value: d,
+              option_key: d,
+              is_default: false,
+              sub_display: ""
+            });
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(value.supported_durations)) {
+      for (const d of ["15", "30"]) {
+        if (!value.supported_durations.includes(d) && !value.supported_durations.includes(Number(d))) {
+          value.supported_durations.push(d);
+          changed = true;
+        }
+      }
+    }
+
+    for (const k of Object.keys(value)) {
+      const child = value[k];
+      if (typeof child === "string") {
+        const trimmed = child.trim();
+        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (patchAnyDuration(parsed, seen)) {
+              value[k] = JSON.stringify(parsed);
+              changed = true;
+            }
+          } catch (_) {}
+        }
+      } else {
+        changed = patchAnyDuration(child, seen) || changed;
+      }
+    }
+    return changed;
+  }
+
+  function patchResponseText(rawText) {
+    if (!rawText || typeof rawText !== "string") return rawText;
+    try {
+      const json = JSON.parse(rawText);
+      const changed = patchAnyDuration(json);
+      return changed ? JSON.stringify(json) : rawText;
+    } catch (_) {
+      return rawText;
+    }
+  }
+
+  function sanitizePromptText(text) {
+    if (!text || typeof text !== "string") return text;
+    let res = text;
+    res = res.replace(/生成(?:一段|一个)?\s*(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?:的)?(?:短?视频|片断|片段|微电影)?\s*[:：]?/g, "");
+    res = res.replace(/(?:视频)?时长\s*[:：=为是]?\s*(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\b/gi, "");
+    res = res.replace(/\bduration\s*[:=]\s*\d+\s*s?\b/gi, "");
+    res = res.replace(/(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?:的)?(?:短?视频|片断|片段|微电影)/gi, "");
+    res = res.replace(/(?:^|(?<=[\s,，、;:：]))(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)(?=$|[\s,，、;:：])/gi, "");
+    res = res.replace(/[,，、\s]+/g, (m) => m.includes("，") || m.includes(",") ? "，" : " ");
+    res = res.replace(/^[，,、\s:：]+|[，,、\s:：]+$/g, "");
+    if (res.startsWith("生成视频：") || res.startsWith("生成视频:")) {
+      const rest = res.slice(5).trim();
+      if (rest) res = rest;
+    }
+    return res.trim();
+  }
+
+  function patchCompletionRequestBody(bodyText) {
+    if (!bodyText || typeof bodyText !== "string") return bodyText;
+    try {
+      const data = JSON.parse(bodyText);
+      let changed = false;
+      if (Array.isArray(data.content_block)) {
+        for (const block of data.content_block) {
+          if (block && block.content && block.content.text_block && typeof block.content.text_block.text === "string") {
+            const cleaned = sanitizePromptText(block.content.text_block.text);
+            if (cleaned !== block.content.text_block.text) {
+              block.content.text_block.text = cleaned || "生成视频";
+              changed = true;
+            }
+          }
+        }
+      }
+      const ability = data.chat_ability || data.ability;
+      if (ability && ability.ability_param && typeof ability.ability_param === "string") {
+        try {
+          const param = JSON.parse(ability.ability_param);
+          let pChanged = false;
+          if (!param.camera_movement) {
+            param.camera_movement = "fixed";
+            pChanged = true;
+          }
+          if (param.input_box_content && typeof param.input_box_content.user_input_content === "string") {
+            const cleanedInput = sanitizePromptText(param.input_box_content.user_input_content);
+            if (cleanedInput !== param.input_box_content.user_input_content) {
+              param.input_box_content.user_input_content = cleanedInput || "生成视频";
+              pChanged = true;
+            }
+          }
+          if (pChanged) {
+            ability.ability_param = JSON.stringify(param);
+            changed = true;
+          }
+        } catch (_) {}
+      }
+      return changed ? JSON.stringify(data) : bodyText;
+    } catch (_) {
+      return bodyText;
+    }
+  }
+
+  const originalFetch = window.fetch;
+  window.fetch = async function (input, init) {
+    const isConfigApi =
+      matchUrl(input, "samantha/skill/pack") ||
+      matchUrl(input, "skill/pack") ||
+      matchUrl(input, "action_bar_v3/get_item_conf") ||
+      matchUrl(input, "get_item_conf") ||
+      matchUrl(input, "slot/action_bar") ||
+      matchUrl(input, "samantha/creation");
+
+    let finalInit = init;
+    if (matchUrl(input, "/chat/completion")) {
+      const body = (init && init.body) || (input && input.body);
+      if (typeof body === "string") {
+        const patchedBody = patchCompletionRequestBody(body);
+        if (patchedBody !== body) {
+          finalInit = Object.assign({}, init, { body: patchedBody });
+        }
+      }
+    }
+
+    const response = await originalFetch.apply(this, [input, finalInit]);
+    if (isConfigApi) {
+      try {
+        const rawText = await response.text();
+        const patchedText = patchResponseText(rawText);
+        return new Response(patchedText, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        });
+      } catch (_) {
+        return response;
+      }
+    }
+    return response;
+  };
+
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+  const xhrUrls = new WeakMap();
+
+  XMLHttpRequest.prototype.open = function () {
+    xhrUrls.set(this, arguments[1]);
+    return origOpen.apply(this, arguments);
+  };
+
+  XMLHttpRequest.prototype.send = function (body) {
+    const url = xhrUrls.get(this);
+    let finalBody = body;
+    if (url && typeof url === "string" && url.includes("/chat/completion") && typeof body === "string") {
+      finalBody = patchCompletionRequestBody(body);
+    }
+
+    const isConfigApi = url && typeof url === "string" && (
+      url.includes("samantha/skill/pack") ||
+      url.includes("skill/pack") ||
+      url.includes("action_bar_v3/get_item_conf") ||
+      url.includes("get_item_conf") ||
+      url.includes("slot/action_bar") ||
+      url.includes("samantha/creation")
+    );
+
+    if (isConfigApi) {
+      const self = this;
+      this.addEventListener("readystatechange", function () {
+        if (self.readyState === 4 && self.status === 200) {
+          try {
+            const patched = patchResponseText(self.responseText);
+            Object.defineProperty(self, "responseText", { value: patched, configurable: true });
+            Object.defineProperty(self, "response", { value: patched, configurable: true });
+          } catch (_) {}
+        }
+      });
+    }
+
+    return origSend.apply(this, [finalBody]);
+  };
+})();
+"""
+

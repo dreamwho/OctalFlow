@@ -64,12 +64,13 @@ async def lifespan(app: FastAPI):
     )
     runtime_state.rotator = rotator
 
+    account_count = len(account_store.list_accounts())
     logger.info(
         "Client initialized (browser=%s, port=%s, rotation=%s, accounts=%d)",
         settings.browser_engine,
         runtime_state.browser_port,
         rotator.mode,
-        len(account_store.list_accounts()),
+        account_count,
     )
 
     # 后台预热浏览器，避免首次请求延迟
@@ -79,7 +80,8 @@ async def lifespan(app: FastAPI):
             await client.warmup()
         except Exception as e:
             logger.warning("浏览器预热失败: %s", e)
-    warmup_task = asyncio.create_task(_warmup())
+    if account_count:
+        warmup_task = asyncio.create_task(_warmup())
 
     yield
     logger.info("Shutting down")

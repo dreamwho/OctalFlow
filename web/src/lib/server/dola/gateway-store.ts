@@ -3,11 +3,11 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 
 const FILE_NAME = "dola/gateway.json";
-export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; captureVerificationScreenshot: boolean };
+export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; captureVerificationScreenshot: boolean; dispatchGroups: string[] };
 export type DolaApiKey = { id: string; name: string; prefix: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
 type StoredKey = DolaApiKey & { hash: string };
 type Database = { gateway: DolaGatewaySettings; apiKeys: StoredKey[] };
-const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, captureVerificationScreenshot: true }, apiKeys: [] };
+const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, captureVerificationScreenshot: true, dispatchGroups: [] }, apiKeys: [] };
 
 export async function getDolaGatewaySettings() {
     const db = await readDatabase();
@@ -16,16 +16,18 @@ export async function getDolaGatewaySettings() {
         autoWatermark: db.gateway?.autoWatermark ?? true,
         rotationLimit: db.gateway?.rotationLimit ?? 2,
         captureVerificationScreenshot: db.gateway?.captureVerificationScreenshot ?? true,
+        dispatchGroups: Array.isArray(db.gateway?.dispatchGroups) ? [...db.gateway.dispatchGroups] : [],
     };
 }
 
-export async function updateDolaGatewaySettings(patch: Partial<DolaGatewaySettings>) {
+export async function updateDolaGatewaySettings(patch: Partial<Omit<DolaGatewaySettings, "dispatchGroups">> & { dispatchGroups?: string[] | null }) {
     let value!: DolaGatewaySettings;
     await mutate((db) => {
         if (typeof patch.enabled === "boolean") db.gateway.enabled = patch.enabled;
         if (typeof patch.autoWatermark === "boolean") db.gateway.autoWatermark = patch.autoWatermark;
         if (typeof patch.rotationLimit === "number" && Number.isSafeInteger(patch.rotationLimit) && patch.rotationLimit >= 0) db.gateway.rotationLimit = patch.rotationLimit;
         if (typeof patch.captureVerificationScreenshot === "boolean") db.gateway.captureVerificationScreenshot = patch.captureVerificationScreenshot;
+        if (patch.dispatchGroups === null || Array.isArray(patch.dispatchGroups)) db.gateway.dispatchGroups = normalizeGroups(patch.dispatchGroups);
         value = { ...db.gateway };
     });
     return value;
@@ -95,6 +97,7 @@ async function readDatabase(): Promise<Database> {
             autoWatermark: value.gateway?.autoWatermark === true,
             rotationLimit: Number.isSafeInteger(rotationLimit) && (rotationLimit ?? 0) >= 0 ? rotationLimit as number : 2,
             captureVerificationScreenshot: value.gateway?.captureVerificationScreenshot !== false,
+            dispatchGroups: normalizeGroups(value.gateway?.dispatchGroups),
         },
         apiKeys: Array.isArray(value.apiKeys) ? structuredClone(value.apiKeys) : [],
     };
@@ -110,3 +113,5 @@ function hash(value: string) { return createHash("sha256").update(value).digest(
 function secureEqual(left: string, right: string) { const a = Buffer.from(left); const b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); }
 function validDate(value: unknown) { return typeof value === "string" && Boolean(value.trim()) && Number.isFinite(Date.parse(value)); }
 function normalizeIps(value: unknown) { return Array.from(new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [])).slice(0, 100); }
+/** 调度分组白名单：去空白去重，最多 50 个；null/非数组归一为空（表示全部分组参与调度）。 */
+function normalizeGroups(value: unknown) { return Array.from(new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 60)).filter(Boolean) : [])).slice(0, 50); }

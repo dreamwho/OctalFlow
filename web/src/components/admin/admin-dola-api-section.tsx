@@ -5,7 +5,7 @@ import type { UploadProps } from "antd";
 import { Activity, Bot, CheckCircle2, Eye, FileKey2, KeyRound, Play, RefreshCw, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { batchDeleteDolaAccounts, createDolaApiKey, deleteDolaAccount, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, refreshDolaAccount, startDolaGoogleLogin, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
+import { batchDeleteDolaAccounts, batchSetDolaAccountGroup, createDolaApiKey, deleteDolaAccount, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, refreshDolaAccount, resetDolaAccountQuota, startDolaGoogleLogin, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
 import { genericProxyRequest, type ChatGptProxyView } from "@/services/api/generic-proxy";
 import { dolaErrorHint } from "@/lib/dola-errors";
 import { DolaVerificationDialog } from "@/app/(user)/canvas/components/dola-verification-dialog";
@@ -23,6 +23,7 @@ export function AdminDolaApiSection() {
     const [importOpen, setImportOpen] = useState(false);
     const [importItems, setImportItems] = useState<Array<{ cookie: string; sourceFileName: string; sourceOrdinal: number }>>([]);
     const [pastedCookies, setPastedCookies] = useState("");
+    const [importGroup, setImportGroup] = useState("");
     const [importing, setImporting] = useState(false);
     const [testOpen, setTestOpen] = useState(false);
     const [testModel, setTestModel] = useState("dola-seedance-2-5");
@@ -78,14 +79,15 @@ export function AdminDolaApiSection() {
     };
 
     const submitImport = async () => {
-        const pastedItems = pastedCookies.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((cookie, index) => ({ cookie, sourceFileName: "粘贴内容", sourceOrdinal: index + 1 }));
-        const items = [...importItems, ...pastedItems];
+        const group = importGroup.trim() || undefined;
+        const pastedItems = pastedCookies.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((cookie, index) => ({ cookie, sourceFileName: "粘贴内容", sourceOrdinal: index + 1, group }));
+        const items = [...importItems.map((item) => ({ ...item, group: ((item as Record<string, unknown>).group as string) || group })), ...pastedItems];
         if (!items.length) { message.warning("请先选择 Cookie 文本文件或粘贴 Cookie Header"); return; }
         setImporting(true);
         try {
             const result = await importDolaAccounts(items);
             message.success(`已处理 ${result.results.length} 条 Cookie`);
-            setImportItems([]); setPastedCookies(""); setImportOpen(false); await load();
+            setImportItems([]); setPastedCookies(""); setImportGroup(""); setImportOpen(false); await load();
         } catch (reason) { message.error(reason instanceof Error ? reason.message : "Cookie 导入失败"); } finally { setImporting(false); }
     };
 
@@ -128,10 +130,14 @@ export function AdminDolaApiSection() {
         {activeTab === "gateway" ? <GatewayPanel state={state} onToggle={toggleGateway} onToggleAutoWatermark={toggleAutoWatermark} onToggleCaptureScreenshot={toggleCaptureVerificationScreenshot} rawKey={rawKey} setRawKey={setRawKey} open={keyOpen} setOpen={setKeyOpen} name={keyName} setName={setKeyName} onCreated={load} /> : null}
         {activeTab === "logs" ? <DolaRequestLogPanel active models={state?.models || []} accounts={state?.accounts || []} captureVerificationScreenshot={state?.gateway.captureVerificationScreenshot} onToggleCaptureVerificationScreenshot={toggleCaptureVerificationScreenshot} onLaunchHeadedTest={(accountId, model) => openTestModal({ accountId, model, headless: false })} /> : null}
         {activeTab === "proxy" ? <MagicProxyBindingCard provider="dola" /> : null}
-        <Modal title="导入 Dola Cookie 账号" open={importOpen} onCancel={() => { if (!importing) { setImportOpen(false); setImportItems([]); setPastedCookies(""); } }} onOk={() => void submitImport()} okButtonProps={{ loading: importing, disabled: !importItems.length && !pastedCookies.trim() }} okText="开始导入">
+        <Modal title="导入 Dola Cookie 账号" open={importOpen} onCancel={() => { if (!importing) { setImportOpen(false); setImportItems([]); setPastedCookies(""); setImportGroup(""); } }} onOk={() => void submitImport()} okButtonProps={{ loading: importing, disabled: !importItems.length && !pastedCookies.trim() }} okText="开始导入">
             <Alert type="info" showIcon message="支持 Cookie Header 粘贴和文本文件" description="每行一个 Cookie Header；一个文件可按非空行导入多个账号，也支持同时选择多个文件。Cookie 值不会回显到列表、审计或响应。" />
-            <Input.TextArea className="mt-4" rows={5} value={pastedCookies} onChange={(event) => setPastedCookies(event.target.value)} placeholder="粘贴 Cookie: name=value; other=value&#10;也可以逐行粘贴多个账号" />
-            <Upload.Dragger {...fileProps} className="mt-4"><p className="ant-upload-drag-icon"><UploadCloud className="mx-auto size-8" /></p><p>选择一个或多个 .txt 文件</p><p className="text-xs text-zinc-500">已解析 {importItems.length} 条，不显示 Cookie 内容</p></Upload.Dragger>
+            <div className="mt-4 space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">账号分组（选填，如：分组A、批次1、号商X）</label>
+                <Input placeholder="输入本次导入账号的分组名称" value={importGroup} onChange={(e) => setImportGroup(e.target.value)} />
+            </div>
+            <Input.TextArea className="mt-3" rows={5} value={pastedCookies} onChange={(event) => setPastedCookies(event.target.value)} placeholder="粘贴 Cookie: name=value; other=value&#10;也可以逐行粘贴多个账号" />
+            <Upload.Dragger {...fileProps} className="mt-3"><p className="ant-upload-drag-icon"><UploadCloud className="mx-auto size-8" /></p><p>选择一个或多个 .txt 文件</p><p className="text-xs text-zinc-500">已解析 {importItems.length} 条，不显示 Cookie 内容</p></Upload.Dragger>
         </Modal>
         <Modal title={isImageTestModel ? "Dola 图片通信测试" : "Dola 视频通信测试"} open={testOpen} onCancel={() => setTestOpen(false)} onOk={() => void runTest()} okButtonProps={{ loading: testing, disabled: !selectedModel }} okText={testHeadless ? "提交一次测试 (无头)" : "启动有头浏览器测试"}>
             <div className="space-y-3">
@@ -525,10 +531,44 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
 
     const refreshAllButtonText = refreshRunning ? `正在检测全部登录态 ${refreshDone}/${refreshItems.length}` : "检测全部登录状态";
 
-    // 只有本次代理出口的签名协议实测通过，账号才进入生成轮询；异常账号仍允许重新验证。
-    const isRunnableAccount = (account: DolaAccount) => account.enabled && account.status === "ready" && account.loginState !== "needs_login";
+    // 账号状态判定：正常、失效、可轮询、触发频繁、额度已用完
+    const isInvalidAccount = (account: DolaAccount) =>
+        account.status === "needs_login" || account.loginState === "needs_login";
+
+    const isQuotaExhaustedAccount = (account: DolaAccount) =>
+        account.status === "quota_exhausted";
+
+    const isNormalAccount = (account: DolaAccount) =>
+        !isInvalidAccount(account) &&
+        account.status !== "rate_limited" &&
+        account.status !== "quota_exhausted" &&
+        account.status !== "restricted" &&
+        account.status !== "disabled" &&
+        account.status !== "verification_required";
+
+    const isDispatchableAccount = (account: DolaAccount) =>
+        account.enabled &&
+        isNormalAccount(account) &&
+        (!dispatchGroups?.length || dispatchGroups.includes(account.group || ""));
+
+    const isRateLimitedAccount = (account: DolaAccount) =>
+        account.status === "rate_limited";
+
+    const isRunnableAccount = (account: DolaAccount) => account.enabled && isNormalAccount(account);
     const isValidatableAccount = (account: DolaAccount) => account.enabled && account.status !== "disabled";
-    const [accountTab, setAccountTab] = useState<"all" | "google" | "cookie" | "available" | "login_failed">("all");
+    const [accountTab, setAccountTab] = useState<"all" | "normal" | "invalid" | "dispatchable" | "rate_limited" | "quota_exhausted">("all");
+    const [groupFilter, setGroupFilter] = useState<string>("all");
+    const [groupModalOpen, setGroupModalOpen] = useState(false);
+    const [targetAccount, setTargetAccount] = useState<DolaAccount | null>(null);
+    const [singleGroupName, setSingleGroupName] = useState("");
+    const [savingSingleGroup, setSavingSingleGroup] = useState(false);
+    const [batchGroupModalOpen, setBatchGroupModalOpen] = useState(false);
+    const [batchGroupName, setBatchGroupName] = useState("");
+    const [batchGrouping, setBatchGrouping] = useState(false);
+    const [dispatchGroups, setDispatchGroups] = useState<string[]>(state?.gateway.dispatchGroups ?? []);
+    const [savingDispatchGroups, setSavingDispatchGroups] = useState(false);
+    useEffect(() => setDispatchGroups(state?.gateway.dispatchGroups ?? []), [state?.gateway.dispatchGroups]);
+
     const [poolRefreshing, setPoolRefreshing] = useState(false);
     const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
     const [batchDeleting, setBatchDeleting] = useState(false);
@@ -538,20 +578,92 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
     const [headedGenericNodes, setHeadedGenericNodes] = useState<Array<{ value: string; label: string }>>([]);
     const [headedSessions, setHeadedSessions] = useState<Array<{ verificationId: string; accountId: string; createdAt: string }>>([]);
     useEffect(() => { void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }, []);
+
+    const availableGroups = useMemo(() => {
+        const set = new Set<string>();
+        for (const acc of accounts) {
+            if (acc.group?.trim()) set.add(acc.group.trim());
+        }
+        return Array.from(set).sort();
+    }, [accounts]);
+
     const accountTabCounts = useMemo(() => ({
         all: accounts.length,
-        google: accounts.filter((account) => account.authType === "google").length,
-        cookie: accounts.filter((account) => account.authType !== "google").length,
-        available: accounts.filter(isRunnableAccount).length,
-        login_failed: accounts.filter((account) => account.status === "needs_login").length,
-    }), [accounts]);
+        normal: accounts.filter(isNormalAccount).length,
+        invalid: accounts.filter(isInvalidAccount).length,
+        dispatchable: accounts.filter(isDispatchableAccount).length,
+        rate_limited: accounts.filter(isRateLimitedAccount).length,
+        quota_exhausted: accounts.filter(isQuotaExhaustedAccount).length,
+    }), [accounts, dispatchGroups]);
+
     const visibleAccounts = useMemo(() => {
-        if (accountTab === "google") return accounts.filter((account) => account.authType === "google");
-        if (accountTab === "cookie") return accounts.filter((account) => account.authType !== "google");
-        if (accountTab === "available") return accounts.filter(isRunnableAccount);
-        if (accountTab === "login_failed") return accounts.filter((account) => account.status === "needs_login");
-        return accounts;
-    }, [accountTab, accounts]);
+        let list = accounts;
+        if (accountTab === "normal") list = list.filter(isNormalAccount);
+        else if (accountTab === "invalid") list = list.filter(isInvalidAccount);
+        else if (accountTab === "dispatchable") list = list.filter(isDispatchableAccount);
+        else if (accountTab === "rate_limited") list = list.filter(isRateLimitedAccount);
+        else if (accountTab === "quota_exhausted") list = list.filter(isQuotaExhaustedAccount);
+
+        if (groupFilter === "__none__") {
+            list = list.filter((account) => !account.group?.trim());
+        } else if (groupFilter && groupFilter !== "all") {
+            list = list.filter((account) => account.group === groupFilter);
+        }
+        return list;
+    }, [accountTab, groupFilter, accounts, dispatchGroups]);
+
+    const saveDispatchGroups = async () => {
+        setSavingDispatchGroups(true);
+        try {
+            await updateDolaGateway(undefined, undefined, undefined, undefined, dispatchGroups);
+            await onRefresh();
+            message.success("任务调度生效分组已保存");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "保存调度分组失败");
+        } finally {
+            setSavingDispatchGroups(false);
+        }
+    };
+
+    const openEditGroup = (account: DolaAccount) => {
+        setTargetAccount(account);
+        setSingleGroupName(account.group || "");
+        setGroupModalOpen(true);
+    };
+
+    const submitSingleGroup = async () => {
+        if (!targetAccount) return;
+        setSavingSingleGroup(true);
+        try {
+            await updateDolaAccount(targetAccount.id, { group: singleGroupName.trim() });
+            message.success("账号分组已更新");
+            setGroupModalOpen(false);
+            setTargetAccount(null);
+            await onRefresh();
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "设置分组失败");
+        } finally {
+            setSavingSingleGroup(false);
+        }
+    };
+
+    const submitBatchGroup = async () => {
+        if (!selectedAccountIds.length) return;
+        setBatchGrouping(true);
+        try {
+            const result = await batchSetDolaAccountGroup(selectedAccountIds, batchGroupName.trim());
+            message.success(`已为 ${result.updated} 个账号更新分组`);
+            setBatchGroupModalOpen(false);
+            setBatchGroupName("");
+            setSelectedAccountIds([]);
+            await onRefresh();
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "批量设置分组失败");
+        } finally {
+            setBatchGrouping(false);
+        }
+    };
+
     useEffect(() => {
         // 清理已不存在的选中项；内容未变时返回原引用让 React 跳过更新，
         // 否则 accounts 为不稳定引用（state 未加载时每次渲染都是新 []）会触发无限重渲染（React #185）。
@@ -584,16 +696,37 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
     };
     const accountTabs = [
         { key: "all", label: `全部 ${accountTabCounts.all}` },
-        { key: "google", label: `Google 授权 ${accountTabCounts.google}` },
-        { key: "cookie", label: `Cookie 导入 ${accountTabCounts.cookie}` },
-        { key: "available", label: `正常可轮询 ${accountTabCounts.available}` },
-        { key: "login_failed", label: `登录失效 ${accountTabCounts.login_failed}` },
+        { key: "normal", label: `正常 ${accountTabCounts.normal}` },
+        { key: "invalid", label: `失效 ${accountTabCounts.invalid}` },
+        { key: "dispatchable", label: `可轮询 ${accountTabCounts.dispatchable}` },
+        { key: "rate_limited", label: `触发频繁 ${accountTabCounts.rate_limited}` },
+        { key: "quota_exhausted", label: `额度已用完 ${accountTabCounts.quota_exhausted}` },
     ] as const;
 
-    return <><Card title="Dola API" extra={<Space wrap><Button icon={<RefreshCw className="size-4" />} onClick={() => void onRefresh()}>刷新</Button><Button icon={<FileKey2 className="size-4" />} onClick={onImport}>导入 Cookie</Button><Button icon={<KeyRound className="size-4" />} onClick={() => setGoogleModalOpen(true)}>Google 授权登录</Button><Button type="primary" icon={<Play className="size-4" />} disabled={!state?.models.length} onClick={onTest}>通信测试</Button></Space>}><Descriptions size="small" column={{ xs: 1, sm: 3 }} items={[{ key: "transport", label: "提交方式", children: <Tag color="blue">Camoufox 页面会话</Tag> }, { key: "provider", label: "Provider", children: state?.healthy ? <Tag color="green">正常</Tag> : <Tag>待连接</Tag> }, { key: "proxy", label: "代理策略", children: <Tag>请在“代理管理”配置</Tag> }]} /><div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">账号轮换次数上限</div><div className="text-xs text-zinc-500">站内画布/工作台与外部 API 生成视频遇账号限额（rate_limited）时自动切换账号的最大次数；0 表示不切换，配额用尽后任务保持轮询等待上游真实结果，不再提前判失败。</div></div><div className="flex shrink-0"><Space.Compact><InputNumber min={0} precision={0} style={{ width: 224 }} value={rotationLimit ?? 0} onChange={(value) => setRotationLimit(value ?? 0)} /><Button type="primary" loading={savingRotation} disabled={rotationLimit === null || rotationLimit === state?.gateway.rotationLimit} onClick={() => void saveRotation()}>保存</Button></Space.Compact></div></div></Card><Card title="账号池" extra={<Space wrap><Button icon={<RefreshCw className={`size-4 ${poolRefreshing ? "animate-spin" : ""}`} />} disabled={poolRefreshing} onClick={() => void refreshPool()}>刷新</Button><Popconfirm title={`删除选中的 ${selectedAccountIds.length} 个 Dola 账号？`} description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void batchDeleteSelected()}><Button danger icon={<Trash2 className="size-4" />} loading={batchDeleting} disabled={!selectedAccountIds.length}>批量删除</Button></Popconfirm><Button icon={<RefreshCw className={`size-4 ${refreshRunning ? "animate-spin" : ""}`} />} disabled={!accounts.filter(isValidatableAccount).length} onClick={() => (refreshRunning ? setRefreshModalOpen(true) : startRefreshAll())}>{refreshAllButtonText}</Button></Space>}><Tabs size="small" className="mb-1" activeKey={accountTab} onChange={(key) => { setAccountTab(key as typeof accountTab); setSelectedAccountIds([]); }} items={accountTabs.map((tab) => ({ key: tab.key, label: tab.label }))} /><Table rowKey="id" size="small" pagination={{ pageSize: 10 }} rowSelection={{ selectedRowKeys: selectedAccountIds, onChange: (keys) => setSelectedAccountIds(keys as string[]) }} dataSource={visibleAccounts} columns={[{ title: "账号", render: (_: unknown, row: DolaAccount) => (<div className="flex flex-col gap-0.5"><div className="flex items-center gap-1.5"><span className="font-medium text-zinc-900 dark:text-zinc-100">{row.name}</span>{row.authType === "google" ? (<Tag color="purple" className="m-0 text-[10px]">Google 授权</Tag>) : (<Tag color="default" className="m-0 text-[10px]">Cookie 导入</Tag>)}</div>{row.email ? <span className="text-[11px] text-zinc-500">{row.email}</span> : null}</div>) }, { title: "账号 ID", render: (_: unknown, row: DolaAccount) => <button type="button" className="max-w-[150px] truncate rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-600 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700" title={`点击复制完整 ID：${row.id}`} onClick={() => { void navigator.clipboard.writeText(row.id); message.success("账号 ID 已复制"); }}>{row.id}</button> }, { title: "登录状态", render: (_: unknown, row: DolaAccount) => row.status === "needs_login" || row.loginState === "needs_login" ? <Tag color="error">Cookie 失效</Tag> : <Tag color="success">登录有效 · 可轮询</Tag> }, { title: "最近生成验证", render: (_: unknown, row: DolaAccount) => row.validation?.generation ? <Tag className="m-0" color={row.validation.generation.status === "success" ? "success" : row.validation.generation.status === "unknown" ? "gold" : "error"}>{row.validation.generation.status === "success" ? "生成通过" : row.validation.generation.status === "unknown" ? "生成结果未知" : "生成失败"}</Tag> : <span className="text-[11px] text-zinc-500">未做真实生成</span> }, { title: "请求", dataIndex: "requestCount" }, { title: "成功", dataIndex: "successCount" }, { title: "额度", render: (_: unknown, row: DolaAccount) => row.quota?.length ? row.quota.map((quota) => quota.remaining === null ? (quota.source === "unknown" ? "上游未公开" : "未知") : `${quota.remaining}/${quota.limit ?? "—"}`).join("、") : "未知" }, { title: "操作", render: (_: unknown, row: DolaAccount) => {
+    return <><Card title="Dola API" extra={<Space wrap><Button icon={<RefreshCw className="size-4" />} onClick={() => void onRefresh()}>刷新</Button><Button icon={<FileKey2 className="size-4" />} onClick={onImport}>导入 Cookie</Button><Button icon={<KeyRound className="size-4" />} onClick={() => setGoogleModalOpen(true)}>Google 授权登录</Button><Button type="primary" icon={<Play className="size-4" />} disabled={!state?.models.length} onClick={onTest}>通信测试</Button></Space>}><Descriptions size="small" column={{ xs: 1, sm: 3 }} items={[{ key: "transport", label: "提交方式", children: <Tag color="blue">Camoufox 页面会话</Tag> }, { key: "provider", label: "Provider", children: state?.healthy ? <Tag color="green">正常</Tag> : <Tag>待连接</Tag> }, { key: "proxy", label: "代理策略", children: <Tag>请在“代理管理”配置</Tag> }]} /><div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">账号轮换次数上限</div><div className="text-xs text-zinc-500">站内画布/工作台与外部 API 生成视频遇账号限额（rate_limited）时自动切换账号的最大次数；0 表示不切换，配额用尽后任务保持轮询等待上游真实结果，不再提前判失败。</div></div><div className="flex shrink-0"><Space.Compact><InputNumber min={0} precision={0} style={{ width: 224 }} value={rotationLimit ?? 0} onChange={(value) => setRotationLimit(value ?? 0)} /><Button type="primary" loading={savingRotation} disabled={rotationLimit === null || rotationLimit === state?.gateway.rotationLimit} onClick={() => void saveRotation()}>保存</Button></Space.Compact></div></div><div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">任务调度生效分组 (白名单)</div><div className="text-xs text-zinc-500">限制只有属于选定分组的账号才参与画布/工作台与外部 API 任务的轮询和轮换；留空表示全部分组可用账号均参与调度。</div></div><div className="flex shrink-0 items-center gap-2"><Select mode="tags" style={{ minWidth: 260, maxWidth: 420 }} placeholder="全部分组参与轮询 (默认)" value={dispatchGroups} onChange={setDispatchGroups} options={availableGroups.map((g) => ({ value: g, label: g }))} /><Button type="primary" loading={savingDispatchGroups} onClick={() => void saveDispatchGroups()}>保存</Button></div></div></Card><Card title="账号池" extra={<Space wrap><Select size="small" style={{ width: 130 }} value={groupFilter} onChange={setGroupFilter} options={[{ value: "all", label: "全部分组" }, { value: "__none__", label: "未分组" }, ...availableGroups.map((g) => ({ value: g, label: `分组：${g}` }))]} /><Button size="small" disabled={!selectedAccountIds.length} onClick={() => { setBatchGroupName(""); setBatchGroupModalOpen(true); }}>批量设置分组{selectedAccountIds.length ? ` (${selectedAccountIds.length})` : ""}</Button><Popconfirm title={`删除选中的 ${selectedAccountIds.length} 个 Dola 账号？`} description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void batchDeleteSelected()}><Button danger size="small" icon={<Trash2 className="size-4" />} loading={batchDeleting} disabled={!selectedAccountIds.length}>批量删除</Button></Popconfirm><Button size="small" icon={<RefreshCw className={`size-4 ${poolRefreshing ? "animate-spin" : ""}`} />} disabled={poolRefreshing} onClick={() => void refreshPool()}>刷新</Button><Button size="small" icon={<RefreshCw className={`size-4 ${refreshRunning ? "animate-spin" : ""}`} />} disabled={!accounts.filter(isValidatableAccount).length} onClick={() => (refreshRunning ? setRefreshModalOpen(true) : startRefreshAll())}>{refreshAllButtonText}</Button></Space>}><Tabs size="small" className="mb-1" activeKey={accountTab} onChange={(key) => { setAccountTab(key as typeof accountTab); setSelectedAccountIds([]); }} items={accountTabs.map((tab) => ({ key: tab.key, label: tab.label }))} /><Table rowKey="id" size="small" pagination={{ pageSize: 10 }} rowSelection={{ selectedRowKeys: selectedAccountIds, onChange: (keys) => setSelectedAccountIds(keys as string[]) }} dataSource={visibleAccounts} columns={[{ title: "账号", render: (_: unknown, row: DolaAccount) => (<div className="flex flex-col gap-0.5"><div className="flex items-center gap-1.5"><span className="font-medium text-zinc-900 dark:text-zinc-100">{row.name}</span>{row.authType === "google" ? (<Tag color="purple" className="m-0 text-[10px]">Google 授权</Tag>) : (<Tag color="default" className="m-0 text-[10px]">Cookie 导入</Tag>)}</div>{row.email ? <span className="text-[11px] text-zinc-500">{row.email}</span> : null}</div>) }, { title: "分组", render: (_: unknown, row: DolaAccount) => (<button type="button" className="cursor-pointer text-left" onClick={() => openEditGroup(row)} title="点击修改分组">{row.group ? <Tag color="blue" className="m-0 text-xs">{row.group}</Tag> : <Tag className="m-0 text-xs text-zinc-400">未分组</Tag>}</button>) }, { title: "账号 ID", render: (_: unknown, row: DolaAccount) => <button type="button" className="max-w-[150px] truncate rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-600 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700" title={`点击复制完整 ID：${row.id}`} onClick={() => { void navigator.clipboard.writeText(row.id); message.success("账号 ID 已复制"); }}>{row.id}</button> }, { title: "登录状态", render: (_: unknown, row: DolaAccount) => {
+    if (row.status === "needs_login" || row.loginState === "needs_login") {
+        return <Tag color="error">登录失效</Tag>;
+    }
+    if (row.status === "quota_exhausted") {
+        return <Tag color="volcano" title={row.restrictedReason || "今日生成次数已达上限"}>额度已用完</Tag>;
+    }
+    if (row.status === "rate_limited") {
+        return <Tag color="warning">触发频繁</Tag>;
+    }
+    if (row.status === "restricted") {
+        return <Tag color="magenta">风控限制</Tag>;
+    }
+    if (!row.enabled) {
+        return <Tag color="default">已停用</Tag>;
+    }
+    if (isDispatchableAccount(row)) {
+        return <Tag color="success">登录有效 · 可轮询</Tag>;
+    }
+    return <Tag color="blue">登录有效 · 未参与轮询</Tag>;
+} }, { title: "请求", dataIndex: "requestCount" }, { title: "成功", dataIndex: "successCount" }, { title: "额度", render: (_: unknown, row: DolaAccount) => row.quota?.length ? row.quota.map((quota) => quota.remaining === null ? (quota.source === "unknown" ? "上游未公开" : "未知") : `${quota.remaining}/${quota.limit ?? "—"}`).join("、") : "未知" }, { title: "操作", render: (_: unknown, row: DolaAccount) => {
         const busy = busyId === row.id || activeIds.includes(row.id);
-        return <Space wrap><Button size="small" loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { enabled: !row.enabled }).then(() => onRefresh()))}>{row.enabled ? "停用" : "启用"}</Button><Button size="small" loading={busy} onClick={() => void checkAccount(row)}>检测登录状态</Button><Button size="small" icon={<Play className="size-3" />} onClick={() => onTestAccount(row.id, false)}>真实生成验证</Button><Button size="small" loading={busy} onClick={() => { const active = headedSessions.find((item) => item.accountId === row.id); if (active) setAccountVerification({ verificationId: active.verificationId, accountId: row.id }); else void openHeadedOptions(row); }}>{headedSessions.some((item) => item.accountId === row.id) ? "返回有头测试" : "有头测试"}</Button><Popconfirm title="删除该 Dola 账号？" description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void runFor(row.id, () => deleteDolaAccount(row.id).then(() => onRefresh()))}><Button danger size="small" loading={busy}>删除</Button></Popconfirm></Space>;
-    } }]} /></Card><Modal title="检测全部登录状态" open={refreshModalOpen} onCancel={closeRefreshModal} maskClosable={false} footer={<Space wrap><Button danger disabled={!refreshRunning} onClick={stopRefreshAll}>停止验证</Button>{refreshPhase === "running" ? <Button onClick={backgroundRefreshAll}>转入后台</Button> : null}<Button type="primary" onClick={closeRefreshModal}>{refreshPhase === "done" ? "关闭" : "收起"}</Button></Space>}><div className="space-y-3"><div className="flex flex-wrap items-center gap-2 text-sm"><span>{refreshPhase === "done" ? "检测结束" : "正在通过只读启动协议检测全部已启用 Cookie，不启动浏览器"}</span><Tag color={refreshFailed ? "error" : "processing"} className="m-0">{refreshDone}/{refreshItems.length}{refreshFailed ? ` · 失败 ${refreshFailed}` : ""}</Tag></div><div className="max-h-80 divide-y divide-zinc-200 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">{refreshItems.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2"><span className="min-w-0 truncate text-sm" title={item.name}>{item.name}</span><Tag color={REFRESH_ITEM_TAGS[item.state].color} className="m-0">{REFRESH_ITEM_TAGS[item.state].label}</Tag>{item.verdict ? <span className="min-w-0 flex-1 truncate text-right text-xs text-zinc-500" title={item.verdict}>{item.verdict}</span> : null}</div>)}</div>
+        return <Space wrap>{row.status === "quota_exhausted" ? (<Button size="small" type="primary" ghost loading={busy} onClick={() => void runFor(row.id, () => resetDolaAccountQuota(row.id).then(() => { message.success("账号额度已重置为正常"); return onRefresh(); }))}>重置额度</Button>) : null}{row.status === "rate_limited" ? (<Button size="small" type="primary" ghost loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { status: "ready" }).then(() => onRefresh()))}>解除频繁</Button>) : null}<Button size="small" loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { enabled: !row.enabled }).then(() => onRefresh()))}>{row.enabled ? "停用" : "启用"}</Button><Button size="small" loading={busy} onClick={() => void checkAccount(row)}>检测登录状态</Button><Button size="small" onClick={() => openEditGroup(row)}>分组</Button><Button size="small" loading={busy} onClick={() => { const active = headedSessions.find((item) => item.accountId === row.id); if (active) setAccountVerification({ verificationId: active.verificationId, accountId: row.id }); else void openHeadedOptions(row); }}>{headedSessions.some((item) => item.accountId === row.id) ? "返回有头测试" : "有头测试"}</Button><Popconfirm title="删除该 Dola 账号？" description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void runFor(row.id, () => deleteDolaAccount(row.id).then(() => onRefresh()))}><Button danger size="small" loading={busy}>删除</Button></Popconfirm></Space>;
+    } }]} /></Card><Modal title={`设置账号分组 · ${targetAccount?.name || ""}`} open={groupModalOpen} onCancel={() => { setGroupModalOpen(false); setTargetAccount(null); }} onOk={() => void submitSingleGroup()} confirmLoading={savingSingleGroup} okText="保存"><div className="space-y-3"><p className="text-xs text-zinc-500">为账号设定分组名称（如：分组A、批次1、号商X），留空保存则移除分组。</p><Input placeholder="输入分组名称" value={singleGroupName} onChange={(e) => setSingleGroupName(e.target.value)} />{availableGroups.length > 0 ? <div className="flex flex-wrap items-center gap-1.5 text-xs"><span className="text-zinc-400">已有分组：</span>{availableGroups.map((g) => <Tag key={g} className="cursor-pointer" onClick={() => setSingleGroupName(g)}>{g}</Tag>)}</div> : null}</div></Modal><Modal title={`批量设置账号分组 (${selectedAccountIds.length} 个账号)`} open={batchGroupModalOpen} onCancel={() => setBatchGroupModalOpen(false)} onOk={() => void submitBatchGroup()} confirmLoading={batchGrouping} okText="确认应用"><div className="space-y-3"><p className="text-xs text-zinc-500">选中的 {selectedAccountIds.length} 个账号将被批量归入指定分组；留空提交则清空它们的分组属性。</p><Input placeholder="输入分组名称（留空清空）" value={batchGroupName} onChange={(e) => setBatchGroupName(e.target.value)} />{availableGroups.length > 0 ? <div className="flex flex-wrap items-center gap-1.5 text-xs"><span className="text-zinc-400">选择已有分组：</span>{availableGroups.map((g) => <Tag key={g} className="cursor-pointer" onClick={() => setBatchGroupName(g)}>{g}</Tag>)}</div> : null}</div></Modal><Modal title="检测全部登录状态" open={refreshModalOpen} onCancel={closeRefreshModal} maskClosable={false} footer={<Space wrap><Button danger disabled={!refreshRunning} onClick={stopRefreshAll}>停止验证</Button>{refreshPhase === "running" ? <Button onClick={backgroundRefreshAll}>转入后台</Button> : null}<Button type="primary" onClick={closeRefreshModal}>{refreshPhase === "done" ? "关闭" : "收起"}</Button></Space>}><div className="space-y-3"><div className="flex flex-wrap items-center gap-2 text-sm"><span>{refreshPhase === "done" ? "检测结束" : "正在通过只读启动协议检测全部已启用 Cookie，不启动浏览器"}</span><Tag color={refreshFailed ? "error" : "processing"} className="m-0">{refreshDone}/{refreshItems.length}{refreshFailed ? ` · 失败 ${refreshFailed}` : ""}</Tag></div><div className="max-h-80 divide-y divide-zinc-200 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">{refreshItems.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2"><span className="min-w-0 truncate text-sm" title={item.name}>{item.name}</span><Tag color={REFRESH_ITEM_TAGS[item.state].color} className="m-0">{REFRESH_ITEM_TAGS[item.state].label}</Tag>{item.verdict ? <span className="min-w-0 flex-1 truncate text-right text-xs text-zinc-500" title={item.verdict}>{item.verdict}</span> : null}</div>)}</div>
                                     <div className="flex flex-wrap items-center gap-2 text-xs">
                                         {(() => {
                                             const done = refreshItems.filter((item) => item.verdict);

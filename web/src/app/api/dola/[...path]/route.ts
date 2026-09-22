@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { describeDolaFailure, isDolaRateLimitError } from "@/lib/dola-errors";
+import { describeDolaFailure, isDolaQuotaExhaustedError, isDolaRateLimitError } from "@/lib/dola-errors";
 import { authorizeDolaApiKey, getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
-import { getDolaAccountCookie, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount } from "@/lib/server/dola/account-service";
+import { getDolaAccountCookie, markDolaAccountQuotaExhausted, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount } from "@/lib/server/dola/account-service";
 import { bindDolaExternalTask, getDolaExternalTask, releaseDolaExternalTask, resolveDolaExternalTask, updateDolaExternalTask } from "@/lib/server/dola/external-task-store";
 import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, markDolaRequestLogRunning, openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
 import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
@@ -25,9 +25,14 @@ export async function POST(request: Request, context: Context) { return proxy(re
 
 /** 识别上游账号级限流错误（Dola 协议约定错误码：rate_limited / too many requests）与双语错误说明：见 @/lib/dola-errors */
 
-/** 上游账号触发限额：标记账号进入冷却，再按后台配置的换号次数上限自动用下一个可用账号重新提交同一请求 */
+/** 上游账号触发限额或额度用尽：标记账号状态，再按后台配置的换号次数上限自动用下一个可用账号重新提交同一请求 */
 async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: string; accountId: string; rotations: number; originalPayload?: Record<string, unknown>; model: string; reason?: string }) {
-    await markDolaAccountRateLimited(input.accountId, input.reason).catch(() => undefined);
+    const isQuota = isDolaQuotaExhaustedError(input.reason || "");
+    if (isQuota) {
+        await markDolaAccountQuotaExhausted(input.accountId, input.reason).catch(() => undefined);
+    } else {
+        await markDolaAccountRateLimited(input.accountId, input.reason).catch(() => undefined);
+    }
     const { rotationLimit } = await getDolaGatewaySettings();
     if (!input.originalPayload || input.rotations >= rotationLimit) return null;
     const newAccount = await reserveDolaAccount(input.model || undefined);
@@ -49,6 +54,8 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
         proxyMode: dolaProviderProxyMode(proxy.egress),
         proxySource: proxy.egress.mode,
         proxyTarget: proxy.egress.target,
+        proxyNodeName: proxy.egress.nodeName,
+        proxyAddress: proxy.egress.address || proxy.egress.target,
         ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
         dolaHold: true,
     });
@@ -69,6 +76,12 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
     if (!upstream.ok || !newTaskId) return null;
     await updateDolaExternalTask(input.taskId, input.principalId, { redirectToTaskId: newTaskId, accountId: newAccount.id, rotations: input.rotations + 1 });
     await releaseDolaAccountAttempt(input.accountId).catch(() => undefined);
+    const rotationMessage = isQuota
+        ? "上游账号今日生成次数已达上限，已自动切换账号重试 (upstream account daily quota reached limit; auto-switched to another account)"
+        : "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)";
+    const rotationDetail = isQuota
+        ? `原账号已标记为额度已用完 (previous account marked as quota exhausted)；新账号 (new account): ${newAccount.id}，新任务 (new task): ${newTaskId}`
+        : `原账号已进入临时冷却 (previous account entered temporary cooldown)；新账号 (new account): ${newAccount.id}，新任务 (new task): ${newTaskId}`;
     return {
         newTaskId,
         newAccountId: newAccount.id,
@@ -76,8 +89,8 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
         status: upstream.status,
         responseBytes: bytes.byteLength,
         responsePreview: summarizeResponse(parsed, bytes),
-        message: "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)",
-        detail: `原账号已进入临时冷却 (previous account entered temporary cooldown)；新账号 (new account): ${newAccount.id}，新任务 (new task): ${newTaskId}`,
+        message: rotationMessage,
+        detail: rotationDetail,
     };
 }
 
@@ -130,7 +143,7 @@ async function proxy(request: Request, context: Context) {
     let accountId = "";
     const videoCreate = request.method === "POST" && ["/v1/videos", "/v1/images"].includes(runtimePath.split("?", 1)[0]);
     let holdAccountAttempt = false;
-    let requestProxyEgress: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string } = { mode: "direct" };
+    let requestProxyEgress: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string; address?: string } = { mode: "direct" };
     if (request.method !== "GET" && request.method !== "HEAD") {
         const bytes = new Uint8Array(await request.arrayBuffer());
         requestBytes = bytes.byteLength;
@@ -175,8 +188,23 @@ async function proxy(request: Request, context: Context) {
             }
             delete payload.cookie;
             holdAccountAttempt = true;
-            body = JSON.stringify({ ...payload, accountId: account.id, credentialVersion: account.credentialVersion, cookie, transport: "camoufox-page", proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), dolaHold: true });
-            requestProxyEgress = proxy.egress.mode === "direct" ? { mode: "direct" } : { mode: proxy.egress.mode, nodeName: proxy.egress.nodeName || proxy.egress.target };
+            body = JSON.stringify({
+                ...payload,
+                accountId: account.id,
+                credentialVersion: account.credentialVersion,
+                cookie,
+                transport: "camoufox-page",
+                proxyMode: dolaProviderProxyMode(proxy.egress),
+                proxySource: proxy.egress.mode,
+                proxyTarget: proxy.egress.target,
+                proxyNodeName: proxy.egress.nodeName,
+                proxyAddress: proxy.egress.address || proxy.egress.target,
+                ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+                dolaHold: true,
+            });
+            requestProxyEgress = proxy.egress.mode === "direct"
+                ? { mode: "direct" }
+                : { mode: proxy.egress.mode, nodeName: proxy.egress.nodeName || proxy.egress.target, address: proxy.egress.address };
             lifecycle.push({ time: new Date().toISOString(), phase: "routing", message: "代理出口路由绑定完成", durationMs: Date.now() - startedAt, detail: proxy.egress.mode === "direct" ? "直连" : `模式: ${proxy.egress.mode}` });
             lifecycle.push({ time: new Date().toISOString(), phase: "upstream", message: "向 Dola Provider 发起视频请求", durationMs: Date.now() - startedAt, detail: "授权 Cookie 和参考图仅在服务端转发" });
             await safeMarkLog(logId, { phase: "upstream", message: "向 Dola Provider 发起视频请求", detail: "授权 Cookie 和参考图仅在服务端转发" });
@@ -206,8 +234,8 @@ async function proxy(request: Request, context: Context) {
             if (upstream.ok) {
                 const phase = dolaTaskLogPhase(stringValue(payload?.status), Boolean(verificationId));
                 const errorText = stringValue(payload?.error);
-                if (phase === "failed" && isDolaRateLimitError(errorText) && externalTaskRow) {
-                    // 账号级限额：标记当前账号冷却，并自动用下一个可用账号重新提交同一请求
+                if (phase === "failed" && (isDolaRateLimitError(errorText) || isDolaQuotaExhaustedError(errorText)) && externalTaskRow) {
+                    // 账号级限额或额度用尽：标记当前账号状态，并自动用下一个可用账号重新提交同一请求
                     const rotation = await rotateDolaRateLimitedTask({
                         taskId: decodeURIComponent(queryMatch![1]),
                         principalId,
@@ -253,8 +281,12 @@ async function proxy(request: Request, context: Context) {
             }
         } else {
             const phase = classifyDolaPhase(upstream, payload, verificationId);
-            if (upstream.ok && stringValue(payload?.status) === "failed" && isDolaRateLimitError(stringValue(payload?.error)) && accountId) {
-                await markDolaAccountRateLimited(accountId, stringValue(payload?.error)).catch(() => undefined);
+            if (upstream.ok && stringValue(payload?.status) === "failed" && accountId) {
+                if (isDolaQuotaExhaustedError(stringValue(payload?.error))) {
+                    await markDolaAccountQuotaExhausted(accountId, stringValue(payload?.error)).catch(() => undefined);
+                } else if (isDolaRateLimitError(stringValue(payload?.error))) {
+                    await markDolaAccountRateLimited(accountId, stringValue(payload?.error)).catch(() => undefined);
+                }
             }
             lifecycle.push({ time: new Date().toISOString(), phase, message: phase === "needs_review" ? "Provider 返回待人工确认状态" : phase === "submitted" ? "已提交到 Dola 上游，任务排队中" : upstream.ok ? "Provider 已返回任务响应" : "Provider 请求失败", durationMs: Date.now() - startedAt, detail: `HTTP ${upstream.status}${taskId ? `, 任务: ${taskId}` : ""}` });
             await safeSettleLog(logId, { statusCode: upstream.status, durationMs: Date.now() - startedAt, phase, ...(upstream.ok ? {} : { error: stringValue(payload?.error) ? describeDolaFailure(stringValue(payload?.error)) : "Dola Provider 请求失败" }), model: requestModel || stringValue(payload?.model) || undefined, requestBytes, requestPreview, responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, accountId: accountId || undefined, taskId: taskId || undefined, verificationId: verificationId || undefined, screenshotBase64: screenshotBase64 || undefined, requestedDuration: requestedDuration || numberValue(payload?.duration), ratio: requestedRatio || stringValue(payload?.ratio) || undefined, ...quotaObservation(payload), proxyEgress: requestProxyEgress, responsePreview: summarizeResponse(payload, bytes), lifecycle });

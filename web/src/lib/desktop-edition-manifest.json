@@ -1,0 +1,30 @@
+{
+  "commercial": {
+    "id": "commercial",
+    "appId": "com.dreamyo.desktop",
+    "productName": "Dreamyo",
+    "windowTitle": "Dreamyo",
+    "requiresLogin": true,
+    "cloudFeatures": false,
+    "cloudSync": false,
+    "cloudProjectBackups": true,
+    "localProviders": true,
+    "localProviderBilling": "free",
+    "startPath": "/desktop/connect",
+    "implementationStage": "foundation"
+  },
+  "admin": {
+    "id": "admin",
+    "appId": "com.dreamyo.desktop.admin",
+    "productName": "Dreamyo 管理员本地版",
+    "windowTitle": "Dreamyo 管理员本地版",
+    "requiresLogin": false,
+    "cloudFeatures": false,
+    "cloudSync": false,
+    "cloudProjectBackups": false,
+    "localProviders": true,
+    "localProviderBilling": "free",
+    "startPath": "/api/desktop/bootstrap?next=/canvas",
+    "implementationStage": "foundation"
+  }
+}

@@ -528,3 +528,43 @@ html:not(.dark) .canvas-zoom-dock {
 .octal-dark-overlay.dark .ant-modal-content {
     color-scheme: dark;
 }
+
+/* 画布提示词编辑器与 ProseMirror 输入光标强制为文本 I-beam */
+[data-canvas-prompt-editor] .ProseMirror,
+[data-canvas-prompt-editor] .canvas-resource-editor-content,
+.canvas-node-prompt-surface .ProseMirror,
+.canvas-node-prompt-surface .canvas-resource-editor-content,
+.canvas-prompt-editor-modal .ProseMirror,
+.canvas-prompt-editor-modal .canvas-resource-editor-content,
+.canvas-resource-editor-content,
+.canvas-resource-editor-content .ProseMirror {
+    cursor: text !important;
+}
+
+[data-canvas-prompt-editor] [data-canvas-prompt-token],
+.canvas-resource-editor-content [data-canvas-prompt-token] {
+    cursor: default;
+}
+
+/* 提示词编辑器段落重置：消除 p 标签默认外边距，保证换行与折行间距严格一致 */
+[data-canvas-prompt-editor] .ProseMirror p,
+.canvas-node-prompt-surface .ProseMirror p,
+.canvas-prompt-editor-modal .ProseMirror p,
+.canvas-resource-editor-content p {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* 提示词放大弹窗扁平化排版：26px行高，折行与回车换行严格等距 */
+.canvas-prompt-editor-modal .ProseMirror p {
+    font-size: 15px;
+    line-height: 26px !important;
+}
+
+/* 紧凑提示词面板：24px行高，折行与回车换行严格等距 */
+.canvas-node-prompt-surface .ProseMirror p,
+[data-canvas-prompt-editor="compact"] .ProseMirror p {
+    font-size: 14px;
+    line-height: 24px !important;
+}
+

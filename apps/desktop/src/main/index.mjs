@@ -1,9 +1,13 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, session, shell } from "electron";
 
+import { createCloudDeviceAuth, isTemporaryCloudFailure } from "./cloud-device-auth.mjs";
+import { disableAutoWorkspaceBackup, publicAutoBackupStatus, readAutoWorkspaceBackup, runAutoWorkspaceBackupIfDue, saveAutoWorkspaceBackup } from "./auto-workspace-backup.mjs";
 import { resolveEdition } from "../shared/edition.mjs";
 import { startDesktopRuntime } from "./runtime-controller.mjs";
+import { createWorkspaceBackup, restoreWorkspaceBackup } from "./workspace-backup.mjs";
 
 const edition = await loadEdition();
 app.setName(edition.productName);
@@ -12,6 +16,12 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 let mainWindow;
 let runtime;
+let cloudAuth;
+let appearance = "dark";
+let preparedWorkspaceOperation;
+let workspaceOperationRunning = false;
+let autoBackupError = "";
+let quittingAfterRuntimeStop = false;
 
 app.on("second-instance", () => {
     if (!mainWindow) return;
@@ -22,24 +32,62 @@ app.on("second-instance", () => {
 
 app.whenReady().then(async () => {
     registerIpc();
+    appearance = await readAppearance();
     mainWindow = createWindow();
-    if (edition.id === "commercial" && edition.implementationStage === "foundation") {
-        await mainWindow.loadURL(commercialFoundationPage());
-        if (process.env.DREAMYO_DESKTOP_SMOKE === "1") {
-            const status = await mainWindow.webContents.executeJavaScript(`({ localLogin: Boolean(document.querySelector('form')), stage: document.querySelector('main')?.dataset.stage })`);
-            console.log(`[desktop-smoke] commercial ${JSON.stringify(status)}`);
-            app.exit(status.localLogin || status.stage !== "foundation" ? 1 : 0);
-        }
-        return;
-    }
     mainWindow.loadURL(loadingPage());
-    runtime = await startDesktopRuntime({ app, edition });
+    if (edition.id === "admin") {
+        try {
+            const result = await runAutoWorkspaceBackupIfDue({ userData: app.getPath("userData"), safeStorage });
+            if (result.ran) console.info("Automatic workspace backup completed");
+        } catch (error) {
+            autoBackupError = error instanceof Error ? error.message : "自动备份失败";
+            console.warn("Automatic workspace backup failed", autoBackupError);
+        }
+    }
+    runtime = await startDesktopRuntime({ app, edition, safeStorage });
     installSessionBoundary(runtime.origin, runtime.sessionToken);
     await runtime.ready;
-    await mainWindow.loadURL(new URL(edition.startPath, runtime.origin).toString());
+    if (edition.id === "commercial") {
+        installCommercialMenu();
+        cloudAuth = createCloudDeviceAuth({ cloudOrigin: edition.cloudOrigin || process.env.DREAMYO_DESKTOP_CLOUD_ORIGIN, userData: app.getPath("userData"), safeStorage, packaged: app.isPackaged });
+        let cloudAuthenticated = false;
+        try {
+            const user = await cloudAuth.current();
+            if (user) {
+                await bootstrapCommercialSession();
+                cloudAuthenticated = true;
+            }
+        } catch (error) {
+            if (isTemporaryCloudFailure(error)) {
+                try {
+                    const cached = await cloudAuth.cachedIdentity();
+                    if (cached) {
+                        await bootstrapOfflineSession(cached.id);
+                        cloudAuthenticated = true;
+                        console.warn("Commercial desktop opened cached local projects while cloud is unavailable");
+                    }
+                } catch (offlineError) { console.warn("Commercial desktop local restore unavailable", offlineError instanceof Error ? offlineError.message : "unknown"); }
+            } else console.warn("Commercial desktop cloud session unavailable", error instanceof Error ? error.message : "unknown");
+        }
+        if (!cloudAuthenticated) await session.defaultSession.cookies.remove(runtime.origin, "dreamyo_session");
+        await mainWindow.loadURL(new URL(cloudAuthenticated ? "/canvas" : "/desktop/connect", runtime.origin).toString());
+    } else {
+        await mainWindow.loadURL(new URL(edition.startPath, runtime.origin).toString());
+    }
     if (process.env.DREAMYO_DESKTOP_SMOKE === "1") {
-        if (edition.id === "admin") await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.body.innerText.includes('本地模式') && !document.body.innerText.includes('正在加载画布'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Canvas did not reach its ready state')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, characterData: true }); })`);
-        const state = await mainWindow.webContents.executeJavaScript(`Promise.all([fetch('/api/auth/session').then(r => r.json()), fetch('/api/billing/products').then(r => r.status)]).then(([session, billing]) => ({ role: session.user?.role || null, edition: session.desktop?.edition || null, billing, pathname: location.pathname, canvasVisible: document.body.innerText.includes('我的项目'), localModeVisible: document.body.innerText.includes('本地模式') }))`);
+        if (edition.id === "commercial") {
+            if (mainWindow.webContents.getURL().includes("/desktop/connect")) await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.querySelector('main[data-cloud-ready="true"]'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Cloud connection page did not hydrate')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, attributes: true }); })`);
+            const status = await mainWindow.webContents.executeJavaScript(`({ path: location.pathname, localLogin: Boolean(document.querySelector('form')), connectVisible: document.body.innerText.includes('连接云端账号') })`);
+            console.log(`[desktop-smoke] commercial ${JSON.stringify(status)}`);
+            if (process.env.DREAMYO_DESKTOP_SMOKE_SCREENSHOT) {
+                await mainWindow.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+                await writeFile(process.env.DREAMYO_DESKTOP_SMOKE_SCREENSHOT, (await mainWindow.webContents.capturePage()).toPNG());
+            }
+            await exitDesktop(status.localLogin || !["/desktop/connect", "/canvas"].includes(status.path) || (status.path === "/desktop/connect" && !status.connectVisible) ? 1 : 0);
+            return;
+        }
+        if (edition.id === "admin") await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => Boolean(document.querySelector('[data-desktop-workspace="true"]')) && Boolean(document.querySelector('button[aria-label="新建项目"]:not([disabled])')); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Canvas did not reach its ready state')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, attributes: true }); })`);
+        const state = await mainWindow.webContents.executeJavaScript(`Promise.all([fetch('/api/auth/session').then(r => r.json()), fetch('/api/billing/products').then(r => r.status)]).then(([session, billing]) => ({ role: session.user?.role || null, edition: session.desktop?.edition || null, billing, pathname: location.pathname, canvasVisible: document.body.innerText.includes('项目库'), localModeVisible: Boolean(document.querySelector('[data-desktop-workspace="true"]')) }))`);
         console.log(`[desktop-smoke] ${JSON.stringify(state)}`);
         if (edition.id === "admin" && (state.role !== "admin" || state.edition !== "admin" || state.billing !== 403 || state.pathname !== "/canvas" || !state.canvasVisible || !state.localModeVisible)) throw new Error("Desktop administrator smoke test failed");
         if (edition.id === "admin" && process.env.DREAMYO_DESKTOP_SMOKE_PROJECT_FILE) {
@@ -65,9 +113,9 @@ app.whenReady().then(async () => {
         if (edition.id === "admin") {
             await mainWindow.loadURL(new URL("/admin?section=channels", runtime.origin).toString());
             await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.querySelector('.admin-dashboard-shell[data-hydrated="true"]') && !document.querySelector('[aria-label="正在加载管理后台"]'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Admin navigation did not mount: ' + location.pathname + ' ' + document.body.innerText.slice(0, 240))); }, 30000); observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true }); })`);
-            const navigation = await mainWindow.webContents.executeJavaScript(`({ channel: Boolean(document.querySelector('[data-admin-section-key="channels"]')), users: Boolean(document.querySelector('[data-admin-section-key="users"]')), points: Boolean(document.querySelector('[data-admin-section-key="points"]')), setup: Boolean(document.querySelector('.admin-dashboard-setup-pill')) })`);
+            const navigation = await mainWindow.webContents.executeJavaScript(`({ channel: Boolean(document.querySelector('[data-admin-section-key="channels"]')), users: Boolean(document.querySelector('[data-admin-section-key="users"]')), points: Boolean(document.querySelector('[data-admin-section-key="points"]')), setup: Boolean(document.querySelector('.admin-dashboard-setup-pill')), desktopSettings: Boolean(document.querySelector('[data-desktop-settings="true"]')), webSidebar: Boolean(document.querySelector('[data-admin-navigation="true"]')) })`);
             console.log(`[desktop-smoke] admin navigation ${JSON.stringify(navigation)}`);
-            if (!navigation.channel || navigation.users || navigation.points || navigation.setup) throw new Error("Administrator desktop navigation exposes cloud sections");
+            if (!navigation.channel || !navigation.desktopSettings || navigation.webSidebar || navigation.users || navigation.points || navigation.setup) throw new Error("Administrator desktop settings did not replace the web navigation");
             if (process.env.DREAMYO_DESKTOP_SMOKE_DOLA === "1") {
                 await mainWindow.loadURL(new URL("/admin?section=dolaApi", runtime.origin).toString());
                 const dola = await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.body.innerText.includes('账号池') && document.body.innerText.includes('Dola API'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Dola account manager did not mount')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, characterData: true }); })`);
@@ -78,20 +126,32 @@ app.whenReady().then(async () => {
                 await writeFile(process.env.DREAMYO_DESKTOP_SMOKE_SCREENSHOT.replace(/\.png$/i, "-admin.png"), screenshot.toPNG());
             }
         }
-        app.exit(0);
+        await exitDesktop(0);
     }
-}).catch((error) => {
+}).catch(async (error) => {
     if (process.env.DREAMYO_DESKTOP_SMOKE === "1") {
         console.error(error);
-        app.exit(1);
+        await exitDesktop(1);
         return;
     }
     dialog.showErrorBox("Dreamyo 启动失败", error instanceof Error ? error.message : String(error));
     app.quit();
 });
 
-app.on("before-quit", () => runtime?.stop());
+app.on("before-quit", (event) => {
+    if (quittingAfterRuntimeStop || !runtime) return;
+    event.preventDefault();
+    quittingAfterRuntimeStop = true;
+    void runtime.stop().catch((error) => console.error("Desktop runtime shutdown failed", error)).finally(() => app.quit());
+});
 app.on("window-all-closed", () => app.quit());
+
+async function exitDesktop(code) {
+    const current = runtime;
+    runtime = null;
+    if (current) await current.stop();
+    app.exit(code);
+}
 
 function createWindow() {
     const window = new BrowserWindow({
@@ -101,7 +161,9 @@ function createWindow() {
         minHeight: 680,
         title: edition.windowTitle,
         show: false,
-        backgroundColor: "#09090b",
+        backgroundColor: appearance === "dark" ? "#101322" : "#f5f7ff",
+        ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 17, y: 24 } } : {}),
+        ...(process.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: { color: appearance === "dark" ? "#080b14" : "#f9faff", symbolColor: appearance === "dark" ? "#f1f1ff" : "#1c2242", height: 36 } } : {}),
         webPreferences: {
             preload: path.resolve(import.meta.dirname, "../preload/index.cjs"),
             contextIsolation: true,
@@ -131,15 +193,87 @@ function installSessionBoundary(origin, token) {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 }
 
+async function readAppearance() {
+    try {
+        const stored = JSON.parse(await readFile(path.join(app.getPath("userData"), "appearance.json"), "utf8"));
+        return stored.theme === "light" ? "light" : "dark";
+    } catch { return "dark"; }
+}
+
 function registerIpc() {
     ipcMain.handle("desktop:get-runtime-info", (event) => {
         assertTrustedSender(event);
         return { ...edition, origin: runtime?.origin || null, packaged: app.isPackaged, platform: process.platform };
     });
+    ipcMain.handle("desktop:get-appearance", (event) => {
+        assertTrustedSender(event);
+        return appearance;
+    });
+    ipcMain.handle("desktop:set-appearance", async (event, theme) => {
+        assertTrustedSender(event);
+        if (edition.id !== "admin" || (theme !== "dark" && theme !== "light")) throw new Error("无效的本地主题");
+        await mkdir(app.getPath("userData"), { recursive: true });
+        await writeFile(path.join(app.getPath("userData"), "appearance.json"), JSON.stringify({ theme }), { mode: 0o600 });
+        appearance = theme;
+        setNativeAppearance(theme);
+        return true;
+    });
     ipcMain.handle("desktop:choose-directory", async (event) => {
         assertTrustedSender(event);
         const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
         return result.canceled ? null : result.filePaths[0] || null;
+    });
+    ipcMain.handle("desktop:open-data-directory", async (event) => {
+        assertTrustedSender(event);
+        if (edition.id !== "admin") throw new Error("仅管理员本地版可打开完整工作区目录");
+        const directory = app.getPath("userData");
+        const error = await shell.openPath(directory);
+        if (error) throw new Error(error);
+        return true;
+    });
+    ipcMain.handle("desktop:prepare-workspace-operation", async (event, kind) => {
+        assertTrustedSender(event);
+        if (edition.id !== "admin" || (kind !== "backup" && kind !== "restore")) throw new Error("当前版本不支持工作区备份恢复");
+        if (workspaceOperationRunning) throw new Error("已有工作区操作正在进行");
+        const result = await dialog.showOpenDialog(mainWindow, {
+            title: kind === "backup" ? "选择工作区备份保存位置" : "选择 .dreamyo-workspace 备份文件夹",
+            properties: kind === "backup" ? ["openDirectory", "createDirectory"] : ["openDirectory"],
+        });
+        if (result.canceled || !result.filePaths[0]) return null;
+        preparedWorkspaceOperation = { kind, directory: result.filePaths[0], token: randomUUID() };
+        return { token: preparedWorkspaceOperation.token };
+    });
+    ipcMain.handle("desktop:get-auto-backup", async (event) => {
+        assertTrustedSender(event);
+        if (edition.id !== "admin") throw new Error("当前版本不支持自动备份");
+        try { return { ...publicAutoBackupStatus(await readAutoWorkspaceBackup({ userData: app.getPath("userData"), safeStorage })), lastError: autoBackupError }; }
+        catch (error) { return { enabled: false, lastError: autoBackupError || (error instanceof Error ? error.message : "自动备份配置无法读取") }; }
+    });
+    ipcMain.handle("desktop:configure-auto-backup", async (event, password, intervalDays) => {
+        assertTrustedSender(event);
+        if (edition.id !== "admin" || workspaceOperationRunning) throw new Error("当前无法设置自动备份");
+        const result = await dialog.showOpenDialog(mainWindow, { title: "选择启动自动备份目录", properties: ["openDirectory", "createDirectory"] });
+        if (result.canceled || !result.filePaths[0]) return null;
+        const status = await saveAutoWorkspaceBackup({ userData: app.getPath("userData"), safeStorage, destination: result.filePaths[0], password, intervalDays });
+        autoBackupError = "";
+        return { ...status, lastError: "" };
+    });
+    ipcMain.handle("desktop:disable-auto-backup", async (event) => {
+        assertTrustedSender(event);
+        if (edition.id !== "admin") throw new Error("当前版本不支持自动备份");
+        await disableAutoWorkspaceBackup({ userData: app.getPath("userData") });
+        autoBackupError = "";
+        return { enabled: false, lastError: "" };
+    });
+    ipcMain.on("desktop:begin-workspace-operation", (event, token, password) => {
+        try {
+            assertTrustedSender(event);
+            if (workspaceOperationRunning || !preparedWorkspaceOperation || token !== preparedWorkspaceOperation.token) throw new Error("工作区操作无效");
+            const operation = preparedWorkspaceOperation;
+            preparedWorkspaceOperation = undefined;
+            workspaceOperationRunning = true;
+            void performWorkspaceOperation(operation, password).finally(() => { workspaceOperationRunning = false; });
+        } catch (error) { dialog.showErrorBox("工作区操作失败", error instanceof Error ? error.message : String(error)); }
     });
     ipcMain.handle("desktop:open-external", async (event, url) => {
         assertTrustedSender(event);
@@ -147,6 +281,138 @@ function registerIpc() {
         await shell.openExternal(url);
         return true;
     });
+    ipcMain.handle("desktop:cloud-start", async (event) => {
+        assertTrustedSender(event);
+        if (edition.id !== "commercial" || !cloudAuth) throw new Error("当前版本不支持云端设备授权");
+        return cloudAuth.start(`${app.getName()} · ${process.platform}`);
+    });
+    ipcMain.handle("desktop:cloud-finish", async (event) => {
+        assertTrustedSender(event);
+        if (edition.id !== "commercial" || !cloudAuth) throw new Error("当前版本不支持云端设备授权");
+        const result = await cloudAuth.finish();
+        if (result.status === "authorized") {
+            await bootstrapCommercialSession();
+            await mainWindow.loadURL(new URL("/canvas", runtime.origin).toString());
+        }
+        return result;
+    });
+    ipcMain.handle("desktop:cloud-status", async (event) => {
+        assertTrustedSender(event);
+        return { configured: Boolean(cloudAuth?.configured), origin: cloudAuth?.origin || "" };
+    });
+    ipcMain.handle("desktop:cloud-logout", async (event) => {
+        assertTrustedSender(event);
+        await logoutCommercialSession();
+        return true;
+    });
+    ipcMain.handle("desktop:cloud-storage", async (event, action, input) => {
+        assertTrustedSender(event);
+        if (!edition.cloudProjectBackups || !cloudAuth) throw new Error("当前版本不支持云端存储");
+        return cloudAuth.cloudStorage(action, input);
+    });
+}
+
+async function performWorkspaceOperation({ kind, directory }, password) {
+    const route = "/admin?section=backup";
+    try {
+        await mainWindow.loadURL(loadingPage(kind === "backup" ? "正在备份完整工作区" : "正在恢复完整工作区"));
+        await runtime?.stop();
+        runtime = null;
+        if (kind === "backup") {
+            const folder = await createWorkspaceBackup({ userData: app.getPath("userData"), destination: directory, password, safeStorage });
+            await startLocalRuntime(route);
+            await dialog.showMessageBox(mainWindow, { type: "info", title: "工作区备份完成", message: "项目、媒体和本机配置已加密备份。", detail: `备份文件夹：${folder}` });
+        } else {
+            const result = await restoreWorkspaceBackup({ userData: app.getPath("userData"), source: directory, password, safeStorage, onCommit: async () => {
+                appearance = await readAppearance();
+                setNativeAppearance(appearance);
+                await startLocalRuntime(route);
+            } });
+            appearance = result.theme;
+            await dialog.showMessageBox(mainWindow, { type: "info", title: "工作区恢复完成", message: "项目、媒体和本机配置已恢复。", detail: "应用已重新启动本地服务。" });
+        }
+    } catch (error) {
+        if (!runtime) {
+            try { appearance = await readAppearance(); setNativeAppearance(appearance); await startLocalRuntime(route); }
+            catch (restartError) { console.error("Workspace recovery restart failed", restartError instanceof Error ? restartError.message : restartError); }
+        }
+        dialog.showErrorBox("工作区操作失败", error instanceof Error ? error.message : String(error));
+    }
+}
+
+async function startLocalRuntime(route) {
+    const next = await startDesktopRuntime({ app, edition, safeStorage });
+    runtime = next;
+    installSessionBoundary(next.origin, next.sessionToken);
+    try {
+        await next.ready;
+        await mainWindow.loadURL(new URL(route, next.origin).toString());
+    } catch (error) {
+        await next.stop();
+        runtime = null;
+        throw error;
+    }
+}
+
+function setNativeAppearance(theme) {
+    if (process.platform === "win32") mainWindow.setTitleBarOverlay({ color: theme === "dark" ? "#080b14" : "#f9faff", symbolColor: theme === "dark" ? "#f1f1ff" : "#1c2242", height: 36 });
+    mainWindow.setBackgroundColor(theme === "dark" ? "#101322" : "#f5f7ff");
+}
+
+function installCommercialMenu() {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+        { label: app.getName(), submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }] },
+        { label: "账号", submenu: [{ label: "退出云端账号", click: () => void logoutCommercialSession().catch((error) => dialog.showErrorBox("退出登录失败", error instanceof Error ? error.message : String(error))) }] },
+        { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
+    ]));
+}
+
+async function logoutCommercialSession() {
+    if (!cloudAuth || !runtime) return;
+    let revokeError;
+    try { await cloudAuth.logout(); }
+    catch (error) { revokeError = error; }
+    const cookies = await session.defaultSession.cookies.get({ url: runtime.origin, name: "dreamyo_session" });
+    let localError;
+    try {
+        const response = await fetch(new URL("/api/desktop/cloud-logout", runtime.origin), {
+            method: "POST",
+            headers: { "x-dreamyo-desktop-token": runtime.sessionToken, ...(cookies[0] ? { Cookie: `dreamyo_session=${cookies[0].value}` } : {}) },
+        });
+        if (!response.ok) throw new Error(`本地会话退出失败（HTTP ${response.status}）`);
+    } catch (error) { localError = error; }
+    await session.defaultSession.cookies.remove(runtime.origin, "dreamyo_session");
+    await mainWindow?.loadURL(new URL("/desktop/connect", runtime.origin).toString());
+    if (revokeError || localError) throw revokeError || localError;
+}
+
+async function bootstrapCommercialSession() {
+    const accessToken = cloudAuth?.getAccessToken();
+    if (!accessToken || !runtime) throw new Error("云端设备登录尚未完成");
+    const response = await fetch(new URL("/api/desktop/cloud-bootstrap", runtime.origin), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-dreamyo-desktop-token": runtime.sessionToken, "x-dreamyo-desktop-main-token": runtime.mainToken },
+        body: JSON.stringify({ accessToken }),
+    });
+    if (!response.ok) throw new Error(`本地账号绑定失败（HTTP ${response.status}）`);
+    await installDesktopSessionCookie(response);
+}
+
+async function bootstrapOfflineSession(cloudUserId) {
+    if (!runtime) throw new Error("本地 Runtime 未启动");
+    const response = await fetch(new URL("/api/desktop/cloud-offline-bootstrap", runtime.origin), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-dreamyo-desktop-token": runtime.sessionToken, "x-dreamyo-desktop-main-token": runtime.mainToken },
+        body: JSON.stringify({ cloudUserId }),
+    });
+    if (!response.ok) throw new Error(`本地离线身份恢复失败（HTTP ${response.status}）`);
+    await installDesktopSessionCookie(response);
+}
+
+async function installDesktopSessionCookie(response) {
+    const cookie = response.headers.get("set-cookie")?.match(/(?:^|,\s*)dreamyo_session=([^;]+)/)?.[1];
+    if (!cookie) throw new Error("本地账号绑定未返回 Session Cookie");
+    await session.defaultSession.cookies.set({ url: runtime.origin, name: "dreamyo_session", value: cookie, httpOnly: true, sameSite: "lax" });
 }
 
 function assertTrustedSender(event) {
@@ -166,23 +432,20 @@ function isRuntimeUrl(value, origin) {
 async function loadEdition() {
     if (!app.isPackaged) return resolveEdition(process.env.DREAMYO_DESKTOP_EDITION || "commercial");
     const manifest = JSON.parse(await readFile(path.join(process.resourcesPath, "edition.json"), "utf8"));
-    return resolveEdition(manifest.edition);
+    return { ...resolveEdition(manifest.edition), cloudOrigin: manifest.cloudOrigin || "" };
 }
 
 function isSafeExternalUrl(value) {
     try {
-        return new URL(value).protocol === "https:";
+        const url = new URL(value);
+        const loopback = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname.toLowerCase());
+        return url.protocol === "https:" || (!app.isPackaged && url.protocol === "http:" && loopback);
     } catch {
         return false;
     }
 }
 
-function loadingPage() {
+function loadingPage(status = "正在启动本地服务") {
     const title = encodeURIComponent(edition.windowTitle);
-    return `data:text/html;charset=utf-8,<title>${title}</title><style>body{margin:0;background:%2309090b;color:%23fafafa;font:14px system-ui;display:grid;place-items:center;height:100vh}.box{text-align:center}.dot{width:36px;height:36px;margin:auto;border:3px solid %233f3f46;border-top-color:%2360a5fa;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style><div class=box><div class=dot></div><p>正在启动 ${title} 本地服务…</p></div>`;
-}
-
-function commercialFoundationPage() {
-    const content = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dreamyo 商用桌面版</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#090e1c;color:#eaf0ff;font:15px system-ui}main{max-width:560px;padding:40px;border:1px solid #33415f;border-radius:20px;background:#15203a}h1{margin:0 0 18px;font-size:22px}p{line-height:1.8;color:#bbcae7}</style><main data-stage="foundation"><h1>商用桌面版正在开发</h1><p>云端登录、实时积分、混合模型路由和跨设备同步尚未接通。本版本暂不提供本地登录入口，以免把测试账号误当成云端账号。</p><p>现有 Web 版可以照常使用；管理员本地版可独立运行画布与本地上游配置。</p></main></html>`;
-    return `data:text/html;charset=utf-8,${encodeURIComponent(content)}`;
+    return `data:text/html;charset=utf-8,<title>${title}</title><style>body{margin:0;background:%23080b14;color:%23fafafa;font:14px system-ui;display:grid;place-items:center;height:100vh}.box{text-align:center}.dot{width:36px;height:36px;margin:auto;border:3px solid %233f3f46;border-top-color:%236366f1;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style><div class=box><div class=dot></div><p>${encodeURIComponent(status)}…</p></div>`;
 }

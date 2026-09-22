@@ -28,7 +28,7 @@ export function referenceMentionLabel(label: string) {
 
 export function findResourceMentionAtCursor(value: string, cursor: number) {
     const prefix = value.slice(0, Math.max(0, Math.min(cursor, value.length)));
-    const match = /@([^\s@]*)$/.exec(prefix);
+    const match = /[@＠]([^\s@＠]*)$/u.exec(prefix);
     return match ? { start: prefix.length - match[1].length - 1, query: match[1] } : null;
 }
 
@@ -488,8 +488,8 @@ export function resolveMentionMenuPosition({ anchor, boundary, menuWidth, menuHe
     const fitsAbove = anchor.top - gap - menuHeight >= boundary.top + inset;
     const preferredTop = fitsAbove ? anchor.top - gap - menuHeight : anchor.bottom + gap;
     return {
-        left: clamp(anchor.left, boundary.left + inset, boundary.right - menuWidth - inset),
-        top: clamp(preferredTop, boundary.top + inset, boundary.bottom - menuHeight - inset),
+        left: clamp(anchor.left, boundary.left + inset, Math.max(boundary.left + inset, boundary.right - menuWidth - inset)),
+        top: clamp(preferredTop, boundary.top + inset, Math.max(boundary.top + inset, boundary.bottom - menuHeight - inset)),
     };
 }
 

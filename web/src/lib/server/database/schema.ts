@@ -1,5 +1,7 @@
 import { ALL_ADMIN_PERMISSIONS } from "@/lib/admin-permissions";
 import { POSTGRESQL_COMMERCIAL_FEATURES_SCHEMA_SQL } from "./schema-commercial-features";
+import { POSTGRESQL_CLOUD_STORAGE_SCHEMA_SQL } from "./schema-cloud-storage";
+import { POSTGRESQL_DESKTOP_DEVICE_SCHEMA_SQL } from "./schema-desktop-device";
 import { POSTGRESQL_TRIGGER_SCHEMA_SQL } from "./schema-triggers";
 
 const FULL_ADMIN_PERMISSIONS_JSON = JSON.stringify(ALL_ADMIN_PERMISSIONS);
@@ -1199,6 +1201,10 @@ CREATE TABLE IF NOT EXISTS billing_products (
     points_amount numeric(18, 2) NOT NULL DEFAULT 0,
     daily_points numeric(18, 2) NOT NULL DEFAULT 0,
     period_days integer NOT NULL DEFAULT 30,
+    storage_bytes bigint NOT NULL DEFAULT 0,
+    storage_stackable boolean NOT NULL DEFAULT true,
+    storage_renewable boolean NOT NULL DEFAULT true,
+    storage_purchase_limit integer NOT NULL DEFAULT 0,
     enabled boolean NOT NULL DEFAULT true,
     sort_order integer NOT NULL DEFAULT 0,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -1207,7 +1213,9 @@ CREATE TABLE IF NOT EXISTS billing_products (
     CONSTRAINT billing_products_amount CHECK (amount_cents >= 0),
     CONSTRAINT billing_products_points CHECK (points_amount >= 0),
     CONSTRAINT billing_products_daily_points CHECK (daily_points >= 0),
-    CONSTRAINT billing_products_kind CHECK (product_kind IN ('plan', 'points')),
+    CONSTRAINT billing_products_kind CHECK (product_kind IN ('plan', 'points', 'storage')),
+    CONSTRAINT billing_products_storage_bytes CHECK (storage_bytes >= 0),
+    CONSTRAINT billing_products_storage_purchase_limit CHECK (storage_purchase_limit >= 0),
     CONSTRAINT billing_products_period_days CHECK (period_days >= 0)
 );
 
@@ -1216,9 +1224,17 @@ CREATE INDEX IF NOT EXISTS billing_products_enabled_idx ON billing_products (ena
 
 ALTER TABLE billing_products ADD COLUMN IF NOT EXISTS product_kind text NOT NULL DEFAULT 'plan';
 ALTER TABLE billing_products ADD COLUMN IF NOT EXISTS daily_points numeric(18, 2) NOT NULL DEFAULT 0;
+ALTER TABLE billing_products ADD COLUMN IF NOT EXISTS storage_bytes bigint NOT NULL DEFAULT 0;
+ALTER TABLE billing_products ADD COLUMN IF NOT EXISTS storage_stackable boolean NOT NULL DEFAULT true;
+ALTER TABLE billing_products ADD COLUMN IF NOT EXISTS storage_renewable boolean NOT NULL DEFAULT true;
+ALTER TABLE billing_products ADD COLUMN IF NOT EXISTS storage_purchase_limit integer NOT NULL DEFAULT 0;
+ALTER TABLE billing_products DROP CONSTRAINT IF EXISTS billing_products_storage_bytes;
+ALTER TABLE billing_products ADD CONSTRAINT billing_products_storage_bytes CHECK (storage_bytes >= 0);
+ALTER TABLE billing_products DROP CONSTRAINT IF EXISTS billing_products_storage_purchase_limit;
+ALTER TABLE billing_products ADD CONSTRAINT billing_products_storage_purchase_limit CHECK (storage_purchase_limit >= 0);
 ALTER TABLE billing_products ALTER COLUMN plan_id DROP NOT NULL;
 ALTER TABLE billing_products DROP CONSTRAINT IF EXISTS billing_products_kind;
-ALTER TABLE billing_products ADD CONSTRAINT billing_products_kind CHECK (product_kind IN ('plan', 'points'));
+ALTER TABLE billing_products ADD CONSTRAINT billing_products_kind CHECK (product_kind IN ('plan', 'points', 'storage'));
 ALTER TABLE billing_products DROP CONSTRAINT IF EXISTS billing_products_daily_points;
 ALTER TABLE billing_products ADD CONSTRAINT billing_products_daily_points CHECK (daily_points >= 0);
 
@@ -1253,6 +1269,8 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 ${POSTGRESQL_COMMERCIAL_FEATURES_SCHEMA_SQL}
+${POSTGRESQL_CLOUD_STORAGE_SCHEMA_SQL}
+${POSTGRESQL_DESKTOP_DEVICE_SCHEMA_SQL}
 
 CREATE TABLE IF NOT EXISTS billing_reconciliation_runs (
     id text PRIMARY KEY,

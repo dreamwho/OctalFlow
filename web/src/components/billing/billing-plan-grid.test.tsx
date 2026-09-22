@@ -15,6 +15,16 @@ describe("BillingPlanGrid", () => {
         expect(markup).toContain("lg:grid-cols-4");
         expect(markup).toContain('data-billing-plan-density="compact"');
     });
+
+    it("shows a storage package as cloud capacity rather than creative credits", () => {
+        const storage = { ...product(1), id: "storage-10", productKind: "storage" as const, planId: undefined, pointsAmount: 0, dailyPoints: 0, storageBytes: 10 * 1_073_741_824 };
+        const markup = renderToStaticMarkup(<BillingPlanGrid products={[storage]} onSelect={vi.fn()} />);
+
+        expect(markup).toContain("10 GiB");
+        expect(markup).toContain("购买空间");
+        expect(markup).toContain("云存储空间");
+        expect(markup).not.toContain("创作积分");
+    });
 });
 
 function product(index: number): BillingProduct {

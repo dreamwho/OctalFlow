@@ -24,7 +24,7 @@ export type PublicSiteSettings = {
 
 type PublicSessionPayload = {
     user?: LocalUser | null;
-    desktop?: { edition: "commercial" | "admin"; requiresLogin: boolean; cloudFeatures: boolean; localProviders: boolean; localProviderBilling: "free"; localData: boolean; cloudSync: boolean; implementationStage: "foundation" } | null;
+    desktop?: { edition: "commercial" | "admin"; requiresLogin: boolean; cloudFeatures: boolean; localProviders: boolean; localProviderBilling: "free"; localData: boolean; cloudSync: boolean; cloudProjectBackups: boolean; implementationStage: "foundation" } | null;
     install?: { firstAdminRequired?: boolean; database?: { healthy?: boolean } };
     settings?: PublicSystemSettings & { site?: PublicSiteSettings };
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "antd";
-import { ArrowUpRight, Check } from "lucide-react";
+import { ArrowUpRight, Check, HardDrive } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { CreditSymbol, formatCreditAmount } from "@/constant/credits";
@@ -88,6 +88,7 @@ function PlanCard({ product, index, recommended, variant, onSelect }: { product:
     const pricing = productPricing(product);
     const promotion = pricing.discountCents > 0 ? pricing.promotion : undefined;
     const isPointsProduct = product.productKind === "points";
+    const isStorageProduct = product.productKind === "storage";
     const features = featureLines(product, metadata.features).slice(0, 4);
     return (
         <article
@@ -97,7 +98,7 @@ function PlanCard({ product, index, recommended, variant, onSelect }: { product:
             }`}
         >
             <div className="relative flex min-h-7 items-center justify-between gap-3">
-                <span className="text-[10px] font-semibold tracking-[0.14em] text-stone-400 sm:text-[11px] sm:tracking-[0.16em] dark:text-stone-500">dreamyo PASS · {String(index + 1).padStart(2, "0")}</span>
+                <span className="text-[10px] font-semibold tracking-[0.14em] text-stone-400 sm:text-[11px] sm:tracking-[0.16em] dark:text-stone-500">{isStorageProduct ? "dreamyo CLOUD" : "dreamyo PASS"} · {String(index + 1).padStart(2, "0")}</span>
                 {promotion ? (
                     <span className="rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 sm:px-3 sm:py-1 sm:text-[11px] dark:border-rose-900/60 dark:bg-rose-950/35 dark:text-rose-200">{promotion.label}</span>
                 ) : recommended ? (
@@ -120,7 +121,7 @@ function PlanCard({ product, index, recommended, variant, onSelect }: { product:
                 </div>
                 <Button type="primary" data-billing-plan-action className="profile-primary-button !h-10 w-full shrink-0 !rounded-xl px-5 text-sm sm:w-auto sm:min-w-28" onClick={() => onSelect(product)}>
                     <span className="inline-flex items-center gap-2">
-                        {isPointsProduct ? "立即充值" : "购买套餐"} <ArrowUpRight className="size-4" />
+                        {isPointsProduct ? "立即充值" : isStorageProduct ? "购买空间" : "购买套餐"} <ArrowUpRight className="size-4" />
                     </span>
                 </Button>
             </div>
@@ -139,10 +140,10 @@ function PlanCard({ product, index, recommended, variant, onSelect }: { product:
             <ul className="relative mt-4 flex-1 space-y-2.5 border-t border-stone-200 pt-4 sm:mt-5 sm:pt-5 dark:border-stone-800">
                 <li className="flex gap-2 text-xs leading-5 text-stone-600 dark:text-stone-300 sm:gap-2.5 sm:text-sm">
                     <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-[#eef2f7] text-[#66758e] dark:bg-[#66758e]/15 dark:text-[#d8dee8]">
-                        <CreditSymbol className="text-[10px]" />
+                        {isStorageProduct ? <HardDrive className="size-3" /> : <CreditSymbol className="text-[10px]" />}
                     </span>
                     <span>
-                        <strong className="font-semibold text-stone-950 dark:text-white">{formatCreditAmount(product.pointsAmount)}</strong> {isPointsProduct ? "永久积分" : "创作积分"}
+                        <strong className="font-semibold text-stone-950 dark:text-white">{isStorageProduct ? formatStorageGiB(product.storageBytes) : formatCreditAmount(product.pointsAmount)}</strong> {isStorageProduct ? "云存储空间" : isPointsProduct ? "永久积分" : "创作积分"}
                     </span>
                 </li>
                 {features.map((line) => (
@@ -163,6 +164,7 @@ function CompactPlanCard({ product, recommended, onSelect }: { product: BillingP
     const pricing = productPricing(product);
     const promotion = pricing.discountCents > 0 ? pricing.promotion : undefined;
     const isPointsProduct = product.productKind === "points";
+    const isStorageProduct = product.productKind === "storage";
     const features = featureLines(product, metadata.features).slice(0, 2);
     return (
         <article
@@ -199,11 +201,8 @@ function CompactPlanCard({ product, recommended, onSelect }: { product: BillingP
                     ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 text-xs text-stone-600 dark:text-stone-300">
-                    <span className="grid size-5 place-items-center rounded-md bg-[#eef2f7] text-[#66758e] dark:bg-[#66758e]/15 dark:text-[#d8dee8]">
-                        <CreditSymbol className="text-[11px]" />
-                    </span>
-                    <span className="whitespace-nowrap font-semibold text-stone-950 dark:text-white">{formatCreditAmount(product.pointsAmount)}</span>
-                    <span className="hidden text-stone-500 lg:inline dark:text-stone-400">积分</span>
+                    <span className="whitespace-nowrap font-semibold text-stone-950 dark:text-white">{isStorageProduct ? formatStorageGiB(product.storageBytes) : formatCreditAmount(product.pointsAmount)}</span>
+                    <span className="hidden text-stone-500 lg:inline dark:text-stone-400">{isStorageProduct ? "云存储" : "积分"}</span>
                 </div>
             </div>
 
@@ -252,7 +251,17 @@ function productMetadata(product: BillingProduct) {
 function featureLines(product: BillingProduct, configured: string[]) {
     if (configured.length) return configured;
     if (product.productKind === "points") return ["支付成功后一次性到账", "永久积分不会按日过期", "订单与积分流水可查"];
+    if (product.productKind === "storage") return [
+        "云端项目备份与素材空间",
+        product.storageStackable === false ? product.storageRenewable === false ? "同款套餐不可叠加或续费" : "续费容量从当前同款套餐到期后生效" : "同款套餐容量可叠加",
+        product.storageRenewable === false ? "此商品仅支持一次有效购买" : "支持再次购买或续费",
+        product.storagePurchaseLimit ? `每人最多购买 ${product.storagePurchaseLimit} 份` : "套餐到期不会删除已存文件",
+    ];
     return ["图片、视频、音频与 Agent 创作", "适用于个人创作与商业项目交付", "订单、套餐和积分流水统一管理", product.periodDays ? `${product.periodDays} 天完整套餐权益` : "长期有效套餐权益"];
+}
+
+function formatStorageGiB(bytes: number | undefined) {
+    return `${((bytes || 0) / 1_073_741_824).toLocaleString("zh-CN")} GiB`;
 }
 
 function periodLabel(periodDays: number) {

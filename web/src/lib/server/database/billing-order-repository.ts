@@ -7,16 +7,27 @@ export const BILLING_ORDER_NOTIFY_CHANNEL = "dreamyo_billing_order_events";
 export class BillingOrderRepository {
     constructor(private readonly db: QueryExecutor) {}
 
+    async getStoragePurchaseCounts(userId: string, productId: string) {
+        const result = await this.db.query<{ orders: string; pending_orders: string; units: string }>(
+            `SELECT count(*) FILTER (WHERE status IN ('pending', 'paid', 'refunding')) AS orders,
+                    count(*) FILTER (WHERE status = 'pending') AS pending_orders,
+                    coalesce(sum(quantity) FILTER (WHERE status IN ('pending', 'paid', 'refunding')), 0) AS units
+             FROM billing_orders WHERE user_id = $1 AND product_id = $2`,
+            [userId, productId],
+        );
+        return { orders: Number(result.rows[0]?.orders || 0), pendingOrders: Number(result.rows[0]?.pending_orders || 0), units: Number(result.rows[0]?.units || 0) };
+    }
+
     async createOrder(order: BillingOrderRecord) {
         const result = await this.db.query(
             `
             INSERT INTO billing_orders (
                 id, order_no, product_id, user_id, product_kind, plan_id, status, subject, list_amount_cents,
                 promotion_discount_cents, coupon_discount_cents, amount_cents, currency, points_amount, daily_points,
-                period_days, quantity, provider, provider_order_id, provider_payment_id, promotion_campaign_id,
+                period_days, storage_bytes, storage_stackable, storage_renewable, storage_purchase_limit, quantity, provider, provider_order_id, provider_payment_id, promotion_campaign_id,
                 user_coupon_id, expires_at, paid_at, closed_at, pricing_snapshot, metadata, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
             RETURNING *
             `,
             [
@@ -36,6 +47,10 @@ export class BillingOrderRepository {
                 order.pointsAmount,
                 order.dailyPoints,
                 order.periodDays,
+                order.storageBytes || 0,
+                order.storageStackable !== false,
+                order.storageRenewable !== false,
+                order.storagePurchaseLimit || 0,
                 order.quantity,
                 order.provider,
                 order.providerOrderId || null,

@@ -5,11 +5,13 @@ import { AppProviders } from "@/components/layout/app-providers";
 import { themeStorageKey } from "@/lib/theme-scope";
 import { absoluteSiteUrl, browserIconHref, getPublicSiteSettings, siteMetadataBase } from "@/lib/server/site-metadata";
 import { buildWebsiteStructuredData, serializeStructuredData } from "@/lib/structured-data";
+import { getDesktopEdition } from "@/lib/server/desktop-runtime";
 import "antd/dist/reset.css";
 import "./globals.css";
 import React from "react";
 
 const themeBootstrapScript = `try{const key=location.pathname.startsWith("/admin")?${JSON.stringify(themeStorageKey("admin"))}:${JSON.stringify(themeStorageKey("frontend"))};const value=JSON.parse(localStorage.getItem(key)||"{}");const theme=value?.state?.theme==="dark"?"dark":"light";document.documentElement.classList.toggle("dark",theme==="dark");document.documentElement.style.colorScheme=theme}catch{}`;
+const desktopThemeBootstrapScript = `try{const value=JSON.parse(localStorage.getItem(${JSON.stringify(themeStorageKey("frontend"))})||"{}");const theme=value?.state?.theme==="light"?"light":"dark";document.documentElement.classList.toggle("dark",theme==="dark");document.documentElement.style.colorScheme=theme}catch{}`;
 
 export const viewport: Viewport = {
     width: "device-width",
@@ -62,6 +64,7 @@ export default async function RootLayout({
     const base = siteMetadataBase();
     const iconHref = browserIconHref(site);
     const websiteUrl = absoluteSiteUrl("/", base);
+    const desktopEdition = getDesktopEdition();
     const websiteStructuredData = buildWebsiteStructuredData({
         name: site.title,
         description: site.seoDescription,
@@ -72,7 +75,7 @@ export default async function RootLayout({
     return (
         <html lang="zh-CN" suppressHydrationWarning className="font-sans">
             <head>
-                <script id="theme-bootstrap" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+                <script id="theme-bootstrap" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: desktopEdition === "admin" ? desktopThemeBootstrapScript : themeBootstrapScript }} />
                 <link rel="icon" href={iconHref} />
                 <link rel="shortcut icon" href={iconHref} />
                 <link rel="apple-touch-icon" href={iconHref} />
@@ -85,7 +88,7 @@ export default async function RootLayout({
             >
                 <script id="website-json-ld" nonce={nonce} suppressHydrationWarning type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(websiteStructuredData) }} />
                 <AntdRegistry>
-                    <AppProviders>{children}</AppProviders>
+                    <AppProviders initialDesktopEdition={desktopEdition} desktopPlatform={desktopEdition ? process.platform : undefined}>{children}</AppProviders>
                 </AntdRegistry>
             </body>
         </html>

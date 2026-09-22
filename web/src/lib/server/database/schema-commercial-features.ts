@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS billing_orders (
     points_amount numeric(18, 2) NOT NULL DEFAULT 0,
     daily_points numeric(18, 2) NOT NULL DEFAULT 0,
     period_days integer NOT NULL DEFAULT 0,
+    storage_bytes bigint NOT NULL DEFAULT 0,
+    storage_stackable boolean NOT NULL DEFAULT true,
+    storage_renewable boolean NOT NULL DEFAULT true,
+    storage_purchase_limit integer NOT NULL DEFAULT 0,
     quantity integer NOT NULL DEFAULT 1,
     provider text NOT NULL DEFAULT '',
     provider_order_id text,
@@ -92,7 +96,9 @@ CREATE TABLE IF NOT EXISTS billing_orders (
     CONSTRAINT billing_orders_status CHECK (status IN ('pending', 'paid', 'closed', 'canceled', 'refunding', 'refunded')),
     CONSTRAINT billing_orders_amount CHECK (amount_cents >= 0),
     CONSTRAINT billing_orders_daily_points CHECK (daily_points >= 0),
-    CONSTRAINT billing_orders_kind CHECK (product_kind IN ('plan', 'points')),
+    CONSTRAINT billing_orders_kind CHECK (product_kind IN ('plan', 'points', 'storage')),
+    CONSTRAINT billing_orders_storage_bytes CHECK (storage_bytes >= 0),
+    CONSTRAINT billing_orders_storage_purchase_limit CHECK (storage_purchase_limit >= 0),
     CONSTRAINT billing_orders_period_days CHECK (period_days >= 0),
     CONSTRAINT billing_orders_quantity CHECK (quantity >= 1)
 );
@@ -107,11 +113,19 @@ CREATE INDEX IF NOT EXISTS billing_orders_provider_payment_idx ON billing_orders
 ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS product_id text REFERENCES billing_products(id);
 ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS product_kind text NOT NULL DEFAULT 'plan';
 ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS daily_points numeric(18, 2) NOT NULL DEFAULT 0;
+ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS storage_bytes bigint NOT NULL DEFAULT 0;
+ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS storage_stackable boolean NOT NULL DEFAULT true;
+ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS storage_renewable boolean NOT NULL DEFAULT true;
+ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS storage_purchase_limit integer NOT NULL DEFAULT 0;
+ALTER TABLE billing_orders DROP CONSTRAINT IF EXISTS billing_orders_storage_bytes;
+ALTER TABLE billing_orders ADD CONSTRAINT billing_orders_storage_bytes CHECK (storage_bytes >= 0);
+ALTER TABLE billing_orders DROP CONSTRAINT IF EXISTS billing_orders_storage_purchase_limit;
+ALTER TABLE billing_orders ADD CONSTRAINT billing_orders_storage_purchase_limit CHECK (storage_purchase_limit >= 0);
 ALTER TABLE billing_orders ALTER COLUMN plan_id DROP NOT NULL;
 ALTER TABLE billing_orders DROP CONSTRAINT IF EXISTS billing_orders_status;
 ALTER TABLE billing_orders ADD CONSTRAINT billing_orders_status CHECK (status IN ('pending', 'paid', 'closed', 'canceled', 'refunding', 'refunded'));
 ALTER TABLE billing_orders DROP CONSTRAINT IF EXISTS billing_orders_kind;
-ALTER TABLE billing_orders ADD CONSTRAINT billing_orders_kind CHECK (product_kind IN ('plan', 'points'));
+ALTER TABLE billing_orders ADD CONSTRAINT billing_orders_kind CHECK (product_kind IN ('plan', 'points', 'storage'));
 ALTER TABLE billing_orders DROP CONSTRAINT IF EXISTS billing_orders_daily_points;
 ALTER TABLE billing_orders ADD CONSTRAINT billing_orders_daily_points CHECK (daily_points >= 0);
 CREATE INDEX IF NOT EXISTS billing_orders_product_idx ON billing_orders (product_id, created_at DESC);

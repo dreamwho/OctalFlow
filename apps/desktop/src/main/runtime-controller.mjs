@@ -1,17 +1,19 @@
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
 import { prepareDesktopMagicProxy } from "./magic-proxy-runtime.mjs";
 
-export async function startDesktopRuntime({ app, edition }) {
+export async function startDesktopRuntime({ app, edition, safeStorage }) {
     const runtimeRoot = app.isPackaged ? path.join(process.resourcesPath, "runtime") : path.resolve(import.meta.dirname, "../../../..");
+    const distDir = app.isPackaged ? JSON.parse(await readFile(path.join(runtimeRoot, "manifest.json"), "utf8")).distDir : process.env.NEXT_DIST_DIR?.trim() || ".next";
     const webRoot = path.join(runtimeRoot, "web");
     const entry = path.join(webRoot, "scripts", "start-standalone.mjs");
     const dataRoot = path.join(app.getPath("userData"), "data");
-    const secrets = await readOrCreateRuntimeSecrets(path.join(app.getPath("userData"), "runtime-secrets.json"));
+    const secrets = await readOrCreateRuntimeSecrets(path.join(app.getPath("userData"), "runtime-secrets.bin"), safeStorage);
+    const mainToken = randomBytes(32).toString("base64url");
     const port = await availableLoopbackPort();
     const [geminiPort, dolaPort, chatGptPort, controllerPort, proxyGeminiPort, proxyToolsPort, proxyChatPort, proxyDolaPort] = await Promise.all(Array.from({ length: 8 }, () => availableLoopbackPort()));
     const origin = `http://127.0.0.1:${port}`;
@@ -26,6 +28,7 @@ export async function startDesktopRuntime({ app, edition }) {
         ELECTRON_RUN_AS_NODE: "1",
         PORT: String(port),
         HOSTNAME: "127.0.0.1",
+        NEXT_DIST_DIR: distDir,
         DREAMYO_INTERNAL_ORIGIN: origin,
         DREAMYO_WORKER_API_ORIGIN: origin,
         DREAMYO_DATABASE_PROVIDER: "file",
@@ -43,8 +46,9 @@ export async function startDesktopRuntime({ app, edition }) {
         DREAMYO_INSTALL_TOKEN: secrets.installToken,
         DREAMYO_DESKTOP_ADMIN_PASSWORD: secrets.adminPassword,
         DREAMYO_DESKTOP_SESSION_TOKEN: secrets.sessionToken,
+        DREAMYO_DESKTOP_MAIN_TOKEN: mainToken,
         DREAMYO_DESKTOP_EDITION: edition.id,
-        DREAMYO_DESKTOP_CLOUD_ORIGIN: process.env.DREAMYO_DESKTOP_CLOUD_ORIGIN?.trim() || "",
+        DREAMYO_DESKTOP_CLOUD_ORIGIN: edition.id === "commercial" ? (edition.cloudOrigin || process.env.DREAMYO_DESKTOP_CLOUD_ORIGIN?.trim() || "") : "",
         DREAMYO_COOKIE_SECURE: "0",
         ...(magicProxy ? { ...magicProxy.environment, DREAMYO_DESKTOP_MIHOMO_EXECUTABLE: magicProxy.service.command, DREAMYO_DESKTOP_MIHOMO_HOME: magicProxy.service.cwd,
             FFMPEG_PATH: path.join(runtimeRoot, "sidecars", executableName("ffmpeg")),
@@ -54,6 +58,10 @@ export async function startDesktopRuntime({ app, edition }) {
         } : {}),
         ...(app.isPackaged ? {
             DREAMYO_DESKTOP_PACKAGED: "1",
+            DREAMYO_DOLA_API_ENABLED: "1",
+            DREAMYO_CHATGPT_API_ENABLED: "1",
+            DOLA_ENABLE_BROWSER: "1",
+            DOLA_BROWSER_ENGINE: "camoufox",
             DREAMYO_GEMINIAI_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("geminiai")),
             DREAMYO_DOLA_PROVIDER_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("dola-api")),
             DREAMYO_CHATGPT_API_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("chatgpt-api")),
@@ -68,38 +76,54 @@ export async function startDesktopRuntime({ app, edition }) {
     child.stdout.on("data", (chunk) => process.stdout.write(`[web] ${chunk}`));
     child.stderr.on("data", (chunk) => process.stderr.write(`[web] ${chunk}`));
 
-    const ready = waitForRuntime(origin, child);
+    const ready = waitForRuntime(origin, child, app.isPackaged ? [
+        { name: "GeminiAIStudio", url: `http://127.0.0.1:${geminiPort}/health`, status: 200 },
+        { name: "Dola API", url: `http://127.0.0.1:${dolaPort}/health`, status: 200 },
+        { name: "GPTAPI", url: `http://127.0.0.1:${chatGptPort}/integration/health`, status: 401 },
+    ] : []);
     return {
         origin,
         sessionToken: secrets.sessionToken,
+        mainToken,
         ready,
         stop: () => stopChild(child),
     };
 }
 
-async function readOrCreateRuntimeSecrets(file) {
+export async function readOrCreateRuntimeSecrets(file, safeStorage) {
+    if (!safeStorage?.isEncryptionAvailable()) throw new Error("系统安全存储不可用，无法保护桌面 Runtime 凭据");
+    const legacyFile = file.replace(/\.bin$/, ".json");
     try {
-        const value = JSON.parse(await readFile(file, "utf8"));
-        if ([value.encryptionKey, value.installToken, value.adminPassword].every((item) => typeof item === "string" && item.length >= 32)) {
-            if (value.sessionToken) {
-                delete value.sessionToken;
-                await writeFile(file, `${JSON.stringify(value)}\n`, { encoding: "utf8", mode: 0o600 });
-            }
-            return { ...value, sessionToken: randomBytes(32).toString("base64url") };
-        }
-        throw new Error("Desktop runtime secrets file is invalid; refusing to replace the encryption key");
+        const value = validRuntimeSecrets(JSON.parse(safeStorage.decryptString(await readFile(file))));
+        await rm(legacyFile, { force: true });
+        return { ...value, sessionToken: randomBytes(32).toString("base64url") };
     } catch (error) {
         if (error?.code !== "ENOENT") throw error;
     }
-    const value = {
+    let value;
+    try { value = validRuntimeSecrets(JSON.parse(await readFile(legacyFile, "utf8"))); }
+    catch (error) { if (error?.code !== "ENOENT") throw error; }
+    value ||= {
         encryptionKey: randomBytes(32).toString("hex"),
         installToken: randomBytes(32).toString("base64url"),
         adminPassword: randomBytes(32).toString("base64url"),
     };
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, `${JSON.stringify(value)}\n`, { encoding: "utf8", mode: 0o600 });
-    if (process.platform !== "win32") await chmod(file, 0o600);
+    const temporaryFile = `${file}.${randomBytes(8).toString("hex")}.tmp`;
+    try {
+        await writeFile(temporaryFile, safeStorage.encryptString(JSON.stringify(value)), { mode: 0o600, flag: "wx" });
+        if (process.platform !== "win32") await chmod(temporaryFile, 0o600);
+        await rename(temporaryFile, file);
+    } finally { await rm(temporaryFile, { force: true }); }
+    await rm(legacyFile, { force: true });
     return { ...value, sessionToken: randomBytes(32).toString("base64url") };
+}
+
+function validRuntimeSecrets(value) {
+    if (!value || [value.encryptionKey, value.installToken, value.adminPassword].some((item) => typeof item !== "string" || item.length < 32)) {
+        throw new Error("Desktop runtime secrets file is invalid; refusing to replace the encryption key");
+    }
+    return { encryptionKey: value.encryptionKey, installToken: value.installToken, adminPassword: value.adminPassword };
 }
 
 async function availableLoopbackPort() {
@@ -115,26 +139,30 @@ async function availableLoopbackPort() {
     });
 }
 
-async function waitForRuntime(origin, child) {
+export async function waitForRuntime(origin, child, providers = []) {
+    const pending = new Set([{ name: "Web", url: `${origin}/api/desktop/runtime`, status: 200 }, ...providers]);
     let delay = 100;
-    while (child.exitCode === null) {
-        try {
-            const response = await fetch(`${origin}/api/desktop/runtime`, { signal: AbortSignal.timeout(2_000) });
-            if (response.ok) return;
-        } catch {}
+    while (child.exitCode === null && child.signalCode === null) {
+        await Promise.all([...pending].map(async (target) => {
+            try {
+                const response = await fetch(target.url, { signal: AbortSignal.timeout(2_000) });
+                if (response.status === target.status) pending.delete(target);
+            } catch {}
+        }));
+        if (!pending.size) return;
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay = Math.min(1_000, Math.ceil(delay * 1.5));
     }
-    throw new Error(`Desktop web runtime exited before it became ready (code ${child.exitCode})`);
+    throw new Error(`Desktop runtime exited before ${[...pending].map((item) => item.name).join("、")} became ready (code ${child.exitCode ?? child.signalCode})`);
 }
 
 function stopChild(child) {
-    if (child.exitCode !== null || child.killed) return;
-    if (process.platform === "win32") {
-        execFile("taskkill", ["/PID", String(child.pid), "/T", "/F"], () => undefined);
-        return;
-    }
-    child.kill("SIGTERM");
+    if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+    return new Promise((resolve) => {
+        child.once("close", resolve);
+        if (process.platform === "win32") execFile("taskkill", ["/PID", String(child.pid), "/T", "/F"], () => undefined);
+        else child.kill("SIGTERM");
+    });
 }
 
 function executableName(name) {

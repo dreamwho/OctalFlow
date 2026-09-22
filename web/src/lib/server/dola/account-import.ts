@@ -35,8 +35,8 @@ export function splitDolaCookieFile(text: string, sourceFileName?: string) {
         .map(({ line, ordinal }) => ({ cookie: line, sourceFileName, sourceOrdinal: ordinal }));
 }
 
-export function parseDolaImportInputs(inputs: Array<{ cookie: unknown; name?: unknown; email?: unknown; authType?: unknown; sourceFileName?: unknown; sourceOrdinal?: unknown }>) {
-    const results: Array<{ cookie: string; fingerprint: string; name?: string; email?: string; authType?: "cookie" | "google"; sourceFileName?: string; sourceOrdinal?: number; error?: string }> = [];
+export function parseDolaImportInputs(inputs: Array<{ cookie: unknown; name?: unknown; email?: unknown; authType?: unknown; group?: unknown; sourceFileName?: unknown; sourceOrdinal?: unknown }>) {
+    const results: Array<{ cookie: string; fingerprint: string; name?: string; email?: string; authType?: "cookie" | "google"; group?: string; sourceFileName?: string; sourceOrdinal?: number; error?: string }> = [];
     for (const input of inputs) {
         try {
             const parsed = parseDolaCookieHeader(input.cookie);
@@ -46,6 +46,7 @@ export function parseDolaImportInputs(inputs: Array<{ cookie: unknown; name?: un
                 ...(typeof input.name === "string" && input.name.trim() ? { name: input.name.trim().slice(0, 120) } : {}),
                 ...(typeof input.email === "string" && input.email.trim() ? { email: input.email.trim().slice(0, 320) } : {}),
                 ...(input.authType === "google" ? { authType: "google" as const } : { authType: "cookie" as const }),
+                group: typeof input.group === "string" ? input.group.trim().slice(0, 60) : "",
                 ...(typeof input.sourceFileName === "string" && input.sourceFileName.trim() ? { sourceFileName: input.sourceFileName.trim().slice(0, 255) } : {}),
                 ...(Number.isSafeInteger(input.sourceOrdinal) && Number(input.sourceOrdinal) > 0 ? { sourceOrdinal: Number(input.sourceOrdinal) } : {}),
             });

@@ -39,6 +39,7 @@ export function BillingCheckoutPage({ productId }: { productId: string }) {
     const quoteRequest = useRef(0);
     const availableProviders = useMemo(() => providers.filter((item) => paymentProviders.includes(item.value)), [paymentProviders]);
     const selectedCoupon = useMemo(() => coupons.find((coupon) => coupon.id === selectedCouponId), [coupons, selectedCouponId]);
+    const maxQuantity = product?.productKind === "storage" ? product.storageStackable === false ? 1 : Math.min(100, product.storagePurchaseLimit || 100) : 24;
 
     const loadCoupons = useCallback(async () => {
         setCouponsLoading(true);
@@ -63,6 +64,7 @@ export function BillingCheckoutPage({ productId }: { productId: string }) {
                 const nextProduct = payload.products.find((item) => item.id === productId) || null;
                 const nextProviders = payload.paymentProviders?.length ? payload.paymentProviders : ["manual"];
                 setProduct(nextProduct);
+                setQuantity(1);
                 setPaymentProviders(nextProviders);
                 setProvider(nextProviders[0] || "manual");
             })
@@ -217,13 +219,13 @@ export function BillingCheckoutPage({ productId }: { productId: string }) {
                                 {pricing.promotionDiscountCents > 0 ? <SummaryRow label={pricing.promotion?.label || "活动优惠"} value={`- ¥ ${formatYuan(pricing.promotionDiscountCents)}`} /> : null}
                                 {pricing.couponDiscountCents > 0 ? <SummaryRow label="优惠券" value={`- ¥ ${formatYuan(pricing.couponDiscountCents)}`} /> : null}
                                 <SummaryRow label="应付金额" value={`¥ ${formatYuan(pricing.payableAmountCents)}`} />
-                                <SummaryRow label={product.productKind === "points" ? "充值积分" : "创作积分"} value={`${formatCreditAmount(product.pointsAmount * quantity)} 积分`} icon={<CreditSymbol />} />
-                                <SummaryRow label="权益周期" value={product.productKind === "points" ? "一次性到账" : product.periodDays ? `${product.periodDays * quantity} 天` : "长期有效"} />
+                                {product.productKind === "storage" ? <SummaryRow label="云存储容量" value={`${(((product.storageBytes || 0) * quantity) / 1_073_741_824).toLocaleString("zh-CN")} GiB`} /> : <SummaryRow label={product.productKind === "points" ? "充值积分" : "创作积分"} value={`${formatCreditAmount(product.pointsAmount * quantity)} 积分`} icon={<CreditSymbol />} />}
+                                <SummaryRow label="权益周期" value={product.productKind === "points" ? "一次性到账" : product.periodDays ? `${product.periodDays * (product.productKind === "plan" ? quantity : 1)} 天` : "长期有效"} />
                             </div>
 
                             <div className="mt-6 flex items-start gap-2 text-xs leading-5 text-stone-400 dark:text-stone-600">
                                 <ReceiptText className="mt-0.5 size-4 shrink-0 text-[#b8c4d6] dark:text-[#66758e]" />
-                                订单创建后可在个人中心查看状态；支付成功后套餐与积分自动更新。
+                                订单创建后可在个人中心查看状态；支付成功后对应权益自动更新。
                             </div>
                         </div>
                     </section>
@@ -332,7 +334,7 @@ export function BillingCheckoutPage({ productId }: { productId: string }) {
                                     <label className="flex items-center justify-between gap-5">
                                         <span className="min-w-0">
                                             <span className="block text-sm font-semibold">购买数量</span>
-                                            <span className="mt-1 block text-xs text-stone-500 dark:text-stone-400">积分和权益按数量累计</span>
+                                            <span className="mt-1 block text-xs text-stone-500 dark:text-stone-400">{product.productKind === "storage" ? product.storageStackable === false ? "此套餐每单只能购买一份" : "云存储容量按数量叠加" : "积分和权益按数量累计"}</span>
                                         </span>
                                         <div className="grid h-9 shrink-0 grid-cols-[2rem_2.5rem_2rem] overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-950">
                                             <button
@@ -353,8 +355,8 @@ export function BillingCheckoutPage({ productId }: { productId: string }) {
                                                 className="grid place-items-center text-stone-500 transition hover:bg-stone-100 hover:text-stone-950 disabled:cursor-not-allowed disabled:opacity-35 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-white"
                                                 aria-label="增加购买数量"
                                                 title="增加数量"
-                                                disabled={quantity >= 24}
-                                                onClick={() => setQuantity((current) => Math.min(24, current + 1))}
+                                                disabled={quantity >= maxQuantity}
+                                                onClick={() => setQuantity((current) => Math.min(maxQuantity, current + 1))}
                                             >
                                                 <Plus className="size-3.5" />
                                             </button>

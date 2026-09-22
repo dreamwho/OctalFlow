@@ -26,9 +26,10 @@ type UserStatusActionsProps = {
     themeScope?: ThemeScope;
     onOpenShortcuts?: () => void;
     initialUser?: LocalUser;
+    initialDesktopEdition?: "commercial" | "admin" | null;
 };
 
-export function UserStatusActions({ variant = "default", themeScope = "frontend", onOpenShortcuts, initialUser }: UserStatusActionsProps) {
+export function UserStatusActions({ variant = "default", themeScope = "frontend", onOpenShortcuts, initialUser, initialDesktopEdition }: UserStatusActionsProps) {
     const router = useRouter();
     const { message } = App.useApp();
     const [pointsOpen, setPointsOpen] = useState(false);
@@ -37,7 +38,8 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
     const [plansOpen, setPlansOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
     const storeUser = useUserStore((state) => state.user);
-    const desktopEdition = usePublicSessionStore((state) => state.payload?.desktop?.edition);
+    const sessionDesktopEdition = usePublicSessionStore((state) => state.payload?.desktop?.edition);
+    const desktopEdition = initialDesktopEdition || sessionDesktopEdition;
     const user = storeUser || initialUser || null;
     const frontendTheme = useThemeStore((state) => state.theme);
     const setFrontendTheme = useThemeStore((state) => state.setTheme);
@@ -236,7 +238,7 @@ export function UserStatusActions({ variant = "default", themeScope = "frontend"
     if (desktopEdition === "admin") return (
         <div className="inline-flex items-center gap-2">
             <span className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-800 dark:border-sky-700/50 dark:bg-sky-900/25 dark:text-sky-200">本地模式 · 无积分消耗</span>
-            <Link href="/admin?section=channels" className={cn(defaultControlClass, "gap-1.5 px-2.5 text-xs")}><Settings className="size-4" />上游配置</Link>
+            <Link href="/admin?section=channels" aria-label="打开应用设置" className={cn(variant === "canvas" ? canvasControlClass : defaultControlClass, "gap-1.5 px-2.5 text-xs")} style={iconStyle}><Settings className="size-4" />设置</Link>
         </div>
     );
 

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AuthUserHydrator } from "@/components/auth/auth-user-hydrator";
 import { AppWorkspaceShell } from "@/components/layout/app-workspace-shell";
 import { getAuthenticatedPageAccess } from "@/lib/server/page-access";
+import { getDesktopEdition } from "@/lib/server/desktop-runtime";
 
 export const metadata: Metadata = {
     robots: { index: false, follow: false, noarchive: true, noimageindex: true, nosnippet: true },
@@ -41,7 +42,7 @@ export default async function UserLayout({ children }: { children: ReactNode }) 
                 mfaEnabled: user.mfaEnabled,
             }}
         >
-            <AppWorkspaceShell>{children}</AppWorkspaceShell>
+            <AppWorkspaceShell initialDesktopEdition={getDesktopEdition()}>{children}</AppWorkspaceShell>
         </AuthUserHydrator>
     );
 }

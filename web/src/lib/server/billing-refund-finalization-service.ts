@@ -41,6 +41,9 @@ export async function finalizeBillingOrderRefund(input: BillingRefundFinalizatio
                   metadata: mergeJson(assignment.metadata, { refund: { reason: input.reason, refundedAt: now } }),
               })
             : undefined;
+        if (order.productKind === "storage") {
+            await client.query("UPDATE cloud_storage_grants SET revoked_at = $2 WHERE source_order_id = $1 AND revoked_at IS NULL", [order.id, now]);
+        }
 
         const walletAdjustment = order.pointsAmount
             ? await adjustPermanentPointsInPostgresTransaction(client, {

@@ -35,6 +35,20 @@ function subscribe(listener: () => void) {
     };
 }
 
+export function formatGenerationElapsed(seconds: number): string {
+    const total = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const remainingSeconds = total % 60;
+    if (hours > 0) {
+        return `${hours}小时${minutes ? `${minutes}分` : ""}${remainingSeconds ? `${remainingSeconds}秒` : ""}`;
+    }
+    if (minutes > 0) {
+        return `${minutes}分${remainingSeconds}秒`;
+    }
+    return `${remainingSeconds}秒`;
+}
+
 export function useCanvasGenerationProgress(node?: CanvasNodeData, completed = false, onComplete?: () => void) {
     const now = useSyncExternalStore(
         subscribe,
@@ -78,8 +92,21 @@ export function useCanvasGenerationProgress(node?: CanvasNodeData, completed = f
     }, [completed, onComplete]);
     const displayed = completed ? Math.round(percent + (100 - percent) * completion) : percent;
     const estimated = real === undefined || percent > real;
+    const effectiveNow = completed && node?.metadata?.generationFinishedAt
+        ? node.metadata.generationFinishedAt
+        : (now || Date.now());
+    const elapsedMs = Math.max(0, effectiveNow - startedAt);
+    const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const elapsedText = formatGenerationElapsed(elapsedSeconds);
+    const currentPercent = completed ? displayed : percent;
     return {
         status: completed ? `生成完成 ${displayed}%` : `生成中 ${estimated ? "预计 " : ""}${percent}%`,
+        percent: currentPercent,
+        estimated,
+        completed,
+        elapsedSeconds,
+        elapsedText,
+        elapsedLabel: `耗时 ${elapsedText}`,
         detail: !completed && estimated && estimate.waiting ? `已等待 ${estimate.elapsed}，等待结果` : "",
         title: completed ? "已收到成功结果，正在展示完成反馈" : estimated ? "预计进度仅用于等待反馈，不代表上游实际完成比例；完成状态以服务器结果为准" : "上游实际进度",
     };

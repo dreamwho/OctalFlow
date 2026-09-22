@@ -3,7 +3,7 @@ import { readJsonBodyResult } from "@/lib/auth/request";
 import { dolaRouteError, requireDolaAdmin } from "@/lib/server/dola/admin";
 import { dolaRuntimeRequest } from "@/lib/server/dola/provider";
 import { openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry } from "@/lib/server/dola/log-store";
-import { markDolaAccountReady, refreshDolaAccountCookieIfVersion, updateDolaAccountCredentials, updateDolaAccountQuota } from "@/lib/server/dola/account-service";
+import { markDolaAccountReady, markDolaAccountUnusable, refreshDolaAccountCookieIfVersion, updateDolaAccountCredentials, updateDolaAccountQuota } from "@/lib/server/dola/account-service";
 import type { DolaQuotaSnapshot } from "@/lib/server/dola/types";
 
 export const runtime = "nodejs";
@@ -49,6 +49,13 @@ export async function POST(request: Request, context: Context) {
             return apiCompatError(response.status, error);
         }
         if (action === "finalize") {
+            if (payload?.status === "needs_login") {
+                const loggedOutAccountId = stringValue(payload.accountId);
+                // 有头测试确认 Cookie 已被上游踢出登录：立即落库并归入「登录失败」分类，
+                // 浏览器保持打开以便重新登录后再次完成测试覆盖该状态。
+                if (loggedOutAccountId) await markDolaAccountUnusable(loggedOutAccountId, "needs_login").catch(() => undefined);
+                return apiSuccess(withoutCredential(payload), loggedOutAccountId ? "账号登录状态已失效，已保存并归入「登录失败」分类；可在当前窗口重新登录后再次完成测试" : "账号登录状态已失效；可在当前窗口重新登录后再次完成测试");
+            }
             if (payload?.status !== "ready") return apiSuccess(withoutCredential(payload), "账号尚未确认登录，浏览器保持打开");
             const accountId = stringValue(payload.accountId);
             const cookie = typeof payload.cookie === "string" ? payload.cookie : "";

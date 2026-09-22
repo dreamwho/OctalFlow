@@ -26,9 +26,9 @@ export class BillingProductRepository {
             `
             INSERT INTO billing_products (
                 id, product_kind, plan_id, name, description, amount_cents, currency, points_amount,
-                daily_points, period_days, enabled, sort_order, metadata, created_at, updated_at
+                daily_points, period_days, storage_bytes, storage_stackable, storage_renewable, storage_purchase_limit, enabled, sort_order, metadata, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             ON CONFLICT (id) DO UPDATE SET
                 product_kind = EXCLUDED.product_kind,
                 plan_id = EXCLUDED.plan_id,
@@ -39,6 +39,10 @@ export class BillingProductRepository {
                 points_amount = EXCLUDED.points_amount,
                 daily_points = EXCLUDED.daily_points,
                 period_days = EXCLUDED.period_days,
+                storage_bytes = EXCLUDED.storage_bytes,
+                storage_stackable = EXCLUDED.storage_stackable,
+                storage_renewable = EXCLUDED.storage_renewable,
+                storage_purchase_limit = EXCLUDED.storage_purchase_limit,
                 enabled = EXCLUDED.enabled,
                 sort_order = EXCLUDED.sort_order,
                 metadata = EXCLUDED.metadata
@@ -55,6 +59,10 @@ export class BillingProductRepository {
                 product.pointsAmount,
                 product.dailyPoints,
                 product.periodDays,
+                product.storageBytes || 0,
+                product.storageStackable !== false,
+                product.storageRenewable !== false,
+                product.storagePurchaseLimit || 0,
                 product.enabled,
                 product.sortOrder,
                 jsonParam(product.metadata ?? {}),
@@ -78,9 +86,13 @@ export class BillingProductRepository {
                 points_amount = COALESCE($9, points_amount),
                 daily_points = COALESCE($10, daily_points),
                 period_days = COALESCE($11, period_days),
-                enabled = COALESCE($12, enabled),
-                sort_order = COALESCE($13, sort_order),
-                metadata = COALESCE($14::jsonb, metadata)
+                storage_bytes = COALESCE($12, storage_bytes),
+                storage_stackable = COALESCE($13, storage_stackable),
+                storage_renewable = COALESCE($14, storage_renewable),
+                storage_purchase_limit = COALESCE($15, storage_purchase_limit),
+                enabled = COALESCE($16, enabled),
+                sort_order = COALESCE($17, sort_order),
+                metadata = COALESCE($18::jsonb, metadata)
             WHERE id = $1
             RETURNING *
             `,
@@ -96,6 +108,10 @@ export class BillingProductRepository {
                 patch.pointsAmount,
                 patch.dailyPoints,
                 patch.periodDays,
+                patch.storageBytes,
+                patch.storageStackable,
+                patch.storageRenewable,
+                patch.storagePurchaseLimit,
                 patch.enabled,
                 patch.sortOrder,
                 jsonParam(patch.metadata),

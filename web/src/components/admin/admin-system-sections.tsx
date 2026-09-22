@@ -18,9 +18,9 @@ export function AdminExternalStorageSection({ controller }: { controller: AdminD
     return <AdminExternalStorage />;
 }
 
-export function AdminBackupSection({ controller }: { controller: AdminDashboardController }) {
+export function AdminBackupSection({ controller, desktopEdition }: { controller: AdminDashboardController; desktopEdition?: "commercial" | "admin" | null }) {
     if (controller.activeSection !== "backup") return null;
-    return <AdminDataBackup />;
+    return <AdminDataBackup desktopEdition={desktopEdition} />;
 }
 
 export function AdminUpdatesSection({ controller }: { controller: AdminDashboardController }) {

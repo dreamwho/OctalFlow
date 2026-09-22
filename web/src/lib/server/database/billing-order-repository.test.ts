@@ -3,6 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import type { QueryExecutor } from "./postgres";
 import { BillingOrderRepository } from "./billing-order-repository";
 
+describe("BillingOrderRepository.getStoragePurchaseCounts", () => {
+    it("counts only active or paid units for one user and one product", async () => {
+        const query = vi.fn(async (..._args: unknown[]) => ({ rows: [{ orders: "2", pending_orders: "1", units: "3" }] }));
+        const repository = new BillingOrderRepository({ query } as unknown as QueryExecutor);
+
+        await expect(repository.getStoragePurchaseCounts("user-one", "storage-1")).resolves.toEqual({ orders: 2, pendingOrders: 1, units: 3 });
+        expect(query.mock.calls[0]?.[0]).toContain("status IN ('pending', 'paid', 'refunding')");
+        expect(query.mock.calls[0]?.[1]).toEqual(["user-one", "storage-1"]);
+    });
+});
+
 describe("BillingOrderRepository.listOrders", () => {
     it("searches orders by padded public account id", async () => {
         const query = vi.fn(async (..._args: unknown[]) => ({ rows: [] }));

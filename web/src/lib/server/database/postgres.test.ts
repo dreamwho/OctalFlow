@@ -165,12 +165,21 @@ describe("PostgreSQL schema lifecycle", () => {
         expect(ddl).toContain("auto_watermark boolean NOT NULL DEFAULT false");
         expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_dola_request_logs");
         expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_dola_attempts");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_cloud_storage_accounts");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_cloud_storage_reservations");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_cloud_storage_objects");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_cloud_storage_object_refs");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_cloud_storage_project_backups");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_desktop_device_requests");
+        expect(ddl).toContain("CREATE TABLE IF NOT EXISTS dreamyo_desktop_device_sessions");
+        expect(ddl).toContain("CREATE TRIGGER dreamyo_users_cloud_storage_account AFTER INSERT ON dreamyo_users");
+        expect(ddl).toContain("INSERT INTO dreamyo_cloud_storage_accounts (user_id, base_bytes)");
         expect(ddl).toContain("CREATE UNIQUE INDEX IF NOT EXISTS dreamyo_gemini_tools_accounts_email_lower_idx");
         expect(ddl).toContain("'review_pending', 'reviewing', 'review_unavailable'");
         expect(ddl).toContain("task_type = 'agent' AND status = 'success' AND execution_phase IN ('review_pending', 'reviewing')");
 
         const tableNames = [...ddl.matchAll(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z][a-z0-9_]*)/gi)].map((match) => match[1]).sort();
-        expect(tableNames).toHaveLength(83);
+        expect(tableNames).toHaveLength(92);
         expect(tableNames.every((name) => name.startsWith("dreamyo_"))).toBe(true);
         expect(tableNames).not.toContain("dreamyo_check_ins");
         expect(ddl).toContain("DROP TABLE IF EXISTS dreamyo_check_ins");

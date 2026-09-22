@@ -17,9 +17,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 from .contracts import AccountInspectRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
-from .page_scripts import MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
-from .protocol import PROFILES, canonical_ratio, validate_request
-from .query import decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, generation_query_payloads, parse_generation_payloads, probe_account_login
+from .page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
+from .protocol import PROFILES, canonical_ratio, sanitize_video_prompt_duration, validate_request
+from .query import decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_generation_payloads, probe_account_login
 from .task_store import decrypt_secret, decrypt_cookie, encrypt_secret, encrypt_cookie, load_state, save_state
 from .uploads import resolve_references
 
@@ -113,6 +113,22 @@ class CamoufoxSessionPool:
                     meta["proxyUrl"] = proxy_url
                     self._sessions.setdefault((account_id, credential_version, proxy_url), PageSession(account_id, credential_version, proxy_mode, proxy_target, proxy_url, cookie, meta.get("identity") or {}))
                 self._task_meta[str(task_id)] = meta
+            # A "running" task at load time belonged to a submission coroutine
+            # that died with the previous process and can never progress.
+            # Acknowledged submissions stay pollable (accepted) so the refresh
+            # path can recover them; the rest fail so holds are released.
+            reclassified = False
+            for task_id, task in self._tasks.items():
+                if task.status != "running":
+                    continue
+                orphan_meta = self._task_meta.get(task_id) or {}
+                if orphan_meta.get("ackReceived") or task.conversationId or orphan_meta.get("conversationId"):
+                    self._tasks[task_id] = task.model_copy(update={"status": "accepted"})
+                else:
+                    self._tasks[task_id] = task.model_copy(update={"status": "failed", "error": "submission_interrupted"})
+                reclassified = True
+            if reclassified:
+                await self._persist()
             self._loaded = True
 
     async def _persist(self) -> None:
@@ -177,6 +193,8 @@ class CamoufoxSessionPool:
         browser_options = _camoufox_browser_options(is_headless, proxy_url, request.accountId)
         async with AsyncCamoufox(**browser_options) as browser:
             context = await browser.new_context(**_camoufox_context_options())
+            if hasattr(context, "add_init_script"):
+                await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(request.cookie))
             page = await context.new_page()
             auth_state = await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
@@ -220,6 +238,8 @@ class CamoufoxSessionPool:
         keep_open = False
         try:
             context = await browser.new_context(**_camoufox_context_options())
+            if hasattr(context, "add_init_script"):
+                await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(request.cookie))
             page = await context.new_page()
             auth_state = await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
@@ -340,6 +360,8 @@ class CamoufoxSessionPool:
         try:
             context = await browser.new_context(**_camoufox_context_options())
             try:
+                if hasattr(context, "add_init_script"):
+                    await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
                 await context.add_cookies(_cookie_header_to_playwright(request.cookie))
                 page = await context.new_page()
                 await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
@@ -425,7 +447,7 @@ class CamoufoxSessionPool:
         cookies = await verification.context.cookies(["https://www.dola.com/"])
         fresh_cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name") and item.get("value"))
         if not fresh_cookie:
-            return {"status": "needs_login", "verificationId": verification_id}
+            return {"status": "needs_login", "verificationId": verification_id, "accountId": verification.page_session.account_id}
         probe = await probe_account_login(fresh_cookie, verification.page_session.proxy_url or None)
         state = probe.get("state")
         if state == "unknown":
@@ -433,7 +455,7 @@ class CamoufoxSessionPool:
             cookies = await verification.context.cookies(["https://www.dola.com/"])
             fresh_cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name") and item.get("value"))
         if state != "ready":
-            return {"status": "needs_login" if state == "needs_login" else "unknown", "verificationId": verification_id}
+            return {"status": "needs_login" if state == "needs_login" else "unknown", "verificationId": verification_id, "accountId": verification.page_session.account_id}
         return {"status": "ready", "verificationId": verification_id, "accountId": verification.page_session.account_id,
                 "credentialVersion": verification.page_session.credential_version, "cookie": fresh_cookie}
 
@@ -716,6 +738,11 @@ class CamoufoxSessionPool:
             identity = result.get("identity") if isinstance(result.get("identity"), dict) else {}
             cookie = str(result.get("cookie") or request.cookie or "")
             conversation_id = _result_conversation_id(result)
+            if not conversation_id and result.get("ackReceived") and cookie:
+                # The ACK proves this submit created a conversation, so the
+                # newest recent conversation belongs to this task even when the
+                # stream itself did not echo the id.
+                conversation_id = await fetch_recent_conversation_id(cookie, identity, self._sessions[key].proxy_url or None)
             video_url = _result_video_url(result)
             image_urls = _result_image_urls(result)
             diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
@@ -821,6 +848,8 @@ class CamoufoxSessionPool:
             # Chromium UA here produced contradictory navigator/sec-ch signals
             # that made the bdms signer reject the page.
             context = await browser.new_context(**_camoufox_context_options())
+            if hasattr(context, "add_init_script"):
+                await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(session.cookie))
             page = await context.new_page()
             auth_state = await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
@@ -960,6 +989,15 @@ class CamoufoxSessionPool:
             return
         conversation_id = str(task.conversationId or meta.get("conversationId") or "")
         cookie = str(meta.get("cookie") or "")
+        if not conversation_id and meta.get("ackReceived") and cookie:
+            # Submit streams sometimes acknowledge without echoing the
+            # conversation id; the ACK proves we created the newest one.
+            conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None) or ""
+            if conversation_id:
+                meta["conversationId"] = conversation_id
+                self._tasks[task_id] = task.model_copy(update={"conversationId": conversation_id})
+                await self._persist()
+                task = self._tasks[task_id]
         if not conversation_id:
             return
         if not meta.get("conversationId"):
@@ -985,7 +1023,16 @@ class CamoufoxSessionPool:
         # Video conversations also expose cover thumbnails as images; only the
         # capability the task asked for may complete it.
         if result.get("error"):
-            self._tasks[task_id] = task.model_copy(update={"status": "failed", "error": str(result.get("error"))[:120]})
+            error_text = str(result.get("error"))[:1000]
+            raw_error = str(result.get("rawError") or result.get("error") or "")[:2000]
+            diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
+            self._tasks[task_id] = task.model_copy(
+                update={
+                    "status": "failed",
+                    "error": error_text,
+                    "diagnostics": {**diagnostics, "upstreamResponseText": raw_error},
+                }
+            )
             await self._persist()
             return
         video_url = str(result.get("url") or "") if wants_video else ""
@@ -1013,6 +1060,8 @@ class CamoufoxSessionPool:
         browser_options = _camoufox_browser_options(True, proxy_url, str(meta.get("accountId") or ""))
         async with AsyncCamoufox(**browser_options) as browser:
             context = await browser.new_context(**_camoufox_context_options())
+            if hasattr(context, "add_init_script"):
+                await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(cookie))
             page = await context.new_page()
             auth_state = await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
@@ -1712,9 +1761,20 @@ def _build_request_body(profile: Any, request: VideoRequest, references: list[di
         ability_param = {"ability_param": {"model": profile.upstream_model, "input_box_content": {"user_input_content": user_content, "reply_message_format": "生成图片：%s"}}, "ability_type": 1}
         chat_ability = {"ability_type": 3, "ability_param": json.dumps(ability_param, ensure_ascii=False, separators=(",", ":"))}
     else:
-        user_content = request.prompt.strip()
+        raw_prompt = request.prompt.strip()
+        cleaned_prompt = sanitize_video_prompt_duration(raw_prompt)
+        user_content = cleaned_prompt or raw_prompt
         visible_text = f"生成视频：{user_content}，{ratio}" if ratio else f"生成视频：{user_content}"
-        ability_param = {"ratio": ratio, "model": profile.upstream_model, "duration": int(request.duration), "input_box_content": {"user_input_content": user_content, "reply_message_format": "生成视频：%s"}}
+        ability_param = {
+            "ratio": ratio,
+            "model": profile.upstream_model,
+            "duration": int(request.duration),
+            "camera_movement": "fixed",
+            "input_box_content": {
+                "user_input_content": user_content,
+                "reply_message_format": "生成视频：%s",
+            },
+        }
         chat_ability = {"ability_type": 17, "ability_param": json.dumps(ability_param, ensure_ascii=False, separators=(",", ":"))}
     body: dict[str, Any] = {
         "client_meta": {

@@ -65,10 +65,10 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                     initialSection={initialSection}
                     desktopEdition={desktopEdition}
                     setupSummary={setup}
-                    headerActions={
+                    headerActions={desktopEdition === "admin" ? null :
                         <>
                             <AdminReturnButton />
-                            <UserStatusActions initialUser={currentUser} themeScope="admin" />
+                            <UserStatusActions initialUser={currentUser} initialDesktopEdition={desktopEdition} themeScope="admin" />
                         </>
                     }
                 />

@@ -1,0 +1,24 @@
+.shell { position: sticky; top: 0; z-index: 30; background: #f5f7ff; border-bottom: 1px solid #dadff4; color: #1c2242; }
+.settingsTitle { max-width: 1480px; padding: 30px clamp(24px, 4vw, 56px) 22px; margin: auto; }
+.settingsTitle p { color: #4f46a5; text-transform: uppercase; font-size: 10px; letter-spacing: .14em; font-weight: 700; }
+.settingsTitle h1 { margin: 2px 0 4px; font-size: 26px; font-weight: 720; line-height: 1.3; }
+.settingsTitle span { font-size: 13px; color: #646b87; }
+.categories, .sections { max-width: 1480px; margin: auto; display: flex; align-items: center; gap: 7px; padding-inline: clamp(24px, 4vw, 56px); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.categories::-webkit-scrollbar, .sections::-webkit-scrollbar { display: none; }
+.categories { gap: 11px; }
+.category { display: inline-flex; align-items: center; gap: 8px; min-height: 39px; padding: 0 13px; border-radius: 10px 10px 0 0; border: 1px solid transparent; border-bottom: 0; color: #646b87; font-size: 13px; font-weight: 650; cursor: pointer; }
+.category:hover, .category:focus-visible { background: #e9eaff; color: #4f46a5; }
+.categoryActive { background: #fff; border-color: #dadff4; color: #4f46a5; box-shadow: inset 0 2px #6366f1; }
+.sections { max-width: none; min-height: 58px; padding-block: 9px; background: #fff; border-top: 1px solid #dadff4; }
+.section { flex: none; padding: 8px 13px; border-radius: 8px; color: #646b87; font-size: 12px; font-weight: 550; cursor: pointer; }
+.section:hover, .section:focus-visible { color: #4f46a5; background: #eff0ff; }
+.sectionActive { color: #4f46a5; background: #e9eaff; font-weight: 700; }
+.category:focus-visible, .section:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+:global(.dark) .shell { background: #101322; border-color: #343759; color: #f1f1ff; }
+:global(.dark) .sections { background: #15172a; border-color: #343759; }
+:global(.dark) .settingsTitle span { color: #a8a9c8; }
+:global(.dark) .category, :global(.dark) .section { color: #a8a9c8; }
+:global(.dark) .categoryActive, :global(.dark) .sectionActive { color: #c7d2fe; background: #303568; }
+:global(.dark) .categoryActive { border-color: #414575; }
+:global(.dark) .category:hover, :global(.dark) .section:hover { background: #242747; color: #f1f1ff; }
+@media (max-width: 720px) { .settingsTitle { padding: 22px 20px 16px; } .categories, .sections { padding-inline: 20px; } }

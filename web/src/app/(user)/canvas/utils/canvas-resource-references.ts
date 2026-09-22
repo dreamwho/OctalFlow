@@ -31,7 +31,17 @@ export function buildCanvasResourceReferences(nodes: CanvasNodeData[], connectio
 }
 
 export function buildNodeMentionReferences(node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    return labelResourceNodes(getMentionResourceNodes(node.id, nodes, connections), true);
+    const contextNodes = getMentionResourceNodes(node.id, nodes, connections);
+    const activeIds = new Set(contextNodes.map((item) => item.id));
+    const allResourceNodes = nodes.filter(isResourceNode);
+    const orderedNodes = [
+        ...allResourceNodes.filter((item) => activeIds.has(item.id)),
+        ...allResourceNodes.filter((item) => !activeIds.has(item.id)),
+    ];
+    return labelResourceNodes(orderedNodes, false).map((reference) => ({
+        ...reference,
+        active: activeIds.has(reference.nodeId),
+    }));
 }
 
 function getMentionResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
@@ -78,7 +88,7 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 kind,
                 label,
                 title: node.title || label,
-                previewUrl: node.metadata?.content,
+                previewUrl: node.metadata?.content || node.metadata?.serverUrl || node.metadata?.remoteUrl,
                 storageKey: node.metadata?.storageKey,
                 remoteUrl: node.metadata?.remoteUrl,
                 serverUrl: node.metadata?.serverUrl,
@@ -87,7 +97,7 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 height: node.metadata?.naturalHeight || node.height,
                 bytes: node.metadata?.bytes,
                 durationMs: node.metadata?.durationMs,
-                text: node.type === CanvasNodeType.Text ? node.metadata?.content || node.metadata?.prompt : undefined,
+                text: node.type === CanvasNodeType.Text ? node.metadata?.content || node.metadata?.prompt || node.metadata?.composerContent : undefined,
                 active,
             },
         ];
@@ -106,9 +116,35 @@ export function isResourceNode(node: CanvasNodeData) {
 }
 
 function resourceKind(node: CanvasNodeData): CanvasResourceKind | null {
-    if (isCanvasImageNodeType(node.type) && node.metadata?.content) return "image";
-    if (node.type === CanvasNodeType.Video && node.metadata?.content) return "video";
-    if (node.type === CanvasNodeType.Audio && node.metadata?.content) return "audio";
-    if (node.type === CanvasNodeType.Text && (node.metadata?.content || node.metadata?.prompt)) return "text";
+    const hasMedia = Boolean(node.metadata?.content?.trim() || node.metadata?.serverUrl?.trim() || node.metadata?.remoteUrl?.trim());
+    if (isCanvasImageNodeType(node.type) && hasMedia) return "image";
+    if (node.type === CanvasNodeType.Video && hasMedia) return "video";
+    if (node.type === CanvasNodeType.Audio && hasMedia) return "audio";
+    if (node.type === CanvasNodeType.Text && (node.metadata?.content?.trim() || node.metadata?.prompt?.trim() || node.metadata?.composerContent?.trim())) return "text";
     return null;
+}
+
+export function isSubjectReference(ref: CanvasResourceReference): boolean {
+    if (ref.kind !== "image") return false;
+    const title = (ref.title || "").toLowerCase();
+    const label = (ref.label || "").toLowerCase();
+    const text = (ref.text || "").toLowerCase();
+    return (
+        title.includes("人物") ||
+        title.includes("主体") ||
+        title.includes("角色") ||
+        title.includes("三视图") ||
+        title.includes("人设") ||
+        title.includes("人像") ||
+        title.includes("模特") ||
+        title.includes("立绘") ||
+        title.includes("character") ||
+        title.includes("subject") ||
+        title.includes("face") ||
+        title.includes("portrait") ||
+        title.includes("avatar") ||
+        label.includes("主体") ||
+        text.includes("主体") ||
+        text.includes("角色")
+    );
 }

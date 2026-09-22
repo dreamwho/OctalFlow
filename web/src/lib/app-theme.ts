@@ -44,8 +44,15 @@ const neutral = {
     },
 };
 
-export function getAntThemeConfig(dark: boolean): ThemeConfig {
-    const color = dark ? neutral.dark : neutral.light;
+export function getAntThemeConfig(dark: boolean, desktop = false): ThemeConfig {
+    const color = {
+        ...(dark ? neutral.dark : neutral.light),
+        ...(desktop ? dark ? {
+            primary: "#6366f1", primaryHover: "#818cf8", selectText: "#c7d2fe", selectSelectedBg: "rgba(129, 140, 248, 0.22)", selectBorder: "rgba(165, 180, 252, 0.48)", selectOutline: "rgba(129, 140, 248, 0.25)",
+        } : {
+            primary: "#6366f1", primaryHover: "#4f46e5", selectText: "#4f46a5", selectSelectedBg: "rgba(99, 102, 241, 0.14)", selectBorder: "rgba(99, 102, 241, 0.42)", selectOutline: "rgba(99, 102, 241, 0.18)",
+        } : {}),
+    };
 
     return {
         algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
@@ -75,17 +82,17 @@ export function getAntThemeConfig(dark: boolean): ThemeConfig {
                 trackBg: dark ? "rgba(255, 255, 255, 0.045)" : "rgba(91, 111, 139, 0.1)",
             },
             Slider: {
-                handleActiveColor: dark ? "#35cce1" : "#5e7ff1",
-                handleActiveOutlineColor: dark ? "rgba(53, 204, 225, 0.22)" : "rgba(94, 127, 241, 0.18)",
-                handleColor: dark ? "#35cce1" : "#5e7ff1",
-                trackBg: dark ? "#24b9d2" : "#5e7ff1",
-                trackHoverBg: dark ? "#58dec9" : "#35cce1",
+                handleActiveColor: desktop ? color.primary : dark ? "#35cce1" : "#5e7ff1",
+                handleActiveOutlineColor: color.selectOutline,
+                handleColor: desktop ? color.primary : dark ? "#35cce1" : "#5e7ff1",
+                trackBg: desktop ? color.primary : dark ? "#24b9d2" : "#5e7ff1",
+                trackHoverBg: desktop ? color.primaryHover : dark ? "#58dec9" : "#35cce1",
             },
             Switch: {
                 handleBg: "#ffffff",
             },
             Tabs: {
-                inkBarColor: dark ? "#35cce1" : "#5e7ff1",
+                inkBarColor: desktop ? color.primary : dark ? "#35cce1" : "#5e7ff1",
                 itemActiveColor: color.selectText,
                 itemHoverColor: dark ? "#d9f8ff" : "#1e4db7",
                 itemSelectedColor: color.selectText,
@@ -93,9 +100,9 @@ export function getAntThemeConfig(dark: boolean): ThemeConfig {
             Radio: {
                 buttonCheckedBg: color.selectSelectedBg,
                 buttonCheckedColorDisabled: color.textSecondary,
-                buttonSolidCheckedBg: dark ? "#24b9d2" : "#5e7ff1",
-                buttonSolidCheckedHoverBg: dark ? "#58dec9" : "#35cce1",
-                buttonSolidCheckedActiveBg: dark ? "#188da4" : "#4565d0",
+                buttonSolidCheckedBg: desktop ? color.primary : dark ? "#24b9d2" : "#5e7ff1",
+                buttonSolidCheckedHoverBg: desktop ? color.primaryHover : dark ? "#58dec9" : "#35cce1",
+                buttonSolidCheckedActiveBg: desktop ? color.primary : dark ? "#188da4" : "#4565d0",
             },
             Menu: {
                 itemActiveBg: color.menuBg,

@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Checkbox, Form, Input, InputNumber, Modal, Select } from "antd";
 
 import type { AdminDashboardController } from "./use-admin-dashboard-controller";
 import { ADMIN_PERMISSION_DEFINITIONS, ADMIN_PERMISSION_GROUPS, ADMIN_PERMISSION_PRESETS, adminPermissionSummary, hasAdminPermission, hasAllAdminPermissions, normalizeAdminPermissions } from "@/lib/admin-permissions";
+import { formatBytes } from "@/lib/image-utils";
+import { getAdminCloudStorageUsage, type AdminCloudStorageUsage } from "@/services/api/object-storage";
 
 export function AdminUserEditorModal({ controller }: { controller: AdminDashboardController }) {
     const { currentUser, userForm, editingUser, creatingUser, updatingUserId, closeUserEditor, saveUserEditor } = controller;
@@ -11,6 +14,21 @@ export function AdminUserEditorModal({ controller }: { controller: AdminDashboar
     const canManageUsers = hasAdminPermission(currentUser, "users.manage");
     const canManageAdministrators = hasAdminPermission(currentUser, "administrators.manage");
     const canManageBilling = hasAdminPermission(currentUser, "billing.manage");
+    const canViewStorage = hasAdminPermission(currentUser, "users.manage") || hasAdminPermission(currentUser, "system.manage");
+    const [storageUsage, setStorageUsage] = useState<AdminCloudStorageUsage>();
+    const [storageError, setStorageError] = useState("");
+    useEffect(() => {
+        let active = true;
+        setStorageUsage(undefined);
+        setStorageError("");
+        if (!editingUser?.id || !canViewStorage) return () => { active = false; };
+        void getAdminCloudStorageUsage(editingUser.id).then((usage) => {
+            if (active) setStorageUsage(usage);
+        }).catch((error: unknown) => {
+            if (active) setStorageError(error instanceof Error ? error.message : "云存储用量读取失败");
+        });
+        return () => { active = false; };
+    }, [editingUser?.id, canViewStorage]);
     const targetWithinScope = editingUser?.role !== "admin" || hasAllAdminPermissions(currentUser, editingUser.adminPermissions);
     const touchesAdministrator = selectedRole === "admin" || editingUser?.role === "admin";
     const canEditAccount = touchesAdministrator ? canManageAdministrators && targetWithinScope : canManageUsers;
@@ -100,6 +118,32 @@ export function AdminUserEditorModal({ controller }: { controller: AdminDashboar
                         <InputNumber className="!w-full" disabled={!canManageBilling} min={0} precision={2} />
                     </Form.Item>
                 </div>
+                {editingUser && canViewStorage ? (
+                    <section aria-label="用户云存储用量" className="mb-5 rounded-lg border border-stone-200 bg-stone-50/70 p-4 dark:border-stone-800 dark:bg-stone-900/50">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                            <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">云存储用量</h3>
+                            {storageUsage?.overQuota ? <span className="text-xs text-amber-700 dark:text-amber-300">当前已超额度，新上传受限</span> : null}
+                        </div>
+                        {storageUsage ? (
+                            <>
+                                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                                    {[["已用", storageUsage.usedBytes], ["上传预留", storageUsage.reservedBytes], ["可用", storageUsage.availableBytes]].map(([label, bytes]) => (
+                                        <div key={label} className="rounded-md border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-950/50">
+                                            <div className="text-xs text-stone-500 dark:text-stone-400">{label}</div>
+                                            <div className="mt-1 font-medium tabular-nums text-stone-900 dark:text-stone-100">{storageBytes(Number(bytes))}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="mt-3 text-xs leading-5 text-stone-600 dark:text-stone-300">
+                                    总额度 {storageBytes(storageUsage.limitBytes)}（基础 {storageBytes(storageUsage.baseBytes)}、赠送 {storageBytes(storageUsage.bonusBytes)}、套餐 {storageBytes(storageUsage.grantedBytes)}）
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-stone-600 dark:text-stone-300">
+                                    素材 {storageBytes(storageUsage.bySource.asset)} · 项目 {storageBytes(storageUsage.bySource.project)} · 主动备份 {storageBytes(storageUsage.bySource.backup)} · 作品 {storageBytes(storageUsage.bySource.work)}
+                                </p>
+                            </>
+                        ) : <p className="text-xs text-stone-500 dark:text-stone-400">{storageError || "正在读取云存储用量…"}</p>}
+                    </section>
+                ) : null}
                 {selectedRole === "admin" ? (
                     targetWithinScope ? (
                         <div className="border-t border-stone-200 pt-4 dark:border-stone-800">
@@ -157,6 +201,8 @@ export function AdminUserEditorModal({ controller }: { controller: AdminDashboar
         </Modal>
     );
 }
+
+function storageBytes(bytes: number) { return bytes === 0 ? "0 B" : formatBytes(bytes); }
 
 function matchingPreset(permissions: unknown) {
     const normalized = normalizeAdminPermissions(permissions);

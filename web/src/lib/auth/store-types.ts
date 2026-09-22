@@ -452,6 +452,8 @@ export type PublicUserSummary = {
 };
 
 export type StoredUser = Omit<PublicUser, "avatarUrl" | "planName" | "hasActivePlan" | "permanentPointsBalance" | "dailyPointsBalance" | "dailyPointsExpiresAt" | "mfaEnabled"> & {
+    /** Present only in a commercial desktop data directory; never an authorization grant. */
+    cloudUserId?: string;
     avatarStorageKey?: string;
     passwordHash: string;
     mfaSecretCiphertext?: string;

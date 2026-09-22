@@ -1,6 +1,6 @@
 "use client";
 
-import { App, Button, Checkbox, Form, Image, Input, Modal, Popconfirm, Select, Switch, Table, Tag, Tooltip } from "antd";
+import { App, Button, Checkbox, Form, Image, Input, InputNumber, Modal, Popconfirm, Select, Switch, Table, Tag, Tooltip } from "antd";
 import type { TableColumnsType } from "antd";
 import { Cloud, DatabaseBackup, Download, Eye, File, FileAudio, Film, RefreshCw, Save, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,7 +11,7 @@ import { AdminAccountId, AdminUserSearchSelect } from "@/components/admin/admin-
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { managedMediaTypeLabel, mediaSourceGroupOptions, mediaSourceLabel } from "@/lib/media-management-contract";
 import type { ExternalStorageFile, ExternalStorageFilesPayload, ObjectStorageMigrationResult, ObjectStorageSettings, ObjectStorageSettingsUpdate } from "@/lib/object-storage-contract";
-import { deleteExternalStorageFiles, getExternalStorageFiles, getObjectStorageSettings, migrateLocalMedia, saveObjectStorageSettings, testObjectStorageSettings } from "@/services/api/object-storage";
+import { deleteExternalStorageFiles, getCloudStorageSettings, getExternalStorageFiles, getObjectStorageSettings, migrateLocalMedia, saveCloudStorageSettings, saveObjectStorageSettings, testObjectStorageSettings } from "@/services/api/object-storage";
 
 const PAGE_SIZE = 30;
 
@@ -20,6 +20,9 @@ export function AdminExternalStorage() {
     const [form] = Form.useForm<ObjectStorageSettingsUpdate>();
     const enabled = Form.useWatch("enabled", form);
     const [settings, setSettings] = useState<ObjectStorageSettings>();
+    const [cloudDefaultGiB, setCloudDefaultGiB] = useState<number | null>(null);
+    const [cloudSettingsAvailable, setCloudSettingsAvailable] = useState(false);
+    const [savingCloudSettings, setSavingCloudSettings] = useState(false);
     const [files, setFiles] = useState<ExternalStorageFilesPayload>();
     const [loadingSettings, setLoadingSettings] = useState(true);
     const [loadingFiles, setLoadingFiles] = useState(false);
@@ -78,6 +81,16 @@ export function AdminExternalStorage() {
     }, [form, message]);
 
     useEffect(() => {
+        let active = true;
+        void getCloudStorageSettings().then((value) => {
+            if (!active) return;
+            setCloudDefaultGiB(value.defaultBytes / 1024 ** 3);
+            setCloudSettingsAvailable(true);
+        }).catch(() => { if (active) setCloudSettingsAvailable(false); });
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
         if (settings?.bucket) void loadFiles(cursor, prefix, type, source, ownerUserId);
         else setFiles(undefined);
     }, [cursor, loadFiles, ownerUserId, prefix, settings?.bucket, settings?.updatedAt, source, type]);
@@ -108,6 +121,20 @@ export function AdminExternalStorage() {
         } finally {
             setTesting(false);
         }
+    };
+
+    const saveCloudDefault = async () => {
+        if (cloudDefaultGiB === null || !Number.isFinite(cloudDefaultGiB)) return;
+        const defaultBytes = Math.round(cloudDefaultGiB * 1024 ** 3);
+        if (!Number.isSafeInteger(defaultBytes) || defaultBytes < 0) return message.error("请输入有效的默认容量");
+        setSavingCloudSettings(true);
+        try {
+            const value = await saveCloudStorageSettings(defaultBytes);
+            setCloudDefaultGiB(value.defaultBytes / 1024 ** 3);
+            message.success("新用户默认云存储空间已保存");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "云存储默认空间保存失败");
+        } finally { setSavingCloudSettings(false); }
     };
 
     const migrate = async () => {
@@ -228,6 +255,18 @@ export function AdminExternalStorage() {
 
     return (
         <div className="grid gap-4 sm:gap-6">
+            <Panel>
+                <PanelHeader title="用户云存储额度" description="云端用户空间由上述 OSS 承载，默认额度只应用于新注册用户；已注册用户的基础额度保持不变。" />
+                <div className="flex flex-wrap items-end gap-3 px-4 pb-5 sm:px-5">
+                    <label className="grid gap-1.5 text-sm text-zinc-700 dark:text-zinc-200">
+                        新用户默认空间（GiB）
+                        <InputNumber min={0} step={0.25} value={cloudDefaultGiB} disabled={!cloudSettingsAvailable} onChange={setCloudDefaultGiB} className="!w-44" aria-label="新用户默认云存储空间" />
+                    </label>
+                    <Button type="primary" icon={<Save className="size-4" />} disabled={!cloudSettingsAvailable || cloudDefaultGiB === null} loading={savingCloudSettings} onClick={() => void saveCloudDefault()}>保存默认空间</Button>
+                    {!cloudSettingsAvailable && <span className="text-xs text-zinc-500">此设置仅在云端 PostgreSQL 环境可用。</span>}
+                </div>
+            </Panel>
+
             <Panel>
                 <PanelHeader
                     title="外部存储配置"

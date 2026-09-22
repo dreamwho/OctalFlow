@@ -74,7 +74,7 @@ export function billingOrderStatusValue(value: unknown): BillingOrderStatus {
 }
 
 export function billingProductKindValue(value: unknown): BillingProductKind {
-    return value === "points" ? "points" : "plan";
+    return value === "points" || value === "storage" ? value : "plan";
 }
 
 export function paymentTransactionStatusValue(value: unknown): PaymentTransactionStatus {

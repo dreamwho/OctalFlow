@@ -24,6 +24,11 @@ try {
         exitCode = runNode(path.join(webRoot, "node_modules/next/dist/bin/next"), ["build", ...process.argv.slice(2)], "Next.js production 构建", {
             NEXT_SKIP_BUILD_TYPECHECK: "1",
         });
+        if (exitCode === 0) {
+            const standaloneData = path.join(webRoot, process.env.NEXT_DIST_DIR?.trim() || ".next", "standalone", ".data");
+            rmSync(standaloneData, { recursive: true, force: true });
+            if (existsSync(standaloneData)) throw new Error("构建产物仍包含运行期 .data，已停止发布");
+        }
     }
 } finally {
     restoreBuildFiles();

@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
 
 import { DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, type ObjectIdentifier } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -70,6 +71,49 @@ export async function getObjectBytes(config: ObjectStorageRuntimeConfig, key: st
         const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
         if (!result.Body) throw new Error("外部存储对象没有可读取内容");
         return Buffer.from(await result.Body.transformToByteArray());
+    } finally {
+        client.destroy();
+    }
+}
+
+export async function streamObjectBytes(config: ObjectStorageRuntimeConfig, key: string) {
+    const client = createObjectStorageClient(config);
+    try {
+        const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+        if (!result.Body) throw new Error("外部存储对象没有可读取内容");
+        const body = result.Body as AsyncIterable<Uint8Array> & { destroy?: () => void };
+        const iterator = body[Symbol.asyncIterator]();
+        let closed = false;
+        const cleanup = () => { if (!closed) { closed = true; client.destroy(); } };
+        return new ReadableStream<Uint8Array>({
+            async pull(controller) {
+                try {
+                    const next = await iterator.next();
+                    if (next.done) { controller.close(); cleanup(); }
+                    else controller.enqueue(next.value);
+                } catch (error) { controller.error(error); cleanup(); }
+            },
+            async cancel() {
+                try { await iterator.return?.(); body.destroy?.(); }
+                finally { cleanup(); }
+            },
+        });
+    } catch (error) { client.destroy(); throw error; }
+}
+
+export async function getObjectDigest(config: ObjectStorageRuntimeConfig, key: string) {
+    const client = createObjectStorageClient(config);
+    try {
+        const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+        if (!result.Body) throw new Error("外部存储对象没有可读取内容");
+        const digest = createHash("sha256");
+        let bytes = 0;
+        for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
+            bytes += chunk.length;
+            if (!Number.isSafeInteger(bytes)) throw new Error("外部存储对象过大");
+            digest.update(chunk);
+        }
+        return { bytes, checksumSha256: digest.digest("hex") };
     } finally {
         client.destroy();
     }

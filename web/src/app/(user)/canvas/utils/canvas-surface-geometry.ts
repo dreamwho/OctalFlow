@@ -144,7 +144,7 @@ export function previewPath(start: Position, end: Position, handleType: "source"
 }
 
 export const PROMPT_COMPOSER_WIDTH = 660;
-export const PROMPT_COMPOSER_HEIGHT = 232;
+export const PROMPT_COMPOSER_HEIGHT = 360;
 export const PROMPT_COMPOSER_GAP = 16;
 export const PROMPT_COMPOSER_VIEWPORT_MARGIN = 12;
 

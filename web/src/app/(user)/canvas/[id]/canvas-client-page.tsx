@@ -739,6 +739,9 @@ function DreamyoCanvasPage() {
                                 onConfigChange={handleConfigNodeChange}
                                 onGenerate={handleGenerateNode}
                                 onStop={confirmStopGeneration}
+                                onConnectReference={(sourceNodeId) => {
+                                    connectNodes({ nodeId: sourceNodeId, handleType: "source" }, activePromptNode.id);
+                                }}
                                 onImageSettingsOpenChange={(open) => {
                                     setNodeImageSettingsOpen(open);
                                     if (open) setToolbarNodeId(null);

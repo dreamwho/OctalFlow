@@ -17,7 +17,7 @@ import { HOME_NAVIGATION, type HomeNavigationItem } from "./home-data";
 import { useHomeActions } from "./home-actions";
 import styles from "./home.module.css";
 
-export function HomeHeader() {
+export function HomeHeader({ initialAdminLocal = false }: { initialAdminLocal?: boolean }) {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [announcementDismissed, setAnnouncementDismissed] = useState(true);
     const [accountOpen, setAccountOpen] = useState(false);
@@ -26,7 +26,8 @@ export function HomeHeader() {
     const { message } = App.useApp();
     const { authenticated, site, openLogin, openBillingPlans, openProtectedPath } = useHomeActions();
     const storeUser = useUserStore((state) => state.user);
-    const adminLocal = usePublicSessionStore((state) => state.payload?.desktop?.edition === "admin");
+    const sessionAdminLocal = usePublicSessionStore((state) => state.payload?.desktop?.edition === "admin");
+    const adminLocal = initialAdminLocal || sessionAdminLocal;
     const announcement = site.announcementBar;
     const announcementVisible = announcement?.enabled === true && Boolean(announcement.text?.trim()) && !announcementDismissed;
     const accountId = String(storeUser?.accountId || "").padStart(4, "0");

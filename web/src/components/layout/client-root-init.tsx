@@ -5,7 +5,6 @@ import { useEffect } from "react";
 import { App } from "antd";
 import { usePathname } from "next/navigation";
 
-import { SiteAnnouncementPopup } from "@/components/layout/site-announcement-popup";
 import { applyPublicSystemSettings, useConfigStore } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { loadPublicSession, PUBLIC_SETTINGS_CHANGED_EVENT } from "@/stores/use-public-session-store";
@@ -51,10 +50,5 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         return () => window.removeEventListener("dreamyo-system-config-missing", handleMissingConfig);
     }, [message]);
 
-    return (
-        <>
-            {children}
-            {installRoute ? null : <SiteAnnouncementPopup />}
-        </>
-    );
+    return children;
 }

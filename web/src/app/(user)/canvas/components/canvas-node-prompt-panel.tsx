@@ -70,10 +70,11 @@ type CanvasNodePromptPanelProps = {
     onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, skillIds?: string[], metadataOverrides?: Partial<CanvasNodeData["metadata"]>) => void | Promise<void>;
     onStop: (nodeId: string) => void;
     mentionReferences?: CanvasResourceReference[];
+    onConnectReference?: (sourceNodeId: string) => void;
     onImageSettingsOpenChange?: (open: boolean) => void;
 };
 
-export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], onConnectReference, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -239,9 +240,10 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const selectedSkills = skills.filter((skill) => selectedSkillIds.includes(skill.id));
     const eligibleSelectedSkillIds = selectedSkills.map((skill) => skill.id);
     const cameraMotionTokens = Object.values(cameraMotions).map((motion) => ({ token: cameraMotionPromptToken(motion), label: motion.label, kind: "camera-motion" as const }));
+    const currentMediaUrl = node.metadata?.content || node.metadata?.serverUrl || node.metadata?.remoteUrl;
     const visibleReferences = activeMentionReferences.length
         ? activeMentionReferences
-        : node.metadata?.content
+        : currentMediaUrl
           ? [
                 {
                     id: `${node.id}-current`,
@@ -249,12 +251,24 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     kind: mode === "video" ? "video" : mode === "audio" ? "audio" : mode === "text" ? "text" : "image",
                     label: `当前${modeLabel(mode)}`,
                     title: node.title,
-                    previewUrl: node.metadata.content,
-                    text: mode === "text" ? node.metadata.content : undefined,
+                    previewUrl: currentMediaUrl,
+                    text: mode === "text" ? node.metadata?.content : undefined,
                     active: true,
                 } satisfies CanvasResourceReference,
             ]
           : [];
+    const editorReferences = useMemo(() => {
+        const map = new Map<string, CanvasResourceReference>();
+        for (const ref of visibleReferences) {
+            map.set(ref.id, ref);
+        }
+        for (const ref of mentionReferences) {
+            if (!map.has(ref.id)) {
+                map.set(ref.id, ref);
+            }
+        }
+        return Array.from(map.values());
+    }, [mentionReferences, visibleReferences]);
     const availableReferencePickers = visibleReferences.filter((reference) => !reference.id.endsWith("-current") && !prompt.includes(`@${reference.label.replace(/^@/u, "")}`));
     const optionalSkill = selectedSkills.length && selectedSkills.every((skill) => skill.promptMode === "optional") ? selectedSkills[0] : undefined;
     const missingRequiredReference = selectedSkills.some((skill) => skill.requiresReference) && visibleReferences.length === 0;
@@ -389,7 +403,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     return (
         <div
             data-canvas-node-prompt-panel
-            className="canvas-scene-composer canvas-node-prompt-surface relative flex size-full min-h-0 flex-col overflow-hidden rounded-2xl border shadow-[0_18px_54px_rgba(15,23,42,.18)]"
+            className="canvas-scene-composer canvas-node-prompt-surface relative flex size-full min-h-0 flex-col overflow-hidden rounded-2xl border shadow-[0_18px_54px_rgba(15,23,42,.18)] cursor-default"
             style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
@@ -448,13 +462,13 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 </Tooltip>
             </div>
 
-            <section className="flex min-h-0 min-w-0 flex-1 flex-col px-3 pb-2">
-                <div className="relative min-h-0 flex-1">
+            <section className="flex min-h-0 min-w-0 flex-1 flex-col px-3 pb-2 cursor-text" data-canvas-prompt-editor="compact">
+                <div className="relative min-h-0 flex-1 cursor-text">
                     <CanvasRichPromptEditor
                         ref={promptEditorRef}
                         autoFocus
                         value={prompt}
-                        references={mentionReferences}
+                        references={editorReferences}
                         inlineTokens={cameraMotionTokens}
                         skills={skills}
                         selectedSkillIds={selectedSkillIds}
@@ -465,10 +479,11 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         onSelectionChange={(_value, offset) => rememberPromptSelection(offset, offset)}
                         onChange={updatePrompt}
                         onSubmit={submit}
+                        onConnectReference={onConnectReference}
                         aria-label="节点提示词"
                         data-testid="canvas-node-prompt-editor"
-                        containerClassName="size-full min-h-0"
-                        className="thin-scrollbar size-full min-h-[76px] resize-none overflow-y-auto rounded-none !border-0 px-1 pb-5 pt-1 text-sm leading-6 outline-none"
+                        containerClassName="size-full min-h-0 cursor-text"
+                        className="thin-scrollbar size-full min-h-[76px] resize-none overflow-y-auto rounded-none !border-0 px-1 pb-5 pt-1 text-sm leading-6 outline-none cursor-text"
                         style={{ background: "transparent", color: theme.node.text, fontSize: 14, lineHeight: "24px", letterSpacing: "normal" }}
                         placeholder={
                             selectedSkills.length
@@ -492,7 +507,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     centered
                     destroyOnHidden
                     mask={{ closable: false }}
-                    width="min(760px, calc(100vw - 24px))"
+                    width="min(780px, calc(100vw - 24px))"
                     onCancel={() => setExpanded(false)}
                     afterOpenChange={(open: boolean) => {
                         if (!open) return;
@@ -502,19 +517,37 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         });
                     }}
                     styles={{
-                        container: { background: theme.node.panel, border: `1px solid ${theme.toolbar.border}`, color: theme.node.text },
-                        header: { background: theme.node.panel, marginBottom: 0, paddingBottom: 8 },
-                        title: { color: theme.node.text },
-                        body: { background: theme.node.panel, padding: "4px 12px 12px" },
+                        container: {
+                            background: theme.toolbar.panel,
+                            border: `1px solid ${theme.toolbar.border}`,
+                            borderRadius: "16px",
+                            boxShadow: "0 18px 54px rgba(15, 23, 42, 0.18)",
+                            color: theme.node.text,
+                            padding: "16px 20px 14px",
+                        },
+                        header: {
+                            background: "transparent",
+                            marginBottom: 4,
+                            paddingBottom: 0,
+                        },
+                        title: {
+                            color: theme.node.text,
+                            fontSize: 15,
+                            fontWeight: 600,
+                        },
+                        body: {
+                            background: "transparent",
+                            padding: 0,
+                        },
                     }}
                     footer={null}
                 >
-                    <div data-canvas-prompt-editor="expanded" className="min-w-0 overflow-hidden rounded-xl border" style={{ borderColor: theme.node.stroke }}>
+                    <div data-canvas-prompt-editor="expanded" className="min-w-0 overflow-hidden cursor-text">
                         <CanvasRichPromptEditor
                             ref={expandedEditorRef}
                             autoFocus={expanded}
                             value={prompt}
-                            references={mentionReferences}
+                            references={editorReferences}
                             inlineTokens={cameraMotionTokens}
                             skills={skills}
                             selectedSkillIds={selectedSkillIds}
@@ -525,19 +558,27 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                             onSelectionChange={(_value, offset) => rememberPromptSelection(offset, offset)}
                             onChange={updatePrompt}
                             onSubmit={submitExpanded}
+                            onConnectReference={onConnectReference}
+                            submitOnModEnterOnly={true}
                             aria-label="提示词编辑器"
-                            className="thin-scrollbar h-[min(52vh,26rem)] min-h-64 w-full resize-none border-0 px-4 py-3 text-sm leading-6 outline-none"
-                            style={{ background: theme.node.fill, color: theme.node.text, fontSize: 14, lineHeight: "24px", letterSpacing: "normal" }}
+                            containerClassName="size-full min-h-0 overflow-hidden cursor-text"
+                            className="thin-scrollbar h-[min(68vh,36rem)] min-h-72 w-full resize-none overflow-y-auto !border-0 px-1 py-2 text-[15px] outline-none cursor-text"
+                            style={{ background: "transparent", color: theme.node.text, fontSize: 15, lineHeight: "26px", letterSpacing: "normal" }}
                             placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent, isPanorama, config.audioMode)}
                         />
                     </div>
-                    <div className="mt-3 flex items-center justify-end gap-2">
-                        <Button icon={<Minimize2 className="size-4" />} onClick={() => setExpanded(false)} aria-label="收起提示词输入">
+                    <div className="mt-3 flex items-center justify-between border-t pt-2 text-xs opacity-50" style={{ borderColor: `${theme.toolbar.border}44` }}>
+                        <span>支持使用 @ 引用素材，使用 / 插入技能</span>
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<Minimize2 className="size-3.5" />}
+                            onClick={() => setExpanded(false)}
+                            aria-label="收起提示词输入"
+                            className="text-xs"
+                        >
                             收起
                         </Button>
-                        <GenerationActionButton running={isRunning} cancellable disabled={!isRunning && !canGenerate} onClick={() => (isRunning ? onStop(node.id) : submitExpanded())} aria-label={isRunning ? "停止生成" : "生成"}>
-                            {isRunning ? "停止生成" : "生成"}
-                        </GenerationActionButton>
                     </div>
                 </Modal>
             </div>

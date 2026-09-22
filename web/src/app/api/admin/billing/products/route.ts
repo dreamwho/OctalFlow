@@ -35,7 +35,7 @@ export async function POST(request: Request) {
             action: "admin.billing.product.upsert",
             actor: auditActorFromRequest(request, currentUser),
             target: { type: "billing_product", id: product.id, label: product.name },
-            metadata: { planId: product.planId, amountCents: product.amountCents, currency: product.currency, enabled: product.enabled },
+            metadata: { productKind: product.productKind, planId: product.planId, storageBytes: product.storageBytes, storageStackable: product.storageStackable, storageRenewable: product.storageRenewable, storagePurchaseLimit: product.storagePurchaseLimit, amountCents: product.amountCents, currency: product.currency, enabled: product.enabled },
         });
         return NextResponse.json({ product });
     } catch (error) {

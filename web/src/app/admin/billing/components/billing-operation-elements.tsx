@@ -52,7 +52,7 @@ export function ActiveProductsPanel({ activeProducts }: { activeProducts: Billin
                                 <Tag color="green">{formatMoney(product.amountCents, product.currency)}</Tag>
                             </div>
                             <div className="mt-2 text-xs text-stone-500 dark:text-stone-400">
-                                {product.pointsAmount} 积分 / {product.periodDays ? `${product.periodDays} 天` : "长期"}
+                                {product.productKind === "storage" ? `${((product.storageBytes || 0) / 1_073_741_824).toLocaleString("zh-CN")} GiB` : `${product.pointsAmount} 积分`} / {product.periodDays ? `${product.periodDays} 天` : "长期"}
                             </div>
                         </div>
                     ))

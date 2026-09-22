@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App, ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
@@ -10,6 +10,8 @@ import { usePathname } from "next/navigation";
 import "dayjs/locale/zh-cn";
 
 import { ClientRootInit } from "@/components/layout/client-root-init";
+import { DesktopAppShell } from "@/components/layout/desktop-app-shell";
+import { SiteAnnouncementPopup } from "@/components/layout/site-announcement-popup";
 import { getAntThemeConfig } from "@/lib/app-theme";
 import { pageTitleForPath } from "@/lib/page-titles";
 import { themeScopeForPathname } from "@/lib/theme-scope";
@@ -29,22 +31,45 @@ const queryClient = new QueryClient({
 
 dayjs.locale("zh-cn");
 
-export function AppProviders({ children }: { children: ReactNode }) {
+export function AppProviders({ children, initialDesktopEdition, desktopPlatform }: { children: ReactNode; initialDesktopEdition?: "commercial" | "admin" | null; desktopPlatform?: string }) {
     const pathname = usePathname();
     const siteSettings = usePublicSessionStore((state) => state.payload?.settings?.site);
     const configuredFrontendTheme = siteSettings?.frontendTheme || "dark";
     const configuredAdminTheme = siteSettings?.adminTheme || "dark";
+    const desktopTheme = useThemeStore((state) => state.theme);
+    const [appearanceReady, setAppearanceReady] = useState(false);
     const siteTitle = siteSettings?.title;
     const scope = themeScopeForPathname(pathname);
-    const theme = scope === "admin" ? configuredAdminTheme : configuredFrontendTheme;
+    const theme = initialDesktopEdition === "admin" ? desktopTheme : scope === "admin" ? configuredAdminTheme : configuredFrontendTheme;
+    const desktopWorkspace = initialDesktopEdition === "admin" && (pathname === "/canvas" || pathname.startsWith("/canvas/") || pathname === "/admin");
     const dark = theme === "dark";
 
     useEffect(() => {
+        if (initialDesktopEdition === "admin") return;
         useThemeStore.getState().setTheme(configuredFrontendTheme);
         useAdminThemeStore.getState().setTheme(configuredAdminTheme);
-    }, [configuredFrontendTheme, configuredAdminTheme]);
+    }, [configuredFrontendTheme, configuredAdminTheme, initialDesktopEdition]);
 
     useEffect(() => startThemeStoreSync(), []);
+
+    useEffect(() => {
+        if (initialDesktopEdition !== "admin") return;
+        const bridge = (window as typeof window & { dreamyoDesktop?: { getAppearance(): Promise<"light" | "dark"> } }).dreamyoDesktop;
+        let mounted = true;
+        void bridge?.getAppearance().then((stored) => {
+            if (!mounted || (stored !== "light" && stored !== "dark")) return;
+            useThemeStore.getState().setTheme(stored);
+            useAdminThemeStore.getState().setTheme(stored);
+            setAppearanceReady(true);
+        }).catch(() => undefined);
+        return () => { mounted = false; };
+    }, [initialDesktopEdition]);
+
+    useEffect(() => {
+        if (initialDesktopEdition !== "admin" || !appearanceReady) return;
+        const bridge = (window as typeof window & { dreamyoDesktop?: { setAppearance(theme: "light" | "dark"): Promise<boolean> } }).dreamyoDesktop;
+        void bridge?.setAppearance(desktopTheme).catch(() => undefined);
+    }, [desktopTheme, appearanceReady, initialDesktopEdition]);
 
     useEffect(() => {
         const reloadOnceForChunkError = (reason: unknown) => {
@@ -77,10 +102,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
     }, [pathname, siteTitle]);
 
     return (
-        <ConfigProvider locale={zhCN} theme={getAntThemeConfig(dark)} popupOverflow="viewport" getPopupContainer={() => document.body}>
+        <ConfigProvider locale={zhCN} theme={getAntThemeConfig(dark, initialDesktopEdition === "admin")} popupOverflow="viewport" getPopupContainer={() => document.body}>
             <App message={{ top: 84, duration: 2.4, maxCount: 3 }}>
                 <QueryClientProvider client={queryClient}>
-                    <ClientRootInit>{children}</ClientRootInit>
+                    <ClientRootInit>{desktopWorkspace ? <DesktopAppShell platform={desktopPlatform || ""}>{children}</DesktopAppShell> : children}</ClientRootInit>
+                    {initialDesktopEdition || pathname === "/install" ? null : <SiteAnnouncementPopup />}
                 </QueryClientProvider>
             </App>
         </ConfigProvider>

@@ -63,6 +63,15 @@ describe("application proxy security", () => {
         expect(proxy(new NextRequest("http://127.0.0.1:3333/")).status).toBe(307);
         expect(new URL(proxy(new NextRequest("http://127.0.0.1:3333/admin/setup")).headers.get("location") || "http://invalid").searchParams.get("section")).toBe("channels");
     });
+
+    it("keeps commercial local projects available but prevents unaccounted generation and local password login", () => {
+        vi.stubEnv("DREAMYO_DESKTOP_EDITION", "commercial");
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/api/canvas/projects", { method: "POST" })).status).toBe(200);
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/api/video-tasks", { method: "POST" })).status).toBe(503);
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/api/canvas/projects/project-1/assistant-conversations", { method: "POST" })).status).toBe(503);
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/api/auth/login", { method: "POST" })).status).toBe(403);
+        expect(new URL(proxy(new NextRequest("http://127.0.0.1:3333/login")).headers.get("location") || "http://invalid").pathname).toBe("/desktop/connect");
+    });
 });
 
 function writeRequest(headers: Record<string, string>) {

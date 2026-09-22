@@ -47,12 +47,18 @@ export type DolaAccount = {
     loginProtocolCode?: number;
     /** 最近一次被上游标记 rate_limited 的时间（冷却期内不参与调度） */
     rateLimitedAt?: string;
+    /** 最近一次被标记为 quota_exhausted（今日额度已用完）的时间戳（跨自然日自动重置） */
+    quotaExhaustedAt?: string;
+    /** 额度用完原因说明 */
+    quotaExhaustedReason?: string;
     /** 判定风控时上游返回的原始错误/标记值，用于在后台展示风控原因 */
     restrictedReason?: string;
     /** 最近一次使用该账号当前代理出口执行的页面签名协议验证。 */
     validation?: DolaAccountValidation;
     /** 账号授权类型：Cookie 导入 或 Google 浏览器授权登录 */
     authType?: "cookie" | "google";
+    /** 账号分组：按号商/批次划分，配合网关设置的调度分组白名单控制哪些批次参与任务轮询 */
+    group?: string;
     createdAt: string;
     updatedAt: string;
 };
@@ -62,6 +68,7 @@ export type DolaAccountImportItem = {
     name?: string;
     email?: string;
     authType?: "cookie" | "google";
+    group?: string;
     sourceFileName?: string;
     sourceOrdinal?: number;
 };

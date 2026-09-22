@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import editionManifest from "@/lib/desktop-edition-manifest.json";
 
 export type DesktopEdition = "commercial" | "admin";
 
@@ -10,6 +11,7 @@ export type DesktopRuntimeInfo = {
     localProviderBilling: "free";
     localData: boolean;
     cloudSync: boolean;
+    cloudProjectBackups: boolean;
     implementationStage: "foundation";
 };
 
@@ -21,15 +23,17 @@ export function getDesktopEdition(environment = process.env): DesktopEdition | n
 export function getDesktopRuntimeInfo(environment = process.env): DesktopRuntimeInfo | null {
     const edition = getDesktopEdition(environment);
     if (!edition) return null;
+    const capabilities = editionManifest[edition];
     return {
         edition,
-        requiresLogin: edition === "commercial",
-        cloudFeatures: false,
-        localProviders: true,
-        localProviderBilling: "free",
+        requiresLogin: capabilities.requiresLogin,
+        cloudFeatures: capabilities.cloudFeatures,
+        localProviders: capabilities.localProviders,
+        localProviderBilling: capabilities.localProviderBilling as DesktopRuntimeInfo["localProviderBilling"],
         localData: true,
-        cloudSync: false,
-        implementationStage: "foundation",
+        cloudSync: capabilities.cloudSync,
+        cloudProjectBackups: capabilities.cloudProjectBackups,
+        implementationStage: capabilities.implementationStage as DesktopRuntimeInfo["implementationStage"],
     };
 }
 
@@ -44,6 +48,13 @@ export function isTrustedDesktopRequest(request: Request, environment = process.
     } catch {
         return false;
     }
+}
+
+export function isTrustedDesktopMainRequest(request: Request, environment = process.env) {
+    if (!isTrustedDesktopRequest(request, environment)) return false;
+    const expected = normalizeToken(environment.DREAMYO_DESKTOP_MAIN_TOKEN);
+    const actual = normalizeToken(request.headers.get("x-dreamyo-desktop-main-token"));
+    return Boolean(expected && actual && timingSafeEqual(digest(expected), digest(actual)));
 }
 
 export function safeDesktopNextPath(value: string | null, fallback = "/canvas") {

@@ -482,7 +482,11 @@ export async function createUpstream(
                       accountId: typeof (data as Record<string, unknown>).accountId === "string" ? String((data as Record<string, unknown>).accountId) : undefined,
                       credentialVersion: Number.isSafeInteger(Number((data as Record<string, unknown>).credentialVersion)) ? Number((data as Record<string, unknown>).credentialVersion) : undefined,
                       proxyMode: (data as Record<string, unknown>).proxyMode === "managed" || (data as Record<string, unknown>).proxyMode === "direct" ? (data as Record<string, unknown>).proxyMode : undefined,
-                      proxyTarget: typeof (data as Record<string, unknown>).proxyTarget === "string" ? String((data as Record<string, unknown>).proxyTarget) : undefined,
+                      proxyTarget: typeof (data as Record<string, unknown>).proxyNodeName === "string" && String((data as Record<string, unknown>).proxyNodeName).trim()
+                          ? String((data as Record<string, unknown>).proxyNodeName).trim()
+                          : typeof (data as Record<string, unknown>).proxyTarget === "string"
+                              ? String((data as Record<string, unknown>).proxyTarget)
+                              : undefined,
                       rotationPayload: payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : undefined,
                       rotations: 0,
                   }

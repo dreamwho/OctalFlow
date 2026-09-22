@@ -95,12 +95,12 @@ describe("canvas surface geometry", () => {
 
     it("keeps the composer at a fixed visual size and centered below the active node", () => {
         const media = { ...target, position: { x: 668, y: 120 }, width: 200, height: 100 };
-        expect(resolvePromptComposerOverlay(media, { x: 0, y: 0, k: 1 }, { width: 1536, height: 927 })).toEqual({ left: 438, top: 236, width: 660, height: 232 });
-        expect(resolvePromptComposerOverlay(media, { x: 537.6, y: 84, k: 0.3 }, { width: 1536, height: 927 })).toEqual({ left: 438, top: 166, width: 660, height: 232 });
+        expect(resolvePromptComposerOverlay(media, { x: 0, y: 0, k: 1 }, { width: 1536, height: 927 })).toEqual({ left: 438, top: 236, width: 660, height: 360 });
+        expect(resolvePromptComposerOverlay(media, { x: 537.6, y: 84, k: 0.3 }, { width: 1536, height: 927 })).toEqual({ left: 438, top: 166, width: 660, height: 360 });
     });
 
     it("keeps the fixed composer inside narrow viewports without adding a tether", () => {
-        expect(resolvePromptComposerOverlay(target, { x: 0, y: 0, k: 1 }, { width: 390, height: 320 })).toEqual({ left: 12, top: 76, width: 366, height: 232 });
+        expect(resolvePromptComposerOverlay(target, { x: 0, y: 0, k: 1 }, { width: 390, height: 320 })).toEqual({ left: 12, top: 12, width: 366, height: 296 });
     });
 
     it("targets node bodies and nearby handles without selecting the origin", () => {

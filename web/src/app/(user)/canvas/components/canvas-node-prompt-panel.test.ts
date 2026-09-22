@@ -77,6 +77,27 @@ describe("publicNodePrompt", () => {
         expect(videoSettingsBranch).not.toContain("<CanvasCameraMotionPicker");
     });
 
+    it("applies node popup surface border, shadow, and flat 26px typography to expanded prompt modal without inner borders or generate button", () => {
+        const source = readFileSync(new URL("./canvas-node-prompt-panel.tsx", import.meta.url), "utf8");
+        expect(source).toContain("onConnectReference?: (sourceNodeId: string) => void;");
+        expect(source).toContain("onConnectReference={onConnectReference}");
+        // Modal container styling matches the canvas node prompt popup surface
+        expect(source).toContain("container: {");
+        expect(source).toContain("background: theme.toolbar.panel");
+        expect(source).toContain("border: `1px solid ${theme.toolbar.border}`");
+        expect(source).toContain('borderRadius: "16px"');
+        expect(source).toContain('boxShadow: "0 18px 54px rgba(15, 23, 42, 0.18)"');
+        // Expanded editor has no inner border and transparent background for flat clean layout
+        expect(source).toContain('className="thin-scrollbar h-[min(68vh,36rem)] min-h-72 w-full resize-none overflow-y-auto !border-0 px-1 py-2 text-[15px] outline-none cursor-text"');
+        expect(source).toContain('lineHeight: "26px"');
+        expect(source).toContain('background: "transparent"');
+
+        // Modal footer has no generate button
+        const modalSection = source.slice(source.indexOf('<Modal\n                    className="canvas-prompt-editor-modal"'));
+        expect(modalSection).not.toContain("generateButton");
+        expect(modalSection).not.toContain("开始生成");
+    });
+
     it("renders media prompt editing as a canvas-level overlay instead of a node-attached panel", () => {
         const source = readFileSync(new URL("../[id]/canvas-client-page.tsx", import.meta.url), "utf8");
         expect(source).toContain("node.type === CanvasNodeType.Config");
@@ -127,4 +148,21 @@ describe("Canvas prompt Skill persistence", () => {
         expect(actionsSource).toContain("mode === \"video\" && (videoCreation?.isEmptyVideoNode ?? false)");
         expect(actionsSource).toContain("const markSourceStatus = isSourceGeneratingInPlace;");
     });
+
+    it("supports text cursor, expanded modal scrolling, enter line-breaking, and all-material mention resolution", () => {
+        const panelSource = readFileSync(new URL("./canvas-node-prompt-panel.tsx", import.meta.url), "utf8");
+        expect(panelSource).toContain('submitOnModEnterOnly={true}');
+        expect(panelSource).toContain('overflow-y-auto');
+        expect(panelSource).toContain('data-canvas-prompt-editor="expanded"');
+        expect(panelSource).toContain('cursor-text');
+
+        const editorSource = readFileSync(new URL("./canvas-rich-prompt-editor.tsx", import.meta.url), "utf8");
+        expect(editorSource).toContain('cursor-text');
+        expect(editorSource).toContain('submitOnModEnterOnly');
+        expect(editorSource).toContain('event.key === "Enter"');
+
+        const globalCss = readFileSync(new URL("../../../styles/global-canvas-overrides.css", import.meta.url), "utf8");
+        expect(globalCss).toContain('cursor: text !important;');
+    });
 });
+

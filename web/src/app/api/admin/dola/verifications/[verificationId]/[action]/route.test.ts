@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), request: vi.fn(), openLog: vi.fn(), settleLog: vi.fn(), ready: vi.fn(), refreshCookie: vi.fn() }));
+const mocks = vi.hoisted(() => ({ admin: vi.fn(), request: vi.fn(), openLog: vi.fn(), settleLog: vi.fn(), ready: vi.fn(), refreshCookie: vi.fn(), unusable: vi.fn() }));
 vi.mock("@/lib/server/dola/admin", () => ({ requireDolaAdmin: mocks.admin, dolaRouteError: () => new Response("failure", { status: 502 }) }));
 vi.mock("@/lib/server/dola/provider", () => ({ dolaRuntimeRequest: mocks.request }));
 vi.mock("@/lib/server/dola/log-store", () => ({ openDolaRequestLog: mocks.openLog, settleDolaRequestLog: mocks.settleLog }));
-vi.mock("@/lib/server/dola/account-service", () => ({ markDolaAccountReady: mocks.ready, refreshDolaAccountCookieIfVersion: mocks.refreshCookie, updateDolaAccountCredentials: vi.fn(), updateDolaAccountQuota: vi.fn() }));
+vi.mock("@/lib/server/dola/account-service", () => ({ markDolaAccountReady: mocks.ready, markDolaAccountUnusable: mocks.unusable, refreshDolaAccountCookieIfVersion: mocks.refreshCookie, updateDolaAccountCredentials: vi.fn(), updateDolaAccountQuota: vi.fn() }));
 
 import { POST } from "./route";
 
@@ -34,6 +34,16 @@ it("keeps the browser open and the stored Cookie untouched when login is invalid
     mocks.request.mockResolvedValue(new Response(JSON.stringify({ status: "needs_login" }), { status: 200 }));
     const response = await POST(new Request("http://localhost/api/admin/dola/verifications/fixture/finalize", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken: "private-lease-token-value" }) }), { params: Promise.resolve({ verificationId: "fixture", action: "finalize" }) });
     expect(await response?.json()).toMatchObject({ code: 0, data: { status: "needs_login" } });
+    expect(mocks.refreshCookie).not.toHaveBeenCalled();
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+});
+
+it("persists the needs_login classification for the headed account when the test ends logged out", async () => {
+    mocks.unusable.mockResolvedValue(undefined);
+    mocks.request.mockResolvedValue(new Response(JSON.stringify({ status: "needs_login", accountId: "fixture-account" }), { status: 200 }));
+    const response = await POST(new Request("http://localhost/api/admin/dola/verifications/fixture/finalize", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken: "private-lease-token-value" }) }), { params: Promise.resolve({ verificationId: "fixture", action: "finalize" }) });
+    expect(await response?.json()).toMatchObject({ code: 0, data: { status: "needs_login", accountId: "fixture-account" } });
+    expect(mocks.unusable).toHaveBeenCalledWith("fixture-account", "needs_login");
     expect(mocks.refreshCookie).not.toHaveBeenCalled();
     expect(mocks.request).toHaveBeenCalledTimes(1);
 });

@@ -31,6 +31,7 @@ import {
     mergeJson,
     normalizeBillingProductInput,
     normalizeBillingProductPatch,
+    assertStoragePurchaseAllowed,
     normalizeCurrency,
     normalizeId,
     normalizeIso,
@@ -60,6 +61,10 @@ export type BillingProductInput = {
     pointsAmount?: unknown;
     dailyPoints?: unknown;
     periodDays?: unknown;
+    storageBytes?: unknown;
+    storageStackable?: unknown;
+    storageRenewable?: unknown;
+    storagePurchaseLimit?: unknown;
     enabled?: unknown;
     sortOrder?: unknown;
     metadata?: unknown;
@@ -188,6 +193,7 @@ export async function createBillingOrder(input: CreateBillingOrderInput) {
 
         const plan = product.productKind === "plan" ? await resolveEnabledPlan(product.planId || "", client) : undefined;
         const quantity = normalizePositiveInteger(input.quantity, 1, 100, 1);
+        if (product.productKind === "storage") assertStoragePurchaseAllowed(product, await repos.billing.getStoragePurchaseCounts(user.id, product.id), quantity);
         const provider = normalizeProvider(input.provider);
         if (!isPaymentRuntimeProviderCheckoutReady(paymentConfig, provider)) throw new BillingInputError("该支付渠道未启用或配置不完整", 400);
         const now = new Date();
@@ -216,7 +222,11 @@ export async function createBillingOrder(input: CreateBillingOrderInput) {
             currency: product.currency,
             pointsAmount: roundAmount(product.pointsAmount * quantity),
             dailyPoints: product.dailyPoints,
-            periodDays: product.productKind === "plan" ? product.periodDays * quantity : 0,
+            periodDays: product.productKind === "plan" ? product.periodDays * quantity : product.productKind === "storage" ? product.periodDays : 0,
+            storageBytes: product.productKind === "storage" ? (product.storageBytes || 0) * quantity : 0,
+            storageStackable: product.storageStackable !== false,
+            storageRenewable: product.storageRenewable !== false,
+            storagePurchaseLimit: product.storagePurchaseLimit || 0,
             quantity,
             provider,
             promotionCampaignId: commerce.price.promotion?.id,
@@ -233,6 +243,10 @@ export async function createBillingOrder(input: CreateBillingOrderInput) {
                     unitPointsAmount: product.pointsAmount,
                     dailyPoints: product.dailyPoints,
                     unitPeriodDays: product.periodDays,
+                    unitStorageBytes: product.storageBytes || 0,
+                    storageStackable: product.storageStackable !== false,
+                    storageRenewable: product.storageRenewable !== false,
+                    storagePurchaseLimit: product.storagePurchaseLimit || 0,
                 },
                 ...(plan ? { plan: { id: plan.id, name: plan.name } } : {}),
             },
@@ -319,6 +333,27 @@ export async function completeBillingOrderPayment(input: CompleteBillingOrderPay
             if (!planUser) throw new BillingInputError("用户不存在", 404);
             updatedUser = planUser;
             assignment = await createOrderPlanAssignment(order, paidAt, client);
+        } else if (order.productKind === "storage") {
+            if (!order.storageBytes || order.storageBytes <= 0 || order.periodDays <= 0) throw new BillingInputError("云存储订单权益不完整", 409);
+            await client.query("SELECT user_id FROM cloud_storage_accounts WHERE user_id = $1 FOR UPDATE", [user.id]);
+            let startsAt = paidAt;
+            if (order.storageStackable === false) {
+                if (!order.productId) throw new BillingInputError("云存储订单缺少商品", 409);
+                const previous = await client.query<{ ends_at: Date | null }>(
+                    `SELECT max(grants.ends_at) AS ends_at FROM cloud_storage_grants grants
+                     JOIN billing_orders previous_orders ON previous_orders.id = grants.source_order_id
+                     WHERE grants.user_id = $1 AND previous_orders.product_id = $2
+                       AND grants.revoked_at IS NULL AND grants.ends_at > $3::timestamptz`,
+                    [user.id, order.productId, paidAt],
+                );
+                const previousEnd = previous.rows[0]?.ends_at;
+                if (previousEnd && new Date(previousEnd).getTime() > Date.parse(paidAt)) startsAt = new Date(previousEnd).toISOString();
+            }
+            await client.query(
+                `INSERT INTO cloud_storage_grants (id, user_id, bytes, source_order_id, starts_at, ends_at)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [randomUUID(), user.id, order.storageBytes, order.id, startsAt, new Date(Date.parse(startsAt) + order.periodDays * 86_400_000).toISOString()],
+            );
         } else {
             const refreshedUser = await repos.users.getById(user.id);
             if (!refreshedUser) throw new BillingInputError("用户不存在", 404);

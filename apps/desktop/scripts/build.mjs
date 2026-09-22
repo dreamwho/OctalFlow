@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 import { resolveEdition } from "../src/shared/edition.mjs";
+import { validateCloudOrigin } from "../src/main/cloud-device-auth.mjs";
 import { prepareRuntime } from "./prepare-runtime.mjs";
 
 const edition = resolveEdition(process.argv[2]);
@@ -12,9 +13,11 @@ if ((target === "win") !== (process.platform === "win32")) throw new Error("桌�
 if (target === "mac" && process.platform !== "darwin") throw new Error("macOS 安装包必须在 macOS 构建");
 
 const buildDir = path.resolve(import.meta.dirname, "../build");
+const cloudOrigin = edition.id === "commercial" ? validateCloudOrigin(process.env.DREAMYO_DESKTOP_CLOUD_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL || "", true) : "";
+if (edition.id === "commercial" && !cloudOrigin) throw new Error("商用桌面版打包前必须配置 HTTPS 云端站点地址");
 await mkdir(buildDir, { recursive: true });
-await writeFile(path.join(buildDir, "edition.json"), `${JSON.stringify({ edition: edition.id })}\n`, "utf8");
-await prepareRuntime({ edition: edition.id });
+await writeFile(path.join(buildDir, "edition.json"), `${JSON.stringify({ edition: edition.id, cloudOrigin })}\n`, "utf8");
+await prepareRuntime({ edition: edition.id, distDir: process.env.NEXT_DIST_DIR?.trim() || ".next" });
 
 const builder = path.resolve(import.meta.dirname, "../node_modules/.bin", process.platform === "win32" ? "electron-builder.cmd" : "electron-builder");
 const child = spawn(builder, [`--${target}`, "--config", "electron-builder.config.mjs"], {

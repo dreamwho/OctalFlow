@@ -1,7 +1,8 @@
 /** Dola 协议错误码识别与双语说明，外部网关与后台界面共用。 */
 
 const DOLA_ERROR_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
-    [/rate[_ ]?limited|rate limit|too many requests/i, "上游账号触发生成频率/数量限制 (upstream account rate-limited)"],
+    [/quota[_ ]?exhausted|upstream_quota_exhausted|生成次数.*(?:上限|已达|到达)|额度.*用完|免费生成次数.*用完|明天再来免费生成|今日额度已用完/i, "上游账号今日生成次数已达上限 (upstream account daily quota exhausted)"],
+    [/rate[_ ]?limited|rate limit|too many requests|429|710022002|服务访问频繁|频繁/i, "上游账号触发生成频率/数量限制 (upstream account rate-limited)"],
     [/quota/i, "上游账号配额已耗尽 (upstream account quota exhausted)"],
     [/login|auth|cookie|credential/i, "账号登录态失效，请重新验证 Cookie (account session expired; re-verify the cookie)"],
     [/task[_ ]?not[_ ]?found/i, "任务不存在或已被 Provider 清理 (task not found; it may have been cleaned up)"],
@@ -9,9 +10,14 @@ const DOLA_ERROR_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
     [/sensitive|risk|moderation|blocked/i, "内容被上游风控拦截 (content blocked by upstream risk control)"],
 ];
 
-/** 识别上游账号级限流错误（Dola 协议约定错误码：rate_limited / too many requests） */
+/** 识别上游账号今日生成额度耗尽（Dola 协议约定错误码：upstream_quota_exhausted / quota_exhausted / 今日生成次数已达上限 / 额度已用完） */
+export function isDolaQuotaExhaustedError(text: string) {
+    return /quota[_ ]?exhausted|upstream_quota_exhausted|生成次数.*(?:上限|已达|到达)|额度.*用完|免费生成次数.*用完|明天再来免费生成|今日额度已用完/i.test(text || "");
+}
+
+/** 识别上游账号级限流错误（Dola 协议约定错误码：rate_limited / too many requests / 710022002 / 服务访问频繁） */
 export function isDolaRateLimitError(text: string) {
-    return /rate[_ ]?limited|rate limit|too many requests/i.test(text || "");
+    return /rate[_ ]?limited|rate limit|too many requests|429|710022002|服务访问频繁|频繁/i.test(text || "");
 }
 
 /**
@@ -20,7 +26,7 @@ export function isDolaRateLimitError(text: string) {
  * 内容风控与参数错误换任何账号结果都一样，必须立即失败、不消耗预算（fail-fast，避免连累多个账号）。
  */
 export function isAccountClassGenerationError(text: string) {
-    return /rate[_ ]?limited|rate limit|too many requests|429|quota|capacity|exhausted|login|auth|cookie|credential|unauthorized|401|403|internal server error|bad gateway|service unavailable|502|503|504|timeout|timed out|verification|risk control|temporary|ns_error_abort|page\.goto|net::err|navigation|browser|proxy|protocol[_ ]?validation|signed[_ ]?protocol|signing[_ ]?hook|page[_ ]?identity|signature[_ ]?rejected|submission[_ ]?transport/i.test(text || "");
+    return /rate[_ ]?limited|rate limit|too many requests|429|quota|capacity|exhausted|生成次数|额度|明天再来免费生成|login|auth|cookie|credential|unauthorized|401|403|internal server error|bad gateway|service unavailable|502|503|504|timeout|timed out|verification|risk control|temporary|ns_error_abort|page\.goto|net::err|navigation|browser|proxy|protocol[_ ]?validation|signed[_ ]?protocol|signing[_ ]?hook|page[_ ]?identity|signature[_ ]?rejected|submission[_ ]?transport/i.test(text || "");
 }
 
 /** 内容风控/参数错误：换号无意义，立即失败 */
@@ -43,5 +49,9 @@ export function dolaErrorHint(text: string) {
 export function describeDolaFailure(code: string) {
     const raw = (code || "").trim() || "unknown";
     const hint = dolaErrorHint(raw);
-    return hint ? `${raw}（${hint}）` : `${raw}（上游返回未知错误 unknown upstream error）`;
+    if (hint) return `${raw}（${hint}）`;
+    if (/[\u4e00-\u9fa5]/.test(raw) && raw.length > 15) {
+        return raw;
+    }
+    return `${raw}（上游返回未知错误 unknown upstream error）`;
 }

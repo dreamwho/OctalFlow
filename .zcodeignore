@@ -1,0 +1,107 @@
+.next/
+.next-production/
+.next-*/
+out/
+node_modules/
+apps/desktop/build/
+apps/desktop/dist/
+apps/desktop/resources/sidecars/*-*/
+.pnpm-store/
+/pnpm-lock.yaml
+.env*
+!.env.example
+.data/
+.e2e-data/
+.e2e-artifacts/
+playwright-report/
+web/test-results/
+.tmp/
+web/.tmp/
+.tmp_*.txt
+data/
+*.log
+*.tsbuildinfo
+.tmp-*
+.DS_Store
+.idea
+.codex/
+.trellis/
+.agents/
+.zcode/
+skills-lock.json
+docs/assets/
+VOZEB-PRO-审计报告.md
+VOZEB-PRO项目缺陷检查报告.md
+修复验证报告.md
+商业落地和用户体验评估报告.md
+商业版功能缺口分析报告.md
+项目文件流程图.md
+scripts/capture-readme-screenshots.mjs
+**/__pycache__/
+*.pyc
+
+# 本地密码便签，禁止入库
+数据库密码.txt
+cloudfare数据库.txt
+ROTua4evaSsp.yaml
+backups/
+
+# 本地设计与验收材料，禁止入库
+.design-qa/
+.workbuddy/
+design-references/
+design-qa.md
+品牌图标LOGO/
+
+# 服务器部署包（含密钥，禁止入库）
+待上传文件_*
+本次修改需上传文件_*
+private-migration/
+web/scripts/local-data-migration.mjs
+
+# ChatGPT 内部运行时：依赖环境和私有数据不得入库
+services/chatgpt-api/.venv/
+services/chatgpt-api/.pytest_cache/
+services/chatgpt-api/config.json
+
+# 本地任务探测脚本
+.octal-task.*
+.regress-data/
+web/.regress-data/
+
+# UI 重建期间的源码快照备份与调试产物（不入库）
+docs/ui-rebuild-20260913/frontend-backup-*/
+web/web/
+web/verify_checks.py
+antigravity_tokens.json
+docs/dola-api-plan/evidence/
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

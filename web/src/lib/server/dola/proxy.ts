@@ -1,7 +1,7 @@
 import { chatGptRuntimeJson } from "@/lib/server/chatgpt-api-service";
 import { DolaProviderError } from "./provider";
 
-export type DolaProxyEgress = { mode: "direct" | "magic" | "generic" | "chained"; target?: string; nodeName?: string };
+export type DolaProxyEgress = { mode: "direct" | "magic" | "generic" | "chained"; target?: string; nodeName?: string; address?: string };
 export type DolaProxyBinding = { enabled: boolean; mode: DolaProxyEgress["mode"]; target: string };
 /** Provider contract uses `managed` for any server-managed Dola egress mode. */
 export function dolaProviderProxyMode(egress: DolaProxyEgress): "direct" | "managed" {
@@ -46,9 +46,10 @@ export async function resolveDolaProxyEgress(): Promise<{ proxyUrl?: string; egr
         const resolved = await ensureMagicProxyProvider("dola");
         if (!resolved.enabled || !resolved.proxyUrl) return { egress: { mode: "direct" } };
         const mode = resolved.egress?.mode === "magic" || resolved.egress?.mode === "chained" ? resolved.egress.mode : "generic";
-        const nodeName = resolved.egress?.node_name;
-        const target = resolved.egress?.address || nodeName;
-        return { proxyUrl: resolved.proxyUrl, egress: { mode, target, nodeName } };
+        const nodeName = resolved.egress?.node_name?.trim() || undefined;
+        const address = resolved.egress?.address?.trim() || undefined;
+        const target = nodeName || address;
+        return { proxyUrl: resolved.proxyUrl, egress: { mode, target, nodeName, address } };
     } catch (error) {
         if (error instanceof DolaProviderError) throw error;
         const message = error instanceof Error ? error.message : "Dola 代理出口不可用";

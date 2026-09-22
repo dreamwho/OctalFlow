@@ -1,8 +1,8 @@
-from dola_api.protocol import canonical_ratio, validate_request
-from dola_api.page_scripts import MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
+from dola_api.protocol import canonical_ratio, sanitize_video_prompt_duration, validate_request
+from dola_api.page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from dola_api.query import decode_main_url, extract_conversation_id, extract_image_urls, extract_main_url, extract_video_url, extract_vod_payload, generation_query_payloads, parse_generation_payloads
 from dola_api.sse import iter_sse_events
-from dola_api.session import CamoufoxSessionPool, PageSession, _build_completion_query, _camoufox_browser_options, _camoufox_context_options, _page_has_verification_marker, _proxy_url_for_request, _sse_verification_decision, _submission_diagnostics
+from dola_api.session import CamoufoxSessionPool, PageSession, _build_completion_query, _build_request_body, _camoufox_browser_options, _camoufox_context_options, _page_has_verification_marker, _proxy_url_for_request, _sse_verification_decision, _submission_diagnostics
 from dola_api.contracts import VideoRequest, VideoTask
 
 
@@ -339,7 +339,7 @@ def test_refresh_task_promotes_nested_download_url_to_completed(monkeypatch):
     assert task.vodPayload == {"video_model": '{"fallback_api":"https://vod.dola.com/fallback"}'}
 
 
-def test_refresh_task_does_not_guess_a_conversation_for_ack_only_task(monkeypatch):
+def test_refresh_task_recovers_conversation_for_ack_only_task(monkeypatch):
     import asyncio
     import dola_api.session as session_module
 
@@ -347,9 +347,47 @@ def test_refresh_task_does_not_guess_a_conversation_for_ack_only_task(monkeypatc
     pool._tasks["task-recover"] = VideoTask(id="task-recover", model="dola-seedance-2-5", status="accepted")
     pool._task_meta["task-recover"] = {"ackReceived": True, "cookie": "sid=abc", "identity": {}}
 
+    async def recover_recent(cookie, identity, proxy_url=None):
+        assert cookie == "sid=abc"
+        return "38417880090853905"
+
+    async def query(cookie, conversation_id, identity, proxy_url=None):
+        assert conversation_id == "38417880090853905"
+        return {"url": "https://cdn.dola.com/generated.mp4", "imageUrls": [], "payload": {}}
+
     async def persist():
         return None
 
+    monkeypatch.setattr(session_module, "fetch_recent_conversation_id", recover_recent)
+    monkeypatch.setattr(session_module, "fetch_generation_result", query)
+    monkeypatch.setattr(pool, "_persist", persist)
+    asyncio.run(pool._refresh_task("task-recover"))
+
+    task = pool._tasks["task-recover"]
+    assert task.status == "completed"
+    assert task.conversationId == "38417880090853905"
+    assert task.videoUrl == "https://cdn.dola.com/generated.mp4"
+
+
+def test_refresh_task_keeps_accepted_when_recovery_finds_no_conversation(monkeypatch):
+    import asyncio
+    import dola_api.session as session_module
+
+    pool = CamoufoxSessionPool()
+    pool._tasks["task-recover"] = VideoTask(id="task-recover", model="dola-seedance-2-5", status="accepted")
+    pool._task_meta["task-recover"] = {"ackReceived": True, "cookie": "sid=abc", "identity": {}}
+
+    async def recover_recent(cookie, identity, proxy_url=None):
+        return ""
+
+    async def query(*_args, **_kwargs):
+        raise AssertionError("upstream result query must not run without a conversation id")
+
+    async def persist():
+        return None
+
+    monkeypatch.setattr(session_module, "fetch_recent_conversation_id", recover_recent)
+    monkeypatch.setattr(session_module, "fetch_generation_result", query)
     monkeypatch.setattr(pool, "_persist", persist)
     asyncio.run(pool._refresh_task("task-recover"))
 
@@ -383,3 +421,193 @@ def test_refresh_task_uses_page_signed_result_fallback(monkeypatch):
     assert task.status == "completed"
     assert task.videoUrl == "https://cdn.dola.com/page-signed.mp4"
     assert task.vodPayload == {"fallback_api": "https://vod.dola.com/fallback"}
+
+
+def test_submit_stream_extraction_walks_sse_event_tuples():
+    events = [("SSE_ACK", {"ack_client_meta": {"conversation_id": "38417880090853905"}})]
+    assert extract_conversation_id(events) == "38417880090853905"
+    video_events = [("FULL_MSG_NOTIFY", {"messages": [{"content": '[{"block_type":2074,"content":{"creation_block":{"creations":[{"type":2,"video":{"download_url":"https://cdn.dola.com/generated.mp4"}}]}}}]'}]})]
+    assert extract_video_url(video_events) == "https://cdn.dola.com/generated.mp4"
+    image_events = [("FULL_MSG_NOTIFY", {"messages": [{"content": '[{"content":{"creation_block":{"creations":[{"type":1,"image":{"image_ori":{"url":"https://cdn.dola.com/image.png"}}}]}}}]'}]})]
+    assert extract_image_urls(image_events) == ["https://cdn.dola.com/image.png"]
+
+
+def test_generic_failure_message_terminates_generation_result():
+    payload = {"messages": [{"content": '[{"block_type":10000,"content":{"text_block":{"text":"出了点问题，请稍后重试。"}}}]'}]}
+    assert parse_generation_payloads([payload])["error"] == "upstream_generation_failed"
+
+
+def test_sanitize_video_prompt_duration_removes_conversational_triggers():
+    assert sanitize_video_prompt_duration("生成30秒视频：海边日落") == "海边日落"
+    assert sanitize_video_prompt_duration("海边日落，时长30秒，超清画质") == "海边日落，超清画质"
+    assert sanitize_video_prompt_duration("生成一段15秒的微电影：秋天的落叶") == "秋天的落叶"
+    assert sanitize_video_prompt_duration("一只猫咪在草地上玩耍 30s") == "一只猫咪在草地上玩耍"
+    assert sanitize_video_prompt_duration("A futuristic city at night, duration: 30s, cinematic lighting") == "A futuristic city at night，cinematic lighting"
+    assert sanitize_video_prompt_duration("30秒") == ""
+
+
+def test_build_request_body_for_30s_video_passes_structured_ability_and_clean_prompt():
+    import json
+    request = VideoRequest(model="dola-seedance-2-5", prompt="生成30秒视频：海边日落", duration=30, ratio="16:9")
+    profile = validate_request(request.model, request.duration, request.ratio)
+    body = _build_request_body(profile, request, [])
+    chat_ability = body["chat_ability"]
+    assert chat_ability["ability_type"] == 17
+    ability_param = json.loads(chat_ability["ability_param"])
+    assert ability_param["duration"] == 30
+    assert ability_param["model"] == "seedance_v2.5"
+    assert ability_param["camera_movement"] == "fixed"
+    assert ability_param["ratio"] == "16:9"
+    assert ability_param["input_box_content"]["user_input_content"] == "海边日落"
+    visible_text = body["messages"][0]["content_block"][0]["content"]["text_block"]["text"]
+    assert "30秒" not in visible_text
+    assert "海边日落" in visible_text
+
+
+def test_dola_30s_unlocker_script_contains_required_hooks():
+    assert "30s" in DOLA_30S_UNLOCKER_SCRIPT
+    assert "15s" in DOLA_30S_UNLOCKER_SCRIPT
+    assert "patchAnyDuration" in DOLA_30S_UNLOCKER_SCRIPT
+    assert "samantha/skill/pack" in DOLA_30S_UNLOCKER_SCRIPT
+    assert "action_bar_v3/get_item_conf" in DOLA_30S_UNLOCKER_SCRIPT
+    assert "slot/action_bar" in DOLA_30S_UNLOCKER_SCRIPT
+    assert "/chat/completion" in DOLA_30S_UNLOCKER_SCRIPT
+
+
+
+def test_quota_exhausted_message_terminates_generation_result():
+    payload = {"messages": [{"content": '[{"block_type":10000,"content":{"text_block":{"text":"今天的生成次数已经到达上限，明天再来免费生成吧"}}}]'}]}
+    result = parse_generation_payloads([payload])
+    assert result["error"] == "upstream_quota_exhausted"
+    assert result["rawError"] == "今天的生成次数已经到达上限，明天再来免费生成吧"
+
+
+def test_conversational_refusal_without_creation_terminates_with_exact_text():
+    # When Dola assistant replies with conversational refusal (e.g. 30s limitation or policy)
+    # without a creation block, parse_generation_payloads must fail the task and preserve the full original text.
+    refusal_text = (
+        "视频生成目前支持 4–15 秒。你要求的 30 秒无法直接生成，我建议按完整脚本拆为 3 段各 10 秒竖屏视频，"
+        "这样故事更有节奏感，细节也更丰富。我们可以这样安排：A. 生成 3 段 9:16、10 秒视频，分别对应 0–10s / 10–20s / 20–30s..."
+    )
+    downlink_payload = {
+        "downlink_body": {
+            "pull_singe_chain_downlink_body": {
+                "messages": [
+                    {
+                        "sender_type": 1,
+                        "content": '[{"block_type":10000,"content":{"text_block":{"text":"生成30秒视频：海边日落"}}}]',
+                    },
+                    {
+                        "sender_type": 2,
+                        "content": f'[{{"block_type":10000,"content":{{"text_block":{{"text":"{refusal_text}"}}}}}}]',
+                    },
+                ]
+            }
+        }
+    }
+    result = parse_generation_payloads([downlink_payload])
+    assert result.get("error") == refusal_text
+    assert result.get("rawError") == refusal_text
+    assert result.get("url") == ""
+
+
+def test_user_message_only_continues_polling_until_assistant_replies():
+    # When only the user prompt exists in downlink messages and assistant has not answered yet,
+    # it must return {} to continue polling.
+    downlink_payload = {
+        "downlink_body": {
+            "pull_singe_chain_downlink_body": {
+                "messages": [
+                    {
+                        "sender_type": 1,
+                        "content": '[{"block_type":10000,"content":{"text_block":{"text":"生成视频：日出"}}}]',
+                    }
+                ]
+            }
+        }
+    }
+    result = parse_generation_payloads([downlink_payload])
+    assert result == {}
+
+
+def test_active_creation_block_continues_polling():
+    # When an active creation block is present (status 1 = generating), return {} to keep polling.
+    downlink_payload = {
+        "downlink_body": {
+            "pull_singe_chain_downlink_body": {
+                "messages": [
+                    {
+                        "sender_type": 2,
+                        "content": '[{"block_type":2074,"content":{"creation_block":{"creations":[{"type":2,"video":{"status":1}}]}}}]',
+                    }
+                ]
+            }
+        }
+    }
+    result = parse_generation_payloads([downlink_payload])
+    assert result == {}
+
+
+def test_ensure_loaded_reclassifies_orphaned_running_tasks(monkeypatch, tmp_path):
+    import asyncio
+
+    from dola_api.task_store import save_state
+
+    monkeypatch.setenv("DOLA_TASK_STATE_PATH", str(tmp_path / "tasks.json"))
+    monkeypatch.setenv("DOLA_PROVIDER_KEY", "unit-test-provider-key")
+    save_state(
+        [
+            {"id": "dola-ack", "model": "dola-seedance-2-5", "status": "running"},
+            {"id": "dola-noack", "model": "dola-seedance-2-5", "status": "running"},
+            {"id": "dola-kept", "model": "dola-seedance-2-5", "status": "accepted"},
+        ],
+        {
+            "dola-ack": {"accountId": "acc-1", "ackReceived": True},
+            "dola-noack": {"accountId": "acc-2"},
+            "dola-kept": {"accountId": "acc-3", "ackReceived": True},
+        },
+    )
+    pool = CamoufoxSessionPool()
+    asyncio.run(pool._ensure_loaded())
+    assert pool._tasks["dola-ack"].status == "accepted"
+    assert pool._tasks["dola-noack"].status == "failed"
+    assert pool._tasks["dola-noack"].error == "submission_interrupted"
+    assert pool._tasks["dola-kept"].status == "accepted"
+
+
+def test_finalize_headed_test_reports_account_on_needs_login(monkeypatch):
+    import asyncio
+
+    import dola_api.session as session_module
+    from dola_api.contracts import VerificationLease
+    from dola_api.session import VerificationSession
+
+    pool = CamoufoxSessionPool()
+    pool._loaded = True
+
+    class FakeContext:
+        async def cookies(self, *_args, **_kwargs):
+            return [{"name": "sessionid", "value": "abc"}]
+
+    lease = "l" * 24
+    pool._verifications["ver-1"] = VerificationSession(
+        verification_id="ver-1",
+        task_id="",
+        request=None,
+        page_session=PageSession("acc-149", 1, "direct", "", "", "", "sessionid=abc"),
+        browser=None,
+        context=FakeContext(),
+        page=None,
+        references=[],
+        decision={"type": "inspect", "subtype": "headed_test"},
+        lease_token=lease,
+        created_at="2026-09-22T00:00:00Z",
+    )
+
+    async def fake_probe(cookie, proxy_url=None):
+        return {"state": "needs_login"}
+
+    monkeypatch.setattr(session_module, "probe_account_login", fake_probe)
+    result = asyncio.run(pool.finalize_headed_test("ver-1", VerificationLease(leaseToken=lease)))
+    assert result["status"] == "needs_login"
+    assert result["accountId"] == "acc-149"

@@ -37,7 +37,7 @@ const statusOptions: Array<{ label: string; value: BillingOrderStatus | "" }> = 
 
 type ProductFormValue = {
     id?: string;
-    productKind: "plan" | "points";
+    productKind: "plan" | "points" | "storage";
     planId?: string;
     name: string;
     description?: string;
@@ -46,6 +46,10 @@ type ProductFormValue = {
     pointsAmount: number;
     dailyPoints: number;
     periodDays: number;
+    storageGiB: number;
+    storageStackable: boolean;
+    storageRenewable: boolean;
+    storagePurchaseLimit: number;
     enabled: boolean;
     sortOrder: number;
 };
@@ -62,6 +66,10 @@ function defaultProductFormValue(sortOrder: number): ProductFormValue {
         pointsAmount: 0,
         dailyPoints: 0,
         periodDays: 30,
+        storageGiB: 1,
+        storageStackable: true,
+        storageRenewable: true,
+        storagePurchaseLimit: 0,
         enabled: true,
         sortOrder,
     };
@@ -272,6 +280,10 @@ export function BillingOperations({ initialTab = "orders", initialPaymentConfig,
             pointsAmount: product.pointsAmount,
             dailyPoints: product.dailyPoints,
             periodDays: product.periodDays,
+            storageGiB: (product.storageBytes || 0) / 1_073_741_824,
+            storageStackable: product.storageStackable !== false,
+            storageRenewable: product.storageRenewable !== false,
+            storagePurchaseLimit: product.storagePurchaseLimit || 0,
             enabled: product.enabled,
             sortOrder: product.sortOrder || 0,
         });
@@ -293,7 +305,11 @@ export function BillingOperations({ initialTab = "orders", initialPaymentConfig,
                     currency: value.currency,
                     pointsAmount: value.pointsAmount,
                     dailyPoints: value.productKind === "plan" ? value.dailyPoints : 0,
-                    periodDays: value.productKind === "plan" ? value.periodDays : 0,
+                    periodDays: value.productKind !== "points" ? value.periodDays : 0,
+                    storageBytes: value.productKind === "storage" ? Math.round(Number(value.storageGiB) * 1_073_741_824) : 0,
+                    storageStackable: value.storageStackable,
+                    storageRenewable: value.storageRenewable,
+                    storagePurchaseLimit: value.storagePurchaseLimit,
                     enabled: value.enabled,
                     sortOrder: value.sortOrder,
                 }),
@@ -380,9 +396,9 @@ export function BillingOperations({ initialTab = "orders", initialPaymentConfig,
             width: 150,
             render: (_, order) => (
                 <div className="text-sm text-stone-600 dark:text-stone-300">
-                    <div>{order.pointsAmount} 永久积分</div>
+                    <div>{order.productKind === "storage" ? `${((order.storageBytes || 0) / 1_073_741_824).toLocaleString("zh-CN")} GiB 云存储` : `${order.pointsAmount} 永久积分`}</div>
                     <div className="text-xs text-stone-500 dark:text-stone-400">
-                        每日 {order.dailyPoints} · {order.periodDays ? `${order.periodDays} 天` : "长期"}
+                        {order.productKind === "storage" ? `${order.periodDays} 天有效` : `每日 ${order.dailyPoints} · ${order.periodDays ? `${order.periodDays} 天` : "长期"}`}
                     </div>
                 </div>
             ),
@@ -566,7 +582,7 @@ export function BillingOperations({ initialTab = "orders", initialPaymentConfig,
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="min-w-0">
                                                     <div className="truncate text-sm font-semibold text-stone-950 dark:text-stone-100">{product.name}</div>
-                                                    <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500 dark:text-stone-400">{product.description || (product.productKind === "points" ? "积分充值商品" : product.planId || "未关联套餐")}</div>
+                                                    <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500 dark:text-stone-400">{product.description || (product.productKind === "points" ? "积分充值商品" : product.productKind === "storage" ? "云存储容量套餐" : product.planId || "未关联套餐")}</div>
                                                     {product.pricing.discountCents > 0 ? (
                                                         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
                                                             <Tag className="m-0" color="red">
@@ -578,15 +594,15 @@ export function BillingOperations({ initialTab = "orders", initialPaymentConfig,
                                                     ) : null}
                                                 </div>
                                                 <div className="flex shrink-0 items-center gap-1.5">
-                                                    <Tag color={product.productKind === "points" ? "gold" : "blue"}>{product.productKind === "points" ? "积分" : "套餐"}</Tag>
+                                                    <Tag color={product.productKind === "points" ? "gold" : product.productKind === "storage" ? "cyan" : "blue"}>{product.productKind === "points" ? "积分" : product.productKind === "storage" ? "存储" : "套餐"}</Tag>
                                                     <Tag color={product.enabled ? "green" : "default"}>{product.enabled ? "上架" : "下架"}</Tag>
                                                 </div>
                                             </div>
                                             <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-stone-500 sm:mt-4 sm:grid-cols-4 dark:text-stone-400">
                                                 <ProductFact label="日常价" value={formatMoney(product.amountCents, product.currency)} />
-                                                <ProductFact label={product.productKind === "points" ? "充值积分" : "永久积分"} value={`${product.pointsAmount}`} />
-                                                <ProductFact label="每日赠送" value={product.productKind === "plan" ? `${product.dailyPoints}` : "-"} />
-                                                <ProductFact label="周期" value={product.productKind === "plan" ? (product.periodDays ? `${product.periodDays} 天` : "长期") : "一次性"} />
+                                                <ProductFact label={product.productKind === "storage" ? "存储容量" : product.productKind === "points" ? "充值积分" : "永久积分"} value={product.productKind === "storage" ? `${((product.storageBytes || 0) / 1_073_741_824).toLocaleString("zh-CN")} GiB` : `${product.pointsAmount}`} />
+                                                <ProductFact label={product.productKind === "storage" ? "购买规则" : "每日赠送"} value={product.productKind === "storage" ? `${product.storageStackable === false ? "不叠加" : "可叠加"} · ${product.storageRenewable === false ? "不可续" : "可续"}${product.storagePurchaseLimit ? ` · 限 ${product.storagePurchaseLimit}` : ""}` : product.productKind === "plan" ? `${product.dailyPoints}` : "-"} />
+                                                <ProductFact label="周期" value={product.productKind !== "points" ? (product.periodDays ? `${product.periodDays} 天` : "长期") : "一次性"} />
                                             </div>
                                             <div className="mt-3 flex justify-end gap-2 border-t border-stone-200 pt-2.5 sm:mt-4 sm:pt-3 dark:border-stone-800">
                                                 <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => editProduct(product)}>
@@ -642,6 +658,7 @@ export function BillingOperations({ initialTab = "orders", initialPaymentConfig,
                                     options={[
                                         { label: "套餐权益", value: "plan" },
                                         { label: "积分充值", value: "points" },
+                                        { label: "云存储", value: "storage" },
                                     ]}
                                 />
                             </Form.Item>
@@ -657,16 +674,33 @@ export function BillingOperations({ initialTab = "orders", initialPaymentConfig,
                                 <Form.Item name="amountYuan" label="价格" rules={[{ required: true, message: "请填写价格" }]}>
                                     <InputNumber min={0} precision={2} className="w-full" prefix="¥" />
                                 </Form.Item>
-                                <Form.Item name="pointsAmount" label="一次性永久积分" rules={[{ required: true, message: "请填写永久积分" }]} extra="支付成功后一次性加入永久余额，不会按日过期。">
-                                    <InputNumber min={0} precision={0} className="w-full" />
-                                </Form.Item>
-                                {productKind === "plan" ? (
+                                {productKind === "storage" ? (
+                                    <Form.Item name="storageGiB" label="存储容量（GiB）" rules={[{ required: true, message: "请填写存储容量" }]} extra="支付后增加云端容量，套餐到期只停止新增上传，不删除已有文件。">
+                                        <InputNumber min={1} precision={0} className="w-full" />
+                                    </Form.Item>
+                                ) : (
+                                    <Form.Item name="pointsAmount" label="一次性永久积分" rules={[{ required: true, message: "请填写永久积分" }]} extra="支付成功后一次性加入永久余额，不会按日过期。">
+                                        <InputNumber min={0} precision={0} className="w-full" />
+                                    </Form.Item>
+                                )}
+                                {productKind !== "points" ? (
                                     <>
-                                        <Form.Item name="dailyPoints" label="每日赠送积分" rules={[{ required: true, message: "请填写每日赠送积分" }]} extra="套餐有效期内每天自动补充，仅当日有效，不会跨日累积。">
-                                            <InputNumber min={0} precision={0} className="w-full" />
-                                        </Form.Item>
+                                        {productKind === "plan" ? <Form.Item name="dailyPoints" label="每日赠送积分" rules={[{ required: true, message: "请填写每日赠送积分" }]} extra="套餐有效期内每天自动补充，仅当日有效，不会跨日累积。"><InputNumber min={0} precision={0} className="w-full" /></Form.Item> : null}
                                         <Form.Item name="periodDays" label="生效天数" rules={[{ required: true, message: "请填写天数" }]}>
                                             <InputNumber min={1} precision={0} className="w-full" />
+                                        </Form.Item>
+                                    </>
+                                ) : null}
+                                {productKind === "storage" ? (
+                                    <>
+                                        <Form.Item name="storagePurchaseLimit" label="最多购买份数" extra="填 0 表示不限制；已退款或已取消的订单不占次数。">
+                                            <InputNumber min={0} precision={0} className="w-full" />
+                                        </Form.Item>
+                                        <Form.Item name="storageStackable" label="容量叠加" valuePropName="checked" extra="开启后，同款套餐可在有效期内叠加容量，也可一次购买多份。">
+                                            <Switch checkedChildren="允许" unCheckedChildren="不允许" />
+                                        </Form.Item>
+                                        <Form.Item name="storageRenewable" label="允许续费" valuePropName="checked" extra="这里是手动再次购买，不会自动扣款；关闭后只能完成一次有效购买。">
+                                            <Switch checkedChildren="允许" unCheckedChildren="不允许" />
                                         </Form.Item>
                                     </>
                                 ) : null}

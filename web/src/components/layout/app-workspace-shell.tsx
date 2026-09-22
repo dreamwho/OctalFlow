@@ -15,7 +15,7 @@ import { DEFAULT_SITE_TITLE, resolveSiteTitle } from "@/lib/site-brand";
 import { cn } from "@/lib/utils";
 import { usePublicSessionStore } from "@/stores/use-public-session-store";
 
-export function AppWorkspaceShell({ children }: { children: ReactNode }) {
+export function AppWorkspaceShell({ children, initialDesktopEdition }: { children: ReactNode; initialDesktopEdition?: "commercial" | "admin" | null }) {
     const pathname = usePathname();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [sidebarExpanded, setSidebarExpanded] = useState(true);
@@ -65,7 +65,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                         </label>
                     ) : null}
                     <div className="workspace-header-actions min-w-0 max-w-[calc(100vw-6.5rem)] shrink-0 overflow-visible sm:max-w-[calc(100vw-8rem)] lg:max-w-none">
-                        <UserStatusActions />
+                        <UserStatusActions initialDesktopEdition={initialDesktopEdition} />
                     </div>
                 </header>
                 <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-white dark:bg-[#111316]">{children}</div>

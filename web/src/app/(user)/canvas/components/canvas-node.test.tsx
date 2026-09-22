@@ -360,6 +360,9 @@ describe("CanvasNode loading content", () => {
         expect(markup).toContain('aria-label="生成中 6%"');
         expect(markup).toContain("left-4 right-4 top-4");
         expect(markup).toContain("深度推理");
+        expect(markup).toContain("耗时");
+        expect(markup).not.toContain("data-dreamyo-icon");
+        expect(markup).not.toContain("waiting-1");
     });
     it.each(Object.values(CanvasNodeType).filter((type) => type !== CanvasNodeType.Config))("fills a loading %s node with the shared video animation", (type) => {
         const markup = renderContent({ ...imageNode, id: `loading-${type}`, type, metadata: { status: "loading" } }, canvasThemes.light);

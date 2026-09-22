@@ -8,6 +8,24 @@ export async function getObjectStorageSettings() {
     return request<ObjectStorageSettings>("/api/admin/object-storage");
 }
 
+export async function getCloudStorageSettings() {
+    return request<{ defaultBytes: number }>("/api/admin/cloud-storage/settings");
+}
+
+export async function saveCloudStorageSettings(defaultBytes: number) {
+    return request<{ defaultBytes: number }>("/api/admin/cloud-storage/settings", { method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ defaultBytes }) });
+}
+
+export type AdminCloudStorageUsage = {
+    baseBytes: number; bonusBytes: number; grantedBytes: number; limitBytes: number;
+    usedBytes: number; reservedBytes: number; availableBytes: number; overQuota: boolean;
+    bySource: { asset: number; project: number; backup: number; work: number };
+};
+
+export async function getAdminCloudStorageUsage(userId: string) {
+    return request<AdminCloudStorageUsage>(`/api/admin/cloud-storage/users/${encodeURIComponent(userId)}`);
+}
+
 export async function saveObjectStorageSettings(input: ObjectStorageSettingsUpdate) {
     return request<ObjectStorageSettings>("/api/admin/object-storage", { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(input) });
 }

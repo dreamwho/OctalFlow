@@ -14,7 +14,7 @@ import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textare
 import { CanvasPanoramaViewer } from "./canvas-panorama-viewer";
 import { useCanvasGenerationProgress } from "./use-canvas-generation-progress";
 import { CanvasImageComparison } from "./canvas-image-comparison";
-import { DreamyoIcon, DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 
@@ -213,20 +213,42 @@ export function BrandKitNodeContent({ node, theme }: NodeContentRendererProps) {
 
 export function LoadingContent({ theme, scale = 1, node, completed = false, onComplete }: Pick<NodeContentRendererProps, "theme" | "scale"> & { node?: NodeContentRendererProps["node"]; completed?: boolean; onComplete?: () => void }) {
     const [videoFailed, setVideoFailed] = useState(false);
-    const { status, detail, title } = useCanvasGenerationProgress(node, completed, onComplete);
+    const { status, percent, estimated, elapsedText, detail, title } = useCanvasGenerationProgress(node, completed, onComplete);
     const statusFontSize = Math.min(34, Math.max(12, 12 / Math.max(scale, 0.35)));
     return (
         <div data-canvas-node-loading role="status" aria-live="polite" aria-label={status} className="relative isolate h-full w-full overflow-hidden" style={{ background: theme.node.fill, color: theme.node.text }}>
             <img src="/generation-smoke.webp" alt="" aria-hidden="true" className={`canvas-node-generation-smoke canvas-node-generation-smoke-fallback${videoFailed ? " is-visible" : ""}`} />
             {!videoFailed ? <video src="/animations/generation-loading-animation.mp4" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" className="canvas-node-generation-video" onError={() => setVideoFailed(true)} /> : null}
-            <span className="pointer-events-none absolute left-4 right-4 top-4 z-10 flex items-start gap-2 text-left font-medium" style={{ fontSize: statusFontSize, lineHeight: 1.2, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }} title={title}>
-                <DreamyoWaitingIcon frame={1} size={Math.max(20, Math.min(32, statusFontSize * 1.8))} label={status} />
-                <span>
-                    {status}
-                    {!completed && node?.metadata?.generationStage ? ` · ${node.metadata.generationStage}` : ""}
-                    {detail ? <span className="mt-1 block text-[0.85em] font-normal opacity-80">{detail}</span> : null}
-                </span>
-            </span>
+            <div
+                className="pointer-events-none absolute left-4 right-4 top-4 z-10 flex flex-col items-start gap-1"
+                style={{ fontSize: statusFontSize, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.85)" }}
+                title={title}
+            >
+                <div className="inline-flex max-w-full flex-col gap-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 backdrop-blur-md shadow-sm">
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 font-medium leading-tight">
+                        <span className="font-semibold text-white">
+                            {completed ? "生成完成" : "生成中"}
+                        </span>
+                        <span className="tabular-nums tracking-tight text-white/90">
+                            {estimated ? "预计 " : ""}{percent}%
+                        </span>
+                        {!completed && node?.metadata?.generationStage ? (
+                            <span className="text-[0.88em] font-normal text-white/75">
+                                · {node.metadata.generationStage}
+                            </span>
+                        ) : null}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[0.85em] font-normal text-white/80 tabular-nums leading-tight">
+                        <Clock3 className="size-[1.1em] shrink-0 opacity-70" />
+                        <span>耗时 {elapsedText}</span>
+                    </div>
+                    {detail ? (
+                        <div className="mt-0.5 text-[0.8em] font-normal leading-snug text-white/70">
+                            {detail}
+                        </div>
+                    ) : null}
+                </div>
+            </div>
         </div>
     );
 }

@@ -1,7 +1,7 @@
 import { apiCompatError, apiSuccess } from "@/app/api/_shared/api-response";
 import { readJsonBodyResult } from "@/lib/auth/request";
 import { auditDolaAdminAction, auditDolaAdminFailure, dolaRouteError, requireDolaAdmin } from "@/lib/server/dola/admin";
-import { deleteDolaAccount, renameDolaAccount, setDolaAccountEnabled } from "@/lib/server/dola/account-service";
+import { deleteDolaAccount, normalizeDolaAccountStatus, renameDolaAccount, resetDolaAccountQuota, setDolaAccountEnabled, setDolaAccountGroup, setDolaAccountStatus } from "@/lib/server/dola/account-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +11,22 @@ export async function PATCH(request: Request, context: Context) {
     const access = await requireDolaAdmin();
     if ("error" in access) return access.error;
     const { accountId } = await context.params;
-    const parsed = await readJsonBodyResult<{ name?: unknown; enabled?: unknown }>(request);
+    const parsed = await readJsonBodyResult<{ name?: unknown; enabled?: unknown; group?: unknown; status?: unknown; resetQuota?: unknown }>(request);
     if (!parsed.ok) return apiCompatError(parsed.status, parsed.message);
     try {
-        const account = (typeof parsed.data.name === "string" ? await renameDolaAccount(accountId, parsed.data.name) : typeof parsed.data.enabled === "boolean" ? await setDolaAccountEnabled(accountId, parsed.data.enabled) : null) as { name: string } | null;
+        const account = (
+            parsed.data.resetQuota === true
+                ? await resetDolaAccountQuota(accountId)
+                : typeof parsed.data.name === "string"
+                ? await renameDolaAccount(accountId, parsed.data.name)
+                : typeof parsed.data.enabled === "boolean"
+                ? await setDolaAccountEnabled(accountId, parsed.data.enabled)
+                : typeof parsed.data.group === "string"
+                ? await setDolaAccountGroup(accountId, parsed.data.group)
+                : typeof parsed.data.status === "string"
+                ? await setDolaAccountStatus(accountId, normalizeDolaAccountStatus(parsed.data.status))
+                : null
+        ) as { name: string } | null;
         if (!account) return apiCompatError(400, "没有可更新的字段");
         await auditDolaAdminAction(request, access.user, "admin.dola.account.update", { type: "dola_account", id: accountId, label: account.name });
         return apiSuccess({ account }, "Dola 账号已更新");

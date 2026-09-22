@@ -16,7 +16,7 @@ export function BillingPlansModal({ open, onClose, onSelect }: { open: boolean; 
         if (!open || products.length || loading) return;
         setLoading(true);
         void listBillingProducts()
-            .then((payload) => setProducts(payload.products || []))
+            .then((payload) => setProducts((payload.products || []).filter((product) => product.productKind !== "storage")))
             .catch((error) => message.error(error instanceof Error ? error.message : "套餐加载失败"))
             .finally(() => setLoading(false));
     }, [loading, message, open, products.length]);

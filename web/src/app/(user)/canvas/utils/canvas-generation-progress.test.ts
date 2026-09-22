@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canvasExpectedDuration, estimateCanvasProgress, stampCanvasGenerationStarts } from "./canvas-generation-progress";
+import { formatGenerationElapsed } from "../components/use-canvas-generation-progress";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 
 describe("Canvas estimated progress", () => {
@@ -39,5 +40,14 @@ describe("Canvas estimated progress", () => {
         const failed = { ...first[0], metadata: { ...first[0].metadata, status: "error" as const, generationProgress: 60 } };
         const retry = stampCanvasGenerationStarts([failed], [{ ...failed, metadata: { ...failed.metadata, status: "loading" } }], 4000);
         expect(retry[0].metadata).toMatchObject({ generationStartedAt: 4000, generationProgress: undefined });
+    });
+    it("formats generation elapsed duration compactly and accurately in Chinese", () => {
+        expect(formatGenerationElapsed(0)).toBe("0秒");
+        expect(formatGenerationElapsed(12)).toBe("12秒");
+        expect(formatGenerationElapsed(59)).toBe("59秒");
+        expect(formatGenerationElapsed(60)).toBe("1分0秒");
+        expect(formatGenerationElapsed(75)).toBe("1分15秒");
+        expect(formatGenerationElapsed(3600)).toBe("1小时");
+        expect(formatGenerationElapsed(3672)).toBe("1小时1分12秒");
     });
 });

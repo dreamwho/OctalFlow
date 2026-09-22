@@ -18,7 +18,9 @@ def _walk(value: Any, depth: int = 0):
     if isinstance(value, dict):
         for item in value.values():
             yield from _walk(item, depth + 1)
-    elif isinstance(value, list):
+    elif isinstance(value, (list, tuple)):
+        # SSE events arrive as (name, data) tuples; skipping them here made
+        # every submit-stream extraction silently return empty.
         for item in value:
             yield from _walk(item, depth + 1)
     elif isinstance(value, str) and value.lstrip()[:1] in "[{":
@@ -118,7 +120,7 @@ def extract_image_urls(value: Any) -> list[str]:
                     urls.append(url)
             for item in node.values():
                 visit(item, depth + 1)
-        elif isinstance(node, list):
+        elif isinstance(node, (list, tuple)):
             for item in node:
                 visit(item, depth + 1)
         elif isinstance(node, str) and node.lstrip()[:1] in "[{":
@@ -367,28 +369,191 @@ def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
         for url in extract_image_urls(body):
             if url not in image_urls:
                 image_urls.append(url)
-    if refusal:
-        # Upstream answered with a refusal message (failure or insufficient
-        # quota); without this check the task would stay accepted forever.
-        return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": refusal}
-    if not video_url and not image_urls:
+    if video_url or image_urls:
+        return {"url": video_url, "imageUrls": image_urls, "payload": extract_vod_payload(payloads)}
+
+    # If a creation block is active (e.g. video.status == 1 generating), keep polling.
+    if _has_creation_block(payloads):
         return {}
-    return {"url": video_url, "imageUrls": image_urls, "payload": extract_vod_payload(payloads)}
+
+    raw_assistant_text = _extract_assistant_text(payloads)
+    if refusal:
+        raw_error = raw_assistant_text or refusal
+        return {
+            "url": "",
+            "imageUrls": [],
+            "payload": extract_vod_payload(payloads),
+            "error": refusal,
+            "rawError": raw_error,
+        }
+
+    # Upstream answered with conversational refusal, clarification, or general
+    # error text without creating a video/image task. Terminate as failed and
+    # retain the exact upstream response text so request logs reflect reality.
+    if raw_assistant_text:
+        classified = _classify_refusal_code(raw_assistant_text)
+        error_code = classified if classified else raw_assistant_text
+        return {
+            "url": "",
+            "imageUrls": [],
+            "payload": extract_vod_payload(payloads),
+            "error": error_code,
+            "rawError": raw_assistant_text,
+        }
+
+    return {}
+
+
+def _is_user_message(msg: Any) -> bool:
+    if not isinstance(msg, dict):
+        return False
+    holder = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+    sender_type = holder.get("sender_type")
+    if sender_type in (1, "1"):
+        return True
+    if sender_type in (2, "2"):
+        return False
+    role = str(
+        holder.get("role")
+        or holder.get("author")
+        or holder.get("sender")
+        or holder.get("from")
+        or ""
+    ).strip().lower()
+    if role in {"1", "user", "human"} or "user" in role:
+        return True
+    for flag in ("is_user", "from_user", "is_self", "user_send"):
+        if holder.get(flag) in (True, 1, "1", "true"):
+            return True
+    return False
+
+
+def _has_creation_block(value: Any) -> bool:
+    """Return True if any payload contains a creation block or active creation."""
+    for item in _walk(value):
+        if not isinstance(item, dict):
+            continue
+        if item.get("block_type") == 2074:
+            return True
+        block = item.get("creation_block")
+        if isinstance(block, dict):
+            creations = block.get("creations")
+            if isinstance(creations, list) and len(creations) > 0:
+                return True
+        if item.get("type") in {1, 2, "1", "2"} and (
+            item.get("video") or item.get("image") or item.get("creation_id")
+        ):
+            return True
+    return False
+
+
+def _extract_text_from_message(msg: dict[str, Any]) -> str:
+    chunks: list[str] = []
+    for item in _walk(msg):
+        if not isinstance(item, dict):
+            continue
+        text_block = item.get("text_block")
+        if isinstance(text_block, dict):
+            t = text_block.get("text")
+            if isinstance(t, str) and t.strip() and t.strip() not in chunks:
+                chunks.append(t.strip())
+        elif item.get("block_type") == 10000:
+            c = item.get("content")
+            if isinstance(c, dict) and isinstance(c.get("text_block"), dict):
+                t = c["text_block"].get("text")
+                if isinstance(t, str) and t.strip() and t.strip() not in chunks:
+                    chunks.append(t.strip())
+            elif isinstance(item.get("text"), str) and item["text"].strip() and item["text"].strip() not in chunks:
+                chunks.append(item["text"].strip())
+        elif isinstance(item.get("tts_content"), str):
+            t = item["tts_content"].strip()
+            if t and t not in chunks:
+                chunks.append(t)
+    return "\n".join(chunks)
+
+
+def _extract_assistant_text(payloads: list[Any]) -> str:
+    """Extract assistant response text when no video/image creation block was produced."""
+    for body in payloads:
+        for item in _walk(body):
+            if not isinstance(item, dict):
+                continue
+            messages = item.get("messages")
+            if isinstance(messages, list):
+                for msg in reversed(messages):
+                    if not isinstance(msg, dict):
+                        continue
+                    if _is_user_message(msg):
+                        continue
+                    text = _extract_text_from_message(msg)
+                    if text:
+                        return text
+    fallback_chunks: list[str] = []
+    for body in payloads:
+        for item in _walk(body):
+            if not isinstance(item, dict):
+                continue
+            if item.get("block_type") == 10000:
+                text_block = item.get("text_block")
+                if isinstance(text_block, dict) and isinstance(text_block.get("text"), str):
+                    t = text_block["text"].strip()
+                    if t and t not in fallback_chunks:
+                        fallback_chunks.append(t)
+                elif isinstance(item.get("text"), str) and item["text"].strip():
+                    t = item["text"].strip()
+                    if t and t not in fallback_chunks:
+                        fallback_chunks.append(t)
+            elif isinstance(item.get("tts_content"), str):
+                t = item["tts_content"].strip()
+                if t and t not in fallback_chunks:
+                    fallback_chunks.append(t)
+    return "\n".join(fallback_chunks)
+
+
+def _classify_refusal_code(text: str) -> str:
+    """Classify known refusal/failure categories or return empty if unknown."""
+    if not text:
+        return ""
+    if "视频生成失败" in text or "图片生成失败" in text or "出了点问题" in text:
+        return "upstream_generation_failed"
+    if (
+        "生成次数已经到达上限" in text
+        or "生成次数已到达上限" in text
+        or "生成次数已达上限" in text
+        or "生成次数已达到上限" in text
+        or "明天再来免费生成" in text
+        or "额度已用完" in text
+        or "免费生成次数已用完" in text
+        or "免费生成次数已经用完" in text
+        or "今日额度已用完" in text
+        or "今日生成次数已达上限" in text
+        or "免费额度已用完" in text
+        or ("生成次数" in text and ("上限" in text or "到达" in text or "达到" in text))
+        or ("免费生成" in text and ("上限" in text or "用完" in text))
+    ):
+        return "upstream_quota_exhausted"
+    if "无法生成" in text and "额度" in text:
+        return "upstream_quota_insufficient"
+    if "服务访问频繁" in text or "710022002" in text or ("频繁" in text and "稍后" in text):
+        return "rate_limited"
+    return ""
 
 
 def _generation_refused(value: Any) -> str:
     """Return a short refusal reason when upstream answered without a creation.
 
-    Covers plain failures and quota refusals ("需要消耗 N 个额度…无法生成"),
-    both of which leave an accepted task with nothing to poll forever.
+    Covers plain failures, quota exhaustion ("今天的生成次数已经到达上限，明天再来免费生成吧"),
+    and quota refusals ("需要消耗 N 个额度…无法生成"),
+    both of which leave an accepted task with nothing to poll forever.  Dola's
+    generic failure toast "出了点问题，请稍后重试。" is persisted as the
+    assistant message and must terminate the task the same way.
     """
     for item in _walk(value):
         if not isinstance(item, str):
             continue
-        if "视频生成失败" in item or "图片生成失败" in item:
-            return "upstream_generation_failed"
-        if "无法生成" in item and "额度" in item:
-            return "upstream_quota_insufficient"
+        code = _classify_refusal_code(item)
+        if code:
+            return code
     return ""
 
 

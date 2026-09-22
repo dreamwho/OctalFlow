@@ -12,7 +12,7 @@ test("desktop Mihomo uses private user data, loopback listeners and independent 
     const dataRoot = path.join(directory, "data");
     try {
         await mkdir(path.join(runtimeRoot, "desktop"), { recursive: true });
-        const template = await readFile(path.resolve(import.meta.dirname, "../../../../docker/mihomo/bootstrap.yaml"), "utf8");
+        const template = await readFile(path.resolve(import.meta.dirname, "../../assets/mihomo-bootstrap.yaml"), "utf8");
         await writeFile(path.join(runtimeRoot, "desktop/mihomo-bootstrap.yaml"), template);
         const ports = { controller: 29090, geminiai: 27890, geminiTools: 27891, chatgptApi: 27892, dola: 27893 };
         const secret = "private-secret-with-at-least-thirty-two-chars";

@@ -7,13 +7,13 @@ import StarterKit from "@tiptap/starter-kit";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent, KeyboardEvent, MouseEvent, PointerEvent, TextareaHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
-import { FileText, Sparkles, X } from "lucide-react";
+import { ChevronRight, FileText, Image as ImageIcon, Sparkles, User, Video, Volume2, X } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { CanvasResourceReference } from "../utils/canvas-resource-references";
+import { isSubjectReference, type CanvasResourceReference } from "../utils/canvas-resource-references";
 import { handleMentionNavigation } from "../utils/canvas-mention-navigation";
 import type { AgentSkillSummary } from "@/services/api/agent-skills";
 import { findResourceMentionAtCursor, referenceMentionLabel, resolveMentionMenuPosition, type CanvasInlineToken } from "./canvas-resource-mention-textarea";
@@ -57,6 +57,7 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "val
     references: CanvasResourceReference[];
     onChange: (value: string) => void;
     onSubmit?: () => void;
+    submitOnModEnterOnly?: boolean;
     containerClassName?: string;
     highlightLabels?: boolean;
     inlineTokens?: CanvasInlineToken[];
@@ -67,6 +68,7 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "val
     onSelectionChange?: (value: string, offset: number) => void;
     tokenSnapshot?: readonly CanvasPromptTokenSnapshot[];
     onTokenSnapshotChange?: (tokens: CanvasPromptTokenSnapshot[]) => void;
+    onConnectReference?: (sourceNodeId: string) => void;
 };
 
 const REFERENCE_TOKEN_NAME = "referenceToken";
@@ -289,31 +291,77 @@ function tokenSnapshots(doc: PromptDocumentLike): CanvasPromptTokenSnapshot[] {
     });
 }
 
-function plainOffsetAtPosition(doc: PromptDocumentLike, position: number) {
+function getNodeSize(node: PromptNodeLike): number {
+    if (typeof node.nodeSize === "number") return node.nodeSize;
+    if (node.isText || nodeTypeName(node) === "text") return (node.text || "").length;
+    if (nodeTypeName(node) === "hardBreak") return 1;
+    if (tokenFromNode(node)) return 1;
+    let size = 0;
+    if (Array.isArray(node.content)) {
+        for (const child of node.content) size += getNodeSize(child);
+    }
+    const type = nodeTypeName(node);
+    if (type === "paragraph" || type === "doc") {
+        return size + 2;
+    }
+    return size;
+}
+
+export function plainOffsetAtPosition(doc: PromptDocumentLike, position: number) {
     let value = "";
-    doc.nodesBetween?.(0, Math.max(0, position), (node, pos) => {
-        if (node.isText) {
-            const length = Math.max(0, Math.min(node.nodeSize || 0, position - pos));
-            value += (node.text || "").slice(0, length);
-        } else {
-            const token = tokenFromNode(node);
-            if (token && pos < position) value += tokenText(token);
-            else if (nodeTypeName(node) === "hardBreak" && pos < position) value += "\n";
-        }
-    });
+    if (doc.nodesBetween) {
+        doc.nodesBetween(0, Math.max(0, position), (node, pos) => {
+            if (pos > 0 && nodeTypeName(node) === "paragraph" && pos <= position) {
+                value += "\n";
+            }
+            if (node.isText) {
+                const length = Math.max(0, Math.min(node.nodeSize || 0, position - pos));
+                value += (node.text || "").slice(0, length);
+            } else {
+                const token = tokenFromNode(node);
+                if (token && pos < position) value += tokenText(token);
+                else if (nodeTypeName(node) === "hardBreak" && pos < position) value += "\n";
+            }
+        });
+    } else {
+        const paragraphs = Array.isArray(doc.content) ? doc.content : [];
+        let blockStart = 0;
+        paragraphs.forEach((p, index) => {
+            const pSize = getNodeSize(p);
+            if (index > 0 && position >= blockStart) value += "\n";
+            if (position >= blockStart) {
+                const items = Array.isArray(p.content) ? p.content : [];
+                let itemPos = blockStart + 1;
+                for (const item of items) {
+                    const itemSize = getNodeSize(item);
+                    if (item.isText || item.type === "text") {
+                        const text = String(item.text || "");
+                        const length = Math.max(0, Math.min(text.length, position - itemPos));
+                        value += text.slice(0, length);
+                    } else {
+                        const token = tokenFromNode(item);
+                        if (token && itemPos < position) value += tokenText(token);
+                        else if (nodeTypeName(item) === "hardBreak" && itemPos < position) value += "\n";
+                    }
+                    itemPos += itemSize;
+                }
+            }
+            blockStart += pSize;
+        });
+    }
     return value.length;
 }
 
 function documentContentSize(doc: PromptDocumentLike) {
-    if (Array.isArray(doc.content)) return doc.content.reduce((size, child) => size + (child.nodeSize || 0), 0);
+    if (Array.isArray(doc.content)) return doc.content.reduce((size, child) => size + getNodeSize(child), 0);
     return doc.content && !Array.isArray(doc.content) ? (doc.content as { size: number }).size : 0;
 }
 
-function positionAtPlainOffset(doc: PromptDocumentLike, offset: number) {
+export function positionAtPlainOffset(doc: PromptDocumentLike, offset: number) {
     let current = 0;
     let result = documentContentSize(doc);
     const find = (node: PromptNodeLike, pos: number): boolean => {
-        if (node.isText) {
+        if (node.isText || nodeTypeName(node) === "text") {
             const text = node.text || "";
             if (offset <= current + text.length) {
                 result = pos + Math.max(0, offset - current);
@@ -326,7 +374,7 @@ function positionAtPlainOffset(doc: PromptDocumentLike, offset: number) {
         const text = token ? tokenText(token) : nodeTypeName(node) === "hardBreak" ? "\n" : "";
         if (token || nodeTypeName(node) === "hardBreak") {
             if (offset <= current + text.length) {
-                result = offset === current ? pos : pos + (node.nodeSize || 0);
+                result = offset === current ? pos : pos + getNodeSize(node);
                 return true;
             }
             current += text.length;
@@ -334,19 +382,36 @@ function positionAtPlainOffset(doc: PromptDocumentLike, offset: number) {
         }
         let found = false;
         let childOffset = 0;
-        node.forEach?.((child) => {
-            if (!found) found = find(child, pos + 1 + childOffset);
-            childOffset += child.nodeSize || 0;
-        });
+        if (node.forEach) {
+            node.forEach((child) => {
+                if (!found) found = find(child, pos + 1 + childOffset);
+                childOffset += child.nodeSize || 0;
+            });
+        } else if (Array.isArray(node.content)) {
+            for (const child of node.content) {
+                if (found) break;
+                found = find(child, pos + 1 + childOffset);
+                childOffset += getNodeSize(child);
+            }
+        }
         return found;
     };
     let blockOffset = 0;
-    doc.forEach?.((child) => {
-        if (result !== documentContentSize(doc)) return;
-        if (blockOffset > 0) current += 1;
-        find(child, blockOffset);
-        blockOffset += child.nodeSize || 0;
-    });
+    if (doc.forEach) {
+        doc.forEach((child) => {
+            if (result !== documentContentSize(doc)) return;
+            if (blockOffset > 0) current += 1;
+            find(child, blockOffset);
+            blockOffset += child.nodeSize || 0;
+        });
+    } else if (Array.isArray(doc.content)) {
+        for (const child of doc.content) {
+            if (result !== documentContentSize(doc)) break;
+            if (blockOffset > 0) current += 1;
+            find(child, blockOffset);
+            blockOffset += getNodeSize(child);
+        }
+    }
     return result;
 }
 
@@ -415,9 +480,15 @@ export function parseCanvasPromptDocument(
 ) {
     const skillById = new Map(skills.map((skill) => [skill.id, skill]));
     const referenceByMarker = new Map<string, CanvasResourceReference>();
-    for (const reference of references.filter((item) => item.active)) {
+    for (const reference of references) {
+        const label = reference.label.replace(/^@/u, "");
+        referenceByMarker.set(`@${label}`, reference);
         referenceByMarker.set(referenceMentionLabel(reference.label), reference);
+        referenceByMarker.set(label, reference);
         referenceByMarker.set(`@[node:${reference.id}]`, reference);
+        if (reference.nodeId) {
+            referenceByMarker.set(`@[node:${reference.nodeId}]`, reference);
+        }
     }
     const cameraByToken = new Map(inlineTokens.map((item) => [item.token, item]));
     const paragraphs: Array<{ type: "paragraph"; content?: Array<Record<string, unknown>> }> = value.split("\n").map((line) => {
@@ -498,6 +569,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
         references,
         onChange,
         onSubmit,
+        submitOnModEnterOnly = false,
         onKeyDown,
         className,
         containerClassName,
@@ -511,6 +583,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
         onSelectionChange,
         tokenSnapshot = [],
         onTokenSnapshotChange,
+        onConnectReference,
         autoFocus,
         placeholder,
         ...props
@@ -524,9 +597,11 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
     const hostRef = useRef<HTMLDivElement | null>(null);
     const lastValueRef = useRef(value);
     const previousTokensRef = useRef<CanvasPromptToken[]>([]);
-    const callbacksRef = useRef({ onChange, onSelectionChange, onSelectSkill, onRemoveSkill, onTokenSnapshotChange, onSubmit, onKeyDown });
-    callbacksRef.current = { onChange, onSelectionChange, onSelectSkill, onRemoveSkill, onTokenSnapshotChange, onSubmit, onKeyDown };
-    const activeReferences = useMemo(() => references.filter((item) => item.active), [references]);
+    const callbacksRef = useRef({ onChange, onSelectionChange, onSelectSkill, onRemoveSkill, onTokenSnapshotChange, onSubmit, onKeyDown, onConnectReference });
+    callbacksRef.current = { onChange, onSelectionChange, onSelectSkill, onRemoveSkill, onTokenSnapshotChange, onSubmit, onKeyDown, onConnectReference };
+    const activeReferences = useMemo(() => {
+        return [...references].sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
+    }, [references]);
     const skillById = useMemo(() => new Map(skills.map((skill) => [skill.id, skill])), [skills]);
 
     const emitMention = useCallback(
@@ -535,7 +610,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
             const offset = plainOffsetAtPosition(instance.state.doc, instance.state.selection.from);
             callbacksRef.current.onSelectionChange?.(nextValue, offset);
             const resourceMention = findResourceMentionAtCursor(nextValue, offset);
-            if (resourceMention && activeReferences.length) {
+            if (resourceMention) {
                 setMention({ ...resourceMention, type: "mention" });
                 setActiveIndex(0);
                 return;
@@ -550,7 +625,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
             setMention(null);
             setActiveIndex(0);
         },
-        [activeReferences.length, skills.length],
+        [skills.length],
     );
 
     const editor = useEditor({
@@ -559,12 +634,12 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
         content: parseValue(value, highlightLabels ? references : [], highlightLabels ? inlineTokens : [], skills, selectedSkillIds, tokenSnapshot),
         editorProps: {
             attributes: {
-                class: `canvas-resource-editor-content ${className || ""}`,
+                class: `canvas-resource-editor-content cursor-text ${className || ""}`,
                 role: "textbox",
                 "aria-multiline": "true",
                 ...(props["aria-label"] ? { "aria-label": props["aria-label"] } : { "aria-label": "提示词编辑器" }),
                 ...((props as Record<string, unknown>)["data-testid"] ? { "data-testid": String((props as Record<string, unknown>)["data-testid"]) } : {}),
-                ...(styleToString(style) ? { style: styleToString(style) } : {}),
+                style: `cursor:text!important;${styleToString(style) || ""}`,
             },
             handleKeyDown: (_view, event) => {
                 if (mention && candidatesRef.current.length) {
@@ -576,10 +651,41 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
                     setMention(null);
                     return true;
                 }
-                if (event.key === "Enter" && !event.shiftKey && !event.isComposing && callbacksRef.current.onSubmit) {
-                    event.preventDefault();
-                    callbacksRef.current.onSubmit();
-                    return true;
+                if (event.key === "Enter" && !event.isComposing) {
+                    if (submitOnModEnterOnly) {
+                        if ((event.metaKey || event.ctrlKey) && callbacksRef.current.onSubmit) {
+                            event.preventDefault();
+                            callbacksRef.current.onSubmit();
+                            return true;
+                        }
+                        event.preventDefault();
+                        if (event.shiftKey) {
+                            if (!editor?.commands.setHardBreak()) {
+                                if (!editor?.commands.splitBlock()) {
+                                    editor?.commands.insertContent("\n");
+                                }
+                            }
+                        } else if (!editor?.commands.splitBlock()) {
+                            if (!editor?.commands.setHardBreak()) {
+                                editor?.commands.insertContent("\n");
+                            }
+                        }
+                        return true;
+                    }
+                    if (!event.shiftKey && callbacksRef.current.onSubmit) {
+                        event.preventDefault();
+                        callbacksRef.current.onSubmit();
+                        return true;
+                    }
+                    if (event.shiftKey) {
+                        event.preventDefault();
+                        if (!editor?.commands.setHardBreak()) {
+                            if (!editor?.commands.splitBlock()) {
+                                editor?.commands.insertContent("\n");
+                            }
+                        }
+                        return true;
+                    }
                 }
                 callbacksRef.current.onKeyDown?.(event as unknown as KeyboardEvent<HTMLTextAreaElement>);
                 return false;
@@ -613,9 +719,12 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
     const candidates = useMemo<(CanvasResourceReference | AgentSkillSummary)[]>(() => {
         if (!mention) return [];
         const query = mention.query.trim().toLowerCase();
-        if (mention.type === "mention") return query ? activeReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query)) : activeReferences;
+        if (mention.type === "mention") {
+            const list = activeReferences.length ? activeReferences : references;
+            return query ? list.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query)) : list;
+        }
         return query ? skills.filter((skill) => `${skill.name} ${skill.description || ""}`.toLowerCase().includes(query)) : skills;
-    }, [activeReferences, mention, skills]);
+    }, [activeReferences, mention, references, skills]);
     const candidatesRef = useRef(candidates);
     const selectCandidateRef = useRef<(item: CanvasResourceReference | AgentSkillSummary) => void>(() => undefined);
     candidatesRef.current = candidates;
@@ -729,7 +838,11 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
         const cursor = plainOffsetAtPosition(editor.state.doc, editor.state.selection.from);
         if (mention.type === "mention") {
             const match = findResourceMentionAtCursor(documentValue, cursor);
-            createHandle(editor).insertReference(item as CanvasResourceReference, match?.start ?? cursor, cursor);
+            const ref = item as CanvasResourceReference;
+            createHandle(editor).insertReference(ref, match?.start ?? cursor, cursor);
+            if (!ref.active && callbacksRef.current.onConnectReference) {
+                callbacksRef.current.onConnectReference(ref.nodeId);
+            }
         } else {
             const match = /(?:^|\s)\/([^\s/]*)$/u.exec(documentValue.slice(0, cursor));
             const start = match ? cursor - match[0].length + match[0].lastIndexOf("/") : cursor;
@@ -739,12 +852,13 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
     };
     selectCandidateRef.current = selectCandidate;
 
-    if (!editor) return <div className={`relative ${containerClassName || ""}`} style={style} data-ready="false" />;
+    if (!editor) return <div className={`relative cursor-text ${containerClassName || ""}`} style={{ cursor: "text", ...style }} data-ready="false" />;
     return (
-        <div ref={hostRef} className={`relative ${containerClassName || ""}`} style={style}>
+        <div ref={hostRef} className={`relative cursor-text ${containerClassName || ""}`} style={{ cursor: "text", ...style }}>
             <EditorContent
                 editor={editor}
-                className="size-full min-h-0"
+                className="size-full min-h-0 cursor-text"
+                style={{ cursor: "text" }}
                 onBlur={props.onBlur ? (event) => props.onBlur?.(event as unknown as FocusEvent<HTMLTextAreaElement>) : undefined}
                 onFocus={props.onFocus ? (event) => props.onFocus?.(event as unknown as FocusEvent<HTMLTextAreaElement>) : undefined}
                 onMouseDown={(event) => {
@@ -758,30 +872,74 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
                 data-ready={ready ? "true" : "false"}
             />
             {editor.isEmpty && placeholder ? <span className="pointer-events-none absolute left-0 top-0 px-1 py-1 text-sm opacity-45">{placeholder}</span> : null}
-            {mention && candidates.length ? (
-                <MentionPortal editorElement={hostRef.current?.querySelector<HTMLElement>('[contenteditable="true"]') || null} candidates={candidates} activeIndex={activeIndex} type={mention.type} theme={theme} onSelect={selectCandidate} />
+            {mention ? (
+                <MentionPortal
+                    editorElement={hostRef.current?.querySelector<HTMLElement>('[contenteditable="true"]') || null}
+                    candidates={candidates}
+                    allReferences={references}
+                    activeIndex={activeIndex}
+                    type={mention.type}
+                    query={mention.query}
+                    theme={theme}
+                    onSelect={selectCandidate}
+                />
             ) : null}
         </div>
     );
 });
 
+const REFERENCE_CATEGORIES = [
+    { key: "subject", label: "主体", icon: "user" },
+    { key: "image", label: "图片", icon: "image" },
+    { key: "video", label: "视频", icon: "video" },
+    { key: "audio", label: "音频", icon: "audio" },
+] as const;
+
+type ReferenceCategoryKey = (typeof REFERENCE_CATEGORIES)[number]["key"];
+
+function getCategoryReferences(category: ReferenceCategoryKey, references: CanvasResourceReference[]) {
+    const unconnected = references.filter((ref) => !ref.active);
+    if (category === "subject") {
+        const subjects = unconnected.filter(isSubjectReference);
+        return subjects.length > 0 ? subjects : unconnected.filter((ref) => ref.kind === "image");
+    }
+    if (category === "image") {
+        return unconnected.filter((ref) => ref.kind === "image");
+    }
+    if (category === "video") {
+        return unconnected.filter((ref) => ref.kind === "video");
+    }
+    if (category === "audio") {
+        return unconnected.filter((ref) => ref.kind === "audio");
+    }
+    return [];
+}
+
 function MentionPortal({
     editorElement,
     candidates,
+    allReferences,
     activeIndex,
     type,
+    query = "",
     theme,
     onSelect,
 }: {
     editorElement: HTMLElement | null;
     candidates: (CanvasResourceReference | AgentSkillSummary)[];
+    allReferences: CanvasResourceReference[];
     activeIndex: number;
     type: "mention" | "slash";
+    query?: string;
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
     onSelect: (item: CanvasResourceReference | AgentSkillSummary) => void;
 }) {
     const menuRef = useRef<HTMLDivElement | null>(null);
     const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+    const [activeCategory, setActiveCategory] = useState<ReferenceCategoryKey | null>(null);
+    const [categoryRect, setCategoryRect] = useState<DOMRect | null>(null);
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const updatePosition = useCallback(() => {
         if (!editorElement || !menuRef.current || typeof window === "undefined") return;
         const selection = window.getSelection();
@@ -789,12 +947,14 @@ function MentionPortal({
         const caret = range?.getBoundingClientRect();
         const editorRect = editorElement.getBoundingClientRect();
         const anchor =
-            caret && (caret.width || caret.height) ? { left: caret.left, top: caret.top, right: caret.right, bottom: caret.bottom } : { left: editorRect.left + 8, top: editorRect.top + 8, right: editorRect.left + 8, bottom: editorRect.top + 28 };
-        const boundaryRect = editorElement.closest(".ant-modal-content")?.getBoundingClientRect();
-        const boundary = boundaryRect || { left: 8, top: 8, right: window.innerWidth - 8, bottom: window.innerHeight - 8 };
+            caret && (caret.width || caret.height)
+                ? { left: caret.left, top: caret.top, right: caret.right, bottom: caret.bottom }
+                : { left: editorRect.left + 8, top: editorRect.top + 8, right: editorRect.left + 8, bottom: editorRect.top + 28 };
+        const boundary = { left: 8, top: 8, right: window.innerWidth - 8, bottom: window.innerHeight - 8 };
         const menuRect = menuRef.current.getBoundingClientRect();
-        setPosition(resolveMentionMenuPosition({ anchor, boundary, menuWidth: menuRect.width, menuHeight: menuRect.height }));
+        setPosition(resolveMentionMenuPosition({ anchor, boundary, menuWidth: menuRect.width || 280, menuHeight: menuRect.height || 260 }));
     }, [editorElement]);
+
     useLayoutEffect(() => {
         updatePosition();
         const frame = requestAnimationFrame(updatePosition);
@@ -806,76 +966,332 @@ function MentionPortal({
             window.removeEventListener("scroll", updatePosition, true);
         };
     }, [updatePosition]);
+
+    useEffect(() => {
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
+    }, []);
+
     if (!editorElement || typeof window === "undefined") return null;
     const stop = (event: PointerEvent | MouseEvent) => event.stopPropagation();
+
+    const handleCategoryMouseEnter = (key: ReferenceCategoryKey, rect: DOMRect) => {
+        if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+        setActiveCategory(key);
+        setCategoryRect(rect);
+    };
+
+    const handleMenuMouseLeave = () => {
+        closeTimerRef.current = setTimeout(() => {
+            setActiveCategory(null);
+        }, 250);
+    };
+
+    const handleFlyoutMouseEnter = () => {
+        if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    };
+
+    const handleFlyoutMouseLeave = () => {
+        closeTimerRef.current = setTimeout(() => {
+            setActiveCategory(null);
+        }, 250);
+    };
+
+    const isMention = type === "mention";
+    const hasQuery = Boolean(query.trim());
+
+    const menuWidth = menuRef.current?.getBoundingClientRect().width || 280;
+    const flyoutWidth = 260;
+    let flyoutLeft = (position?.left ?? 0) + menuWidth + 6;
+    let flyoutTop = categoryRect ? categoryRect.top : (position?.top ?? 0);
+
+    if (typeof window !== "undefined") {
+        if (flyoutLeft + flyoutWidth > window.innerWidth - 12) {
+            flyoutLeft = Math.max(12, (position?.left ?? 0) - flyoutWidth - 6);
+        }
+        const maxTop = window.innerHeight - 340;
+        if (flyoutTop > maxTop) {
+            flyoutTop = Math.max(12, maxTop);
+        }
+    }
+
+    const categoryReferences = activeCategory ? getCategoryReferences(activeCategory, allReferences) : [];
+    const connectedReferences = allReferences.filter((ref) => ref.active);
+
     return createPortal(
-        <div
-            ref={menuRef}
-            data-canvas-resource-mention-menu="true"
-            className="fixed z-[1300] max-h-60 w-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl backdrop-blur-md"
-            style={{ left: position?.left ?? 0, top: position?.top ?? 0, visibility: position ? "visible" : "hidden", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
-            onPointerDown={stop}
-            onMouseDown={stop}
-            onClick={(event) => event.stopPropagation()}
-        >
-            <div className="mb-1 flex items-center gap-1 border-b px-2 py-1 text-[11px] font-semibold opacity-50" style={{ borderColor: theme.toolbar.border }}>
-                {type === "mention" ? "选择引用节点 (@)" : "选择引用 Skill 技能 (/)"}
-            </div>
-            {candidates.map((item, index) => {
-                const isMention = type === "mention";
-                const reference = item as CanvasResourceReference;
-                const skill = item as AgentSkillSummary;
-                return (
-                    <button
-                        key={item.id}
-                        type="button"
-                        className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition"
-                        style={{ background: index === activeIndex ? theme.toolbar.activeBg : "transparent", color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }}
-                        onPointerDown={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            onSelect(item);
-                        }}
-                        onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            onSelect(item);
-                        }}
-                    >
-                        {isMention ? (
+        <>
+            <div
+                ref={menuRef}
+                data-canvas-resource-mention-menu="true"
+                className="thin-scrollbar fixed z-[2500] max-h-[360px] w-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl backdrop-blur-md"
+                style={{
+                    left: position?.left ?? 0,
+                    top: position?.top ?? 0,
+                    visibility: position ? "visible" : "hidden",
+                    background: theme.toolbar.panel,
+                    borderColor: theme.toolbar.border,
+                    color: theme.node.text,
+                }}
+                onPointerDown={stop}
+                onMouseDown={stop}
+                onClick={(event) => event.stopPropagation()}
+                onMouseLeave={handleMenuMouseLeave}
+            >
+                {isMention ? (
+                    <>
+                        {hasQuery ? (
                             <>
-                                <ReferencePreview reference={reference} />
-                                <span className="min-w-0 flex-1">
-                                    <span className="block font-medium">{reference.label}</span>
-                                    <span className="block truncate opacity-65">{reference.text || reference.title}</span>
-                                </span>
+                                <div className="mb-1 flex items-center justify-between border-b px-2 py-1 text-[11px] font-semibold opacity-60" style={{ borderColor: `${theme.toolbar.border}66` }}>
+                                    <span>搜索素材</span>
+                                    <span className="text-[10px] font-normal opacity-60">共 {candidates.length} 个</span>
+                                </div>
+                                {candidates.length === 0 ? (
+                                    <div className="px-3 py-3 text-xs opacity-50">未找到匹配的素材</div>
+                                ) : (
+                                    candidates.map((item, index) => {
+                                        const reference = item as CanvasResourceReference;
+                                        return (
+                                            <button
+                                                key={reference.id}
+                                                type="button"
+                                                className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition"
+                                                style={{
+                                                    background: index === activeIndex ? theme.toolbar.activeBg : "transparent",
+                                                    color: index === activeIndex ? theme.toolbar.activeText : theme.node.text,
+                                                }}
+                                                onPointerDown={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    onSelect(reference);
+                                                }}
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    onSelect(reference);
+                                                }}
+                                            >
+                                                <div className="size-7 shrink-0 overflow-hidden rounded-md bg-black/10">
+                                                    <ReferencePreview reference={reference} fit="cover" />
+                                                </div>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="flex items-center gap-1.5 font-medium">
+                                                        <span className="truncate">{reference.label}</span>
+                                                        {!reference.active ? (
+                                                            <span className="rounded bg-black/5 px-1 py-0.2 text-[9px] opacity-60 dark:bg-white/10">未连线</span>
+                                                        ) : null}
+                                                    </span>
+                                                    <span className="block truncate text-[10px] opacity-65">{reference.text || reference.title}</span>
+                                                </span>
+                                            </button>
+                                        );
+                                    })
+                                )}
                             </>
                         ) : (
                             <>
-                                <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[#5b5ce2]/10 text-[#5b5ce2]">
-                                    <Sparkles className="size-4" />
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                    <span className="block font-medium text-[#5b5ce2]">{skill.name}</span>
-                                    <span className="block truncate text-[11px] opacity-65">{skill.description || skill.id}</span>
-                                </span>
+                                {/* 顶部：已连接素材 (可能@的内容) */}
+                                <div className="mb-1 px-2 pt-1 pb-0.5 text-[11px] font-medium opacity-50" style={{ color: theme.node.muted }}>
+                                    可能@的内容
+                                </div>
+                                {connectedReferences.length === 0 ? (
+                                    <div className="px-3 py-2 text-xs opacity-40">暂无已连接的素材节点</div>
+                                ) : (
+                                    connectedReferences.map((reference, index) => (
+                                        <button
+                                            key={reference.id}
+                                            type="button"
+                                            className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-black/5 dark:hover:bg-white/10"
+                                            style={{
+                                                background: index === activeIndex ? theme.toolbar.activeBg : "transparent",
+                                                color: index === activeIndex ? theme.toolbar.activeText : theme.node.text,
+                                            }}
+                                            onPointerDown={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                onSelect(reference);
+                                            }}
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                onSelect(reference);
+                                            }}
+                                        >
+                                            <div className="size-7 shrink-0 overflow-hidden rounded-md bg-black/10">
+                                                <ReferencePreview reference={reference} fit="cover" />
+                                            </div>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate font-medium">{reference.label}</span>
+                                                {reference.title && reference.title !== reference.label ? (
+                                                    <span className="block truncate text-[10px] opacity-60">{reference.title}</span>
+                                                ) : null}
+                                            </span>
+                                        </button>
+                                    ))
+                                )}
+
+                                {/* 分割线 */}
+                                <div className="my-1.5 border-t" style={{ borderColor: `${theme.toolbar.border}66` }} />
+
+                                {/* 底部：分类导航 (添加参考) */}
+                                <div className="mb-1 px-2 pt-0.5 pb-0.5 text-[11px] font-medium opacity-50" style={{ color: theme.node.muted }}>
+                                    添加参考
+                                </div>
+                                {REFERENCE_CATEGORIES.map((cat) => {
+                                    const isHovered = activeCategory === cat.key;
+                                    return (
+                                        <button
+                                            key={cat.key}
+                                            type="button"
+                                            className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-black/5 dark:hover:bg-white/10"
+                                            style={{
+                                                background: isHovered ? theme.toolbar.activeBg : "transparent",
+                                                color: isHovered ? theme.toolbar.activeText : theme.node.text,
+                                            }}
+                                            onMouseEnter={(event) => {
+                                                handleCategoryMouseEnter(cat.key, event.currentTarget.getBoundingClientRect());
+                                            }}
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                handleCategoryMouseEnter(cat.key, event.currentTarget.getBoundingClientRect());
+                                            }}
+                                        >
+                                            <span className="grid size-5 shrink-0 place-items-center rounded text-current opacity-80">
+                                                {cat.icon === "user" ? (
+                                                    <User className="size-3.5" />
+                                                ) : cat.icon === "image" ? (
+                                                    <ImageIcon className="size-3.5" />
+                                                ) : cat.icon === "video" ? (
+                                                    <Video className="size-3.5" />
+                                                ) : (
+                                                    <Volume2 className="size-3.5" />
+                                                )}
+                                            </span>
+                                            <span className="flex-1 font-medium">{cat.label}</span>
+                                            <ChevronRight className="size-3.5 opacity-40" />
+                                        </button>
+                                    );
+                                })}
                             </>
                         )}
-                    </button>
-                );
-            })}
-        </div>,
+                    </>
+                ) : (
+                    <>
+                        <div className="mb-1 flex items-center gap-1 border-b px-2 py-1 text-[11px] font-semibold opacity-50" style={{ borderColor: theme.toolbar.border }}>
+                            选择引用 Skill 技能 (/)
+                        </div>
+                        {candidates.length === 0 ? (
+                            <div className="px-3 py-2 text-xs opacity-50">暂无匹配的 Skill</div>
+                        ) : (
+                            candidates.map((item, index) => {
+                                const skill = item as AgentSkillSummary;
+                                return (
+                                    <button
+                                        key={skill.id}
+                                        type="button"
+                                        className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition"
+                                        style={{
+                                            background: index === activeIndex ? theme.toolbar.activeBg : "transparent",
+                                            color: index === activeIndex ? theme.toolbar.activeText : theme.node.text,
+                                        }}
+                                        onPointerDown={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            onSelect(item);
+                                        }}
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            onSelect(item);
+                                        }}
+                                    >
+                                        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[#5b5ce2]/10 text-[#5b5ce2]">
+                                            <Sparkles className="size-4" />
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block font-medium text-[#5b5ce2]">{skill.name}</span>
+                                            <span className="block truncate text-[11px] opacity-65">{skill.description || skill.id}</span>
+                                        </span>
+                                    </button>
+                                );
+                            })
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* 二级悬浮子菜单 (Image 3: 未连接素材列表) */}
+            {activeCategory && isMention && !hasQuery ? (
+                <div
+                    className="thin-scrollbar fixed z-[2501] max-h-[320px] w-64 overflow-y-auto rounded-xl border p-1.5 shadow-2xl backdrop-blur-md"
+                    style={{
+                        left: flyoutLeft,
+                        top: flyoutTop,
+                        background: theme.toolbar.panel,
+                        borderColor: theme.toolbar.border,
+                        color: theme.node.text,
+                    }}
+                    onPointerDown={stop}
+                    onMouseDown={stop}
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseEnter={handleFlyoutMouseEnter}
+                    onMouseLeave={handleFlyoutMouseLeave}
+                >
+                    <div className="mb-1 flex items-center justify-between border-b px-2 py-1 text-[11px] font-semibold opacity-60" style={{ borderColor: `${theme.toolbar.border}66` }}>
+                        <span>未连接{REFERENCE_CATEGORIES.find((c) => c.key === activeCategory)?.label}</span>
+                        <span className="text-[10px] font-normal opacity-60">点击连入当前节点</span>
+                    </div>
+                    {categoryReferences.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-xs opacity-50">画布中暂无此类未连接素材</div>
+                    ) : (
+                        categoryReferences.map((ref) => (
+                            <button
+                                key={ref.id}
+                                type="button"
+                                className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-black/5 dark:hover:bg-white/10"
+                                style={{ color: theme.node.text }}
+                                onPointerDown={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onSelect(ref);
+                                }}
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onSelect(ref);
+                                }}
+                            >
+                                <div className="size-8 shrink-0 overflow-hidden rounded-md bg-black/10">
+                                    <ReferencePreview reference={ref} fit="cover" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="truncate font-medium">{ref.title || ref.label}</div>
+                                    <div className="truncate text-[10px] opacity-60">{ref.label}</div>
+                                </div>
+                            </button>
+                        ))
+                    )}
+                </div>
+            ) : null}
+        </>,
         document.body,
     );
 }
 
-function ReferencePreview({ reference }: { reference: CanvasResourceReference }) {
-    if (reference.kind === "image" && reference.previewUrl) return <img src={imagePreviewUrl(reference.previewUrl, 96)} alt="" className="size-9 rounded-md object-cover" />;
-    if (reference.kind === "video" && reference.previewUrl) return <video src={reference.previewUrl} muted playsInline preload="metadata" className="size-9 rounded-md bg-black object-cover" />;
+function ReferencePreview({ reference, fit = "cover" }: { reference: CanvasResourceReference; fit?: "cover" | "contain" }) {
+    if (reference.kind === "image" && reference.previewUrl) return <img src={imagePreviewUrl(reference.previewUrl, 96)} alt="" className={`size-full rounded-md ${fit === "cover" ? "object-cover" : "object-contain"}`} />;
+    if (reference.kind === "video" && reference.previewUrl) return <video src={reference.previewUrl} muted playsInline preload="metadata" className={`size-full rounded-md bg-black ${fit === "cover" ? "object-cover" : "object-contain"}`} />;
     const iconName = reference.kind === "audio" ? "audio" : reference.kind === "video" ? "video" : reference.kind === "image" ? "image" : "document";
     return (
-        <span className="grid size-9 shrink-0 place-items-center rounded-md bg-black/10">
-            <DreamyoIcon name={iconName} size={18} />
+        <span className="grid size-full place-items-center rounded-md bg-black/10">
+            <DreamyoIcon name={iconName} size={16} />
         </span>
     );
 }

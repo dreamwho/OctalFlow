@@ -69,6 +69,16 @@ if (target === "geminiai-browser") {
         await rm(dataRoot, { recursive: true, force: true });
     }
 }
+if (target === "geminiai") {
+    const tracker = spawn(binary, ["-c", "from multiprocessing.resource_tracker import main;main(3)"], {
+        cwd: serviceRoot, stdio: ["ignore", "ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    tracker.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    tracker.stdio[3].end();
+    const exitCode = await new Promise((resolve, reject) => { tracker.once("error", reject); tracker.once("close", resolve); });
+    if (exitCode !== 0) throw new Error(`冻结 Gemini 资源追踪子进程失败：${stderr}`);
+}
 
 const sidecars = path.join(desktopRoot, "resources", "sidecars", `${process.platform}-${process.arch}`);
 await mkdir(sidecars, { recursive: true });

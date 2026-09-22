@@ -1629,6 +1629,61 @@ test("canvas Agent attachment remove badge stays compact and theme readable", as
     }
 });
 
+test("canvas loading node renders without cloud icon, with live elapsed duration and optimized typography", async ({ page, request }) => {
+    const project = await createCanvasProject(request, {
+        title: "加载状态UI排版实测",
+        viewport: { x: 0, y: 0, k: 1 },
+        nodes: [
+            // Narrow vertical 9:16 node like in user screenshot (138x236)
+            node("loading-vertical", "video", 80, 120, 138, 236, {
+                status: "loading",
+                generationStartedAt: Date.now() - 15000,
+                generationProgress: 81,
+                generationStage: "",
+            }),
+            // Standard 16:9 video node (340x191) with stage
+            node("loading-standard", "video", 260, 120, 340, 191, {
+                status: "loading",
+                generationStartedAt: Date.now() - 75000,
+                generationProgress: 64,
+                generationStage: "深度推理",
+            }),
+        ],
+        connections: [],
+    });
+
+    try {
+        await page.goto(`/canvas/${project.id}`);
+        await page.waitForSelector("[data-canvas-node-loading]");
+
+        // 1. Assert NO cloud icon exists in any loading node
+        const cloudIcons = page.locator('[data-dreamyo-icon^="waiting"]');
+        await expect(cloudIcons).toHaveCount(0);
+
+        // 2. Assert vertical narrow node text content
+        const verticalNode = page.locator('[data-node-id="loading-vertical"] [data-canvas-node-loading]');
+        await expect(verticalNode).toBeVisible();
+        await expect(verticalNode).toContainText("生成中");
+        await expect(verticalNode).toContainText("81%");
+        await expect(verticalNode).toContainText("耗时");
+
+        // 3. Assert standard node text content
+        const standardNode = page.locator('[data-node-id="loading-standard"] [data-canvas-node-loading]');
+        await expect(standardNode).toBeVisible();
+        await expect(standardNode).toContainText("生成中");
+        await expect(standardNode).toContainText("64%");
+        await expect(standardNode).toContainText("深度推理");
+        await expect(standardNode).toContainText("耗时");
+
+        // 4. Take screenshots for visual verification
+        await page.screenshot({ path: ".e2e-artifacts/canvas-loading-nodes-verified.png" });
+        const narrowCard = page.locator('[data-node-id="loading-vertical"]');
+        await narrowCard.screenshot({ path: ".e2e-artifacts/canvas-loading-narrow-card-verified.png" });
+    } finally {
+        await deleteCanvasProject(request, project.id);
+    }
+});
+
 function node(id: string, type: string, x: number, y: number, width: number, height: number, metadata: Record<string, unknown>) {
     return { id, type, title: id, position: { x, y }, width, height, metadata };
 }

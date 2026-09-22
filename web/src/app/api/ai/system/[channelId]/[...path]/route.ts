@@ -28,8 +28,8 @@ import { CHATGPT_API_PROTOCOL, normalizeChatGptApiRuntimePath } from "@/lib/serv
 import { GEMINIAI_PROTOCOL, geminiAiProviderConfigured, geminiAiRuntimeRequest, isGeminiAiRuntimePath } from "@/lib/server/geminiai-provider";
 import { GEMINI_TOOLS_PROTOCOL, geminiToolsOAuthConfigured, geminiToolsRuntimeRequest, isGeminiToolsRuntimePath } from "@/lib/server/gemini-tools-service";
 import { DOLA_CHANNEL_ID, DOLA_PROTOCOL, dolaProviderConfigured, dolaRuntimeRequest, isDolaRuntimePath } from "@/lib/server/dola/provider";
-import { getDolaAccount, getDolaAccountCookie, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount, setDolaAccountStatus } from "@/lib/server/dola/account-service";
-import { isDolaRateLimitError } from "@/lib/dola-errors";
+import { getDolaAccount, getDolaAccountCookie, markDolaAccountQuotaExhausted, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount, setDolaAccountStatus } from "@/lib/server/dola/account-service";
+import { describeDolaFailure, isDolaQuotaExhaustedError, isDolaRateLimitError } from "@/lib/dola-errors";
 import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
 import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, openDolaRequestLog, markDolaRequestLogRunning, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
 import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
@@ -205,7 +205,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     let pointsSettled = false;
     let dolaAccountId = "";
     let dolaHold = false;
-    let dolaProxyEgress: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string } = { mode: "direct" };
+    let dolaProxyEgress: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string; address?: string } = { mode: "direct" };
     const upstreamStartedAt = Date.now();
     const dolaLifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(upstreamStartedAt).toISOString(), phase: "queued", message: "接收到 Canvas Dola 请求", durationMs: 0, detail: `${request.method} ${geminiAiPath}, 模型: ${upstreamModel || "未声明"}` }];
     const dolaRequestParameters = isDolaChannel ? readDolaRequestParameters(requestBody.body) : {};
@@ -331,16 +331,21 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         }
         return NextResponse.json({ error: "上游接口不允许重定向，请检查后台渠道地址" }, { status: 502, headers: responseHeaders(new Headers(), null, refundedPointsRemaining) });
     }
-    // 创建响应携带账号级限额（rate_limited）：标记当前账号临时冷却并按管理员配置换号。
+    // 创建响应携带账号级限额（rate_limited / quota_exhausted）：标记当前账号临时冷却或额度用尽并按管理员配置换号。
     if (isDolaChannel && dolaAccountId && dolaRuntimeBody && request.method === "POST" && ["/v1/videos", "/v1/images"].includes(geminiAiPath.split("?", 1)[0])) {
         const { rotationLimit } = await getDolaGatewaySettings();
         let dolaRotations = 0;
         while (dolaRotations < rotationLimit) {
             const snapshot = await snapshotDolaResponse(upstream);
             const rateLimited = snapshot.value?.status === "failed" ? isDolaRateLimitError(snapshot.error) : upstream.status >= 400 && isDolaRateLimitError(snapshot.error);
-            if (!rateLimited) break;
+            const quotaExhausted = snapshot.value?.status === "failed" ? isDolaQuotaExhaustedError(snapshot.error) : upstream.status >= 400 && isDolaQuotaExhaustedError(snapshot.error);
+            if (!rateLimited && !quotaExhausted) break;
             const previousDolaAccountId = dolaAccountId;
-            await markDolaAccountRateLimited(dolaAccountId, snapshot.error || `HTTP ${upstream.status}`).catch(() => undefined);
+            if (quotaExhausted) {
+                await markDolaAccountQuotaExhausted(dolaAccountId, snapshot.error || `HTTP ${upstream.status}`).catch(() => undefined);
+            } else {
+                await markDolaAccountRateLimited(dolaAccountId, snapshot.error || `HTTP ${upstream.status}`).catch(() => undefined);
+            }
             await markDolaAccountUsed(dolaAccountId, false, true).catch(() => undefined);
             const nextBody = await rotateDolaRuntimeBody(dolaRuntimeBody, upstreamModel);
             if (!nextBody) break;
@@ -348,8 +353,10 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             dolaAccountId = readDolaAccountId(dolaRuntimeBody);
             dolaProxyEgress = readDolaProxyEgress(dolaRuntimeBody);
             dolaRotations += 1;
-            const rotationMessage = "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)";
-            dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: rotationMessage, durationMs: Date.now() - upstreamStartedAt, detail: `原账号 ${previousDolaAccountId} 已进入临时冷却；新账号: ${dolaAccountId}` });
+            const rotationMessage = quotaExhausted
+                ? "上游账号今日生成次数已达上限，已自动切换账号重试 (upstream account daily quota reached limit; auto-switched to another account)"
+                : "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)";
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: rotationMessage, durationMs: Date.now() - upstreamStartedAt, detail: `原账号 ${previousDolaAccountId} 已${quotaExhausted ? "标记为额度已用完" : "进入临时冷却"}；新账号: ${dolaAccountId}` });
             await safeMarkDolaLog(dolaLogId, { phase: "upstream", message: rotationMessage, detail: `新账号: ${dolaAccountId}` });
             try {
                 upstream = await dolaRuntimeRequest(geminiAiPath, { method: request.method, headers, body: dolaRuntimeBody, signal: request.signal });
@@ -376,7 +383,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                         phase === "success"
                             ? "生成完成，最终结果已返回"
                             : phase === "failed"
-                              ? `生成失败${errorText ? `：${errorText}` : ""}`
+                              ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}`
                               : phase === "needs_review"
                                 ? "任务等待人工确认（页面验证）"
                                 : phase === "generating"
@@ -430,7 +437,14 @@ async function prepareDolaRuntimeBody(contentType: string | null, body: BodyInit
         return body;
     }
     const proxy = await resolveDolaProxyEgress();
-    const proxyFields = { proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}) };
+    const proxyFields = {
+        proxyMode: dolaProviderProxyMode(proxy.egress),
+        proxySource: proxy.egress.mode,
+        proxyTarget: proxy.egress.target,
+        proxyNodeName: proxy.egress.nodeName,
+        proxyAddress: proxy.egress.address || proxy.egress.target,
+        ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+    };
     // User-facing system requests may never choose a Dola Cookie/account or a
     // provider proxy. Those fields are injected from the server-side account
     // pool and the generic proxy binding below.
@@ -465,7 +479,20 @@ async function rotateDolaRuntimeBody(runtimeBody: string, model: string) {
             return "";
         }
         const proxy = await resolveDolaProxyEgress();
-        return JSON.stringify({ ...payload, accountId: account.id, credentialVersion: account.credentialVersion, cookie, transport: "camoufox-page", proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), dolaHold: true });
+        return JSON.stringify({
+            ...payload,
+            accountId: account.id,
+            credentialVersion: account.credentialVersion,
+            cookie,
+            transport: "camoufox-page",
+            proxyMode: dolaProviderProxyMode(proxy.egress),
+            proxySource: proxy.egress.mode,
+            proxyTarget: proxy.egress.target,
+            proxyNodeName: proxy.egress.nodeName,
+            proxyAddress: proxy.egress.address || proxy.egress.target,
+            ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+            dolaHold: true,
+        });
     } catch {
         await releaseDolaAccountAttempt(account.id).catch(() => undefined);
         return "";
@@ -492,13 +519,21 @@ function readDolaHold(body: BodyInit | undefined) {
     }
 }
 
-function readDolaProxyEgress(body: BodyInit | undefined) {
+function readDolaProxyEgress(body: BodyInit | undefined): { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string; address?: string } {
     if (typeof body !== "string") return { mode: "direct" as const };
     try {
         const value = JSON.parse(body) as Record<string, unknown>;
         if (value.proxyMode === "managed") {
             const mode: "magic" | "generic" | "chained" = value.proxySource === "magic" || value.proxySource === "chained" || value.proxySource === "generic" ? value.proxySource : "generic";
-            return { mode, nodeName: typeof value.proxyTarget === "string" ? value.proxyTarget.slice(0, 160) : undefined };
+            const nodeName = typeof value.proxyNodeName === "string" && value.proxyNodeName.trim()
+                ? value.proxyNodeName.trim().slice(0, 160)
+                : typeof value.proxyTarget === "string" && value.proxyTarget.trim()
+                    ? value.proxyTarget.trim().slice(0, 160)
+                    : undefined;
+            const address = typeof value.proxyAddress === "string" && value.proxyAddress.trim()
+                ? value.proxyAddress.trim().slice(0, 160)
+                : undefined;
+            return { mode, nodeName, address };
         }
     } catch {
         // Keep log redaction deterministic for malformed provider bodies.

@@ -11,6 +11,7 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import type { VideoTask } from "@/lib/server/video-task-store";
 import { dolaProviderProxyMode, getDolaProxyBinding, resolveDolaProxyEgress, type DolaProxyEgress } from "./proxy";
 import { DolaProviderError, dolaHealth, dolaProviderConfigured, dolaRuntimeRequest, validateDolaVideoRequest } from "./provider";
+import { describeDolaFailure } from "@/lib/dola-errors";
 import { dolaPublicModels, type DolaAccountValidation, type DolaQuotaSnapshot } from "./types";
 
 export async function getDolaOverview() {
@@ -281,7 +282,7 @@ export async function queryDolaTask(taskId: string) {
                 const errorText = taskError;
                 await safeAdvanceDolaTaskLog(attachedLogId, {
                     phase,
-                    message: phase === "success" ? "生成完成，最终结果已返回" : phase === "failed" ? `生成失败${errorText ? `：${errorText}` : ""}` : phase === "needs_review" ? "任务等待人工确认（页面验证）" : phase === "generating" ? "Dola 上游已受理，生成中" : "Dola 上游排队中，等待生成",
+                    message: phase === "success" ? "生成完成，最终结果已返回" : phase === "failed" ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}` : phase === "needs_review" ? "任务等待人工确认（页面验证）" : phase === "generating" ? "Dola 上游已受理，生成中" : "Dola 上游排队中，等待生成",
                     detail: dolaResultMediaDetail(value) || `上游任务状态: ${stringValue(value.status) || "unknown"}`,
                     statusCode: response.status,
                     responsePreview: summarizeResponse(value, bytes),
@@ -649,4 +650,4 @@ function protocolValidation(value: Record<string, unknown> | null | undefined, e
         error: stringValue(protocol.error) || (ready ? undefined : "signed_protocol_probe_failed"),
     };
 }
-function proxyEgress(value: DolaProxyEgress) { return value.mode === "direct" ? { mode: "direct" as const } : { mode: value.mode, nodeName: value.nodeName || value.target }; }
+function proxyEgress(value: DolaProxyEgress) { return value.mode === "direct" ? { mode: "direct" as const } : { mode: value.mode, nodeName: value.nodeName || value.target, address: value.address }; }

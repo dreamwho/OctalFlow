@@ -6,13 +6,14 @@ export default {
     appId: edition.appId,
     productName: edition.productName,
     asar: true,
-    directories: { output: `dist/${edition.id}` },
+    directories: { output: process.env.DREAMYO_DESKTOP_OUTPUT_DIR || `dist/${edition.id}` },
     files: ["package.json", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"],
     extraResources: [
         { from: "build/edition.json", to: "edition.json" },
+        { from: "../../web/src/lib/desktop-edition-manifest.json", to: "desktop-edition-manifest.json" },
         { from: "build/runtime", to: "runtime" }
     ],
-    mac: { category: "public.app-category.graphics-design", ...(process.env.DREAMYO_DESKTOP_UNSIGNED_TEST === "1" ? { identity: null } : {}), target: [{ target: "dmg", arch: [process.arch] }, { target: "zip", arch: [process.arch] }], artifactName: `${edition.productName}-mac-\${arch}-\${version}.\${ext}` },
-    win: { target: [{ target: "nsis", arch: ["x64"] }], artifactName: `${edition.productName}-win-\${arch}-\${version}.\${ext}` },
+    mac: { icon: "assets/dreamyo.icns", category: "public.app-category.graphics-design", ...(process.env.DREAMYO_DESKTOP_UNSIGNED_TEST === "1" ? { identity: null } : {}), target: [{ target: "dmg", arch: [process.arch] }, { target: "zip", arch: [process.arch] }], artifactName: `${edition.productName}-mac-\${arch}-\${version}.\${ext}` },
+    win: { icon: "assets/dreamyo.ico", target: [{ target: "nsis", arch: ["x64"] }], artifactName: `${edition.productName}-win-\${arch}-\${version}.\${ext}` },
     nsis: { oneClick: false, allowToChangeInstallationDirectory: true, createDesktopShortcut: true, createStartMenuShortcut: true },
 };

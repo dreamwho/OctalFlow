@@ -170,4 +170,33 @@ describe("canvas node generation mentions", () => {
         expect(context.referenceVideos).toMatchObject([{ id: source.id }]);
         expect(context.referenceImages).toMatchObject([{ id: image.id }]);
     });
+
+    it("resolves unwired materials referenced via @[node:id] in the prompt", () => {
+        const unwiredImage: CanvasNodeData = {
+            id: "unwired-image-1",
+            type: CanvasNodeType.Image,
+            title: "未连线的灵感图",
+            position: { x: 800, y: 100 },
+            width: 320,
+            height: 180,
+            metadata: { content: "data:image/png;base64,BBBB", mimeType: "image/png" },
+        };
+        const target: CanvasNodeData = {
+            id: "target-node",
+            type: CanvasNodeType.Config,
+            title: "生成目标",
+            position: { x: 100, y: 100 },
+            width: 320,
+            height: 220,
+            metadata: {},
+        };
+
+        const promptWithMention = "请参考 @[node:unwired-image-1] 生成相同风格的特写";
+        const inputs = buildNodeGenerationInputs(target.id, [unwiredImage, target], [], promptWithMention);
+        expect(inputs).toMatchObject([{ nodeId: unwiredImage.id, type: "image" }]);
+
+        const context = buildNodeGenerationContext(target.id, [unwiredImage, target], [], promptWithMention);
+        expect(context.referenceImages).toHaveLength(1);
+        expect(context.referenceImages[0].id).toBe(unwiredImage.id);
+    });
 });

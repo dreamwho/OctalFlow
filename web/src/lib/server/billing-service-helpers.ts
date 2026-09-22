@@ -91,14 +91,17 @@ export async function createOrderPlanAssignment(order: BillingOrderRecord, paidA
 export async function normalizeBillingProductInput(input: BillingProductInput, db: QueryExecutor): Promise<BillingProductRecord> {
     const now = new Date().toISOString();
     const id = normalizeId(input.id) || randomUUID();
-    const productKind = input.productKind === "points" ? "points" : "plan";
+    const productKind = input.productKind === "points" || input.productKind === "storage" ? input.productKind : "plan";
     const plan = productKind === "plan" ? await resolveEnabledPlan(normalizeId(input.planId), db) : undefined;
     const name = normalizeText(input.name, "", 80);
     if (!name) throw new BillingInputError("请填写商品名称");
     const amountCents = normalizePositiveInteger(input.amountCents, 0, 100_000_000, 0);
-    const pointsAmount = normalizeMoneyLike(input.pointsAmount, 0, 1_000_000);
+    const pointsAmount = productKind === "storage" ? 0 : normalizeMoneyLike(input.pointsAmount, 0, 1_000_000);
     const dailyPoints = productKind === "plan" ? normalizeMoneyLike(input.dailyPoints, plan?.dailyPoints || 0, 1_000_000) : 0;
+    const storageBytes = productKind === "storage" ? normalizeStorageBytes(input.storageBytes) : 0;
+    const storagePurchaseLimit = productKind === "storage" ? normalizeStoragePurchaseLimit(input.storagePurchaseLimit, 0) : 0;
     if (productKind === "points" && pointsAmount <= 0) throw new BillingInputError("积分充值商品的积分必须大于零");
+    if (productKind === "storage" && amountCents <= 0) throw new BillingInputError("云存储商品价格必须大于零");
     if (pointsAmount > 0 && amountCents <= 0) throw new BillingInputError(productKind === "points" ? "积分充值商品价格必须大于零" : "赠送积分的商品价格必须大于零");
     return {
         id,
@@ -110,7 +113,11 @@ export async function normalizeBillingProductInput(input: BillingProductInput, d
         currency: normalizeCurrency(input.currency),
         pointsAmount,
         dailyPoints,
-        periodDays: productKind === "plan" ? normalizePositiveInteger(input.periodDays, 1, 36_500, 30) : 0,
+        periodDays: productKind !== "points" ? normalizePositiveInteger(input.periodDays, 1, 36_500, 30) : 0,
+        storageBytes,
+        storageStackable: productKind !== "storage" || input.storageStackable !== false,
+        storageRenewable: productKind !== "storage" || input.storageRenewable !== false,
+        storagePurchaseLimit,
         enabled: input.enabled !== false,
         sortOrder: normalizeInteger(input.sortOrder, 0, 10_000, 0),
         metadata: sanitizeJson(input.metadata),
@@ -121,10 +128,10 @@ export async function normalizeBillingProductInput(input: BillingProductInput, d
 
 export async function normalizeBillingProductPatch(input: BillingProductInput, current: BillingProductRecord, db: QueryExecutor): Promise<Partial<Omit<BillingProductRecord, "id" | "createdAt" | "updatedAt">>> {
     const patch: Partial<Omit<BillingProductRecord, "id" | "createdAt" | "updatedAt">> = {};
-    const productKind = input.productKind === undefined ? current.productKind : input.productKind === "points" ? "points" : "plan";
+    const productKind = input.productKind === undefined ? current.productKind : input.productKind === "points" || input.productKind === "storage" ? input.productKind : "plan";
     if (input.productKind !== undefined) patch.productKind = productKind;
-    if (productKind === "points") patch.planId = undefined;
-    else if (input.planId !== undefined || current.productKind === "points" || !current.planId) patch.planId = (await resolveEnabledPlan(normalizeId(input.planId) || current.planId || "", db)).id;
+    if (productKind !== "plan") patch.planId = undefined;
+    else if (input.planId !== undefined || current.productKind !== "plan" || !current.planId) patch.planId = (await resolveEnabledPlan(normalizeId(input.planId) || current.planId || "", db)).id;
     if (input.name !== undefined) {
         const name = normalizeText(input.name, "", 80);
         if (!name) throw new BillingInputError("请填写商品名称");
@@ -133,22 +140,50 @@ export async function normalizeBillingProductPatch(input: BillingProductInput, c
     if (input.description !== undefined) patch.description = normalizeText(input.description, "", 500);
     if (input.amountCents !== undefined) patch.amountCents = normalizePositiveInteger(input.amountCents, 0, 100_000_000, current.amountCents);
     if (input.currency !== undefined) patch.currency = normalizeCurrency(input.currency);
-    if (input.pointsAmount !== undefined) patch.pointsAmount = normalizeMoneyLike(input.pointsAmount, current.pointsAmount, 1_000_000);
+    if (productKind === "storage") patch.pointsAmount = 0;
+    else if (input.pointsAmount !== undefined || current.productKind === "storage") patch.pointsAmount = normalizeMoneyLike(input.pointsAmount, current.productKind === "storage" ? 0 : current.pointsAmount, 1_000_000);
     if (productKind === "points") {
         patch.dailyPoints = 0;
         patch.periodDays = 0;
     } else {
         if (input.dailyPoints !== undefined) patch.dailyPoints = normalizeMoneyLike(input.dailyPoints, current.dailyPoints, 1_000_000);
+        if (productKind === "storage") patch.dailyPoints = 0;
         if (input.periodDays !== undefined || current.productKind === "points") patch.periodDays = normalizePositiveInteger(input.periodDays, 1, 36_500, current.periodDays || 30);
     }
+    patch.storageBytes = productKind === "storage" ? normalizeStorageBytes(input.storageBytes === undefined ? current.storageBytes : input.storageBytes) : 0;
+    patch.storageStackable = productKind !== "storage" || (input.storageStackable === undefined ? current.storageStackable !== false : input.storageStackable !== false);
+    patch.storageRenewable = productKind !== "storage" || (input.storageRenewable === undefined ? current.storageRenewable !== false : input.storageRenewable !== false);
+    patch.storagePurchaseLimit = productKind === "storage" ? normalizeStoragePurchaseLimit(input.storagePurchaseLimit, current.storagePurchaseLimit || 0) : 0;
     if (input.enabled !== undefined) patch.enabled = input.enabled !== false;
     if (input.sortOrder !== undefined) patch.sortOrder = normalizeInteger(input.sortOrder, 0, 10_000, current.sortOrder);
     if (input.metadata !== undefined) patch.metadata = sanitizeJson(input.metadata);
     const finalAmountCents = patch.amountCents ?? current.amountCents;
     const finalPointsAmount = patch.pointsAmount ?? current.pointsAmount;
     if (productKind === "points" && finalPointsAmount <= 0) throw new BillingInputError("积分充值商品的积分必须大于零");
+    if (productKind === "storage" && finalAmountCents <= 0) throw new BillingInputError("云存储商品价格必须大于零");
     if (finalPointsAmount > 0 && finalAmountCents <= 0) throw new BillingInputError(productKind === "points" ? "积分充值商品价格必须大于零" : "赠送积分的商品价格必须大于零");
     return patch;
+}
+
+function normalizeStorageBytes(value: unknown) {
+    const bytes = Number(value);
+    if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes * 100 > Number.MAX_SAFE_INTEGER) throw new BillingInputError("云存储容量必须是有效的正整数字节数");
+    return bytes;
+}
+
+function normalizeStoragePurchaseLimit(value: unknown, fallback: number) {
+    if (value === undefined) return fallback;
+    const limit = Number(value);
+    if (!Number.isInteger(limit) || limit < 0 || limit > 2_147_483_647) throw new BillingInputError("购买次数限制必须是非负整数");
+    return limit;
+}
+
+export function assertStoragePurchaseAllowed(product: BillingProductRecord, counts: { orders: number; pendingOrders: number; units: number }, quantity: number) {
+    if (product.productKind !== "storage") return;
+    if (product.storageStackable === false && quantity !== 1) throw new BillingInputError("不可叠加的云存储套餐每单只能购买一份");
+    if (product.storageRenewable === false && counts.orders > 0) throw new BillingInputError("此云存储套餐不支持再次购买", 409);
+    if (product.storageStackable === false && counts.pendingOrders > 0) throw new BillingInputError("此云存储套餐已有待支付订单", 409);
+    if ((product.storagePurchaseLimit || 0) > 0 && counts.units + quantity > (product.storagePurchaseLimit || 0)) throw new BillingInputError("已达到此云存储套餐的购买次数限制", 409);
 }
 
 export async function resolveEnabledPlan(planId: string, db: QueryExecutor) {

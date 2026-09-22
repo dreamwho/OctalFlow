@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { BillingInputError } from "@/lib/server/billing-errors";
 import { calculateBillingPrice, selectCurrentPromotion, type CouponPriceRule, type PromotionPrice } from "@/lib/server/billing-pricing";
 import { createPostgresRepositories, withPostgresTransaction, type BillingOrderRecord, type BillingProductRecord, type CouponTemplateRecord, type JsonValue, type QueryExecutor, type UserCouponRecord } from "@/lib/server/database";
-import { assertBillingDatabaseReady, normalizeId, normalizePositiveInteger } from "@/lib/server/billing-service-helpers";
+import { assertBillingDatabaseReady, assertStoragePurchaseAllowed, normalizeId, normalizePositiveInteger } from "@/lib/server/billing-service-helpers";
 
 export async function quoteBillingOrder(input: { userId: string; productId?: unknown; quantity?: unknown; userCouponId?: unknown }) {
     await assertBillingDatabaseReady();
@@ -14,6 +14,7 @@ export async function quoteBillingOrder(input: { userId: string; productId?: unk
         const product = await repos.billing.getProductById(normalizeId(input.productId));
         if (!product || !product.enabled) throw new BillingInputError("商品不存在或已下架", 404);
         const quantity = normalizePositiveInteger(input.quantity, 1, 100, 1);
+        if (product.productKind === "storage") assertStoragePurchaseAllowed(product, await repos.billing.getStoragePurchaseCounts(user.id, product.id), quantity);
         const commerce = await prepareBillingOrderCommerce({
             db: client,
             product,

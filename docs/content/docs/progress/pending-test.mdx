@@ -5,6 +5,256 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### Dola 上游未知会话反馈与拒识文本检测、即时报错终止与请求日志原始详情透传（2026-09-22）
+
+- 需求与问题：
+  1. 画布提交生成任务后，若 Dola 上游大模型返回对话类拒识、敏感词拦截或非标准说明文本（如“视频生成目前支持 4–15 秒。你要求的 30 秒无法直接生成，我建议按完整脚本拆为 3 段各 10 秒竖屏视频... A. 生成 3 段 9:16、10 秒视频”），上游并未生成真实的 `creation_block`（视频卡片）；
+  2. 此前的轮询解析逻辑中，`_generation_refused` 仅对特定几个硬编码关键词（如“视频生成失败”、“出了点问题”、“生成次数已经到达上限”）返回失败，对未知或会话型拒识文本返回空字典 `{}`；
+  3. 这导致后端轮询逻辑误判为“上游仍在处理中”，任务无限期保持在 `accepted` / `running` 状态，画布前端一直卡死在“生成中”，且请求日志完全无法捕获这一错误事实与失败原因；
+  4. 此外，此前错误文本被截断为 120 字符，导致长文本理由被截断缺失。
+- 根因分析：
+  - Dola IM 下行链路协议在正常出图/出视频时，会附带 `block_type: 2074`（`creation_block`），视频状态 `status: 1`（生成中）或 `status: 3`（已完成）；
+  - 当会话助手拦截或拒绝时，仅会返回 `block_type: 10000` 的 `text_block`，不包含任何 `creation_block`；
+  - 若解析层仅在已知错误关键字命中时才报错，遇到任何未预料的提示、建议、政策拒绝或能力限制时，便会陷入无终止条件的死轮询。
+- 实现与修复：
+  1. **无 creation_block 会话文本兜底检测与即时终态判定**：
+     - 在 `services/dola-api/src/dola_api/query.py` 中重构 `parse_generation_payloads`；
+     - 引入 `_is_user_message`、`_has_creation_block` 与 `_extract_assistant_text`；
+     - 当下行消息中仅有用户提示词且助手未回复时，返回 `{}` 维持轮询；
+     - 当存在有效 `creation_block`（`status == 1`）时，返回 `{}` 维持轮询；
+     - 当无任何 `creation_block` 且助手已返回文本内容时，判定为**生成失败（`failed`）**；
+     - 分类识别额度、限流、生成故障等已知错误码，同时将助手完整文本作为 `rawError` 与错误信息保留，绝不丢失原本内容。
+  2. **扩展错误内容长度与请求日志 / 任务详情透传**：
+     - 将 `services/dola-api/src/dola_api/session.py` 中 120 字符截断上限扩展为 1000 字符，并在 `diagnostics["upstreamResponseText"]` 中完整保留原本内容（最大 2000 字符）；
+     - `web/src/lib/dola-errors.ts` 中的 `describeDolaFailure` 优化：中文自然语言长句直接原样呈现，不再追加多余的“上游返回未知错误”后缀；
+     - `web/src/lib/server/dola/service.ts` 与 `web/src/app/api/ai/system/[channelId]/[...path]/route.ts` 接入 `describeDolaFailure`，生成失败时将 Dola 返回的原始长句无损写入请求日志（`log.error`、`log.lifecycle`）与视频任务（`task.error`）；
+     - 画布前端即时获知失败终态并停止转圈，卡片与日志均展示真实上游反馈。
+- 验证情况：
+  - Python 单元测试：`services/dola-api/tests/test_contracts.py` 增加未知对话拒识文本全量保留、仅用户消息等待、活跃 creation_block 保持轮询等 3 组新测试，63 项测试全部通过（`63 passed in 1.09s`）；
+  - Web 单元测试：Vitest 运行 `dola-errors.test.ts`、`canvas-dola.test.ts`、`admin-dola-api-section.test.ts`、`dola-request-log-repository.test.ts` 100% 通过；
+  - 生产构建与服务：`pnpm build` 构建成功，独立生产服务 `3333` 与 Dola API `18082` 平滑重启并自检通过。
+
+### Dola / Seedance 15秒与30秒视频生成提取、提示词去敏感与有头 Camoufox 解锁集成（2026-09-22）
+
+- 需求与问题：
+  1. 用户测试 Dola 视频生成时，Dola 页面会话助手直接拦截并拒绝 30 秒生成请求，返回：“视频生成目前支持 4–15 秒。你要求的 30 秒无法直接生成，我建议按完整脚本拆为 3 段各 10 秒竖屏视频... A. 生成 3 段 9:16、10 秒视频”；
+  2. 需要核查当前的 Dola 30s 生成能力是否被此前多轮修改覆盖或破坏，并结合参考项目 `doubaokit-main`、`dola-30s-unlocker-main` 与 `dola-seedance25-30s-poc-main`，重新提取并固化 Dola / Seedance 15s 与 30s 的免拦截生成机制。
+- 根因分析：
+  1. **上层大模型对话意图拦截机制（非底层生成能力限制）**：
+     - Dola 网页架构由“上层对话助手 LLM”与“底层生成工具执行器（`chat_ability`，类型 17）”组成；
+     - 当自然语言提示词（`user_input_content` 或 `text_block.text`）显式包含 `30秒`、`30s`、`15秒`、`时长30秒` 等字样时，上层对话大模型会命中其系统提示词中的“支持 4-15 秒”文本规则，直接以自然语言拒绝并建议分段切片，根本不调用下层的 `chat_ability` 工具；
+     - 如 `dola-30s-unlocker-main/README.md` 中明确说明：“输入提示词时，尽量避免直接出现‘XX秒’、‘X~X秒’等敏感词，以防触发平台的关键词安全拦截”。
+  2. **结构化参数契约不完整**：
+     - `doubaokit-main` 的核心拦截与修改位于网络请求层：其在 XHR/Fetch 拦截器中重写 `/chat/completion` 请求体，将 `ability_param` 中的 `duration` 显式设为 `30`（或 `15`），模型参数绑定 `seedance_v2.5`，运镜设定 `fixed`，而将可见文本剥离时长信息；
+  3. **有头浏览器测试（Camoufox）缺少主世界解锁脚本注入**：
+     - 用户在使用后台“有头测试”或人工打开 Camoufox 浏览器时，前端 UI 默认由 Dola 后端接口 `samantha/skill/pack` 和 `action_bar_v3/get_item_conf` 动态下发时长选项（官方默认仅下发 5s、10s）；
+     - 未注入 `hook.js` 响应篡改脚本时，Dola Web 端无法在时长下拉菜单中选择 15s/30s，用户手动输入“生成30秒视频”便直接触发了会话助手的大模型文本拒绝。
+- 实现与修复：
+  1. **提示词敏感时长清洗（`sanitize_video_prompt_duration`）**：
+     - 在 `services/dola-api/src/dola_api/protocol.py` 中新增 `sanitize_video_prompt_duration(prompt: str) -> str`；
+     - 采用正则精确移除如 `生成30秒视频：`、`时长30秒`、`duration: 30s`、`30s` 等对话触发词，同时完整保留用户画面内容（如 `海边日落，超清画质`）；
+  2. **结构化 `ability_param` 强制下发时长参数**：
+     - 在 `services/dola-api/src/dola_api/session.py` 的 `_build_request_body` 中，将清洗后的干净内容填入 `user_input_content`，可见文本（`text_block.text`）不再包含敏感秒数字样；
+     - 视频时长通过 `ability_param["duration"] = int(request.duration)` 强制由结构化协议参数通道传递给上游生成工具引擎，同时补齐 `camera_movement = "fixed"`；
+  3. **全场景注入 Camoufox 15s/30s 解锁脚本（`DOLA_30S_UNLOCKER_SCRIPT`）**：
+     - 在 `services/dola-api/src/dola_api/page_scripts.py` 中提取并封装了基于 `dola-30s-unlocker-main` 的轻量原生 Hook 脚本；
+     - 拦截 `samantha/skill/pack`、`action_bar_v3/get_item_conf`、`slot/action_bar` 与 `samantha/creation` 响应，动态向 UI 下发 15s 与 30s 选项；
+     - 在所有 Camoufox 启动入口（`start_headed_test`、`inspect_account_live`、`verify_account`、`_execute_creation_in_browser`、`_fetch_generation_result_in_page`）通过 `context.add_init_script` 注入，确保有头浏览器界面可直接在下拉选单中选择 15s/30s，且前端提交时自动重写 `duration`。
+- 验证情况：
+  - 单元测试：`services/dola-api/tests/test_contracts.py` 中新增提示词敏感秒数清洗、30s 结构化请求体构造、解锁脚本钩子完整性测试，`services/dola-api/tests/` 全量 60 项 Python 测试 100% 通过（`60 passed in 1.43s`）；
+  - Web 测试：Vitest 运行 Dola 账号服务与 Canvas 核心测试全过（`36 passed`）；
+  - 生产构建：`pnpm build`（Next.js 16.3.3 Turbopack）成功构建通过，74/74 路由无报错；
+  - 运行时健康：生产服务 `3333` 与 Dola API `18082` 重启并自检通过，返回 HTTP 200。
+
+### 画布节点生成中状态 UI 优化（移除云朵图标、增加生成耗时、重构排版层次）（2026-09-22）
+
+- 需求与问题：
+  1. 视频生成节点在生成中（loading）状态时，原有的云朵图标占位过大且缺乏实际指示意义，需要移除；
+  2. 节点中需要展示实时生成耗时（如 `耗时 15秒`、`耗时 1分15秒`），以便用户直观了解任务已执行时长；
+  3. 优化生成节点内的文字排版：原先在小尺寸节点（如 9:16 竖版 138px 宽）下文字因横向空间不足发生尴尬折行（如 "生成中 预计" 换行 "81%" 错位缩进），层级混乱，且与底层动态烟雾背景缺乏足够的对比度隔离。
+- 根因分析：
+  1. `LoadingContent` 原实现中包含 `DreamyoWaitingIcon`（24px 图标 + 8px 间距），在 138px 窄节点中占用了近 30% 可用宽度；
+  2. 百分比与状态字符串拼装为一整段文字，导致超出宽度时从百分比处被强制折行，第二行文本在云朵图标右侧发生缩进，破坏视觉对齐；
+  3. `useCanvasGenerationProgress` 原先仅计算进度百分比和等待超时，未暴露基于任务开始时间 `generationStartedAt` 的格式化耗时与秒数。
+- 实现与修复：
+  1. **完全移除云朵图标**：
+     - 在 `web/src/app/(user)/canvas/components/canvas-node-content.tsx` 的 `LoadingContent` 中移除 `<DreamyoWaitingIcon>`，将宽度空间完全留给文字与进度信息；
+  2. **新增生成耗时计算与双行层级排版**：
+     - 在 `web/src/app/(user)/canvas/components/use-canvas-generation-progress.ts` 中新增 `formatGenerationElapsed` 实用工具，计算 `elapsedSeconds` 与 `elapsedText`（如 `15秒`、`1分15秒`、`1小时`），并在订阅时钟每秒平滑推进；
+     - `LoadingContent` 采用毛玻璃微暗胶囊底衬（`bg-black/40 backdrop-blur-md border border-white/10 rounded-lg px-2.5 py-1.5`），有效隔离底层烟雾高光对文字对比度的干扰；
+     - 第一行主信息展示状态与进度：加粗状态文案（`生成中` / `生成完成`）+ 等宽数字百分比（`81%` / `预计 81%`）+ 生成阶段（`· 深度推理`），紧凑左对齐，138px 宽度下不发生意外折行；
+     - 第二行辅助信息展示生成耗时：内联微型时钟图标 `<Clock3 className="size-[1.1em] shrink-0 opacity-70" />` + `耗时 {elapsedText}`，字号和透明度弱化，层次清晰；
+     - 若任务触发长等待超时，第三行追加展示 `已等待 mm:ss，等待结果`。
+- 验证情况：
+  - 单元测试：`canvas-generation-progress.test.ts` 新增耗时格式化测试全过；`canvas-node.test.tsx` 断言云朵图标不存在、耗时存在全过；`src/app/(user)/canvas/` 全量 60 个测试文件、345 项测试全部通过；
+  - 静态检查：`pnpm typecheck`（`tsc --noEmit`）通过无报错；
+  - 生产构建：`pnpm build` 成功完成；
+  - 端到端测试与视觉审查（Playwright E2E & vision.js 审查截图）：
+    - 在 138px 窄卡片与 340px 标准卡片下分别截图审查，确认云朵图标已完全去除；
+    - 第一行状态与百分比紧凑工整，第二行耗时与时钟图标清晰显示，整体层级分明，毛玻璃底色对比清晰无溢出。
+
+### 画布提示词编辑器行间距一致性重置与提示词面板高度比例升级（2026-09-22）
+
+- 需求与问题：
+  1. 提示词展开区域和画布节点提示词面板中存在行间距不一致问题：多行段落（如【全局设定】内的长句）内部自动折行较紧凑，而按回车硬换行的单行（如【主体绑定】下的主体 1、主体 2）上下间距明显过大（相差 1.7 倍以上）；
+  2. 需要加高画布节点提示词面板的提示词区域，参考设计比例使提示词文字编辑区域占卡片整体高度约 60% 以上（可容纳 10-12 行提示词展示）。
+- 根因分析：
+  1. **行间距不一致根因**：TipTap / ProseMirror 将换行按段落分割为独立 `<p>` 标签。浏览器默认样式对 `<p>` 带有默认的上下外边距（`margin-top: 1em; margin-bottom: 1em`，即 16px）。在同一个段落内部折行时没有段落外边距，行距由纯 `line-height` 决定；而跨段落换行时段落外边距生效，导致回车换行的视觉距离为 `line-height + margin`（高达 38px~42px），远大于单段落内折行的 24px~26px，从而出现「下面的行间距比上面的行间距大」；
+  2. **提示词面板高度根因**：画布浮层几何计算中 `PROMPT_COMPOSER_HEIGHT` 固定为 232px，扣除顶部快捷工具条（44px）与底部生成参数栏（56px）后，留给提示词编辑器的有效高度仅约 124px（仅能显示约 4~5 行），未能达到图 2 中提示词主导卡片视觉（约占 60%）的效果。
+- 实现与修复：
+  1. **提示词段落外边距彻底重置与严格等距行高节奏**：
+     - 在 `web/src/app/styles/global-canvas-overrides.css` 中重置 `[data-canvas-prompt-editor] .ProseMirror p`, `.canvas-node-prompt-surface .ProseMirror p`, `.canvas-prompt-editor-modal .ProseMirror p`, `.canvas-resource-editor-content p` 的外边距与内边距为 `margin: 0 !important; padding: 0 !important;`；
+     - 展开弹窗统一设置 `font-size: 15px; line-height: 26px !important;`，紧凑提示词面板统一设置 `font-size: 14px; line-height: 24px !important;`；
+     - 无论用户是单段落自动折行、单次回车换行还是双次回车空行，每一行之间的基线距离严格等距（展开弹窗恒为 26px，紧凑面板恒为 24px，空行严格占一个标准行高）。
+  2. **加高提示词面板整体尺寸与编辑区域占比**：
+     - 在 `web/src/app/(user)/canvas/utils/canvas-surface-geometry.ts` 中将 `PROMPT_COMPOSER_HEIGHT` 从 232px 提升至 360px；
+     - 顶部工具栏维持 44px、底部生成工具栏维持 56px，中间弹性文本编辑区域高度由 ~124px 扩展到 252px~314px，在整体卡片中的有效占比提升至约 70%~87%，可轻松展示 10~12 行完整提示词，与图 2 设计比例高度一致；
+     - 同步更新 `canvas-surface-geometry.test.ts` 几何视口定位与尺寸断言。
+- 验证情况：
+  - 单元测试：`canvas-surface-geometry.test.ts` 23 项测试全部通过；`src/app/(user)/canvas/` 全目录 60 个测试文件、344 项测试全部通过；
+  - 静态检查：`pnpm typecheck`（`tsc --noEmit`）通过无报错；
+  - 生产构建：`pnpm build` 成功完成；
+  - 浏览器实测（Playwright on 3333 端口实测）：
+    - 紧凑面板实测：卡片高度为 360px，编辑器高度为 314px（占比 87.2%）；段落 `<p>` 元素 `marginTop = 0px`, `marginBottom = 0px`, `lineHeight = 24px`，换行间隙 `gap = 0px`，单行基线距离严格为 24px；
+    - 展开弹窗实测：段落 `<p>` 元素 `marginTop = 0px`, `marginBottom = 0px`, `lineHeight = 26px`，换行间隙 `gap = 0px`，单行基线距离严格为 26px；
+    - 截图留存：`/tmp/canvas_composer_360_real.png` 与 `/tmp/canvas_modal_expanded_real.png` 实测对比通过。
+
+### 请求日志代理节点名称完整透出与 Dola 今日生成额度用尽协议识别及跨天自动恢复（2026-09-22）
+
+- 需求与问题：
+  1. 请求日志（`dola_request_logs` 与 `gemini_request_logs`）中，部分记录只显示原始目标 IP 或代理域名（如 `127.0.0.1:17891`），未能展示管理后台配置的节点友好名称（如「日本 01」）；
+  2. Dola 视频生成任务在账号今日免费额度用完时（上游回复「今天的生成次数已经到达上限，明天再来免费生成吧」），因底层轮询未识别此拒绝文本，导致任务一直卡在「生成中」死等直至超时；
+  3. 需实现：通过 Dola 状态轮询协议（`/im/chain/single` 与 `/im/conversation/info`）即时解析额度用尽信息并终止挂起，返回类型化错误（`upstream_quota_exhausted`）；
+  4. 触发额度用完时，系统自动在白名单生效分组内切换下一可用账号重试任务，并在后端生命周期日志与审计日志记录换号原因；
+  5. 将额度用尽账号标记为「额度已用完」（`quota_exhausted`），记录用尽时间戳 `quotaExhaustedAt` 并从当日轮询池中排除；
+  6. 账号额度按日刷新：通过日历日期比对（`isDateBeforeToday`），新的一天到来读取账号数据库时自动将昨日 `quota_exhausted` 状态重置为 `ready` 恢复调度；
+  7. 管理后台新增「额度已用完」专属分类 Tab 与单账号「重置额度」操作按钮。
+- 实现与修复：
+  1. **代理节点名称全链路透传与日志展示**：
+     - `resolveDolaProxyEgress()` 优先提取 `egress.nodeName || egress.address || egress.target` 作为 `proxyNodeName`；
+     - 内部网络请求与调度进程统一通过 JSON Body 显式携带 `proxyNodeName` 和 `proxyAddress`，避免跨进程边界丢失元数据；
+     - 日志结算与归档时优先存入 `proxyNodeName`，管理端表格与抽屉优先展示节点名称，兼具 IP/域名浮层提示。
+  2. **Dola 协议轮询端今日额度用尽文本解析与快速终态**：
+     - 在 `services/dola-api/src/dola_api/query.py` 的 `_generation_refused()` 解析器中补充每日次数上限特征词：「生成次数已经到达上限」、「生成次数已达上限」、「明天再来免费生成」、「今日额度已用完」、「免费生成次数已用完」等；
+     - 匹配后立即终止挂起轮询，向上游返回明确的 `upstream_quota_exhausted` 拒绝原因；Python 专项测试 `test_quota_exhausted_message_terminates_generation_result` 验证通过（57/57 单元测试通过）。
+  3. **类型化错误识别与自动换号重试链路**：
+     - `web/src/lib/dola-errors.ts` 导出 `isDolaQuotaExhaustedError`，并将其纳入 `isAccountClassGenerationError` 账号级故障判定；
+     - 在 `video-task-runtime.ts`、`route.ts`（系统 AI 渠道）及 `/api/dola/[...path]` 代理层捕获该错误后，调用 `markDolaAccountQuotaExhausted()` 标记账号；
+     - 自动记录生命周期日志（`账号 [ID] 今日生成次数已达上限，已自动切换账号重试`），无缝调度白名单分组内下一个就绪账号重新提交任务。
+  4. **跨天自动恢复日历日期感知与管理后台支持**：
+     - `DolaAccount` 扩展 `quotaExhaustedAt?: string` 与 `quotaExhaustedReason?: string`；
+     - `account-service.ts` 实现 `isDateBeforeToday()` 日期计算，并在每次 `readDatabase()` 时自动检测：若当前系统日历日期大于记录的 `quotaExhaustedAt` 日期，自动将账号由 `quota_exhausted` 恢复为 `ready`（或 `needs_login`）；
+     - `admin-dola-api-section.tsx` 新增 `quota_exhausted` 标签栏「额度已用完」、火山色状态 Tag 及「重置额度」按钮，支持管理员手动即时恢复。
+- 验证情况：
+  - Python 协议测试：`services/dola-api/tests` 57 项全部通过；
+  - Web 端测试：`admin-dola-api-section.test.ts`、`dola-errors.test.ts`、`account-service.test.ts` 15 项全部通过；
+  - 静态检查与构建：`pnpm typecheck` 零报错，`pnpm build` 生产构建成功；
+  - 本地生产服务：Next.js Standalone 服务在 3333 端口稳定重启，实测在启动瞬间后台生成 Worker 自动捕获到先前卡死的线上真实任务 `a2184a3d-46fb-4b54-a1e5-c793c6e67c0f`，成功识别上游额度用尽并自动将其账号 `dola-f469fc0b-733a-4395-969b-fadd1a0e0167`（Dola 账号 108）标记为 `quota_exhausted`，平滑轮换到新账号 `dola-dac0122c-2e44-412a-bebe-90a4c7b6680f` 重新提交，端到端完整闭环。
+
+### 画布提示词展开扁平化排版、两层素材引用弹层与自动连线机制（2026-09-22）
+
+- 需求与问题：
+  1. 提示词展开弹窗 UI 需参考设计规范实现扁平化排版，段落采用约 26px 舒适行间距，去除内部嵌套边框扩大书写面积，弹窗内不展示生成按钮，且弹窗外框完整复用画布节点弹出层的圆角、边框与阴影效果；
+  2. 重构素材引用机制：输入 `@` / `＠` 后弹出两层菜单架构，顶部展示当前节点已连接素材（「可能@的内容」），底部展示「添加参考」分类导航（主体、图片、视频、音频）；
+  3. 分类支持悬浮/点击展开二级子菜单列出画布中所有未连接的对应类别素材；
+  4. 选择未连接素材引用后，需在插入引用 Token 的同时在画布上自动创建连线，将该素材节点实时连入当前生成节点。
+- 实现与修复：
+  1. **扁平化排版与节点弹出层边框复用**：
+     - Ant Design Modal 的 `styles.container`（`.ant-modal-content`）精准复用 `.canvas-node-prompt-surface` 的外层样式体系：`border: 1px solid ${theme.toolbar.border}`、`borderRadius: 16px`、`boxShadow: 0 18px 54px rgba(15,23,42,.18)` 与 `background: theme.toolbar.panel`；
+     - 编辑器容器去除所有内部边框和内嵌卡片底色（`transparent` 背景），扩展编辑区域至 `h-[min(68vh,36rem)] min-h-72`，宽度至 780px；
+     - 在 `global-canvas-overrides.css` 声明 `.canvas-prompt-editor-modal .ProseMirror p { line-height: 26px !important; margin-bottom: 0.6em; }`，实现通透舒适的文本阅读与书写节奏；
+     - 底部移除任何生成按钮，仅保留收起操作与说明提示。
+  2. **两层素材引用弹层（顶部已连接 + 底部分类导航 + 二级未连接子菜单）**：
+     - 在 `CanvasRichPromptEditor` 重构 `MentionPortal`：无查询词输入时，顶部渲染「可能@的内容」（已连线 `active: true` 素材，带缩略图与标题），底部渲染「添加参考」4个分类项目（主体、图片、视频、音频）；
+     - 新增 `isSubjectReference` 规则函数，智能识别人物、主体、角色、三视图、立绘、肖像等主体图节点；
+     - 悬停或点击分类即时展开二级 Flyout 子菜单，展示未连线素材列表，支持带视口防溢出的双向定位（根据边界自动向左翻转与居中调整）；有搜索词输入时自适应切换为全量素材搜索视图。
+  3. **未连接素材引用自动连线图谱**：
+     - `CanvasRichPromptEditor` 新增 `onConnectReference?: (sourceNodeId: string) => void` 属性；
+     - 在选中未连线素材时，除插入 `@素材` Token 外，直接调用 `callbacksRef.current.onConnectReference(ref.nodeId)`；
+     - `CanvasNodePromptPanel` 将该回调贯穿紧凑与展开两处编辑器，并在 `canvas-client-page.tsx` 中绑定图谱连接动作：`connectNodes({ nodeId: sourceNodeId, handleType: "source" }, activePromptNode.id)`，实现引用未连线素材后自动建立连线接入当前节点。
+- 验证情况：全量画布 60 个测试文件（344/344 个用例）全部通过；`pnpm typecheck` 零报错；`pnpm build` 生产构建成功；3333 端口 Next.js 服务正常运行，健康检查 HTTP 200。
+
+### Dola 调度白名单账号池匹配与画布提示词展开编辑器深度优化（2026-09-22）
+
+- 需求与问题：
+  1. 画布提交 Dola 视频生成报错「没有可用的 Dola Cookie 账号」：后台设置「任务调度生效分组 (白名单)」后，指定分组内状态为 `unverified`（新导入待验证）的正常账号未被判定为可调度，且在「可轮询」列表中不展示，导致任务直接被拒绝；
+  2. 提示词展开弹窗 UI 存在冗余内边框（多层边框嵌套影响视线），且占用了过大编辑区域；展开弹窗底部不需要额外的「生成」按钮（弹窗专注于纯文本/素材编辑与全屏预览）；
+  3. 画布紧凑提示词面板与展开弹窗中输入 `@` 无法弹出素材引用菜单，中文全角输入法下的 `＠` 未能识别，多行文本中段落换行光标偏移导致 `@` 匹配截断，且 Portal 浮层受模态框边界挤压/层级不足导致浮层无法正常可见。
+- 实现与修复：
+  1. **Dola 调度生效分组白名单与正常账号对齐**：
+     - 在 `account-service.ts` 引入 `isNormalDolaAccount`，将未失效（非 `needs_login`）、未受限（非 `rate_limited`、`restricted`、`disabled`、`verification_required`）的可用账号归入正常账号池；
+     - `availableForModel` 适配白名单逻辑：凡处于白名单生效分组且属于正常账号池者均可正常参与模型任务调度与轮换；
+     - `admin-dola-api-section.tsx` 同步重构 `isDispatchableAccount`，确保白名单分组内的有效正常账号（含已启用未验证账号）实时在「可轮询」Tab 列出；
+  2. **提示词展开弹窗 UI 深度优化**：
+     - 去除展开弹窗内部围绕编辑器的内边框包裹层（`div` 移除 `border` 和 `rounded-xl`），仅保留 Ant Design Modal 外层主题边框；
+     - 放大提示词编辑高度至 `h-[min(65vh,34rem)] min-h-72`，宽度上限扩展至 840px，最大化利用屏幕空间；
+     - 弹窗底部操作区移除「生成」主按钮，仅保留「收起」操作与快捷键提示；
+  3. **素材引用 `@` / `＠` 全面修复与增强**：
+     - `findResourceMentionAtCursor` 升级正则匹配 `/[@＠]([^\s@＠]*)$/u`，原生兼容中文全角 `＠` 字符；
+     - 修复 `CanvasRichPromptEditor` 中 `plainOffsetAtPosition` 和 `positionAtPlainOffset` 的多行段落偏移计算，完整对齐 top-level block 之间的 `\n` 换行边界，彻底解决多行时光标被截断为前一行前缀的 bug；
+     - `MentionPortal` 挂载至 `document.body` 并提升层级至 `z-[2500]`（高于 Antd Modal 的 1000），使用全屏安全视口计算定位坐标与防翻折；
+     - `canvas-node-prompt-panel.tsx` 新增 `editorReferences`，深度融合当前节点自身媒体与未连线画布资产，并透传至紧凑与展开两处编辑器，确保在任何节点上均能随时呼出完整引用选择器。
+- 验证情况：定向单元测试 `canvas-rich-prompt-editor.test.tsx`（8/8通过）、`canvas-node-prompt-panel.test.ts`（8/8通过）、`account-service.test.ts`（5/5通过）、`admin-dola-api-section.test.ts`（2/2通过）全数通过；Next.js 生产构建 `pnpm build` 与本地 3333 端口生产服务启动正常，健康检查接口 `curl /api/health/live` 返回 HTTP 200。
+
+### 画布提示词编辑体验与 Dola 账号池分类重构（2026-09-22）
+
+- 需求与问题：
+  1. 画布提示词输入区域悬停时显示为抓手手型光标（`cursor: grab`），未呈现标准文本输入 I 型光标（`cursor: text`）；
+  2. 提示词面板使用 `@` 无法引用画布上未连线的素材；
+  3. 展开提示词弹窗内容较长时无法垂直滚动，弹窗内无法流畅引用素材，且引用的素材 Token 在按 Enter 换行时会误触发提交关闭弹窗；
+  4. Dola 后台账号池分类需重构为 5 个专用分类：全部、正常、失效、可轮询、触发频繁，在生成遇到频繁限制时自动给账号打标归入「触发频繁」，并支持管理员手动解除频繁。
+- 实现与修复：
+  1. **光标修复**：在 `global-canvas-overrides.css`、`canvas-node-prompt-panel.tsx` 与 `canvas-rich-prompt-editor.tsx` 针对 ProseMirror 及提示词编辑容器强制声明 `cursor: text !important;`，保持 Token 节点中性文本光标，彻底阻断画布画布级 grab 样式下渗；
+  2. **未连线素材 `@` 引用与生成注入**：`buildNodeMentionReferences` 升级为检索画布全量有效多模态素材（图片、视频、音频、文本），已连线上游素材置顶标记；同时在 `buildNodeGenerationInputs` 解析提示词中的 `@[node:id]`，即使未预先连线也能自动作为参考图注入生成上下文中；
+  3. **展开弹窗滚动与换行支持**：展开弹窗编辑器容器添加 `overflow-y-auto` 与 `containerClassName="size-full min-h-0 overflow-hidden cursor-text"` 恢复顺畅滚动；`CanvasRichPromptEditor` 引入 `submitOnModEnterOnly` 模式，在展开弹窗中回车执行 `splitBlock` / `setHardBreak` 正常折行，仅 `Mod+Enter` 触发保存提交；
+  4. **Dola 账号分类与频繁处理**：
+     - 重构为 5 个 Tab：全部（`all`）、正常（`normal`，有效未限流）、失效（`invalid`，`needs_login`）、可轮询（`dispatchable`，正常且命中生效分组白名单）、触发频繁（`rate_limited`）；
+     - `markDolaAccountRateLimited` 正式将账号打标为 `status: "rate_limited"`；`isDolaRateLimitError` 扩展识别 `710022002` 与「服务访问频繁」；
+     - 表格操作列针对频繁账号增加「解除频繁」按钮，调用后端 PATCH 接口将状态恢复为 `ready` 并清除限制标记。
+- 验证情况：定向单元测试 `canvas-node-prompt-panel.test.ts`、`canvas-node-generation.test.ts`、`account-service.test.ts`、`admin-dola-api-section.test.ts` 全部通过；生产构建 `pnpm build` 与本地服务启动无报错。
+
+### Dola 账号分组管理与任务调度白名单（2026-09-22）
+
+- 需求与问题：
+  1. 采购不同批次/号商的 Dola 账号需要灵活分组隔离管理（例如「分组A」、「分组B」）；
+  2. 需要支持按分组筛选账号、单个/批量修改分组、Cookie 导入时直接归入分组；
+  3. 支持在反代网关设定生效调度分组白名单（`dispatchGroups`），仅指定分组的正常账号参与画布/工作台与 API 任务的轮询和换号，未配置时全部分组参与；
+  4. 移除账号列表高风险的「真实生成验证」按钮（避免直接消耗账号额度或触发上游风控），保留「有头测试」；
+  5. 验证动态住宅代理下每次提交是否均为干净独立的浏览器沙箱环境，防止跨账号污染。
+- 实现与修复：
+  1. **数据模型与调度过滤**：`DolaAccount` 与 `DolaAccountImportItem` 新增 `group` 字段；`account-service.ts` 实现 `setDolaAccountGroup`、`setDolaAccountsGroup` 及 `listDolaAccountGroups`，在 `availableForModel` 调度候选判定中增加 `dispatchGroups` 白名单过滤；
+  2. **网关持久化配置**：`DolaGatewaySettings` 扩展 `dispatchGroups: string[]`，并在 `gateway-store.ts` 与 `/api/admin/dola/gateway` 完成规范化读写；
+  3. **批量分组接口**：新增 `/api/admin/dola/accounts/batch-group` 路由，支持传入一组账号 ID 批量分配或清空分组；
+  4. **后台 UI 交互**：`admin-dola-api-section.tsx` 账号池增加「全部分组 / 未分组 / 指定分组」快速筛选下拉菜单，表格新增「分组」列（点击 Tag 或操作区按钮直接修改），支持表格多选后「批量设置分组」，Cookie 导入弹层新增分组输入/选择，网关卡片增加「任务调度生效分组 (白名单)」多选 Tag 配置；
+  5. **操作区精简**：操作列正式移除「真实生成验证」，仅保留「有头测试」；
+  6. **环境隔离性核查**：确认 Camoufox 实例均配置 `enable_cache=False`、`storage_state=None`，请求在独立 Context 内执行并在 `finally` 彻底销毁；配合动态代理 IP 启用 `geoip=True` 动态绑定时区/语言/地理位置，结合单账号稳定指纹种子（`fingerprint-preset.json`）保障出口 IP 变化时硬件特征稳定一致，完全杜绝会话与缓存交叉污染。
+- 验证情况：定向单元测试 `account-service.test.ts` 2/2 通过，Dola 9 个测试套件 22 个测试全数通过；Next.js 生产环境 `pnpm build` 与本地服务启动无报错。
+
+### Dola 视频任务终态识别与会话恢复修复（2026-09-22）
+
+- 需求与问题：
+  1. 画布 Dola 视频任务提交成功后永远显示「生成中」：提交 SSE 事件流以 `(事件名, 数据)` 元组列表传入提取器，但递归遍历只下钻 dict/list/str、不下钻 tuple，导致会话 ID 与结果地址在提交时永远提取为空；
+  2. 此前「Dola API 与画布生成链路升级」重写 sidecar 时丢失了 v0.0.19 的 `fetch_recent_conversation_id` 两处恢复接线（提交后 + 刷新时），使「有 ACK 无会话 ID」的任务永远无法进入真实轮询；
+  3. 上游通用失败文案「出了点问题，请稍后重试。」未纳入终态识别，即使轮询恢复也无法收敛；
+  4. sidecar 进程重启后遗留的 `running` 孤儿任务（提交协程已死）永远停留 running，web 侧对应账号的占用（hold）永不释放；
+  5. 有头测试结束时若账号已被上游踢出登录，`finalize` 只返回「浏览器保持打开」，登录失效状态从未写回账号，账号仍留在「正常可轮询」分组。
+- 实现与修复：
+  1. `query.py` 的 `_walk` 与 `extract_image_urls` 遍历支持 tuple 下钻；`_generation_refused` 新增「出了点问题」→ `upstream_generation_failed` 终态；
+  2. `session.py` 恢复提交后与 `_refresh_task` 中的最近会话恢复（以 `ackReceived` 为门控），恢复成功即落盘会话 ID 并继续真实结果查询；
+  3. `_ensure_loaded` 启动加载时把上一进程遗留的 `running` 任务重分类：有 ACK/会话 ID → `accepted`（可继续恢复），否则 → `failed(submission_interrupted)`；
+  4. `finalize_headed_test` 的 `needs_login` 响应携带 `accountId`；web 侧验证操作路由收到 `needs_login` 立即落库并归入「登录失败」分类，浏览器保持打开以便重新登录后再次完成测试覆盖。
+- 验证情况：sidecar pytest 56/56、web Dola 相关 vitest 18/18 通过；本地栈已用新代码重启，5 个 running 孤儿任务首轮轮询即收敛为 `error` 并释放占用；卡住任务 `dola-78105e9c` 成功恢复会话 ID 并进入真实轮询。仍需人工确认：该任务所恢复会话在上游仅有封面图、无视频与错误文案（上游静默停滞），按「无报错慢生成保持轮询」契约继续轮询，是否需要管理员可配的「最长等待终态上限」待用户拍板。
+- 关联发现（30 秒档频控，已用请求日志验证）：89 次 seedance-2.5 30 秒提交中 55 次 `rate_limited`、14 次滑块、仅 4 次成功；15 秒档同期 23/24 成功；30 秒频控自 09-20 起明显收紧，且共享 generic 代理出口在 13 分钟内 8 个不同账号连续被拒，呈现 IP 维度风控；自动换号会在同一出口 IP 上连发多次 30 秒请求，加剧级联。
+
+### 用户云存储引用、去重与删除
+
+- 同用户重复上传现在建立独立引用，只计一次实际 OSS 容量；删除引用时保留其他引用，删除最后一个引用时调用 OSS 删除并释放空间，OSS 删除失败不释放。定向单元测试通过；需在独立 PostgreSQL 与真实 OSS 环境验证重复备份、并发删除、下载授权、实际对象删除及容量对账，尚未接入用户可视化管理和跨设备同步。
+- 用户管理编辑弹窗新增云存储统计卡，显示已用、预留、可用、基础/赠送/套餐额度及四类来源；管理员接口按职责鉴权并按目标用户读取。需在真实 PostgreSQL 用户账户和桌面/390px 视口完成数值往返、切换用户及无权限拒绝的浏览器验收。
+
+### 桌面版设备凭据与离线退出
+
+- 商用桌面设备刷新凭据、两个版本的 Runtime 安装密钥已改用系统安全存储；模拟断网退出会立即清除本地凭据和 Session，并加密排队云端撤销，重连后补交。桌面单元测试与本机 Electron 启动烟测通过；仍需真实云端 PostgreSQL 账号完成在线登录、断网退出、多设备撤销和重新登录验收。整体桌面化状态见 `docs/desktop-app/status-audit-20260922.md`。
+
 ### 后台黑色按钮尺寸统一修复 + Dola 有头浏览器测试 + Google 授权登录账号
 
 - 需求与问题：
@@ -263,7 +513,7 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 - 问题：2K 分辨率 + Windows 系统缩放（125%/150%/175%/200%）下 CSS 视口变小，首页 hero 的垂直间距下限过大（padding-top 最低 150px、面板上边距固定 48px），标题/LOGO/提示词面板整体偏大，输入框底部操作行被折叠线截断。
 - 修复：hero 最终生效块的垂直间距全部改为随视口高度伸缩（svh clamp）——padding-top `clamp(150px, 22svh, 240px)`、padding-bottom `clamp(32px, 9svh, 88px)`、LOGO 高度 `clamp(64px, 13svh, 116px)`、面板上边距 `clamp(16px, 5svh, 48px)`；并新增 `max-height: 820px` 矮视口块进一步收紧。1440×900 开发基线视觉基本不变（composer 底部 772 → 768）。
 - 已实测：1440×900、1366×768、1920×1080、2K@150%（1707×960）、2K@175%（1463×823）、2K@200%（1280×720）、2K@100%（2560×1440）七种视口下 composer 均完整落在首屏内且底部工具行可见（截图确认 1707×960 与 1280×720）；home 套件单测 3/3 通过；类型检查 0 错误、构建成功、服务已重启。
-- 二次调整（等比显示比例）：上述方案在大屏上内容整体偏小，改为「设计锁定等比缩放」——新增 HomeResolutionScale 客户端组件，视口宽 ≥1440 时按 `min(宽/1440, 高/810, 2.5)` 对首页根容器设置 zoom（CSS 变量 --home-resolution-scale），2K/4K 下整页（含顶栏/侧栏/页脚）与 1440 基线保持完全一致的显示比例；hero 最终块相应恢复固定设计基准尺寸；<1440 宽沿用既有响应式布局；登录弹窗通过同一变量同步缩放。实测 1440/1080p/2K 下标题与输入框占视口宽度比例恒定（0.303/0.542）、composer 完整可见，移动端不受影响。
+- 二次调整（等比显示比例）：上述方案在大屏上内容整体偏小，改为「设计锁定等比缩放」——新增 HomeResolutionScale 客户端组件，视口宽 ≥1440 时按 `min(宽/1440, 高/810, 2.5)` 对首页根容器设置 zoom（CSS 变量 --home-resolution-scale），2K/4K 下整页（含顶栏/侧栏/页脚）与 1440 基线保持完全一致的显示比例；hero 最终块相应恢复固定设计基准尺寸；`<1440` 宽沿用既有响应式布局；登录弹窗通过同一变量同步缩放。实测 1440/1080p/2K 下标题与输入框占视口宽度比例恒定（0.303/0.542）、composer 完整可见，移动端不受影响。
 - 三次调整（主体上移留白）：hero min-height 改为 `min(calc((100svh - 56px) / var(--home-resolution-scale, 1)), 960px)`——按缩放比例折算视口高度并预留底部提示行空间，顶部留白 198→150px；2K 下主体整体上移约 100px，composer 底部与提示行之间恢复呼吸间隙，各分辨率效果一致。实测 2K composer 底部 1283（视口 1440，余量 157）、1080p 964、基线 724。
 
 ### 画布已完成节点再次生成改为继承参考图节点
