@@ -1,0 +1,97 @@
+/* The desktop settings workspace follows the Canvas palette without changing the website admin theme. */
+.admin-console-page.desktop-admin-console {
+    --admin-home-bg: #f9faff;
+    --admin-shell-bg: #f5f7ff;
+    --admin-shell-border: #dadff4;
+    --admin-panel-bg: #fff;
+    --admin-control-bg: #fff;
+    --admin-control-bg-hover: #f0eeff;
+    --admin-control-border: #dadff4;
+    --admin-control-border-hover: #8979ff;
+    --admin-control-text: #1c2242;
+    --admin-control-text-hover: #4e46e9;
+    --admin-control-muted: #646b87;
+    --admin-icon-bg: #e9eaff;
+    --admin-icon-color: #6e53f6;
+    --admin-nav-item-active-bg: #e7e5ff;
+    --admin-nav-item-active-border: #bab0ff;
+    --admin-nav-hover-bg: #f0eeff;
+    --admin-progress-fill: linear-gradient(90deg, #4e46e9, #6e53f6, #8979ff);
+    background: var(--admin-home-bg) !important;
+}
+
+.dark .admin-console-page.desktop-admin-console {
+    --admin-home-bg: #080b14;
+    --admin-shell-bg: #101322;
+    --admin-shell-border: #343759;
+    --admin-panel-bg: #15192c;
+    --admin-control-bg: #1c2038;
+    --admin-control-bg-hover: #292747;
+    --admin-control-border: #393b60;
+    --admin-control-border-hover: #8979ff;
+    --admin-control-text: #f1f1ff;
+    --admin-control-text-hover: #fff;
+    --admin-control-muted: #a8a9c8;
+    --admin-icon-bg: #302b52;
+    --admin-icon-color: #c0b7ff;
+    --admin-nav-item-active-bg: #35305f;
+    --admin-nav-item-active-border: #6e53f6;
+    --admin-nav-hover-bg: #242747;
+    --admin-progress-fill: linear-gradient(90deg, #4e46e9, #6e53f6, #8979ff);
+    background: var(--admin-home-bg) !important;
+}
+
+.dark .admin-console-page.desktop-admin-console .admin-panel-surface,
+.dark .admin-console-page.desktop-admin-console .admin-metric-card {
+    border-color: var(--admin-control-border) !important;
+    background: var(--admin-panel-bg) !important;
+    box-shadow: none !important;
+}
+
+.admin-console-page.desktop-admin-console .ant-btn-primary:not(:disabled),
+.admin-console-page.desktop-admin-console .ant-btn-color-primary:not(:disabled) {
+    border-color: #6e53f6 !important;
+    background: linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff) !important;
+    color: #fff !important;
+    box-shadow: 0 5px 18px rgba(110, 83, 246, .2) !important;
+}
+
+.admin-console-page.desktop-admin-console .ant-btn-primary:not(:disabled):hover,
+.admin-console-page.desktop-admin-console .ant-btn-color-primary:not(:disabled):hover {
+    border-color: #8979ff !important;
+    background: linear-gradient(125deg, #574ff7, #785dfa 55%, #9486ff) !important;
+    color: #fff !important;
+}
+
+.admin-console-page.desktop-admin-console .ant-btn-primary:disabled,
+.admin-console-page.desktop-admin-console .ant-btn-color-primary:disabled {
+    background: var(--admin-control-bg) !important;
+    color: var(--admin-control-muted) !important;
+    border-color: var(--admin-control-border) !important;
+    box-shadow: none !important;
+}
+
+@layer components {
+    .admin-console-page.desktop-admin-console .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+        color: #6e53f6 !important;
+        text-shadow: none;
+    }
+
+    .dark .admin-console-page.desktop-admin-console .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+        color: #c0b7ff !important;
+    }
+
+    .admin-console-page.desktop-admin-console .ant-tabs .ant-tabs-ink-bar {
+        background: #6e53f6 !important;
+        box-shadow: none !important;
+    }
+
+    .admin-console-page.desktop-admin-console .ant-switch.ant-switch-checked:not(.ant-switch-disabled) {
+        background: #6e53f6 !important;
+        box-shadow: 0 0 0 1px rgba(110, 83, 246, .28) !important;
+    }
+
+    .admin-console-page.desktop-admin-console .ant-switch.ant-switch-checked:not(.ant-switch-disabled):hover {
+        background: #785dfa !important;
+    }
+}

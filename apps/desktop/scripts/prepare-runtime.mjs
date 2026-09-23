@@ -15,7 +15,7 @@ export async function prepareRuntime({ edition, platform = process.platform, arc
     const executables = ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser", "mihomo", "ffmpeg", "ffprobe", "dreamina", "video-depth"].map((name) => path.join(sidecarRoot, `${name}${extension}`));
     const browserDir = path.join(sidecarRoot, "camoufox", platform === "darwin" ? "Camoufox.app/Contents/MacOS" : "");
     executables.push(path.join(browserDir, platform === "darwin" ? "camoufox" : "camoufox.exe"));
-    const required = [...executables, path.join(sidecarRoot, "camoufox", "version.json"), path.join(browserDir, "properties.json")];
+    const required = [...executables, path.join(sidecarRoot, "camoufox", "version.json"), path.join(browserDir, "properties.json"), path.join(sidecarRoot, "playwright-driver", "index.js")];
     await assertFile(path.join(sourceStandalone, "server.js"));
     for (const file of required) await assertFile(file);
     for (const file of executables) await verifyExecutable(file, platform, arch);

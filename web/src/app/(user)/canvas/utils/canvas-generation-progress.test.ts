@@ -20,6 +20,17 @@ describe("Canvas estimated progress", () => {
         const failed = { ...history[0], id: "failed", metadata: { ...history[0].metadata, status: "error" as const } };
         expect(canvasExpectedDuration(target, [...history, failed])).toBe(35_000);
     });
+    it("prioritizes the current model's measured average and falls back when it is unavailable", () => {
+        const history = [{ ...node, id: "past", metadata: { status: "success" as const, model: "fast", generationStartedAt: 1000, generationFinishedAt: 21_000 } }];
+        const target = { ...node, metadata: { ...node.metadata, model: "channel::fast" } };
+        const average = { fast: { avgDurationMs: 84_000, samples: 8 } };
+        const stamped = stampCanvasGenerationStarts(history, [...history, target], 30_000, average);
+        expect(stamped[1].metadata).toMatchObject({ generationExpectedMs: 84_000, generationExpectedSource: "model-average" });
+        const pending = stampCanvasGenerationStarts([], [target], 30_000);
+        const updated = stampCanvasGenerationStarts(pending, pending, 31_000, average);
+        expect(updated[0].metadata).toMatchObject({ generationStartedAt: 30_000, generationExpectedMs: 84_000, generationExpectedSource: "model-average" });
+        expect(stampCanvasGenerationStarts(history, [...history, target], 30_000, { fast: { avgDurationMs: 0, samples: 8 } })[1].metadata?.generationExpectedMs).toBe(20_000);
+    });
     it("records confirmed completion duration once and uses it for the next attempt", () => {
         const running = stampCanvasGenerationStarts([], [node], 1000);
         const finished = stampCanvasGenerationStarts(running, [{ ...running[0], metadata: { ...running[0].metadata, status: "success" } }], 21_000);

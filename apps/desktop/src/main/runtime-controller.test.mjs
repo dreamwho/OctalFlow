@@ -73,12 +73,14 @@ test("desktop readiness waits for Provider health after Web is ready", async () 
         const webOrigin = `http://127.0.0.1:${web.address().port}`;
         const providerUrl = `http://127.0.0.1:${provider.address().port}/health`;
         let resolved = false;
-        const ready = waitForRuntime(webOrigin, { exitCode: null, signalCode: null }, [{ name: "Dola", url: providerUrl, status: 200 }]).then(() => { resolved = true; });
+        const phases = [];
+        const ready = waitForRuntime(webOrigin, { exitCode: null, signalCode: null }, [{ name: "Dola", url: providerUrl, status: 200 }], (name) => phases.push(name)).then(() => { resolved = true; });
         await firstProviderRequest;
         assert.equal(resolved, false);
         providerReady = true;
         await ready;
         assert.equal(resolved, true);
+        assert.deepEqual(phases.sort(), ["Dola", "Web"]);
     } finally {
         await Promise.all([web, provider].map((server) => new Promise((resolve) => server.close(resolve))));
     }

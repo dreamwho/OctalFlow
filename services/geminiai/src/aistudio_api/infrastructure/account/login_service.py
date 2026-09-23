@@ -114,6 +114,7 @@ class LoginService:
         session_id = self._generate_session_id()
         session = LoginSession(session_id=session_id)
         self._sessions[session_id] = session
+        window_ready = asyncio.Event()
         # 启动后台任务
         task = asyncio.create_task(
             self._login_worker(
@@ -122,9 +123,16 @@ class LoginService:
                 name,
                 headless=headless,
                 ui_locale=ui_locale,
+                window_ready=window_ready,
             )
         )
         self._tasks[session_id] = task
+        ready_task = asyncio.create_task(window_ready.wait())
+        done, pending = await asyncio.wait({ready_task, task}, return_when=asyncio.FIRST_COMPLETED)
+        if ready_task in pending:
+            ready_task.cancel()
+        if task in done and not window_ready.is_set():
+            raise RuntimeError(session.error or "Camoufox 授权窗口启动失败")
         return session_id
 
     def get_status(self, session_id: str) -> LoginSession | None:
@@ -806,6 +814,7 @@ class LoginService:
         *,
         headless: bool,
         ui_locale: str | None,
+        window_ready: asyncio.Event | None = None,
     ) -> None:
         """登录工作协程。"""
         session = self._sessions[session_id]
@@ -841,6 +850,8 @@ class LoginService:
             context = await browser.new_context(**build_browser_context_options(headless=headless))
             page = await context.new_page()
             await async_maximize_page_window(page, headless=headless)
+            if window_ready:
+                window_ready.set()
 
             # 设置登录完成检测
             login_done = asyncio.Event()

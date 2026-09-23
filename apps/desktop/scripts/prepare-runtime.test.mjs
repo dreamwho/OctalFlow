@@ -22,6 +22,8 @@ test("packaging copies only compiled runtime and never imports account data or e
         await mkdir(path.join(source, "apps", "desktop", "assets"), { recursive: true });
         await mkdir(sidecars, { recursive: true });
         await mkdir(path.join(sidecars, "camoufox"), { recursive: true });
+        await mkdir(path.join(sidecars, "playwright-driver"), { recursive: true });
+        await writeFile(path.join(sidecars, "playwright-driver", "index.js"), "driver");
         const extension = process.platform === "win32" ? ".exe" : "";
         for (const binary of ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser", "mihomo", "ffmpeg", "ffprobe", "dreamina", "video-depth"]) await writeFile(path.join(sidecars, `${binary}${extension}`), fakeExecutable(process.platform, process.arch));
         await mkdir(path.join(sidecars, "video-depth-model"), { recursive: true });
@@ -66,6 +68,8 @@ test("packaging copies only compiled runtime and never imports account data or e
 
         const windowsSidecars = path.join(directory, "sidecars", "win32-x64");
         await mkdir(path.join(windowsSidecars, "camoufox"), { recursive: true });
+        await mkdir(path.join(windowsSidecars, "playwright-driver"), { recursive: true });
+        await writeFile(path.join(windowsSidecars, "playwright-driver", "index.js"), "driver");
         await mkdir(path.join(windowsSidecars, "video-depth-model"), { recursive: true });
         for (const name of ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser", "mihomo", "ffmpeg", "ffprobe", "dreamina", "video-depth"]) {
             await writeFile(path.join(windowsSidecars, `${name}.exe`), fakeExecutable("win32", "x64"));

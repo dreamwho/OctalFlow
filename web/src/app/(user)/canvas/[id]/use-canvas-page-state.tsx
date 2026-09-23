@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
-import { stampCanvasGenerationStarts } from "../utils/canvas-generation-progress";
+import { stampCanvasGenerationStarts, type CanvasModelDurationStats } from "../utils/canvas-generation-progress";
 
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useAssetStore } from "@/stores/use-asset-store";
@@ -57,10 +57,24 @@ export function useCanvasPageState() {
     const projectSummaries = useCanvasStore((state) => state.summaries);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [nodes, setRawNodes] = useState<CanvasNodeData[]>([]);
+    const modelDurationStatsRef = useRef<CanvasModelDurationStats>({});
     const setNodes = useCallback((action: SetStateAction<CanvasNodeData[]>) => {
         const now = Date.now();
-        setRawNodes((previous) => stampCanvasGenerationStarts(previous, typeof action === "function" ? action(previous) : action, now));
+        setRawNodes((previous) => stampCanvasGenerationStarts(previous, typeof action === "function" ? action(previous) : action, now, modelDurationStatsRef.current));
     }, []);
+    useEffect(() => {
+        if (!userId) return;
+        const controller = new AbortController();
+        void fetch("/api/model-generation-stats", { signal: controller.signal })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload: { data?: CanvasModelDurationStats } | null) => {
+                if (!payload?.data || controller.signal.aborted) return;
+                modelDurationStatsRef.current = payload.data;
+                setRawNodes((previous) => stampCanvasGenerationStarts(previous, previous, Date.now(), payload.data));
+            })
+            .catch(() => undefined);
+        return () => controller.abort();
+    }, [userId]);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);

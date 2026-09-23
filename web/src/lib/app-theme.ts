@@ -48,9 +48,9 @@ export function getAntThemeConfig(dark: boolean, desktop = false): ThemeConfig {
     const color = {
         ...(dark ? neutral.dark : neutral.light),
         ...(desktop ? dark ? {
-            primary: "#6366f1", primaryHover: "#818cf8", selectText: "#c7d2fe", selectSelectedBg: "rgba(129, 140, 248, 0.22)", selectBorder: "rgba(165, 180, 252, 0.48)", selectOutline: "rgba(129, 140, 248, 0.25)",
+            primary: "#6e53f6", primaryHover: "#8979ff", selectText: "#d1caff", selectSelectedBg: "rgba(110, 83, 246, 0.22)", selectBorder: "rgba(165, 148, 252, 0.48)", selectOutline: "rgba(110, 83, 246, 0.25)",
         } : {
-            primary: "#6366f1", primaryHover: "#4f46e5", selectText: "#4f46a5", selectSelectedBg: "rgba(99, 102, 241, 0.14)", selectBorder: "rgba(99, 102, 241, 0.42)", selectOutline: "rgba(99, 102, 241, 0.18)",
+            primary: "#6e53f6", primaryHover: "#4e46e9", selectText: "#4f46a5", selectSelectedBg: "rgba(110, 83, 246, 0.14)", selectBorder: "rgba(110, 83, 246, 0.42)", selectOutline: "rgba(110, 83, 246, 0.18)",
         } : {}),
     };
 

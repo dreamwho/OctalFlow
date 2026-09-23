@@ -1,9 +1,10 @@
 "use client";
 
-import { Activity, Globe2, Layers3, SlidersHorizontal } from "lucide-react";
+import { Activity, Globe2, Layers3, Moon, SlidersHorizontal, Sun } from "lucide-react";
 import { adminSections } from "./admin-section-nav";
 import { canAccessAdminSection, type AdminSectionKey } from "./admin-sections";
 import { isAdminLocalSectionEnabled } from "@/lib/desktop-edition-policy";
+import { useAdminThemeStore, useThemeStore } from "@/stores/use-theme-store";
 import type { PublicUser } from "@/lib/auth/store";
 import styles from "./desktop-admin-navigation.module.css";
 
@@ -20,6 +21,10 @@ export function DesktopAdminNavigation({ activeKey, user, onChange, onIntent }: 
     onChange: (key: AdminSectionKey) => void;
     onIntent?: (key: AdminSectionKey) => void;
 }) {
+    const theme = useThemeStore((state) => state.theme);
+    const setTheme = useThemeStore((state) => state.setTheme);
+    const setAdminTheme = useAdminThemeStore((state) => state.setTheme);
+    const switchTheme = (next: "light" | "dark") => { setTheme(next); setAdminTheme(next); };
     const available = groups.map((group) => ({ ...group, items: group.items.filter((key) => canAccessAdminSection(user, key) && isAdminLocalSectionEnabled(key, "admin")) })).filter((group) => group.items.length);
     const current = available.find((group) => group.items.some((key) => key === activeKey)) || available[0];
     const sections = new Map(adminSections.map((section) => [section.key, section]));
@@ -44,7 +49,13 @@ export function DesktopAdminNavigation({ activeKey, user, onChange, onIntent }: 
                     </div>;
                 })}
             </nav>
-            <p className={styles.hint}>配置保存在当前设备</p>
+            <div className={styles.footer}>
+                <div className={styles.themeSwitch} role="group" aria-label="设置页外观主题">
+                    <button type="button" className={theme === "light" ? styles.themeSelected : ""} aria-label="浅色主题" aria-pressed={theme === "light"} title="浅色主题" onClick={() => switchTheme("light")}><Sun size={16} /></button>
+                    <button type="button" className={theme === "dark" ? styles.themeSelected : ""} aria-label="深色主题" aria-pressed={theme === "dark"} title="深色主题" onClick={() => switchTheme("dark")}><Moon size={16} /></button>
+                </div>
+                <p className={styles.hint}>配置保存在当前设备</p>
+            </div>
         </aside>
     );
 }

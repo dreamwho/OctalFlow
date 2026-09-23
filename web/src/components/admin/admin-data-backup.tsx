@@ -16,6 +16,8 @@ const sectionLabels: Record<string, string> = {
 
 type AutoBackupStatus = { enabled: boolean; destination?: string; intervalDays?: number; lastAt?: string | null; lastError?: string };
 type DesktopBackupBridge = {
+    prepareWebAccountImport(): Promise<{ token: string } | null>;
+    beginWebAccountImport(token: string): void;
     prepareWorkspaceOperation(kind: "backup" | "restore"): Promise<{ token: string } | null>;
     beginWorkspaceOperation(token: string, password: string): void;
     openDataDirectory(): Promise<boolean>;
@@ -71,6 +73,16 @@ export function AdminDataBackup({ desktopEdition }: { desktopEdition?: "commerci
         } catch (error) {
             message.error(error instanceof Error ? error.message : "无法打开本地工作区");
         }
+    };
+    const importWebAccounts = async () => {
+        try {
+            const desktop = desktopBridge();
+            if (!desktop) throw new Error("请在管理员桌面应用中操作");
+            const prepared = await desktop.prepareWebAccountImport();
+            if (!prepared) return;
+            desktop.beginWebAccountImport(prepared.token);
+            message.info("本地服务将暂停，导入完成后自动重新启动");
+        } catch (error) { message.error(error instanceof Error ? error.message : "无法导入 WEB 账号"); }
     };
     const configureAutoBackup = async () => {
         if (!autoBackupPassword.trim() || autoBackupPassword !== autoBackupConfirm) { message.warning("请输入两次相同的自动备份密码"); return; }
@@ -184,11 +196,12 @@ export function AdminDataBackup({ desktopEdition }: { desktopEdition?: "commerci
                             <div className="min-w-0">
                                 <h3 className="text-sm font-semibold text-zinc-950 dark:text-zinc-100">{desktopEdition === "admin" ? "完整本地工作区备份" : "完整数据库与媒体备份"}</h3>
                                 <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">{desktopEdition === "admin" ? "用密码加密备份完整的项目、媒体与渠道凭据，可恢复到另一台电脑。手动备份和恢复期间本地服务会暂停并自动重启；也可以单独导出含素材的画布 ZIP。" : "PostgreSQL 整库、支付流水、媒体原文件和对象存储应继续使用当前部署环境的数据库、服务器或云存储备份能力。"}</p>
+                                {desktopEdition === "admin" ? <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">导入本机 WEB 渠道账号时，选择包含 .data 和 .env.local 的 web 目录；GeminiAIStudio、Dola API、GeminiTools、GPTAPI 的账号会合并到桌面版，并使用桌面版密钥重新加密。</p> : null}
                                 {desktopEdition === "admin" && autoBackup.enabled ? <p className="mt-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">启动时每 {autoBackup.intervalDays} 天备份到 {autoBackup.destination}；上次完成：{autoBackup.lastAt ? new Date(autoBackup.lastAt).toLocaleString("zh-CN") : "尚未执行"}</p> : null}
                                 {desktopEdition === "admin" && autoBackup.lastError ? <p className="mt-1 text-xs text-red-600 dark:text-red-400">上次自动备份失败：{autoBackup.lastError}</p> : null}
                             </div>
                         </div>
-                        {desktopEdition === "admin" ? <div className="flex flex-wrap justify-end gap-2"><Button onClick={() => setWorkspaceAction("backup")}>备份完整工作区</Button><Button onClick={() => setWorkspaceAction("restore")}>恢复完整工作区</Button><Button onClick={() => setAutoBackupOpen(true)}>设置自动备份</Button>{autoBackup.enabled ? <Button onClick={() => void disableAutoBackup()}>关闭自动备份</Button> : null}<Button icon={<HardDrive className="size-4" />} onClick={() => void openLocalData()}>打开数据目录</Button></div> : <span className="text-xs text-zinc-500 dark:text-zinc-400">宝塔 / Docker / 云数据库分别管理</span>}
+                        {desktopEdition === "admin" ? <div className="flex flex-wrap justify-end gap-2"><Button onClick={() => void importWebAccounts()}>导入本机 WEB 渠道账号</Button><Button onClick={() => setWorkspaceAction("backup")}>备份完整工作区</Button><Button onClick={() => setWorkspaceAction("restore")}>恢复完整工作区</Button><Button onClick={() => setAutoBackupOpen(true)}>设置自动备份</Button>{autoBackup.enabled ? <Button onClick={() => void disableAutoBackup()}>关闭自动备份</Button> : null}<Button icon={<HardDrive className="size-4" />} onClick={() => void openLocalData()}>打开数据目录</Button></div> : <span className="text-xs text-zinc-500 dark:text-zinc-400">宝塔 / Docker / 云数据库分别管理</span>}
                     </section>
                 </div>
             </Panel>

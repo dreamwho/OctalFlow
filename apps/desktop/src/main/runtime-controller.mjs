@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { prepareDesktopMagicProxy } from "./magic-proxy-runtime.mjs";
 
-export async function startDesktopRuntime({ app, edition, safeStorage }) {
+export async function startDesktopRuntime({ app, edition, safeStorage, onProgress }) {
     const runtimeRoot = app.isPackaged ? path.join(process.resourcesPath, "runtime") : path.resolve(import.meta.dirname, "../../../..");
     const distDir = app.isPackaged ? JSON.parse(await readFile(path.join(runtimeRoot, "manifest.json"), "utf8")).distDir : process.env.NEXT_DIST_DIR?.trim() || ".next";
     const webRoot = path.join(runtimeRoot, "web");
@@ -70,6 +70,8 @@ export async function startDesktopRuntime({ app, edition, safeStorage }) {
             AISTUDIO_CAMOUFOX_EXECUTABLE: bundledCamoufox(runtimeRoot),
             AISTUDIO_CAMOUFOX_FF_VERSION: String(browserMajor),
             AISTUDIO_BROWSER_LAUNCHER_EXECUTABLE: path.join(runtimeRoot, "sidecars", executableName("geminiai-browser")),
+            AISTUDIO_PLAYWRIGHT_DRIVER_PACKAGE: path.join(runtimeRoot, "sidecars", "playwright-driver"),
+            PLAYWRIGHT_NODEJS_PATH: process.execPath,
         } : {}),
     };
     const child = spawn(process.execPath, [entry], { cwd: webRoot, env: environment, stdio: ["ignore", "pipe", "pipe"] });
@@ -80,7 +82,7 @@ export async function startDesktopRuntime({ app, edition, safeStorage }) {
         { name: "GeminiAIStudio", url: `http://127.0.0.1:${geminiPort}/health`, status: 200 },
         { name: "Dola API", url: `http://127.0.0.1:${dolaPort}/health`, status: 200 },
         { name: "GPTAPI", url: `http://127.0.0.1:${chatGptPort}/integration/health`, status: 401 },
-    ] : []);
+    ] : [], onProgress);
     return {
         origin,
         sessionToken: secrets.sessionToken,
@@ -139,14 +141,18 @@ async function availableLoopbackPort() {
     });
 }
 
-export async function waitForRuntime(origin, child, providers = []) {
+export async function waitForRuntime(origin, child, providers = [], onProgress) {
     const pending = new Set([{ name: "Web", url: `${origin}/api/desktop/runtime`, status: 200 }, ...providers]);
+    const began = Date.now();
     let delay = 100;
     while (child.exitCode === null && child.signalCode === null) {
         await Promise.all([...pending].map(async (target) => {
             try {
                 const response = await fetch(target.url, { signal: AbortSignal.timeout(2_000) });
-                if (response.status === target.status) pending.delete(target);
+                if (response.status === target.status && pending.delete(target)) {
+                    console.info(`[desktop-runtime] ${target.name} ready in ${Date.now() - began}ms`);
+                    onProgress?.(target.name, [...pending].map((item) => item.name));
+                }
             } catch {}
         }));
         if (!pending.size) return;

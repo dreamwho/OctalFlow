@@ -166,6 +166,7 @@ export type CanvasNodeMetadata = {
     generationStartedAt?: number;
     generationFinishedAt?: number;
     generationExpectedMs?: number;
+    generationExpectedSource?: "model-average";
     generationStage?: string;
     errorDetails?: string;
     fontSize?: number;

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import logging
 import socket
 import subprocess
@@ -85,7 +86,7 @@ class CamoufoxManager:
         )
 
         for _ in range(30):
-            time.sleep(1)
+            await asyncio.sleep(1)
             if self._process and self._process.poll() is not None:
                 output = ""
                 if self._process.stdout:
@@ -103,7 +104,7 @@ class CamoufoxManager:
             try:
                 import urllib.request
 
-                resp = urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json", timeout=2)
+                resp = await asyncio.to_thread(urllib.request.urlopen, f"http://127.0.0.1:{self.port}/json", timeout=2)
                 data = json.loads(resp.read())
                 if "wsEndpointPath" in data:
                     self._ws_endpoint = f"ws://127.0.0.1:{self.port}{data['wsEndpointPath']}"
@@ -113,11 +114,13 @@ class CamoufoxManager:
                 continue
 
         output = ""
-        if self._process and self._process.stdout:
+        if self._process:
+            self._process.terminate()
             try:
-                output = self._process.stdout.read()
-            except Exception:
-                output = ""
+                output = self._process.communicate(timeout=5)[0] or ""
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                output = self._process.communicate()[0] or ""
         hint = self._build_failure_hint(output)
         raise RuntimeError(
             "Camoufox failed to start within 30s. "

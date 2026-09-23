@@ -110,6 +110,44 @@ def test_email_candidate_accepts_google_workspace_domains_and_normalizes_case():
     assert _normalize_email_candidate("页面没有账号标识") is None
 
 
+def test_login_start_only_succeeds_after_window_opens(monkeypatch):
+    service = LoginService()
+
+    async def fake_worker(session_id, store, name, *, headless, ui_locale, window_ready):
+        await asyncio.sleep(0)
+        window_ready.set()
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(service, "_login_worker", fake_worker)
+
+    async def run():
+        session_id = await service.start_login(FakeAccountStore())
+        service._tasks[session_id].cancel()
+        assert service.get_status(session_id).status == LoginStatus.PENDING
+
+    asyncio.run(run())
+
+
+def test_login_start_surfaces_browser_failure(monkeypatch):
+    service = LoginService()
+
+    async def fake_worker(session_id, store, name, *, headless, ui_locale, window_ready):
+        service._sessions[session_id].status = LoginStatus.FAILED
+        service._sessions[session_id].error = "Camoufox 无法启动"
+
+    monkeypatch.setattr(service, "_login_worker", fake_worker)
+
+    async def run():
+        try:
+            await service.start_login(FakeAccountStore())
+        except RuntimeError as error:
+            assert str(error) == "Camoufox 无法启动"
+        else:
+            raise AssertionError("closed browser must not report an opened window")
+
+    asyncio.run(run())
+
+
 def test_login_session_fails_immediately_when_browser_window_is_closed(monkeypatch):
     page = FakePage(close_on_goto=True)
     context = FakeContext(page)

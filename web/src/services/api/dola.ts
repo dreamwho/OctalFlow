@@ -50,7 +50,7 @@ async function request<T>(path: string, init?: RequestInit) {
 }
 export function getDolaAdminState() { return request<DolaAdminState>("/api/admin/dola"); }
 export function importDolaAccounts(items: Array<Record<string, unknown>>) { return request<{ results: Array<Record<string, unknown>>; summary: Record<string, number> }>("/api/admin/dola/accounts", { method: "POST", body: JSON.stringify({ items }) }); }
-export function updateDolaAccount(id: string, patch: { name?: string; enabled?: boolean; group?: string; status?: string; resetQuota?: boolean }) { return request<{ account: DolaAccount }>(`/api/admin/dola/accounts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }); }
+export function updateDolaAccount(id: string, patch: { name?: string; email?: string; cookie?: string; enabled?: boolean; group?: string; status?: string; resetQuota?: boolean }) { return request<{ account: DolaAccount }>(`/api/admin/dola/accounts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }); }
 export function resetDolaAccountQuota(id: string) { return updateDolaAccount(id, { resetQuota: true }); }
 export function batchSetDolaAccountGroup(ids: string[], group: string) { return request<{ updated: number }>("/api/admin/dola/accounts/batch-group", { method: "POST", body: JSON.stringify({ ids, group }) }); }
 export function refreshDolaAccount(id: string, loginOnly = false) { return request<{ account: DolaAccount | null; status: string; quota: DolaAccount["quota"]; protocol?: DolaAccountValidation }>(`/api/admin/dola/accounts/${encodeURIComponent(id)}/refresh`, { method: "POST", body: JSON.stringify({ loginOnly }) }); }

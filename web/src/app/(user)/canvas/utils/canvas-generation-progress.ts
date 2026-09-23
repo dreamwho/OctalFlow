@@ -1,5 +1,7 @@
 import type { CanvasNodeData } from "../types";
 
+export type CanvasModelDurationStats = Record<string, { avgDurationMs: number; samples: number }>;
+
 // Presentation pacing only: these are not task deadlines, retries or upstream limits.
 export function estimateCanvasProgress(elapsedMs: number, type?: string, expectedMs?: number) {
     const expected = expectedMs && Number.isFinite(expectedMs) && expectedMs > 0 ? expectedMs : defaultDuration(type);
@@ -23,6 +25,19 @@ function model(node: CanvasNodeData) {
     return metadata?.imageTask?.model || metadata?.videoTask?.model || metadata?.textTask?.model || metadata?.audioTask?.model || metadata?.model;
 }
 
+function modelAverageDuration(node: CanvasNodeData, stats: CanvasModelDurationStats) {
+    const metadata = node.metadata;
+    const models = [model(node), metadata?.model].filter((value): value is string => Boolean(value));
+    for (const id of models) {
+        const separator = id.indexOf("::");
+        for (const key of separator < 0 ? [id] : [id, id.slice(separator + 2)]) {
+            const stat = stats[key];
+            if (stat && Number.isFinite(stat.avgDurationMs) && stat.avgDurationMs > 0 && stat.samples > 0) return stat.avgDurationMs;
+        }
+    }
+    return undefined;
+}
+
 export function canvasExpectedDuration(node: CanvasNodeData, history: CanvasNodeData[]) {
     const candidates = history.filter(
         (item) =>
@@ -40,7 +55,7 @@ export function canvasExpectedDuration(node: CanvasNodeData, history: CanvasNode
     return durations.length % 2 ? durations[middle] : (durations[middle - 1] + durations[middle]) / 2;
 }
 
-export function stampCanvasGenerationStarts(previous: CanvasNodeData[], next: CanvasNodeData[], now: number) {
+export function stampCanvasGenerationStarts(previous: CanvasNodeData[], next: CanvasNodeData[], now: number, modelStats: CanvasModelDurationStats = {}) {
     if (!previous.some((node) => node.metadata?.status === "loading") && !next.some((node) => node.metadata?.status === "loading")) return next;
     const byId = new Map(previous.map((node) => [node.id, node]));
     return next.map((node) => {
@@ -51,8 +66,9 @@ export function stampCanvasGenerationStarts(previous: CanvasNodeData[], next: Ca
         if (node.metadata?.status !== "loading") return node;
         const restarting = old && old.metadata?.status !== "loading";
         const startedAt = restarting ? now : node.metadata.generationStartedAt || old?.metadata?.generationStartedAt || now;
-        if (startedAt === node.metadata.generationStartedAt && node.metadata.generationExpectedMs) return node;
-        const expectedMs = (!restarting && node.metadata.generationExpectedMs) || canvasExpectedDuration(node, previous.length ? previous : next);
-        return { ...node, metadata: { ...node.metadata, ...(restarting ? { generationProgress: undefined, generationStage: undefined, generationFinishedAt: undefined } : {}), generationStartedAt: startedAt, generationExpectedMs: expectedMs } };
+        const averageMs = modelAverageDuration(node, modelStats);
+        if (startedAt === node.metadata.generationStartedAt && node.metadata.generationExpectedMs && (!averageMs || (node.metadata.generationExpectedSource === "model-average" && node.metadata.generationExpectedMs === averageMs))) return node;
+        const expectedMs = averageMs || (!restarting && node.metadata.generationExpectedMs) || canvasExpectedDuration(node, previous.length ? previous : next);
+        return { ...node, metadata: { ...node.metadata, ...(restarting ? { generationProgress: undefined, generationStage: undefined, generationFinishedAt: undefined } : {}), generationStartedAt: startedAt, generationExpectedMs: expectedMs, generationExpectedSource: averageMs ? "model-average" : restarting ? undefined : node.metadata.generationExpectedSource } };
     });
 }

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -83,6 +83,18 @@ if (target === "geminiai") {
 const sidecars = path.join(desktopRoot, "resources", "sidecars", `${process.platform}-${process.arch}`);
 await mkdir(sidecars, { recursive: true });
 await copyFile(binary, path.join(sidecars, name));
+if (target === "geminiai-browser") {
+    const driverPackage = await new Promise((resolve, reject) => {
+        const child = spawn(python, ["-c", "from pathlib import Path; from playwright._impl._driver import compute_driver_executable; print(Path(compute_driver_executable()[1]).parent)"], { cwd: serviceRoot, stdio: ["ignore", "pipe", "inherit"] });
+        let output = "";
+        child.stdout.on("data", (chunk) => { output += chunk; });
+        child.once("error", reject);
+        child.once("close", (code) => code === 0 ? resolve(output.trim()) : reject(new Error("无法定位 Playwright driver package")));
+    });
+    const targetPackage = path.join(sidecars, "playwright-driver");
+    await rm(targetPackage, { recursive: true, force: true });
+    await cp(driverPackage, targetPackage, { recursive: true });
+}
 const digest = createHash("sha256").update(await readFile(binary)).digest("hex");
 await writeFile(path.join(buildRoot, `${target}.sha256`), `${digest}  ${name}\n`);
 console.log(`已冻结并验证 ${name}，SHA-256: ${digest}`);

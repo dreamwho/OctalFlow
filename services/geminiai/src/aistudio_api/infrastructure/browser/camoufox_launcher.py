@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 import orjson
 from camoufox.server import LAUNCH_SCRIPT, get_nodejs, to_camel_case_dict
+from playwright._impl._driver import compute_driver_executable
 from camoufox.utils import launch_options
 
 
@@ -38,19 +39,26 @@ def launch_camoufox_server(*, port: int, headless: bool, proxy: Optional[dict[st
     cfg = launch_options(port=port, headless=headless, main_world_eval=True, proxy=proxy, executable_path=executable or None, ff_version=int(major) if executable else None, i_know_what_im_doing=bool(executable))
     cfg = _prune_none(cfg)
     nodejs = get_nodejs()
+    bundled_package = os.getenv("AISTUDIO_PLAYWRIGHT_DRIVER_PACKAGE", "").strip()
+    driver_package = Path(bundled_package) if bundled_package else Path(compute_driver_executable()[1]).parent
+    if not (driver_package / "index.js").is_file():
+        raise RuntimeError(f"Playwright driver package missing: {driver_package}")
     data = orjson.dumps(to_camel_case_dict(cfg))
 
     process = subprocess.Popen(
-        [nodejs, str(LAUNCH_SCRIPT)],
-        cwd=Path(nodejs).parent / "package",
+        [nodejs, str(LAUNCH_SCRIPT), str(driver_package)],
+        cwd=driver_package,
         stdin=subprocess.PIPE,
         text=True,
     )
-    if process.stdin:
-        process.stdin.write(base64.b64encode(data).decode())
+    assert process.stdin is not None
+    try:
+        process.stdin.write(base64.b64encode(data).decode() + "\n")
+        process.stdin.flush()
+        process.wait()
+    finally:
         process.stdin.close()
-    process.wait()
-    raise RuntimeError("Server process terminated unexpectedly")
+    raise RuntimeError(f"Server process terminated unexpectedly with exit code {process.returncode}")
 
 
 def main():

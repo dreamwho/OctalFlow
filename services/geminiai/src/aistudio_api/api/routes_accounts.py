@@ -65,11 +65,14 @@ async def login_start(
     account_service=Depends(get_account_service),
 ):
     """启动 Google 登录流程。"""
-    session_id = await account_service.start_login(
-        req.name,
-        headless=req.headless,
-        ui_locale=req.ui_locale,
-    )
+    try:
+        session_id = await account_service.start_login(
+            req.name,
+            headless=req.headless,
+            ui_locale=req.ui_locale,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return LoginStartResponse(session_id=session_id)
 
 

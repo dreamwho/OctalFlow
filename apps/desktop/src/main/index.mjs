@@ -6,8 +6,9 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, session, shell 
 import { createCloudDeviceAuth, isTemporaryCloudFailure } from "./cloud-device-auth.mjs";
 import { disableAutoWorkspaceBackup, publicAutoBackupStatus, readAutoWorkspaceBackup, runAutoWorkspaceBackupIfDue, saveAutoWorkspaceBackup } from "./auto-workspace-backup.mjs";
 import { resolveEdition } from "../shared/edition.mjs";
-import { startDesktopRuntime } from "./runtime-controller.mjs";
+import { readOrCreateRuntimeSecrets, startDesktopRuntime } from "./runtime-controller.mjs";
 import { createWorkspaceBackup, restoreWorkspaceBackup } from "./workspace-backup.mjs";
+import { importWebAccounts } from "./import-web-accounts.mjs";
 
 const edition = await loadEdition();
 app.setName(edition.productName);
@@ -19,6 +20,7 @@ let runtime;
 let cloudAuth;
 let appearance = "dark";
 let preparedWorkspaceOperation;
+let preparedWebAccountImport;
 let workspaceOperationRunning = false;
 let autoBackupError = "";
 let quittingAfterRuntimeStop = false;
@@ -44,7 +46,7 @@ app.whenReady().then(async () => {
             console.warn("Automatic workspace backup failed", autoBackupError);
         }
     }
-    runtime = await startDesktopRuntime({ app, edition, safeStorage });
+    runtime = await startDesktopRuntime({ app, edition, safeStorage, onProgress: showStartupProgress });
     installSessionBoundary(runtime.origin, runtime.sessionToken);
     await runtime.ready;
     if (edition.id === "commercial") {
@@ -75,6 +77,7 @@ app.whenReady().then(async () => {
         await mainWindow.loadURL(new URL(edition.startPath, runtime.origin).toString());
     }
     if (process.env.DREAMYO_DESKTOP_SMOKE === "1") {
+        if (process.env.DREAMYO_DESKTOP_SMOKE_WIDTH === "1024") mainWindow.setSize(1024, 768);
         if (edition.id === "commercial") {
             if (mainWindow.webContents.getURL().includes("/desktop/connect")) await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.querySelector('main[data-cloud-ready="true"]'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Cloud connection page did not hydrate')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, attributes: true }); })`);
             const status = await mainWindow.webContents.executeJavaScript(`({ path: location.pathname, localLogin: Boolean(document.querySelector('form')), connectVisible: document.body.innerText.includes('连接云端账号') })`);
@@ -113,18 +116,26 @@ app.whenReady().then(async () => {
         if (edition.id === "admin") {
             await mainWindow.loadURL(new URL("/admin?section=channels", runtime.origin).toString());
             await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.querySelector('.admin-dashboard-shell[data-hydrated="true"]') && !document.querySelector('[aria-label="正在加载管理后台"]'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Admin navigation did not mount: ' + location.pathname + ' ' + document.body.innerText.slice(0, 240))); }, 30000); observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true }); })`);
-            const navigation = await mainWindow.webContents.executeJavaScript(`({ channel: Boolean(document.querySelector('[data-admin-section-key="channels"]')), users: Boolean(document.querySelector('[data-admin-section-key="users"]')), points: Boolean(document.querySelector('[data-admin-section-key="points"]')), setup: Boolean(document.querySelector('.admin-dashboard-setup-pill')), desktopSettings: Boolean(document.querySelector('[data-desktop-settings="true"]')), webSidebar: Boolean(document.querySelector('[data-admin-navigation="true"]')) })`);
+            const navigation = await mainWindow.webContents.executeJavaScript(`({ channel: Boolean(document.querySelector('[data-admin-section-key="channels"]')), users: Boolean(document.querySelector('[data-admin-section-key="users"]')), points: Boolean(document.querySelector('[data-admin-section-key="points"]')), setup: Boolean(document.querySelector('.admin-dashboard-setup-pill')), desktopSettings: Boolean(document.querySelector('[data-desktop-settings="true"]')), webSidebar: Boolean(document.querySelector('[data-admin-navigation="true"]')), appSidebar: Boolean(document.querySelector('[aria-label="桌面应用导航"]')), closeSettings: Boolean(document.querySelector('[aria-label="关闭设置并返回上一页面"]')), workspaceWidth: Math.round(document.querySelector('[data-desktop-workspace="true"]')?.getBoundingClientRect().width || 0), viewportWidth: innerWidth })`);
             console.log(`[desktop-smoke] admin navigation ${JSON.stringify(navigation)}`);
-            if (!navigation.channel || !navigation.desktopSettings || navigation.webSidebar || navigation.users || navigation.points || navigation.setup) throw new Error("Administrator desktop settings did not replace the web navigation");
+            if (!navigation.channel || !navigation.desktopSettings || navigation.webSidebar || navigation.appSidebar || !navigation.closeSettings || navigation.workspaceWidth !== navigation.viewportWidth || navigation.users || navigation.points || navigation.setup) throw new Error("Administrator desktop settings did not occupy the workspace");
+            await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => Boolean(document.querySelector('.ant-table')); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Channel table did not mount')); }, 30000); observer.observe(document.body, { childList: true, subtree: true }); })`);
+            const layout = await mainWindow.webContents.executeJavaScript(`({ navWidth: Math.round(document.querySelector('[data-desktop-settings="true"]')?.getBoundingClientRect().width || 0), contentWidth: Math.round(document.querySelector('.admin-dashboard-content')?.getBoundingClientRect().width || 0), tableRight: Math.round(document.querySelector('.ant-table')?.getBoundingClientRect().right || 0), viewportWidth: innerWidth })`);
+            console.log(`[desktop-smoke] settings layout ${JSON.stringify(layout)}`);
+            if (layout.tableRight > layout.viewportWidth || layout.contentWidth < 700) throw new Error("Administrator settings content is clipped");
             if (process.env.DREAMYO_DESKTOP_SMOKE_DOLA === "1") {
                 await mainWindow.loadURL(new URL("/admin?section=dolaApi", runtime.origin).toString());
-                const dola = await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.body.innerText.includes('账号池') && document.body.innerText.includes('Dola API'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Dola account manager did not mount')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, characterData: true }); })`);
+                const dola = await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => document.body.innerText.includes('账号池') && document.body.innerText.includes('账号轮换次数上限'); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Dola account manager did not mount')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, characterData: true }); })`);
                 console.log(`[desktop-smoke] Dola account manager ${JSON.stringify({ mounted: dola })}`);
             }
             if (process.env.DREAMYO_DESKTOP_SMOKE_SCREENSHOT) {
+                await mainWindow.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
                 const screenshot = await mainWindow.webContents.capturePage();
                 await writeFile(process.env.DREAMYO_DESKTOP_SMOKE_SCREENSHOT.replace(/\.png$/i, "-admin.png"), screenshot.toPNG());
             }
+            const returned = await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { document.querySelector('[aria-label="关闭设置并返回上一页面"]')?.click(); const ready = () => location.pathname === '/canvas' && Boolean(document.querySelector('[aria-label="桌面应用导航"]')); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Closing settings did not return to the previous page')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, attributes: true }); })`);
+            console.log(`[desktop-smoke] settings close ${JSON.stringify({ returned })}`);
+            await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => { const ready = () => Boolean(document.querySelector('button[aria-label="新建项目"]:not([disabled])')); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); clearTimeout(timer); resolve(true); } }); const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Canvas did not recover after closing settings')); }, 30000); observer.observe(document.body, { childList: true, subtree: true, attributes: true }); })`);
         }
         await exitDesktop(0);
     }
@@ -230,6 +241,24 @@ function registerIpc() {
         const error = await shell.openPath(directory);
         if (error) throw new Error(error);
         return true;
+    });
+    ipcMain.handle("desktop:prepare-web-account-import", async (event) => {
+        assertTrustedSender(event);
+        if (edition.id !== "admin" || workspaceOperationRunning) throw new Error("当前无法导入 WEB 账号");
+        const result = await dialog.showOpenDialog(mainWindow, { title: "选择包含 .data 和 .env.local 的 WEB 项目目录", properties: ["openDirectory"] });
+        if (result.canceled || !result.filePaths[0]) return null;
+        preparedWebAccountImport = { directory: result.filePaths[0], token: randomUUID() };
+        return { token: preparedWebAccountImport.token };
+    });
+    ipcMain.on("desktop:begin-web-account-import", (event, token) => {
+        try {
+            assertTrustedSender(event);
+            if (edition.id !== "admin" || workspaceOperationRunning || !preparedWebAccountImport || token !== preparedWebAccountImport.token) throw new Error("账号导入请求无效");
+            const operation = preparedWebAccountImport;
+            preparedWebAccountImport = undefined;
+            workspaceOperationRunning = true;
+            void performWebAccountImport(operation.directory).finally(() => { workspaceOperationRunning = false; });
+        } catch (error) { dialog.showErrorBox("WEB 账号导入失败", error instanceof Error ? error.message : String(error)); }
     });
     ipcMain.handle("desktop:prepare-workspace-operation", async (event, kind) => {
         assertTrustedSender(event);
@@ -340,8 +369,27 @@ async function performWorkspaceOperation({ kind, directory }, password) {
     }
 }
 
+async function performWebAccountImport(directory) {
+    const route = "/admin?section=backup";
+    try {
+        const secrets = await readOrCreateRuntimeSecrets(path.join(app.getPath("userData"), "runtime-secrets.bin"), safeStorage);
+        await mainWindow.loadURL(loadingPage("正在导入本机 WEB 渠道账号"));
+        await runtime?.stop();
+        runtime = null;
+        const counts = await importWebAccounts({ webRoot: directory, dataRoot: path.join(app.getPath("userData"), "data"), targetKey: secrets.encryptionKey });
+        await startLocalRuntime(route);
+        await dialog.showMessageBox(mainWindow, { type: "info", title: "WEB 账号导入完成", message: "账号已合并到桌面版本地账号池。", detail: `GeminiAIStudio ${counts.geminiai}、Dola API ${counts.dola}、GeminiTools ${counts.geminiTools}、GPTAPI ${counts.gptapi} 个新增账号。` });
+    } catch (error) {
+        if (!runtime) {
+            try { await startLocalRuntime(route); }
+            catch (restartError) { console.error("WEB account import restart failed", restartError instanceof Error ? restartError.message : restartError); }
+        }
+        dialog.showErrorBox("WEB 账号导入失败", error instanceof Error ? error.message : String(error));
+    }
+}
+
 async function startLocalRuntime(route) {
-    const next = await startDesktopRuntime({ app, edition, safeStorage });
+    const next = await startDesktopRuntime({ app, edition, safeStorage, onProgress: showStartupProgress });
     runtime = next;
     installSessionBoundary(next.origin, next.sessionToken);
     try {
@@ -352,6 +400,12 @@ async function startLocalRuntime(route) {
         runtime = null;
         throw error;
     }
+}
+
+function showStartupProgress(_ready, pending) {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents.getURL().startsWith("data:text/html")) return;
+    const message = pending.length ? `正在启动 ${pending.join("、")}` : "正在打开工作区";
+    void mainWindow.webContents.executeJavaScript(`document.getElementById("startup-status").textContent = ${JSON.stringify(message)}`).catch(() => {});
 }
 
 function setNativeAppearance(theme) {
@@ -447,5 +501,5 @@ function isSafeExternalUrl(value) {
 
 function loadingPage(status = "正在启动本地服务") {
     const title = encodeURIComponent(edition.windowTitle);
-    return `data:text/html;charset=utf-8,<title>${title}</title><style>body{margin:0;background:%23080b14;color:%23fafafa;font:14px system-ui;display:grid;place-items:center;height:100vh}.box{text-align:center}.dot{width:36px;height:36px;margin:auto;border:3px solid %233f3f46;border-top-color:%236366f1;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style><div class=box><div class=dot></div><p>${encodeURIComponent(status)}…</p></div>`;
+    return `data:text/html;charset=utf-8,<title>${title}</title><style>body{margin:0;background:%23080b14;color:%23fafafa;font:14px system-ui;display:grid;place-items:center;height:100vh}.box{text-align:center}.dot{width:36px;height:36px;margin:auto;border:3px solid %233f3f46;border-top-color:%236366f1;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style><div class=box><div class=dot></div><p id=startup-status>${encodeURIComponent(status)}…</p></div>`;
 }

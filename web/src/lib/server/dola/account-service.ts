@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
-import { parseDolaImportInputs } from "./account-import";
+import { dolaCookieFingerprint, parseDolaCookieHeader, parseDolaImportInputs } from "./account-import";
 import { getDolaGatewaySettings } from "./gateway-store";
 import { dolaModelProfile, type DolaAccount, type DolaAccountImportItem, type DolaAccountImportResult, type DolaAccountStatus, type DolaAccountValidation, type DolaQuotaSnapshot } from "./types";
 
@@ -99,6 +99,41 @@ export async function renameDolaAccount(id: string, name: unknown) {
     const value = typeof name === "string" ? name.trim().slice(0, 120) : "";
     if (!value) throw new Error("账号名称不能为空");
     return mutateAccount(id, (account) => ({ ...account, name: value }));
+}
+
+export async function editDolaAccount(id: string, input: { name: string; email: string; group: string; cookie?: string }) {
+    const name = input.name.trim().slice(0, 120);
+    if (!name) throw new Error("账号名称不能为空");
+    const email = input.email.trim().slice(0, 320);
+    const group = normalizeGroup(input.group);
+    const parsed = input.cookie?.trim() ? parseDolaCookieHeader(input.cookie) : null;
+    const fingerprint = parsed ? dolaCookieFingerprint(parsed.fingerprintInput) : null;
+    let result: DolaAccount | null = null;
+    await withJsonDataFileLock(FILE_NAME, async () => {
+        const db = await readDatabase();
+        const account = db.accounts.find((item) => item.id === id);
+        if (!account) throw new Error("Dola 账号不存在");
+        if (fingerprint && db.accounts.some((item) => item.id !== id && item.cookieFingerprint === fingerprint)) throw new Error("该 Cookie 已绑定其他账号");
+        const changedCookie = Boolean(parsed && account.cookieFingerprint !== fingerprint);
+        account.name = name;
+        account.email = email || undefined;
+        account.group = group || undefined;
+        if (changedCookie && parsed && fingerprint) {
+            account.cookieCiphertext = encryptSecretValue(parsed.cookie);
+            account.cookieFingerprint = fingerprint;
+            account.credentialVersion = (account.credentialVersion || 1) + 1;
+            account.status = "verification_required";
+            account.loginState = "unknown";
+            account.loginCheckedAt = undefined;
+            account.validation = undefined;
+            account.quota = [];
+            account.restrictedReason = undefined;
+        }
+        account.updatedAt = new Date().toISOString();
+        result = publicAccount(account);
+        await writeJsonDataFile(FILE_NAME, db);
+    });
+    return result;
 }
 
 export async function setDolaAccountEnabled(id: string, enabled: boolean) {

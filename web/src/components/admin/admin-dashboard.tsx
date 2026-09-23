@@ -5,6 +5,7 @@ import { GenerationLogDetail } from "@/components/admin/admin-generation-log";
 import { AdminOverview } from "@/components/admin/admin-overview";
 import { AdminSectionNav } from "@/components/admin/admin-section-nav";
 import { DesktopAdminNavigation } from "@/components/admin/desktop-admin-navigation";
+import desktopSettings from "@/components/admin/desktop-admin-navigation.module.css";
 import type { AdminSectionKey } from "@/components/admin/admin-sections";
 import { Button, Form, Input, Modal } from "antd";
 import { ArrowRight, Copy, Menu, Plus } from "lucide-react";
@@ -199,6 +200,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
     } = controller;
     return (
         <div data-hydrated={hydrated ? "true" : "false"} className={`admin-mobile-safe admin-dashboard-shell min-h-dvh w-full min-w-0 ${!adminLocal && desktopNavCollapsed ? "is-sidebar-collapsed" : ""}`} style={adminLocal ? { display: "block" } : undefined}>
+            <div className={adminLocal ? desktopSettings.workspace : desktopSettings.webLayout}>
             {adminLocal ? <DesktopAdminNavigation activeKey={activeSection} user={currentUser} onChange={setActiveSection} onIntent={(section) => void sectionLoaders[section]?.()} /> : null}
             {!adminLocal && mobileNavOpen ? <button type="button" className="admin-section-nav-backdrop lg:hidden" aria-label="收起后台侧边栏" onClick={() => setMobileNavOpen(false)} /> : null}
             {!adminLocal ? <AdminSectionNav
@@ -213,7 +215,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                 onMobileToggle={() => setMobileNavOpen((open) => !open)}
                 onMobileClose={() => setMobileNavOpen(false)}
             /> : null}
-            <div className="w-full min-w-0 max-w-full overflow-x-hidden">
+            <div className={`w-full min-w-0 max-w-full ${adminLocal ? desktopSettings.content : "overflow-x-hidden"}`}>
                 {!adminLocal ? <header className="admin-dashboard-header sticky top-0 z-20 border-b border-zinc-200 bg-white px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950 sm:px-6 lg:px-5">
                     <div className="admin-dashboard-header-inner mx-auto flex min-h-9 w-full max-w-[1600px] min-w-0 items-center justify-between gap-3">
                         <div className="admin-dashboard-title-row flex min-w-0 items-center gap-3">
@@ -261,7 +263,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {!adminLocal ? <section className="admin-dashboard-intro">
                         <h1 className="text-lg font-semibold text-zinc-950 sm:text-xl dark:text-zinc-100">{activeSectionInfo.label}</h1>
                         <div className="mt-1 line-clamp-2 max-w-3xl text-xs leading-5 text-zinc-500 sm:mt-1.5 sm:line-clamp-none sm:text-sm sm:leading-6 dark:text-zinc-400">{activeSectionInfo.description}</div>
-                    </section> : <section className="mb-5 border-b border-[#dfe8f4] pb-4 dark:border-[#26354e]"><h2 className="text-lg font-semibold text-[#172844] dark:text-[#eff7ff]">{activeSectionInfo.label}</h2><p className="mt-1 text-sm text-[#687992] dark:text-[#a8bad4]">{activeSectionInfo.description}</p></section>}
+                    </section> : <section className="mb-5 border-b border-[#dadff4] pb-4 dark:border-[#343759]"><h2 className="text-lg font-semibold text-[#1c2242] dark:text-[#f1f1ff]">{activeSectionInfo.label}</h2><p className="mt-1 text-sm text-[#646b87] dark:text-[#a8a9c8]">{activeSectionInfo.description}</p></section>}
 
                     {activeSection === "overview" ? (
                         <AdminOverview
@@ -317,6 +319,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "generationOperations" ? <AdminGenerationOperationsSection controller={controller} /> : null}
                     {activeSection === "adminHelp" ? <AdminHelpSection onOpenSection={setActiveSection} /> : null}
                 </div>
+            </div>
             </div>
 
             <Modal

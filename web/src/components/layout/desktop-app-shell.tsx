@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { FolderOpen, Layers3, Moon, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Sun, WandSparkles } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { FolderOpen, Layers3, Moon, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Sun, WandSparkles, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { useCanvasStore } from "@/app/(user)/canvas/stores/use-canvas-store";
 import { useAdminThemeStore, useThemeStore } from "@/stores/use-theme-store";
@@ -11,7 +11,9 @@ import styles from "./desktop-app-shell.module.css";
 
 export function DesktopAppShell({ children, platform }: { children: ReactNode; platform: string }) {
     const pathname = usePathname();
-    const section = useSearchParams().get("section");
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const section = searchParams.get("section");
     const [expanded, setExpanded] = useState(true);
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
@@ -19,11 +21,16 @@ export function DesktopAppShell({ children, platform }: { children: ReactNode; p
     const projects = useCanvasStore((state) => state.summaries);
     const activeProject = pathname.startsWith("/canvas/") ? pathname.split("/")[2] : "";
     const settings = pathname === "/admin";
+    const previousRouteRef = useRef("/canvas");
+    const currentRoute = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
+    useEffect(() => {
+        if (!settings) previousRouteRef.current = currentRoute;
+    }, [currentRoute, settings]);
     const switchTheme = (next: "light" | "dark") => { setTheme(next); setAdminTheme(next); };
     const linkClass = (active: boolean) => `${styles.item} ${active ? styles.active : ""}`;
 
     return <div className={`${styles.shell} ${expanded ? "" : styles.collapsed}`} data-desktop-app-shell="true" data-theme={theme} data-platform={platform}>
-        <aside className={styles.sidebar} aria-label="桌面应用导航">
+        {!settings ? <aside className={styles.sidebar} aria-label="桌面应用导航">
             <div className={styles.dragRegion} aria-hidden="true" />
             <div className={styles.brandRow}>
                 <Link href="/canvas" className={styles.brand} title="Dreamyo 项目库" aria-label="Dreamyo 项目库"><SiteLogo logoUrl="/brand/dreamyo/mark.png" className={styles.logo} /><span>dreamyo<small>本地创作工作区</small></span></Link>
@@ -47,7 +54,11 @@ export function DesktopAppShell({ children, platform }: { children: ReactNode; p
                 </div>
                 <Link href="/admin?section=settings" className={linkClass(settings && !["channels", "geminiai", "dolaApi", "geminiTools", "chatgptApi", "dreamina", "runninghub", "minimax", "tencentMusic", "qwenAudio", "skills"].includes(section || ""))} title="设置"><Settings2 size={18} /><span>设置</span></Link>
             </div>
-        </aside>
-        <div className={styles.workspace} data-desktop-workspace="true">{children}</div>
+        </aside> : null}
+        <div className={styles.workspace} data-desktop-workspace="true">
+            {settings ? <div className={styles.settingsDrag} aria-hidden="true" /> : null}
+            {settings ? <button type="button" className={styles.settingsClose} aria-label="关闭设置并返回上一页面" title="关闭设置" onClick={() => router.push(previousRouteRef.current)}><X size={18} /></button> : null}
+            {children}
+        </div>
     </div>;
 }

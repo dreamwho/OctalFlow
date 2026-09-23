@@ -60,8 +60,9 @@ export function useCanvasGenerationProgress(node?: CanvasNodeData, completed = f
     const estimate = estimateCanvasProgress(now ? now - startedAt : 0, node?.type, node?.metadata?.generationExpectedMs);
     const value = node?.metadata?.generationProgress;
     const real = typeof value === "number" && Number.isFinite(value) ? Math.floor(Math.max(0, Math.min(100, value))) : undefined;
-    const key = `${node?.id}:${startedAt}:${node?.metadata?.generationStage || ""}`;
-    const candidate = real ?? estimate.percent;
+    const usesModelAverage = node?.metadata?.generationExpectedSource === "model-average";
+    const key = `${node?.id}:${startedAt}:${node?.metadata?.generationStage || ""}:${usesModelAverage ? `average-${node?.metadata?.generationExpectedMs}` : "upstream"}`;
+    const candidate = usesModelAverage ? estimate.percent : real ?? estimate.percent;
     const [previous, setPrevious] = useState({ key, percent: candidate });
     // Hold an estimate until the real value catches up; never label this held value as real.
     const carried = real === undefined ? Math.min(95, previous.percent) : previous.percent;
@@ -91,7 +92,7 @@ export function useCanvasGenerationProgress(node?: CanvasNodeData, completed = f
         };
     }, [completed, onComplete]);
     const displayed = completed ? Math.round(percent + (100 - percent) * completion) : percent;
-    const estimated = real === undefined || percent > real;
+    const estimated = usesModelAverage || real === undefined || percent > real;
     const effectiveNow = completed && node?.metadata?.generationFinishedAt
         ? node.metadata.generationFinishedAt
         : (now || Date.now());

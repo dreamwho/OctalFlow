@@ -364,6 +364,11 @@ describe("CanvasNode loading content", () => {
         expect(markup).not.toContain("data-dreamyo-icon");
         expect(markup).not.toContain("waiting-1");
     });
+    it("labels the model-average estimate even when upstream progress is present", () => {
+        const markup = renderContent({ ...imageNode, metadata: { status: "loading", generationProgress: 80, generationExpectedMs: 60_000, generationExpectedSource: "model-average" } }, canvasThemes.light);
+        expect(markup).toContain('aria-label="生成中 预计 1%"');
+        expect(markup).not.toContain('aria-label="生成中 80%"');
+    });
     it.each(Object.values(CanvasNodeType).filter((type) => type !== CanvasNodeType.Config))("fills a loading %s node with the shared video animation", (type) => {
         const markup = renderContent({ ...imageNode, id: `loading-${type}`, type, metadata: { status: "loading" } }, canvasThemes.light);
 
