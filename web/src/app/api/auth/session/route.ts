@@ -21,7 +21,7 @@ export async function GET() {
             return NextResponse.json({
                 user: serializeCurrentUser(user),
                 desktop: getDesktopRuntimeInfo(),
-                settings: serializePublicSettings(settings),
+                settings: serializePublicSettings(settings, user),
                 install: { ready: true, firstAdminRequired: false, database: { healthy: true, schemaReady: true } },
             });
         } catch {

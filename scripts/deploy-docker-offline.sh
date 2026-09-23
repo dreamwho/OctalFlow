@@ -4,6 +4,14 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+PRIVATE_SETTINGS_SYNC_VOLUME=""
+cleanup_private_settings_sync_volume() {
+    if [[ -n "$PRIVATE_SETTINGS_SYNC_VOLUME" ]]; then
+        docker volume rm "$PRIVATE_SETTINGS_SYNC_VOLUME" >/dev/null 2>&1 || printf '警告：未能清理临时私有同步卷 %s\n' "$PRIVATE_SETTINGS_SYNC_VOLUME" >&2
+    fi
+}
+trap cleanup_private_settings_sync_volume EXIT
+
 die() {
     printf '部署失败：%s\n' "$*" >&2
     exit 1
@@ -288,6 +296,17 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
 elif [[ -e "$SCRIPT_DIR/private-migration" ]]; then
     die "部署包存在未声明的私有迁移目录"
 fi
+PRIVATE_SETTINGS_SYNC=0
+if grep -q '^DREAMYO_PRIVATE_SETTINGS_SYNC=' "$MANIFEST_FILE"; then
+    PRIVATE_SETTINGS_SYNC="$(read_manifest_value DREAMYO_PRIVATE_SETTINGS_SYNC)"
+fi
+[[ "$PRIVATE_SETTINGS_SYNC" == 0 || "$PRIVATE_SETTINGS_SYNC" == 1 ]] || die "私有账号与代理同步标记无效"
+if [[ "$PRIVATE_SETTINGS_SYNC" == 1 ]]; then
+    [[ "$DATABASE_MODE" == external && -d "$SCRIPT_DIR/private-settings-sync" ]] || die "私有账号与代理同步只支持 external PostgreSQL 部署包"
+elif [[ -e "$SCRIPT_DIR/private-settings-sync" ]]; then
+    die "部署包存在未声明的私有账号与代理同步目录"
+fi
+[[ "$PRIVATE_MIGRATION" != 1 || "$PRIVATE_SETTINGS_SYNC" != 1 ]] || die "首次迁移快照与在线设置同步不能同时启用"
 APP_IMAGE="$(read_manifest_value DREAMYO_IMAGE)"
 GEMINIAI_IMAGE="$(read_manifest_value DREAMYO_GEMINIAI_IMAGE)"
 MAGIC_PROXY_IMAGE=""
@@ -342,6 +361,17 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     verify_checksum_path private-migration/private.env
     chmod 0700 "$SCRIPT_DIR/private-migration"
     chmod 0600 "$SCRIPT_DIR/private-migration/private.env"
+fi
+if [[ "$PRIVATE_SETTINGS_SYNC" == 1 ]]; then
+    [[ ! -L "$SCRIPT_DIR/private-settings-sync" ]] || die "私有账号与代理同步目录不能是符号链接"
+    [[ -z "$(find "$SCRIPT_DIR/private-settings-sync" -mindepth 1 -type l -print -quit)" ]] || die "私有账号与代理同步目录不能包含符号链接"
+    while IFS= read -r -d '' private_sync_file; do
+        relative_path="${private_sync_file#"$SCRIPT_DIR/"}"
+        verify_checksum_path "$relative_path"
+    done < <(find "$SCRIPT_DIR/private-settings-sync" -type f -print0)
+    chmod 0700 "$SCRIPT_DIR/private-settings-sync"
+    find "$SCRIPT_DIR/private-settings-sync" -type d -exec chmod 0700 {} +
+    find "$SCRIPT_DIR/private-settings-sync" -type f -exec chmod 0600 {} +
 fi
 
 if [[ "$SKIP_IMAGE_CHECK" != "1" ]]; then
@@ -517,6 +547,55 @@ if [[ "$DATABASE_MODE" == embedded ]]; then
     docker image inspect "$POSTGRES_IMAGE" >/dev/null 2>&1 || die "PostgreSQL 镜像未加载：$POSTGRES_IMAGE"
 fi
 
+resolve_compose_project_name() {
+    local configured project volume candidate selected="" container_project
+    local -a configured_projects=() running_projects=()
+    configured="$(read_env_value COMPOSE_PROJECT_NAME)"
+    if [[ -n "$configured" ]]; then
+        [[ "$configured" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die ".env 中的 COMPOSE_PROJECT_NAME 格式无效"
+        printf '%s' "$configured"
+        return
+    fi
+
+    # Packages are uploaded from date-named directories, which otherwise create a
+    # fresh Compose volume namespace on each release. Reattach the existing stack
+    # by finding the volume that still contains its imported proxy nodes.
+    while IFS= read -r volume; do
+        [[ -n "$volume" ]] || continue
+        project="$(docker volume inspect --format '{{ index .Labels "com.docker.compose.project" }}' "$volume" 2>/dev/null || true)"
+        [[ "$project" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || continue
+        if docker run --rm --pull never --network none -v "$volume:/proxy-runtime:ro" --entrypoint node "$APP_IMAGE" -e 'const fs=require("node:fs");const yaml=require("yaml");try{const data=yaml.parse(fs.readFileSync("/proxy-runtime/subscription.yaml","utf8"));process.exit(Array.isArray(data?.proxies)&&data.proxies.length>0?0:1)}catch{process.exit(1)}' >/dev/null 2>&1; then
+            case " ${configured_projects[*]:-} " in
+                *" ${project} "*) ;;
+                *) configured_projects+=("$project") ;;
+            esac
+        fi
+    done < <(docker volume ls --quiet --filter label=com.docker.compose.volume=dreamyo-magic-proxy-runtime)
+
+    if [[ "${#configured_projects[@]}" -gt 1 ]]; then
+        die "发现多个旧魔法代理数据卷含有节点，无法安全判断应复用哪一套；请在 .env 中将 COMPOSE_PROJECT_NAME 设为对应卷标签中的项目名后重试"
+    elif [[ "${#configured_projects[@]}" -eq 1 ]]; then
+        selected="${configured_projects[0]}"
+    else
+        for candidate in dreamyo dreamyo-magic-proxy dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-geminiai; do
+            container_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$candidate" 2>/dev/null || true)"
+            [[ "$container_project" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || continue
+            case " ${running_projects[*]:-} " in
+                *" ${container_project} "*) ;;
+                *) running_projects+=("$container_project") ;;
+            esac
+        done
+        [[ "${#running_projects[@]}" -le 1 ]] || die "现有 Dreamyo 容器属于多个 Compose 项目，无法安全复用数据卷；请在 .env 中指定 COMPOSE_PROJECT_NAME"
+        selected="${running_projects[0]:-dreamyo}"
+    fi
+    set_env_value COMPOSE_PROJECT_NAME "$selected"
+    printf '%s' "$selected"
+}
+
+COMPOSE_PROJECT_NAME="$(resolve_compose_project_name)"
+export COMPOSE_PROJECT_NAME
+printf '持久数据卷项目名：%s\n' "$COMPOSE_PROJECT_NAME"
+
 compose_diagnostics() {
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps >&2 || true
     if [[ "$DATABASE_MODE" == embedded ]]; then
@@ -554,6 +633,65 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
         set_env_value "$private_key" "${!private_key}"
     done
 fi
+if [[ "$PRIVATE_SETTINGS_SYNC" == 1 ]]; then
+    printf '同步私有账号与代理设置；源凭据在容器内使用服务器密钥重新加密，服务器独有账号保留。\n'
+    PRIVATE_SETTINGS_SYNC_USER="$(docker run --rm --pull never --network none --entrypoint node "$APP_IMAGE" -e 'process.stdout.write(`${process.getuid()}:${process.getgid()}`)')" || die "无法读取应用容器运行用户"
+    [[ "$PRIVATE_SETTINGS_SYNC_USER" =~ ^[0-9]+:[0-9]+$ ]] || die "应用容器运行用户标识无效"
+    PRIVATE_SETTINGS_SYNC_VOLUME="dreamyo-private-settings-sync-$$-$(generate_token)"
+    docker volume create "$PRIVATE_SETTINGS_SYNC_VOLUME" >/dev/null || die "无法创建临时私有同步卷"
+    docker run --rm --pull never --network none --user 0 \
+        -v "$SCRIPT_DIR/private-settings-sync:/private-settings-source:ro" \
+        -v "$PRIVATE_SETTINGS_SYNC_VOLUME:/private-settings-target" \
+        --entrypoint node "$APP_IMAGE" -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const [uidGid = "", ...unexpectedArgs] = process.argv.slice(1);
+const [uidText, gidText, ...extraIds] = uidGid.split(":");
+if (unexpectedArgs.length || extraIds.length || !/^\d+$/.test(uidText) || !/^\d+$/.test(gidText)) throw new Error("invalid app uid/gid");
+const uid = Number(uidText), gid = Number(gidText);
+const source = "/private-settings-source", target = "/private-settings-target";
+function copyEntry(from, to) {
+  const stat = fs.lstatSync(from);
+  if (stat.isSymbolicLink()) throw new Error("snapshot contains a symbolic link");
+  if (stat.isDirectory()) {
+    fs.mkdirSync(to, { mode: 0o700 });
+    for (const name of fs.readdirSync(from)) copyEntry(path.join(from, name), path.join(to, name));
+    fs.chownSync(to, uid, gid);
+    fs.chmodSync(to, 0o700);
+  } else if (stat.isFile()) {
+    fs.copyFileSync(from, to);
+    fs.chownSync(to, uid, gid);
+    fs.chmodSync(to, 0o600);
+  } else {
+    throw new Error("snapshot contains an unsupported file type");
+  }
+}
+for (const name of fs.readdirSync(source)) copyEntry(path.join(source, name), path.join(target, name));
+fs.chownSync(target, uid, gid);
+fs.chmodSync(target, 0o700);
+' "$PRIVATE_SETTINGS_SYNC_USER" || die "私有账号与代理快照暂存失败；服务尚未停止"
+    gemini_accounts_volume="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json | docker run --rm -i --entrypoint node "$APP_IMAGE" -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>console.log(JSON.parse(s).volumes["dreamyo-geminiai-accounts"].name))')"
+    [[ "$gemini_accounts_volume" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || die "GeminiAIStudio 账号卷名称无效"
+    docker volume create "$gemini_accounts_volume" >/dev/null || die "无法挂载 GeminiAIStudio 账号卷"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" stop app generation-worker chatgpt-api geminiai || die "停止账号数据写入服务失败"
+    docker stop dreamyo dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-geminiai >/dev/null 2>&1 || true
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --no-deps --user "$PRIVATE_SETTINGS_SYNC_USER" \
+        -v "$PRIVATE_SETTINGS_SYNC_VOLUME:/private-settings-sync:ro" \
+        app /app/services/chatgpt-api/.venv/bin/python /app/services/chatgpt-api/scripts/sync_private_settings.py \
+        --snapshot /private-settings-sync || die "账号与代理设置同步失败；服务保持停止，服务器回滚备份已保留"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --no-deps --user 0 \
+        -v "$PRIVATE_SETTINGS_SYNC_VOLUME:/private-settings-sync:ro" \
+        -v "$gemini_accounts_volume:/geminiai-accounts" \
+        -e DREAMYO_GEMINIAI_ACCOUNTS_DIR=/geminiai-accounts \
+        app /app/services/chatgpt-api/.venv/bin/python /app/services/chatgpt-api/scripts/sync_private_settings.py \
+        --gemini-snapshot /private-settings-sync || die "GeminiAIStudio 授权同步失败；服务保持停止，服务器回滚备份已保留"
+fi
+for obsolete_container in dreamyo dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-geminiai dreamyo-magic-proxy dreamyo-postgres; do
+    obsolete_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$obsolete_container" 2>/dev/null || true)"
+    if [[ -n "$obsolete_project" && "$obsolete_project" != "$COMPOSE_PROJECT_NAME" ]]; then
+        docker rm -f "$obsolete_container" >/dev/null || die "无法安全切换现有容器项目名：$obsolete_container"
+    fi
+done
 printf '启动服务……\n'
 # 绑定挂载的 bootstrap 配置内容变化不会触发 Compose 重建容器；每次部署强制重建
 # 无状态的 magic-proxy，保证更新后的监听声明（含 ChatGPTAPI 17892）立即生效。

@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { deleteAdminUserWithMediaCleanup } from "@/lib/server/admin-user-deletion-service";
 import { auditActorFromRequest, safeRecordAuditLog } from "@/lib/server/audit-log-store";
 import { hasAnyAdminPermission, normalizeAdminPermissions } from "@/lib/admin-permissions";
+import { normalizeUserRoleId } from "@/lib/user-roles";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,11 @@ export async function PATCH(request: Request, context: RouteContext) {
         if (typeof body.displayName === "string") patch.displayName = body.displayName;
         if (typeof body.email === "string") patch.email = body.email;
         if (typeof body.password === "string" && body.password) patch.password = body.password;
-        if (body.role === "admin" || body.role === "user") patch.role = body.role;
+        if (body.role !== undefined) {
+            const role = normalizeUserRoleId(body.role);
+            if (!role) return NextResponse.json({ error: "角色 ID 无效" }, { status: 400 });
+            patch.role = role;
+        }
         if (Array.isArray(body.adminPermissions)) patch.adminPermissions = normalizeAdminPermissions(body.adminPermissions);
         if (body.status === "active" || body.status === "disabled") patch.status = body.status;
         if (body.pointsBalance !== undefined) patch.pointsBalance = Number(body.pointsBalance);

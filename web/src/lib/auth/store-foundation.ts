@@ -1,4 +1,5 @@
 import { CHARACTER_THREE_VIEW_PROMPT } from "@/lib/canvas-quick-actions";
+import { DEFAULT_USER_ROLE } from "@/lib/user-roles";
 import { ECOMMERCE_IMAGE_SKILL } from "@/lib/server/agent-skills/ecommerce-image";
 import { YANAI_BEAUTY_SKILL } from "@/lib/server/agent-skills/yanai-beauty";
 import { DEFAULT_CREATIVE_SHORTCUT_SKILLS } from "@/lib/server/agent-skills/creative-shortcuts";
@@ -210,6 +211,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
             ],
         },
     ],
+    userRoles: [structuredClone(DEFAULT_USER_ROLE)],
 };
 export const AUTH_DATA_FILE = "auth.json";
 export const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/;

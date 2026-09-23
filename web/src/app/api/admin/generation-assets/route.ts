@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readJsonBodyResult } from "@/lib/auth/request";
 import { findPublicUserIdsByKeyword, getPublicUsersByIds } from "@/lib/auth/store";
-import { cleanupExpiredLocalMediaAssets, deleteLocalMediaAssets, getLocalMediaAssetSummary, listLocalMediaAssets } from "@/lib/server/local-media-storage";
+import { cleanupExpiredLocalMediaAssets, deleteLocalMediaAssetsByIds, getLocalMediaAssetSummary, listLocalMediaAssets } from "@/lib/server/local-media-storage";
 import { hasAdminPermission } from "@/lib/admin-permissions";
 
 export const runtime = "nodejs";
@@ -53,6 +53,9 @@ export async function DELETE(request: Request) {
     if (body.expired === true) return NextResponse.json({ code: 0, data: await cleanupExpiredLocalMediaAssets(), msg: "过期临时文件已清理" });
     const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : [];
     if (!ids.length) return NextResponse.json({ code: 400, data: null, msg: "请选择要删除的媒体文件" }, { status: 400 });
-    const result = await deleteLocalMediaAssets(ids);
+    const result = await deleteLocalMediaAssetsByIds(ids);
+    if (!result.deletedFiles && !result.blocked.length) {
+        return NextResponse.json({ code: 409, data: result, msg: "没有找到可删除的媒体文件，列表未变更" }, { status: 409 });
+    }
     return NextResponse.json({ code: 0, data: result, msg: result.blocked.length ? "部分文件仍被业务记录引用，未执行删除" : "媒体文件已删除" });
 }

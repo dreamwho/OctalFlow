@@ -24,6 +24,26 @@ export type GenerationLogReferenceSnapshot = {
     durationMs?: number;
 };
 
+export type GenerationLogProtocolTrace = {
+    createdAt: string;
+    channel: string;
+    protocol: string;
+    method: string;
+    path: string;
+    model?: string;
+    statusCode?: number;
+    durationMs: number;
+    requestBytes?: number;
+    responseBytes?: number;
+    requestContentType?: string;
+    responseContentType?: string;
+    requestHeaders?: Record<string, string>;
+    responseHeaders?: Record<string, string>;
+    requestPreview?: string;
+    responsePreview?: string;
+    error?: string;
+};
+
 export type GenerationLogSlotSnapshot = {
     id: string;
     index: number;
@@ -43,6 +63,7 @@ export type GenerationLogSlotSnapshot = {
     startedAt?: number;
     error?: string;
     canRetry?: boolean;
+    requestTraces?: GenerationLogProtocolTrace[];
 };
 
 export type GenerationLogRequestSnapshot = {

@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "user";
+export type UserRole = "admin" | "user" | (string & {});
 export type UserStatus = "active" | "disabled";
 export type { AdminPermission } from "@/lib/admin-permissions";
 import type { AdminPermission } from "@/lib/admin-permissions";
@@ -119,6 +119,20 @@ export type SystemModelChannel = {
 };
 
 export type LogicalModelCapability = "text" | "image" | "video" | "audio";
+export type UserRoleModelAccess = {
+    all: boolean;
+    capabilities: LogicalModelCapability[];
+    modelIds: string[];
+    excludedModelIds: string[];
+};
+export type UserRoleDefinition = {
+    id: string;
+    name: string;
+    pointsMultiplier: number;
+    recordOnly: boolean;
+    modelAccess: UserRoleModelAccess;
+};
+export type ModelIconKey = "nanobanana" | "doubao" | "gemini" | "jimeng" | "openai" | "claude" | "deepseek" | "glm" | "grok" | "minimax" | "qwen";
 
 export type LogicalModelCapabilityProfile = {
     supportsReferenceImage?: boolean;
@@ -155,6 +169,8 @@ export type LogicalModel = {
     id: string;
     name: string;
     capability: LogicalModelCapability;
+    pickerGroup?: string;
+    icon?: ModelIconKey;
     enabled: boolean;
     pickerVisible?: boolean;
     bindings: LogicalModelBinding[];
@@ -554,6 +570,7 @@ export type AuthSettings = {
     defaultModels: SystemDefaultModels;
     agentSkills: AgentSkill[];
     canvasQuickActions: CanvasQuickActionGroup[];
+    userRoles: UserRoleDefinition[];
 };
 
 export type AuthDatabase = {

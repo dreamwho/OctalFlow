@@ -3,6 +3,7 @@ import { after, NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuthSettings, isAuthInputError } from "@/lib/auth/store";
+import { roleModelAccessAllows } from "@/lib/user-roles";
 import { mediaTaskSource } from "@/lib/media-management-contract";
 import { resolveAudioTaskOptions } from "@/lib/server/audio-task-config";
 import { createAudioTask, type AudioTask, type AudioTaskConfig, updateAudioTask } from "@/lib/server/audio-task-store";
@@ -36,9 +37,11 @@ export async function POST(request: Request) {
         if (body.config?.audioMode === "voice-clone" || body.config?.audioMode === "voice-design") {
             return NextResponse.json({ error: "音色复刻和音色设计必须先完成音色创建，再使用文转语音生成" }, { status: 422 });
         }
-        const channels = resolveLogicalModelCandidates(settings, "audio", body.config?.model || settings.defaultModels.audioModel).map((resolved) => ({ ...toSystemGenerationChannel(resolved), channelId: resolved.channelId }));
+        const resolvedChannels = resolveLogicalModelCandidates(settings, "audio", body.config?.model || settings.defaultModels.audioModel);
+        const channels = resolvedChannels.filter((model) => roleModelAccessAllows(settings.userRoles, user.role, model.logicalModelId, "audio")).map((resolved) => ({ ...toSystemGenerationChannel(resolved), channelId: resolved.channelId }));
         const prompt = String(body.prompt || "").trim();
         const supportedChannels = channels.filter((channel) => channel.apiFormat !== "gemini");
+        if (resolvedChannels.length && !channels.length) return NextResponse.json({ error: "当前用户角色无权使用该音频模型" }, { status: 403 });
         if (!supportedChannels.length || !prompt) return NextResponse.json({ error: "音频任务参数不完整或渠道不支持" }, { status: 400 });
         const configs: AudioTaskConfig[] = supportedChannels
             .map((channel) => ({ ...channel, ...resolveAudioTaskOptions(body.config, settings.generationDefaults), instructions: clean(body.config?.instructions, 2_000) }))

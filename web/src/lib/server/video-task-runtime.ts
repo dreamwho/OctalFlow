@@ -412,6 +412,8 @@ function videoProxyHeaders(task: VideoTask, cookie: string, workerUserId: string
     return {
         ...(workerUserId ? maintenanceWorkerHeaders(workerUserId) : cookie ? { cookie } : {}),
         ...systemAiBillingHeaders(generationModelId(task.config), undefined, task.config.model),
+        ...(task.config.baseUrl.startsWith("/api/ai/system/") && task.generationLogId ? { "x-dreamyo-generation-log-id": task.generationLogId } : {}),
+        ...(task.config.baseUrl.startsWith("/api/ai/system/") && task.generationSlotId ? { "x-dreamyo-generation-slot-id": task.generationSlotId } : {}),
     };
 }
 

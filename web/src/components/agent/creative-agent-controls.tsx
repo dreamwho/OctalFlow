@@ -5,11 +5,12 @@ import { Boxes, Check, FileAudio, FileVideo, ImageIcon, Lightbulb, Orbit, Sparkl
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ModelIcon } from "@/components/model-picker";
+import type { ModelIconKey } from "@/lib/auth/store-types";
 import type { AgentSkillSummary } from "@/services/api/agent-skills";
 import { cn } from "@/lib/utils";
 import { CREATIVE_RUN_MODEL_LIMIT } from "@/lib/creative-runtime-contract";
 
-export type CreativeAgentModelOption = { id: string; name: string; capability: "image" | "video" | "audio" };
+export type CreativeAgentModelOption = { id: string; name: string; capability: "image" | "video" | "audio"; iconKey?: ModelIconKey; providerHint?: string };
 export type CreativeAgentControlTheme = { panel: string; border: string; text: string; muted: string; activeBackground: string; activeText: string };
 export const creativeAgentModelCapabilities = ["image", "video", "audio"] as const;
 
@@ -281,7 +282,7 @@ export function CreativeAgentControls({
                             )}
                             onClick={() => onToggleModel(model)}
                         >
-                            <ModelIcon model={`${model.id} ${model.name}`} />
+                            <ModelIcon model={`${model.id} ${model.name}`} capability={model.capability} iconKey={model.iconKey} providerHint={model.providerHint} />
                             <span className="min-w-0 flex-1 truncate font-medium">{model.name}</span>
                             <span
                                 className={cn("grid size-4 shrink-0 place-items-center rounded border", selected ? "border-stone-900 bg-stone-900 text-white dark:border-white dark:bg-white dark:text-stone-950" : "border-stone-300 dark:border-stone-600")}

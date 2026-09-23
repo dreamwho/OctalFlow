@@ -13,7 +13,7 @@ import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-cryp
 type AdminMfaUser = {
     id: string;
     username: string;
-    role: "admin" | "user";
+    role: string;
     status: "active" | "disabled";
     passwordHash: string;
     mfaSecretCiphertext?: string;

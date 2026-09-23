@@ -171,12 +171,29 @@ describe("model routing config", () => {
                 id: "image-pro",
                 name: "商业图片 Pro",
                 capability: "image",
+                pickerGroup: "  商业图片  ",
                 enabled: true,
                 bindings: [{ id: "binding", channelId: "one", upstreamModel: "vendor/image-v2", enabled: true, priority: 1 }],
             },
         ];
 
-        expect(synchronizeLogicalModelsWithChannels(existing, [channel("one", ["vendor/image-v2"])])[0]?.name).toBe("商业图片 Pro");
+        expect(synchronizeLogicalModelsWithChannels(existing, [channel("one", ["vendor/image-v2"])])[0]).toMatchObject({ name: "商业图片 Pro", pickerGroup: "商业图片" });
+    });
+
+    it("persists administrator-selected model icons and drops unsupported icon keys", () => {
+        const channels = [channel("one", ["vendor/image-v2"])];
+        const configured: LogicalModel = {
+            id: "image-pro",
+            name: "商业图片 Pro",
+            capability: "image",
+            enabled: true,
+            icon: "doubao",
+            bindings: [{ id: "binding", channelId: "one", upstreamModel: "vendor/image-v2", enabled: true, priority: 1 }],
+        };
+        const unsupported = { ...configured, icon: "custom-url" } as unknown as LogicalModel;
+
+        expect(normalizeLogicalModelsConfig([configured], channels)[0]?.icon).toBe("doubao");
+        expect(normalizeLogicalModelsConfig([unsupported], channels)[0]?.icon).toBeUndefined();
     });
 
     it("preserves model picker visibility and administrator ordering", () => {

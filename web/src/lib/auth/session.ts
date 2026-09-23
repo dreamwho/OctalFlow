@@ -5,6 +5,8 @@ import { deleteSession, getPublicUsersByIds, getUserBySession, sessionMaxAgeSeco
 import { authorizedWorkerUserId } from "@/lib/server/maintenance-auth";
 import { getTrustedProxyHops } from "@/lib/server/trusted-proxy";
 import { parseSessionCookie } from "./store-normalizers";
+import { normalizeModelId } from "@/lib/model-capability";
+import { roleModelAccessAllows, userRoleDefinition } from "@/lib/user-roles";
 
 const SESSION_COOKIE_NAME = "dreamyo_session";
 
@@ -104,7 +106,19 @@ export function serializeCurrentUser(user: CurrentUser) {
     };
 }
 
-export function serializePublicSettings(settings: AuthSettings) {
+export function serializePublicSettings(settings: AuthSettings, user?: Pick<PublicUser, "role">) {
+    const role = user?.role || "user";
+    const rolePolicy = userRoleDefinition(settings.userRoles, role);
+    const pointFactor = role === "admin" ? 1 : rolePolicy?.recordOnly ? 0 : rolePolicy?.pointsMultiplier ?? 1;
+    const permittedModels = settings.logicalModels.filter((model) => model.enabled && roleModelAccessAllows(settings.userRoles, role, model.id, model.capability));
+    const permittedUpstreamModels = new Set(permittedModels.flatMap((model) => model.bindings.filter((binding) => binding.enabled).map((binding) => normalizeModelId(binding.upstreamModel))));
+    const visiblePricedModels = new Set(permittedModels.flatMap((model) => [model.id, ...model.bindings.filter((binding) => binding.enabled).map((binding) => binding.upstreamModel)].map(normalizeModelId)));
+    const visiblePointCosts = Object.fromEntries(Object.entries(settings.modelPointCosts).filter(([model]) => role === "admin" || rolePolicy?.modelAccess.all || visiblePricedModels.has(normalizeModelId(model))).map(([model, cost]) => [model, Number((cost * pointFactor).toFixed(4))]));
+    const modelDefaults = Object.fromEntries((["image", "video", "text", "audio"] as const).map((capability) => {
+        const configured = settings.defaultModels[`${capability}Model`];
+        const permitted = permittedModels.find((model) => model.capability === capability && (model.id === configured || model.pickerVisible !== false));
+        return [`${capability}Model`, permitted?.id || ""];
+    })) as AuthSettings["defaultModels"];
     return {
         site: {
             title: settings.site.title,
@@ -124,7 +138,7 @@ export function serializePublicSettings(settings: AuthSettings) {
         registrationEnabled: settings.registrationEnabled,
         emailRegistrationEnabled: settings.emailRegistrationEnabled,
         loginMethods: { ...settings.loginMethods },
-        modelPointCosts: { ...settings.modelPointCosts },
+        modelPointCosts: visiblePointCosts,
         generationPointMultipliers: {
             imageQuality: { ...settings.generationPointMultipliers.imageQuality },
             videoQuality: { ...settings.generationPointMultipliers.videoQuality },
@@ -141,9 +155,8 @@ export function serializePublicSettings(settings: AuthSettings) {
             audioVoice: settings.generationDefaults.audioVoice,
             audioFormat: settings.generationDefaults.audioFormat,
         },
-        defaultModels: { ...settings.defaultModels },
-        logicalModels: settings.logicalModels
-            .filter((model) => model.enabled)
+        defaultModels: modelDefaults,
+        logicalModels: permittedModels
             .map((model) => ({
                 id: model.id,
                 name: model.name,
@@ -163,6 +176,8 @@ export function serializePublicSettings(settings: AuthSettings) {
             })),
         systemChannels: settings.systemChannels
             .filter((channel) => channel.enabled)
+            .map((channel) => ({ ...channel, models: channel.models.filter((model) => permittedUpstreamModels.has(normalizeModelId(model))) }))
+            .filter((channel) => channel.models.length > 0)
             .map((channel) => ({
                 id: channel.id,
                 name: channel.name,

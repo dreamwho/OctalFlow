@@ -139,6 +139,8 @@ import {
 } from "./store-normalizers";
 import { matchesPublicUser, publicUserFromAuthenticatedRecord, summarizePublicUsers, toPublicUser } from "./store-user-projection";
 import { getAuthSettings } from "./store-settings-actions";
+import { roleModelAccessAllows, userRoleDefinition } from "@/lib/user-roles";
+import { normalizeModelId } from "@/lib/model-capability";
 
 export { authenticateUser, createEmailVerificationCode, createFirstAdmin, createUser, createUserByAdmin } from "./store-user-access";
 export { toPublicUser };
@@ -687,7 +689,12 @@ export async function consumeUserPoints(userId: string, model: string, amount = 
     const user = db?.users.find((item) => item.id === userId);
     if (db && (!user || user.status !== "active")) throw new AuthInputError("用户不可用");
     const settings = db ? db.settings : await getAuthSettings();
-    const multiplier = process.env.DREAMYO_DESKTOP_EDITION === "admin" ? 0 : resolveModelPointCost(settings.modelPointCosts, normalizedModel, settings.logicalModels);
+    const role = user?.role || (await getPublicUsersByIds([userId]))[0]?.role || "user";
+    const logicalModel = settings.logicalModels.find((item) => normalizeModelId(item.id) === normalizeModelId(normalizedModel));
+    if (!roleModelAccessAllows(settings.userRoles, role, normalizedModel, logicalModel?.capability)) throw new AuthInputError("当前用户角色无权使用该模型", 403);
+    const rolePolicy = userRoleDefinition(settings.userRoles, role);
+    const baseMultiplier = resolveModelPointCost(settings.modelPointCosts, normalizedModel, settings.logicalModels);
+    const multiplier = process.env.DREAMYO_DESKTOP_EDITION === "admin" ? 0 : rolePolicy?.recordOnly ? 0 : role === "admin" ? baseMultiplier : Number((baseMultiplier * (rolePolicy?.pointsMultiplier ?? 1)).toFixed(4));
     const units = Math.min(1000, normalizePointAmount(amount, 1));
     const cost = normalizePointAmount(units * multiplier, 0);
     const operationKey = idempotencyKey?.trim() || `points-consume:${randomUUID()}`;

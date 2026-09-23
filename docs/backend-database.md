@@ -34,6 +34,10 @@
 
 `--check` 不初始化表结构，不写业务数据。`needs_review` 任务保留原状态，不进入 Worker 自动恢复队列；其他可执行或暂停任务必须先在源系统完成或取消，再导出快照。
 
+## 用户角色与模型/积分策略
+
+`app_settings.user_roles` 保存内置“普通用户”及管理员自定义的非管理员角色。角色策略包含积分消耗倍率、只记录不扣分开关，以及按模型能力分类、逻辑模型 ID 和显式排除模型组成的白名单；默认普通用户为全部模型、1:1 扣分。`users.role` 保存角色 ID，`admin` 继续使用独立的管理员职责权限。删除角色前，服务端检查是否仍有用户使用该角色；模型列表按当前用户角色过滤，模型代理与积分记账服务再次执行权限校验。只记录模式仍保留零扣分流水并受套餐次数限制。
+
 ## 魔法代理
 
 `dreamyo_magic_proxy_settings` 是单例配置表（`id = 'default'`）。订阅地址和节点明文以加密字段保存。GeminiAIStudio、GeminiTools、GPTAPI 与 Dola API 共用同一套魔法代理绑定，绑定模式为 `magic` 或 `chained`；Dola 同时通过相同的 Provider 入口支持通用代理引用。每个 Provider 都有独立 Mihomo 分组、监听端口和链式跳板组，启用一种来源时会自动关闭另外两种来源，不把代理密码或订阅明文返回浏览器。ChatGPT 自己的 native/magic 选择仍由 `/api/admin/chatgpt-api/proxy-selection` 维护，不能与本 Provider 绑定字段混用。

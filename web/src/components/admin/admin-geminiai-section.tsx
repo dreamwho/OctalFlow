@@ -1380,7 +1380,7 @@ function GeminiAiAuthorizationModal({ open, onClose, onCompleted }: { open: bool
     return (
         <Modal title="添加 Google 授权" open={open} onCancel={close} footer={null} width={640} style={{ maxWidth: "calc(100vw - 24px)" }} styles={{ body: { maxHeight: "calc(100dvh - 180px)", overflowY: "auto" } }}>
             <div className="space-y-4 py-1">
-                <Alert type="info" showIcon message="授权在 Provider 的 Camoufox 窗口中完成" description="Camoufox 是两个参考项目使用的请求环境；不会读取当前 Chrome Cookie。首次切换需要在该窗口登录一次，后续复用其持久授权。" />
+                <Alert type="info" showIcon message="授权窗口运行在 Provider 所在设备" description="WEB 版的窗口位于服务器，不会出现在当前电脑；服务器没有图形会话时请使用账号管理中的 Cookie 导入。桌面版 Provider 在本机运行，窗口会在本机打开。" />
                 <label className="block text-sm font-medium text-zinc-800 dark:text-zinc-200">
                     账号备注
                     <Input className="mt-1.5" value={name} maxLength={80} placeholder="例如：运营主账号" onChange={(event: ChangeEvent<HTMLInputElement>) => setName(event.target.value)} />

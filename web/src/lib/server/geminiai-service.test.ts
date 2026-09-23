@@ -46,7 +46,7 @@ vi.mock("@/lib/server/geminiai-gateway-store", () => ({
     listGeminiAiApiKeys: mocks.listApiKeys,
 }));
 
-import { getGeminiAiLoginStatus, getGeminiAiOverview, listGeminiAiCatalog, listGeminiAiAccounts, runGeminiAiImageTest, runGeminiAiSearchTest, runGeminiAiTextTest, saveGeminiAiModelSelection, setGeminiAiRotation } from "./geminiai-service";
+import { getGeminiAiLoginStatus, getGeminiAiOverview, listGeminiAiCatalog, listGeminiAiAccounts, runGeminiAiImageTest, runGeminiAiSearchTest, runGeminiAiTextTest, saveGeminiAiModelSelection, setGeminiAiRotation, startGeminiAiLogin } from "./geminiai-service";
 
 const emptySettings = { systemChannels: [], logicalModels: [], defaultModels: {}, generationDefaults: { videoQuality: "standard", videoSeconds: 8 } };
 
@@ -93,6 +93,21 @@ describe("GeminiAI service", () => {
         mocks.sidecarRequest.mockResolvedValue(sidecarJson({ data: { session_id: "login-a", status: "failed", error: "DISPLAY unavailable; authorization=secret" } }));
 
         await expect(getGeminiAiLoginStatus("login-a")).resolves.toEqual({ sessionId: "login-a", status: "failed", error: "DISPLAY unavailable; authorization=[REDACTED]" });
+    });
+
+    it.each([
+        "Camoufox exited before startup. Output: Playwright driver package missing: /private/runtime",
+        'Camoufox exited before startup. Output: Error loading the Playwright driver from undefined: The "path" argument must be of type string.',
+    ])("identifies a missing packaged Playwright driver when authorization cannot open", async (detail) => {
+        mocks.sidecarRequest.mockResolvedValue(Response.json({ detail }, { status: 503 }));
+
+        await expect(startGeminiAiLogin({ headless: false })).rejects.toThrow("Camoufox 授权组件不完整（缺少 Playwright 驱动），请安装最新桌面版");
+    });
+
+    it("explains why a server without a graphical session cannot open Camoufox", async () => {
+        mocks.sidecarRequest.mockResolvedValue(Response.json({ detail: "当前 Linux 运行环境没有 DISPLAY 或 Wayland 图形会话，无法启动有头 Google 登录" }, { status: 503 }));
+
+        await expect(startGeminiAiLogin({ headless: false })).rejects.toThrow("服务器没有图形会话，无法打开有头 Camoufox 授权窗口；请使用 Cookie 导入，或在有图形环境的 Provider 中完成授权");
     });
 
     it("updates rotation through the sidecar POST contract", async () => {

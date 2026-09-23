@@ -64,9 +64,11 @@ export function AdminLocalMediaStorage() {
             const response = await fetch("/api/admin/generation-assets", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
             const payload = (await response.json().catch(() => ({}))) as { data?: { deletedFiles?: number; blocked?: Array<{ referenceCount?: number }> }; msg?: string; error?: string };
             if (!response.ok) throw new Error(payload.msg || payload.error || "媒体文件删除失败");
+            const deleted = payload.data?.deletedFiles ?? 0;
             const blocked = payload.data?.blocked?.length || 0;
-            if (blocked) message.warning(`${blocked} 个文件仍被业务记录引用，已保留；其余文件已删除`);
-            else message.success(`已删除 ${payload.data?.deletedFiles || ids.length} 个媒体文件`);
+            if (blocked) message.warning(`已删除 ${deleted} 个文件；${blocked} 个仍被业务记录引用，已保留`);
+            else if (deleted) message.success(`已删除 ${deleted} 个媒体文件`);
+            else message.warning("没有文件被删除，列表未变更");
             setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
             await load();
         } catch (error) {

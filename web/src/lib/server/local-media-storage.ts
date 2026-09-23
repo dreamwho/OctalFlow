@@ -134,6 +134,24 @@ export async function deleteLocalMediaAssets(ids: string[]) {
     return { deletedFiles, deletedBytes, blocked };
 }
 
+export async function deleteLocalMediaAssetsByIds(ids: string[]) {
+    const grouped = new Map<"generation" | "reference", string[]>();
+    for (const id of ids) {
+        const target = decodeMediaId(id);
+        if (!target) continue;
+        grouped.set(target.scope, [...(grouped.get(target.scope) || []), target.relativePath]);
+    }
+    const results = await Promise.all(Array.from(grouped, ([scope, storageKeys]) => deleteLocalMediaAssetsByStorageKeys(storageKeys, scope)));
+    return results.reduce(
+        (total, result) => ({
+            deletedFiles: total.deletedFiles + result.deletedFiles,
+            deletedBytes: total.deletedBytes + result.deletedBytes,
+            blocked: [...total.blocked, ...result.blocked],
+        }),
+        { deletedFiles: 0, deletedBytes: 0, blocked: [] as Array<{ id: string; storageKey: string; referenceCount: number }> },
+    );
+}
+
 export async function deleteUserLocalMediaAssets(userId: string, storageKeys: string[]) {
     const registrations = await getLocalMediaRegistrations(storageKeys);
     return deleteRegisteredMediaAssets(registrations.filter((item) => item.ownerUserId === userId));

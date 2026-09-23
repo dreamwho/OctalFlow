@@ -137,7 +137,7 @@ export async function queryImageTaskUpstreamStep(task: ImageTask, origin: string
             ? await queryDreaminaCliImageTask(task)
             : usesDeclarativeImageProtocol(task.config.advancedConfig?.protocol)
               ? await pollCustomImageTask(task, upstream.id, upstream.pollBaseUrl, authContext, true)
-              : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true);
+              : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true, task);
         return await handleImageProviderResult(task, { ...result, pointsCost: task.billing?.pointsCost, pointsRecordId: task.billing?.pointsRecordId }, origin, authContext);
     } catch (error) {
         if (error instanceof ImageQueryContractError) return { state: "needs_review", reason: error.message, status: "query_contract_invalid" };
@@ -167,7 +167,7 @@ export async function queryCancelledImageTaskUpstreamStep(task: ImageTask, origi
             ? await queryDreaminaCliImageTask(task)
             : usesDeclarativeImageProtocol(task.config.advancedConfig?.protocol)
               ? await pollCustomImageTask(task, upstream.id, upstream.pollBaseUrl, authContext, true)
-              : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true);
+              : await pollOpenAiImageTask(task.config, upstream.id, upstream.mediaBaseUrl, upstream.pollBaseUrl, authContext, upstream.explicitPollUrl || "", true, task);
         return result.pending ? { state: "pending" as const, status: "processing" } : { state: "terminal" as const, status: "completed" };
     } catch (error) {
         if (error instanceof ImageUpstreamTerminalError || error instanceof GenerationSubmissionSafeFailure) return { state: "terminal" as const, status: "failed" };

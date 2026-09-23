@@ -1,5 +1,9 @@
 type PublicModelCapability = "image" | "video" | "text" | "audio";
 
+export function logicalModelDisplayName(model: { id: string; name: string }) {
+    return String(model.name || "").trim() || model.id;
+}
+
 export function resolvePublicCapabilityModels(logicalModels: Array<{ id: string; capability: PublicModelCapability; pickerVisible?: boolean }>, fallback: Record<PublicModelCapability, string[]>) {
     return Object.fromEntries(
         (Object.keys(fallback) as PublicModelCapability[]).map((capability) => {

@@ -58,7 +58,7 @@ export async function runCustomImageTask(task: ImageTask, origin: string, public
             ? buildYumengImageRequest({ model: config.model, prompt: values.prompt, images, aspectRatio: values.aspect_ratio, resolution: values.resolution, size })
             : buildProviderRequest(advanced.requestTemplate, values, values);
     const url = taskUrl(config, task.kind === "edit" ? advanced.editPath || advanced.createPath : advanced.createPath, origin);
-    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task));
+    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task), task);
     headers.set("content-type", "application/json");
     const response = await imageSubmissionFetch(config, url, { method: "POST", headers, body: JSON.stringify(payload), cache: "no-store" });
     if (!response.ok) throw imageSubmissionResponseError(response.status, await readFetchError(response, "自定义图片接口调用失败"));
@@ -85,7 +85,7 @@ export async function pollCustomImageTask(task: ImageTask, taskId: string, reque
     let lastError = "";
     for (let attempt = 0; attempt < (singleStep ? 1 : imageTaskPollAttempts(config)); attempt += 1) {
         for (const url of imageTaskPollUrls(config, requestUrl, taskId)) {
-            const response = await taskFetch(config, url, { headers: taskHeaders(config, cookie), cache: "no-store" });
+            const response = await taskFetch(config, url, { headers: taskHeaders(config, cookie, undefined, task), cache: "no-store" });
             if (!response.ok) {
                 lastError = await readFetchError(response, "自定义图片任务查询失败");
                 continue;

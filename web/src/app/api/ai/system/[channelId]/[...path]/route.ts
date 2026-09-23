@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { consumeUserPoints, getAuthSettings, isAdminUserId, isAuthInputError, isQuotaExceededError, refundUserPoints, type ApiCallFormat, type GenerationPointMultipliers, type PointUsageKind } from "@/lib/auth/store";
 import { getCurrentUser } from "@/lib/auth/session";
+import { roleModelAccessAllows } from "@/lib/user-roles";
 import { DEFAULT_CHANNEL_CONNECT_ERROR } from "@/lib/server/generation-errors";
 import { UnsupportedMediaContentError } from "@/lib/server/media-content-validation";
 import { acquireMediaConcurrency, withMediaConcurrency } from "@/lib/server/media-concurrency";
@@ -33,6 +34,8 @@ import { describeDolaFailure, isDolaQuotaExhaustedError, isDolaRateLimitError } 
 import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
 import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, openDolaRequestLog, markDolaRequestLogRunning, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
 import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
+import { appendGenerationLogProtocolTrace } from "@/lib/server/generation-log-task-service";
+import type { GenerationLogProtocolTrace } from "@/lib/generation-log-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -147,6 +150,8 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         },
     });
     if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+    const role = currentUser?.role || ((await isAdminUserId(userId)) ? "admin" : "user");
+    if (access.operation === "create" && !roleModelAccessAllows(settings.userRoles, role, access.logicalModelId || upstreamModel, access.capability)) return NextResponse.json({ error: "当前用户角色无权使用该模型" }, { status: 403 });
     if (access.operation !== "create") {
         const owned = await userOwnsGenerationUpstreamTask({ userId, capability: access.capability, channelId: channel.id, upstreamModel, upstreamTaskId: access.upstreamTaskId });
         if (!owned) return NextResponse.json({ error: "任务不存在或无权访问" }, { status: 404 });
@@ -207,6 +212,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     let dolaHold = false;
     let dolaProxyEgress: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string; address?: string } = { mode: "direct" };
     const upstreamStartedAt = Date.now();
+    let protocolRequestStartedAt = Date.now();
     const dolaLifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(upstreamStartedAt).toISOString(), phase: "queued", message: "接收到 Canvas Dola 请求", durationMs: 0, detail: `${request.method} ${geminiAiPath}, 模型: ${upstreamModel || "未声明"}` }];
     const dolaRequestParameters = isDolaChannel ? readDolaRequestParameters(requestBody.body) : {};
     const dolaPathOnly = geminiAiPath.split("?", 1)[0];
@@ -244,6 +250,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
 
     let upstream: Response;
     let dolaRuntimeBody = "";
+    let protocolRuntimeBody: BodyInit | undefined;
     try {
         const upstreamBody = globalAdaptation?.body || requestBody.body;
         const runtimeBody = isChatGptApiChannel
@@ -251,6 +258,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             : isDolaChannel
               ? await prepareDolaRuntimeBody(contentType, upstreamBody, ["/v1/videos", "/v1/images"].includes(geminiAiPath.split("?", 1)[0]))
               : upstreamBody;
+        protocolRuntimeBody = runtimeBody;
         if (isDolaChannel && typeof runtimeBody === "string") dolaRuntimeBody = runtimeBody;
         if (isDolaChannel) dolaAccountId = readDolaAccountId(runtimeBody);
         if (isDolaChannel) dolaHold = readDolaHold(runtimeBody);
@@ -261,6 +269,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             await safeMarkDolaLog(dolaLogId, { phase: "upstream", message: "向 Dola Camoufox Provider 发起请求", detail: "Cookie 和参考图已由服务端注入并脱敏" });
         }
         if (isChatGptApiChannel) await syncChatGptMagicProxy();
+        protocolRequestStartedAt = Date.now();
         upstream = isGeminiAiChannel
             ? await geminiAiRuntimeRequest(geminiAiPath, {
                   method: request.method,
@@ -305,6 +314,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         await refundConsumedPoints();
         if (isDolaChannel && dolaAccountId) await markDolaAccountUsed(dolaAccountId, false, true).catch(() => undefined);
         const errorMessage = error instanceof Error ? error.message : "Dola Provider 请求失败";
+        await safeRecordSystemProtocolTrace({ request, userId, channelName: channel.name, protocol: modelConfig?.protocol || channel.advancedConfig?.protocol || (globalChannel ? "globalaiopc" : apiFormat), model: upstreamModel, path: geminiAiPath, body: protocolRuntimeBody ?? requestBody.body, requestContentType: contentType, durationMs: Date.now() - protocolRequestStartedAt, error: errorMessage });
         if (isDolaChannel) {
             dolaLifecycle.push({ time: new Date().toISOString(), phase: "failed", message: errorMessage, durationMs: Date.now() - upstreamStartedAt });
             await safeSettleDolaLog(dolaLogId, { statusCode: 502, durationMs: Date.now() - upstreamStartedAt, phase: "failed", error: errorMessage, accountId: dolaAccountId || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
@@ -318,6 +328,8 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         if (!providerManaged) console.error("System API proxy request failed", error instanceof Error ? error.message : error);
         return NextResponse.json({ error: DEFAULT_CHANNEL_CONNECT_ERROR }, { status: 502, headers: responseHeaders(new Headers(), null, refundedPointsRemaining) });
     }
+
+    await safeRecordSystemProtocolTrace({ request, userId, channelName: channel.name, protocol: modelConfig?.protocol || channel.advancedConfig?.protocol || (globalChannel ? "globalaiopc" : apiFormat), model: upstreamModel, path: geminiAiPath, body: protocolRuntimeBody, requestContentType: contentType, response: upstream, durationMs: Date.now() - protocolRequestStartedAt });
 
     if (!upstream.ok && pointsResult) {
         await refundConsumedPoints();
@@ -359,7 +371,9 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: rotationMessage, durationMs: Date.now() - upstreamStartedAt, detail: `原账号 ${previousDolaAccountId} 已${quotaExhausted ? "标记为额度已用完" : "进入临时冷却"}；新账号: ${dolaAccountId}` });
             await safeMarkDolaLog(dolaLogId, { phase: "upstream", message: rotationMessage, detail: `新账号: ${dolaAccountId}` });
             try {
+                const rotationStartedAt = Date.now();
                 upstream = await dolaRuntimeRequest(geminiAiPath, { method: request.method, headers, body: dolaRuntimeBody, signal: request.signal });
+                await safeRecordSystemProtocolTrace({ request, userId, channelName: channel.name, protocol: modelConfig?.protocol || channel.advancedConfig?.protocol || "dola", model: upstreamModel, path: geminiAiPath, body: dolaRuntimeBody, requestContentType: contentType, response: upstream, durationMs: Date.now() - rotationStartedAt });
             } catch {
                 break;
             }
@@ -1084,6 +1098,150 @@ function bodyByteLength(body: BodyInit | undefined) {
     if (body instanceof ArrayBuffer) return body.byteLength;
     return undefined;
 }
+async function safeRecordSystemProtocolTrace(input: {
+    request: Request;
+    userId: string;
+    channelName: string;
+    protocol: string;
+    model: string;
+    path: string;
+    body?: BodyInit;
+    requestContentType: string | null;
+    response?: Response;
+    durationMs: number;
+    error?: string;
+}) {
+    const logId = input.request.headers.get("x-dreamyo-generation-log-id")?.trim() || "";
+    const slotId = input.request.headers.get("x-dreamyo-generation-slot-id")?.trim() || "";
+    if (!logId || !slotId) return;
+    try {
+        const responseContentType = input.response?.headers.get("content-type") || "";
+        const trace: GenerationLogProtocolTrace = {
+            createdAt: new Date().toISOString(),
+            channel: input.channelName,
+            protocol: input.protocol,
+            method: input.request.method,
+            path: input.path.split("?", 1)[0],
+            ...(input.model ? { model: input.model } : {}),
+            ...(input.response ? { statusCode: input.response.status } : input.error ? { statusCode: 502 } : {}),
+            durationMs: input.durationMs,
+            ...(bodyByteLength(input.body) !== undefined ? { requestBytes: bodyByteLength(input.body) } : {}),
+            ...(Number(input.response?.headers.get("content-length")) > 0 ? { responseBytes: Number(input.response?.headers.get("content-length")) } : {}),
+            ...(input.requestContentType ? { requestContentType: input.requestContentType.split(";", 1)[0].trim() } : {}),
+            ...(responseContentType ? { responseContentType: responseContentType.split(";", 1)[0].trim() } : {}),
+            requestHeaders: safeProtocolRequestHeaders(input.request),
+            responseHeaders: input.response ? safeProtocolResponseHeaders(input.response) : undefined,
+            requestPreview: summarizeProtocolRequest(input.body, input.requestContentType),
+            responsePreview: input.response ? await summarizeProtocolResponse(input.response) : undefined,
+            ...(input.error ? { error: redactProtocolText(input.error) } : {}),
+        };
+        await appendGenerationLogProtocolTrace({ userId: input.userId, logId, slotId, trace });
+    } catch (error) {
+        console.warn("Unable to attach built-in protocol diagnostics to generation log", error instanceof Error ? error.message : "unknown error");
+    }
+}
+
+function safeProtocolRequestHeaders(request: Request) {
+    return Object.fromEntries(["accept", "content-type", "idempotency-key", "x-client-request-id"].flatMap((name) => {
+        const value = request.headers.get(name);
+        return value ? [[name, value.slice(0, 240)]] : [];
+    }));
+}
+
+function safeProtocolResponseHeaders(response: Response) {
+    return Object.fromEntries(["content-type", "retry-after", "x-request-id", "request-id", "x-goog-request-id", "x-openai-request-id"].flatMap((name) => {
+        const value = response.headers.get(name);
+        return value ? [[name, value.slice(0, 240)]] : [];
+    }));
+}
+
+function summarizeProtocolRequest(body: BodyInit | undefined, contentType: string | null) {
+    if (!body) return undefined;
+    if (/multipart\/form-data|application\/octet-stream|image\/|video\/|audio\//i.test(contentType || "")) return "媒体或二进制请求体已省略";
+    if (body instanceof FormData) return "multipart/form-data（媒体内容已省略）";
+    const text = typeof body === "string" ? body : body instanceof ArrayBuffer ? new TextDecoder().decode(body) : "";
+    if (!text) return "二进制请求体已省略";
+    try {
+        return compactProtocolPreview(JSON.stringify(redactProtocolValue(JSON.parse(text))));
+    } catch {
+        return contentType?.toLowerCase().includes("json") ? "请求体无法解析为 JSON" : compactProtocolPreview(redactProtocolText(text));
+    }
+}
+
+async function summarizeProtocolResponse(response: Response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (/event-stream|image\/|video\/|audio\/|octet-stream/i.test(contentType)) return "流式或媒体响应体已省略";
+    if (!/(?:json|text\/)/i.test(contentType)) return undefined;
+    const text = await readBoundedProtocolResponse(response);
+    if (!text) return undefined;
+    try {
+        return compactProtocolPreview(JSON.stringify(redactProtocolValue(JSON.parse(text))));
+    } catch {
+        return compactProtocolPreview(redactProtocolText(text));
+    }
+}
+
+async function readBoundedProtocolResponse(response: Response) {
+    const reader = response.clone().body?.getReader();
+    if (!reader) return "";
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let truncated = false;
+    try {
+        while (total < 5000) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const remaining = 5000 - total;
+            chunks.push(value.subarray(0, remaining));
+            total += Math.min(value.byteLength, remaining);
+            if (value.byteLength > remaining) {
+                truncated = true;
+                await reader.cancel();
+                break;
+            }
+        }
+    } finally {
+        reader.releaseLock();
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return `${new TextDecoder().decode(bytes)}${truncated ? "…（已截断）" : ""}`;
+}
+
+function redactProtocolValue(value: unknown, key = "", depth = 0): unknown {
+    if (/authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|password|secret|credential|signature|proxyurl/i.test(key)) return "[已脱敏]";
+    if (typeof value === "string") {
+        if (/^(?:inline[_-]?data|b64[_-]?json|base64)$/i.test(key) || (/^(?:image|audio|video|file|data)$/i.test(key) && !/^https?:\/\//i.test(value))) return "[媒体内容已省略]";
+        if (/^data:/i.test(value) || value.length > 1600) return "[媒体或长内容已省略]";
+        return redactProtocolText(value);
+    }
+    if (Array.isArray(value)) return value.map((item) => redactProtocolValue(item, key, depth + 1));
+    if (value && typeof value === "object") return depth < 12 ? Object.fromEntries(Object.entries(value).map(([childKey, item]) => [childKey, redactProtocolValue(item, childKey, depth + 1)])) : "[嵌套内容已省略]";
+    return value;
+}
+
+function redactProtocolText(value: string) {
+    return value
+        .replace(/\bBearer\s+[^\s"']+/gi, "Bearer [已脱敏]")
+        .replace(/(api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|password|secret|credential|signature)\s*[:=]\s*["']?[^\s,"'}]+/gi, "$1=[已脱敏]")
+        .replace(/https?:\/\/[^\s"'<>]+/gi, (raw) => {
+            try {
+                const url = new URL(raw);
+                return `${url.origin}${url.pathname}`;
+            } catch {
+                return "[URL 已脱敏]";
+            }
+        });
+}
+
+function compactProtocolPreview(value: string) {
+    return value.length > 5000 ? `${value.slice(0, 5000)}…（已截断）` : value;
+}
+
 function summarizeDolaSystemRequest(body: BodyInit | undefined, contentType: string | null) {
     if (typeof body !== "string" && !(body instanceof ArrayBuffer)) return "";
     try {

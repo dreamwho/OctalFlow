@@ -1,6 +1,7 @@
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
 import { resolveGlobalAiOpcPreset } from "@/lib/globalaiopc-catalog";
 import { inferModelCapability, isCreativeGenerationModel, normalizeModelId } from "@/lib/model-capability";
+import { normalizeModelIconKey } from "@/lib/model-icons";
 import { channelConnectionReady, protocolCatalogCapability, resolveChannelModelConfig } from "@/lib/channel-protocol-registry";
 
 const CAPABILITY_DEFAULT_KEYS = {
@@ -188,11 +189,15 @@ function sanitizeLogicalModels(models: LogicalModel[], channels: SystemModelChan
         const first = bindings[0];
         const channel = channels.find((item) => item.id === first.channelId);
         const detected = channel ? resolveChannelModelCapability(channel, first.upstreamModel) : null;
+        const icon = normalizeModelIconKey(model.icon);
+        const pickerGroup = text(model.pickerGroup, 80);
         return [
             {
                 id,
                 name: text(model.name, 120) || id,
                 capability: detected?.authoritative ? detected.capability : normalizeCapability(model.capability),
+                ...(pickerGroup ? { pickerGroup } : {}),
+                ...(icon ? { icon } : {}),
                 enabled: model.enabled !== false,
                 ...(model.pickerVisible === false ? { pickerVisible: false } : {}),
                 bindings,

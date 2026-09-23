@@ -201,6 +201,7 @@ class SettingsRepository {
         if (input.defaultModels !== undefined) add("default_models", jsonParam(input.defaultModels));
         if (input.agentSkills !== undefined) add("agent_skills", jsonParam(input.agentSkills));
         if (input.canvasQuickActions !== undefined) add("canvas_quick_actions", jsonParam(input.canvasQuickActions));
+        if (input.userRoles !== undefined) add("user_roles", jsonParam(input.userRoles));
         if (input.freeDailyPoints !== undefined) add("free_daily_points", input.freeDailyPoints);
         if (!assignments.length) throw new Error("Settings update requires at least one field");
         const row = await this.db.query(`UPDATE app_settings SET ${assignments.join(", ")} WHERE id = 'default' RETURNING *`, values);
@@ -305,6 +306,7 @@ function mapSettings(row: Record<string, unknown>): AppSettingsRecord {
         defaultModels: jsonValue(row.default_models),
         agentSkills: jsonValue(row.agent_skills),
         canvasQuickActions: jsonValue(row.canvas_quick_actions),
+        userRoles: jsonValue(row.user_roles),
         createdAt: isoValue(row.created_at),
         updatedAt: isoValue(row.updated_at),
     };

@@ -239,19 +239,24 @@ function absoluteApiBaseUrl(baseUrl: string, origin: string) {
 
 export function isInternalSystemProxyBase(value: string) {
     try {
-        return /^\/api\/ai\/system\/[^/]+$/i.test(new URL(value).pathname);
+        const pathname = value.startsWith("/") ? value.split(/[?#]/, 1)[0] : new URL(value).pathname;
+        return /^\/api\/ai\/system\/[^/]+$/i.test(pathname);
     } catch {
         return false;
     }
 }
 
-export function taskHeaders(config: ImageTaskConfig, cookie: string, pointsIdempotencyKey?: string) {
+export function taskHeaders(config: ImageTaskConfig, cookie: string, pointsIdempotencyKey?: string, task?: Pick<ImageTask, "generationLogId" | "generationSlotId">) {
     const headers = new Headers();
     const internal = config.baseUrl.startsWith("/");
     const workerHeaders = maintenanceWorkerContextHeaders(cookie);
     if (internal && workerHeaders) Object.entries(workerHeaders).forEach(([key, value]) => headers.set(key, value));
     else if (internal && cookie) headers.set("cookie", cookie);
     if (internal) Object.entries(systemAiBillingHeaders(generationModelId(config), pointsIdempotencyKey, config.model)).forEach(([key, value]) => headers.set(key, value));
+    if (internal && isInternalSystemProxyBase(config.baseUrl)) {
+        if (task?.generationLogId) headers.set("x-dreamyo-generation-log-id", task.generationLogId);
+        if (task?.generationSlotId) headers.set("x-dreamyo-generation-slot-id", task.generationSlotId);
+    }
     if (pointsIdempotencyKey?.trim()) {
         headers.set("Idempotency-Key", pointsIdempotencyKey.trim());
         headers.set("X-Client-Request-Id", pointsIdempotencyKey.trim());
@@ -301,8 +306,8 @@ export function imageTaskPollAttempts(config: ImageTaskConfig) {
 export class ImageUpstreamTerminalError extends Error {}
 export class ImageQueryContractError extends Error {}
 
-export function geminiHeaders(config: ImageTaskConfig, cookie: string, pointsIdempotencyKey?: string) {
-    const headers = taskHeaders(config, cookie, pointsIdempotencyKey);
+export function geminiHeaders(config: ImageTaskConfig, cookie: string, pointsIdempotencyKey?: string, task?: Pick<ImageTask, "generationLogId" | "generationSlotId">) {
+    const headers = taskHeaders(config, cookie, pointsIdempotencyKey, task);
     headers.set("content-type", "application/json");
     return headers;
 }
@@ -321,7 +326,7 @@ export function withSystemPrompt(config: ImageTaskConfig, prompt: string) {
     return systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 }
 
-export async function parseImagePayloadOrPoll(config: ImageTaskConfig, payload: ImageApiResponse, mediaBaseUrl: string, cookie: string, pollBaseUrl = mediaBaseUrl, singleStep = false): Promise<ImageTaskResult> {
+export async function parseImagePayloadOrPoll(config: ImageTaskConfig, payload: ImageApiResponse, mediaBaseUrl: string, cookie: string, pollBaseUrl = mediaBaseUrl, singleStep = false, task?: Pick<ImageTask, "generationLogId" | "generationSlotId">): Promise<ImageTaskResult> {
     const payloadError = readImagePayloadError(payload);
     if (payloadError) throw new GenerationSubmissionSafeFailure(payloadError);
     const images = findImageResults(payload, mediaBaseUrl, config);
@@ -335,16 +340,16 @@ export async function parseImagePayloadOrPoll(config: ImageTaskConfig, payload: 
         return { dataUrl: "", needsReview: { upstream, reason: "OpenAI 图片接口未返回图片，且渠道没有声明异步查询路径" } };
     }
     if (singleStep) return { dataUrl: "", pending: upstream };
-    return pollOpenAiImageTask(config, taskId, mediaBaseUrl, pollBaseUrl, cookie, explicitPollUrl);
+    return pollOpenAiImageTask(config, taskId, mediaBaseUrl, pollBaseUrl, cookie, explicitPollUrl, false, task);
 }
 
-export async function pollOpenAiImageTask(config: ImageTaskConfig, taskId: string, mediaBaseUrl: string, pollBaseUrl: string, cookie: string, explicitPollUrl = "", singleStep = false): Promise<ImageTaskResult> {
+export async function pollOpenAiImageTask(config: ImageTaskConfig, taskId: string, mediaBaseUrl: string, pollBaseUrl: string, cookie: string, explicitPollUrl = "", singleStep = false, task?: Pick<ImageTask, "generationLogId" | "generationSlotId">): Promise<ImageTaskResult> {
     const pollUrls = imageTaskPollUrls(config, pollBaseUrl, taskId, explicitPollUrl);
     if (!pollUrls.length) throw new ImageQueryContractError("OpenAI 图片任务缺少明确的异步查询路径");
     let lastError = "";
     for (let attempt = 0; attempt < (singleStep ? 1 : imageTaskPollAttempts(config)); attempt += 1) {
         for (const pollUrl of pollUrls) {
-            const response = await taskFetch(config, pollUrl, { method: "GET", headers: taskHeaders(config, cookie), cache: "no-store", signal: AbortSignal.timeout(Math.min(imageTaskRequestTimeoutMs(config), 60_000)) });
+            const response = await taskFetch(config, pollUrl, { method: "GET", headers: taskHeaders(config, cookie, undefined, task), cache: "no-store", signal: AbortSignal.timeout(Math.min(imageTaskRequestTimeoutMs(config), 60_000)) });
             if (!response.ok) {
                 const message = await readFetchError(response, "图片任务查询失败");
                 lastError = message;

@@ -245,6 +245,7 @@ export async function createUserByAdmin(input: {
             const actor = await repos.users.getById(input.actorId, true);
             assertCanCreateManagedUser(actor, input);
             const settings = await readPostgresAuthSettings(client);
+            assertConfiguredRole(settings.userRoles, input.role || "user");
             assertNoIdentityConflict(await repos.users.findIdentityConflict({ username, email: email || undefined }), username, email);
             const plan = resolvePlanById(settings.entitlements, input.planId);
             const pointsBalance = normalizePoints(input.pointsBalance, resolveInitialUserPoints({ settings }, plan));
@@ -256,7 +257,7 @@ export async function createUserByAdmin(input: {
                 email: email || undefined,
                 displayName,
                 bio: "",
-                role: input.role === "admin" ? "admin" : "user",
+                role: input.role || "user",
                 adminPermissions: input.role === "admin" ? normalizeAdminPermissions(input.adminPermissions) : [],
                 status: "active",
                 planId: plan.id,
@@ -285,6 +286,7 @@ export async function createUserByAdmin(input: {
     return mutateAuthDb(async (db) => {
         const actor = db.users.find((user) => user.id === input.actorId);
         assertCanCreateManagedUser(actor, input);
+        assertConfiguredRole(db.settings.userRoles, input.role || "user");
         if (db.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) throw new AuthInputError("用户名已存在");
         if (email && db.users.some((user) => user.email?.toLowerCase() === email.toLowerCase())) throw new AuthInputError("邮箱已被注册");
 
@@ -299,7 +301,7 @@ export async function createUserByAdmin(input: {
             email: email || undefined,
             displayName,
             bio: "",
-            role: input.role === "admin" ? "admin" : "user",
+            role: input.role || "user",
             adminPermissions: input.role === "admin" ? normalizeAdminPermissions(input.adminPermissions) : [],
             status: "active",
             planId: plan.id,
@@ -437,6 +439,10 @@ function assertNoIdentityConflict(conflict: StoredUser | null, username: string,
     if (!conflict) return;
     if (conflict.username.toLowerCase() === username.toLowerCase()) throw new AuthInputError("用户名已存在");
     if (email && conflict.email?.toLowerCase() === email.toLowerCase()) throw new AuthInputError("邮箱已被注册");
+}
+
+function assertConfiguredRole(roles: AuthDatabase["settings"]["userRoles"], role: UserRole) {
+    if (role !== "admin" && !roles.some((item) => item.id === role)) throw new AuthInputError("所选用户角色不存在，请刷新后重试");
 }
 
 function assertCanCreateManagedUser(actor: StoredUser | null | undefined, input: { role?: UserRole; adminPermissions?: AdminPermission[]; pointsBalance?: number; planId?: string }) {

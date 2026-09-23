@@ -128,7 +128,7 @@ export async function runGeminiImageTask(task: ImageTask, origin: string, cookie
     task.references.forEach((reference) => parts.push(toGeminiImagePart(referenceRequestUrl(reference, origin), reference.type)));
     const response = await imageSubmissionFetch(config, `${geminiApiUrl(config, "generateContent", origin)}`, {
         method: "POST",
-        headers: geminiHeaders(config, cookie, imagePointsIdempotencyKey(task)),
+        headers: geminiHeaders(config, cookie, imagePointsIdempotencyKey(task), task),
         body: JSON.stringify({
             contents: [{ role: "user", parts }],
             generationConfig: { responseModalities: ["TEXT", "IMAGE"] },

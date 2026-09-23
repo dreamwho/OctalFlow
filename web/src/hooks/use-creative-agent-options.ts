@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CreativeAgentModelOption } from "@/components/agent/creative-agent-controls";
 import type { AgentSkillWorkspace } from "@/lib/auth/store-types";
 import { listAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
-import { modelOptionLabel, selectableModelsByCapability, type AiConfig, useConfigStore } from "@/stores/use-config-store";
+import { modelOptionLabel, modelOptionName, resolveModelChannel, selectableModelsByCapability, type AiConfig, useConfigStore } from "@/stores/use-config-store";
 
 export function useCreativeAgentModels(capabilities: CreativeAgentModelOption["capability"][] = ["image", "video", "audio"]) {
     const config = useConfigStore((state) => state.config);
@@ -14,7 +14,12 @@ export function useCreativeAgentModels(capabilities: CreativeAgentModelOption["c
 }
 
 export function creativeAgentModelsFromConfig(config: AiConfig, capabilities: CreativeAgentModelOption["capability"][] = ["image", "video", "audio"]) {
-    return Array.from(new Set(capabilities)).flatMap((capability) => selectableModelsByCapability(config, capability).map((id) => ({ id, name: modelOptionLabel(config, id), capability })));
+    return Array.from(new Set(capabilities)).flatMap((capability) => selectableModelsByCapability(config, capability).map((id) => {
+        const modelName = modelOptionName(id);
+        const channel = resolveModelChannel(config, id);
+        const logical = config.logicalModels.find((item) => item.id.toLowerCase() === modelName.toLowerCase() || item.bindings.some((binding) => binding.channelId === channel.id && binding.upstreamModel.toLowerCase() === modelName.toLowerCase()));
+        return { id, name: modelOptionLabel(config, id), capability, iconKey: logical?.icon, providerHint: channel.name };
+    }));
 }
 
 export function useCreativeAgentOptions(workspace: AgentSkillWorkspace, capabilities: CreativeAgentModelOption["capability"][] = ["image", "video", "audio"]) {

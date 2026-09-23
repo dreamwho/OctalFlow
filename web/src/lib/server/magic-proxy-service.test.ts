@@ -188,6 +188,23 @@ describe("magic proxy service", () => {
         await expect(importMagicProxySubscription({})).rejects.toMatchObject({ status: 409, message: expect.stringContaining("本地文件") });
     });
 
+    it("recovers unreadable saved settings through an explicit YAML re-import", async () => {
+        mocks.files.set("magic-proxy.json", {
+            subscriptionUrlCiphertext: "unreadable-url-ciphertext",
+            nodesCiphertext: "unreadable-nodes-ciphertext",
+            bindings: { geminiai: { enabled: true, node: "Tokyo-01" } },
+            updatedAt: "2026-09-22T00:00:00.000Z",
+        });
+
+        await expect(importMagicProxySubscription({ content: SUBSCRIPTION_YAML })).resolves.toMatchObject({
+            nodes: [{ name: "Tokyo-01", type: "ss" }],
+        });
+
+        const saved = mocks.files.get("magic-proxy.json") as { bindings: { geminiai: { enabled: boolean; node?: string } } };
+        expect(saved.bindings.geminiai).toEqual({ enabled: true, node: "Tokyo-01" });
+        expect((await getMagicProxyOverview()).configured).toBe(true);
+    });
+
     it("keeps legacy providers usable without ChatGPTAPI listener settings and rejects ChatGPTAPI enablement clearly", async () => {
         expect(controllerResponse(`http://mihomo-controller.test:9090/proxies/${encodeURIComponent(CHATGPT_API_GROUP)}`, { method: "PUT" }).status).toBe(404);
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });

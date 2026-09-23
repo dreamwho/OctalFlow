@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
 import { consumeUserPoints, getAuthSettings, isAuthInputError, refundUserPoints } from "@/lib/auth/store";
+import { roleModelAccessAllows } from "@/lib/user-roles";
 import { generationModelId, toSystemGenerationChannel } from "@/lib/server/generation-channel";
 import { finishGenerationAttempt, startGenerationAttempt, type GenerationAttempt } from "@/lib/server/generation-attempt";
 import { fetchInternalApi, resolveInternalOrigin } from "@/lib/server/internal-origin";
@@ -70,8 +71,10 @@ export async function POST(request: Request) {
     const settings = await getAuthSettings();
     const response = await withGenerationConcurrencyLimit(user.id, "video", 30 * 60_000, effectiveGenerationConcurrencyLimit(user.role, settings.generationConcurrency.video), async () => {
         const requestedModel = typeof body.config?.model === "string" && body.config.model.trim() ? body.config.model : settings.defaultModels.videoModel;
-        const channels = resolveLogicalModelCandidates(settings, "video", requestedModel).map(toSystemGenerationChannel);
+        const resolvedChannels = resolveLogicalModelCandidates(settings, "video", requestedModel);
+        const channels = resolvedChannels.filter((model) => roleModelAccessAllows(settings.userRoles, user.role, model.logicalModelId, "video")).map(toSystemGenerationChannel);
         const prompt = String(body.prompt || "").trim();
+        if (resolvedChannels.length && !channels.length) return NextResponse.json({ error: "当前用户角色无权使用该视频模型" }, { status: 403 });
         if (!channels.length || !prompt) return NextResponse.json({ error: "视频任务参数不完整或渠道不支持" }, { status: 400 });
         const publicOrigin = requestPublicOrigin(request);
         let references: VideoGenerationReference[];
@@ -207,6 +210,8 @@ export async function POST(request: Request) {
                     user.role === "admin",
                     localTask.id,
                     started.attempt.attemptNo,
+                    localTask.generationLogId,
+                    localTask.generationSlotId,
                 );
                 await updateVideoTask(localTask.id, { config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts });
                 const task = { ...localTask, config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts };
@@ -267,6 +272,8 @@ export async function createUpstream(
     isAdmin = false,
     taskId = "",
     attemptNo?: number,
+    generationLogId = "",
+    generationSlotId = "",
 ) {
     let lastError = "";
     const regularReferences = regularVideoReferences(references);
@@ -284,7 +291,7 @@ export async function createUpstream(
         return createDreaminaCliVideo({ userId, origin, cookie, channel, prompt, raw, references, multipliers, billingRequestId, isAdmin, taskId, attemptNo });
     }
     if (isGeminiVideoChannel(channel)) {
-        return createGeminiVideoUpstream({ userId, origin, cookie, channel, prompt, raw, references, generateAudio, multipliers, billingRequestId });
+        return createGeminiVideoUpstream({ userId, origin, cookie, channel, prompt, raw, references, generateAudio, multipliers, billingRequestId, generationLogId, generationSlotId });
     }
     const values = {
         model: channel.model,
@@ -435,6 +442,8 @@ export async function createUpstream(
                 "Idempotency-Key": billingRequestId,
                 "X-Client-Request-Id": billingRequestId,
                 ...systemAiBillingHeaders(generationModelId(channel), `video-request:${billingRequestId}`, channel.model),
+                ...(generationLogId ? { "x-dreamyo-generation-log-id": generationLogId } : {}),
+                ...(generationSlotId ? { "x-dreamyo-generation-slot-id": generationSlotId } : {}),
             },
             body: requestBody,
             signal: AbortSignal.timeout(resolveModelRequestTimeoutMs(channel, "video")),
@@ -585,6 +594,8 @@ async function createGeminiVideoUpstream(input: {
     generateAudio: boolean;
     multipliers: Awaited<ReturnType<typeof getAuthSettings>>["generationPointMultipliers"];
     billingRequestId: string;
+    generationLogId: string;
+    generationSlotId: string;
 }) {
     const payload = await buildGeminiVideoRequest({
         prompt: input.prompt,
@@ -604,6 +615,8 @@ async function createGeminiVideoUpstream(input: {
             "Idempotency-Key": input.billingRequestId,
             "X-Client-Request-Id": input.billingRequestId,
             ...systemAiBillingHeaders(generationModelId(input.channel), `video-request:${input.billingRequestId}`, input.channel.model),
+            ...(input.generationLogId ? { "x-dreamyo-generation-log-id": input.generationLogId } : {}),
+            ...(input.generationSlotId ? { "x-dreamyo-generation-slot-id": input.generationSlotId } : {}),
         },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(resolveModelRequestTimeoutMs(input.channel, "video")),

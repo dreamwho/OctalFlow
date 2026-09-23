@@ -5,8 +5,10 @@ import { Check, ChevronDown, Clock3, Cpu, Search, Timer } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { formatDurationMinSec } from "@/lib/duration-format";
+import type { LogicalModelCapability, ModelIconKey } from "@/lib/auth/store-types";
+import { resolveModelIconPath } from "@/lib/model-icons";
 import { cn } from "@/lib/utils";
-import { modelOptionLabel, modelOptionName, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { modelOptionLabel, modelOptionName, resolveModelChannel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 
 type ModelPickerProps = {
     config: AiConfig;
@@ -26,7 +28,12 @@ export type ModelOption = {
     label: string;
     provider: string;
     modelName: string;
+    capability?: LogicalModelCapability;
+    iconKey?: ModelIconKey;
+    providerHint?: string;
 };
+
+type ModelIconContext = Pick<ModelOption, "capability" | "iconKey" | "providerHint">;
 
 const RECENT_MODEL_LIMIT = 4;
 /* 搜索框 + 列表内边距等面板固定占用高度 */
@@ -65,9 +72,10 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
                 id: model,
                 label: labelForModel(model),
                 modelName: modelOptionName(model),
-                provider: modelProviderLabel(model),
+                provider: modelProviderLabel(model, config),
+                ...modelIconContext(config, model),
             })),
-        [labelForModel, options],
+        [config, labelForModel, options],
     );
     const recentOptions = useMemo(() => {
         const optionById = new Map(modelOptions.map((option) => [option.id, option]));
@@ -209,7 +217,7 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
                 aria-expanded={open}
                 aria-disabled={!hasConfiguredOptions}
             >
-                <ModelIcon model={current} />
+                <ModelIcon model={current} config={config} />
                 <span className="canvas-model-picker-text min-w-0 flex-1 truncate text-left">{current ? labelForModel(current) : placeholder}</span>
                 <ChevronDown className={cn("canvas-select-chevron size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden="true" />
             </button>
@@ -243,7 +251,7 @@ function ModelOptionGroup({ title, icon, options, current, capability, durationS
                             onClick={() => onSelect(option.id)}
                         >
                             <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg bg-muted/65", selected && "bg-primary/15")}>
-                                <ModelIcon model={option.id} />
+                                <ModelIcon model={option.id} capability={option.capability} iconKey={option.iconKey} providerHint={option.providerHint} />
                             </span>
                             <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium">{option.label}</span>
@@ -287,7 +295,10 @@ export function groupModelOptions(options: readonly ModelOption[]) {
     return grouped;
 }
 
-export function modelProviderLabel(model: string) {
+export function modelProviderLabel(model: string, config?: AiConfig) {
+    const configuredGroup = config ? findLogicalModel(config, model)?.pickerGroup?.trim() : undefined;
+    if (configuredGroup) return configuredGroup;
+
     const name = modelOptionName(model).toLowerCase();
     if (name.includes("gemini") || name.includes("google") || name.includes("imagen") || name.includes("veo")) return "Google Gemini";
     if (name.includes("seedream") || name.includes("seedance") || name.includes("dreamina") || name.includes("jimeng") || name.includes("即梦") || name.includes("doubao") || name.includes("bytedance")) return "ByteDance Seedream";
@@ -305,22 +316,27 @@ function modelCapabilityLabel(capability: ModelCapability) {
     return capability === "image" ? "图片" : capability === "video" ? "视频" : capability === "audio" ? "音频" : "文本";
 }
 
-export function ModelIcon({ model }: { model: string }) {
-    const icon = resolveModelIcon(modelOptionName(model));
-    const colorIcon = icon === "/icons/jimeng.svg" || icon === "/icons/minimax.svg" || icon === "/icons/qwen.svg";
+export function ModelIcon({ model, capability, iconKey, providerHint, config }: { model: string; capability?: LogicalModelCapability; iconKey?: ModelIconKey; providerHint?: string; config?: AiConfig }) {
+    const context: ModelIconContext = config ? modelIconContext(config, model) : {};
+    const icon = resolveModelIcon(model, capability || context.capability, iconKey || context.iconKey, providerHint || context.providerHint);
+    const colorIcon = icon === "/icons/jimeng.svg" || icon === "/icons/minimax.svg" || icon === "/icons/qwen.svg" || icon === "/icons/nanobanana.svg" || icon === "/icons/doubao.svg";
     return icon ? <img src={icon} alt="" className={cn("size-4 shrink-0", colorIcon ? "" : "dark:invert")} /> : <Cpu className="size-4 shrink-0 opacity-70" />;
 }
 
-export function resolveModelIcon(model: string) {
-    const name = model.toLowerCase();
-    if (name.includes("minimax") || name.includes("hailuo") || name.includes("海螺") || /(?:^|[-_ ])(?:speech|music)-/i.test(name)) return "/icons/minimax.svg";
-    if (name.includes("seedance") || name.includes("seedream") || name.includes("dreamina") || name.includes("jimeng") || name.includes("即梦")) return "/icons/jimeng.svg";
-    if (name.includes("claude") || name.includes("anthropic")) return "/icons/claude.svg";
-    if (name.includes("gemini") || name.includes("google")) return "/icons/gemini.svg";
-    if (name.includes("gpt") || name.includes("openai")) return "/icons/openai.svg";
-    if (name.includes("grok")) return "/icons/grok.svg";
-    if (name.includes("deepseek")) return "/icons/deepseek.svg";
-    if (name.includes("glm")) return "/icons/glm.svg";
-    if (name.includes("qwen") || name.includes("aliyun") || name.includes("bailian") || name.includes("cosyvoice")) return "/icons/qwen.svg";
-    return "";
+export function resolveModelIcon(model: string, capability?: LogicalModelCapability, iconKey?: ModelIconKey, providerHint?: string) {
+    return resolveModelIconPath(modelOptionName(model), capability, iconKey, providerHint) || "";
+}
+
+function modelIconContext(config: AiConfig, value: string): ModelIconContext {
+    const logicalModel = findLogicalModel(config, value);
+    const channel = resolveModelChannel(config, value);
+    return { capability: logicalModel?.capability, iconKey: logicalModel?.icon, providerHint: [channel.name, channel.id, channel.advancedConfig?.protocol].filter(Boolean).join(" ") };
+}
+
+function findLogicalModel(config: AiConfig, value: string) {
+    const modelName = modelOptionName(value);
+    const direct = config.logicalModels.find((item) => item.id.toLowerCase() === modelName.toLowerCase());
+    if (direct) return direct;
+    const channel = resolveModelChannel(config, value);
+    return config.logicalModels.find((item) => item.bindings.some((binding) => binding.channelId === channel.id && binding.upstreamModel.toLowerCase() === modelName.toLowerCase()));
 }

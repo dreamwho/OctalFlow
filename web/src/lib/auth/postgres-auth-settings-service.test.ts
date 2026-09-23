@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_SETTINGS } from "./store-foundation";
+import { DEFAULT_USER_ROLE } from "@/lib/user-roles";
 
 const mocks = vi.hoisted(() => ({
     lock: vi.fn(),
@@ -83,5 +84,15 @@ describe("updatePostgresAuthSettings", () => {
         expect(mocks.deleteSystemModelChannelsNotIn).toHaveBeenCalledWith(["channel-one"]);
         expect(mocks.upsertEntitlementPlan).not.toHaveBeenCalled();
         expect(mocks.removeEntitlementPlansNotIn).not.toHaveBeenCalled();
+    });
+
+    it("persists newly created user roles in PostgreSQL settings", async () => {
+        const userRoles = [structuredClone(DEFAULT_USER_ROLE), { ...structuredClone(DEFAULT_USER_ROLE), id: "honor", name: "八进制荣誉会员", recordOnly: true }];
+
+        await updatePostgresAuthSettings({ userRoles });
+
+        expect(mocks.updateSettings).toHaveBeenCalledWith({ userRoles });
+        expect(mocks.upsertEntitlementPlan).not.toHaveBeenCalled();
+        expect(mocks.upsertSystemModelChannel).not.toHaveBeenCalled();
     });
 });

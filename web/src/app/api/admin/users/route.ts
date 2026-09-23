@@ -5,6 +5,7 @@ import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser, serializeCurrentUser } from "@/lib/auth/session";
 import { auditActorFromRequest, safeRecordAuditLog } from "@/lib/server/audit-log-store";
 import { hasAdminPermission, hasAnyAdminPermission, normalizeAdminPermissions } from "@/lib/admin-permissions";
+import { normalizeUserRoleId } from "@/lib/user-roles";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
         page: Number(params.get("page") || 1),
         pageSize: Number(params.get("pageSize") || 20),
         keyword: params.get("keyword") || "",
-        role: role === "admin" || role === "user" ? role : undefined,
+        role: normalizeUserRoleId(role) || undefined,
         status: status === "active" || status === "disabled" ? status : undefined,
     });
     return NextResponse.json({ ...result, currentUser: serializeCurrentUser(currentUser) });
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     let body: { username?: unknown; displayName?: unknown; email?: unknown; password?: unknown; role?: unknown; adminPermissions?: unknown; status?: unknown; pointsBalance?: unknown; planId?: unknown } = {};
     try {
         body = await readJsonBody<typeof body>(request);
-        const role = body.role === "admin" ? "admin" : "user";
+        const role = normalizeUserRoleId(body.role) || "user";
         const status = body.status === "disabled" ? "disabled" : "active";
         const user = await createUserByAdmin({
             actorId: currentUser.id,

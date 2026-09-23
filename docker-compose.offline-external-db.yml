@@ -1,3 +1,5 @@
+name: ${COMPOSE_PROJECT_NAME:-dreamyo}
+
 services:
   magic-proxy:
     platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
@@ -6,6 +8,7 @@ services:
     network_mode: host
     entrypoint: ["/usr/local/bin/dreamyo-mihomo-entrypoint.sh"]
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       DREAMYO_MAGIC_PROXY_SECRET: ${DREAMYO_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
       DREAMYO_MAGIC_PROXY_LISTEN_HOST: 127.0.0.1
     volumes:
@@ -112,6 +115,7 @@ services:
       HOSTNAME: ${DREAMYO_BIND_ADDRESS:-0.0.0.0}
       PORT: ${PORT:-8866}
       DREAMYO_DATA_DIR: /app/web/.data
+      DREAMYO_CHATGPT_DATA_DIR: /app/web/.data/chatgpt-api
       DREAMYO_INTERNAL_ORIGIN: http://127.0.0.1:${PORT:-8866}
       DREAMYO_DATABASE_PROVIDER: postgres
       DATABASE_URL: ${DATABASE_URL:?请在 .env 中配置已有 PostgreSQL 的 DATABASE_URL}

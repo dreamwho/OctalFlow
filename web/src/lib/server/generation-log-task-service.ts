@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createPostgresRepositories, ensurePostgresSchema, isPostgresDatabaseEnabled, withPostgresTransaction } from "@/lib/server/database";
 import { collectLocalMediaStorageKeys } from "@/lib/server/local-media-references";
 import { deleteUserLocalMediaAssets } from "@/lib/server/local-media-storage";
+import type { GenerationLogProtocolTrace } from "@/lib/generation-log-snapshot";
 import {
     defaultSummary,
     mutateGenerationLogDb,
@@ -77,6 +78,23 @@ export function renameGenerationLogForUser(userId: string, id: string, title: st
     const normalizedTitle = normalizeText(title, "", 80);
     if (!normalizedTitle) return Promise.resolve<StoredGenerationLog | null>(null);
     return mutateOwnedGenerationLog(normalizeText(id, "", 120), userId, (current) => (current ? { ...current, title: normalizedTitle, updatedAt: new Date().toISOString() } : undefined));
+}
+
+export function appendGenerationLogProtocolTrace(input: { userId: string; logId: string; slotId: string; trace: GenerationLogProtocolTrace }) {
+    const logId = optionalText(input.logId, 120);
+    const slotId = optionalText(input.slotId, 200);
+    if (!logId || !slotId || !input.userId) return Promise.resolve(null);
+    return mutateOwnedGenerationLog(logId, input.userId, (current) => {
+        const snapshot = current?.requestSnapshot;
+        if (!current || !snapshot) return current;
+        let found = false;
+        const slots = snapshot.slots.map((slot) => {
+            if (slot.id !== slotId) return slot;
+            found = true;
+            return { ...slot, requestTraces: [...(slot.requestTraces || []), input.trace] };
+        });
+        return found ? { ...current, requestSnapshot: { ...snapshot, slots }, updatedAt: new Date().toISOString() } : current;
+    });
 }
 
 export async function deleteGenerationLogResultsForUser(userId: string, id: string, slotIds: string[]) {

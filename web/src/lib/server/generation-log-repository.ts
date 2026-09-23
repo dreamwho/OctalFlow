@@ -3,7 +3,7 @@ import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
 import { ensureMediaFileExtension, mediaFileExtension } from "@/lib/media-file";
-import type { GenerationLogReferenceSnapshot, GenerationLogRequestSnapshot, GenerationLogSlotSnapshot, GenerationLogSnapshotParameters } from "@/lib/generation-log-snapshot";
+import type { GenerationLogProtocolTrace, GenerationLogReferenceSnapshot, GenerationLogRequestSnapshot, GenerationLogSlotSnapshot, GenerationLogSnapshotParameters } from "@/lib/generation-log-snapshot";
 import { isPostgresDatabaseEnabled, type QueryExecutor } from "@/lib/server/database";
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { normalizeGeneratedImageBytes, upscaleGeneratedImageBytes } from "@/lib/server/generated-image-normalizer";
@@ -585,8 +585,47 @@ function normalizeSnapshotSlot(value: unknown): GenerationLogSlotSnapshot[] {
             startedAt: toOptionalNumber(source.startedAt),
             error: normalizeOptionalText(source.error, undefined, 1000),
             canRetry: source.canRetry === true ? true : undefined,
+            requestTraces: Array.isArray(source.requestTraces) ? source.requestTraces.flatMap(normalizeGenerationLogProtocolTrace) : undefined,
         },
     ];
+}
+
+function normalizeGenerationLogProtocolTrace(value: unknown): GenerationLogProtocolTrace[] {
+    const source = jsonObject(value);
+    if (!source) return [];
+    const method = normalizeOptionalText(source.method, undefined, 12)?.toUpperCase();
+    const path = normalizeOptionalText(source.path, undefined, 1000);
+    if (!method || !path) return [];
+    return [{
+        createdAt: normalizeTime(source.createdAt, new Date().toISOString()),
+        channel: normalizeText(source.channel, "内置协议渠道", 160),
+        protocol: normalizeText(source.protocol, "unknown", 80),
+        method,
+        path,
+        model: normalizeOptionalText(source.model, undefined, 200),
+        statusCode: toOptionalNumber(source.statusCode),
+        durationMs: normalizeNonNegativeNumber(source.durationMs, 0),
+        requestBytes: toOptionalNumber(source.requestBytes),
+        responseBytes: toOptionalNumber(source.responseBytes),
+        requestContentType: normalizeOptionalText(source.requestContentType, undefined, 160),
+        responseContentType: normalizeOptionalText(source.responseContentType, undefined, 160),
+        requestHeaders: normalizeProtocolTraceHeaders(source.requestHeaders),
+        responseHeaders: normalizeProtocolTraceHeaders(source.responseHeaders),
+        requestPreview: normalizeOptionalText(source.requestPreview, undefined, 5000),
+        responsePreview: normalizeOptionalText(source.responsePreview, undefined, 5000),
+        error: normalizeOptionalText(source.error, undefined, 1000),
+    }];
+}
+
+function normalizeProtocolTraceHeaders(value: unknown) {
+    const source = jsonObject(value);
+    if (!source) return undefined;
+    const headers = Object.fromEntries(Object.entries(source).flatMap(([key, item]) => {
+        const name = normalizeOptionalText(key, undefined, 80);
+        const content = normalizeOptionalText(item, undefined, 240);
+        return name && content ? [[name.toLowerCase(), content]] : [];
+    }));
+    return Object.keys(headers).length ? headers : undefined;
 }
 
 function jsonObject(value: unknown): Record<string, unknown> | undefined {

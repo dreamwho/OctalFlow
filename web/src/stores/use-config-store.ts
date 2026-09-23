@@ -4,8 +4,9 @@ import { useMemo } from "react";
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 
-import { flattenPublicCapabilityModels } from "@/lib/public-model-catalog";
+import { flattenPublicCapabilityModels, logicalModelDisplayName } from "@/lib/public-model-catalog";
 import type { GlobalAiOpcPresetId } from "@/lib/globalaiopc-catalog";
+import type { ModelIconKey } from "@/lib/auth/store-types";
 import { resolveChannelModelAdvancedConfig } from "@/lib/channel-protocol-registry";
 import { inferModelCapability, normalizeModelId } from "@/lib/model-capability";
 import { materializeLogicalModelPointCosts } from "@/lib/model-point-cost";
@@ -99,6 +100,8 @@ type LogicalModel = {
     id: string;
     name: string;
     capability: ModelCapability;
+    pickerGroup?: string;
+    icon?: ModelIconKey;
     enabled: boolean;
     pickerVisible?: boolean;
     bindings: Array<{ id: string; channelId: string; upstreamModel: string; enabled: boolean; priority: number; displayName?: string }>;
@@ -447,7 +450,7 @@ export function modelOptionName(value: string) {
 
 export function modelOptionLabel(config: AiConfig, value: string) {
     const logical = config.logicalModels.find((model) => model.id.toLowerCase() === value.toLowerCase());
-    if (logical) return logical.name;
+    if (logical) return logicalModelDisplayName(logical);
     const decoded = decodeChannelModel(value);
     if (!decoded) return value;
     const binding = config.logicalModels.flatMap((model) => model.bindings).find((item) => item.channelId === decoded.channelId && normalizedModelName(item.upstreamModel) === normalizedModelName(decoded.model));

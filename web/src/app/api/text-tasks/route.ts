@@ -3,6 +3,7 @@ import { after, NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuthSettings, isAuthInputError } from "@/lib/auth/store";
+import { roleModelAccessAllows } from "@/lib/user-roles";
 import { generationModelId, toSystemGenerationChannel } from "@/lib/server/generation-channel";
 import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-recovery-service";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
@@ -36,7 +37,10 @@ export async function POST(request: Request) {
             if (isAuthInputError(error)) return NextResponse.json({ error: error.message }, { status: error.status });
             throw error;
         }
-        const configs = sanitizeConfigs(body.config, settings);
+        const requestedModel = body.config?.model || settings.defaultModels.textModel;
+        const resolved = resolveLogicalModelCandidates(settings, "text", requestedModel);
+        const configs = sanitizeConfigs(body.config, settings).filter((config) => roleModelAccessAllows(settings.userRoles, currentUser.role, config.logicalModel || config.model, "text"));
+        if (resolved.length && !configs.length) return NextResponse.json({ error: "当前用户角色无权使用该文本模型" }, { status: 403 });
         const messages = sanitizeMessages(body.messages);
         if (!configs.length || !messages.length) return NextResponse.json({ error: "任务参数不完整" }, { status: 400 });
 

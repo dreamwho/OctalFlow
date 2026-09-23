@@ -99,6 +99,7 @@ VALUES ('default')
 ON CONFLICT (id) DO NOTHING;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS agent_skills jsonb NOT NULL DEFAULT '[{"id":"ecommerce-image","name":"电商生图","description":"为商品主图、场景图和详情页视觉生成结构化方案。","instructions":"识别商品卖点、目标人群、平台与画幅。优先规划白底主图、核心卖点场景图、细节特写和详情页横幅；保持商品外观、材质、颜色、Logo 与包装一致。提示词必须写清主体、构图、光线、背景、镜头、商业质感、尺寸比例与禁止变形要求。","enabled":true,"keywords":["电商","商品","主图","详情页","淘宝","京东","亚马逊"]}]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS canvas_quick_actions jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS user_roles jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS logical_models jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS login_methods jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points_enabled boolean NOT NULL DEFAULT true;
@@ -670,7 +671,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_login_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT users_role CHECK (role IN ('admin', 'user')),
+    CONSTRAINT users_role CHECK (role = 'admin' OR role ~ '^[a-z][a-z0-9_-]{1,31}$'),
     CONSTRAINT users_admin_permissions_array CHECK (jsonb_typeof(admin_permissions) = 'array'),
     CONSTRAINT users_status CHECK (status IN ('active', 'disabled')),
     CONSTRAINT users_mfa_enabled_secret CHECK (mfa_enabled_at IS NULL OR mfa_secret_ciphertext IS NOT NULL),
@@ -693,6 +694,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_url text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_version text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_url text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS policy_accepted_at timestamptz;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role;
+ALTER TABLE users ADD CONSTRAINT users_role CHECK (role = 'admin' OR role ~ '^[a-z][a-z0-9_-]{1,31}$');
 
 UPDATE users
 SET admin_permissions = '${FULL_ADMIN_PERMISSIONS_JSON}'::jsonb

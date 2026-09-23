@@ -87,6 +87,7 @@ import {
 export { normalizeApiPath, normalizeSystemChannelAdvancedConfig, textOrEmpty } from "./store-normalizers-channel";
 import { currentQuotaDate, hashToken, normalizeEmail, normalizeUserBio } from "./store-auth-utils";
 import { normalizeRegistrationPolicyConsent } from "@/lib/registration-consent";
+import { normalizeUserRoleDefinitions, normalizeUserRoleId } from "@/lib/user-roles";
 import { ALL_ADMIN_PERMISSIONS, isFullAdminPermissions, normalizeAdminPermissions } from "@/lib/admin-permissions";
 
 export { currentQuotaDate, hashToken, normalizeDisplayName, normalizeEmail, normalizeUserBio, normalizeUsername, parseSessionCookie, randomNumericCode, validateEmail, validatePassword, validateUsername } from "./store-auth-utils";
@@ -98,7 +99,8 @@ export function normalizeDb(db: Partial<AuthDatabase>): AuthDatabase {
     const users = Array.isArray(db.users)
         ? db.users.map((user) => {
               const legacyUser = user as Partial<StoredUser> & { quota?: Partial<LegacyUserQuota> };
-              const role = user.role === "admin" ? "admin" : "user";
+              const roleId = normalizeUserRoleId(user.role);
+              const role = roleId === "admin" ? "admin" : settings.userRoles.some((item) => item.id === roleId) ? roleId! : "user";
               const requestedAccountId = parseAccountId(legacyUser.accountId);
               while (usedAccountIds.has(nextGeneratedAccountId)) nextGeneratedAccountId += 1;
               const accountId = requestedAccountId && !usedAccountIds.has(requestedAccountId) ? requestedAccountId : nextGeneratedAccountId;
@@ -268,6 +270,7 @@ export function normalizeSettings(settings: AuthSettings): AuthSettings {
         defaultModels: normalizeDefaultModelsConfig(settings.defaultModels, logicalModels, systemChannels),
         agentSkills: normalizeAgentSkills(settings.agentSkills),
         canvasQuickActions: normalizeCanvasQuickActionGroups(settings.canvasQuickActions),
+        userRoles: normalizeUserRoleDefinitions(settings.userRoles),
     };
 }
 

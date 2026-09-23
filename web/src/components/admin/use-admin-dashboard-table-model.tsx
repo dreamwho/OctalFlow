@@ -54,6 +54,7 @@ export function useAdminDashboardTableModel({ state, data, settingsActions }: { 
     const canManageUsers = hasAdminPermission(currentUser, "users.manage");
     const canManageAdministrators = hasAdminPermission(currentUser, "administrators.manage");
     const canManageBilling = hasAdminPermission(currentUser, "billing.manage");
+    const roleLabel = (role: UserRole) => role === "admin" ? "管理员" : settings.userRoles.find((item) => item.id === role)?.name || "普通用户";
     const canManageAdministratorRecord = (user: PublicUser) => canManageAdministrators && hasAllAdminPermissions(currentUser, user.adminPermissions);
     const canEditUserRecord = (user: PublicUser) => canManageBilling || (user.role === "admin" ? canManageAdministratorRecord(user) : canManageUsers || canManageAdministrators);
     const canDeleteUserRecord = (user: PublicUser) => user.id !== currentUser.id && (user.role === "admin" ? canManageAdministratorRecord(user) : canManageUsers);
@@ -137,7 +138,7 @@ export function useAdminDashboardTableModel({ state, data, settingsActions }: { 
                         <span className="truncate text-xs text-zinc-400">{record.email || "未绑定邮箱"}</span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1 sm:hidden">
-                        <Tag color={record.role === "admin" ? "blue" : "default"}>{record.role === "admin" ? "管理员" : "普通用户"}</Tag>
+                        <Tag color={record.role === "admin" ? "blue" : "default"}>{roleLabel(record.role)}</Tag>
                         <Tag color={record.status === "active" ? "green" : "red"}>{record.status === "active" ? "可用" : "已禁用"}</Tag>
                         {record.role === "admin" ? <span className="self-center text-xs text-stone-500 dark:text-stone-400">{adminPermissionSummary(record.adminPermissions)}</span> : null}
                     </div>
@@ -173,7 +174,7 @@ export function useAdminDashboardTableModel({ state, data, settingsActions }: { 
             responsive: ["sm"],
             render: (role: UserRole, record) => (
                 <div>
-                    <Tag color={role === "admin" ? "blue" : "default"}>{role === "admin" ? "管理员" : "普通用户"}</Tag>
+                    <Tag color={role === "admin" ? "blue" : "default"}>{roleLabel(role)}</Tag>
                     {role === "admin" ? <div className="mt-1.5 text-xs text-stone-500 dark:text-stone-400">{adminPermissionSummary(record.adminPermissions)}</div> : null}
                 </div>
             ),

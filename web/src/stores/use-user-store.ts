@@ -11,7 +11,7 @@ export type LocalUser = {
     displayName: string;
     bio: string;
     avatarUrl?: string;
-    role: "admin" | "user";
+    role: import("@/lib/auth/store-types").UserRole;
     adminPermissions: AdminPermission[];
     status: "active" | "disabled";
     planId: string;

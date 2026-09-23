@@ -318,7 +318,13 @@ async function sidecarJson(path: string, init: RequestInit = {}) {
         const providerMessage = stringValue(detail?.message ?? root?.detail, 500);
         const providerType = stringValue(detail?.type, 80);
         const message =
-            providerType === "account_access_denied"
+            path === "/accounts/login/start" && /没有 DISPLAY|WAYLAND_DISPLAY|DISPLAY unavailable/i.test(providerMessage)
+                ? "服务器没有图形会话，无法打开有头 Camoufox 授权窗口；请使用 Cookie 导入，或在有图形环境的 Provider 中完成授权"
+                : path === "/accounts/login/start" && /Playwright driver package missing|Error loading the Playwright driver/i.test(providerMessage)
+                ? "Camoufox 授权组件不完整（缺少 Playwright 驱动），请安装最新桌面版"
+                : path === "/accounts/login/start" && /Camoufox (?:exited before startup|failed to start)/i.test(providerMessage)
+                  ? "Camoufox 授权窗口启动失败，请检查桌面运行日志"
+                  : providerType === "account_access_denied"
                 ? safeSidecarMessage(providerMessage)
                 : /caller does not have permission|permission denied|禁止访问|paid api key/i.test(providerMessage)
                   ? "Google AI Studio 页面原生通道未能使用当前账号调用该模型；请在对应授权 Profile 中确认模型仍可运行后重试。"

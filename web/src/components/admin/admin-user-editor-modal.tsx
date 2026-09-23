@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Checkbox, Form, Input, InputNumber, Modal, Select } from "antd";
 
+import type { UserRole } from "@/lib/auth/store";
 import type { AdminDashboardController } from "./use-admin-dashboard-controller";
 import { ADMIN_PERMISSION_DEFINITIONS, ADMIN_PERMISSION_GROUPS, ADMIN_PERMISSION_PRESETS, adminPermissionSummary, hasAdminPermission, hasAllAdminPermissions, normalizeAdminPermissions } from "@/lib/admin-permissions";
 import { formatBytes } from "@/lib/image-utils";
@@ -40,17 +41,17 @@ export function AdminUserEditorModal({ controller }: { controller: AdminDashboar
         ...group,
         permissions: assignablePermissions.filter((permission) => permission.group === group.key),
     })).filter((group) => group.permissions.length > 0);
-    const canUseRole = (role: "user" | "admin") => {
+    const canUseRole = (role: UserRole) => {
         if (creatingUser) return role === "admin" ? canManageAdministrators : canManageUsers;
         if (editingUser?.role === "admin") return canManageAdministrators && targetWithinScope;
         return role === "admin" ? canManageAdministrators : canManageUsers;
     };
     const roleOptions = [
-        { value: "user", label: "普通用户", disabled: !canUseRole("user") },
+        ...controller.settings.userRoles.map((role) => ({ value: role.id, label: role.name, disabled: !canUseRole(role.id) })),
         { value: "admin", label: "管理员", disabled: !canUseRole("admin") },
     ];
 
-    const selectRole = (role: "user" | "admin") => {
+    const selectRole = (role: UserRole) => {
         if (role !== "admin" || normalizeAdminPermissions(userForm.getFieldValue("adminPermissions")).length) return;
         userForm.setFieldsValue({
             adminPermissions: ownPermissions,

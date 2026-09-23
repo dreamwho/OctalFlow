@@ -6,9 +6,13 @@ import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered
 import { type ChangeEvent, type DragEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
+import { ModelIcon, resolveModelIcon } from "@/components/model-picker";
 import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-controls";
 import { formatDurationMinSec } from "@/lib/duration-format";
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
+import type { ModelIconKey } from "@/lib/auth/store-types";
+import { modelIconOptions } from "@/lib/model-icons";
+import { logicalModelDisplayName } from "@/lib/public-model-catalog";
 import { capabilityLabel, isLogicalModelResolvable, normalizeDefaultModelsConfig, resolveLogicalModelConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
 import { moveLogicalModel, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
 
@@ -59,7 +63,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
         () =>
             logicalModels
                 .filter(
-                    (model) => (capabilityFilter === "all" || model.capability === capabilityFilter) && (!deferredQuery || `${model.id} ${model.name} ${model.bindings.map((binding) => binding.upstreamModel).join(" ")}`.toLowerCase().includes(deferredQuery)),
+                    (model) => (capabilityFilter === "all" || model.capability === capabilityFilter) && (!deferredQuery || `${model.id} ${model.name} ${model.pickerGroup || ""} ${model.bindings.map((binding) => binding.upstreamModel).join(" ")}`.toLowerCase().includes(deferredQuery)),
                 )
                 // 排序：已启用且有可用渠道 → 已启用但无渠道 → 未启用；同组内保持手动排序
                 .sort((left, right) => resolveRank(left) - resolveRank(right)),
@@ -183,7 +187,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                     <div className="flex min-w-0 items-start justify-between gap-2">
                                         <div className="flex min-w-0 items-center gap-2.5">
                                             <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-stone-100 text-stone-600 dark:bg-stone-900 dark:text-stone-300">
-                                                {model.capability === "text" ? <MessageSquare className="size-4.5" /> : <DreamyoIcon name={model.capability} size={20} />}
+                                                {model.icon || resolveModelIcon(`${model.id} ${model.name}`, model.capability, undefined, modelProviderHint(model, channels)) ? <ModelIcon model={`${model.id} ${model.name}`} capability={model.capability} iconKey={model.icon} providerHint={modelProviderHint(model, channels)} /> : model.capability === "text" ? <MessageSquare className="size-4.5" /> : <DreamyoIcon name={model.capability} size={20} />}
                                             </span>
                                             <div className="min-w-0">
                                                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -214,6 +218,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                         <Tag color={CAPABILITY_TAG_COLORS[model.capability]} className="m-0">
                                             {capabilityLabel(model.capability)}
                                         </Tag>
+                                        {model.pickerGroup ? <Tag className="m-0">前端分组：{model.pickerGroup}</Tag> : null}
                                         {model.pickerVisible === false ? <Tag className="m-0">节点隐藏</Tag> : null}
                                     </div>
                                     <div className="mt-auto flex items-center justify-between gap-2 border-t border-stone-100 pt-2.5 dark:border-stone-800/70">
@@ -257,7 +262,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                         <SectionTitle icon={<GitBranch className="size-4" />} title="默认模型" />
                         <div className="mt-4 space-y-4">
                             {availableDefaultFields.map(({ capability, key, label }) => {
-                                const options = logicalModels.filter((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)).map((model) => ({ label: model.name, value: model.id }));
+                                const options = logicalModels.filter((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)).map((model) => ({ label: logicalModelDisplayName(model), value: model.id }));
                                 const selected = logicalModels.find((model) => model.id === defaultModels[key]);
                                 const resolved = selected ? resolveLogicalModelConfig(logicalModels, channels, capability, selected.id) : null;
                                 return (
@@ -333,6 +338,31 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                                         <Switch checkedChildren="启用" unCheckedChildren="停用" checked={draft.enabled} onChange={(enabled: boolean) => setDraft((current) => (current ? { ...current, enabled } : current))} />
                                     </div>
                                 </LabeledControl>
+                            </div>
+                            <div className="mt-3 grid items-end gap-3 sm:grid-cols-[minmax(0,240px)_minmax(0,240px)_1fr]">
+                                <LabeledControl label="前端选项分组">
+                                    <Input
+                                        className="!w-full"
+                                        aria-label="前端模型选项分组"
+                                        maxLength={80}
+                                        value={draft.pickerGroup || ""}
+                                        placeholder="留空时自动归类"
+                                        onChange={(event: ChangeEvent<HTMLInputElement>) => setDraft((current) => (current ? { ...current, pickerGroup: event.target.value } : current))}
+                                    />
+                                    <p className="mt-1 text-[11px] text-stone-400">同名分组会合并显示；留空按模型名称自动判断。</p>
+                                </LabeledControl>
+                                <LabeledControl label="模型图标">
+                                    <Select
+                                        className="w-full"
+                                        value={draft.icon || ""}
+                                        options={[{ label: "自动匹配", value: "" }, ...modelIconOptions]}
+                                        onChange={(value: string) => setDraft((current) => (current ? { ...current, icon: (value || undefined) as ModelIconKey | undefined } : current))}
+                                    />
+                                </LabeledControl>
+                                <div className="flex min-w-0 items-center gap-2 pb-1 text-xs text-stone-500 dark:text-stone-400">
+                                    <ModelIcon model={`${draft.id} ${draft.name} ${draft.bindings.map((binding) => binding.upstreamModel).join(" ")}`} capability={draft.capability} iconKey={draft.icon} providerHint={modelProviderHint(draft, channels)} />
+                                    <span>自动匹配 Gemini 生图与字节图片/视频模型；也可以为这个模型单独指定图标。</span>
+                                </div>
                             </div>
                         </div>
                         <div className="mt-5">
@@ -426,7 +456,9 @@ function LogicalModelDisplayOrder({ models, onChange }: { models: LogicalModel[]
             <p className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">选择节点类型后拖动模型调整下拉顺序；关闭“显示”只隐藏节点选项，不删除模型或渠道路由。</p>
             <Select className="mt-3 w-full" aria-label="选择节点模型类型" value={capability} options={capabilityOptions.map((item) => ({ ...item, label: `${item.label}节点` }))} onChange={setCapability} />
             <div className="mt-3 space-y-2 pr-1" aria-label={`${nodeLabel}模型排序`}>
-                {scopedModels.map((model, index) => (
+                {scopedModels.map((model, index) => {
+                    const displayName = logicalModelDisplayName(model);
+                    return (
                     <div
                         key={model.id}
                         data-logical-model-order={model.id}
@@ -455,8 +487,8 @@ function LogicalModelDisplayOrder({ models, onChange }: { models: LogicalModel[]
                     >
                         <span
                             className="cursor-grab touch-none text-stone-400 active:cursor-grabbing"
-                            title={`拖动调整${model.name}的顺序`}
-                            aria-label={`拖动调整${model.name}的顺序`}
+                            title={`拖动调整${displayName}的顺序`}
+                            aria-label={`拖动调整${displayName}的顺序`}
                             role="img"
                             onPointerDown={(event) => {
                                 if (event.button !== 0) return;
@@ -469,22 +501,23 @@ function LogicalModelDisplayOrder({ models, onChange }: { models: LogicalModel[]
                             <GripVertical className="size-4" />
                         </span>
                         <span className="w-5 shrink-0 text-center text-xs tabular-nums text-stone-400">{index + 1}</span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-stone-800 dark:text-stone-200" title={model.name}>
-                            {model.name}
+                        <span className="min-w-0 flex-1 truncate text-sm text-stone-800 dark:text-stone-200" title={displayName}>
+                            {displayName}
                         </span>
-                        <Button type="text" size="small" disabled={index === 0} aria-label={`${model.name}上移`} title="上移" icon={<ArrowUp className="size-3.5" />} onClick={() => onChange(moveLogicalModel(models, capability, model.id, -1))} />
+                        <Button type="text" size="small" disabled={index === 0} aria-label={`${displayName}上移`} title="上移" icon={<ArrowUp className="size-3.5" />} onClick={() => onChange(moveLogicalModel(models, capability, model.id, -1))} />
                         <Button
                             type="text"
                             size="small"
                             disabled={index === scopedModels.length - 1}
-                            aria-label={`${model.name}下移`}
+                            aria-label={`${displayName}下移`}
                             title="下移"
                             icon={<ArrowDown className="size-3.5" />}
                             onClick={() => onChange(moveLogicalModel(models, capability, model.id, 1))}
                         />
-                        <Switch size="small" checked={model.pickerVisible !== false} disabled={!model.enabled} aria-label={`${model.name}在${nodeLabel}显示`} onChange={(visible) => onChange(setLogicalModelPickerVisibility(models, model.id, visible))} />
+                        <Switch size="small" checked={model.pickerVisible !== false} disabled={!model.enabled} aria-label={`${displayName}在${nodeLabel}显示`} onChange={(visible) => onChange(setLogicalModelPickerVisibility(models, model.id, visible))} />
                     </div>
-                ))}
+                    );
+                })}
                 {!scopedModels.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${nodeLabel}模型`} /> : null}
             </div>
             <p className="mt-3 text-[11px] text-stone-400">调整后点击页面右上角“保存更改”生效。</p>
@@ -650,6 +683,13 @@ function BindingEditor({
 
 function cloneLogicalModel(model: LogicalModel): LogicalModel {
     return { ...model, bindings: model.bindings.map((binding) => ({ ...binding, capabilityProfile: binding.capabilityProfile ? { ...binding.capabilityProfile } : undefined })) };
+}
+
+function modelProviderHint(model: LogicalModel, channels: SystemModelChannel[]) {
+    return model.bindings.map((binding) => {
+        const channel = channels.find((item) => item.id === binding.channelId);
+        return `${binding.upstreamModel} ${channel?.name || ""} ${channel?.id || ""} ${channel?.advancedConfig?.protocol || ""}`;
+    }).join(" ");
 }
 
 function addDraftBinding(model: LogicalModel, channels: SystemModelChannel[]) {

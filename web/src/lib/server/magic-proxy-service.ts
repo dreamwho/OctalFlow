@@ -109,12 +109,24 @@ export async function importMagicProxySubscription(input: { url?: unknown; conte
 
     const nodes = hasFileContent ? parseSubscriptionNodes(suppliedContent) : await fetchSubscriptionNodes(subscriptionUrl);
     return withRuntimeLock(async () => {
-        const existing = await readSettings();
+        const stored = hasFileContent ? await readStoredSettings() : null;
+        let existing: DecodedMagicProxySettings | null;
+        if (hasFileContent) {
+            try {
+                existing = decodeStoredSettings(stored);
+            } catch (error) {
+                if (!(error instanceof MagicProxyError && error.status === 500)) throw error;
+                // Explicit file import is the recovery path when the old key or ciphertext is unreadable.
+                existing = null;
+            }
+        } else {
+            existing = await readSettings();
+        }
         if (!suppliedSubscriptionUrl && !hasFileContent && existing?.subscriptionUrl !== subscriptionUrl) throw new MagicProxyError("订阅地址已在刷新期间变更，请重新刷新", 409);
         const next: DecodedMagicProxySettings = {
             subscriptionUrl,
             nodes,
-            bindings: normalizeBindings(existing?.bindings, new Set(nodes.map((node) => node.name))),
+            bindings: normalizeBindings(existing?.bindings || stored?.bindings, new Set(nodes.map((node) => node.name))),
             updatedAt: new Date().toISOString(),
         };
         const runtime = requireRuntimeConfig();
@@ -1280,7 +1292,14 @@ function isMagicProxyProviderFile(value: string) {
 }
 
 async function readSettings(): Promise<DecodedMagicProxySettings | null> {
-    const stored = isPostgresDatabaseEnabled() ? await (await postgresRepository()).get() : await readFileSettings();
+    return decodeStoredSettings(await readStoredSettings());
+}
+
+async function readStoredSettings(): Promise<MagicProxySettings | null> {
+    return isPostgresDatabaseEnabled() ? (await postgresRepository()).get() : readFileSettings();
+}
+
+function decodeStoredSettings(stored: MagicProxySettings | null): DecodedMagicProxySettings | null {
     if (!stored?.subscriptionUrlCiphertext || !stored.nodesCiphertext) return null;
     try {
         const storedSubscriptionUrl = decryptSecretValue(stored.subscriptionUrlCiphertext);

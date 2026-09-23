@@ -16,7 +16,7 @@ export type PageResult<T> = {
     pageSize: number;
 };
 
-export type UserRole = "admin" | "user";
+export type UserRole = string;
 export type UserStatus = "active" | "disabled";
 export type PromptScope = "library" | "user";
 export type UsageKind = "api" | "image" | "video" | "audio" | "text";
@@ -136,6 +136,7 @@ export type AppSettingsRecord = {
     defaultModels: JsonValue;
     agentSkills: JsonValue;
     canvasQuickActions: JsonValue;
+    userRoles: JsonValue;
     createdAt: string;
     updatedAt: string;
 };

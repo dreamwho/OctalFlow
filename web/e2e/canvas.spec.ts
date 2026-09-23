@@ -16,6 +16,48 @@ test.describe.configure({ mode: "serial" });
 
 const uiEvidenceRoot = join(process.cwd(), "../docs/ui-rebuild-20260913/evidence");
 
+test("Chinese IME composition stays in the canvas prompt until candidate confirmation", async ({ page, request }) => {
+    const project = await createCanvasProject(request, {
+        title: "画布中文输入法回归",
+        viewport: { x: 0, y: 0, k: 1 },
+        nodes: [node("ime-image", "image", 200, 160, 340, 240, {})],
+        connections: [],
+    });
+    try {
+        await page.goto(`/canvas/${project.id}`);
+        await page.locator('[data-node-id="ime-image"]').click({ position: { x: 36, y: 36 } });
+        const prompt = page.getByRole("textbox", { name: "节点提示词" });
+        await expect(prompt).toBeVisible();
+        await prompt.focus();
+        await prompt.dispatchEvent("compositionstart");
+        await page.keyboard.type("nihao");
+        await expect(prompt).toHaveText("nihao");
+        await page.keyboard.press("ControlOrMeta+A");
+        await page.keyboard.insertText("你好");
+        await prompt.dispatchEvent("compositionend");
+        await expect(prompt).toHaveText("你好");
+        await expectCanvasSaved(page);
+        await page.reload();
+        await page.locator('[data-node-id="ime-image"]').click({ position: { x: 36, y: 36 } });
+        await expect(page.getByRole("textbox", { name: "节点提示词" })).toHaveText("你好");
+        await page.getByRole("button", { name: "放大提示词输入" }).click();
+        const expanded = page.getByRole("dialog", { name: "编辑提示词" }).getByRole("textbox", { name: "提示词编辑器" });
+        await expanded.fill("");
+        await expanded.focus();
+        await expanded.dispatchEvent("compositionstart");
+        await page.keyboard.type("shijie");
+        await expect(expanded).toHaveText("shijie");
+        await page.keyboard.press("ControlOrMeta+A");
+        await page.keyboard.insertText("世界");
+        await expanded.dispatchEvent("compositionend");
+        await expect(expanded).toHaveText("世界");
+        await page.getByRole("button", { name: "收起提示词输入" }).click();
+        await expect(page.getByRole("textbox", { name: "节点提示词" })).toHaveText("世界");
+    } finally {
+        await deleteCanvasProject(request, project.id);
+    }
+});
+
 for (const outcome of ["success-50", "success-70", "failure", "reduced"] as const)
     test(`confirmed ${outcome} handles estimated mid-progress without an abrupt successful result`, async ({ page, request }) => {
         const url = "/animations/generation-loading-animation.mp4";

@@ -4,6 +4,7 @@ import { after, NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuthSettings, isAuthInputError, refundUserPoints } from "@/lib/auth/store";
+import { roleModelAccessAllows } from "@/lib/user-roles";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { configureServerProxyDispatcher } from "@/lib/server/proxy-dispatcher";
 import { fetchInternalApi, isInternalApiBaseUrl, resolveInternalOrigin } from "@/lib/server/internal-origin";
@@ -168,7 +169,9 @@ export async function POST(request: Request) {
         const isDreaminaUpscale = kind === "upscale" && requestedModel === "dreamina-image-upscale" && requestedChannelId === DREAMINA_CLI_CHANNEL_ID;
         if (kind === "upscale" && !isDreaminaUpscale) return NextResponse.json({ error: "图片超清当前仅支持即梦 CLI 图片超清模型" }, { status: 400 });
         if (isDreaminaUpscale && !dreaminaCliOperationEnabled(settings, "dreamina-image-upscale")) return NextResponse.json({ error: "即梦 CLI 图片超清模型尚未在管理后台启用" }, { status: 422 });
-        const configs = runningHubApp ? [runningHubImageConfig(resolvedBody.config, runningHubApp.id, runningHubApp.name)] : isDreaminaUpscale ? [dreaminaUpscaleConfig(resolvedBody.config, settings)] : sanitizeConfigs(resolvedBody.config, settings);
+        const requestedConfigs = runningHubApp ? [runningHubImageConfig(resolvedBody.config, runningHubApp.id, runningHubApp.name)] : isDreaminaUpscale ? [dreaminaUpscaleConfig(resolvedBody.config, settings)] : sanitizeConfigs(resolvedBody.config, settings);
+        const configs = requestedConfigs.filter((config) => roleModelAccessAllows(settings.userRoles, currentUser.role, config.logicalModel || config.model, "image"));
+        if (requestedConfigs.length && !configs.length) return NextResponse.json({ error: "当前用户角色无权使用该图片模型" }, { status: 403 });
         if (!configs.length || (kind !== "upscale" && !prompt)) return NextResponse.json({ error: "任务参数不完整" }, { status: 400 });
         const references = Array.isArray(resolvedBody.references) ? resolvedBody.references.filter((item) => Boolean(item?.dataUrl || item?.url || item?.remoteUrl || item?.serverUrl)) : [];
         if (runningHubApp && (kind !== "edit" || references.length < 1)) return NextResponse.json({ error: "RunningHub 室内设计需要至少一张参考图" }, { status: 400 });

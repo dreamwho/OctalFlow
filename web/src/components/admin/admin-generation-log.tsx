@@ -77,6 +77,7 @@ export function GenerationLogDetail({ log }: { log: StoredGenerationLog }) {
                 <InfoBox label="数量" value={`成功 ${log.successCount} / 失败 ${log.failCount} / 共 ${log.count}`} />
             </div>
             <GenerationLogResultSection log={log} />
+            <GenerationLogRequestDetails log={log} />
             <div>
                 <div className="mb-1 text-sm font-semibold text-stone-950 dark:text-stone-100">提示词</div>
                 <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm leading-6 text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-200">{log.prompt || "-"}</div>
@@ -89,6 +90,111 @@ export function GenerationLogDetail({ log }: { log: StoredGenerationLog }) {
             ) : null}
         </div>
     );
+}
+
+function GenerationLogRequestDetails({ log }: { log: StoredGenerationLog }) {
+    const snapshot = log.requestSnapshot;
+    if (!snapshot) return null;
+    const parameters = Object.entries(snapshot.parameters).filter(([, value]) => value !== undefined && value !== "");
+    const traces = snapshot.slots.flatMap((slot) => (slot.requestTraces || []).map((trace) => ({ slot, trace })));
+    return (
+        <section className="space-y-3 rounded-xl border border-stone-200 p-3 dark:border-stone-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <div className="text-sm font-semibold text-stone-950 dark:text-stone-100">请求详情</div>
+                    <div className="mt-1 text-xs text-stone-500 dark:text-stone-400">渠道、协议、HTTP 状态、耗时以及脱敏后的请求和响应摘要。</div>
+                </div>
+                <Tag className="m-0">{traces.length} 条协议请求</Tag>
+            </div>
+            {parameters.length ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {parameters.map(([key, value]) => <InfoBox key={key} label={generationParameterLabel(key)} value={String(value)} />)}
+                </div>
+            ) : null}
+            {snapshot.references.length ? (
+                <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-900/70">
+                    <div className="mb-2 text-xs font-semibold text-stone-700 dark:text-stone-200">参考素材（{snapshot.references.length}）</div>
+                    <div className="space-y-1.5">
+                        {snapshot.references.map((reference) => (
+                            <div key={reference.id} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-600 dark:text-stone-300">
+                                <span className="rounded bg-white px-1.5 py-0.5 dark:bg-stone-950">{reference.kind}</span>
+                                <span className="min-w-0 truncate" title={reference.name}>{reference.name}</span>
+                                <span className="text-stone-400">{reference.mimeType}</span>
+                                {reference.bytes !== undefined ? <span className="text-stone-400">{formatAssetBytes(reference.bytes)}</span> : null}
+                                {reference.width || reference.height ? <span className="text-stone-400">{[reference.width, reference.height].filter(Boolean).join("×")}</span> : null}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
+            {snapshot.slots.map((slot) => (
+                <div key={slot.id} className="space-y-2 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950/60">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-stone-800 dark:text-stone-100">结果槽 {slot.index + 1}</span>
+                        <Tag className="m-0" color={slot.status === "success" ? "green" : slot.status === "failed" ? "red" : "blue"}>{slot.status === "success" ? "成功" : slot.status === "failed" ? "失败" : "生成中"}</Tag>
+                        {slot.taskKind ? <span className="text-xs text-stone-500">{slot.taskKind}</span> : null}
+                        {slot.taskProvider ? <span className="text-xs text-stone-500">{slot.taskProvider}</span> : null}
+                        {slot.taskModel ? <span className="text-xs text-stone-500">模型：{slot.taskModel}</span> : null}
+                    </div>
+                    <div className="grid gap-1 text-xs text-stone-500 dark:text-stone-400 sm:grid-cols-2">
+                        {slot.clientRequestId ? <div>客户端请求：<code className="break-all">{slot.clientRequestId}</code></div> : null}
+                        {slot.taskId ? <div>本地任务：<code className="break-all">{slot.taskId}</code></div> : null}
+                        {slot.serverTaskId ? <div>上游任务：<code className="break-all">{slot.serverTaskId}</code></div> : null}
+                        {slot.taskPollPath ? <div>查询路径：<code className="break-all">{slot.taskPollPath}</code></div> : null}
+                        {slot.error ? <div className="text-red-600 dark:text-red-300">任务错误：{slot.error}</div> : null}
+                    </div>
+                </div>
+            ))}
+            {traces.length ? traces.map(({ slot, trace }, index) => (
+                <div key={`${slot.id}:${index}`} className="overflow-hidden rounded-lg border border-stone-200 dark:border-stone-800">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 bg-stone-50 px-3 py-2 dark:border-stone-800 dark:bg-stone-900/70">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
+                                <span>{trace.channel}</span><span>·</span><span>{trace.protocol}</span><span>·</span><span>{formatAdminLogTime(trace.createdAt)}</span>
+                            </div>
+                            <div className="mt-1 break-all font-mono text-xs text-stone-800 dark:text-stone-200">{trace.method} {trace.path}</div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <Tag className="m-0" color={trace.statusCode && trace.statusCode < 400 ? "green" : "red"}>{trace.statusCode ? `HTTP ${trace.statusCode}` : "请求失败"}</Tag>
+                            <span className="text-xs tabular-nums text-stone-500">{formatAdminLogDuration(trace.durationMs)}</span>
+                        </div>
+                    </div>
+                    <div className="space-y-3 p-3">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500 dark:text-stone-400">
+                            {trace.model ? <span>上游模型：{trace.model}</span> : null}
+                            {trace.requestBytes !== undefined ? <span>请求：{formatAssetBytes(trace.requestBytes)}</span> : null}
+                            {trace.responseBytes !== undefined ? <span>响应：{formatAssetBytes(trace.responseBytes)}</span> : null}
+                            {trace.requestContentType ? <span>请求类型：{trace.requestContentType}</span> : null}
+                            {trace.responseContentType ? <span>响应类型：{trace.responseContentType}</span> : null}
+                        </div>
+                        {trace.error ? <div className="whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">{trace.error}</div> : null}
+                        <div className="grid gap-3 lg:grid-cols-2">
+                            <ProtocolTracePane title="请求头（已筛选）" value={trace.requestHeaders} />
+                            <ProtocolTracePane title="响应头（安全字段）" value={trace.responseHeaders} />
+                            <ProtocolTracePane title="请求内容（已脱敏）" value={trace.requestPreview} />
+                            <ProtocolTracePane title="响应内容（已脱敏）" value={trace.responsePreview} />
+                        </div>
+                    </div>
+                </div>
+            )) : <div className="rounded-lg border border-dashed border-stone-300 px-3 py-4 text-sm text-stone-500 dark:border-stone-700 dark:text-stone-400">该记录尚未采集到内置协议 HTTP 明细；历史调用记录仍保留上面的参数、素材和任务信息。</div>}
+        </section>
+    );
+}
+
+function ProtocolTracePane({ title, value }: { title: string; value?: string | Record<string, string> }) {
+    if (!value) return null;
+    const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return (
+        <div className="min-w-0">
+            <div className="mb-1 text-xs font-medium text-stone-600 dark:text-stone-300">{title}</div>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-stone-950 p-2.5 text-[11px] leading-5 text-stone-100">{text}</pre>
+        </div>
+    );
+}
+
+function generationParameterLabel(key: string) {
+    const labels: Record<string, string> = { model: "模型", size: "尺寸 / 比例", quality: "画质", count: "数量", resolution: "清晰度", seconds: "时长", generateAudio: "生成音频", watermark: "水印" };
+    return labels[key] || key;
 }
 
 function GenerationLogResultSection({ log }: { log: StoredGenerationLog }) {

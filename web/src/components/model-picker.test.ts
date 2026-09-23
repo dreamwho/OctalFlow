@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
+import type { AiConfig } from "@/stores/use-config-store";
 import { filterModelOptions, groupModelOptions, modelProviderLabel, resolveModelIcon, type ModelOption } from "./model-picker";
 
 describe("model picker brand icons", () => {
@@ -9,23 +10,36 @@ describe("model picker brand icons", () => {
         ["speech-2.8-hd", "/icons/minimax.svg"],
         ["music-3.0", "/icons/minimax.svg"],
         ["cosyvoice-v3-plus", "/icons/qwen.svg"],
-        ["seedance2.0fast", "/icons/jimeng.svg"],
-        ["Seedream 5.0 Pro", "/icons/jimeng.svg"],
+        ["seedance2.0fast", "/icons/doubao.svg"],
+        ["Seedream 5.0 Pro", "/icons/doubao.svg"],
     ])("maps %s to its brand icon", (model, icon) => {
         expect(resolveModelIcon(model)).toBe(icon);
     });
 
-    it("keeps the Seedance icon colored in dark canvas surfaces", () => {
+    it("uses Nano Banana for Gemini image models, Doubao for ByteDance media, and honors a custom icon", () => {
+        expect(resolveModelIcon("gemini-3-pro-image", "image")).toBe("/icons/nanobanana.svg");
+        expect(resolveModelIcon("gemini-2.5-flash", "text")).toBe("/icons/gemini.svg");
+        expect(resolveModelIcon("opaque-image", "image", undefined, "ByteDance Studio")).toBe("/icons/doubao.svg");
+        expect(resolveModelIcon("opaque-video", "video", undefined, "Seedance Provider")).toBe("/icons/doubao.svg");
+        expect(resolveModelIcon("gemini-3-pro-image", "image", "openai")).toBe("/icons/openai.svg");
+    });
+
+    it("keeps branded image icons colored in dark canvas surfaces", () => {
         const source = readFileSync(new URL("./model-picker.tsx", import.meta.url), "utf8");
         const icon = readFileSync(new URL("../../public/icons/jimeng.svg", import.meta.url), "utf8");
+        const nanobanana = readFileSync(new URL("../../public/icons/nanobanana.svg", import.meta.url), "utf8");
+        const doubao = readFileSync(new URL("../../public/icons/doubao.svg", import.meta.url), "utf8");
 
-        expect(source).toContain('icon === "/icons/jimeng.svg" || icon === "/icons/minimax.svg" || icon === "/icons/qwen.svg"');
+        expect(source).toContain('icon === "/icons/nanobanana.svg"');
+        expect(source).toContain('icon === "/icons/doubao.svg"');
         expect(icon).toContain("linearGradient");
         expect(icon).toContain("#7BF3E2");
         expect(icon).toContain('viewBox="16 16 32 36"');
         expect(icon).not.toContain("<rect");
         expect(icon).not.toContain("#080B10");
         expect(icon).not.toContain("currentColor");
+        expect(nanobanana).toContain("<svg");
+        expect(doubao).toContain("<svg");
     });
 
     it("keeps MiniMax and Bailian icons transparent and colored", () => {
@@ -51,6 +65,12 @@ describe("model picker presentation helpers", () => {
         expect(modelProviderLabel("gemini-3-pro-image")).toBe("Google Gemini");
         expect(modelProviderLabel("Seedream 5.0")).toBe("ByteDance Seedream");
         expect(modelProviderLabel("gpt-image-2")).toBe("OpenAI");
+    });
+
+    it("uses the administrator-configured logical model group in the picker", () => {
+        const config = { logicalModels: [{ id: "gpt-image-2", name: "GPT Image 2", capability: "image", pickerGroup: "自定义图片模型", enabled: true, bindings: [] }] } as unknown as AiConfig;
+
+        expect(modelProviderLabel("gpt-image-2", config)).toBe("自定义图片模型");
     });
 
     it("filters by the visible name, upstream model name, or provider without adding options", () => {

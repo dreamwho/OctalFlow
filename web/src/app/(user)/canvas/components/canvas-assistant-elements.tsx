@@ -39,7 +39,7 @@ export function AgentTextModelPicker({ config, value, onChange }: { config: AiCo
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
             >
-                <ModelIcon model={current} />
+                <ModelIcon model={current} config={config} />
                 <span className="min-w-0 truncate">{current ? modelOptionName(current) : "选择文本模型"}</span>
                 {current ? <span className="shrink-0 opacity-55">{resolveModelChannel(config, current).name}</span> : null}
             </SelectTrigger>
@@ -57,7 +57,7 @@ export function AgentTextModelPicker({ config, value, onChange }: { config: AiCo
                     options.map((model) => (
                         <SelectItem key={model} value={model} textValue={`${modelOptionName(model)} ${resolveModelChannel(config, model).name}`}>
                             <span className="flex min-w-0 items-center gap-2">
-                                <ModelIcon model={model} />
+                                <ModelIcon model={model} config={config} />
                                 <span className="min-w-0 flex-1 truncate">{modelOptionName(model)}</span>
                                 <span className="shrink-0 text-xs opacity-55">{resolveModelChannel(config, model).name}</span>
                             </span>

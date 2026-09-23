@@ -13,9 +13,13 @@ POSTGRES_IMAGE="${DREAMYO_OFFLINE_POSTGRES_IMAGE:-postgres:16.6-alpine}"
 BUILD_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
 DATABASE_MODE="${DREAMYO_DATABASE_MODE:-external}"
 PRIVATE_MIGRATION_DIR="${DREAMYO_PRIVATE_MIGRATION_DIR:-}"
+PRIVATE_SETTINGS_SYNC_DIR="${DREAMYO_PRIVATE_SETTINGS_SYNC_DIR:-}"
 PRIVATE_MIGRATION=0
 PRIVATE_MIGRATION_FILES=()
+PRIVATE_SETTINGS_SYNC=0
+PRIVATE_SETTINGS_SYNC_FILES=()
 REUSE_IMAGES="${DREAMYO_REUSE_IMAGES:-0}"
+REBUILD_APP_IMAGE="${DREAMYO_REBUILD_APP_IMAGE:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,6 +29,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --reuse-images)
             REUSE_IMAGES=1
+            shift
+            ;;
+        --rebuild-app-image)
+            REBUILD_APP_IMAGE=1
             shift
             ;;
         --database-mode)
@@ -164,6 +172,31 @@ collect_private_migration_files() {
     [[ "${#PRIVATE_MIGRATION_FILES[@]}" -gt 0 ]] || die "私有迁移目录不包含普通文件"
 }
 
+verify_private_settings_sync_snapshot() {
+    local directory="$1"
+    [[ -d "$directory" && ! -L "$directory" ]] || die "DREAMYO_PRIVATE_SETTINGS_SYNC_DIR 必须是非符号链接目录：$directory"
+    node "$REPO_ROOT/scripts/export-private-settings-sync.mjs" --verify "$directory" >/dev/null || die "私有账号与代理同步快照校验失败"
+}
+
+copy_private_settings_sync() {
+    local source_directory="$1"
+    local destination="$PACKAGE_DIR/private-settings-sync"
+    mkdir -m 0700 "$destination"
+    cp -pR "$source_directory/." "$destination/"
+    find "$destination" -type d -exec chmod 0700 {} +
+    find "$destination" -type f -exec chmod 0600 {} +
+    verify_private_settings_sync_snapshot "$destination"
+}
+
+collect_private_settings_sync_files() {
+    local relative_path
+    while IFS= read -r -d '' relative_path; do
+        [[ "$relative_path" != *$'\n'* && "$relative_path" != *$'\r'* ]] || die "私有同步文件路径不能包含换行"
+        PRIVATE_SETTINGS_SYNC_FILES+=("$relative_path")
+    done < <(cd "$PACKAGE_DIR" && find private-settings-sync -type f -print0)
+    [[ "${#PRIVATE_SETTINGS_SYNC_FILES[@]}" -gt 0 ]] || die "私有账号与代理同步目录不包含普通文件"
+}
+
 case "$DATABASE_MODE" in
     embedded) COMPOSE_FILE="docker-compose.offline.yml" ;;
     external) COMPOSE_FILE="docker-compose.offline-external-db.yml" ;;
@@ -175,6 +208,12 @@ if [[ -n "$PRIVATE_MIGRATION_DIR" ]]; then
     verify_private_migration_snapshot "$PRIVATE_MIGRATION_DIR"
     PRIVATE_MIGRATION=1
 fi
+if [[ -n "$PRIVATE_SETTINGS_SYNC_DIR" ]]; then
+    [[ "$DATABASE_MODE" == external ]] || die "DREAMYO_PRIVATE_SETTINGS_SYNC_DIR 仅支持 external PostgreSQL 模式"
+    verify_private_settings_sync_snapshot "$PRIVATE_SETTINGS_SYNC_DIR"
+    PRIVATE_SETTINGS_SYNC=1
+fi
+[[ "$PRIVATE_MIGRATION" != 1 || "$PRIVATE_SETTINGS_SYNC" != 1 ]] || die "首次迁移快照与在线设置同步不能放在同一个部署包"
 
 validate_platform "$PLATFORM"
 
@@ -197,6 +236,11 @@ VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
 if [[ "$REUSE_IMAGES" == 1 && -d "$PACKAGE_DIR/images" ]]; then
     printf '模式：复用已存在镜像归档并更新配置与脚本：%s\n' "$PACKAGE_DIR/images"
     mkdir -p "$PACKAGE_DIR/images"
+    if [[ "$REBUILD_APP_IMAGE" == 1 ]]; then
+        printf '重新构建主应用镜像：%s（平台 %s）\n' "$APP_IMAGE" "$PLATFORM"
+        docker buildx build --platform "$PLATFORM" --tag "$APP_IMAGE" --load --progress "$BUILD_PROGRESS" "$REPO_ROOT"
+        docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/app.tar" "$APP_IMAGE"
+    fi
 else
     archive_existing_package
     mkdir -p "$PACKAGE_DIR/images"
@@ -297,6 +341,10 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     copy_private_migration "$PRIVATE_MIGRATION_DIR"
     collect_private_migration_files
 fi
+if [[ "$PRIVATE_SETTINGS_SYNC" == 1 ]]; then
+    copy_private_settings_sync "$PRIVATE_SETTINGS_SYNC_DIR"
+    collect_private_settings_sync_files
+fi
 
 {
 cat <<EOF
@@ -304,6 +352,7 @@ DREAMYO_PACKAGE_VERSION=$VERSION
 DREAMYO_DOCKER_PLATFORM=$PLATFORM
 DREAMYO_DATABASE_MODE=$DATABASE_MODE
 DREAMYO_PRIVATE_MIGRATION=$PRIVATE_MIGRATION
+DREAMYO_PRIVATE_SETTINGS_SYNC=$PRIVATE_SETTINGS_SYNC
 DREAMYO_IMAGE=$APP_IMAGE
 DREAMYO_GEMINIAI_IMAGE=$GEMINIAI_IMAGE
 DREAMYO_MAGIC_PROXY_IMAGE=$MAGIC_PROXY_IMAGE
@@ -337,6 +386,11 @@ if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     ACCESS_HEADING="私有迁移模式不提供首次管理员安装指南。"
     ACCESS_URL_BLOCK="服务启动后请使用迁移前已有的管理员身份登录；默认端口下访问 ${DEFAULT_APPLICATION_URL}。"
     PRIVATE_CONTENT_NOTICE='- 本包内含敏感私有迁移数据，绝不可上传到公共仓库、对象存储或公共下载链接。私有迁移只允许导入空的目标 PostgreSQL 一次；已有导入记录或业务数据时部署会拒绝覆盖。'
+elif [[ "$PRIVATE_SETTINGS_SYNC" == 1 ]]; then
+    DEPLOYMENT_SUMMARY="脚本会更新应用镜像，并在启动前把私有快照中的 Dola、GeminiAIStudio、GPTAPI 账号和通用代理配置同步到服务器。账号按各自身份合并，服务器独有账号保留；通用代理单例以本地配置替换。$DATABASE_DESCRIPTION"
+    ACCESS_HEADING="这是包含本地账号登录态与代理配置的私有更新包。"
+    ACCESS_URL_BLOCK="服务启动后继续使用服务器现有管理员身份和访问地址；部署日志只输出新增、更新数量，不输出 Cookie、Token 或代理凭据。"
+    PRIVATE_CONTENT_NOTICE='- 本包含加密的 Dola Cookie、GeminiAIStudio 授权、GPTAPI 账号与通用代理配置，以及用于解密源快照的本地加密密钥。只能通过受控私有渠道上传，禁止提交 Git、放入公共对象存储或生成公共下载链接。服务器导入时会使用服务器密钥重新加密 Dola/GPTAPI 凭据；GeminiAIStudio 授权写入其私有账号卷。'
 else
     DEPLOYMENT_SUMMARY="脚本会自动加载 images/ 下的应用、GeminiAI 和 Mihomo 镜像，创建持久化数据卷，生成首次部署所需的内部密钥，并启动全部服务。$DATABASE_DESCRIPTION"
     ACCESS_HEADING="默认访问地址为："
@@ -409,6 +463,9 @@ PACKAGE_CHECKSUM_FILES=(
 )
 if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
     PACKAGE_CHECKSUM_FILES+=("${PRIVATE_MIGRATION_FILES[@]}")
+fi
+if [[ "$PRIVATE_SETTINGS_SYNC" == 1 ]]; then
+    PACKAGE_CHECKSUM_FILES+=("${PRIVATE_SETTINGS_SYNC_FILES[@]}")
 fi
 write_checksums "${PACKAGE_CHECKSUM_FILES[@]}"
 chmod 0644 "$PACKAGE_DIR/SHA256SUMS"

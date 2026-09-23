@@ -17,6 +17,7 @@ vi.mock("@/lib/server/data-adapter", () => ({
 }));
 
 import { consumeUserPoints, createFirstAdmin, createUser, listPublicUsersPage, refundUserPoints, setAuthSettings, updateUserByAdmin } from "./store";
+import { DEFAULT_USER_ROLE } from "@/lib/user-roles";
 
 const INSTALL_TOKEN = "install-token-".padEnd(48, "x");
 
@@ -115,6 +116,42 @@ describe("normalizePointAmount allows negative values", () => {
         const consumption = await consumeUserPoints(user.id, "paid-video", 1, "video", "desktop-local-video");
 
         expect(consumption).toMatchObject({ cost: 0, multiplier: 0, remaining: 0 });
+        expect(consumption.recordId).toBeTruthy();
+    });
+
+    it("applies the role billing multiplier and blocks unauthorized models", async () => {
+        const admin = await createAdmin();
+        const user = await createUser({ username: "honor-user", password: "password123", policyAccepted: true });
+        await setAuthSettings({
+            userRoles: [
+                structuredClone(DEFAULT_USER_ROLE),
+                { ...structuredClone(DEFAULT_USER_ROLE), id: "honor", name: "荣誉会员", pointsMultiplier: 0.5, modelAccess: { all: false, capabilities: ["image"], modelIds: [], excludedModelIds: [] } },
+            ],
+            logicalModels: [
+                { id: "honor-image", name: "会员图片模型", capability: "image", enabled: true, bindings: [] },
+                { id: "restricted-video", name: "限制视频模型", capability: "video", enabled: true, bindings: [] },
+            ],
+            modelPointCosts: { "honor-image": 4, "restricted-video": 10 },
+        });
+        await updateUserByAdmin(admin.id, user.id, { role: "honor", pointsBalance: 20 });
+
+        const consumption = await consumeUserPoints(user.id, "honor-image", 2, "image", "honor-role:half-cost");
+        expect(consumption).toMatchObject({ multiplier: 2, cost: 4, remaining: 16 });
+        await expect(consumeUserPoints(user.id, "restricted-video", 1, "video", "honor-role:restricted-model")).rejects.toMatchObject({ status: 403 });
+    });
+
+    it("records generation usage without deducting role points", async () => {
+        const admin = await createAdmin();
+        const user = await createUser({ username: "free-role-user", password: "password123", policyAccepted: true });
+        await setAuthSettings({
+            userRoles: [structuredClone(DEFAULT_USER_ROLE), { ...structuredClone(DEFAULT_USER_ROLE), id: "honor", name: "荣誉会员", recordOnly: true }],
+            modelPointCosts: { "free-image": 6 },
+        });
+        await updateUserByAdmin(admin.id, user.id, { role: "honor", pointsBalance: 20 });
+
+        const consumption = await consumeUserPoints(user.id, "free-image", 1, "image", "honor-role:record-only");
+
+        expect(consumption).toMatchObject({ multiplier: 0, cost: 0, remaining: 20 });
         expect(consumption.recordId).toBeTruthy();
     });
 });

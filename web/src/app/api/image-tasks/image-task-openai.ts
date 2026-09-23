@@ -133,7 +133,7 @@ export async function runOpenAiImageTask(task: ImageTask, origin: string, public
     if (globalPreset) return runGlobalAiOpcImageTask(task, origin, publicOrigin, cookie, quality, requestSize, singleStep);
     const path = await openAiImageTaskPath(config, task.kind);
     const url = taskUrl(config, path, origin);
-    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task));
+    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task), task);
     const responseFormat = await preferredImageResponseFormat(config);
     const allowProtocolFallback = allowsImageProtocolFallback(config);
     const useJsonImageEdit = task.kind === "edit" && (await shouldUseJsonImageEdit(config));
@@ -182,7 +182,7 @@ export async function runOpenAiImageTask(task: ImageTask, origin: string, public
     if (!response.ok) throw imageSubmissionResponseError(response.status, await readFetchError(response, "图片生成失败"));
     const payload = await parseImageSubmissionJson<ImageApiResponse>(response);
     const resultBaseUrl = response.headers.get("x-dreamyo-upstream-url") || url;
-    const result = await parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep));
+    const result = await parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep, task));
     if (allowProtocolFallback && responseFormat === "url" && shouldRetryInternalImageUrlAsBase64(result)) {
         await refundChargedImageResponse(task, response.headers);
         return runOpenAiImageTaskWithBase64Response(task, origin, publicOrigin, cookie, singleStep);
@@ -196,7 +196,7 @@ async function runGlobalAiOpcImageTask(task: ImageTask, origin: string, publicOr
     if (!preset) throw new GenerationSubmissionSafeFailure("GlobalAiOpc 图片预设未配置");
     const path = preset.createPath;
     const url = taskUrl(config, path, origin);
-    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task));
+    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task), task);
     headers.set("content-type", "application/json");
     const referenceContext = { ownerUserId: task.userId, taskId: task.id };
     const imageUrls = (await Promise.all(task.references.map((reference) => publicImageReferenceRequestUrl(reference, origin, publicOrigin, referenceContext)))).filter(Boolean);
@@ -220,7 +220,7 @@ async function runGlobalAiOpcImageTask(task: ImageTask, origin: string, publicOr
     if (!response.ok) throw imageSubmissionResponseError(response.status, await readFetchError(response, "图片生成失败"));
     const payload = await parseImageSubmissionJson<ImageApiResponse>(response);
     const resultBaseUrl = response.headers.get("x-dreamyo-upstream-url") || url;
-    return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep));
+    return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep, task));
 }
 
 export async function runOpenAiJsonImageEditTask(
@@ -235,7 +235,7 @@ export async function runOpenAiJsonImageEditTask(
     singleStep = false,
 ): Promise<ImageTaskRunResult> {
     const config = task.config;
-    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task));
+    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task), task);
     headers.set("content-type", "application/json");
     let lastMessage = "";
     const apiBase = await resolveConfiguredApiBaseUrl(task.config.baseUrl).catch(() => task.config.baseUrl);
@@ -259,7 +259,7 @@ export async function runOpenAiJsonImageEditTask(
         }
         const payload = await parseImageSubmissionJson<ImageApiResponse>(response);
         const resultBaseUrl = response.headers.get("x-dreamyo-upstream-url") || url;
-        const result = await parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep));
+        const result = await parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep, task));
         if (allowProtocolFallback && responseFormat === "url" && shouldRetryInternalImageUrlAsBase64(result)) {
             await refundChargedImageResponse(task, response.headers);
             return runOpenAiJsonImageEditTask(task, url, origin, publicOrigin, quality, requestSize, cookie, "b64_json", singleStep);
@@ -280,7 +280,7 @@ export async function runOpenAiImageTaskWithBase64Response(task: ImageTask, orig
     const path = await openAiImageTaskPath(config, task.kind);
     const url = taskUrl(config, path, origin);
     const allowProtocolFallback = allowsImageProtocolFallback(config);
-    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task));
+    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task), task);
 
     if (task.kind === "edit") {
         let formData: FormData;
@@ -298,7 +298,7 @@ export async function runOpenAiImageTaskWithBase64Response(task: ImageTask, orig
         }
         const payload = await parseImageSubmissionJson<ImageApiResponse>(response);
         const resultBaseUrl = response.headers.get("x-dreamyo-upstream-url") || url;
-        return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep));
+        return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep, task));
     }
 
     headers.set("content-type", "application/json");
@@ -324,13 +324,13 @@ export async function runOpenAiImageTaskWithBase64Response(task: ImageTask, orig
     }
     const payload = await parseImageSubmissionJson<ImageApiResponse>(response);
     const resultBaseUrl = response.headers.get("x-dreamyo-upstream-url") || url;
-    return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep));
+    return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep, task));
 }
 
 export async function runOpenAiResponsesImageTask(task: ImageTask, origin: string, cookie: string, singleStep = false): Promise<ImageTaskRunResult> {
     const config = task.config;
     const url = taskUrl(config, "/responses", origin);
-    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task));
+    const headers = taskHeaders(config, cookie, imagePointsIdempotencyKey(task), task);
     headers.set("content-type", "application/json");
     let lastError = "";
 
@@ -344,7 +344,7 @@ export async function runOpenAiResponsesImageTask(task: ImageTask, origin: strin
         }
         const payload = await parseImageSubmissionJson<ImageApiResponse>(response);
         const resultBaseUrl = response.headers.get("x-dreamyo-upstream-url") || url;
-        return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep));
+        return parseChargedImageResponse(task, response, () => parseImagePayloadOrPoll(config, payload, resultBaseUrl, cookie, url, singleStep, task));
     }
 
     throw new GenerationSubmissionSafeFailure(lastError || "图片生成失败");

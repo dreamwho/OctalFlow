@@ -596,6 +596,9 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
     const [ready, setReady] = useState(false);
     const hostRef = useRef<HTMLDivElement | null>(null);
     const lastValueRef = useRef(value);
+    const composingRef = useRef(false);
+    const editorRef = useRef<TiptapEditor | null>(null);
+    const [compositionRevision, setCompositionRevision] = useState(0);
     const previousTokensRef = useRef<CanvasPromptToken[]>([]);
     const callbacksRef = useRef({ onChange, onSelectionChange, onSelectSkill, onRemoveSkill, onTokenSnapshotChange, onSubmit, onKeyDown, onConnectReference });
     callbacksRef.current = { onChange, onSelectionChange, onSelectSkill, onRemoveSkill, onTokenSnapshotChange, onSubmit, onKeyDown, onConnectReference };
@@ -628,11 +631,44 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
         [skills.length],
     );
 
+    const publishEditorChange = (instance: TiptapEditor) => {
+        const nextValue = serializeCanvasPromptDocument(instance.state.doc);
+        lastValueRef.current = nextValue;
+        callbacksRef.current.onChange(nextValue);
+        const currentTokens = tokenEntries(instance.state.doc).map(({ token }) => token);
+        const previousTokens = previousTokensRef.current;
+        for (const oldToken of previousTokens) if (oldToken.type === "skill" && !currentTokens.some((token) => token.type === "skill" && token.id === oldToken.id)) callbacksRef.current.onRemoveSkill?.(oldToken.id);
+        for (const token of currentTokens) {
+            if (token.type !== "skill" || previousTokens.some((oldToken) => oldToken.type === "skill" && oldToken.id === token.id)) continue;
+            const skill = skillById.get(token.id);
+            if (skill) callbacksRef.current.onSelectSkill?.(skill);
+        }
+        previousTokensRef.current = currentTokens;
+        callbacksRef.current.onTokenSnapshotChange?.(tokenSnapshots(instance.state.doc));
+        emitMention(instance);
+    };
+
     const editor = useEditor({
         immediatelyRender: false,
         extensions: [StarterKit.configure({ heading: false, blockquote: false, bulletList: false, orderedList: false, codeBlock: false, horizontalRule: false, listItem: false }), ReferenceTokenNode, SkillTokenNode, CameraMotionTokenNode],
         content: parseValue(value, highlightLabels ? references : [], highlightLabels ? inlineTokens : [], skills, selectedSkillIds, tokenSnapshot),
         editorProps: {
+            handleDOMEvents: {
+                compositionstart: () => {
+                    composingRef.current = true;
+                    setMention(null);
+                    return false;
+                },
+                compositionend: () => {
+                    requestAnimationFrame(() => {
+                        composingRef.current = false;
+                        const instance = editorRef.current;
+                        if (instance && !instance.isDestroyed) publishEditorChange(instance);
+                        setCompositionRevision((revision) => revision + 1);
+                    });
+                    return false;
+                },
+            },
             attributes: {
                 class: `canvas-resource-editor-content cursor-text ${className || ""}`,
                 role: "textbox",
@@ -642,6 +678,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
                 style: `cursor:text!important;${styleToString(style) || ""}`,
             },
             handleKeyDown: (_view, event) => {
+                if (composingRef.current || event.isComposing || event.keyCode === 229) return false;
                 if (mention && candidatesRef.current.length) {
                     const handled = handleMentionNavigation(event, candidatesRef.current, activeIndex, setActiveIndex, selectCandidateRef.current, () => setMention(null));
                     if (handled) return true;
@@ -698,23 +735,13 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
             callbacksRef.current.onTokenSnapshotChange?.(tokenSnapshots(instance.state.doc));
         },
         onUpdate: ({ editor: instance }) => {
-            const nextValue = serializeCanvasPromptDocument(instance.state.doc);
-            lastValueRef.current = nextValue;
-            callbacksRef.current.onChange(nextValue);
-            const currentTokens = tokenEntries(instance.state.doc).map(({ token }) => token);
-            const previousTokens = previousTokensRef.current;
-            for (const oldToken of previousTokens) if (oldToken.type === "skill" && !currentTokens.some((token) => token.type === "skill" && token.id === oldToken.id)) callbacksRef.current.onRemoveSkill?.(oldToken.id);
-            for (const token of currentTokens) {
-                if (token.type !== "skill" || previousTokens.some((oldToken) => oldToken.type === "skill" && oldToken.id === token.id)) continue;
-                const skill = skillById.get(token.id);
-                if (skill) callbacksRef.current.onSelectSkill?.(skill);
-            }
-            previousTokensRef.current = currentTokens;
-            callbacksRef.current.onTokenSnapshotChange?.(tokenSnapshots(instance.state.doc));
-            emitMention(instance);
+            if (!composingRef.current) publishEditorChange(instance);
         },
-        onSelectionUpdate: ({ editor: instance }) => emitMention(instance),
+        onSelectionUpdate: ({ editor: instance }) => {
+            if (!composingRef.current) emitMention(instance);
+        },
     });
+    editorRef.current = editor;
 
     const candidates = useMemo<(CanvasResourceReference | AgentSkillSummary)[]>(() => {
         if (!mention) return [];
@@ -803,7 +830,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
     }, [editor, exposeHandle, forwardedRef, ready]);
 
     useEffect(() => {
-        if (!editor || editor.isDestroyed) return;
+        if (!editor || editor.isDestroyed || composingRef.current) return;
         const currentTokens = tokenEntries(editor.state.doc).map(({ token }) => token);
         const currentSnapshotKey = JSON.stringify(tokenSnapshots(editor.state.doc));
         const requestedSnapshotKey = JSON.stringify(tokenSnapshot);
@@ -825,7 +852,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
         lastValueRef.current = value;
         previousTokensRef.current = tokenEntries(editor.state.doc).map(({ token }) => token);
         callbacksRef.current.onTokenSnapshotChange?.(tokenSnapshots(editor.state.doc));
-    }, [activeReferences, editor, highlightLabels, inlineTokens, references, selectedSkillIds, skillById, skills, tokenSnapshot, value]);
+    }, [activeReferences, compositionRevision, editor, highlightLabels, inlineTokens, references, selectedSkillIds, skillById, skills, tokenSnapshot, value]);
 
     useEffect(() => {
         if (!editor || !autoFocus) return;

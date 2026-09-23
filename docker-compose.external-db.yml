@@ -1,9 +1,12 @@
+name: ${COMPOSE_PROJECT_NAME:-dreamyo}
+
 services:
   magic-proxy:
     image: ${DREAMYO_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}
     container_name: dreamyo-magic-proxy
     entrypoint: ["/usr/local/bin/dreamyo-mihomo-entrypoint.sh"]
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       DREAMYO_MAGIC_PROXY_SECRET: ${DREAMYO_MAGIC_PROXY_SECRET:?请在 .env 中配置至少 32 位魔法代理控制密钥}
       DREAMYO_MAGIC_PROXY_LISTEN_HOST: 0.0.0.0
     volumes:

@@ -8,7 +8,7 @@ import { hashPassword, verifyPassword } from "./password";
 import { AuthInputError, SESSION_MAX_AGE_SECONDS } from "./store-foundation";
 import { consumeEmailCode, countActiveAdmins, countActiveFullAdmins, hashToken, normalizeDisplayName, normalizeEmail, normalizePoints, normalizeUserBio, parseSessionCookie, resolvePlanById, validateEmail, validatePassword } from "./store-normalizers";
 import { mutateAuthDb, readAuthDb, readPostgresAuthSettings } from "./store-repository";
-import type { PublicUser, StoredUser, UserRole, UserStatus } from "./store-types";
+import type { PublicUser, StoredUser, UserRole, UserRoleDefinition, UserStatus } from "./store-types";
 import { publicUserFromAuthenticatedRecord, toPublicUser } from "./store-user-projection";
 import { ALL_ADMIN_PERMISSIONS, hasAdminPermission, hasAllAdminPermissions, isFullAdminPermissions, normalizeAdminPermissions, type AdminPermission } from "@/lib/admin-permissions";
 
@@ -232,9 +232,11 @@ export async function updateUserByAdmin(actorId: string, userId: string, patch: 
             const user = await repos.users.getById(userId, true);
             if (!user) throw new AuthInputError("用户不存在");
             assertCanUpdateManagedUser(actor, user, patch);
+            const settings = await readPostgresAuthSettings(client);
             if (user.id === actorId && patch.status === "disabled") throw new AuthInputError("不能禁用当前登录的管理员账号");
 
             const nextRole = patch.role || user.role;
+            assertConfiguredRole(settings.userRoles, nextRole);
             const nextStatus = patch.status || user.status;
             const nextAdminPermissions = nextRole === "admin" ? normalizeAdminPermissions(patch.adminPermissions ?? user.adminPermissions) : [];
             if (user.role === "admin" && (nextRole !== "admin" || nextStatus !== "active")) {
@@ -268,7 +270,6 @@ export async function updateUserByAdmin(actorId: string, userId: string, patch: 
                 userPatch.passwordHash = await hashPassword(patch.password);
             }
             if (patch.planId !== undefined) {
-                const settings = await readPostgresAuthSettings(client);
                 userPatch.planId = resolvePlanById(settings.entitlements, patch.planId).id;
             }
             await repos.users.update(user.id, userPatch);
@@ -297,6 +298,7 @@ export async function updateUserByAdmin(actorId: string, userId: string, patch: 
         if (!user) throw new AuthInputError("用户不存在");
         const actor = db.users.find((item) => item.id === actorId);
         assertCanUpdateManagedUser(actor, user, patch);
+        assertConfiguredRole(db.settings.userRoles, patch.role || user.role);
         if (user.id === actorId && patch.status === "disabled") throw new AuthInputError("不能禁用当前登录的管理员账号");
 
         const nextRole = patch.role || user.role;
@@ -400,6 +402,10 @@ function assertCanUpdateManagedUser(actor: StoredUser | null | undefined, user: 
         if (!permissions.length) throw new AuthInputError("管理员至少需要一项职责权限");
         if (!hasAllAdminPermissions(actor, permissions)) throw new AuthInputError("不能授予超出当前管理员职责范围的权限", 403);
     }
+}
+
+function assertConfiguredRole(roles: UserRoleDefinition[], role: UserRole) {
+    if (role !== "admin" && !roles.some((item) => item.id === role)) throw new AuthInputError("所选用户角色不存在，请刷新后重试");
 }
 
 function assertCanDeleteManagedUser(actor: StoredUser | null | undefined, user: StoredUser) {

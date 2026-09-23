@@ -155,7 +155,7 @@ export function CompactAgentGenerationSettings({
                                 const model = availableModels.find((item) => item.id === label.value);
                                 return model ? (
                                     <span className="flex min-w-0 items-center gap-2">
-                                        <ModelIcon model={`${model.id} ${model.name}`} />
+                                        <ModelIcon model={`${model.id} ${model.name}`} capability={model.capability} iconKey={model.iconKey} providerHint={model.providerHint} />
                                         <span className="truncate">{model.name}</span>
                                     </span>
                                 ) : (
@@ -168,7 +168,7 @@ export function CompactAgentGenerationSettings({
                             }}
                             optionRender={(option) => (
                                 <div className="flex min-w-0 items-center gap-2">
-                                    <ModelIcon model={`${option.data.model.id} ${option.data.model.name}`} />
+                                    <ModelIcon model={`${option.data.model.id} ${option.data.model.name}`} capability={option.data.model.capability} iconKey={option.data.model.iconKey} providerHint={option.data.model.providerHint} />
                                     <span className="truncate">{option.data.model.name}</span>
                                 </div>
                             )}

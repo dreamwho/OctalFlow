@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "./store-foundation";
 import type { AuthSettings } from "./store-types";
 import { serializePublicSettings, setSessionCookie } from "./session";
+import { DEFAULT_USER_ROLE } from "@/lib/user-roles";
 
 afterEach(() => {
     delete process.env.DREAMYO_COOKIE_SECURE;
@@ -148,6 +149,7 @@ describe("serializePublicSettings", () => {
                 },
             },
         ];
+        settings.logicalModels = [{ id: "geminiai-image", name: "GeminiAI 生图", capability: "image", enabled: true, bindings: [{ id: "geminiai-binding", channelId: "geminiai", upstreamModel: "gemini-3.1-flash-image-preview", enabled: true, priority: 1 }] }];
 
         const result = serializePublicSettings(settings);
 
@@ -188,12 +190,36 @@ describe("serializePublicSettings", () => {
                 },
             },
         ];
+        settings.logicalModels = [{ id: "minimax-audio-model", name: "MiniMax 音频模型", capability: "audio", enabled: true, bindings: [{ id: "minimax-audio-binding", channelId: "minimax-audio", upstreamModel: "speech-2.8-hd", enabled: true, priority: 1 }] }];
 
         const result = serializePublicSettings(settings);
         expect(result.systemChannels[0]?.advancedConfig).toEqual({ protocol: "minimax-audio", minimaxVoiceCloneEnabled: false, minimaxVoiceDesignEnabled: false });
         expect(JSON.stringify(result)).not.toContain("provider-secret");
         expect(JSON.stringify(result)).not.toContain("private/create");
         expect(JSON.stringify(result)).not.toContain("X-Secret-Key");
+    });
+
+    it("filters model choices and applies role pricing in the public settings", () => {
+        const settings: AuthSettings = structuredClone(DEFAULT_SETTINGS);
+        settings.userRoles = [structuredClone(DEFAULT_USER_ROLE), {
+            ...structuredClone(DEFAULT_USER_ROLE),
+            id: "image-only",
+            name: "图片用户",
+            pointsMultiplier: 0.5,
+            modelAccess: { all: false, capabilities: ["image"], modelIds: [], excludedModelIds: [] },
+        }];
+        settings.systemChannels = [{ id: "channel", name: "渠道", baseUrl: "https://example.test", apiKey: "secret", apiFormat: "openai", models: ["vendor-image", "vendor-video"], enabled: true }];
+        settings.logicalModels = [
+            { id: "image-main", name: "图片模型", capability: "image", enabled: true, bindings: [{ id: "image-binding", channelId: "channel", upstreamModel: "vendor-image", enabled: true, priority: 1 }] },
+            { id: "video-main", name: "视频模型", capability: "video", enabled: true, bindings: [{ id: "video-binding", channelId: "channel", upstreamModel: "vendor-video", enabled: true, priority: 1 }] },
+        ];
+        settings.modelPointCosts = { "image-main": 4, "vendor-image": 6, "video-main": 10, "vendor-video": 12 };
+
+        const result = serializePublicSettings(settings, { role: "image-only" });
+
+        expect(result.logicalModels.map((model) => model.id)).toEqual(["image-main"]);
+        expect(result.systemChannels[0]?.models).toEqual(["vendor-image"]);
+        expect(result.modelPointCosts).toEqual({ "image-main": 2, "vendor-image": 3 });
     });
 });
 

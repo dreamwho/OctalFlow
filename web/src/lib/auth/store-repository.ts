@@ -1,6 +1,7 @@
 import { createPostgresRepositories, ensurePostgresSchema, isPostgresDatabaseEnabled, postgresQuery, type QueryExecutor } from "@/lib/server/database";
 import { formatAccountId } from "@/lib/account-id";
 import { normalizeRegistrationPolicyConsent } from "@/lib/registration-consent";
+import { normalizeUserRoleId } from "@/lib/user-roles";
 import { normalizeAdminPermissions } from "@/lib/admin-permissions";
 import { readJsonDataFile, resolveDataPath, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { stat as statFile } from "node:fs/promises";
@@ -382,6 +383,7 @@ export function mapPostgresSettings(settingsRow: Record<string, unknown> | undef
         defaultModels: dbJson(settingsRow?.default_models, fallback.defaultModels),
         agentSkills: dbJson(settingsRow?.agent_skills, fallback.agentSkills),
         canvasQuickActions: dbJson(settingsRow?.canvas_quick_actions, fallback.canvasQuickActions),
+        userRoles: dbJson(settingsRow?.user_roles, fallback.userRoles),
     });
 }
 
@@ -394,7 +396,7 @@ export function mapPostgresUser(row: Record<string, unknown>): StoredUser {
         displayName: dbText(row.display_name),
         bio: dbText(row.bio),
         avatarStorageKey: dbOptionalText(row.avatar_storage_key),
-        role: row.role === "admin" ? "admin" : "user",
+        role: normalizeUserRoleId(row.role) || "user",
         adminPermissions: row.role === "admin" ? normalizeAdminPermissions(dbJson(row.admin_permissions, [])) : [],
         status: row.status === "disabled" ? "disabled" : "active",
         planId: dbText(row.plan_id),
@@ -544,9 +546,9 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
         INSERT INTO app_settings (
             id, site, registration_enabled, email_registration_enabled, login_methods, free_daily_points_enabled, mail, allow_user_api_config,
             model_point_costs, generation_point_multipliers, generation_cost_control, data_lifecycle, entitlements_enabled, default_plan_id, generation_concurrency, generation_defaults,
-            logical_models, default_models, agent_skills, canvas_quick_actions, free_daily_points
+            logical_models, default_models, agent_skills, canvas_quick_actions, user_roles, free_daily_points
         )
-        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
         ON CONFLICT (id) DO UPDATE SET
             site = EXCLUDED.site,
             registration_enabled = EXCLUDED.registration_enabled,
@@ -567,6 +569,7 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             default_models = EXCLUDED.default_models,
             agent_skills = EXCLUDED.agent_skills,
             canvas_quick_actions = EXCLUDED.canvas_quick_actions,
+            user_roles = EXCLUDED.user_roles,
             free_daily_points = EXCLUDED.free_daily_points
         `,
         [
@@ -588,6 +591,8 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             dbJsonParam(settings.logicalModels),
             dbJsonParam(settings.defaultModels),
             dbJsonParam(settings.agentSkills),
+            dbJsonParam(settings.canvasQuickActions),
+            dbJsonParam(settings.userRoles),
             settings.freeDailyPoints,
         ],
     );

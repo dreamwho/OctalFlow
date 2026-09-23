@@ -1,16 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { Button, Grid, Input, Popconfirm, Table } from "antd";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search, ShieldCheck, Trash2 } from "lucide-react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { hasAdminPermission, hasAllAdminPermissions } from "@/lib/admin-permissions";
 import type { AdminDashboardController } from "./use-admin-dashboard-controller";
 import { USER_PAGE_SIZE } from "./use-admin-dashboard-controller";
+import { AdminUserRolesModal } from "./admin-user-roles-modal";
 
 export function AdminUsersSection({ controller }: { controller: AdminDashboardController }) {
     const { currentUser, userSearch, setUserSearch, selectedUserIds, setSelectedUserIds, bulkDeletingUsers, activeSection, filteredUsers, usersLoading, userPage, setUserPage, userTotal, bulkDeleteUsers, openCreateUserEditor, userColumns } = controller;
     const screens = Grid.useBreakpoint();
+    const [rolesOpen, setRolesOpen] = useState(false);
     const canManageUsers = hasAdminPermission(currentUser, "users.manage");
     const canManageAdministrators = hasAdminPermission(currentUser, "administrators.manage");
     const canCreateUser = canManageUsers || canManageAdministrators;
@@ -21,13 +24,10 @@ export function AdminUsersSection({ controller }: { controller: AdminDashboardCo
             <PanelHeader
                 title="用户管理"
                 description="调整角色、账号状态和积分余额。"
-                actions={
-                    canCreateUser ? (
-                        <Button icon={<Plus className="size-4" />} onClick={openCreateUserEditor}>
-                            {canManageUsers ? "新增用户" : "新增管理员"}
-                        </Button>
-                    ) : null
-                }
+                actions={<div className="flex items-center gap-2">
+                    {canManageUsers ? <Button icon={<ShieldCheck className="size-4" />} onClick={() => setRolesOpen(true)}>角色与权限</Button> : null}
+                    {canCreateUser ? <Button icon={<Plus className="size-4" />} onClick={openCreateUserEditor}>{canManageUsers ? "新增用户" : "新增管理员"}</Button> : null}
+                </div>}
             />
             <div className="border-b border-stone-200 bg-stone-50/45 p-4 sm:p-5 dark:border-stone-800 dark:bg-stone-900/20">
                 <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
@@ -77,6 +77,7 @@ export function AdminUsersSection({ controller }: { controller: AdminDashboardCo
                 scroll={screens.sm ? { x: 1370 } : undefined}
                 size="middle"
             />
+            <AdminUserRolesModal controller={controller} open={rolesOpen} onClose={() => setRolesOpen(false)} />
         </Panel>
     );
 }
