@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import adminLocalCloudRoutes from "@/lib/desktop-cloud-routes.json";
 import { getTrustedProxyHops } from "@/lib/server/trusted-proxy";
 
 export function proxy(request: NextRequest) {
@@ -44,8 +45,7 @@ export function proxy(request: NextRequest) {
 }
 
 function isAdminLocalCloudPath(pathname: string) {
-    const roots = ["/billing", "/works", "/community", "/gallery", "/me", "/announcements", "/prompts", "/profile", "/u", "/share", "/api/billing", "/api/cloud-storage", "/api/works", "/api/community", "/api/public", "/api/announcements", "/api/prompts", "/api/cdk", "/api/points", "/api/referrals", "/api/auth/account-deletion", "/api/auth/logout", "/api/auth/profile", "/api/auth/password", "/api/auth/mfa", "/api/auth/data-export", "/api/auth/email-code", "/api/auth/login", "/api/auth/register", "/api/auth/wechat", "/api/admin/billing", "/api/admin/cloud-storage", "/api/admin/users", "/api/admin/announcements", "/api/admin/works", "/api/admin/prompts", "/api/admin/referrals", "/api/admin/object-storage"];
-    return roots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
+    return adminLocalCloudRoutes.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 
 function isCommercialUnroutedGenerationPath(pathname: string) {

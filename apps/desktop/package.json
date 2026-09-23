@@ -14,6 +14,8 @@
     "freeze:geminiai-browser": "node scripts/freeze-providers.mjs geminiai-browser",
     "freeze:chatgpt-api": "node scripts/freeze-providers.mjs chatgpt-api",
     "stage:camoufox": "node scripts/stage-camoufox.mjs",
+    "stage:mihomo": "node scripts/stage-mihomo.mjs",
+    "stage:dreamina": "node scripts/stage-dreamina.mjs",
     "stage:media-tools": "node scripts/stage-media-tools.mjs",
     "freeze:video-depth": "node scripts/freeze-video-depth.mjs",
     "pack:commercial:mac": "node scripts/build.mjs commercial mac",

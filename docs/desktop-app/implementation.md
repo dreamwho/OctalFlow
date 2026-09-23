@@ -1,6 +1,6 @@
 # Dreamyo 桌面化实施记录与验收清单
 
-更新：2026-09-22。基线为 `5c50e9d`，远端 `main` 和 `backup/pre-desktop-20260922` 标签；完整 Git bundle 位于项目同级 `Octal-Canvas-backups/`。开发分支为 `codex/desktop-app-foundation`。
+更新：2026-09-23。基线为 `5c50e9d`，远端 `main` 和 `backup/pre-desktop-20260922` 标签；完整 Git bundle 位于项目同级 `Octal-Canvas-backups/`。开发分支为 `codex/desktop-app-foundation`。
 
 ## 三种运行形态
 
@@ -19,8 +19,11 @@ Web 对外接口与后台仍保留全部功能。桌面版不能通过更改 URL
 - Web standalone 的文件跟踪已排除运行期 `.data`，生产构建完成后再次清理并校验产物；本机最新构建扫描不到 `.data` 或 `.env*`。此前构建曾尝试复制瞬时 Dola 日志锁文件，此项修改消除了该跟踪风险。桌面打包仍保留独立白名单预检。
 - 管理员免登录引导：桌面令牌 + loopback 双条件，生成普通 HttpOnly Session；Web 环境返回 403。
 - 管理员本地版隐藏商业运营分区、账务入口、站点初始化向导和账号/邮件系统设置，并在代理层拒绝云端商业路由；本地生成计价为 0，仍保留任务/幂等流水契约。
+- 管理员本地版的路由边界补齐了桌面云授权/撤销/设备、CDK、账户注销、邮件、签到、互动通知、远程版本检查、过期账单/退款/邀请结算和云端生成回调入口；本地 Provider 管理、Runtime、bootstrap 与 Canvas 仍可用。云路由根目录集中在 `web/src/lib/desktop-cloud-routes.json`，Web 代理和桌面打包共用此清单；管理员版打包还使用 `web/src/lib/desktop-admin-cloud-pages.json`。打包时会从独立 standalone 副本的 `app-paths-manifest.json` 移除这些云 API 与账号/商用页面入口，删除对应 handler 和页面 RSC 清单，并清理不再被保留页面引用的浏览器 JS/CSS chunk；商用包与 Web 构建保持完整。当前生产构建真实清单中移除 108 个云 API 与 18 个账号/商用页面入口，并从 159 个静态 chunk 中清理 71 个未被保留页面引用的 chunk。临时 standalone 副本启动实测健康接口和 Canvas 均为 200，云页面与账务 API 被拒绝，Dola 本地账号路由仍存在并正常进入鉴权（401），Canvas 首屏引用的 47 个 JS/CSS 资源全部返回 200。服务端 chunk 暂不清理：虽然静态路由 chunk 引用分析得到 685 个引用项且直接依赖闭包未发现遗漏，真实 standalone 在删除 606 个未被这些路由静态引用的服务端 chunk 后，健康 API、云 API、本地 Provider API 与 Canvas 均变为空响应；恢复这些 chunk 后全部恢复正常。这说明 Next/Turbopack 运行时还依赖入口静态引用分析未覆盖的服务端模块，完整服务端模块图隔离仍未完成，不能以路由拒绝代替此项验收。桌面运行的 Generation Worker 也不再启动 Web 专用退款补偿循环，保留本地生成与数据生命周期维护任务。
+- 管理员版代理回归现在逐条读取 `desktop-cloud-routes.json`，覆盖每个云端根路径及子路径拒绝，并验证 Web 版同一路径行为仍由原路由处理；这证明清单内边界不回退，但不等同于完整的服务端模块图隔离或公网抓包验收。
 - Next standalone、Worker 与三个 Provider 的桌面端口和账号目录隔离；桌面不执行固定端口残留进程清理。
 - 打包白名单与平台 Sidecar 预检：未提供目标架构的冻结可执行文件和 Camoufox 浏览器时拒绝打包；预检还读取 macOS Mach-O / Windows PE 头，拒绝把异构 Provider、代理或媒体程序误装进目标包，防止发出需要 Python/Docker 或实际无法运行的假完整安装包。
+- 即梦官方安装源的桌面暂存已新增 `pnpm stage:dreamina`：按目标平台取 macOS arm64/x64 或 Windows x64 文件，检查 Mach-O/PE 架构并记录供应商版本、目标文件名和 SHA-256；Windows 打包预检会再次核对官方 Windows x64 文件名和程序摘要。2026-09-23 从官方源下载的 Windows x64 CLI 报告版本 `1.4.18`，实测为 PE32+ x86-64，SHA-256 `13a817e455179ab994495eedb875cf845348d05f526b21c2ef207e1fc47f6014`；桌面暂存与打包预检相关测试通过。该文件只留在临时验证目录，本机不是 Windows，尚未运行 Windows CLI、冻结 Provider、生成 NSIS 安装包或做安装验收。
 - 桌面 Mihomo 启动编排与独立私有订阅目录已接入，四种 Provider 代理出口和控制器只绑定 loopback；预检增加 Mihomo、FFmpeg/FFprobe、即梦 CLI、视频深度推理程序与固定模型文件。当前 macOS arm64 已准备并分别验证这些运行时文件，视频深度以本地固定模型完成离线推理，FFmpeg/FFprobe 以实际帧编码和探测验证，`prepare-runtime` 在本机通过；其他目标架构仍未构建。
 - Dola Provider 已在当前 macOS arm64 机器上用 PyInstaller 冻结为独立程序，空账号健康检查正常且未授权的模型目录返回 401；Mihomo 官方 arm64 程序用私有生成配置实测可启动，控制器未授权 401、正确密钥可读版本。这不等于已通过实际账号的完整生成，也不等于 Windows 或干净机验证。
 
@@ -55,6 +58,7 @@ macOS arm64 管理员版已有仅供本机验收的未签名 DMG/ZIP；仍未完
 ## 质量门禁和实际运行记录
 
 - 每次 Web 改动执行 `cd web && pnpm test && pnpm lint && pnpm typecheck && pnpm build`，然后 `pnpm start` 重启生产运行时，回归 Web 原有登录、画布、后台与计费。
+- Windows x64 桌面发行由 `.github/workflows/desktop-windows.yml` 在 Windows 原生 Runner 执行：按锁文件准备 Provider 环境、冻结运行组件、从官方发布源校验并暂存 Mihomo/Camoufox/媒体工具/即梦 CLI，再构建管理员与商用 NSIS 一键安装器；工作流会静默安装管理员包并运行现有 Electron 冒烟流程，随后上传两种安装包。工作流已写入仓库但尚未由 GitHub Windows Runner 执行，因此 Windows 安装包和全新 Windows 10/11 安装验收仍未完成；商用包还要求仓库变量 `DREAMYO_DESKTOP_CLOUD_ORIGIN` 指向 HTTPS 站点。
 - 桌面执行 `cd apps/desktop && pnpm test`；管理员无账号首次启动、重启后项目持久化、Provider 数据/端口与 Web 隔离、双开拦截、非法外链和 Web 拒绝引导逐项验证。
 - 商用版必须在云端联调环境验证登录、实时计费、云端生成、同步及 OSS；管理员版需验证无需云端服务可打开项目和本地配置。生成视频还需逐模型/比例/时长验证最终媒体而非只看任务受理。
 - 当前阶段实测：管理员本地运行接口 `200`、免登录引导 `303`、健康接口 `200`；Electron 窗口的 Canvas 项目页与后台模型渠道页已通过 `capturePage` 截图复核，管理员页无用户与积分分区；实际创建一个画布项目，完全关闭并重启桌面进程后读到原项目，随后清理测试项目；商用入口无本地登录表单。打包预检按预期拒绝缺失的冻结 Provider 文件。以上不能替代无依赖安装包与商用联调验收。

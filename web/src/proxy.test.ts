@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+import adminLocalCloudRoutes from "@/lib/desktop-cloud-routes.json";
 import { proxy } from "./proxy";
 
 describe("application proxy security", () => {
@@ -59,9 +60,42 @@ describe("application proxy security", () => {
         expect(proxy(request).status).toBe(200);
         vi.stubEnv("DREAMYO_DESKTOP_EDITION", "admin");
         expect(proxy(request).status).toBe(403);
+        for (const pathname of [
+            "/api/desktop/cloud-bootstrap",
+            "/api/desktop/cloud-logout",
+            "/api/desktop/cloud-offline-bootstrap",
+            "/api/desktop/devices/me",
+            "/api/admin/cdk",
+            "/api/admin/account-deletion-requests",
+            "/api/admin/mail",
+            "/api/check-in",
+            "/api/notifications/interactions",
+            "/api/version-check",
+        ]) {
+            expect(proxy(new NextRequest(`http://127.0.0.1:3333${pathname}`)).status, pathname).toBe(403);
+        }
         expect(proxy(new NextRequest("http://127.0.0.1:3333/api/admin/dola/accounts")).status).toBe(200);
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/api/desktop/runtime")).status).toBe(200);
+        expect(proxy(new NextRequest("http://127.0.0.1:3333/api/desktop/bootstrap")).status).toBe(200);
         expect(proxy(new NextRequest("http://127.0.0.1:3333/")).status).toBe(307);
         expect(new URL(proxy(new NextRequest("http://127.0.0.1:3333/admin/setup")).headers.get("location") || "http://invalid").searchParams.get("section")).toBe("channels");
+    });
+
+    it("denies every declared cloud-only route root and nested path in the administrator edition", () => {
+        vi.stubEnv("DREAMYO_DESKTOP_EDITION", "admin");
+        expect(new Set(adminLocalCloudRoutes).size).toBe(adminLocalCloudRoutes.length);
+
+        for (const root of adminLocalCloudRoutes) {
+            expect(root.startsWith("/")).toBe(true);
+            const method = root.startsWith("/api/") ? "POST" : "GET";
+            expect(proxy(new NextRequest(`http://127.0.0.1:3333${root}`, { method })).status, `${method} ${root}`).toBe(403);
+            expect(proxy(new NextRequest(`http://127.0.0.1:3333${root}/boundary-check`, { method })).status, `${method} ${root}/boundary-check`).toBe(403);
+        }
+
+        vi.stubEnv("DREAMYO_DESKTOP_EDITION", "");
+        for (const root of adminLocalCloudRoutes) {
+            expect(proxy(new NextRequest(`http://127.0.0.1:3333${root}`)).status, `Web ${root}`).toBe(200);
+        }
     });
 
     it("keeps commercial local projects available but prevents unaccounted generation and local password login", () => {

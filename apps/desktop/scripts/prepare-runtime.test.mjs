@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,10 +15,49 @@ test("packaging copies only compiled runtime and never imports account data or e
     const output = path.join(directory, "output");
     try {
         for (const entry of ["node_modules", ".next-audit", "src", "public", "scripts", ".data"]) await mkdir(path.join(standalone, entry), { recursive: true });
+        const manifest = {
+            "/api/billing/orders/route": "app/api/billing/orders/route.js",
+            "/api/admin/users/route": "app/api/admin/users/route.js",
+            "/api/desktop/cloud-bootstrap/route": "app/api/desktop/cloud-bootstrap/route.js",
+            "/api/admin/dola/accounts/route": "app/api/admin/dola/accounts/route.js",
+            "/api/desktop/runtime/route": "app/api/desktop/runtime/route.js",
+            "/api/desktop/bootstrap/route": "app/api/desktop/bootstrap/route.js",
+            "/(user)/billing/page": "app/(user)/billing/page.js",
+            "/(user)/community/page": "app/(user)/community/page.js",
+            "/login/page": "app/login/page.js",
+            "/canvas/page": "app/canvas/page.js",
+        };
+        await mkdir(path.join(standalone, ".next-audit/server/app"), { recursive: true });
+        for (const modulePath of Object.values(manifest)) {
+            const routeFile = path.join(standalone, ".next-audit/server", modulePath);
+            await mkdir(path.dirname(routeFile), { recursive: true });
+            const chunk = modulePath.includes("billing") || modulePath.includes("community") ? "cloud-only.js" : "local-shared.js";
+            await writeFile(routeFile, `var R={c:(value)=>value}; R.c(${JSON.stringify(`server/chunks/${chunk}`)});`);
+        }
+        await mkdir(path.join(standalone, ".next-audit/server/chunks"), { recursive: true });
+        for (const chunk of ["cloud-only.js", "local-shared.js", "orphan.js"]) await writeFile(path.join(standalone, `.next-audit/server/chunks/${chunk}`), chunk);
+        await writeFile(path.join(standalone, ".next-audit/server/chunks/cloud-only.js.map"), "cloud source map");
+        await writeFile(path.join(standalone, ".next-audit/server/app-paths-manifest.json"), JSON.stringify(manifest));
+        for (const [file, route, chunk] of [
+            ["app/(user)/billing/page_client-reference-manifest.js", "/(user)/billing/page", "billing"],
+            ["app/canvas/page_client-reference-manifest.js", "/canvas/page", "canvas"],
+        ]) {
+            const rscManifest = { clientModules: { page: { chunks: [`/_next/static/chunks/${chunk}.js`, "/_next/static/chunks/shared.js"] } } };
+            const clientManifest = `globalThis.__RSC_MANIFEST = {}; globalThis.__RSC_MANIFEST[${JSON.stringify(route)}] = ${JSON.stringify(rscManifest)};`;
+            const filePath = path.join(standalone, ".next-audit/server", file);
+            await mkdir(path.dirname(filePath), { recursive: true });
+            await writeFile(filePath, clientManifest);
+        }
         await mkdir(path.join(source, "web/.next-audit/static"), { recursive: true });
         await writeFile(path.join(source, "web/.next-audit/static/app.js"), "hydrate");
+        await mkdir(path.join(source, "web/.next-audit/static/chunks"), { recursive: true });
+        for (const chunk of ["billing.js", "canvas.js", "shared.js"]) await writeFile(path.join(source, `web/.next-audit/static/chunks/${chunk}`), chunk);
+        await writeFile(path.join(standalone, ".next-audit/build-manifest.json"), JSON.stringify({ rootMainFiles: ["static/chunks/shared.js"] }));
         await mkdir(path.join(source, "web/public"), { recursive: true });
         await mkdir(path.join(source, "web/scripts"), { recursive: true });
+        await mkdir(path.join(source, "web/src/lib"), { recursive: true });
+        await writeFile(path.join(source, "web/src/lib/desktop-cloud-routes.json"), JSON.stringify(["/api/billing", "/api/admin/users", "/api/desktop/cloud-bootstrap"]));
+        await writeFile(path.join(source, "web/src/lib/desktop-admin-cloud-pages.json"), JSON.stringify(["/billing", "/community", "/login", "/register", "/install"]));
         for (const service of ["geminiai", "dola-api"]) await mkdir(path.join(source, "services", service, "src"), { recursive: true });
         await mkdir(path.join(source, "apps", "desktop", "assets"), { recursive: true });
         await mkdir(sidecars, { recursive: true });
@@ -53,6 +93,23 @@ test("packaging copies only compiled runtime and never imports account data or e
         assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/server.js"), "utf8"), "server");
         assert.ok((await stat(path.join(output, "web/.next-audit/standalone/.next-audit"))).isDirectory());
         assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/app.js"), "utf8"), "hydrate");
+        const packagedRoutes = JSON.parse(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/app-paths-manifest.json"), "utf8"));
+        assert.deepEqual(Object.keys(packagedRoutes), ["/api/admin/dola/accounts/route", "/api/desktop/runtime/route", "/api/desktop/bootstrap/route", "/canvas/page"]);
+        assert.equal(await stat(path.join(output, "web/.next-audit/standalone/.next-audit/server/app/api/billing/orders/route.js")).catch(() => null), null);
+        assert.match(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/app/api/admin/dola/accounts/route.js"), "utf8"), /server\/chunks\/local-shared\.js/);
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/chunks/cloud-only.js"), "utf8"), "cloud-only.js");
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/chunks/cloud-only.js.map"), "utf8"), "cloud source map");
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/chunks/orphan.js"), "utf8"), "orphan.js");
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/chunks/local-shared.js"), "utf8"), "local-shared.js");
+        assert.equal(await stat(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/billing.js")).catch(() => null), null);
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/canvas.js"), "utf8"), "canvas.js");
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/shared.js"), "utf8"), "shared.js");
+        const commercialOutput = path.join(directory, "commercial-output");
+        await prepareRuntime({ ...options, edition: "commercial", outputRoot: commercialOutput });
+        const commercialRoutes = JSON.parse(await readFile(path.join(commercialOutput, "web/.next-audit/standalone/.next-audit/server/app-paths-manifest.json"), "utf8"));
+        assert.ok(commercialRoutes["/api/billing/orders/route"]);
+        assert.ok(commercialRoutes["/(user)/billing/page"]);
+        assert.equal(await readFile(path.join(commercialOutput, "web/.next-audit/standalone/.next-audit/server/chunks/cloud-only.js"), "utf8"), "cloud-only.js");
         assert.equal(await stat(path.join(output, "web/.next-audit/standalone/.data")).catch(() => null), null);
         assert.equal(await stat(path.join(output, "web/.env.local")).catch(() => null), null);
         assert.equal(await readFile(path.join(output, "desktop/mihomo-bootstrap.yaml"), "utf8"), "mode: rule\n");
@@ -74,6 +131,8 @@ test("packaging copies only compiled runtime and never imports account data or e
         for (const name of ["dola-api", "geminiai", "chatgpt-api", "geminiai-browser", "mihomo", "ffmpeg", "ffprobe", "dreamina", "video-depth"]) {
             await writeFile(path.join(windowsSidecars, `${name}.exe`), fakeExecutable("win32", "x64"));
         }
+        const dreaminaHash = createHash("sha256").update(fakeExecutable("win32", "x64")).digest("hex");
+        await writeFile(path.join(windowsSidecars, "dreamina-release.json"), JSON.stringify({ version: "1.4.18", filename: "dreamina_cli_windows_amd64.exe", sha256: dreaminaHash }));
         for (const name of ["config.json", "model.safetensors", "preprocessor_config.json"]) await writeFile(path.join(windowsSidecars, "video-depth-model", name), "model");
         await writeFile(path.join(windowsSidecars, "camoufox", "camoufox.exe"), fakeExecutable("win32", "x64"));
         await writeFile(path.join(windowsSidecars, "camoufox", "properties.json"), "{}");
@@ -83,6 +142,9 @@ test("packaging copies only compiled runtime and never imports account data or e
         assert.equal(windows.manifest.platform, "win32");
         assert.deepEqual(await readFile(path.join(windowsOutput, "sidecars", "geminiai.exe")), fakeExecutable("win32", "x64"));
         assert.equal(await readFile(path.join(windowsOutput, "desktop", "mihomo-bootstrap.yaml"), "utf8"), "mode: rule\n");
+        await writeFile(path.join(windowsSidecars, "dreamina-release.json"), JSON.stringify({ version: "1.4.18", filename: "dreamina_cli_windows_amd64.exe", sha256: "0".repeat(64) }));
+        await assert.rejects(() => prepareRuntime({ ...options, platform: "win32", arch: "x64", outputRoot: windowsOutput }), /即梦 CLI 发布清单与 Windows x64 二进制不匹配/);
+        await writeFile(path.join(windowsSidecars, "dreamina-release.json"), JSON.stringify({ version: "1.4.18", filename: "dreamina_cli_windows_amd64.exe", sha256: dreaminaHash }));
         await writeFile(path.join(windowsSidecars, "geminiai.exe"), fakeExecutable("win32", "arm64"));
         await assert.rejects(() => prepareRuntime({ ...options, platform: "win32", arch: "x64", outputRoot: windowsOutput }), /架构不匹配.*geminiai\.exe/);
     } finally {

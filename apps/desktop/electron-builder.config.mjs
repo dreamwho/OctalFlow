@@ -15,5 +15,5 @@ export default {
     ],
     mac: { icon: "assets/dreamyo.icns", category: "public.app-category.graphics-design", ...(process.env.DREAMYO_DESKTOP_UNSIGNED_TEST === "1" ? { identity: null } : {}), target: [{ target: "dmg", arch: [process.arch] }, { target: "zip", arch: [process.arch] }], artifactName: `${edition.productName}-mac-\${arch}-\${version}.\${ext}` },
     win: { icon: "assets/dreamyo.ico", target: [{ target: "nsis", arch: ["x64"] }], artifactName: `${edition.productName}-win-\${arch}-\${version}.\${ext}` },
-    nsis: { oneClick: false, allowToChangeInstallationDirectory: true, createDesktopShortcut: true, createStartMenuShortcut: true },
+    nsis: { oneClick: true, perMachine: false, createDesktopShortcut: true, createStartMenuShortcut: true },
 };

@@ -2,7 +2,7 @@ import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 
 import { resolveGenerationWorkerOrigin } from "./generation-runtime.mjs";
-import { nextGenerationWorkerPollPolicy } from "./generation-worker-policy.mjs";
+import { nextGenerationWorkerPollPolicy, shouldRunBillingRefundWorker } from "./generation-worker-policy.mjs";
 
 const token = process.env.DREAMYO_WORKER_TOKEN?.trim() || "";
 const origin = resolveGenerationWorkerOrigin();
@@ -36,7 +36,7 @@ const supervisor = (async () => {
         await delay(500);
     }
 })();
-runRefundLane();
+if (shouldRunBillingRefundWorker()) void runRefundLane();
 void runLifecycleLane();
 await supervisor;
 while (runningLanes.size) await Promise.allSettled([...runningLanes.values()]);

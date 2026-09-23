@@ -9,3 +9,7 @@ export function nextGenerationWorkerPollPolicy({ claimed, idleBatches, baseIdleD
         idleBatches: currentIdleBatches + 1,
     };
 }
+
+export function shouldRunBillingRefundWorker(edition = process.env.DREAMYO_DESKTOP_EDITION) {
+    return !String(edition ?? "").trim();
+}

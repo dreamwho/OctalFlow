@@ -19,8 +19,8 @@ await mkdir(buildDir, { recursive: true });
 await writeFile(path.join(buildDir, "edition.json"), `${JSON.stringify({ edition: edition.id, cloudOrigin })}\n`, "utf8");
 await prepareRuntime({ edition: edition.id, distDir: process.env.NEXT_DIST_DIR?.trim() || ".next" });
 
-const builder = path.resolve(import.meta.dirname, "../node_modules/.bin", process.platform === "win32" ? "electron-builder.cmd" : "electron-builder");
-const child = spawn(builder, [`--${target}`, "--config", "electron-builder.config.mjs"], {
+const builder = path.resolve(import.meta.dirname, "../node_modules/electron-builder/cli.js");
+const child = spawn(process.execPath, [builder, `--${target}`, "--config", "electron-builder.config.mjs"], {
     cwd: path.resolve(import.meta.dirname, ".."),
     env: { ...process.env, DREAMYO_DESKTOP_EDITION: edition.id },
     stdio: "inherit",

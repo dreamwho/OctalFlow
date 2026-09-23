@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextGenerationWorkerPollPolicy } from "./generation-worker-policy.mjs";
+import { nextGenerationWorkerPollPolicy, shouldRunBillingRefundWorker } from "./generation-worker-policy.mjs";
 
 describe("generation worker polling policy", () => {
     it("backs idle lanes off from two seconds to a ten second ceiling", () => {
@@ -22,5 +22,12 @@ describe("generation worker polling policy", () => {
 
     it("does not shorten an explicitly configured longer idle interval", () => {
         expect(nextGenerationWorkerPollPolicy({ claimed: 0, idleBatches: 2, baseIdleDelayMs: 30_000 })).toEqual({ delayMs: 30_000, idleBatches: 3 });
+    });
+
+    it("runs billing refund reconciliation only in the cloud Web runtime", () => {
+        expect(shouldRunBillingRefundWorker("")).toBe(true);
+        expect(shouldRunBillingRefundWorker("admin")).toBe(false);
+        expect(shouldRunBillingRefundWorker("commercial")).toBe(false);
+        expect(shouldRunBillingRefundWorker("unknown-desktop-edition")).toBe(false);
     });
 });

@@ -1,0 +1,156 @@
+name: Windows 桌面安装包
+run-name: Windows x64 桌面安装包 · ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["DREAMYO-desktop-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: python -m pip install uv==0.8.14
+
+      - name: Install Web dependencies and build production runtime
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+        env:
+          NEXT_SKIP_BUILD_TYPECHECK: "1"
+
+      - name: Install desktop packaging dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Create locked provider environments
+        run: |
+          uv sync --locked --project services/geminiai --python 3.13
+          uv sync --locked --project services/dola-api --extra browser --python 3.13
+          uv sync --locked --project services/chatgpt-api --python 3.13
+          uv venv --python 3.13 services/video-depth/.venv
+          uv pip install --python services/video-depth/.venv/Scripts/python.exe -r services/video-depth/requirements.txt pyinstaller==6.22.3
+          uv pip install --python services/geminiai/.venv/Scripts/python.exe pyinstaller==6.22.3
+          uv pip install --python services/dola-api/.venv/Scripts/python.exe pyinstaller==6.22.3
+          uv pip install --python services/chatgpt-api/.venv/Scripts/python.exe pyinstaller==6.22.3
+
+      - name: Fetch and stage Camoufox
+        shell: pwsh
+        run: |
+          $python = "services/geminiai/.venv/Scripts/python.exe"
+          & $python -m camoufox fetch official/stable/152.0.4-beta.30
+          if ($LASTEXITCODE -ne 0) { throw "Camoufox 下载失败" }
+          $browser = & $python -c "from camoufox.multiversion import get_active_path; p=get_active_path(); print(p or '')"
+          if ($LASTEXITCODE -ne 0 -or -not $browser) { throw "无法定位已安装的 Camoufox 浏览器" }
+          node apps/desktop/scripts/stage-camoufox.mjs "$browser"
+
+      - name: Freeze local providers and stage native tools
+        run: |
+          pnpm --dir apps/desktop freeze:dola
+          pnpm --dir apps/desktop freeze:geminiai
+          pnpm --dir apps/desktop freeze:geminiai-browser
+          pnpm --dir apps/desktop freeze:chatgpt-api
+          pnpm --dir apps/desktop freeze:video-depth
+          pnpm --dir apps/desktop stage:media-tools
+          pnpm --dir apps/desktop stage:dreamina
+          pnpm --dir apps/desktop stage:mihomo
+
+      - name: Run desktop regression tests
+        working-directory: apps/desktop
+        run: pnpm test
+
+      - name: Build one-click Windows x64 installers
+        shell: pwsh
+        run: |
+          $env:DREAMYO_DESKTOP_OUTPUT_DIR = "dist/admin"
+          pnpm --dir apps/desktop pack:admin:win
+          $env:DREAMYO_DESKTOP_OUTPUT_DIR = "dist/commercial"
+          if (-not $env:DREAMYO_DESKTOP_CLOUD_ORIGIN) { throw "请在仓库变量 DREAMYO_DESKTOP_CLOUD_ORIGIN 中配置商用版 HTTPS 云端地址" }
+          pnpm --dir apps/desktop pack:commercial:win
+        env:
+          DREAMYO_DESKTOP_CLOUD_ORIGIN: ${{ vars.DREAMYO_DESKTOP_CLOUD_ORIGIN }}
+
+      - name: Install and smoke-test the packaged local admin app
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem apps/desktop/dist/admin -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw "管理员本地版安装器未生成" }
+          $installRoot = Join-Path $env:RUNNER_TEMP "dreamyo-admin-installed"
+          $install = [System.Diagnostics.ProcessStartInfo]::new()
+          $install.FileName = $installer.FullName
+          $install.UseShellExecute = $false
+          $install.ArgumentList.Add("/S")
+          $install.ArgumentList.Add("/D=$installRoot")
+          $installerProcess = [System.Diagnostics.Process]::Start($install)
+          $installerProcess.WaitForExit()
+          if ($installerProcess.ExitCode -ne 0) { throw "管理员安装器退出码：$($installerProcess.ExitCode)" }
+          $appExe = Join-Path $installRoot "Dreamyo 管理员本地版.exe"
+          if (-not (Test-Path $appExe)) { throw "安装后的管理员桌面程序不存在：$appExe" }
+          $smoke = [System.Diagnostics.ProcessStartInfo]::new()
+          $smoke.FileName = $appExe
+          $smoke.UseShellExecute = $false
+          $smoke.RedirectStandardOutput = $true
+          $smoke.RedirectStandardError = $true
+          $smoke.Environment["DREAMYO_DESKTOP_SMOKE"] = "1"
+          $smoke.Environment["DREAMYO_DESKTOP_SMOKE_DOLA"] = "1"
+          $appProcess = [System.Diagnostics.Process]::Start($smoke)
+          $stdout = $appProcess.StandardOutput.ReadToEndAsync()
+          $stderr = $appProcess.StandardError.ReadToEndAsync()
+          $appProcess.WaitForExit()
+          $stdoutText = $stdout.GetAwaiter().GetResult()
+          $stderrText = $stderr.GetAwaiter().GetResult()
+          if ($appProcess.ExitCode -ne 0) { throw "安装后的管理员应用冒烟测试失败，退出码：$($appProcess.ExitCode)`n$stdoutText`n$stderrText" }
+          Write-Host "管理员安装包安装成功，Canvas、管理渠道、Dola 账号页及设置返回冒烟测试通过"
+
+      - name: Verify installer artifacts
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem apps/desktop/dist -Recurse -Filter *.exe
+          if ($installers.Count -ne 2) { throw "预期生成两个 Windows 安装包，实际找到 $($installers.Count) 个" }
+          foreach ($installer in $installers) {
+            if ($installer.Length -lt 100MB) { throw "安装包大小异常：$($installer.FullName)" }
+            Get-FileHash $installer.FullName -Algorithm SHA256 | Format-Table -AutoSize
+          }
+
+      - name: Upload Windows x64 installers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dreamyo-windows-x64-installers-${{ github.run_number }}
+          path: apps/desktop/dist/**/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload packaging diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dreamyo-windows-packaging-diagnostics-${{ github.run_number }}
+          path: |
+            apps/desktop/build/freeze-*/**/*.sha256
+            apps/desktop/resources/sidecars/win32-x64/*release.json
+          if-no-files-found: ignore
+          retention-days: 7
