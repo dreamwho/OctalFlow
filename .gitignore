@@ -44,7 +44,7 @@ scripts/capture-readme-screenshots.mjs
 数据库密码.txt
 cloudfare数据库.txt
 ROTua4evaSsp.yaml
-backups/
+/backups/
 
 # 本地设计与验收材料，禁止入库
 .design-qa/
