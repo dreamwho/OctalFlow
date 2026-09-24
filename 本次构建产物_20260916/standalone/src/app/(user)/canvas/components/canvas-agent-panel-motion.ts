@@ -1,1 +1,0 @@
-export const CANVAS_AGENT_PANEL_MOTION_MS = 500;

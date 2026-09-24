@@ -5,6 +5,40 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### 魔法代理机场标准订阅链接（V2board/一元机场等）自动适配、Base64 与多协议节点解析转换及网络回退容错（2026-09-24）
+
+- 需求与问题背景：
+  1. 用户指令反馈：“当魔法代理通过链接导入代理时，无法识别导入比如 `https://sub2.smallstrawberry.com/api/v1/client/subscribe?token=dcdaac6fa5317015940704b4c29cef29&name=%E4%B8%80%E5%85%83%E6%9C%BA%E5%9C%BA` 这是标准的clash订阅导入但是在当前系统的魔法代理无法正常导入，在clash软件中可以正常导入订阅。需要分析原因并解决！”；
+  2. 相同链接在 Clash / Clash Verge 客户端中能正常秒级拉取 21 个节点，而在 dreamyo 后台直接导入时返回 `422 订阅必须包含非空 proxies 节点列表` 或遭遇国内网络直连海外 CDN 时的 `SSL_ERROR_SYSCALL` / `ECONNRESET` 阻断。
+- 根因分析：
+  1. **机场分发协议机制差异（V2board / Xboard / SSPanel）**：
+     - 机场订阅路由（`/api/v1/client/subscribe`）默认依赖请求参数 `flag`；
+     - Clash 等专有客户端发起请求时，会自动在 URL 中追加 `&flag=clash`，服务端才以标准 Clash YAML（顶层包含 `proxies:` 数组）输出；
+     - 若直接请求未带 `flag` 参数，机场默认返回 Base64 编码的单行节点 URI 列表（以 `ss://`、`trojan://`、`vless://`、`vmess://` 开头），被 YAML 解析器解析为单个字符串标量，导致 `root.proxies` 为空而抛出 422；
+  2. **深度链接协议未解包**：部分用户复制的是 `clash://install-config?url=...` 或 `clashmeta://...` 专属深链，未解出嵌套的真实 HTTPS 订阅地址；
+  3. **海外 CDN 直连阻断与缺少代理回退**：海外机场 CDN 域名在国内网络直连时易遭遇网络连接重置或握手超时，此前无出站代理回退能力；
+  4. **响应 Content-Type 兼容性**：部分机场 CDN 返回 `Content-Type: application/octet-stream`，此前只放行 `yaml`/`plain`，导致被直接拒绝；
+  5. **重名节点名称冲突**：机场订阅常包含重复名称的节点（如多个同名备用节点），此前抛出 422“订阅节点名称不能重复”。
+- 架构与设计修复方案：
+  1. **订阅 URL 自动规范化与机场适配（`normalizeSubscriptionUrl`）**：
+     - 支持自动解包 `clash://` 与 `clashmeta://` 深链接中的嵌套真实 HTTPS 订阅地址；
+     - 自动检测机场订阅路径（`/api/v1/client/subscribe`、`/subscribe`、`/link/`、`/sub/` 或携带 `token`），若无 `flag` 参数，自动注入 `flag=clash` 请求标准 Clash YAML 配置；
+  2. **Base64 与多协议节点解析转换引擎（`parseSubscriptionNodes` / `parseBase64OrUriNodeList`）**：
+     - 第一优先级：按标准 Clash YAML 解析 `proxies` 节点列表；
+     - 第二优先级：自动进行 URL-Safe Base64 解码，支持内嵌 Clash YAML 与单行节点 URI 文本列表解析；
+     - 完整覆盖 Shadowsocks (`ss://` SIP002/Legacy)、Trojan (`trojan://` TLS/WS/gRPC)、VLESS (`vless://` Reality/XTLS/Flow/WS)、VMess (`vmess://` Base64 JSON) 协议，自动提取并标准化为 Mihomo/Clash 原生节点配置；
+  3. **网络健壮性与代理回退机制（`fetchSubscriptionNodes` & `resolveSubscriptionProxyFallback`）**：
+     - 放行 `application/octet-stream` 二进制流文本；
+     - 双 URL 候选重试（带 `flag=clash` 与原始订阅 URL 回退）；
+     - 当直连遇到连接重置、握手超时或网络阻断时，自动回退利用系统出站代理或运行时代理执行代理重试；
+  4. **节点名称自动消重重命名（`normalizeSubscriptionNodes`）**：
+     - 遇到重名节点时自动追加序号 `(2)`、`(3)` 消歧义，遇到 `DIRECT` 等系统保留名时自动追加 `_node` 后缀，保证 100% 成功导入。
+- 验证情况：
+  - **单元测试**：运行 `src/lib/server/magic-proxy-service.test.ts` 41 项单测全量通过（包含机场链接自动加 flag、clash:// 深链解包、octet-stream 支持、重名节点自动去重、Base64 编码的 SS/Trojan/VLESS/VMess 多协议解析转换）；
+  - **关联测试**：运行 `src/lib/server/database/magic-proxy-repository.test.ts`、`src/services/api/magic-proxy.test.ts`、`src/components/admin/admin-magic-proxy-section.test.ts` 等 5 个测试文件 14 项测试全部通过；
+  - **类型检查**：`npx tsc --noEmit` 全量 0 错误；
+  - **生产编译与服务**：`pnpm build` 12.2s 构建成功，生产服务（端口 3333）平稳重启，`/api/health` 正常返回。
+
 ### 网关外部 API Key 实时可见可复制改造与安全可逆加密存储（2026-09-24）
 
 - 需求与问题：

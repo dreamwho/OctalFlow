@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { generationRuntimeEnvironment, resolveGenerationWorkerOrigin } from "./generation-runtime.mjs";
+import { freeServicePort, generationRuntimeEnvironment, resolveGenerationWorkerOrigin } from "./generation-runtime.mjs";
 
 describe("generation runtime environment", () => {
     it("uses distinct configured maintenance and worker tokens", () => {
@@ -27,5 +27,12 @@ describe("generation runtime environment", () => {
 
     it("normalizes a Render private hostport to an HTTP origin", () => {
         expect(resolveGenerationWorkerOrigin({ environment: { DREAMYO_WORKER_API_ORIGIN: "dreamyo:3000" } })).toBe("http://dreamyo:3000");
+    });
+
+    it("freeServicePort safely handles invalid or system ports without throwing", () => {
+        expect(() => freeServicePort(undefined)).not.toThrow();
+        expect(() => freeServicePort(0)).not.toThrow();
+        expect(() => freeServicePort(80)).not.toThrow();
+        expect(() => freeServicePort("invalid")).not.toThrow();
     });
 });

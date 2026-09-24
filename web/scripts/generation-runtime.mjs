@@ -35,7 +35,7 @@ export function resolveGenerationWorkerOrigin({ environment = process.env, fallb
 }
 
 export function superviseGenerationRuntime({ app, workerScript, environment, services = [] }) {
-    if (!environment.DREAMYO_DESKTOP_EDITION) services.forEach((service) => freeServicePort(service?.port));
+    if (!environment.DREAMYO_DESKTOP_EDITION) services.forEach((service) => freeServicePort(service?.port, service?.name));
     const definitions = [...services, { name: "web", command: app.command, args: app.args, cwd: app.cwd }, { name: "generation-worker", command: process.execPath, args: [workerScript], cwd: app.cwd }];
     const children = definitions.map((definition) => ({
         ...definition,
@@ -92,16 +92,31 @@ export function superviseGenerationRuntime({ app, workerScript, environment, ser
 }
 
 /** 本地固定端口上若有上次运行残留的 sidecar 进程（未随上次关闭），先清理再启动，
- *  避免新 sidecar 绑定失败或新旧进程密钥不一致导致整栈不可用。 */
-function freeServicePort(port) {
-    if (!port) return;
+ *  避免新 sidecar 绑定失败或新旧进程密钥不一致导致整栈不可用。
+ *  【安全关键】：lsof 必须携带 -a 强制 AND 逻辑；且必须防御性白名单检查，
+ *  绝不杀死系统服务、桌面应用（.app）或非本项目侧车进程。 */
+export function freeServicePort(port, serviceName = "") {
+    const parsedPort = validPort(port);
+    if (!parsedPort || parsedPort < 1024) return;
     try {
-        const out = execFileSync("lsof", ["-ti", `-i:${port}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5_000 });
+        const out = execFileSync("lsof", ["-ti", "-a", `-iTCP:${parsedPort}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5_000 });
         const pids = out.split("\n").map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0);
-        pids.forEach((pid) => {
-            try { process.kill(pid, "SIGKILL"); } catch {}
-        });
-        if (pids.length) console.log(`[runtime] 端口 ${port} 存在残留进程 ${pids.join(", ")}，已清理后重启服务`);
+        const killedPids = [];
+        for (const pid of pids) {
+            if (pid === process.pid || pid === process.ppid) continue;
+            try {
+                const cmd = execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" }).trim();
+                if (cmd.includes(".app/") || cmd.startsWith("/System/") || cmd.startsWith("/usr/") || cmd.startsWith("/sbin/")) {
+                    console.warn(`[runtime] 端口 ${parsedPort} 被外部/桌面应用占用 (PID ${pid}: ${cmd.slice(0, 60)})，跳过清理`);
+                    continue;
+                }
+                process.kill(pid, "SIGKILL");
+                killedPids.push(pid);
+            } catch {}
+        }
+        if (killedPids.length) {
+            console.log(`[runtime] 端口 ${parsedPort}${serviceName ? ` (${serviceName})` : ""} 存在残留进程 ${killedPids.join(", ")}，已清理后重启服务`);
+        }
     } catch {}
 }
 

@@ -648,6 +648,91 @@ describe("magic proxy service", () => {
             expect(resolveHopNodeName("", nodes)).toBeNull();
         });
     });
+
+    describe("airport subscription normalization and multi-protocol parsing", () => {
+        it("automatically appends flag=clash to airport subscription URLs", async () => {
+            const airportUrl = "https://sub2.smallstrawberry.com/api/v1/client/subscribe?token=dcdaac6fa5317015940704b4c29cef29&name=%E4%B8%80%E5%85%83%E6%9C%BA%E5%9C%BA";
+            await importMagicProxySubscription({ url: airportUrl });
+
+            expect(mocks.safeFetch).toHaveBeenCalled();
+            const calledUrl = mocks.safeFetch.mock.calls[0]?.[0] as string;
+            expect(calledUrl).toContain("flag=clash");
+            expect(calledUrl).toContain("sub2.smallstrawberry.com/api/v1/client/subscribe");
+        });
+
+        it("unpacks clash:// deep links and appends flag=clash", async () => {
+            const deepLink = "clash://install-config?url=https%3A%2F%2Fsub.example.com%2Fapi%2Fv1%2Fclient%2Fsubscribe%3Ftoken%3Dabc123";
+            await importMagicProxySubscription({ url: deepLink });
+
+            expect(mocks.safeFetch).toHaveBeenCalled();
+            const calledUrl = mocks.safeFetch.mock.calls[0]?.[0] as string;
+            expect(calledUrl).toBe("https://sub.example.com/api/v1/client/subscribe?token=abc123&flag=clash");
+        });
+
+        it("accepts application/octet-stream response content-type", async () => {
+            mocks.safeFetch.mockResolvedValueOnce(
+                new Response(SUBSCRIPTION_YAML, {
+                    status: 200,
+                    headers: { "content-type": "application/octet-stream" },
+                }),
+            );
+
+            const result = await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+            expect(result.nodeCount).toBe(1);
+            expect(result.nodes[0]?.name).toBe("Tokyo-01");
+        });
+
+        it("disambiguates duplicate node names automatically", async () => {
+            const duplicateYaml = `proxies:
+  - name: HK-01
+    type: ss
+    server: 1.1.1.1
+    port: 443
+    cipher: aes-256-gcm
+    password: pass
+  - name: HK-01
+    type: ss
+    server: 2.2.2.2
+    port: 443
+    cipher: aes-256-gcm
+    password: pass
+`;
+            const result = await importMagicProxySubscription({ content: duplicateYaml });
+            expect(result.nodeCount).toBe(2);
+            expect(result.nodes[0]?.name).toBe("HK-01");
+            expect(result.nodes[1]?.name).toBe("HK-01 (2)");
+        });
+
+        it("parses Base64 encoded node subscriptions with SS, Trojan, VLESS, VMess", async () => {
+            const ssUri = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ=@1.2.3.4:8388#%E9%A6%99%E6%B8%AF-SS";
+            const trojanUri = "trojan://trojanpass@5.6.7.8:443?sni=trojan.example.com&allowInsecure=1#%E6%97%A5%E6%9C%AC-Trojan";
+            const vlessUri = "vless://d3b07384-d113-494b-8e2b-4d4361543169@9.10.11.12:443?security=reality&sni=vless.example.com&pbk=fakekey#%E7%BE%8E%E5%9B%BD-VLESS";
+            const vmessJson = {
+                v: "2",
+                ps: "新加坡-VMess",
+                add: "13.14.15.16",
+                port: 443,
+                id: "d3b07384-d113-494b-8e2b-4d4361543169",
+                aid: 0,
+                scy: "auto",
+                net: "ws",
+                type: "none",
+                host: "vmess.example.com",
+                path: "/ws",
+                tls: "tls",
+                sni: "vmess.example.com",
+            };
+            const vmessUri = `vmess://${Buffer.from(JSON.stringify(vmessJson)).toString("base64")}`;
+
+            const rawList = [ssUri, trojanUri, vlessUri, vmessUri].join("\n");
+            const base64Content = Buffer.from(rawList).toString("base64");
+
+            const result = await importMagicProxySubscription({ content: base64Content });
+            expect(result.nodeCount).toBe(4);
+            expect(result.nodes.map((n) => n.name)).toEqual(["香港-SS", "日本-Trojan", "美国-VLESS", "新加坡-VMess"]);
+            expect(result.nodes.map((n) => n.type)).toEqual(["ss", "trojan", "vless", "vmess"]);
+        });
+    });
 });
 
 function controllerResponse(url: string, init?: RequestInit) {

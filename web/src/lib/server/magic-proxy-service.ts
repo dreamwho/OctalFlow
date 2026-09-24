@@ -7,6 +7,7 @@ import { parseDocument, stringify } from "yaml";
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { MagicProxyRepository, type MagicProxyBinding, type MagicProxyBindings, type MagicProxyProvider, type MagicProxySettings } from "@/lib/server/database/magic-proxy-repository";
 import { ensurePostgresSchema, isPostgresDatabaseEnabled, postgresQuery } from "@/lib/server/database/postgres";
+import { resolveServerProxyUrl } from "@/lib/server/proxy-dispatcher";
 import { fetchSafeOutbound, UnsafeOutboundUrlError } from "@/lib/server/safe-outbound-fetch";
 import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
 
@@ -680,38 +681,84 @@ async function fetchSubscriptionNodes(subscriptionUrl: string) {
     let lastError: Error | null = null;
     let response: Response | null = null;
 
-    for (const ua of userAgents) {
-        try {
-            const res = await fetchSafeOutbound(
-                subscriptionUrl,
-                {
-                    cache: "no-store",
-                    redirect: "follow",
-                    headers: {
-                        accept: "application/yaml, text/yaml, text/plain, */*",
-                        "user-agent": ua,
+    // 候选 URL 列表：若自动附加了 flag=clash，也准备好原始 URL 以备回退
+    const candidateUrls = [subscriptionUrl];
+    try {
+        const parsed = new URL(subscriptionUrl);
+        if (parsed.searchParams.get("flag") === "clash") {
+            const withoutFlag = new URL(subscriptionUrl);
+            withoutFlag.searchParams.delete("flag");
+            candidateUrls.push(withoutFlag.toString());
+        }
+    } catch {
+        // ignore
+    }
+
+    // 代理回退候选：若直接请求遇到网络重置或阻断，可尝试通过运行时的代理或系统代理出站
+    const fallbackProxy = resolveSubscriptionProxyFallback();
+
+    outerLoop: for (const targetUrl of candidateUrls) {
+        for (const ua of userAgents) {
+            try {
+                const res = await fetchSafeOutbound(
+                    targetUrl,
+                    {
+                        cache: "no-store",
+                        redirect: "follow",
+                        headers: {
+                            accept: "application/yaml, text/yaml, text/plain, application/octet-stream, */*",
+                            "user-agent": ua,
+                        },
+                        signal: AbortSignal.timeout(15000),
                     },
-                    signal: AbortSignal.timeout(15000),
-                },
-                { allowProxyFakeIpSpace: true },
-            );
-            if (res.ok) {
+                    { allowProxyFakeIpSpace: true },
+                );
+                if (res.ok) {
+                    response = res;
+                    break outerLoop;
+                }
+                await res.body?.cancel().catch(() => undefined);
+                if (res.status === 401 || res.status === 403) {
+                    throw new MagicProxyError(`订阅服务器拒绝访问（HTTP ${res.status}），请使用服务器可直接访问的 Clash YAML 直链，不能使用需要浏览器验证的网页链接`, 502);
+                }
                 response = res;
                 break;
+            } catch (error) {
+                if (error instanceof MagicProxyError) throw error;
+                if (error instanceof UnsafeOutboundUrlError) throw new MagicProxyError("订阅地址不允许访问，请使用可公开访问的 HTTPS Clash YAML 地址", 422);
+
+                // 若由于网络重置、连接中断或超时导致失败，且存在可用的回退代理，尝试一次代理重试
+                if (fallbackProxy) {
+                    try {
+                        const fallbackRes = await fetchSafeOutbound(
+                            targetUrl,
+                            {
+                                cache: "no-store",
+                                redirect: "follow",
+                                headers: {
+                                    accept: "application/yaml, text/yaml, text/plain, application/octet-stream, */*",
+                                    "user-agent": ua,
+                                },
+                                signal: AbortSignal.timeout(15000),
+                            },
+                            { allowProxyFakeIpSpace: true, proxyUrl: fallbackProxy },
+                        );
+                        if (fallbackRes.ok) {
+                            response = fallbackRes;
+                            break outerLoop;
+                        }
+                        await fallbackRes.body?.cancel().catch(() => undefined);
+                    } catch {
+                        // 继续下一轮或记录错误
+                    }
+                }
+
+                if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout") || error.message.includes("aborted"))) {
+                    lastError = new MagicProxyError("获取订阅内容超时（15秒），请检查订阅链接是否畅通，或直接使用「文件导入」粘贴订阅内容", 504);
+                } else {
+                    lastError = error instanceof Error ? error : new Error(String(error));
+                }
             }
-            await res.body?.cancel().catch(() => undefined);
-            if (res.status === 401 || res.status === 403) {
-                throw new MagicProxyError(`订阅服务器拒绝访问（HTTP ${res.status}），请使用服务器可直接访问的 Clash YAML 直链，不能使用需要浏览器验证的网页链接`, 502);
-            }
-            response = res;
-            break;
-        } catch (error) {
-            if (error instanceof MagicProxyError) throw error;
-            if (error instanceof UnsafeOutboundUrlError) throw new MagicProxyError("订阅地址不允许访问，请使用可公开访问的 HTTPS Clash YAML 地址", 422);
-            if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout") || error.message.includes("aborted"))) {
-                throw new MagicProxyError("获取订阅内容超时（15秒），请检查订阅链接是否畅通，或直接使用「文件导入」粘贴订阅内容", 504);
-            }
-            lastError = error instanceof Error ? error : new Error(String(error));
         }
     }
 
@@ -727,9 +774,20 @@ async function fetchSubscriptionNodes(subscriptionUrl: string) {
     return parseSubscriptionNodes(raw);
 }
 
+function resolveSubscriptionProxyFallback(): string {
+    const fromEnv = resolveServerProxyUrl();
+    if (fromEnv) return fromEnv;
+    const runtime = readRuntimeConfig();
+    if (runtime) {
+        const candidate = runtime.proxyUrls.geminiai || runtime.proxyUrls.geminiTools;
+        if (candidate) return candidate;
+    }
+    return "";
+}
+
 async function readBoundedSubscriptionText(response: Response, maxBytes: number) {
     const contentType = (response.headers.get("content-type") || "").split(";", 1)[0]?.trim().toLowerCase() || "";
-    if (contentType && !["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml", "text/plain"].includes(contentType)) {
+    if (contentType && !["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml", "text/plain", "application/octet-stream"].includes(contentType)) {
         await response.body?.cancel().catch(() => undefined);
         throw new MagicProxyError(`订阅地址返回的是 ${contentType}（通常是网页验证、公告或拦截页，不是 Clash 配置）；请在本地浏览器打开订阅链接，把 YAML 内容保存后用「YAML / 文本文件导入」上传`, 422);
     }
@@ -785,26 +843,348 @@ function magicProxySubscriptionMaxBytes() {
 
 function parseSubscriptionNodes(raw: string) {
     if (Buffer.byteLength(raw, "utf8") > magicProxySubscriptionMaxBytes()) throw new MagicProxyError(`订阅内容超过 ${magicProxySubscriptionMaxBytes()} 字节限制，请缩小文件或调整服务器限制`, 413);
-    let document: ReturnType<typeof parseDocument>;
+
+    // 1. 优先尝试作为 Clash YAML 解析
     try {
-        document = parseDocument(raw);
+        const document = parseDocument(raw);
+        if (!document.errors.length) {
+            const root = record(document.toJS());
+            if (Array.isArray(root.proxies) && root.proxies.length > 0) {
+                return normalizeSubscriptionNodes(root.proxies);
+            }
+        }
     } catch {
-        throw new MagicProxyError("订阅内容不是有效的 Clash YAML", 422);
+        // 继续尝试 Base64 或节点链接解析
     }
-    if (document.errors.length) throw new MagicProxyError("订阅内容不是有效的 Clash YAML", 422);
-    const root = record(document.toJS());
-    return normalizeSubscriptionNodes(root.proxies);
+
+    // 2. 尝试作为 Base64 编码订阅或直接节点链接列表 (ss/vless/trojan/vmess) 解析
+    const uriNodes = parseBase64OrUriNodeList(raw);
+    if (uriNodes && uriNodes.length > 0) {
+        return normalizeSubscriptionNodes(uriNodes);
+    }
+
+    throw new MagicProxyError("订阅内容不是有效的 Clash YAML 或可识别的节点订阅（需包含 proxies 列表或 ss/vless/trojan/vmess 节点）", 422);
+}
+
+function parseBase64OrUriNodeList(raw: string): Array<Record<string, unknown>> | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    // A. 尝试直接按单行节点 URI 文本解析
+    const directNodes = parseNodeUriLines(trimmed);
+    if (directNodes && directNodes.length > 0) return directNodes;
+
+    // B. 尝试按 Base64 解码后解析（支持 URL-safe Base64 与多行 Base64）
+    const sanitizedB64 = trimmed.replace(/[\r\n\s]+/g, "");
+    if (/^[A-Za-z0-9+/=_-]+$/.test(sanitizedB64)) {
+        try {
+            const standardB64 = sanitizedB64.replace(/-/g, "+").replace(/_/g, "/");
+            const decoded = Buffer.from(standardB64, "base64").toString("utf8");
+
+            // 解码后可能是单行节点 URI 列表
+            const decodedNodes = parseNodeUriLines(decoded);
+            if (decodedNodes && decodedNodes.length > 0) return decodedNodes;
+
+            // 解码后也可能是内嵌的 Clash YAML
+            try {
+                const subDoc = parseDocument(decoded);
+                if (subDoc && !subDoc.errors.length) {
+                    const root = record(subDoc.toJS());
+                    if (Array.isArray(root.proxies) && root.proxies.length > 0) {
+                        return root.proxies as Array<Record<string, unknown>>;
+                    }
+                }
+            } catch {
+                // not yaml
+            }
+        } catch {
+            // not valid base64
+        }
+    }
+
+    return null;
+}
+
+function parseNodeUriLines(text: string): Array<Record<string, unknown>> | null {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const nodes: Array<Record<string, unknown>> = [];
+    for (const line of lines) {
+        if (line.startsWith("ss://")) {
+            const node = parseShadowsocksUri(line);
+            if (node) nodes.push(node);
+        } else if (line.startsWith("trojan://")) {
+            const node = parseTrojanUri(line);
+            if (node) nodes.push(node);
+        } else if (line.startsWith("vless://")) {
+            const node = parseVlessUri(line);
+            if (node) nodes.push(node);
+        } else if (line.startsWith("vmess://")) {
+            const node = parseVmessUri(line);
+            if (node) nodes.push(node);
+        }
+    }
+    return nodes.length > 0 ? nodes : null;
+}
+
+function parseShadowsocksUri(uri: string): Record<string, unknown> | null {
+    const hashIndex = uri.indexOf("#");
+    const name = hashIndex !== -1 ? safeDecodeUriComponent(uri.slice(hashIndex + 1).trim()) : "";
+    const withoutScheme = uri.slice(5, hashIndex !== -1 ? hashIndex : undefined);
+
+    const atIndex = withoutScheme.indexOf("@");
+    if (atIndex !== -1) {
+        const userInfo = withoutScheme.slice(0, atIndex);
+        const hostPortPart = withoutScheme.slice(atIndex + 1);
+
+        let method = "";
+        let password = "";
+        if (userInfo.includes(":")) {
+            const colon = userInfo.indexOf(":");
+            method = userInfo.slice(0, colon);
+            password = userInfo.slice(colon + 1);
+        } else {
+            try {
+                const decodedUser = Buffer.from(userInfo.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+                const colon = decodedUser.indexOf(":");
+                if (colon !== -1) {
+                    method = decodedUser.slice(0, colon);
+                    password = decodedUser.slice(colon + 1);
+                }
+            } catch {
+                return null;
+            }
+        }
+
+        const questionIndex = hostPortPart.indexOf("?");
+        const hostPort = questionIndex !== -1 ? hostPortPart.slice(0, questionIndex) : hostPortPart;
+        const lastColon = hostPort.lastIndexOf(":");
+        if (lastColon === -1) return null;
+        const server = hostPort.slice(0, lastColon);
+        const port = Number(hostPort.slice(lastColon + 1));
+        if (!server || !port || !method || !password) return null;
+
+        return {
+            name: name || `${server}:${port}`,
+            type: "ss",
+            server,
+            port,
+            cipher: method,
+            password,
+            udp: true,
+        };
+    } else {
+        try {
+            const decoded = Buffer.from(withoutScheme.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+            const at = decoded.indexOf("@");
+            if (at === -1) return null;
+            const user = decoded.slice(0, at);
+            const hostPort = decoded.slice(at + 1);
+            const userColon = user.indexOf(":");
+            const lastColon = hostPort.lastIndexOf(":");
+            if (userColon === -1 || lastColon === -1) return null;
+            const method = user.slice(0, userColon);
+            const password = user.slice(userColon + 1);
+            const server = hostPort.slice(0, lastColon);
+            const port = Number(hostPort.slice(lastColon + 1));
+            if (!server || !port || !method || !password) return null;
+
+            return {
+                name: name || `${server}:${port}`,
+                type: "ss",
+                server,
+                port,
+                cipher: method,
+                password,
+                udp: true,
+            };
+        } catch {
+            return null;
+        }
+    }
+}
+
+function parseTrojanUri(uri: string): Record<string, unknown> | null {
+    const hashIndex = uri.indexOf("#");
+    const name = hashIndex !== -1 ? safeDecodeUriComponent(uri.slice(hashIndex + 1).trim()) : "";
+    const target = hashIndex !== -1 ? uri.slice(0, hashIndex) : uri;
+    try {
+        const url = new URL(target);
+        const password = decodeURIComponent(url.username || "");
+        const server = url.hostname;
+        const port = Number(url.port) || 443;
+        if (!password || !server) return null;
+
+        const params = url.searchParams;
+        const sni = params.get("sni") || params.get("peer") || "";
+        const allowInsecure = params.get("allowInsecure") === "1" || params.get("insecure") === "1";
+        const network = params.get("type") || "tcp";
+
+        const node: Record<string, unknown> = {
+            name: name || `${server}:${port}`,
+            type: "trojan",
+            server,
+            port,
+            password,
+            udp: true,
+            ...(sni ? { sni } : {}),
+            ...(allowInsecure ? { "skip-cert-verify": true } : {}),
+        };
+
+        if (network === "ws") {
+            node.network = "ws";
+            const path = params.get("path");
+            const host = params.get("host") || sni;
+            node["ws-opts"] = {
+                ...(path ? { path } : {}),
+                ...(host ? { headers: { Host: host } } : {}),
+            };
+        } else if (network === "grpc") {
+            node.network = "grpc";
+            const serviceName = params.get("serviceName");
+            if (serviceName) node["grpc-opts"] = { "grpc-service-name": serviceName };
+        }
+        return node;
+    } catch {
+        return null;
+    }
+}
+
+function parseVlessUri(uri: string): Record<string, unknown> | null {
+    const hashIndex = uri.indexOf("#");
+    const name = hashIndex !== -1 ? safeDecodeUriComponent(uri.slice(hashIndex + 1).trim()) : "";
+    const target = hashIndex !== -1 ? uri.slice(0, hashIndex) : uri;
+    try {
+        const url = new URL(target);
+        const uuid = decodeURIComponent(url.username || "");
+        const server = url.hostname;
+        const port = Number(url.port) || 443;
+        if (!uuid || !server) return null;
+
+        const params = url.searchParams;
+        const flow = params.get("flow") || "";
+        const security = params.get("security") || "";
+        const sni = params.get("sni") || "";
+        const allowInsecure = params.get("allowInsecure") === "1" || params.get("insecure") === "1";
+        const network = params.get("type") || "tcp";
+
+        const node: Record<string, unknown> = {
+            name: name || `${server}:${port}`,
+            type: "vless",
+            server,
+            port,
+            uuid,
+            udp: true,
+            ...(flow ? { flow } : {}),
+            ...(security === "tls" || security === "reality" ? { tls: true } : {}),
+            ...(sni ? { servername: sni } : {}),
+            ...(allowInsecure ? { "skip-cert-verify": true } : {}),
+        };
+
+        if (security === "reality") {
+            const pbk = params.get("pbk") || "";
+            const sid = params.get("sid") || "";
+            const fp = params.get("fp") || "chrome";
+            node["reality-opts"] = {
+                "public-key": pbk,
+                ...(sid ? { "short-id": sid } : {}),
+            };
+            if (fp) node["client-fingerprint"] = fp;
+        }
+
+        if (network === "ws") {
+            node.network = "ws";
+            const path = params.get("path");
+            const host = params.get("host") || sni;
+            node["ws-opts"] = {
+                ...(path ? { path } : {}),
+                ...(host ? { headers: { Host: host } } : {}),
+            };
+        } else if (network === "grpc") {
+            node.network = "grpc";
+            const serviceName = params.get("serviceName");
+            if (serviceName) node["grpc-opts"] = { "grpc-service-name": serviceName };
+        }
+        return node;
+    } catch {
+        return null;
+    }
+}
+
+function parseVmessUri(uri: string): Record<string, unknown> | null {
+    const raw = uri.slice(8).trim();
+    try {
+        const json = JSON.parse(Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+        const server = String(json.add || "");
+        const port = Number(json.port);
+        const uuid = String(json.id || "");
+        const name = String(json.ps || `${server}:${port}`);
+        if (!server || !port || !uuid) return null;
+
+        const alterId = Number(json.aid) || 0;
+        const cipher = String(json.scy || "auto");
+        const tls = json.tls === "tls";
+        const sni = String(json.sni || json.host || "");
+        const network = String(json.net || "tcp");
+
+        const node: Record<string, unknown> = {
+            name,
+            type: "vmess",
+            server,
+            port,
+            uuid,
+            alterId,
+            cipher,
+            udp: true,
+            ...(tls ? { tls: true } : {}),
+            ...(sni ? { servername: sni } : {}),
+        };
+
+        if (network === "ws") {
+            node.network = "ws";
+            const path = String(json.path || "/");
+            const host = String(json.host || sni || "");
+            node["ws-opts"] = {
+                ...(path ? { path } : {}),
+                ...(host ? { headers: { Host: host } } : {}),
+            };
+        } else if (network === "grpc") {
+            node.network = "grpc";
+            const serviceName = String(json.path || "");
+            if (serviceName) node["grpc-opts"] = { "grpc-service-name": serviceName };
+        }
+        return node;
+    } catch {
+        return null;
+    }
+}
+
+function safeDecodeUriComponent(str: string): string {
+    try {
+        return decodeURIComponent(str);
+    } catch {
+        return str;
+    }
 }
 
 function normalizeSubscriptionNodes(value: unknown) {
     if (!Array.isArray(value) || !value.length) throw new MagicProxyError("订阅必须包含非空 proxies 节点列表", 422);
     const names = new Set<string>();
-    return value.map((rawNode) => {
+    return value.map((rawNode, index) => {
         const node = record(rawNode);
-        const name = requiredText(node.name, "订阅节点缺少名称");
+        let name = requiredText(node.name, "订阅节点缺少名称");
         const type = requiredText(node.type, `订阅节点“${name}”缺少类型`);
-        if (name === "DIRECT" || Object.values(GROUP_NAMES).includes(name)) throw new MagicProxyError("订阅节点名称与魔法代理保留名称冲突", 422);
-        if (names.has(name)) throw new MagicProxyError("订阅节点名称不能重复", 422);
+        if (name === "DIRECT" || Object.values(GROUP_NAMES).includes(name)) {
+            name = `${name}_node`;
+        }
+        if (names.has(name)) {
+            let disambiguated = `${name} (${index + 1})`;
+            let count = index + 1;
+            while (names.has(disambiguated)) {
+                count += 1;
+                disambiguated = `${name} (${count})`;
+            }
+            name = disambiguated;
+        }
         names.add(name);
         const sanitized = sanitizeJson(node);
         if (!record(sanitized)) throw new MagicProxyError("订阅节点格式无效", 422);
@@ -813,15 +1193,43 @@ function normalizeSubscriptionNodes(value: unknown) {
 }
 
 function normalizeSubscriptionUrl(value: string) {
+    let trimmed = value.trim();
+    if (trimmed.startsWith("clash://") || trimmed.startsWith("clashmeta://")) {
+        try {
+            const rawClashUrl = new URL(trimmed);
+            const nested = rawClashUrl.searchParams.get("url");
+            if (nested) trimmed = decodeURIComponent(nested).trim();
+        } catch {
+            // keep trimmed
+        }
+    }
     let url: URL;
     try {
-        url = new URL(value.trim());
+        url = new URL(trimmed);
     } catch {
         throw new MagicProxyError("订阅地址格式无效", 400);
     }
     if (url.protocol !== "https:" || url.username || url.password || !url.hostname) throw new MagicProxyError("订阅地址必须是未包含账号密码的 HTTPS 地址", 422);
     url.hash = "";
+
+    // 针对机场（V2board / Xboard / SSPanel 等）订阅链接，若未指定 flag 且不是直接 yaml 文件，自动补充 flag=clash 以获取标准 Clash 配置
+    if (!url.searchParams.has("flag") && isAirportSubscriptionUrl(url)) {
+        url.searchParams.set("flag", "clash");
+    }
+
     return url.toString();
+}
+
+function isAirportSubscriptionUrl(url: URL): boolean {
+    const path = url.pathname.toLowerCase();
+    if (path.endsWith(".yaml") || path.endsWith(".yml")) return false;
+    return (
+        path.includes("/api/v1/client/subscribe") ||
+        path.includes("/subscribe") ||
+        path.includes("/link/") ||
+        path.includes("/sub/") ||
+        url.searchParams.has("token")
+    );
 }
 
 export function cleanNodeName(name: string): string {
