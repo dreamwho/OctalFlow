@@ -12,6 +12,7 @@ describe("GeminiAIStudio gateway store", () => {
         directory = await mkdtemp(join(tmpdir(), "dreamyo-geminiai-gateway-"));
         vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
         vi.stubEnv("DREAMYO_DATA_DIR", directory);
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "b".repeat(64));
     });
 
     afterEach(async () => {
@@ -32,7 +33,7 @@ describe("GeminiAIStudio gateway store", () => {
 
         await updateGeminiAiApiKey(created.key.id, { status: "disabled" });
         await expect(authorizeGeminiAiApiKey(created.rawKey, "10.8.2.4")).resolves.toBeNull();
-        await expect(listGeminiAiApiKeys()).resolves.toEqual([expect.objectContaining({ status: "disabled", requestCount: 1 })]);
+        await expect(listGeminiAiApiKeys()).resolves.toEqual([expect.objectContaining({ status: "disabled", requestCount: 1, key: created.rawKey })]);
     });
 
     it("rejects expired keys and deletes them permanently", async () => {

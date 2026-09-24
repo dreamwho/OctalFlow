@@ -25,7 +25,7 @@ export function AdminChannelsSection({ controller }: { controller: AdminDashboar
                         title="保存模型渠道配置"
                         loading={settingsLoading}
                         icon={<Save className="size-4" />}
-                        onClick={() => saveSettings({ systemChannels: settings.systemChannels, logicalModels: settings.logicalModels, defaultModels: settings.defaultModels }, "模型渠道配置已保存")}
+                        onClick={() => saveSettings({ systemChannels: settings.systemChannels, logicalModels: settings.logicalModels, modelPickerGroups: settings.modelPickerGroups, defaultModels: settings.defaultModels }, "模型渠道配置已保存")}
                     >
                         保存更改
                     </Button>
@@ -33,7 +33,7 @@ export function AdminChannelsSection({ controller }: { controller: AdminDashboar
             />
             <div className="p-3 sm:p-5">
                 <AdminChannelWorkspace
-                    settings={{ systemChannels: settings.systemChannels, logicalModels: settings.logicalModels, defaultModels: settings.defaultModels }}
+                    settings={{ systemChannels: settings.systemChannels, logicalModels: settings.logicalModels, modelPickerGroups: settings.modelPickerGroups, defaultModels: settings.defaultModels }}
                     fetchingModelId={fetchingModelId}
                     saving={settingsLoading}
                     onChange={(next) => setSettings((current) => ({ ...current, ...next }))}

@@ -4,27 +4,24 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { Modal } from "antd";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { nanoid } from "nanoid";
 
 import { AuthForm } from "@/components/auth/auth-form";
 import { BillingPlansModal } from "@/components/billing/billing-plans-modal";
 import { X } from "lucide-react";
-import { SiteLogo } from "@/components/layout/site-logo";
 import { createAgentPromptHref, type CreateAgentMode } from "@/lib/create-agent-prompt";
 import { usePublicSessionStore } from "@/stores/use-public-session-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { HomeSiteSettings } from "./home-data";
 import { resolveSiteBrandName, resolveSiteTitle } from "@/lib/site-brand";
-import { createCanvasProject } from "@/services/api/canvas-projects";
-import { CanvasNodeType, type CanvasNodeData } from "@/app/(user)/canvas/types";
+import { useMediaWorkbenchDraftStore } from "@/stores/use-media-workbench-draft-store";
 
 export type HomeCreateGenerateParams = {
     prompt: string;
     type: "image" | "video";
     modelIds?: string[];
-    skillIds?: string[];
     aspectRatio?: string;
     duration?: string;
+    referenceFile?: File;
 };
 
 type HomeActions = {
@@ -35,7 +32,7 @@ type HomeActions = {
     openBillingPlans: () => void;
     openProtectedPath: (path: string) => void;
     startCreating: (prompt?: string, mode?: CreateAgentMode, options?: { skillIds?: string[]; modelIds?: string[] }) => void;
-    createCanvasAndGenerate: (params: HomeCreateGenerateParams) => Promise<void>;
+    openGenerationWorkbench: (params: HomeCreateGenerateParams) => void;
 };
 
 const HomeActionsContext = createContext<HomeActions | null>(null);
@@ -80,60 +77,21 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
     const startCreating = (prompt = "", mode: CreateAgentMode = "agent", options: { skillIds?: string[]; modelIds?: string[] } = {}) =>
         openProtectedPath(createAgentPromptHref(prompt, { source: "home", mode, skillIds: options.skillIds, modelIds: options.modelIds }));
 
-    const createCanvasAndGenerate = async (params: HomeCreateGenerateParams) => {
-        if (!authenticated) {
-            openLogin("/canvas");
-            return;
-        }
-
-        const nodeId = `node-${nanoid(8)}`;
-        const isVideo = params.type === "video";
-        const title = (params.prompt || (isVideo ? "视频生成" : "图片生成")).slice(0, 30);
-
-        let width = isVideo ? 420 : 340;
-        let height = isVideo ? 236 : 240;
-        if (params.aspectRatio === "9:16") {
-            width = isVideo ? 236 : 240;
-            height = isVideo ? 420 : 340;
-        } else if (params.aspectRatio === "16:9") {
-            width = isVideo ? 420 : 340;
-            height = isVideo ? 236 : 240;
-        } else if (params.aspectRatio === "1:1") {
-            width = 300;
-            height = 300;
-        }
-
-        const node: CanvasNodeData = {
-            id: nodeId,
-            type: isVideo ? CanvasNodeType.Video : CanvasNodeType.Image,
-            title: isVideo ? "视频生成" : "图片生成",
-            position: { x: 300, y: 200 },
-            width,
-            height,
-            metadata: {
-                prompt: params.prompt,
-                model: params.modelIds?.[0] || "",
-                selectedSkillIds: params.skillIds?.length ? params.skillIds : undefined,
-                size: params.aspectRatio || "1:1",
-                seconds: params.duration || "5",
-                status: "idle",
-            },
-        };
-
-        const res = await createCanvasProject({
-            title: title || "新创意画布",
-            project: {
-                nodes: [node],
-            },
+    const openGenerationWorkbench = (params: HomeCreateGenerateParams) => {
+        useMediaWorkbenchDraftStore.getState().setDraft({
+            prompt: params.prompt,
+            mode: params.type,
+            modelId: params.modelIds?.[0],
+            aspectRatio: params.aspectRatio,
+            duration: params.duration,
+            referenceFile: params.referenceFile,
+            autoSubmit: true,
         });
-
-        if (res?.id) {
-            router.push(`/canvas/${res.id}?autoGenerate=${nodeId}`);
-        }
+        openProtectedPath(`/create?mode=${params.type}`);
     };
 
     return (
-        <HomeActionsContext.Provider value={{ authenticated, sessionReady, site, openLogin, openBillingPlans: () => setBillingPlansOpen(true), openProtectedPath, startCreating, createCanvasAndGenerate }}>
+        <HomeActionsContext.Provider value={{ authenticated, sessionReady, site, openLogin, openBillingPlans: () => setBillingPlansOpen(true), openProtectedPath, startCreating, openGenerationWorkbench }}>
             {children}
             <Modal
                 centered

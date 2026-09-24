@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("create Agent home layout", () => {
-    it("sunset the /create route and keeps shared creation components intact", async () => {
+    it("uses /create for the media workbench and keeps shared creation components intact", async () => {
         const [createRoute, composer, messages, conversationList, generationControls, preferences, overview, inspiration, previewModal] = await Promise.all([
-            readFile(resolve(process.cwd(), "src/app/create/page.tsx"), "utf8"),
+            readFile(resolve(process.cwd(), "src/app/(user)/create/page.tsx"), "utf8"),
             readFile(resolve(process.cwd(), "src/app/(user)/create/components/creative-composer.tsx"), "utf8"),
             readFile(resolve(process.cwd(), "src/app/(user)/create/components/creative-messages.tsx"), "utf8"),
             readFile(resolve(process.cwd(), "src/app/(user)/create/components/creative-conversation-list.tsx"), "utf8"),
@@ -16,8 +16,7 @@ describe("create Agent home layout", () => {
             readFile(resolve(process.cwd(), "src/components/works/public-work-preview-modal.tsx"), "utf8"),
         ]);
 
-        expect(createRoute).toContain('from "next/navigation"');
-        expect(createRoute).toContain('redirect("/")');
+        expect(createRoute).toContain("<ImageVideoWorkbench />");
         expect(createRoute).not.toContain("create-studio.module.css");
         expect(messages).toContain('data-testid="creative-message-list"');
         expect(messages).toContain("[assets.length, followLatest, lastMessageId, loading]");

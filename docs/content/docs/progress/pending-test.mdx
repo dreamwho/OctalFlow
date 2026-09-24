@@ -5,6 +5,39 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### 网关外部 API Key 实时可见可复制改造与安全可逆加密存储（2026-09-24）
+
+- 需求与问题：
+  1. 用户指令明确要求：“另外针对后台的几个具备网关能力的创建的APIKEY需要调整为实时可见可复制，而不是仅仅在首次创建的时候可复制可查看！”；
+  2. 此前 Dola、GeminiTools、GeminiAI 等具备反向代理与外部网关能力的模块，API Key 仅在创建成功的瞬态对话框中展示一次，持久层只存储 SHA-256 哈希；
+  3. 弹窗关闭后，即使是系统管理员也无法在后台查看已创建 Key 的明文或一键复制，给客户端配置、跨服务调试与多端集成带来诸多不便。
+- 架构与设计方案：
+  1. **混合双轨密钥存储架构**：
+     - **鉴权查询走 SHA-256 哈希（`key_hash`）**：网关外部接口高频认证时，依然基于传入 Raw Key 计算 SHA-256 进行单向快速比对（`timingSafeEqual` 或数据库索引检索），确保鉴权路径零额外加解密开销，避免任何形式的时序泄露；
+     - **管理员管理走 AES-256-GCM 密文存储（`key_ciphertext`）**：在持久层（PostgreSQL 与 JSON 文件）中增加 `key_ciphertext` 列，基于项目现有的 `DREAMYO_ENCRYPTION_KEY` 对生成的 Raw Key 进行强加密存储；
+     - **落盘安全无明文**：物理存储与备份中均不存在明文密钥字符串；管理接口在组装管理员响应时安全解密密文，在 `key` 字段返回完整明文。
+  2. **三网关数据层全量改造**：
+     - `web/src/lib/server/dola/gateway-store.ts`：更新 `DolaApiKey` 与 `StoredKey` 类型，写入时加密保存 `keyCiphertext`，读取时解密还原；
+     - `web/src/lib/server/gemini-tools-store.ts` & `database/gemini-tools-repository.ts`：更新 `gemini_tools_api_keys` DDL（增加 `key_ciphertext text`），双引擎兼容加解密；
+     - `web/src/lib/server/geminiai-gateway-store.ts` & `database/geminiai-gateway-repository.ts`：更新 `geminiai_api_keys` DDL（增加 `key_ciphertext text`），双引擎兼容加解密；
+     - `docs/backend-database.md`：同步更新相关数据表字段说明文档。
+  3. **管理端前端界面实时显隐与一键复制**：
+     - **Dola 反代网关 (`admin-dola-api-section.tsx`)**：
+       - 密钥列表卡片中为每一条已创建的 Key 增加独立的明文显示状态切换（`Eye` / `EyeOff` 图标按钮）与一键复制按钮（`Copy` 图标按钮）；
+       - 移除原有的“新密钥只显示一次”警告，替换为可复制的安全存储成功提示；
+       - 支持直接停用/启用 Switch 与删除 Popconfirm。
+     - **GeminiTools 网关 (`admin-gemini-tools-section.tsx`)**：
+       - 面板说明更新为“外部客户端统一通过反代接口使用，密钥安全加密存储，支持随时查看明文与一键复制”；
+       - 密钥列表的 `KeyRow` 增加 `revealed` 切换、Eye/EyeOff 图标及一键复制功能；创建成功弹窗说明同步更新。
+     - **GeminiAIStudio 网关 (`admin-geminiai-section.tsx`)**：
+       - 面板说明移除“明文仅创建时显示一次，关闭窗口后不再回显”；
+       - 密钥列表的 `GeminiAiKeyRow` 增加 `revealed` 切换、Eye/EyeOff 图标及一键复制功能；创建成功弹窗说明同步更新。
+- 验证情况：
+  - **单元测试**：编写并运行 `dola/gateway-store.test.ts`、`gemini-tools-store.test.ts`、`geminiai-gateway-store.test.ts` 共 9 项专用单元测试全部通过（断言验证了落盘文件绝无明文、列表查询返回完整明文、哈希快速鉴权正常工作）；
+  - **类型检查**：运行 `npx tsc --noEmit`，全量项目 0 错误；
+  - **生产编译构建**：执行 `pnpm build`，75 个全量路由与中间件 16.8s 成功构建；
+  - **服务重启与连通性**：生产 Standalone 服务（端口 3333）平稳重启并挂载 3 个 sidecar 守护进程，`/api/health` 检测正常返回 `{"code":0,"data":{"status":"ok"},"msg":"服务正常"}`。
+
 ### Dola 上游未知会话反馈与拒识文本检测、即时报错终止与请求日志原始详情透传（2026-09-22）
 
 - 需求与问题：

@@ -45,6 +45,15 @@ describe("generation log task service", () => {
         expect(states).toEqual({ "success-slot": "success", "failed-slot": "failed", "retry-slot": "pending" });
     });
 
+    it("marks only the matching unstarted draft slot failed", async () => {
+        await createDraft("log-unstarted", ["slot-one"]);
+        const failed = await service.failGenerationLogDraftSlotForUser("user-one", "log-unstarted", "slot-one", "request-slot-one", "渠道忙碌");
+        const protectedResult = await service.failGenerationLogDraftSlotForUser("user-one", "log-unstarted", "slot-one", "wrong-request", "覆盖错误");
+
+        expect(failed?.requestSnapshot?.slots[0]).toMatchObject({ id: "slot-one", status: "failed", error: "渠道忙碌" });
+        expect(protectedResult).toBeNull();
+    });
+
     it("keeps concurrent task results and their asset indexes isolated", async () => {
         await createDraft("log-concurrent", ["slot-a", "slot-b"]);
 

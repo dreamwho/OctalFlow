@@ -7,6 +7,7 @@ export type GenerationLogSnapshotParameters = {
     seconds?: string;
     generateAudio?: string;
     watermark?: string;
+    runningHubAppId?: string;
 };
 
 export type GenerationLogReferenceSnapshot = {
@@ -63,6 +64,9 @@ export type GenerationLogSlotSnapshot = {
     startedAt?: number;
     error?: string;
     canRetry?: boolean;
+    needsReview?: boolean;
+    displayPhase?: "preparing" | "queued" | "running";
+    reviewReason?: string;
     requestTraces?: GenerationLogProtocolTrace[];
 };
 

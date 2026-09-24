@@ -3,6 +3,7 @@ import { channelDetectedCapabilities, normalizeDefaultModelsConfig } from "@/lib
 import { channelProtocolDefinition } from "@/lib/channel-protocol-registry";
 
 export type ChannelWorkspaceSettings = {
+    modelPickerGroups: string[];
     systemChannels: SystemModelChannel[];
     logicalModels: import("@/lib/auth/store").LogicalModel[];
     defaultModels: SystemDefaultModels;
@@ -40,6 +41,7 @@ export function removeChannelFromWorkspace(settings: ChannelWorkspaceSettings, c
     return {
         systemChannels,
         logicalModels,
+        modelPickerGroups: settings.modelPickerGroups,
         defaultModels: Object.fromEntries(Object.entries(settings.defaultModels).map(([key, value]) => [key, liveIds.has(value) ? value : ""])) as SystemDefaultModels,
     };
 }

@@ -79,7 +79,14 @@ vi.mock("@/lib/server/security", () => ({
     rateLimitHeaders: vi.fn(() => ({ "Retry-After": "60" })),
 }));
 
-import { GET, maxDuration, POST, PUT } from "./route";
+import { GET, maxDuration, POST, PUT, readBoundedProtocolResponse } from "./route";
+
+it("reads a bounded image JSON preview without blocking delivery of the original response", async () => {
+    const response = Response.json({ data: [{ b64_json: "A".repeat(16_000) }] });
+    const preview = await readBoundedProtocolResponse(response);
+    expect(preview).toHaveLength(5000 + "…（已截断）".length);
+    expect((await response.json() as { data: Array<{ b64_json: string }> }).data[0].b64_json).toHaveLength(16_000);
+});
 import { MEDIA_SNIFF_RANGE } from "@/lib/server/media-content-validation";
 import { systemAiBillingHeaders, systemAiPointsIdempotencyKey } from "@/lib/server/system-ai-billing";
 

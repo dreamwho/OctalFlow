@@ -1,6 +1,6 @@
 "use client";
 
-import { FileAudio, FileDown, FileUp, Film, Plus, Search, Upload } from "lucide-react";
+import { ArrowLeft, Clapperboard, FileAudio, FileDown, FileUp, Film, ImagePlus, LayoutGrid, Moon, Plus, Search, Sun, Upload } from "lucide-react";
 import { useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { App, Button, Form, Input, Modal, Pagination, Segmented, Select, Space, Tag, Tooltip, Typography } from "antd";
 import { saveAs } from "file-saver";
@@ -12,13 +12,15 @@ import { DreamyoWaitingIcon } from "@/components/ui/dreamyo-icon";
 import { droppedFiles, leftDropTarget, preventFileDragEvent } from "@/lib/file-drop";
 import { formatBytes } from "@/lib/image-utils";
 import { mediaDownloadFileName } from "@/lib/media-file";
-import { imagePreviewUrl, originalImageDownloadUrl, originalImageExtension, originalMediaDownloadUrl } from "@/lib/media-image-url";
+import { imagePreviewUrl, originalImageDownloadUrl, originalMediaDownloadUrl } from "@/lib/media-image-url";
 import { uploadImage } from "@/services/image-storage";
 import { uploadMediaFile } from "@/services/file-storage";
 import { isPermanentServerMedia, serverMediaUrl } from "@/services/server-media-storage";
 import { listAllLibraryAssets } from "@/services/api/library-assets";
 import { cn } from "@/lib/utils";
 import { useAssetStore, type Asset, type AssetKind, type AudioAsset, type ImageAsset, type VideoAsset } from "@/stores/use-asset-store";
+import { canvasThemes } from "@/lib/canvas-theme";
+import { useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { exportAssets, readAssetPackage } from "./asset-transfer";
 
@@ -48,6 +50,8 @@ import { useAssetPage } from "./use-asset-page";
 export default function AssetsPage() {
     const { message } = App.useApp();
     const router = useRouter();
+    const themeName = useThemeStore((state) => state.theme);
+    const theme = canvasThemes[themeName];
     const copyText = useCopyText();
     const [form] = Form.useForm<AssetFormValues>();
     const coverInputRef = useRef<HTMLInputElement>(null);
@@ -259,8 +263,22 @@ export default function AssetsPage() {
     };
 
     return (
-        <div className="h-full min-h-0 overflow-hidden bg-background text-foreground">
-            <main className="asset-library-page h-full min-h-0 overflow-y-auto px-3 py-3 sm:px-6 sm:py-6">
+        <div className="relative h-full min-h-0 overflow-hidden text-foreground" style={{ background: theme.canvas.backdrop, color: theme.node.text }}>
+            <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `${theme.canvas.glow}, radial-gradient(${theme.canvas.dot} 1px, transparent 1px)`, backgroundSize: "auto, 22px 22px" }} />
+            <div className="relative flex h-full min-h-0">
+                <aside className="flex w-14 shrink-0 flex-col items-center gap-2 border-r py-3" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }} aria-label="Canvas 工作区导航">
+                    <button type="button" className="mb-2 grid size-9 place-items-center rounded-xl border transition hover:opacity-75" style={{ borderColor: theme.toolbar.border, color: theme.node.text }} onClick={() => router.push("/")} aria-label="返回首页" title="首页"><ArrowLeft className="size-4" /></button>
+                    <button type="button" className="grid size-9 place-items-center rounded-xl text-muted-foreground transition hover:bg-black/5 dark:hover:bg-white/5" onClick={() => router.push("/image")} aria-label="图片和视频生成" title="图片和视频生成"><ImagePlus className="size-[18px]" /></button>
+                    <button type="button" className="grid size-9 place-items-center rounded-xl text-muted-foreground transition hover:bg-black/5 dark:hover:bg-white/5" onClick={() => router.push("/canvas")} aria-label="画布项目" title="画布项目"><Clapperboard className="size-[18px]" /></button>
+                    <button type="button" className="grid size-9 place-items-center rounded-xl border" style={{ borderColor: theme.node.activeStroke, background: theme.toolbar.activeBg, color: theme.toolbar.activeText }} aria-current="page" aria-label="素材库" title="素材库"><LayoutGrid className="size-[18px]" /></button>
+                    <button type="button" className="mt-auto grid size-9 place-items-center rounded-xl text-muted-foreground transition hover:bg-black/5 dark:hover:bg-white/5" onClick={() => useThemeStore.getState().setTheme(themeName === "dark" ? "light" : "dark")} aria-label={themeName === "dark" ? "切换浅色主题" : "切换深色主题"} title="切换主题">{themeName === "dark" ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}</button>
+                </aside>
+                <div className="flex min-w-0 flex-1 flex-col">
+                    <header className="flex h-12 shrink-0 items-center justify-between border-b px-3 sm:px-5" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }}>
+                        <div className="flex min-w-0 items-center gap-2 text-xs"><span className="font-semibold">dreamyo</span><span className="opacity-40">/</span><span className="truncate opacity-70">素材工作区</span></div>
+                        <button type="button" className="inline-flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs transition hover:opacity-80" style={{ borderColor: theme.toolbar.border, color: theme.node.text, background: theme.toolbar.itemHover }} onClick={() => router.push("/image")}><ImagePlus className="size-3.5" />图片 / 视频生成</button>
+                    </header>
+            <main className="asset-library-page min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-6">
                 <div className="mx-auto max-w-[1560px]">
                     <header className="border-b border-border pb-3 sm:pb-4">
                         <div className="flex items-start justify-between gap-3">
@@ -362,6 +380,8 @@ export default function AssetsPage() {
                     </div>
                 </div>
             </main>
+                </div>
+            </div>
 
             <Modal
                 title={editingAsset ? "编辑素材" : "新增素材"}

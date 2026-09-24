@@ -54,10 +54,10 @@ describe("useCreateAgent submission retry", () => {
         expect(retrySource).not.toContain("createCreativeAgentRun");
     });
 
-    it("keeps the decommissioned /create route redirecting to the home page", async () => {
-        const source = await readFile(resolve(process.cwd(), "src/app/create/page.tsx"), "utf8");
+    it("uses /create for the media workbench without starting an Agent run", async () => {
+        const source = await readFile(resolve(process.cwd(), "src/app/(user)/create/page.tsx"), "utf8");
 
-        expect(source).toContain('redirect("/")');
+        expect(source).toContain("<ImageVideoWorkbench />");
         expect(source).not.toContain("retryRound");
         expect(source).not.toContain("createCreativeAgentRun");
     });

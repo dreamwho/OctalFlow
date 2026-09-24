@@ -3,7 +3,7 @@
 import { LogDetailResizeHandle, useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
 import { Alert, App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Modal, Popconfirm, Progress, Select, Space, Switch, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { BarChart3, Check, ChevronRight, CircleUserRound, Clock, Copy, KeyRound, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { BarChart3, Check, ChevronRight, CircleUserRound, Clock, Copy, Eye, EyeOff, KeyRound, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
@@ -401,7 +401,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                 <Panel>
                     <PanelHeader
                         title="API 密钥"
-                        description="密钥以哈希保存，可限制过期时间和调用 IP；明文只显示一次。"
+                        description="外部客户端统一通过反代接口使用，密钥安全加密存储，支持随时查看明文与一键复制。"
                         actions={
                             <Button type="primary" icon={<Plus className="size-4" />} onClick={() => setKeyOpen(true)}>
                                 创建密钥
@@ -552,13 +552,13 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                 open={Boolean(rawKey)}
                 footer={
                     <Button type="primary" onClick={() => setRawKey("")}>
-                        我已安全保存
+                        确定
                     </Button>
                 }
                 closable={false}
                 mask={{ closable: false }}
             >
-                <Alert type="warning" showIcon message="明文只显示本次" description="关闭后无法再次查看，只能删除并创建新密钥。" />
+                <Alert type="info" showIcon message="API 密钥已生成并安全加密存储" description="你已可立即复制使用；关闭后也可在下方密钥列表中随时点击眼睛图标查看明文与一键复制。" />
                 <div className="mt-4 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
                     <code className="min-w-0 flex-1 break-all text-xs">{rawKey}</code>
                     <Button icon={<Copy className="size-4" />} onClick={() => void navigator.clipboard.writeText(rawKey).then(() => message.success("密钥已复制"))}>
@@ -729,6 +729,15 @@ export function visibleGeminiToolsQuotas(quotas: GeminiToolsQuota[], activeModel
 }
 
 function KeyRow({ apiKey, busy, onToggle, onDelete }: { apiKey: GeminiToolsApiKey; busy: boolean; onToggle: (checked: boolean) => void; onDelete: () => void }) {
+    const { message } = App.useApp();
+    const [revealed, setRevealed] = useState(false);
+
+    const copyKey = () => {
+        void navigator.clipboard.writeText(apiKey.key || apiKey.prefix).then(() => {
+            message.success("API 密钥已复制");
+        });
+    };
+
     return (
         <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
             <div className="flex min-w-0 items-center gap-3">
@@ -738,7 +747,29 @@ function KeyRow({ apiKey, busy, onToggle, onDelete }: { apiKey: GeminiToolsApiKe
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{apiKey.name}</span>
-                        <Tag>{apiKey.prefix}…</Tag>
+                        {revealed ? (
+                            <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200 break-all">
+                                {apiKey.key || `${apiKey.prefix}…`}
+                            </code>
+                        ) : (
+                            <Tag className="m-0 font-mono text-xs">{apiKey.prefix}…</Tag>
+                        )}
+                        <Button
+                            size="small"
+                            type="text"
+                            className="px-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                            icon={revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                            onClick={() => setRevealed(!revealed)}
+                            title={revealed ? "隐藏明文" : "查看明文"}
+                        />
+                        <Button
+                            size="small"
+                            type="text"
+                            className="px-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                            icon={<Copy className="size-3.5" />}
+                            onClick={copyKey}
+                            title="复制密钥"
+                        />
                     </div>
                     <div className="truncate text-xs text-zinc-500">
                         请求 {apiKey.requestCount} · Token {apiKey.totalTokens.toLocaleString()} · {apiKey.expiresAt ? `到期 ${formatTime(apiKey.expiresAt)}` : "长期有效"}

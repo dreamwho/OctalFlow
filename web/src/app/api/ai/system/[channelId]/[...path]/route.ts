@@ -1181,7 +1181,7 @@ async function summarizeProtocolResponse(response: Response) {
     }
 }
 
-async function readBoundedProtocolResponse(response: Response) {
+export async function readBoundedProtocolResponse(response: Response) {
     const reader = response.clone().body?.getReader();
     if (!reader) return "";
     const chunks: Uint8Array[] = [];
@@ -1196,7 +1196,10 @@ async function readBoundedProtocolResponse(response: Response) {
             total += Math.min(value.byteLength, remaining);
             if (value.byteLength > remaining) {
                 truncated = true;
-                await reader.cancel();
+                // A cloned stream is teed with the response returned to the caller.
+                // Awaiting cancel waits for that other branch to be consumed, while
+                // this route cannot return it until the preview completes.
+                void reader.cancel().catch(() => undefined);
                 break;
             }
         }

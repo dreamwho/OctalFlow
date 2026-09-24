@@ -118,8 +118,20 @@ export type GeminiAiRequestLog = {
 
 export type GeminiAiRequestStats = { total: number; success: number; failed: number; averageDurationMs: number };
 export type GeminiAiLogPage = { items: GeminiAiRequestLog[]; total: number; page: number; pageSize: number; stats: GeminiAiRequestStats };
+
+export async function getGeminiAiLogImageResults(log: GeminiAiRequestLog): Promise<string[]> {
+    if (log.capability !== "image" || log.statusCode < 200 || log.statusCode >= 300) return [];
+    const taskId = /^image-task:([a-z\d-]+):attempt:\d+$/i.exec(log.headers?.["idempotency-key"] || "")?.[1];
+    if (!taskId) return [];
+    const response = await fetch(`/api/image-tasks/${encodeURIComponent(taskId)}`, { cache: "no-store" });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as { task?: { status?: string; result?: { serverUrl?: string; results?: Array<{ serverUrl?: string }> } } };
+    if (payload.task?.status !== "success") return [];
+    const result = payload.task.result;
+    return [...new Set((result?.results?.length ? result.results : [result]).map((item) => item?.serverUrl).filter((url): url is string => Boolean(url)))];
+}
 export type GeminiAiGatewaySettings = { enabled: boolean; rotationLimit: number };
-export type GeminiAiApiKey = { id: string; name: string; prefix: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
+export type GeminiAiApiKey = { id: string; name: string; prefix: string; key?: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
 
 type ApiEnvelope<T> = { code?: number; data?: T; msg?: string; error?: string };
 

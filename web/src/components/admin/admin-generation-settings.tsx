@@ -105,6 +105,9 @@ export function GenerationDefaultsPanel({ settings, onChange }: { settings: Auth
                 <LabeledControl label="Agent 默认生图张数">
                     <InputNumber className="w-full" min={1} precision={0} value={settings.generationDefaults.imageCount} onChange={(value) => onChange("imageCount", value || 1)} />
                 </LabeledControl>
+                <LabeledControl label="工作台单次最多生成张数">
+                    <InputNumber className="w-full" min={1} precision={0} value={settings.generationDefaults.imageMaxCount} onChange={(value) => onChange("imageMaxCount", value || 1)} />
+                </LabeledControl>
                 <LabeledControl label="默认图片/视频比例">
                     <Select
                         className="w-full"

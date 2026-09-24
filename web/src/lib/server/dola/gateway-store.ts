@@ -1,11 +1,12 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
+import { decryptSecretValue, encryptSecretValue, isEncryptionKeyReady } from "@/lib/server/secret-crypto";
 
 const FILE_NAME = "dola/gateway.json";
 export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; captureVerificationScreenshot: boolean; dispatchGroups: string[] };
-export type DolaApiKey = { id: string; name: string; prefix: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
-type StoredKey = DolaApiKey & { hash: string };
+export type DolaApiKey = { id: string; name: string; prefix: string; key?: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
+type StoredKey = DolaApiKey & { hash: string; keyCiphertext?: string };
 type Database = { gateway: DolaGatewaySettings; apiKeys: StoredKey[] };
 const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, captureVerificationScreenshot: true, dispatchGroups: [] }, apiKeys: [] };
 
@@ -40,7 +41,19 @@ export async function listDolaApiKeys() {
 export async function createDolaApiKey(input: { name: string; expiresAt?: string; allowedIps?: string[] }) {
     const rawKey = `oct_dola_${randomBytes(30).toString("base64url")}`;
     const now = new Date().toISOString();
-    const key: StoredKey = { id: `key-${randomUUID()}`, name: input.name.trim().slice(0, 120) || "Dola API Key", prefix: rawKey.slice(0, 16), status: "active", ...(validDate(input.expiresAt) ? { expiresAt: new Date(input.expiresAt!).toISOString() } : {}), allowedIps: normalizeIps(input.allowedIps), requestCount: 0, createdAt: now, hash: hash(rawKey) };
+    const keyCiphertext = isEncryptionKeyReady() ? encryptSecretValue(rawKey) : undefined;
+    const key: StoredKey = {
+        id: `key-${randomUUID()}`,
+        name: input.name.trim().slice(0, 120) || "Dola API Key",
+        prefix: rawKey.slice(0, 16),
+        status: "active",
+        ...(validDate(input.expiresAt) ? { expiresAt: new Date(input.expiresAt!).toISOString() } : {}),
+        allowedIps: normalizeIps(input.allowedIps),
+        requestCount: 0,
+        createdAt: now,
+        hash: hash(rawKey),
+        ...(keyCiphertext ? { keyCiphertext } : {}),
+    };
     await mutate((db) => void db.apiKeys.push(key));
     return { key: publicKey(key), rawKey };
 }
@@ -85,8 +98,17 @@ export async function authorizeDolaApiKey(rawKey: string, clientIp?: string) {
 }
 
 function publicKey(value: StoredKey): DolaApiKey {
-    const { hash: _hash, ...rest } = value;
-    return structuredClone(rest);
+    const { hash: _hash, keyCiphertext, ...rest } = value;
+    let plainKey: string | undefined;
+    if (keyCiphertext) {
+        try {
+            plainKey = decryptSecretValue(keyCiphertext);
+        } catch {}
+    }
+    return {
+        ...structuredClone(rest),
+        ...(plainKey ? { key: plainKey } : {}),
+    };
 }
 async function readDatabase(): Promise<Database> {
     const value = await readJsonDataFile<Partial<Database>>(FILE_NAME, EMPTY);

@@ -41,6 +41,12 @@ describe("PostgreSQL auth read paths", () => {
         });
     });
 
+    it("loads persisted model picker categories", () => {
+        const settings = mapPostgresSettings({ model_picker_groups: ["常用图片", "常用视频"] }, [], []);
+        expect(settings.modelPickerGroups).toEqual(["常用图片", "常用视频"]);
+        expect(POSTGRESQL_SCHEMA_SQL).toContain("model_picker_groups jsonb");
+    });
+
     it("normalizes persisted generation cost controls", () => {
         const settings = mapPostgresSettings({ generation_cost_control: { maxPointsPerTask: 1.7, dailyUserPointSpend: 20, dailyTotalPointSpend: 100 } }, [], []);
 

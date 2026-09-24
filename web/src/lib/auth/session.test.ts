@@ -64,6 +64,7 @@ describe("serializePublicSettings", () => {
                 name: "图片模型",
                 capability: "image",
                 enabled: true,
+                pickerGroup: "自定义生图",
                 pickerVisible: false,
                 bindings: [
                     {
@@ -78,6 +79,7 @@ describe("serializePublicSettings", () => {
                 ],
             },
         ];
+        settings.modelPickerGroups = ["自定义生图"];
         settings.site.socials = {
             email: { enabled: true, label: "邮箱", url: "mailto:owner@example.com" },
             telegram: { enabled: true, label: "Telegram", url: "https://t.me/dreamyo_group" },
@@ -100,7 +102,8 @@ describe("serializePublicSettings", () => {
                 hasApiKey: true,
             },
         ]);
-        expect(result.logicalModels[0]).toMatchObject({ id: "image-main", pickerVisible: false });
+        expect(result.logicalModels[0]).toMatchObject({ id: "image-main", pickerVisible: false, pickerGroup: "自定义生图" });
+        expect(result.modelPickerGroups).toEqual(["自定义生图"]);
         expect(result.logicalModels[0]?.bindings[0]).toEqual({ id: "binding-one", channelId: "channel-one", upstreamModel: "vendor-image", enabled: true, priority: 1 });
         expect(serialized).not.toContain("provider-secret");
         expect(serialized).not.toContain("internal-provider.example");

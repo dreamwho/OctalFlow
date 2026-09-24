@@ -9,7 +9,7 @@ import { resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
 import { useCreativeComposerPopoverPlacement, type CreativeComposerPopoverPlacement } from "@/components/creative-composer-popover";
 import { canvasDreaminaImageProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
 
-const chatGptApiImageSizes: GenerationRatioOption[] = [
+export const chatGptApiImageSizes: GenerationRatioOption[] = [
     { value: "auto", label: "智能", width: 18, height: 18 },
     { value: "1024x1024", label: "方形", width: 18, height: 18 },
     { value: "1024x1536", label: "竖版", width: 14, height: 21 },

@@ -1,3 +1,3 @@
 export function isFullscreenWorkspacePath(pathname: string) {
-    return /^\/(?:canvas|drama)\/[^/]+(?:\/|$)/.test(pathname);
+    return pathname === "/create" || pathname === "/image" || pathname === "/assets" || /^\/(?:canvas|drama)\/[^/]+(?:\/|$)/.test(pathname);
 }

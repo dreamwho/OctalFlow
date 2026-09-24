@@ -198,6 +198,7 @@ class SettingsRepository {
         if (input.generationDefaults !== undefined) add("generation_defaults", jsonParam(input.generationDefaults));
         if (input.paymentConfig !== undefined) add("payment_config", jsonParam(input.paymentConfig));
         if (input.logicalModels !== undefined) add("logical_models", jsonParam(input.logicalModels));
+        if (input.modelPickerGroups !== undefined) add("model_picker_groups", jsonParam(input.modelPickerGroups));
         if (input.defaultModels !== undefined) add("default_models", jsonParam(input.defaultModels));
         if (input.agentSkills !== undefined) add("agent_skills", jsonParam(input.agentSkills));
         if (input.canvasQuickActions !== undefined) add("canvas_quick_actions", jsonParam(input.canvasQuickActions));
@@ -303,6 +304,7 @@ function mapSettings(row: Record<string, unknown>): AppSettingsRecord {
         generationDefaults: jsonValue(row.generation_defaults),
         paymentConfig: jsonValue(row.payment_config),
         logicalModels: jsonValue(row.logical_models),
+        modelPickerGroups: jsonValue(row.model_picker_groups),
         defaultModels: jsonValue(row.default_models),
         agentSkills: jsonValue(row.agent_skills),
         canvasQuickActions: jsonValue(row.canvas_quick_actions),

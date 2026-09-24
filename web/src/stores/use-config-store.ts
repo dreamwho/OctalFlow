@@ -115,6 +115,7 @@ export type AiConfig = {
     apiFormat: ApiCallFormat;
     channels: ModelChannel[];
     logicalModels: LogicalModel[];
+    modelPickerGroups: string[];
     model: string;
     imageModel: string;
     videoModel: string;
@@ -149,6 +150,7 @@ export type AiConfig = {
     size: string;
     count: string;
     canvasImageCount: string;
+    imageMaxCount: number;
     modelPointCosts: Record<string, number>;
     generationPointMultipliers: GenerationPointMultipliers;
     generationConcurrency: GenerationConcurrencySettings;
@@ -180,6 +182,7 @@ export type PublicSystemSettings = {
         imageSize?: string;
         imageQuality?: string;
         imageCount?: number;
+        imageMaxCount?: number;
         videoQuality?: string;
         videoSeconds?: number;
         audioVoice?: string;
@@ -193,6 +196,7 @@ export type PublicSystemSettings = {
     };
     systemChannels?: Array<ModelChannel & { enabled?: boolean; hasApiKey?: boolean }>;
     logicalModels?: LogicalModel[];
+    modelPickerGroups?: string[];
 };
 
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -207,6 +211,7 @@ export const defaultConfig: AiConfig = {
     apiFormat: "openai",
     channels: [],
     logicalModels: [],
+    modelPickerGroups: [],
     model: "",
     imageModel: "",
     videoModel: "",
@@ -241,6 +246,7 @@ export const defaultConfig: AiConfig = {
     size: "1:1",
     count: "1",
     canvasImageCount: "1",
+    imageMaxCount: 8,
     modelPointCosts: {},
     generationPointMultipliers: {
         imageQuality: { auto: 1, low: 1, medium: 1, high: 1 },
@@ -322,6 +328,7 @@ export function applyPublicSystemSettings(config: AiConfig, settings?: PublicSys
         channelMode: "local",
         channels,
         logicalModels,
+        modelPickerGroups: settings?.modelPickerGroups || [],
         baseUrl: channels[0]?.baseUrl || "",
         apiKey: "system",
         apiFormat: "openai",
@@ -341,6 +348,7 @@ export function applyPublicSystemSettings(config: AiConfig, settings?: PublicSys
         generationPointMultipliers: normalizeGenerationPointMultipliers(settings?.generationPointMultipliers),
         generationConcurrency: normalizeGenerationConcurrency(settings?.generationConcurrency),
         canvasImageCount: normalizeCanvasImageCount(settings?.generationDefaults?.canvasImageCount),
+        imageMaxCount: settings?.generationDefaults?.imageMaxCount || defaultConfig.imageMaxCount,
         size: settings?.generationDefaults?.imageSize || defaultConfig.size,
         quality: settings?.generationDefaults?.imageQuality || defaultConfig.quality,
         count: String(settings?.generationDefaults?.imageCount || defaultConfig.count),

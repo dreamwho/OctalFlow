@@ -80,6 +80,19 @@ export function renameGenerationLogForUser(userId: string, id: string, title: st
     return mutateOwnedGenerationLog(normalizeText(id, "", 120), userId, (current) => (current ? { ...current, title: normalizedTitle, updatedAt: new Date().toISOString() } : undefined));
 }
 
+export async function failGenerationLogDraftSlotForUser(userId: string, id: string, slotId: string, clientRequestId: string, error: string) {
+    let updated = false;
+    const log = await mutateOwnedGenerationLog(normalizeText(id, "", 120), userId, (current) => {
+        const snapshot = current?.requestSnapshot;
+        const slot = snapshot?.slots.find((candidate) => candidate.id === slotId);
+        if (!current || !snapshot || !slot || slot.status !== "pending" || slot.taskId || slot.serverTaskId || !clientRequestId || slot.clientRequestId !== clientRequestId) return current;
+        updated = true;
+        const slots = snapshot.slots.map((candidate) => candidate.id === slotId ? { ...candidate, status: "failed" as const, error: normalizeText(error, "生成任务创建失败", 1000) } : candidate);
+        return finalizeGenerationLog({ ...current, requestSnapshot: { ...snapshot, slots } }, slots);
+    });
+    return updated ? log : null;
+}
+
 export function appendGenerationLogProtocolTrace(input: { userId: string; logId: string; slotId: string; trace: GenerationLogProtocolTrace }) {
     const logId = optionalText(input.logId, 120);
     const slotId = optionalText(input.slotId, 200);

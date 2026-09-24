@@ -208,7 +208,7 @@ describe("GeminiAI sidecar provider", () => {
             .mockResolvedValueOnce(Response.json({ id: "account-one", email: "owner@example.com" }));
         mockUndiciFetch(fetchMock);
 
-        await geminiAiRuntimeRequest("/images/generations", { method: "POST", body: JSON.stringify({ model: "gemini-3-pro-image", prompt: "一只橘猫" }) });
+        const delivered = await geminiAiRuntimeRequest("/images/generations", { method: "POST", body: JSON.stringify({ model: "gemini-3-pro-image", prompt: "一只橘猫" }) });
 
         const log = mocks.appendLog.mock.calls[0]?.[0];
         const preview = String(log.responsePreview);
@@ -216,5 +216,6 @@ describe("GeminiAI sidecar provider", () => {
         expect(preview).toContain("base64 图片数据");
         expect(preview).toContain('"data"');
         expect(JSON.stringify(log)).not.toContain("secret-image-base64");
+        await expect(delivered.json()).resolves.toEqual({ data: [{ b64_json: "secret-image-base64" }] });
     });
 });

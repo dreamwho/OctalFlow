@@ -175,6 +175,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
         imageSize: "1:1",
         imageQuality: "auto",
         imageCount: 1,
+        imageMaxCount: 8,
         videoQuality: "720",
         videoSeconds: 5,
         videoAnalysisModel: "",
@@ -183,6 +184,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
     },
     systemChannels: [],
     logicalModels: [],
+    modelPickerGroups: ["Google Gemini", "ByteDance Seedream", "OpenAI", "MiniMax", "Anthropic", "阿里云 / 通义千问", "DeepSeek", "智谱 GLM", "xAI", "其他模型"],
     defaultModels: { imageModel: "", videoModel: "", textModel: "", audioModel: "" },
     agentSkills: [
         { ...ECOMMERCE_IMAGE_SKILL, keywords: [...ECOMMERCE_IMAGE_SKILL.keywords], workspaces: [...ECOMMERCE_IMAGE_SKILL.workspaces] },

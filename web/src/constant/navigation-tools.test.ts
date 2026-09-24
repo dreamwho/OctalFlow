@@ -11,9 +11,9 @@ describe("user navigation order", () => {
         ]);
     });
 
-    it("keeps the unified Agent as the only generation entry in workspace navigation", () => {
+    it("links the shared image and video workbench from workspace navigation", () => {
         expect(navigationGroups.map((group) => group.label)).toEqual(["创作", "项目", "资产", "社区"]);
-        expect(navigationTools.map((tool) => tool.slug)).not.toContain("image");
+        expect(navigationTools.map((tool) => tool.slug)).toContain("image");
         expect(navigationTools.map((tool) => tool.slug)).not.toContain("video");
     });
 

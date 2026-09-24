@@ -38,11 +38,13 @@
 
 `app_settings.user_roles` 保存内置“普通用户”及管理员自定义的非管理员角色。角色策略包含积分消耗倍率、只记录不扣分开关，以及按模型能力分类、逻辑模型 ID 和显式排除模型组成的白名单；默认普通用户为全部模型、1:1 扣分。`users.role` 保存角色 ID，`admin` 继续使用独立的管理员职责权限。删除角色前，服务端检查是否仍有用户使用该角色；模型列表按当前用户角色过滤，模型代理与积分记账服务再次执行权限校验。只记录模式仍保留零扣分流水并受套餐次数限制。
 
+`app_settings.model_picker_groups` 保存前端模型选择器的分类名称及顺序；逻辑模型的 `pickerGroup` 保存所属分类。公开会话只下发当前用户可用的逻辑模型与分类配置。
+
 ## 魔法代理
 
 `dreamyo_magic_proxy_settings` 是单例配置表（`id = 'default'`）。订阅地址和节点明文以加密字段保存。GeminiAIStudio、GeminiTools、GPTAPI 与 Dola API 共用同一套魔法代理绑定，绑定模式为 `magic` 或 `chained`；Dola 同时通过相同的 Provider 入口支持通用代理引用。每个 Provider 都有独立 Mihomo 分组、监听端口和链式跳板组，启用一种来源时会自动关闭另外两种来源，不把代理密码或订阅明文返回浏览器。ChatGPT 自己的 native/magic 选择仍由 `/api/admin/chatgpt-api/proxy-selection` 维护，不能与本 Provider 绑定字段混用。
 
-`dola_accounts` 保存 Dola Cookie 账号的脱敏业务状态；`cookie_ciphertext` 使用服务端密钥加密，`cookie_fingerprint` 只用于 HMAC 去重，列表接口不得返回任一敏感字段。`dola_api_keys`、`dola_gateway_settings` 分别保存 Dola 外部网关密钥和启用状态；`dola_request_logs` 记录请求受理、代理路由、账号鉴权、Camoufox 上游、验证、媒体查询与失败阶段，并保存脱敏请求/响应摘要、任务/验证 ID、时长比例、状态码、耗时和生命周期；Cookie、API Key、Token、参考图和视频二进制不写入日志。`dola_attempts` 固定 `account_id + credential_version + proxy_reference` 与租约序列，服务重启后按同一 attempt 恢复，不通过重发掩盖未知提交结果。代理引用来自现有通用代理管理的 `node:<id>` 或 `group:<id>`，不在 Dola 表中保存区域专用 URL 或密码。Dola 请求日志已同时支持加密 JSON Provider 与 PostgreSQL repository，后台列表使用服务端筛选、分页、聚合和详情抽屉。
+`dola_accounts` 保存 Dola Cookie 账号的脱敏业务状态；`cookie_ciphertext` 使用服务端密钥加密，`cookie_fingerprint` 只用于 HMAC 去重，列表接口不得返回任一敏感字段。`dola_api_keys`、`gemini_tools_api_keys`、`geminiai_api_keys`、`dola_gateway_settings` 分别保存各反代网关密钥与启用状态，其中 API Key 使用 `key_ciphertext` 进行 AES-256-GCM 服务端可逆加密存储，支持管理员后台实时可见与复制，同时保留 `key_hash` 供 API 鉴权快速比对；`dola_request_logs` 记录请求受理、代理路由、账号鉴权、Camoufox 上游、验证、媒体查询与失败阶段，并保存脱敏请求/响应摘要、任务/验证 ID、时长比例、状态码、耗时和生命周期；Cookie、API Key、Token、参考图和视频二进制不写入日志。`dola_attempts` 固定 `account_id + credential_version + proxy_reference` 与租约序列，服务重启后按同一 attempt 恢复，不通过重发掩盖未知提交结果。代理引用来自现有通用代理管理的 `node:<id>` 或 `group:<id>`，不在 Dola 表中保存区域专用 URL 或密码。Dola 请求日志已同时支持加密 JSON Provider 与 PostgreSQL repository，后台列表使用服务端筛选、分页、聚合和详情抽屉。
 
 Mihomo 固定声明 GeminiAIStudio、GeminiTools、ChatGPTAPI 和 DolaAPI 四个独立 group/listener，并为四者分别声明链式跳板组。Dola 的魔法/链式请求通过专用 listener 传给 Camoufox Provider；Dola 的通用代理仍只持久化 `node:<id>` 或 `group:<id>` 引用，运行时短暂解析为代理 URL。Next.js 到本地 Python 服务的内部请求保持直连。
 

@@ -8,9 +8,9 @@ describe("creative Agent public model catalog", () => {
         const config = applyPublicSystemSettings(defaultConfig, publicSettings());
 
         expect(creativeAgentModelsFromConfig(config)).toEqual([
-            { id: "image-one", name: "图片模型", capability: "image" },
-            { id: "video-one", name: "视频模型", capability: "video" },
-            { id: "audio-one", name: "音频模型", capability: "audio" },
+            { id: "image-one", name: "图片模型", capability: "image", iconKey: undefined, providerHint: "媒体渠道" },
+            { id: "video-one", name: "视频模型", capability: "video", iconKey: undefined, providerHint: "媒体渠道" },
+            { id: "audio-one", name: "音频模型", capability: "audio", iconKey: undefined, providerHint: "媒体渠道" },
         ]);
     });
 
@@ -20,7 +20,7 @@ describe("creative Agent public model catalog", () => {
         const config = applyPublicSystemSettings(defaultConfig, settings);
 
         expect(config.videoModels).toEqual(["video-one"]);
-        expect(creativeAgentModelsFromConfig(config, ["video"])).toEqual([{ id: "video-one", name: "video-one", capability: "video" }]);
+        expect(creativeAgentModelsFromConfig(config, ["video"])).toEqual([{ id: "video-one", name: "video-one", capability: "video", iconKey: undefined, providerHint: "媒体渠道" }]);
     });
 });
 

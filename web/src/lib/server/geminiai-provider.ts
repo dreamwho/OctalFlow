@@ -113,8 +113,14 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
             detail: `状态码: ${response.status}, Content-Type: ${response.headers.get("content-type") || "未知"}${Number.isFinite(rotations) && rotations > 0 ? `, 已自动换号 ${Math.floor(rotations)} 次` : ""}`,
         });
 
-        if (metadata) await recordRequestLog(config, metadata, response as unknown as Response, startedAt, openLogId, lifecycle);
-        return response as unknown as Response;
+        // Image JSON contains base64 media. Read it once before logging so the
+        // log preview does not hold a second streamed branch while the task
+        // persists the response.
+        const delivered = metadata?.capability === "image" && (response.headers.get("content-type") || "").includes("application/json")
+            ? new Response(await response.arrayBuffer(), { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()) })
+            : response as unknown as Response;
+        if (metadata) await recordRequestLog(config, metadata, delivered, startedAt, openLogId, lifecycle);
+        return delivered;
     } catch (error) {
         // undici 的 "fetch failed" 只有 cause 才带真实原因（ECONNREFUSED/ECONNRESET 等），必须单独记录。
         const cause = (error as { cause?: unknown })?.cause;

@@ -18,6 +18,10 @@ describe("secret encryption key", () => {
         expect(isEncryptedSecretValue(encrypted)).toBe(true);
         expect(decryptSecretValue(encrypted)).toBe("provider-secret");
         expect(getEncryptionKeyStatus().ready).toBe(true);
+
+        const legacyEncrypted = encrypted.replace("dreamyo-secret:v1:", "octalaicanvas-secret:v1:");
+        expect(isEncryptedSecretValue(legacyEncrypted)).toBe(true);
+        expect(decryptSecretValue(legacyEncrypted)).toBe("provider-secret");
     });
 
     it("accepts an exact 32-byte base64 key", () => {

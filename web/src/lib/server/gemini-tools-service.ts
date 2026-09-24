@@ -353,6 +353,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
     // 换号次数上限：rotationLimit=0/1 只用当前账号；N 最多依次尝试 N 个账号（认证失效/429 才切换，模糊失败立即停止避免重复生成）。
     const maxAccountTries = gateway.rotationLimit > 0 ? Math.min(gateway.rotationLimit, accounts.length) : 1;
     for (const account of accounts.slice(0, maxAccountTries)) {
+        let attemptedGeneration = false;
         try {
             const token = await validAccessToken(account);
             const project = account.projectId ? { projectId: account.projectId, planType: account.planType } : await loadCodeAssist(token.accessToken);
@@ -376,6 +377,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                 detail: `模型: ${model}, 项目: ${project.projectId}, 载荷大小: ${JSON.stringify(nativePayload).length} 字节`,
             });
 
+            attemptedGeneration = true;
             const native = await cloudCodeGenerate(token.accessToken, project.projectId, model, nativePayload);
             const responseEnd = Date.now();
             lifecycle.push({
@@ -441,7 +443,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             // Do not replay a generation after an ambiguous upstream or
             // transport failure. Authentication and quota rejections are
             // definite non-executions, so only those may advance an account.
-            if (!isDefiniteGoogleAuthFailure(lastError) && lastError.status !== 429) break;
+            if (attemptedGeneration && !isDefiniteGoogleAuthFailure(lastError) && lastError.status !== 429) break;
         }
     }
     const status = lastError?.status || 502;
@@ -631,7 +633,10 @@ async function googleJson<T>(url: string, init: RequestInit, fallbackMessage: st
         const proxyUrl = await geminiToolsMagicProxyUrl();
         response = await fetchSafeOutbound(url, { ...init, cache: "no-store", redirect: "error" }, { allowProxyFakeIpSpace: true, ...(proxyUrl ? { proxyUrl } : {}) });
     } catch (error) {
-        throw new GeminiToolsError(error instanceof Error && error.name === "TimeoutError" ? `${fallbackMessage}：请求超时` : fallbackMessage, error instanceof Error && error.name === "TimeoutError" ? 504 : 502);
+        const isTimeout = error instanceof Error && (error.name === "TimeoutError" || error.message.toLowerCase().includes("timeout") || (error as { code?: string }).code === "UND_ERR_CONNECT_TIMEOUT");
+        const cause = error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : "";
+        const detail = error instanceof Error ? `${error.message}${cause}` : String(error);
+        throw new GeminiToolsError(isTimeout ? `${fallbackMessage}：请求超时` : `${fallbackMessage}：${detail}`, isTimeout ? 504 : 502);
     }
     const raw = await response.text();
     const payload = raw ? safeJson(raw) : {};
@@ -954,11 +959,14 @@ function safeJson(value: string): unknown {
 function safeGoogleError(value: unknown) {
     const root = record(value);
     const error = record(root.error);
-    return text(error.message ?? root.error_description ?? root.message ?? root.error, 500);
+    const code = text(typeof root.error === "string" ? root.error : error.code ?? error.status, 100);
+    const desc = text(error.message ?? root.error_description ?? root.message, 500);
+    if (code && desc && code !== desc) return `${code}: ${desc}`;
+    return desc || code || text(root.error, 500);
 }
 
 function isDefiniteGoogleAuthFailure(error: GeminiToolsError) {
-    return [401, 403].includes(error.status) || (error.status === 400 && /^(invalid_grant|invalid_client|unauthorized_client)$/i.test(error.message.trim()));
+    return [401, 403].includes(error.status) || (error.status === 400 && /invalid_grant|invalid_client|unauthorized_client|token.*expired|revoked/i.test(error.message.trim()));
 }
 
 function errorMessage(value: unknown) {

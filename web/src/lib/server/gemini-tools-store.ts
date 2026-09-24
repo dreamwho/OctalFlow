@@ -4,7 +4,7 @@ import { isIP } from "node:net";
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { ensurePostgresSchema, isPostgresDatabaseEnabled, postgresQuery } from "@/lib/server/database";
 import { GeminiToolsRepository } from "@/lib/server/database/gemini-tools-repository";
-import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
+import { decryptSecretValue, encryptSecretValue, isEncryptionKeyReady } from "@/lib/server/secret-crypto";
 
 const FILE_NAME = "gemini-tools.json";
 const MAX_LOGS = 10_000;
@@ -41,6 +41,7 @@ export type GeminiToolsApiKey = {
     id: string;
     name: string;
     prefix: string;
+    key?: string;
     status: "active" | "disabled";
     expiresAt?: string;
     allowedIps: string[];
@@ -104,7 +105,7 @@ export type StoredGeminiToolsAccount = GeminiToolsAccount & {
     projectId?: string;
 };
 export type GeminiToolsOAuthSession = { state: string; redirectUri: string; openerOrigin: string; createdAt: number };
-export type StoredGeminiToolsApiKey = GeminiToolsApiKey & { hash: string };
+export type StoredGeminiToolsApiKey = GeminiToolsApiKey & { hash: string; keyCiphertext?: string };
 type GeminiToolsDatabase = {
     accounts: StoredGeminiToolsAccount[];
     oauthSessions: GeminiToolsOAuthSession[];
@@ -281,11 +282,13 @@ export async function listGeminiToolsApiKeys() {
 export async function createGeminiToolsApiKey(input: { name: string; expiresAt?: string; allowedIps?: string[] }) {
     const rawKey = `oct_gat_${randomBytes(30).toString("base64url")}`;
     const now = new Date().toISOString();
+    const keyCiphertext = isEncryptionKeyReady() ? encryptSecretValue(rawKey) : undefined;
     const stored: StoredGeminiToolsApiKey = {
         id: `key-${randomUUID()}`,
         name: input.name.trim().slice(0, 120) || "GeminiTools API Key",
         prefix: rawKey.slice(0, 14),
         hash: hashApiKey(rawKey),
+        ...(keyCiphertext ? { keyCiphertext } : {}),
         status: "active",
         ...(validDate(input.expiresAt) ? { expiresAt: new Date(input.expiresAt!).toISOString() } : {}),
         allowedIps: normalizeAllowedIps(input.allowedIps),
@@ -532,8 +535,17 @@ function privateAccount(account: StoredGeminiToolsAccount): GeminiToolsPrivateAc
 }
 
 function publicApiKey(key: StoredGeminiToolsApiKey): GeminiToolsApiKey {
-    const { hash: _hash, ...value } = key;
-    return structuredClone(value);
+    const { hash: _hash, keyCiphertext, ...value } = key;
+    let plainKey: string | undefined;
+    if (keyCiphertext) {
+        try {
+            plainKey = decryptSecretValue(keyCiphertext);
+        } catch {}
+    }
+    return {
+        ...structuredClone(value),
+        ...(plainKey ? { key: plainKey } : {}),
+    };
 }
 
 let geminiToolsSchemaEnsured = false;

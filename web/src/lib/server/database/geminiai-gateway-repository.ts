@@ -13,6 +13,7 @@ export class GeminiAiGatewayRepository {
                 name text NOT NULL,
                 prefix text NOT NULL,
                 key_hash text NOT NULL UNIQUE,
+                key_ciphertext text,
                 status text NOT NULL DEFAULT 'active',
                 expires_at timestamptz,
                 allowed_ips jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -21,6 +22,7 @@ export class GeminiAiGatewayRepository {
                 created_at timestamptz NOT NULL DEFAULT now(),
                 CONSTRAINT geminiai_api_keys_status_check CHECK (status IN ('active', 'disabled'))
             );
+            ALTER TABLE geminiai_api_keys ADD COLUMN IF NOT EXISTS key_ciphertext text;
             CREATE INDEX IF NOT EXISTS geminiai_api_keys_status_idx ON geminiai_api_keys (status, expires_at);
             CREATE TABLE IF NOT EXISTS geminiai_gateway_settings (
                 id text PRIMARY KEY DEFAULT 'default',
@@ -57,7 +59,7 @@ export class GeminiAiGatewayRepository {
     }
 
     async insertApiKey(key: StoredGeminiAiApiKey) {
-        const result = await this.db.query("INSERT INTO geminiai_api_keys (id,name,prefix,key_hash,status,expires_at,allowed_ips,request_count,last_used_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10) RETURNING *", [
+        const result = await this.db.query("INSERT INTO geminiai_api_keys (id,name,prefix,key_hash,status,expires_at,allowed_ips,request_count,last_used_at,created_at,key_ciphertext) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11) RETURNING *", [
             key.id,
             key.name,
             key.prefix,
@@ -68,6 +70,7 @@ export class GeminiAiGatewayRepository {
             key.requestCount,
             key.lastUsedAt || null,
             new Date(key.createdAt),
+            key.keyCiphertext || null,
         ]);
         return mapApiKey(result.rows[0]);
     }
@@ -118,6 +121,7 @@ function mapApiKey(row: Record<string, unknown>): StoredGeminiAiApiKey {
         name: string(row.name),
         prefix: string(row.prefix),
         hash: string(row.key_hash),
+        ...(string(row.key_ciphertext) ? { keyCiphertext: string(row.key_ciphertext) } : {}),
         status: row.status === "disabled" ? "disabled" : "active",
         ...(date(row.expires_at) ? { expiresAt: date(row.expires_at)! } : {}),
         allowedIps: strings(row.allowed_ips),

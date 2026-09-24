@@ -223,6 +223,86 @@ describe("GeminiTools runtime", () => {
         expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ accountId: "one", accountEmail: "one@example.com", error: "invalid_grant" }));
     });
 
+    it("surfaces combined error code and error_description for Google OAuth failure", async () => {
+        mocks.listCandidates.mockResolvedValue([
+            {
+                ...(await mocks.listCandidates())[0],
+                accessToken: "expired-token",
+                refreshToken: "refresh-token",
+                expiresAt: 0,
+            },
+        ]);
+        mocks.safeFetch.mockResolvedValue(Response.json({ error: "invalid_grant", error_description: "Bad Request" }, { status: 400 }));
+
+        const response = await geminiToolsRuntimeRequest("/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "刷新授权" }] }) });
+        const payload = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(payload).toEqual({ error: { message: "invalid_grant: Bad Request" } });
+        expect(mocks.updateAccount).toHaveBeenCalledWith("one", { status: "invalid" });
+        expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ accountId: "one", accountEmail: "one@example.com", error: "invalid_grant: Bad Request" }));
+    });
+
+    it("surfaces transport network failure details rather than masking them", async () => {
+        mocks.listCandidates.mockResolvedValue([
+            {
+                ...(await mocks.listCandidates())[0],
+                accessToken: "expired-token",
+                refreshToken: "refresh-token",
+                expiresAt: 0,
+            },
+        ]);
+        mocks.safeFetch.mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:7878"));
+
+        const response = await geminiToolsRuntimeRequest("/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "网络异常" }] }) });
+        const payload = await response.json();
+
+        expect(response.status).toBe(502);
+        expect(payload.error.message).toContain("connect ECONNREFUSED 127.0.0.1:7878");
+        expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining("connect ECONNREFUSED") }));
+    });
+
+    it("rotates to next account when first account fails token refresh before generation", async () => {
+        mocks.getGateway.mockResolvedValue({ enabled: true, strategy: "round_robin", sessionStickiness: false, rotationLimit: 3 });
+        mocks.listCandidates.mockResolvedValue([
+            {
+                ...(await mocks.listCandidates())[0],
+                accessToken: "expired-token",
+                refreshToken: "refresh-token-bad",
+                expiresAt: 0,
+            },
+            {
+                id: "two",
+                email: "two@example.com",
+                name: "Two",
+                status: "active",
+                proxyEnabled: true,
+                priority: 1,
+                quotas: [{ model: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro" }],
+                requestCount: 0,
+                totalTokens: 0,
+                errorCount: 0,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                accessToken: "valid-token-two",
+                refreshToken: "refresh-two",
+                expiresAt: Date.now() + 3_600_000,
+                projectId: "project-two",
+            },
+        ]);
+        mocks.safeFetch
+            .mockImplementationOnce(() => Promise.resolve(Response.json({ error: "invalid_grant", error_description: "Bad Request" }, { status: 400 })))
+            .mockImplementation((url: string | URL, init?: RequestInit) => fetch(url, init));
+
+        const response = await geminiToolsRuntimeRequest("/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "测试轮询换号" }] }) });
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(payload.choices[0].message.content).toBe("真实返回");
+        expect(mocks.updateAccount).toHaveBeenCalledWith("one", { status: "invalid" });
+        expect(mocks.recordUsage).toHaveBeenCalledWith("two", 7, false);
+    });
+
     it("forwards OpenAI image parts to Antigravity as Gemini inlineData", async () => {
         await geminiToolsRuntimeRequest(
             "/v1/chat/completions",

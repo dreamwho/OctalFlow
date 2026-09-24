@@ -150,17 +150,21 @@ export function serializePublicSettings(settings: AuthSettings, user?: Pick<Publ
             imageSize: settings.generationDefaults.imageSize,
             imageQuality: settings.generationDefaults.imageQuality,
             imageCount: settings.generationDefaults.imageCount,
+            imageMaxCount: settings.generationDefaults.imageMaxCount,
             videoQuality: settings.generationDefaults.videoQuality,
             videoSeconds: settings.generationDefaults.videoSeconds,
             audioVoice: settings.generationDefaults.audioVoice,
             audioFormat: settings.generationDefaults.audioFormat,
         },
         defaultModels: modelDefaults,
+        modelPickerGroups: settings.modelPickerGroups,
         logicalModels: permittedModels
             .map((model) => ({
                 id: model.id,
                 name: model.name,
                 capability: model.capability,
+                pickerGroup: model.pickerGroup,
+                icon: model.icon,
                 enabled: true,
                 pickerVisible: model.pickerVisible !== false,
                 bindings: model.bindings

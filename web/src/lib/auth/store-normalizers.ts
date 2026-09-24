@@ -14,6 +14,7 @@ import { resolveAgentSkillNodeModes } from "@/lib/agent-skill-node-policy";
 import { deriveLogicalModelsConfig, normalizeDefaultModelsConfig, normalizeLogicalModelsConfig } from "@/lib/model-routing-config";
 import { applyChannelProtocol } from "@/lib/channel-protocol-registry";
 import { resolveConfiguredModelPointCost } from "@/lib/model-point-cost";
+import { inferredModelPickerGroup, normalizeModelPickerGroups } from "@/lib/model-picker-groups";
 import { normalizeSystemChannelAdvancedConfig } from "./store-normalizers-channel";
 import {
     type UserRole,
@@ -248,6 +249,8 @@ export function countActiveFullAdmins(db: AuthDatabase, excludingUserId?: string
 export function normalizeSettings(settings: AuthSettings): AuthSettings {
     const systemChannels = Array.isArray(settings.systemChannels) ? settings.systemChannels.map(normalizeSystemChannel).filter((channel) => channel.name || channel.baseUrl || channel.models.length) : [];
     const logicalModels = normalizeLogicalModels(settings.logicalModels, systemChannels);
+    const modelPickerGroups = normalizeModelPickerGroups(settings.modelPickerGroups);
+    const categorizedModels = logicalModels.map((model) => ({ ...model, pickerGroup: modelPickerGroups.includes(model.pickerGroup || "") ? model.pickerGroup : modelPickerGroups.includes(inferredModelPickerGroup(`${model.id} ${model.name}`)) ? inferredModelPickerGroup(`${model.id} ${model.name}`) : modelPickerGroups[0] }));
     const site = normalizeSiteSettings(settings.site);
     return {
         site,
@@ -266,8 +269,9 @@ export function normalizeSettings(settings: AuthSettings): AuthSettings {
         generationConcurrency: normalizeGenerationConcurrency(settings.generationConcurrency),
         generationDefaults: normalizeGenerationDefaults(settings.generationDefaults),
         systemChannels,
-        logicalModels,
-        defaultModels: normalizeDefaultModelsConfig(settings.defaultModels, logicalModels, systemChannels),
+        logicalModels: categorizedModels,
+        modelPickerGroups,
+        defaultModels: normalizeDefaultModelsConfig(settings.defaultModels, categorizedModels, systemChannels),
         agentSkills: normalizeAgentSkills(settings.agentSkills),
         canvasQuickActions: normalizeCanvasQuickActionGroups(settings.canvasQuickActions),
         userRoles: normalizeUserRoleDefinitions(settings.userRoles),
@@ -475,6 +479,7 @@ export function normalizeGenerationDefaults(settings: Partial<GenerationDefaultS
         imageSize: allowedText(settings?.imageSize, ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"], DEFAULT_SETTINGS.generationDefaults.imageSize),
         imageQuality: allowedText(settings?.imageQuality, ["auto", "low", "medium", "high"], DEFAULT_SETTINGS.generationDefaults.imageQuality),
         imageCount: normalizePositiveSafeInteger(settings?.imageCount, DEFAULT_SETTINGS.generationDefaults.imageCount),
+        imageMaxCount: normalizePositiveSafeInteger(settings?.imageMaxCount, DEFAULT_SETTINGS.generationDefaults.imageMaxCount),
         videoQuality: normalizeText(settings?.videoQuality, DEFAULT_SETTINGS.generationDefaults.videoQuality, 40),
         videoSeconds: normalizeDefaultVideoSeconds(settings?.videoSeconds),
         videoAnalysisModel: normalizeText(settings?.videoAnalysisModel, DEFAULT_SETTINGS.generationDefaults.videoAnalysisModel || "", 120),

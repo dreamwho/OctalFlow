@@ -17,7 +17,7 @@ export type GeminiToolsAccount = {
     createdAt: string;
     updatedAt: string;
 };
-export type GeminiToolsApiKey = { id: string; name: string; prefix: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; totalTokens: number; lastUsedAt?: string; createdAt: string };
+export type GeminiToolsApiKey = { id: string; name: string; prefix: string; key?: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; totalTokens: number; lastUsedAt?: string; createdAt: string };
 export type GeminiToolsLog = {
     id: string;
     createdAt: string;

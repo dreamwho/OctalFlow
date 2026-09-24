@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     generation_defaults jsonb NOT NULL DEFAULT '{}'::jsonb,
     payment_config jsonb NOT NULL DEFAULT '{}'::jsonb,
     logical_models jsonb NOT NULL DEFAULT '[]'::jsonb,
+    model_picker_groups jsonb NOT NULL DEFAULT '[]'::jsonb,
     default_models jsonb NOT NULL DEFAULT '{}'::jsonb,
     agent_skills jsonb NOT NULL DEFAULT '[{"id":"ecommerce-image","name":"电商生图","description":"为商品主图、场景图和详情页视觉生成结构化方案。","instructions":"识别商品卖点、目标人群、平台与画幅。优先规划白底主图、核心卖点场景图、细节特写和详情页横幅；保持商品外观、材质、颜色、Logo 与包装一致。提示词必须写清主体、构图、光线、背景、镜头、商业质感、尺寸比例与禁止变形要求。","enabled":true,"keywords":["电商","商品","主图","详情页","淘宝","京东","亚马逊"]}]'::jsonb,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -101,6 +102,7 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS agent_skills jsonb NOT NULL DE
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS canvas_quick_actions jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS user_roles jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS logical_models jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS model_picker_groups jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS login_methods jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points_enabled boolean NOT NULL DEFAULT true;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points numeric(18, 2) NOT NULL DEFAULT 0;
@@ -258,6 +260,7 @@ CREATE TABLE IF NOT EXISTS gemini_tools_api_keys (
     name text NOT NULL,
     prefix text NOT NULL,
     key_hash text NOT NULL UNIQUE,
+    key_ciphertext text,
     status text NOT NULL DEFAULT 'active',
     expires_at timestamptz,
     allowed_ips jsonb NOT NULL DEFAULT '[]'::jsonb,

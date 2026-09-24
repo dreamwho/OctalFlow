@@ -251,6 +251,7 @@ export type GenerationDefaultSettings = {
     imageSize: string;
     imageQuality: string;
     imageCount: number;
+    imageMaxCount: number;
     videoQuality: string;
     videoSeconds: number;
     videoAnalysisModel?: string;
@@ -567,6 +568,7 @@ export type AuthSettings = {
     generationDefaults: GenerationDefaultSettings;
     systemChannels: SystemModelChannel[];
     logicalModels: LogicalModel[];
+    modelPickerGroups: string[];
     defaultModels: SystemDefaultModels;
     agentSkills: AgentSkill[];
     canvasQuickActions: CanvasQuickActionGroup[];

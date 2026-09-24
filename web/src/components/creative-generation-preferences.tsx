@@ -39,7 +39,7 @@ export type CreativeGenerationPreferencePatch = {
     speed?: number;
 };
 
-const imageRatios = [
+export const imageRatios = [
     { value: "auto", label: "智能", width: 18, height: 18 },
     { value: "1:1", label: "1:1", width: 18, height: 18 },
     { value: "9:16", label: "9:16", width: 14, height: 24 },
@@ -53,7 +53,7 @@ const imageRatios = [
     { value: "21:9", label: "21:9", width: 26, height: 11 },
 ] as const;
 
-const videoRatios = [
+export const videoRatios = [
     { value: "auto", label: "智能", width: 18, height: 18 },
     { value: "21:9", label: "21:9", width: 26, height: 11 },
     { value: "16:9", label: "16:9", width: 24, height: 14 },
@@ -79,7 +79,7 @@ const geminiAiImageQualityOptions = [
     { value: "low", label: "低画质（1K）", shortLabel: "低 · 1K" },
 ] as const;
 
-const videoQualityOptions = [
+export const videoQualityOptions = [
     { value: "auto", label: "智能清晰度", shortLabel: "智能" },
     { value: "480", label: "480P", shortLabel: "480P" },
     { value: "720", label: "720P", shortLabel: "720P" },

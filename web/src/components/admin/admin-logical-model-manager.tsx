@@ -1,6 +1,6 @@
 "use client";
 
-import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag } from "antd";
+import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
 import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, MessageSquare, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -19,9 +19,10 @@ import { moveLogicalModel, reorderLogicalModels, setLogicalModelPickerVisibility
 type Props = {
     channels: SystemModelChannel[];
     logicalModels: LogicalModel[];
+    modelPickerGroups: string[];
     defaultModels: SystemDefaultModels;
-    onChange: (value: { logicalModels: LogicalModel[]; defaultModels: SystemDefaultModels }) => void;
-    onPersist: (next: { systemChannels: SystemModelChannel[]; logicalModels: LogicalModel[]; defaultModels: SystemDefaultModels }, successText: string) => Promise<boolean>;
+    onChange: (value: { logicalModels: LogicalModel[]; defaultModels: SystemDefaultModels; modelPickerGroups?: string[] }) => void;
+    onPersist: (next: { systemChannels: SystemModelChannel[]; logicalModels: LogicalModel[]; defaultModels: SystemDefaultModels; modelPickerGroups: string[] }, successText: string) => Promise<boolean>;
 };
 
 const capabilityOptions: Array<{ label: string; value: LogicalModelCapability }> = [
@@ -46,7 +47,7 @@ const defaultFields: Array<{ capability: LogicalModelCapability; key: keyof Syst
     { capability: "audio", key: "audioModel", label: "默认音频模型" },
 ];
 
-export function AdminLogicalModelManager({ channels, logicalModels, defaultModels, onChange, onPersist }: Props) {
+export function AdminLogicalModelManager({ channels, logicalModels, modelPickerGroups, defaultModels, onChange, onPersist }: Props) {
     const { message } = App.useApp();
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editingId, setEditingId] = useState("");
@@ -54,6 +55,8 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
     const [query, setQuery] = useState("");
     const [capabilityFilter, setCapabilityFilter] = useState<LogicalModelCapability | "all">("all");
     const [modelStats, setModelStats] = useState<Record<string, { avgDurationMs: number; samples: number }>>({});
+    const [editingGroup, setEditingGroup] = useState<string | null>(null);
+    const [groupName, setGroupName] = useState("");
     const deferredQuery = useDeferredValue(query.trim().toLowerCase());
     const resolveRank = (model: LogicalModel) => {
         if (!model.enabled) return 2;
@@ -127,14 +130,14 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
         onChange({ logicalModels: nextModels, defaultModels: nextDefaultModels });
         setDrawerOpen(false);
         // 直接持久化，避免「应用修改」只停留在本地草稿、刷新后丢失
-        void onPersist({ systemChannels: channels, logicalModels: nextModels, defaultModels: nextDefaultModels }, editingId ? "逻辑模型已保存" : "逻辑模型已创建并保存");
+        void onPersist({ systemChannels: channels, logicalModels: nextModels, modelPickerGroups, defaultModels: nextDefaultModels }, editingId ? "逻辑模型已保存" : "逻辑模型已创建并保存");
     };
 
     const deleteModel = (modelId: string) => {
         const nextModels = logicalModels.filter((model) => model.id !== modelId);
         const nextDefaultModels = normalizeDefaultModelsConfig(defaultModels, nextModels, channels);
         onChange({ logicalModels: nextModels, defaultModels: nextDefaultModels });
-        void onPersist({ systemChannels: channels, logicalModels: nextModels, defaultModels: nextDefaultModels }, "逻辑模型已删除并保存");
+        void onPersist({ systemChannels: channels, logicalModels: nextModels, modelPickerGroups, defaultModels: nextDefaultModels }, "逻辑模型已删除并保存");
     };
 
     const syncChannelModels = () => {
@@ -148,9 +151,41 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
     };
 
     const updateDefault = (key: keyof SystemDefaultModels, modelId: string) => onChange({ logicalModels, defaultModels: { ...defaultModels, [key]: modelId } });
+    const persistGroups = (groups: string[], models: LogicalModel[], successText: string) => {
+        onChange({ logicalModels: models, modelPickerGroups: groups, defaultModels });
+        void onPersist({ systemChannels: channels, logicalModels: models, modelPickerGroups: groups, defaultModels }, successText);
+    };
+    const saveGroup = () => {
+        const name = groupName.trim();
+        if (!name || (name !== editingGroup && modelPickerGroups.includes(name))) return void message.error("分类名称不能为空或重复");
+        const groups = editingGroup === "" ? [...modelPickerGroups, name] : modelPickerGroups.map((group) => group === editingGroup ? name : group);
+        const models = editingGroup ? logicalModels.map((model) => model.pickerGroup === editingGroup ? { ...model, pickerGroup: name } : model) : logicalModels;
+        persistGroups(groups, models, "模型分类已保存");
+        setEditingGroup(null);
+    };
+    const deleteGroup = (group: string) => {
+        const groups = modelPickerGroups.filter((item) => item !== group);
+        if (!groups.length) return void message.error("至少保留一个分类");
+        persistGroups(groups, logicalModels.map((model) => model.pickerGroup === group ? { ...model, pickerGroup: groups[0] } : model), "模型分类已删除");
+    };
+    const setGroupModels = (group: string, ids: string[]) => {
+        const selected = new Set(ids);
+        const fallback = modelPickerGroups.find((item) => item !== group) || group;
+        persistGroups(modelPickerGroups, logicalModels.map((model) => selected.has(model.id) ? { ...model, pickerGroup: group } : model.pickerGroup === group ? { ...model, pickerGroup: fallback } : model), "分类模型已更新");
+    };
 
     return (
         <section className="border-t border-stone-200 pt-5 dark:border-stone-800">
+            <div className="mb-5 rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-950">
+                <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">前端模型分类</h3><p className="mt-1 text-xs text-stone-500">只有已启用且绑定可用渠道的模型可加入分类；分类顺序即前端显示顺序。</p></div><Button icon={<Plus className="size-4" />} onClick={() => { setEditingGroup(""); setGroupName(""); }}>新增分类</Button></div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {modelPickerGroups.map((group) => <div key={group} className="min-w-0 rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+                        <div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-sm">{group}</strong><Space size={2}><Button type="text" size="small" icon={<Pencil className="size-3.5" />} aria-label={`重命名 ${group}`} onClick={() => { setEditingGroup(group); setGroupName(group); }} /><Popconfirm title={`删除分类“${group}”？`} description="其中模型会移入第一个保留的分类。" onConfirm={() => deleteGroup(group)}><Button type="text" size="small" danger icon={<Trash2 className="size-3.5" />} aria-label={`删除分类 ${group}`} /></Popconfirm></Space></div>
+                        <Select mode="multiple" className="w-full" placeholder="选择可用模型" value={logicalModels.filter((model) => model.pickerGroup === group && isLogicalModelResolvable(logicalModels, channels, model.capability, model.id)).map((model) => model.id)} options={logicalModels.filter((model) => isLogicalModelResolvable(logicalModels, channels, model.capability, model.id)).map((model) => ({ value: model.id, label: model.name }))} onChange={(ids: string[]) => setGroupModels(group, ids)} />
+                    </div>)}
+                </div>
+            </div>
+            <Modal open={editingGroup !== null} title={editingGroup ? "重命名分类" : "新增分类"} okText="保存" onOk={saveGroup} onCancel={() => setEditingGroup(null)}><Input aria-label="分类名称" maxLength={80} value={groupName} onChange={(event) => setGroupName(event.target.value)} /></Modal>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -341,15 +376,8 @@ export function AdminLogicalModelManager({ channels, logicalModels, defaultModel
                             </div>
                             <div className="mt-3 grid items-end gap-3 sm:grid-cols-[minmax(0,240px)_minmax(0,240px)_1fr]">
                                 <LabeledControl label="前端选项分组">
-                                    <Input
-                                        className="!w-full"
-                                        aria-label="前端模型选项分组"
-                                        maxLength={80}
-                                        value={draft.pickerGroup || ""}
-                                        placeholder="留空时自动归类"
-                                        onChange={(event: ChangeEvent<HTMLInputElement>) => setDraft((current) => (current ? { ...current, pickerGroup: event.target.value } : current))}
-                                    />
-                                    <p className="mt-1 text-[11px] text-stone-400">同名分组会合并显示；留空按模型名称自动判断。</p>
+                                    <Select className="w-full" aria-label="前端模型选项分组" value={draft.pickerGroup || modelPickerGroups[0]} options={modelPickerGroups.map((group) => ({ value: group, label: group }))} onChange={(group: string) => setDraft((current) => (current ? { ...current, pickerGroup: group } : current))} />
+                                    <p className="mt-1 text-[11px] text-stone-400">分类在本页上方统一管理。</p>
                                 </LabeledControl>
                                 <LabeledControl label="模型图标">
                                     <Select

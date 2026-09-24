@@ -524,7 +524,7 @@ function normalizeSnapshotParameters(value: unknown): GenerationLogSnapshotParam
     const source = jsonObject(value);
     if (!source) return {};
     const result: GenerationLogSnapshotParameters = {};
-    for (const key of ["model", "size", "quality", "count", "resolution", "seconds", "generateAudio", "watermark"] as const) {
+    for (const key of ["model", "size", "quality", "count", "resolution", "seconds", "generateAudio", "watermark", "runningHubAppId"] as const) {
         const normalized = normalizeOptionalText(source[key], undefined, 160);
         if (normalized !== undefined) result[key] = normalized;
     }

@@ -5,10 +5,13 @@ import { Check, ChevronDown, Clock3, Cpu, Search, Timer } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { formatDurationMinSec } from "@/lib/duration-format";
+import { canvasSelectionBorderStyle, canvasThemes } from "@/lib/canvas-theme";
+import { inferredModelPickerGroup } from "@/lib/model-picker-groups";
 import type { LogicalModelCapability, ModelIconKey } from "@/lib/auth/store-types";
 import { resolveModelIconPath } from "@/lib/model-icons";
 import { cn } from "@/lib/utils";
 import { modelOptionLabel, modelOptionName, resolveModelChannel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 
 type ModelPickerProps = {
     config: AiConfig;
@@ -16,11 +19,14 @@ type ModelPickerProps = {
     onChange: (model: string) => void;
     capability?: ModelCapability;
     className?: string;
+    headerLabel?: string;
+    popupTheme?: "light" | "dark";
     fullWidth?: boolean;
     placeholder?: string;
     onMissingConfig?: () => void;
     options?: readonly string[];
     getModelLabel?: (model: string) => string;
+    popupPlacement?: "rightTop";
 };
 
 export type ModelOption = {
@@ -41,7 +47,8 @@ const PANEL_CHROME_HEIGHT = 74;
 type ModelDurationStats = Record<string, { avgDurationMs: number; samples: number }>;
 const DURATION_STATS_TTL_MS = 60_000;
 
-export function ModelPicker({ config, value, onChange, capability, className, fullWidth = false, placeholder = "选择模型", onMissingConfig, options: allowedOptions, getModelLabel }: ModelPickerProps) {
+export function ModelPicker({ config, value, onChange, capability, className, headerLabel, popupTheme, fullWidth = false, placeholder = "选择模型", onMissingConfig, options: allowedOptions, getModelLabel, popupPlacement }: ModelPickerProps) {
+    const activeTheme = useThemeStore((state) => state.theme);
     const pickerId = useId();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
@@ -83,7 +90,7 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
     }, [modelOptions, recentModels]);
     const filteredOptions = useMemo(() => filterModelOptions(modelOptions, query), [modelOptions, query]);
     const filteredRecentOptions = useMemo(() => filterModelOptions(recentOptions, query), [query, recentOptions]);
-    const groupedOptions = useMemo(() => groupModelOptions(filteredOptions), [filteredOptions]);
+    const groupedOptions = useMemo(() => groupModelOptions(filteredOptions, config.modelPickerGroups), [filteredOptions, config.modelPickerGroups]);
 
     useEffect(() => {
         if (!current || !options.includes(current)) return;
@@ -147,7 +154,9 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
 
     const content = (
         <div
-            className="w-[min(34rem,calc(100vw-24px))] min-w-0 overflow-hidden rounded-[18px] border border-border bg-popover text-popover-foreground shadow-2xl"
+            className="w-[min(34rem,calc(100vw-24px))] min-w-0 overflow-hidden rounded-[18px] border border-border bg-popover text-popover-foreground"
+            style={canvasSelectionBorderStyle(canvasThemes[popupTheme || activeTheme].toolbar.panel)}
+            data-workbench-model-theme={popupTheme}
             data-canvas-no-drag
             data-canvas-no-zoom
             data-model-picker-panel
@@ -191,18 +200,20 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
             open={open}
             onOpenChange={handleOpenChange}
             trigger="click"
-            placement={placement}
+            placement={popupPlacement || placement}
             arrow={false}
             autoAdjustOverflow
             zIndex={1200}
             getPopupContainer={() => document.body}
             classNames={{ container: "model-picker-popover-container" }}
-            styles={{ container: { padding: 0, borderRadius: 18, overflow: "hidden" } }}
+            styles={{ container: { padding: 0, borderRadius: 18, overflow: "visible", background: "transparent", boxShadow: "none" } }}
             content={content}
         >
             <button
                 ref={triggerRef}
                 type="button"
+                style={popupTheme && open ? { ...canvasSelectionBorderStyle(canvasThemes[popupTheme].toolbar.panel), color: popupTheme === "dark" ? "#f4f7ff" : "#10182f" } : popupTheme === "light" ? { backgroundColor: "rgba(248, 250, 255, .9)", borderColor: "rgba(112, 132, 189, .22)", color: "#10182f" } : popupTheme === "dark" ? { backgroundColor: "rgba(18, 24, 48, .76)", borderColor: "rgba(129, 140, 248, .22)", color: "#f4f7ff" } : undefined}
+                data-popup-theme={popupTheme}
                 className={cn(
                     "canvas-composer-model-picker inline-flex h-8 w-fit max-w-full items-center justify-between gap-2 rounded-full border border-input bg-transparent px-3 text-sm font-normal text-foreground shadow-sm outline-none transition-colors hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30",
                     fullWidth ? "w-full min-w-0 justify-start" : "min-w-[9rem] justify-start",
@@ -217,9 +228,17 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
                 aria-expanded={open}
                 aria-disabled={!hasConfiguredOptions}
             >
-                <ModelIcon model={current} config={config} />
-                <span className="canvas-model-picker-text min-w-0 flex-1 truncate text-left">{current ? labelForModel(current) : placeholder}</span>
-                <ChevronDown className={cn("canvas-select-chevron size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden="true" />
+                {headerLabel ? <span className="model-picker-labeled-content min-w-0 flex-1 text-left">
+                    <span className="model-picker-eyebrow block truncate">{headerLabel}</span>
+                    <span className="model-picker-value-row mt-1 flex min-w-0 items-center gap-2">
+                        <ModelIcon model={current} config={config} />
+                        <span className="canvas-model-picker-text min-w-0 truncate" style={popupTheme ? { color: popupTheme === "dark" ? "#f4f7ff" : "#10182f" } : undefined}>{current ? labelForModel(current) : placeholder}</span>
+                    </span>
+                </span> : <>
+                    <ModelIcon model={current} config={config} />
+                    <span className="canvas-model-picker-text min-w-0 flex-1 truncate text-left" style={popupTheme ? { color: popupTheme === "dark" ? "#f4f7ff" : "#10182f" } : undefined}>{current ? labelForModel(current) : placeholder}</span>
+                </>}
+                <ChevronDown className={cn("canvas-select-chevron size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} style={popupTheme ? { color: popupTheme === "dark" ? "#9aa8c4" : "#65708a" } : undefined} aria-hidden="true" />
             </button>
         </Popover>
     );
@@ -289,27 +308,17 @@ export function filterModelOptions(options: readonly ModelOption[], query: strin
     return options.filter((option) => (option.label + " " + option.modelName + " " + option.provider).toLowerCase().includes(normalized));
 }
 
-export function groupModelOptions(options: readonly ModelOption[]) {
+export function groupModelOptions(options: readonly ModelOption[], order: readonly string[] = []) {
     const grouped = new Map<string, ModelOption[]>();
     for (const option of options) grouped.set(option.provider, [...(grouped.get(option.provider) || []), option]);
-    return grouped;
+    return new Map(Array.from(grouped.entries()).sort(([left], [right]) => (order.indexOf(left) < 0 ? order.length : order.indexOf(left)) - (order.indexOf(right) < 0 ? order.length : order.indexOf(right))));
 }
 
 export function modelProviderLabel(model: string, config?: AiConfig) {
     const configuredGroup = config ? findLogicalModel(config, model)?.pickerGroup?.trim() : undefined;
-    if (configuredGroup) return configuredGroup;
-
-    const name = modelOptionName(model).toLowerCase();
-    if (name.includes("gemini") || name.includes("google") || name.includes("imagen") || name.includes("veo")) return "Google Gemini";
-    if (name.includes("seedream") || name.includes("seedance") || name.includes("dreamina") || name.includes("jimeng") || name.includes("即梦") || name.includes("doubao") || name.includes("bytedance")) return "ByteDance Seedream";
-    if (name.includes("gpt") || name.includes("openai")) return "OpenAI";
-    if (name.includes("minimax") || name.includes("hailuo") || name.includes("海螺") || /(?:^|[-_ ])(?:speech|music)-/i.test(name)) return "MiniMax";
-    if (name.includes("claude") || name.includes("anthropic")) return "Anthropic";
-    if (name.includes("qwen") || name.includes("aliyun") || name.includes("bailian") || name.includes("cosyvoice") || name.includes("通义")) return "阿里云 / 通义千问";
-    if (name.includes("deepseek")) return "DeepSeek";
-    if (name.includes("glm") || name.includes("chatglm") || name.includes("智谱")) return "智谱 GLM";
-    if (name.includes("grok") || name.includes("xai")) return "xAI";
-    return "其他模型";
+    if (configuredGroup && (!config?.modelPickerGroups?.length || config.modelPickerGroups.includes(configuredGroup))) return configuredGroup;
+    const inferred = inferredModelPickerGroup(modelOptionName(model));
+    return config?.modelPickerGroups?.length ? config.modelPickerGroups.includes(inferred) ? inferred : config.modelPickerGroups[0] : inferred;
 }
 
 function modelCapabilityLabel(capability: ModelCapability) {

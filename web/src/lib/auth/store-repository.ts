@@ -380,6 +380,7 @@ export function mapPostgresSettings(settingsRow: Record<string, unknown> | undef
             advancedConfig: dbJson(row.advanced_config, undefined),
         })),
         logicalModels: dbJson(settingsRow?.logical_models, fallback.logicalModels),
+        modelPickerGroups: dbJson(settingsRow?.model_picker_groups, fallback.modelPickerGroups),
         defaultModels: dbJson(settingsRow?.default_models, fallback.defaultModels),
         agentSkills: dbJson(settingsRow?.agent_skills, fallback.agentSkills),
         canvasQuickActions: dbJson(settingsRow?.canvas_quick_actions, fallback.canvasQuickActions),
@@ -546,9 +547,9 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
         INSERT INTO app_settings (
             id, site, registration_enabled, email_registration_enabled, login_methods, free_daily_points_enabled, mail, allow_user_api_config,
             model_point_costs, generation_point_multipliers, generation_cost_control, data_lifecycle, entitlements_enabled, default_plan_id, generation_concurrency, generation_defaults,
-            logical_models, default_models, agent_skills, canvas_quick_actions, user_roles, free_daily_points
+            logical_models, model_picker_groups, default_models, agent_skills, canvas_quick_actions, user_roles, free_daily_points
         )
-        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
         ON CONFLICT (id) DO UPDATE SET
             site = EXCLUDED.site,
             registration_enabled = EXCLUDED.registration_enabled,
@@ -566,6 +567,7 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             generation_concurrency = EXCLUDED.generation_concurrency,
             generation_defaults = EXCLUDED.generation_defaults,
             logical_models = EXCLUDED.logical_models,
+            model_picker_groups = EXCLUDED.model_picker_groups,
             default_models = EXCLUDED.default_models,
             agent_skills = EXCLUDED.agent_skills,
             canvas_quick_actions = EXCLUDED.canvas_quick_actions,
@@ -589,6 +591,7 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             dbJsonParam(settings.generationConcurrency),
             dbJsonParam(settings.generationDefaults),
             dbJsonParam(settings.logicalModels),
+            dbJsonParam(settings.modelPickerGroups),
             dbJsonParam(settings.defaultModels),
             dbJsonParam(settings.agentSkills),
             dbJsonParam(settings.canvasQuickActions),

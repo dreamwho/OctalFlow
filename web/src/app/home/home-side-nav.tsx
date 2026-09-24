@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderOpen, House, LayoutGrid, Plus } from "lucide-react";
+import { FolderOpen, House, ImagePlus, LayoutGrid, Plus } from "lucide-react";
 
 import { useHomeActions } from "./home-actions";
 import styles from "./home.module.css";
@@ -31,6 +31,17 @@ export function HomeSideNav() {
                         onClick={() => openProtectedPath("/canvas")}
                     >
                         <FolderOpen aria-hidden="true" className="size-[22px]" />
+                    </button>
+                </div>
+                <div className="relative">
+                    <button
+                        type="button"
+                        className={`${styles.sideNavItem} ${pathname.startsWith("/create") ? styles.sideNavItemActive : ""}`}
+                        aria-label="图片和视频生成"
+                        title="图片和视频生成"
+                        onClick={() => openProtectedPath("/create?mode=image")}
+                    >
+                        <ImagePlus aria-hidden="true" className="size-[22px]" />
                     </button>
                 </div>
                 <div className="relative">

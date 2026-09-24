@@ -28,8 +28,9 @@ describe("admin channel workspace model", () => {
             systemChannels: [channel],
             logicalModels: [{ id: "video-pro", name: "专业视频", capability: "video" as const, enabled: true, bindings: [{ id: "binding", channelId: channel.id, upstreamModel: "seedance-pro", enabled: true, priority: 1 }] }],
             defaultModels: { textModel: "", imageModel: "", videoModel: "video-pro", audioModel: "" },
+            modelPickerGroups: ["其他模型"],
         };
-        expect(removeChannelFromWorkspace(settings, channel.id)).toEqual({ systemChannels: [], logicalModels: [], defaultModels: { textModel: "", imageModel: "", videoModel: "", audioModel: "" } });
+        expect(removeChannelFromWorkspace(settings, channel.id)).toEqual({ systemChannels: [], logicalModels: [], modelPickerGroups: ["其他模型"], defaultModels: { textModel: "", imageModel: "", videoModel: "", audioModel: "" } });
         expect(defaultModelField("video")).toBe("videoModel");
     });
 
@@ -38,6 +39,7 @@ describe("admin channel workspace model", () => {
             systemChannels: [channel],
             logicalModels: [{ id: "video-pro", name: "专业视频", capability: "video" as const, enabled: true, bindings: [{ id: "binding", channelId: channel.id, upstreamModel: "seedance-pro", enabled: true, priority: 1 }] }],
             defaultModels: { textModel: "", imageModel: "", videoModel: "video-pro", audioModel: "" },
+            modelPickerGroups: ["其他模型"],
         };
 
         expect(updateChannelInWorkspace(settings, channel.id, { enabled: false }).defaultModels.videoModel).toBe("");

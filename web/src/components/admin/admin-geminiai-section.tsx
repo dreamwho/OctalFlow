@@ -1,12 +1,13 @@
 "use client";
 
 import { LogDetailResizeHandle, useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
-import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Switch, Tabs, Tag } from "antd";
+import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Image, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Switch, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { BarChart3, ChevronRight, CircleUserRound, Clock, Copy, KeyRound, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { BarChart3, ChevronRight, CircleUserRound, Clock, Copy, Download, Eye, EyeOff, KeyRound, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { imagePreviewUrl, originalImageDownloadUrl } from "@/lib/media-image-url";
 import {
     activateGeminiAiAccount,
     clearGeminiAiLogs,
@@ -16,6 +17,7 @@ import {
     getGeminiAiAccountLoginStatus,
     getGeminiAiAdminState,
     getGeminiAiLogs,
+    getGeminiAiLogImageResults,
     getGeminiAiTestStatus,
     importGeminiAiAccount,
     startGeminiAiAccountLogin,
@@ -455,7 +457,7 @@ export function AdminGeminiAiSection() {
                 <Panel>
                     <PanelHeader
                         title="API 密钥"
-                        description="明文仅创建时显示一次，关闭窗口后不再回显。"
+                        description="外部客户端统一通过反代接口使用，密钥安全加密存储，支持随时查看明文与一键复制。"
                         actions={
                             <Button type="primary" icon={<KeyRound className="size-4" />} disabled={loading} onClick={() => setKeyOpen(true)}>
                                 创建密钥
@@ -585,18 +587,18 @@ export function AdminGeminiAiSection() {
                 </div>
             </Modal>
             <Modal
-                title="请立即保存 API 密钥"
+                title="API 密钥已创建"
                 open={Boolean(rawKey)}
                 centered
                 width="min(520px, calc(100vw - 32px))"
                 onCancel={() => setRawKey("")}
                 footer={
                     <Button type="primary" onClick={() => setRawKey("")}>
-                        已保存，关闭
+                        确定
                     </Button>
                 }
             >
-                <Alert type="warning" showIcon message="明文只显示本次" description="关闭后无法再次查看，只能删除并创建新密钥。" />
+                <Alert type="info" showIcon message="API 密钥已创建并安全加密存储" description="你可以立即复制；后续也可以随时在下方 API 密钥列表中点击眼睛图标查看明文或一键复制。" />
                 <div className="mt-4 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
                     <code className="min-w-0 flex-1 break-all text-xs">{rawKey}</code>
                     <Button icon={<Copy className="size-4" />} onClick={() => void navigator.clipboard.writeText(rawKey).then(() => message.success("密钥已复制"))}>
@@ -863,6 +865,19 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
 function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | null; onClose: () => void }) {
     const { message } = App.useApp();
     const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 440 });
+    const [imageResults, setImageResults] = useState<string[] | null>(null);
+
+    useEffect(() => {
+        setImageResults(null);
+        if (!log) return;
+        let active = true;
+        void getGeminiAiLogImageResults(log).then((urls) => {
+            if (active) setImageResults(urls);
+        }).catch(() => {
+            if (active) setImageResults([]);
+        });
+        return () => { active = false; };
+    }, [log]);
 
     const copyText = (content: string | undefined, successTip: string) => {
         if (!content) return;
@@ -1022,8 +1037,27 @@ function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | 
 
                     {log.requestPreview ? <LogPreview title="请求摘要" content={log.requestPreview} /> : null}
                     {log.responsePreview ? <LogPreview title="响应摘要" content={log.responsePreview} /> : null}
+                    {imageResults?.length ? (
+                        <section>
+                            <h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">生成图片</h3>
+                            <Image.PreviewGroup>
+                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                    {imageResults.map((url, index) => (
+                                        <div key={url} className="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+                                            <Image width="100%" src={imagePreviewUrl(url, 512)} preview={{ src: imagePreviewUrl(url, 1920) }} alt={`生成图片 ${index + 1}`} className="!block !h-36 object-contain" />
+                                            <a className="flex items-center justify-center gap-1.5 border-t border-zinc-200 p-2 text-xs text-blue-600 hover:text-blue-500 dark:border-zinc-700 dark:text-blue-400" href={originalImageDownloadUrl(url)} download>
+                                                <Download className="size-3.5" />下载原图
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            </Image.PreviewGroup>
+                        </section>
+                    ) : imageResults && log.capability === "image" && log.statusCode >= 200 && log.statusCode < 300 ? (
+                        <Alert type="warning" showIcon message="暂无可预览的图片" description="上游请求已成功，但没有找到已落盘的生成结果；历史日志只保留脱敏摘要，无法从摘要还原原图。" />
+                    ) : null}
                     {log.error ? <LogPreview title="错误信息" content={log.error} danger /> : null}
-                    <Alert type="info" showIcon message="日志已自动脱敏" description="授权 Cookie、Token、API Key、上传媒体和生成图片内容不会在此处保存或展示。" />
+                    <Alert type="info" showIcon message="日志已自动脱敏" description="授权 Cookie、Token、API Key 和图片二进制内容不会写入请求日志；已落盘的生成结果可在上方预览与下载。" />
                 </div>
             ) : null}
         </Drawer>
@@ -1156,12 +1190,43 @@ function geminiAiSourceTagColor(source: GeminiAiRequestLog["source"]) {
 }
 
 function GeminiAiKeyRow({ apiKey, busy, onToggle, onDelete }: { apiKey: GeminiAiApiKey; busy: boolean; onToggle: (enabled: boolean) => void; onDelete: () => void }) {
+    const { message } = App.useApp();
+    const [revealed, setRevealed] = useState(false);
+
+    const copyKey = () => {
+        void navigator.clipboard.writeText(apiKey.key || apiKey.prefix).then(() => {
+            message.success("API 密钥已复制");
+        });
+    };
+
     return (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
             <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 break-all text-sm font-medium text-zinc-950 dark:text-zinc-100">{apiKey.name}</span>
-                    <Tag className="m-0 font-mono text-[11px]">{apiKey.prefix}…</Tag>
+                    {revealed ? (
+                        <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200 break-all">
+                            {apiKey.key || `${apiKey.prefix}…`}
+                        </code>
+                    ) : (
+                        <Tag className="m-0 font-mono text-[11px]">{apiKey.prefix}…</Tag>
+                    )}
+                    <Button
+                        size="small"
+                        type="text"
+                        className="px-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                        icon={revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        onClick={() => setRevealed(!revealed)}
+                        title={revealed ? "隐藏明文" : "查看明文"}
+                    />
+                    <Button
+                        size="small"
+                        type="text"
+                        className="px-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                        icon={<Copy className="size-3.5" />}
+                        onClick={copyKey}
+                        title="复制密钥"
+                    />
                 </div>
                 <div className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
                     请求 {apiKey.requestCount} · {apiKey.expiresAt ? `到期 ${formatDate(apiKey.expiresAt)}` : "长期有效"}

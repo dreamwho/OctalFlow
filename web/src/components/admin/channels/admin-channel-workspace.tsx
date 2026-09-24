@@ -146,7 +146,7 @@ export function AdminChannelWorkspace({ settings, fetchingModelId, saving, onCha
                     {
                         key: "logical",
                         label: <TabLabel icon={<Route className="size-4" />} text="逻辑模型" />,
-                        children: <AdminLogicalModelManager channels={settings.systemChannels} logicalModels={settings.logicalModels} defaultModels={settings.defaultModels} onChange={(routing) => onChange({ ...settings, ...routing })} onPersist={onPersist} />,
+                        children: <AdminLogicalModelManager channels={settings.systemChannels} logicalModels={settings.logicalModels} modelPickerGroups={settings.modelPickerGroups} defaultModels={settings.defaultModels} onChange={(routing) => onChange({ ...settings, ...routing })} onPersist={onPersist} />,
                     },
                 ]}
             />

@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { ensurePostgresSchema, isPostgresDatabaseEnabled, postgresQuery } from "@/lib/server/database";
 import { GeminiAiGatewayRepository } from "@/lib/server/database/geminiai-gateway-repository";
+import { decryptSecretValue, encryptSecretValue, isEncryptionKeyReady } from "@/lib/server/secret-crypto";
 
 const FILE_NAME = "geminiai-gateway.json";
 
@@ -11,6 +12,7 @@ export type GeminiAiApiKey = {
     id: string;
     name: string;
     prefix: string;
+    key?: string;
     status: "active" | "disabled";
     expiresAt?: string;
     allowedIps: string[];
@@ -21,7 +23,7 @@ export type GeminiAiApiKey = {
 
 export type GeminiAiGatewaySettings = { enabled: boolean; /** 生成请求下发给 sidecar 的账号换号预算：0/1 不切换，N 最多切换到第 N 个账号 */ rotationLimit: number };
 
-export type StoredGeminiAiApiKey = GeminiAiApiKey & { hash: string };
+export type StoredGeminiAiApiKey = GeminiAiApiKey & { hash: string; keyCiphertext?: string };
 type GeminiAiGatewayDatabase = { apiKeys: StoredGeminiAiApiKey[]; gateway: GeminiAiGatewaySettings };
 
 const EMPTY_DB: GeminiAiGatewayDatabase = { apiKeys: [], gateway: { enabled: true, rotationLimit: 2 } };
@@ -52,11 +54,13 @@ export async function listGeminiAiApiKeys() {
 export async function createGeminiAiApiKey(input: { name: string; expiresAt?: string; allowedIps?: string[] }) {
     const rawKey = `oct_gai_${randomBytes(30).toString("base64url")}`;
     const now = new Date().toISOString();
+    const keyCiphertext = isEncryptionKeyReady() ? encryptSecretValue(rawKey) : undefined;
     const stored: StoredGeminiAiApiKey = {
         id: `key-${randomUUID()}`,
         name: input.name.trim().slice(0, 120) || "GeminiAIStudio API Key",
         prefix: rawKey.slice(0, 14),
         hash: hashApiKey(rawKey),
+        ...(keyCiphertext ? { keyCiphertext } : {}),
         status: "active",
         ...(validDate(input.expiresAt) ? { expiresAt: new Date(input.expiresAt!).toISOString() } : {}),
         allowedIps: normalizeAllowedIps(input.allowedIps),
@@ -117,8 +121,17 @@ export async function authorizeGeminiAiApiKey(rawKey: string, clientIp: string):
 }
 
 function publicApiKey(key: StoredGeminiAiApiKey): GeminiAiApiKey {
-    const { hash: _hash, ...value } = key;
-    return structuredClone(value);
+    const { hash: _hash, keyCiphertext, ...value } = key;
+    let plainKey: string | undefined;
+    if (keyCiphertext) {
+        try {
+            plainKey = decryptSecretValue(keyCiphertext);
+        } catch {}
+    }
+    return {
+        ...structuredClone(value),
+        ...(plainKey ? { key: plainKey } : {}),
+    };
 }
 
 let geminiAiSchemaEnsured = false;

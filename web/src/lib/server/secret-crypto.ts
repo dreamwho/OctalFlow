@@ -1,13 +1,14 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const ENCRYPTED_SECRET_PREFIX = "dreamyo-secret:v1:";
+const LEGACY_ENCRYPTED_SECRET_PREFIX = "octalaicanvas-secret:v1:";
 const AES_256_GCM_KEY_BYTES = 32;
 const AES_GCM_IV_BYTES = 12;
 
 let cachedKey: { raw: string; key: Buffer | null } | undefined;
 
 export function isEncryptedSecretValue(value: string) {
-    return value.startsWith(ENCRYPTED_SECRET_PREFIX);
+    return value.startsWith(ENCRYPTED_SECRET_PREFIX) || value.startsWith(LEGACY_ENCRYPTED_SECRET_PREFIX);
 }
 
 export function encryptSecretValue(value: string) {
@@ -28,7 +29,8 @@ export function decryptSecretValue(value: string) {
     if (!key) throw new Error("DREAMYO_ENCRYPTION_KEY 未配置或格式无效，不能解密敏感配置");
 
     try {
-        const payload = value.slice(ENCRYPTED_SECRET_PREFIX.length);
+        const prefix = value.startsWith(ENCRYPTED_SECRET_PREFIX) ? ENCRYPTED_SECRET_PREFIX : LEGACY_ENCRYPTED_SECRET_PREFIX;
+        const payload = value.slice(prefix.length);
         const [ivText, tagText, encryptedText] = payload.split(".");
         if (!ivText || !tagText || !encryptedText) throw new Error("敏感配置密文格式无效");
         const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivText, "base64url"));

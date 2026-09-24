@@ -1,21 +1,18 @@
 "use client";
 
 import { App, Popover } from "antd";
-import { Check, ChevronDown, Clapperboard, Frame, Image as ImageIcon, Layers, Loader2, Plus, SlidersHorizontal, Sparkles, UsersRound, Video, WandSparkles, X, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Image as ImageIcon, Layers, Loader2, Plus, SlidersHorizontal, Video, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 
-import { useCreateDraftAttachmentsStore } from "@/app/(user)/create/use-create-draft-attachments-store";
 import { useCreativeAgentModels } from "@/hooks/use-creative-agent-options";
 import { ModelPicker } from "@/components/model-picker";
 import { CreativeGenerationPreferences } from "@/components/creative-generation-preferences";
 import { useConfigStore } from "@/stores/use-config-store";
 import { formatCreditAmount, requestCreditCost } from "@/constant/credits";
-import { DreamyoIcon, type DreamyoIconName } from "@/components/ui/dreamyo-icon";
+import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { CREATIVE_UPLOAD_MAX_BYTES } from "@/lib/creative-upload";
 import { listAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
-import { HOME_CREATION_MODES, type HomeCreationMode } from "./home-data";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { useHomeActions } from "./home-actions";
 import styles from "./home-agent-hero.module.css";
@@ -34,36 +31,22 @@ const VIDEO_PROMPT_HINTS = [
     "支持输入角色微表情、环境物理碰撞与光影变换等细致动作描述...",
 ];
 
-const MODE_ICONS = { agent: "magic", image: "image", video: "video", audio: "audio" } as const satisfies Record<HomeCreationMode, DreamyoIconName>;
-const MODEL_CAPABILITIES = ["image", "video", "audio"] as const;
-type ModelCapability = (typeof MODEL_CAPABILITIES)[number];
+type ModelCapability = "image" | "video" | "audio";
 type SkillCategory = "all" | "image" | "video" | "canvas" | "drama" | "edit";
-
-const shortcuts: Array<{ label: string; detail: string; icon: LucideIcon; mode?: HomeCreationMode; path?: string }> = [
-    { label: "图片生成", detail: "从想法到视觉", icon: ImageIcon, mode: "image" },
-    { label: "视频生成", detail: "让画面动起来", icon: Video, mode: "video" },
-    { label: "智能画布", detail: "无限创意连接", icon: Frame, path: "/canvas" },
-    { label: "短剧创作", detail: "一键成片", icon: Clapperboard, path: "/drama" },
-    { label: "角色设计", detail: "虚拟角色生成", icon: UsersRound, mode: "agent" },
-    { label: "创意社区", detail: "发现更多灵感", icon: Sparkles, path: "/community" },
-];
 
 export function HomeAgentHero() {
     const { message } = App.useApp();
-    const router = useRouter();
     const [mode, setMode] = useState<"image" | "video">("image");
     const [prompt, setPrompt] = useState("");
     const [sourceFile, setSourceFile] = useState<File>();
     const [skillMenuOpen, setSkillMenuOpen] = useState(false);
-    const [modelMenuOpen, setModelMenuOpen] = useState(false);
-    const [modeMenuOpen, setModeMenuOpen] = useState(false);
     const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
     const [skillsLoading, setSkillsLoading] = useState(false);
     const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
     const [selectedModelId, setSelectedModelId] = useState("");
     const [skillCategory, setSkillCategory] = useState<SkillCategory>("all");
     const [modelCapability, setModelCapability] = useState<ModelCapability>("image");
-    const [aspectRatio, setAspectRatio] = useState("1:1");
+    const [aspectRatio, setAspectRatio] = useState("16:9");
     const [duration, setDuration] = useState("5");
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [pageHidden, setPageHidden] = useState(false);
@@ -73,11 +56,10 @@ export function HomeAgentHero() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const motionRef = useRef<HTMLDivElement>(null);
     const pointerRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
-    const { authenticated, sessionReady, site, openLogin, startCreating, createCanvasAndGenerate, openProtectedPath } = useHomeActions();
+    const { authenticated, sessionReady, site, openLogin, openGenerationWorkbench } = useHomeActions();
     const [submitting, setSubmitting] = useState(false);
     const config = useConfigStore((state) => state.config);
     const models = useCreativeAgentModels();
-    const selectedMode = HOME_CREATION_MODES.find((item) => item.id === mode) || HOME_CREATION_MODES[0];
     const selectedModel = models.find((item) => item.id === selectedModelId);
     const skillCategories = homeSkillCategories(skills);
     const visibleSkills = skills.filter((skill) => homeSkillMatchesCategory(skill, skillCategory));
@@ -282,40 +264,25 @@ export function HomeAgentHero() {
             return;
         }
         if (!authenticated) {
-            openLogin("/canvas");
+            openLogin("/image");
             return;
         }
         setSubmitting(true);
         try {
             const isVideo = mode === "video" || selectedModel?.capability === "video";
-            await createCanvasAndGenerate({
+            openGenerationWorkbench({
                 prompt: prompt.trim(),
                 type: isVideo ? "video" : "image",
                 modelIds: selectedModelId ? [selectedModelId] : [],
-                skillIds: selectedSkillIds,
                 aspectRatio,
                 duration: isVideo ? duration : undefined,
+                referenceFile: sourceFile,
             });
         } catch (err: unknown) {
-            message.error(err instanceof Error ? err.message : "创建画布失败，请重试");
+            message.error(err instanceof Error ? err.message : "打开生成工作台失败，请重试");
         } finally {
             setSubmitting(false);
         }
-    };
-
-    const activateShortcut = (shortcut: (typeof shortcuts)[number]) => {
-        if (shortcut.path) {
-            if (shortcut.path === "/community") router.push("/community");
-            else if (shortcut.path === "/create") router.push("/canvas");
-            else openProtectedPath(shortcut.path);
-            return;
-        }
-        if (shortcut.mode) {
-            const targetMode = shortcut.mode === "video" ? "video" : "image";
-            setMode(targetMode);
-            setModelCapability(targetMode);
-        }
-        textareaRef.current?.focus();
     };
 
     return (
@@ -376,10 +343,6 @@ export function HomeAgentHero() {
                                 open={skillMenuOpen}
                                 onOpenChange={(open) => {
                                     setSkillMenuOpen(open);
-                                    if (open) {
-                                        setModeMenuOpen(false);
-                                        setModelMenuOpen(false);
-                                    }
                                 }}
                                 styles={{ container: { background: "transparent", boxShadow: "none", padding: 0 } }}
                                 content={
@@ -633,10 +596,6 @@ function HomeLoginPrompt({ onLogin }: { onLogin: () => void }) {
             </button>
         </div>
     );
-}
-
-function HomeModelIcon({ capability }: { capability: ModelCapability }) {
-    return <DreamyoIcon name={capability} size={22} />;
 }
 
 function homeSkillCategories(skills: AgentSkillSummary[]) {

@@ -44,6 +44,9 @@ describe("workspace sidebar", () => {
         expect(isFullscreenWorkspacePath("/canvas/canvas-one/history")).toBe(true);
         expect(isFullscreenWorkspacePath("/drama/drama-one")).toBe(true);
         expect(isFullscreenWorkspacePath("/drama/drama-one/episode")).toBe(true);
+        expect(isFullscreenWorkspacePath("/image")).toBe(true);
+        expect(isFullscreenWorkspacePath("/create")).toBe(true);
+        expect(isFullscreenWorkspacePath("/assets")).toBe(true);
         expect(isFullscreenWorkspacePath("/canvas")).toBe(false);
         expect(isFullscreenWorkspacePath("/drama")).toBe(false);
     });

@@ -133,6 +133,7 @@ export type AppSettingsRecord = {
     generationDefaults: JsonValue;
     paymentConfig: JsonValue;
     logicalModels: JsonValue;
+    modelPickerGroups: JsonValue;
     defaultModels: JsonValue;
     agentSkills: JsonValue;
     canvasQuickActions: JsonValue;

@@ -87,6 +87,16 @@ describe("generation log asset normalization", () => {
         expect(log.requestSnapshot?.references).toHaveLength(40);
     });
 
+    it("retains the interior-design app and execution prompt for an exact retry", () => {
+        const log = normalizeStoredLog({
+            ...storedLogWithAssets(0),
+            requestSnapshot: { version: 1, userPrompt: "SU直出摄影级照片", parameters: { runningHubAppId: "interior-app" }, references: [], slots: [{ id: "slot-1", index: 0, status: "failed", prompt: "编译后的室内设计参数", parameters: { runningHubAppId: "interior-app" } }] },
+        });
+
+        expect(log.requestSnapshot?.parameters.runningHubAppId).toBe("interior-app");
+        expect(log.requestSnapshot?.slots[0]).toMatchObject({ prompt: "编译后的室内设计参数", parameters: { runningHubAppId: "interior-app" } });
+    });
+
     it("exports the complete PostgreSQL generation log snapshot", async () => {
         const query = vi.fn().mockResolvedValue({ rows: [] });
 

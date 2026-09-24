@@ -10,6 +10,7 @@ import { auditActorFromRequest, safeRecordAuditLog } from "@/lib/server/audit-lo
 import { invalidatePublicSiteSettings } from "@/lib/server/site-metadata";
 import { applyChannelProtocol, channelProtocolValidationErrors } from "@/lib/channel-protocol-registry";
 import { hasAllAdminPermissions, hasAnyAdminPermission, type AdminPermission } from "@/lib/admin-permissions";
+import { normalizeModelPickerGroups } from "@/lib/model-picker-groups";
 
 export const runtime = "nodejs";
 
@@ -69,6 +70,7 @@ export async function PATCH(request: Request) {
             patch.logicalModels = logicalModels;
             patch.defaultModels = normalizedDefaults;
         }
+        if (Array.isArray(body.modelPickerGroups)) patch.modelPickerGroups = normalizeModelPickerGroups(body.modelPickerGroups);
         if (Array.isArray(body.agentSkills)) patch.agentSkills = body.agentSkills;
         if (Array.isArray(body.canvasQuickActions)) patch.canvasQuickActions = body.canvasQuickActions;
         if (!Object.keys(patch).length) return NextResponse.json({ error: "没有可更新的设置" }, { status: 400 });
@@ -113,6 +115,7 @@ const SETTINGS_PERMISSION_BY_FIELD = {
     generationDefaults: "upstream.manage",
     systemChannels: "upstream.manage",
     logicalModels: "upstream.manage",
+    modelPickerGroups: "upstream.manage",
     defaultModels: "upstream.manage",
     agentSkills: "upstream.manage",
     canvasQuickActions: "upstream.manage",

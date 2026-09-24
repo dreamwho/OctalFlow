@@ -2,10 +2,10 @@
 
 import { Alert, App, Button, Card, Descriptions, Empty, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Statistic, Switch, Table, Tabs, Tag, Upload } from "antd";
 import type { UploadProps } from "antd";
-import { Activity, Bot, CheckCircle2, Eye, FileKey2, KeyRound, Pencil, Play, RefreshCw, Trash2, UploadCloud } from "lucide-react";
+import { Activity, Bot, CheckCircle2, Copy, Eye, EyeOff, FileKey2, KeyRound, Pencil, Play, RefreshCw, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { batchDeleteDolaAccounts, batchSetDolaAccountGroup, createDolaApiKey, deleteDolaAccount, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, refreshDolaAccount, resetDolaAccountQuota, startDolaGoogleLogin, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
+import { batchDeleteDolaAccounts, batchSetDolaAccountGroup, createDolaApiKey, deleteDolaAccount, deleteDolaApiKey, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, refreshDolaAccount, resetDolaAccountQuota, startDolaGoogleLogin, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaApiKey, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
 import { genericProxyRequest, type ChatGptProxyView } from "@/services/api/generic-proxy";
 import { dolaErrorHint } from "@/lib/dola-errors";
 import { DolaVerificationDialog } from "@/app/(user)/canvas/components/dola-verification-dialog";
@@ -784,9 +784,170 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
 function StatisticsPanel({ state }: { state: DolaAdminState | null }) { const stats = state?.stats; return <div className="grid gap-4 sm:grid-cols-3"><Card><Statistic title="账号总数" value={stats?.totalAccounts || 0} prefix={<Bot className="size-4" />} /></Card><Card><Statistic title="成功请求" value={stats?.successCount || 0} prefix={<CheckCircle2 className="size-4" />} /></Card><Card><Statistic title="失败请求" value={stats?.errorCount || 0} prefix={<Activity className="size-4" />} /></Card></div>; }
 
 function GatewayPanel({ state, onToggle, onToggleAutoWatermark, onToggleCaptureScreenshot, rawKey, setRawKey, open, setOpen, name, setName, onCreated }: { state: DolaAdminState | null; onToggle: (enabled: boolean) => Promise<void>; onToggleAutoWatermark: (enabled: boolean) => Promise<void>; onToggleCaptureScreenshot?: (enabled: boolean) => Promise<void>; rawKey: string; setRawKey: (value: string) => void; open: boolean; setOpen: (value: boolean) => void; name: string; setName: (value: string) => void; onCreated: () => Promise<void> }) {
+    const { message } = App.useApp();
     const [creating, setCreating] = useState(false);
     const [keys, setKeys] = useState<DolaApiKey[]>(state?.apiKeys || []);
+    const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+    const [busyKeyId, setBusyKeyId] = useState<string>("");
+
     useEffect(() => setKeys(state?.apiKeys || []), [state?.apiKeys]);
-    const create = async () => { setCreating(true); try { const result = await createDolaApiKey({ name }); setRawKey(result.rawKey); setOpen(false); await onCreated(); } finally { setCreating(false); } };
-    return <div className="grid gap-4 xl:grid-cols-2"><Card title="反代网关" extra={<Space><span className="text-xs text-zinc-500">网关</span><Switch checked={state?.gateway.enabled} onChange={(checked) => void onToggle(checked)} /></Space>}><Alert type="info" showIcon message="外部接口前缀：/api/dola/v1" description="网关只接受 Dola API 密钥，内部 Provider 请求不复用外部密钥。" /><div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div><div className="text-sm font-medium">自动去水印</div><div className="text-xs text-zinc-500">Dola 返回可验证 VOD 地址时，任务保存前自动切换到无水印地址；默认关闭。</div></div><Switch checked={state?.gateway.autoWatermark} onChange={(checked) => void onToggleAutoWatermark(checked)} /></div><div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div><div className="text-sm font-medium">异常页面截图</div><div className="text-xs text-zinc-500">协议提交发生安全验证、登录失效、限流或未知提交错误时，保存浏览器真实页面并在请求日志中提供放大查看；默认开启。</div></div><Switch checked={state?.gateway.captureVerificationScreenshot ?? true} onChange={(checked) => void onToggleCaptureScreenshot?.(checked)} /></div></Card><Card title="API 密钥" extra={<Button icon={<KeyRound className="size-4" />} onClick={() => setOpen(true)}>创建密钥</Button>}>{rawKey ? <Alert className="mb-3" type="warning" message="新密钥只显示一次" description={<code className="break-all">{rawKey}</code>} /> : null}{keys.length ? keys.map((key) => <div key={key.id} className="flex items-center justify-between border-b py-2 last:border-b-0"><span>{key.name} <Tag>{key.prefix}…</Tag></span><span className="text-xs text-zinc-500">{key.requestCount} 次</span></div>) : <Empty description="尚未创建密钥" />}</Card><Modal title="创建 Dola API 密钥" open={open} onCancel={() => setOpen(false)} onOk={() => void create()} confirmLoading={creating}><Input prefix={<KeyRound className="size-4" />} value={name} onChange={(event) => setName(event.target.value)} /></Modal></div>;
+
+    const create = async () => {
+        setCreating(true);
+        try {
+            const result = await createDolaApiKey({ name });
+            setRawKey(result.rawKey);
+            setOpen(false);
+            setName("");
+            await onCreated();
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const toggleStatus = async (key: DolaApiKey, enabled: boolean) => {
+        setBusyKeyId(key.id);
+        try {
+            await updateDolaApiKey(key.id, { status: enabled ? "active" : "disabled" });
+            message.success(enabled ? "密钥已启用" : "密钥已停用");
+            await onCreated();
+        } catch (e) {
+            message.error(e instanceof Error ? e.message : "更新密钥状态失败");
+        } finally {
+            setBusyKeyId("");
+        }
+    };
+
+    const removeKey = async (id: string) => {
+        setBusyKeyId(id);
+        try {
+            await deleteDolaApiKey(id);
+            message.success("密钥已删除");
+            await onCreated();
+        } catch (e) {
+            message.error(e instanceof Error ? e.message : "删除密钥失败");
+        } finally {
+            setBusyKeyId("");
+        }
+    };
+
+    const copyKeyText = (text: string) => {
+        void navigator.clipboard.writeText(text).then(() => {
+            message.success("API 密钥已复制");
+        });
+    };
+
+    return (
+        <div className="grid gap-4 xl:grid-cols-2">
+            <Card title="反代网关" extra={<Space><span className="text-xs text-zinc-500">网关</span><Switch checked={state?.gateway.enabled} onChange={(checked) => void onToggle(checked)} /></Space>}>
+                <Alert type="info" showIcon message="外部接口前缀：/api/dola/v1" description="网关只接受 Dola API 密钥，内部 Provider 请求不复用外部密钥。" />
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                    <div>
+                        <div className="text-sm font-medium">自动去水印</div>
+                        <div className="text-xs text-zinc-500">Dola 返回可验证 VOD 地址时，任务保存前自动切换到无水印地址；默认关闭。</div>
+                    </div>
+                    <Switch checked={state?.gateway.autoWatermark} onChange={(checked) => void onToggleAutoWatermark(checked)} />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                    <div>
+                        <div className="text-sm font-medium">异常页面截图</div>
+                        <div className="text-xs text-zinc-500">协议提交发生安全验证、登录失效、限流或未知提交错误时，保存浏览器真实页面并在请求日志中提供放大查看；默认开启。</div>
+                    </div>
+                    <Switch checked={state?.gateway.captureVerificationScreenshot ?? true} onChange={(checked) => void onToggleCaptureScreenshot?.(checked)} />
+                </div>
+            </Card>
+            <Card
+                title="API 密钥"
+                extra={
+                    <Button icon={<KeyRound className="size-4" />} onClick={() => setOpen(true)}>
+                        创建密钥
+                    </Button>
+                }
+            >
+                <div className="mb-3 text-xs text-zinc-500">
+                    外部客户端统一通过反代接口使用，密钥在服务端安全加密存储，支持随时查看明文与一键复制。
+                </div>
+                {rawKey ? (
+                    <Alert
+                        className="mb-3"
+                        type="success"
+                        showIcon
+                        message="新密钥已创建并已安全保存"
+                        description={
+                            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                                <code className="min-w-0 flex-1 break-all text-xs font-mono">{rawKey}</code>
+                                <Button size="small" icon={<Copy className="size-3.5" />} onClick={() => copyKeyText(rawKey)}>
+                                    复制
+                                </Button>
+                            </div>
+                        }
+                        closable
+                        onClose={() => setRawKey("")}
+                    />
+                ) : null}
+                {keys.length ? (
+                    <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                        {keys.map((key) => {
+                            const isRevealed = Boolean(revealedKeys[key.id]);
+                            const effectiveKey = key.key || (rawKey && rawKey.startsWith(key.prefix) ? rawKey : "");
+                            return (
+                                <div key={key.id} className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{key.name}</span>
+                                            {isRevealed ? (
+                                                <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200 break-all">
+                                                    {effectiveKey || `${key.prefix}…`}
+                                                </code>
+                                            ) : (
+                                                <Tag className="m-0 font-mono text-xs">{key.prefix}…</Tag>
+                                            )}
+                                            <Button
+                                                size="small"
+                                                type="text"
+                                                className="px-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                                                icon={isRevealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                                                onClick={() => setRevealedKeys((prev) => ({ ...prev, [key.id]: !prev[key.id] }))}
+                                                title={isRevealed ? "隐藏明文" : "查看明文"}
+                                            />
+                                            <Button
+                                                size="small"
+                                                type="text"
+                                                className="px-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                                                icon={<Copy className="size-3.5" />}
+                                                onClick={() => copyKeyText(effectiveKey || key.prefix)}
+                                                title="复制密钥"
+                                            />
+                                        </div>
+                                        <div className="mt-1 text-xs text-zinc-500">
+                                            请求 {key.requestCount} 次 · {key.expiresAt ? `到期 ${key.expiresAt.slice(0, 10)}` : "长期有效"}
+                                            {key.allowedIps?.length ? ` · ${key.allowedIps.length} 条 IP 规则` : ""}
+                                        </div>
+                                    </div>
+                                    <Space size={6} className="self-end sm:self-center">
+                                        <Switch
+                                            size="small"
+                                            checked={key.status === "active"}
+                                            loading={busyKeyId === key.id}
+                                            onChange={(checked) => void toggleStatus(key, checked)}
+                                        />
+                                        <Popconfirm title="删除此 API 密钥？" onConfirm={() => void removeKey(key.id)}>
+                                            <Button size="small" danger icon={<Trash2 className="size-3.5" />} loading={busyKeyId === key.id}>
+                                                删除
+                                            </Button>
+                                        </Popconfirm>
+                                    </Space>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <Empty description="尚未创建密钥" />
+                )}
+            </Card>
+            <Modal title="创建 Dola API 密钥" open={open} onCancel={() => setOpen(false)} onOk={() => void create()} confirmLoading={creating}>
+                <Input prefix={<KeyRound className="size-4" />} value={name} onChange={(event) => setName(event.target.value)} />
+            </Modal>
+        </div>
+    );
 }

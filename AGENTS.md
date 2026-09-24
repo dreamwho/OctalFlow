@@ -41,6 +41,8 @@
 
 ## 前端规范
 
+- 新增功能配置弹层应按“功能标题 → 场景/模式 → 分类参数 → 提交”组织：标题与字段标签、控件使用清晰的字体和边框层级；全弹层内短文案的单选枚举统一用可换行的横向点选，多选枚举用可切换的点选，长文案或选项过多的字段保留下拉控件。宽面板需按视口裁切，手机端允许选项换行并保持可滚动，不能为了省高度截断选项。
+
 - 前端使用 Next.js App Router、React、TypeScript、Ant Design、Tailwind、Zustand。
 - 编写 Ant Design 相关代码时，参考 https://ant.design/llms-full.txt 理解组件 API、示例和设计规范，并优先结合项目当前 antd 版本与既有写法。
 - Ant Design 组件根节点可能覆盖 Tailwind 的 `display`、宽度和响应式布局；`Checkbox.Group`、`Select`、`Segmented` 等组件需要网格或断点尺寸时，使用普通 `div` 外壳控制布局，组件本身只负责控件行为。浏览器回归必须读取最终 `display`、行列坐标和宽度，禁止只统计列数或只检查源码 className。

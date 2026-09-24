@@ -16,6 +16,7 @@ export class GeminiToolsRepository {
             ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS method varchar(16) DEFAULT 'POST';
             ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS headers jsonb;
             ALTER TABLE gemini_tools_request_logs ADD COLUMN IF NOT EXISTS proxy_egress jsonb;
+            ALTER TABLE gemini_tools_api_keys ADD COLUMN IF NOT EXISTS key_ciphertext text;
         `,
             )
             .catch(() => undefined);
@@ -135,7 +136,7 @@ export class GeminiToolsRepository {
     }
 
     async insertApiKey(key: StoredGeminiToolsApiKey) {
-        const result = await this.db.query("INSERT INTO gemini_tools_api_keys (id,name,prefix,key_hash,status,expires_at,allowed_ips,request_count,total_tokens,last_used_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11) RETURNING *", [
+        const result = await this.db.query("INSERT INTO gemini_tools_api_keys (id,name,prefix,key_hash,status,expires_at,allowed_ips,request_count,total_tokens,last_used_at,created_at,key_ciphertext) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12) RETURNING *", [
             key.id,
             key.name,
             key.prefix,
@@ -147,6 +148,7 @@ export class GeminiToolsRepository {
             key.totalTokens,
             key.lastUsedAt || null,
             new Date(key.createdAt),
+            key.keyCiphertext || null,
         ]);
         return mapApiKey(result.rows[0]);
     }
@@ -343,6 +345,7 @@ function mapApiKey(row: Record<string, unknown>): StoredGeminiToolsApiKey {
         name: string(row.name),
         prefix: string(row.prefix),
         hash: string(row.key_hash),
+        ...(string(row.key_ciphertext) ? { keyCiphertext: string(row.key_ciphertext) } : {}),
         status: row.status === "disabled" ? "disabled" : "active",
         ...(date(row.expires_at) ? { expiresAt: date(row.expires_at)! } : {}),
         allowedIps: strings(row.allowed_ips),
