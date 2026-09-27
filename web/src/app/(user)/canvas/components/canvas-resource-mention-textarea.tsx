@@ -483,10 +483,30 @@ function MentionPortal({
 
 type RectEdges = { left: number; top: number; right: number; bottom: number };
 
-export function resolveMentionMenuPosition({ anchor, boundary, menuWidth, menuHeight, gap = 6 }: { anchor: RectEdges; boundary: RectEdges; menuWidth: number; menuHeight: number; gap?: number }) {
+export function resolveMentionMenuPosition({
+    anchor,
+    boundary,
+    menuWidth,
+    menuHeight,
+    gap = 6,
+    preferPlacement = "above",
+}: {
+    anchor: RectEdges;
+    boundary: RectEdges;
+    menuWidth: number;
+    menuHeight: number;
+    gap?: number;
+    preferPlacement?: "above" | "below";
+}) {
     const inset = 8;
     const fitsAbove = anchor.top - gap - menuHeight >= boundary.top + inset;
-    const preferredTop = fitsAbove ? anchor.top - gap - menuHeight : anchor.bottom + gap;
+    const fitsBelow = anchor.bottom + gap + menuHeight <= boundary.bottom - inset;
+    let preferredTop: number;
+    if (preferPlacement === "below") {
+        preferredTop = fitsBelow ? anchor.bottom + gap : fitsAbove ? anchor.top - gap - menuHeight : anchor.bottom + gap;
+    } else {
+        preferredTop = fitsAbove ? anchor.top - gap - menuHeight : anchor.bottom + gap;
+    }
     return {
         left: clamp(anchor.left, boundary.left + inset, Math.max(boundary.left + inset, boundary.right - menuWidth - inset)),
         top: clamp(preferredTop, boundary.top + inset, Math.max(boundary.top + inset, boundary.bottom - menuHeight - inset)),

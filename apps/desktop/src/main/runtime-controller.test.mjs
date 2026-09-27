@@ -5,7 +5,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { readOrCreateRuntimeSecrets, waitForRuntime } from "./runtime-controller.mjs";
+import { availableLoopbackPorts, readOrCreateRuntimeSecrets, waitForRuntime } from "./runtime-controller.mjs";
+
+test("desktop runtime reserves distinct ports for all local services", async () => {
+    const ports = await availableLoopbackPorts(9);
+    assert.equal(ports.length, 9);
+    assert.equal(new Set(ports).size, ports.length);
+    for (const port of ports) {
+        const server = createServer();
+        try { await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve)); }
+        finally { await new Promise((resolve) => server.close(resolve)); }
+    }
+});
 
 const safeStorage = {
     isEncryptionAvailable: () => true,

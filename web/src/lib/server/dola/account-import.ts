@@ -46,7 +46,7 @@ export function parseDolaImportInputs(inputs: Array<{ cookie: unknown; name?: un
                 ...(typeof input.name === "string" && input.name.trim() ? { name: input.name.trim().slice(0, 120) } : {}),
                 ...(typeof input.email === "string" && input.email.trim() ? { email: input.email.trim().slice(0, 320) } : {}),
                 ...(input.authType === "google" ? { authType: "google" as const } : { authType: "cookie" as const }),
-                group: typeof input.group === "string" ? input.group.trim().slice(0, 60) : "",
+                group: typeof input.group === "string" && input.group.trim() ? input.group.trim().slice(0, 60) : input.authType === "google" ? "Google 授权" : "",
                 ...(typeof input.sourceFileName === "string" && input.sourceFileName.trim() ? { sourceFileName: input.sourceFileName.trim().slice(0, 255) } : {}),
                 ...(Number.isSafeInteger(input.sourceOrdinal) && Number(input.sourceOrdinal) > 0 ? { sourceOrdinal: Number(input.sourceOrdinal) } : {}),
             });
@@ -62,4 +62,3 @@ export function parseDolaImportInputs(inputs: Array<{ cookie: unknown; name?: un
     }
     return results;
 }
-

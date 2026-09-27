@@ -162,6 +162,10 @@ export type CanvasNodeMetadata = {
     promptSkillPositions?: Array<{ id: string; start: number; end: number }>;
     remakeMode?: "universal" | "vlog" | "drama" | "talking-head" | "product" | "tutorial";
     status?: CanvasNodeStatus;
+    /** 上传中的乐观节点：真实字节进度由 XHR 上报 */
+    uploading?: boolean;
+    uploadProgress?: number;
+    uploadKind?: "image" | "video" | "audio";
     generationProgress?: number;
     generationStartedAt?: number;
     generationFinishedAt?: number;

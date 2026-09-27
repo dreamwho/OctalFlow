@@ -311,7 +311,7 @@ class ProxyManagementService:
             self._account_provider = provider
 
     def view(self) -> ProxyView:
-        return self._build_view(self._snapshot())
+        return self._build_view(self._snapshot_with_global_node_ids())
 
     def save_magic_proxy_override(self, proxy_url: object | None) -> bool:
         """Persist only the Magic address; never alter proxy-selection state."""
@@ -449,7 +449,7 @@ class ProxyManagementService:
         raise ProxySelectionUnavailableError("IPWO 代理未配置")
 
     def list_groups(self) -> ProxyGroupList:
-        snapshot = self._snapshot()
+        snapshot = self._snapshot_with_global_node_ids()
         return ProxyGroupList(
             schema_version=PROXY_SCHEMA_VERSION,
             generated_at=_generated_at(),
@@ -627,11 +627,14 @@ class ProxyManagementService:
                 "nodes": nodes,
             }
             next_groups = [
-                group for group in raw_groups
-                if _clean_text(group.get("id")) != group_id
+                item if _clean_text(group.get("id")) == group_id else group
+                for group in raw_groups
             ]
-            next_groups.append(item)
-            updated = self._config.update({"proxy_groups": next_groups})
+            if existing is None:
+                next_groups.append(item)
+            updated = self._config.update({
+                "proxy_groups": self._ensure_global_node_ids(next_groups),
+            })
             group = next(
                 group for group in self._groups(updated)
                 if group.id == group_id
@@ -861,12 +864,56 @@ class ProxyManagementService:
         value = self._config.get()
         return dict(value) if isinstance(value, dict) else {}
 
+    def _snapshot_with_global_node_ids(self) -> dict[str, Any]:
+        snapshot = self._snapshot()
+        groups = self._raw_dict_list(snapshot, "proxy_groups")
+        normalized = self._ensure_global_node_ids(groups)
+        if normalized == groups:
+            snapshot["proxy_groups"] = normalized
+            return snapshot
+        with self._mutation_lock:
+            current = self._snapshot()
+            current_groups = self._raw_dict_list(current, "proxy_groups")
+            normalized = self._ensure_global_node_ids(current_groups)
+            if normalized != current_groups:
+                return self._config.update({"proxy_groups": normalized})
+            current["proxy_groups"] = normalized
+            return current
+
     @staticmethod
     def _raw_dict_list(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:
         value = snapshot.get(key)
         if not isinstance(value, list):
             return []
         return [dict(item) for item in value if isinstance(item, dict)]
+
+    @staticmethod
+    def _ensure_global_node_ids(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Give every stored node a stable ID unique across all proxy groups."""
+        used: set[str] = set()
+        normalized: list[dict[str, Any]] = []
+        for group in groups:
+            group_id = _clean_text(group.get("id")) or "group"
+            nodes: list[dict[str, Any]] = []
+            for index, raw_node in enumerate(group.get("nodes") or []):
+                if not isinstance(raw_node, dict):
+                    continue
+                node = dict(raw_node)
+                node_id = _stored_node_id(node, index)
+                if node_id in used:
+                    base = _slug_id(f"{group_id}-{node_id}") or f"{group_id}-node"
+                    candidate = base[:64]
+                    suffix = 2
+                    while candidate in used:
+                        tail = f"-{suffix}"
+                        candidate = f"{base[:64 - len(tail)]}{tail}"
+                        suffix += 1
+                    node_id = candidate
+                node["id"] = node_id
+                used.add(node_id)
+                nodes.append(node)
+            normalized.append({**group, "nodes": nodes})
+        return normalized
 
     def _build_view(self, snapshot: dict[str, Any]) -> ProxyView:
         default_reference = self._parse_reference(snapshot.get("proxy"), empty_is_direct=True)

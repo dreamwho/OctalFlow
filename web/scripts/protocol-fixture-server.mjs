@@ -36,6 +36,7 @@ const GLOBAL_AIOPC_VIDEO_PATHS = new Set([
 
 export function createProtocolFixtureServer(options = {}) {
     const tasks = new Map();
+    const googleSessions = new Map();
     const requests = [];
     let taskSequence = 0;
     const nextTaskId = (kind) => `fixture-${kind}-${++taskSequence}`;
@@ -44,7 +45,7 @@ export function createProtocolFixtureServer(options = {}) {
             const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
             const body = await readRequestBody(request);
             requests.push({ method: request.method || "GET", path: url.pathname + url.search, headers: request.headers, contentType: request.headers["content-type"] || "", body });
-            await handleFixtureRequest({ request, response, url, body, tasks, requests, nextTaskId, options });
+            await handleFixtureRequest({ request, response, url, body, tasks, googleSessions, requests, nextTaskId, options });
         } catch (error) {
             sendJson(response, 500, { error: { message: error instanceof Error ? error.message : "fixture failed" } });
         }
@@ -52,7 +53,7 @@ export function createProtocolFixtureServer(options = {}) {
     return { server, requests, tasks };
 }
 
-async function handleFixtureRequest({ request, response, url, body, tasks, requests, nextTaskId, options }) {
+async function handleFixtureRequest({ request, response, url, body, tasks, googleSessions, requests, nextTaskId, options }) {
     const path = fixturePath(url.pathname);
     const responseDelayMs = Math.max(0, Number(options.responseDelayMs) || 0);
     if (request.method === "POST" && responseDelayMs) await delay(responseDelayMs);
@@ -68,6 +69,7 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
                     contentType: item.contentType,
                     bodyBytes: item.body.byteLength,
                     model: requestedModel(item.body, item.contentType),
+                    ...(item.path.endsWith("/accounts/headed-test") ? { headless: jsonBody(item.body).headless, timeoutSeconds: jsonBody(item.body).timeoutSeconds } : {}),
                 })),
             tasks: Array.from(tasks.entries()).map(([id, task]) => ({ id, ...task })),
         });
@@ -75,12 +77,37 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
     if (request.method === "POST" && path === "/__reset") {
         requests.splice(0, requests.length);
         tasks.clear();
+        googleSessions.clear();
         return sendJson(response, 200, { ok: true });
     }
     // Dola Camoufox Provider fixture：结果由导入账号的 Cookie 值驱动（expired→needs_login、verify→verification_required、boom→上游 500，其余 ready）。
     if (path.startsWith("/internal/runtime/v1/")) {
         const payload = jsonBody(body);
         const cookie = String(payload.cookie || "");
+        if (request.method === "POST" && path === "/internal/runtime/v1/accounts/google-login/session") {
+            const verificationId = nextTaskId("google-login");
+            googleSessions.set(verificationId, { leaseToken: "fixture-google-login-lease-token" });
+            return sendJson(response, 200, { status: "ready", verificationId, leaseToken: "fixture-google-login-lease-token" });
+        }
+        if (request.method === "POST" && path === "/internal/runtime/v1/accounts/headed-test") {
+            const verificationId = nextTaskId("headed-test");
+            googleSessions.set(verificationId, { leaseToken: "fixture-headed-test-lease-token", subtype: "headed_test" });
+            return sendJson(response, 200, { status: "headed_ready", verificationId, accountId: payload.accountId, pageUrl: "https://www.dola.com/chat/create-image" });
+        }
+        if (request.method === "POST" && path === "/internal/runtime/v1/accounts/google-login") {
+            return sendJson(response, 200, { status: "success", cookie: "session=e2e-expired-google-cookie" });
+        }
+        const googleAction = path.match(/^\/internal\/runtime\/v1\/verifications\/([^/]+)\/(open|input|keyboard|finalize|google-finalize|close)$/);
+        if (request.method === "POST" && googleAction && googleSessions.has(googleAction[1])) {
+            const [_, verificationId, action] = googleAction;
+            const session = googleSessions.get(verificationId);
+            if (action !== "open" && payload.leaseToken !== session.leaseToken) return sendJson(response, 403, { detail: "invalid lease" });
+            if (action === "close") { googleSessions.delete(verificationId); return sendJson(response, 200, { status: "closed", verificationId }); }
+            if (action === "finalize" && session.subtype === "headed_test") return sendJson(response, 200, { status: "ready", verificationId, cookie: "session=e2e-headed-refreshed" });
+            if (action === "google-finalize") return sendJson(response, 200, { status: "ready", verificationId, cookie: `session=e2e-ready-google-cookie; padding=${"a".repeat(1000)}` });
+            return sendJson(response, 200, { verificationId, taskId: "", status: "needs_review", decision: { type: "inspect", subtype: session.subtype || "google_login" }, viewport: { width: 800, height: 600 }, screenshotBase64: PNG_BASE64, pageUrl: session.subtype === "headed_test" ? "https://www.dola.com/chat/create-image" : "https://www.dola.com/login", leaseToken: session.leaseToken });
+        }
+        if (request.method === "POST" && googleAction) return sendJson(response, 404, { detail: "verification_not_found" });
         if (request.method === "POST" && path === "/internal/runtime/v1/accounts/inspect") {
             const loginProbe = { state: cookie.includes("expired") ? "needs_login" : "ready", httpStatus: 200, code: 0, transport: "http-launch" };
             if (payload.authOnly === true) return sendJson(response, 200, { status: loginProbe.state === "ready" ? "ready" : "needs_login", quota: [], loginProbe });
@@ -103,7 +130,7 @@ async function handleFixtureRequest({ request, response, url, body, tasks, reque
         if (videoQuery) {
             const task = tasks.get(decodeURIComponent(videoQuery[1]));
             if (!task) return sendJson(response, 404, { error: "task_not_found" });
-            return sendJson(response, 200, { status: task.status, taskId: decodeURIComponent(videoQuery[1]), videoUrl: task.videoUrl });
+            return sendJson(response, 200, { status: task.status, taskId: decodeURIComponent(videoQuery[1]), videoUrl: task.videoUrl, diagnostics: { upstreamResponseText: "你的视频生成好了。" } });
         }
     }
     if (request.method === "GET" && ["/models", "/api/v3/models"].includes(path)) {

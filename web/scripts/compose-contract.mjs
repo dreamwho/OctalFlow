@@ -15,8 +15,8 @@ const magicProxyProviderFile = "/app/web/.magic-proxy-runtime/subscription.yaml"
 const mihomoProviderPath = "/root/.config/mihomo/runtime/subscription.yaml";
 
 export const composeProfiles = [
-    { file: "docker-compose.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.0.6}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
-    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-dreamyo-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-dreamyo-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "dola-api", "postgres", "app", "generation-worker"] },
     {
         file: "docker-compose.offline-external-db.yml",
         embeddedPostgres: false,
@@ -26,23 +26,23 @@ export const composeProfiles = [
         internalOrigin: "http://127.0.0.1:${PORT:-8866}",
         trustedProxyHops: "${DREAMYO_TRUSTED_PROXY_HOPS:-0}",
         workerOrigin: "http://127.0.0.1:${PORT:-8866}",
-        expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "app", "generation-worker"],
+        expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "dola-api", "app", "generation-worker"],
     },
     { file: "docker-compose.local.yml", embeddedPostgres: true, image: "dreamyo:local", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
     {
         file: "docker-compose.baota.yml",
         embeddedPostgres: false,
         hostNetwork: true,
-        image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.0.6}",
+        image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}",
         workerOrigin: "http://127.0.0.1:3000",
         expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"],
     },
-    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.0.6}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"] },
-    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.0.6}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"] },
+    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"] },
+    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"] },
 ];
 
 export const docsComposeProfiles = [
-    { file: "docs/docker-compose.yml", image: "ghcr.io/dreamwho/dreamyo-docs:v0.0.6" },
+    { file: "docs/docker-compose.yml", image: "ghcr.io/dreamwho/dreamyo-docs:v0.1.1" },
     { file: "docs/docker-compose.local.yml", build: { context: "..", dockerfile: "docs/Dockerfile" } },
 ];
 
@@ -50,6 +50,7 @@ const maintenanceToken = "${DREAMYO_MAINTENANCE_TOKEN:?请在 .env 中配置至�
 const workerToken = "${DREAMYO_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}";
 const installToken = "${DREAMYO_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}";
 const geminiAiToken = "${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}";
+const dolaToken = "${DREAMYO_DOLA_PROVIDER_KEY:?请在 .env 中配置至少 32 位 Dola Provider 内部服务密钥}";
 
 export function validateComposeContracts({ repoRoot }) {
     return composeProfiles.map((profile) => {
@@ -173,7 +174,8 @@ export function validateComposeContract(source, profile) {
     ensure(magicProxy.image === magicProxyImage, "magic-proxy 必须使用固定的 Mihomo v1.19.30 镜像表达式");
     ensure(JSON.stringify(magicProxy.entrypoint) === JSON.stringify(magicProxyEntrypoint), "magic-proxy 必须通过只读入口脚本启动 Mihomo");
     ensure(!magicProxy.ports, "magic-proxy 不得发布 Controller 或代理端口");
-    ensure(JSON.stringify(Object.keys(magicProxyEnvironment).sort()) === JSON.stringify(["DREAMYO_MAGIC_PROXY_LISTEN_HOST", "DREAMYO_MAGIC_PROXY_SECRET"].sort()), "magic-proxy 只能接收 Controller 密钥和监听地址环境变量");
+    ensure(JSON.stringify(Object.keys(magicProxyEnvironment).sort()) === JSON.stringify(["DREAMYO_MAGIC_PROXY_LISTEN_HOST", "DREAMYO_MAGIC_PROXY_SECRET", "TZ"].sort()), "magic-proxy 只能接收 Controller 密钥和监听地址环境变量");
+    ensure(magicProxyEnvironment.TZ === "${TZ:-Asia/Shanghai}", "magic-proxy 时区必须使用 ${TZ:-Asia/Shanghai}");
     ensure(magicProxyEnvironment.DREAMYO_MAGIC_PROXY_SECRET === magicProxySecret, "magic-proxy 未声明同一 Controller 密钥");
     ensure(magicProxyEnvironment.DREAMYO_MAGIC_PROXY_LISTEN_HOST === proxyListenHost, "magic-proxy 未声明当前拓扑监听地址");
     ensure(!magicProxy.env_file, "magic-proxy 不得读取包含数据库或 provider 密钥的 env 文件");
@@ -232,6 +234,32 @@ export function validateComposeContract(source, profile) {
     );
     ensure(geminiAi.restart === "unless-stopped", "geminiai 必须使用 unless-stopped 重启策略");
     ensure(app.depends_on?.geminiai?.condition === "service_healthy", "app 必须等待 geminiai 健康");
+
+    const dolaApi = services["dola-api"];
+    if (dolaApi) {
+        const dolaEnvironment = dolaApi.environment || {};
+        ensure(dolaApi.image === "${DREAMYO_DOLA_API_IMAGE:-dreamyo-dola-api:offline}", "dola-api 必须使用 dreamyo-dola-api:offline 镜像表达式");
+        ensure(dolaEnvironment.DOLA_PROVIDER_KEY === dolaToken, "dola-api 未声明统一的内部服务密钥");
+        ensure(String(dolaEnvironment.DOLA_PROVIDER_PORT) === "18082", "dola-api 端口必须为 18082");
+        ensure(String(dolaEnvironment.DOLA_ENABLE_BROWSER) === "1", "dola-api 必须启用浏览器运行时");
+        ensure(
+            dolaApi.healthcheck?.test?.some((value) => String(value).includes("/health")),
+            "dola-api 健康检查必须调用 /health",
+        );
+        ensure(dolaApi.restart === "unless-stopped", "dola-api 必须使用 unless-stopped 重启策略");
+        ensure(app.depends_on?.["dola-api"]?.condition === "service_healthy", "app 必须等待 dola-api 健康");
+        ensure(appEnvironment.DREAMYO_DOLA_PROVIDER_KEY === dolaToken, "app 未声明同一 Dola Provider 内部服务密钥");
+        if (profile.hostNetwork) {
+            ensure(dolaApi.network_mode === "host", "host 网络拓扑的 dola-api 必须使用 host 网络");
+            ensure(!dolaApi.expose, "host 网络拓扑不得声明 dola-api 的公开 expose");
+            ensure(appEnvironment.DREAMYO_DOLA_PROVIDER_URL === "http://127.0.0.1:18082", "host 网络拓扑 app 必须通过回环地址访问 dola-api");
+        } else {
+            ensure(!dolaApi.network_mode, "桥接拓扑不得使用 dola-api host 网络");
+            ensure(dolaApi.expose?.includes("18082"), "dola-api 必须在 Compose 内网暴露 18082");
+            ensure(appEnvironment.DREAMYO_DOLA_PROVIDER_URL === "http://dola-api:18082", "app 必须通过 Compose 内网访问 dola-api");
+        }
+    }
+
     ensure(workerEnvironment.DREAMYO_WORKER_TOKEN === workerToken, "generation-worker 未声明同一强制 Worker 令牌");
     ensure(!("DREAMYO_MAINTENANCE_TOKEN" in workerEnvironment), "generation-worker 不得获得外部维护令牌");
     ensure(!("DREAMYO_GEMINIAI_API_KEY" in workerEnvironment), "generation-worker 不得获得 GeminiAI 内部密钥");

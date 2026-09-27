@@ -143,7 +143,7 @@ function MentionTypeTab({ type, count, active, theme, onClick }: { type: "image"
 }
 
 function MentionAssetPreview({ asset }: { asset: CanvasAgentMentionAsset }) {
-    if (asset.type === "image") return <img src={imagePreviewUrl(asset.url, 192)} alt="" className="block size-full bg-transparent object-cover transition-transform duration-200 group-hover:scale-[1.03]" loading="lazy" />;
+    if (asset.type === "image") return <img src={imagePreviewUrl(asset.url, 192)} alt="" loading="lazy" decoding="async" className="block size-full bg-transparent object-cover transition-transform duration-200 group-hover:scale-[1.03]" />;
     return (
         <>
             <video src={asset.url} muted playsInline preload="metadata" aria-hidden="true" className="pointer-events-none size-full object-cover" />

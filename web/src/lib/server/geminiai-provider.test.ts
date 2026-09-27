@@ -25,6 +25,8 @@ vi.mock("@/lib/server/geminiai-request-log-store", () => ({
         return Promise.resolve(id);
     }),
     markGeminiAiRequestLogRunning: vi.fn((id) => Promise.resolve({ id, phase: "running" })),
+    // 执行中阶段实时落库：mock 必须提供该导出，否则运行时会取到 undefined。
+    appendGeminiAiRequestLifecycle: vi.fn((id, entry) => Promise.resolve({ id, phase: "running", lifecycle: [entry] })),
     settleGeminiAiRequestLog: vi.fn((id, patch) => {
         const opened = mocks.openedLogs.get(id) || {};
         const combined = { ...opened, ...patch };

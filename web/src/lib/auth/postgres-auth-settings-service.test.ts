@@ -95,4 +95,24 @@ describe("updatePostgresAuthSettings", () => {
         expect(mocks.upsertEntitlementPlan).not.toHaveBeenCalled();
         expect(mocks.upsertSystemModelChannel).not.toHaveBeenCalled();
     });
+
+    it("persists modelPickerGroups and canvasQuickActions in PostgreSQL settings", async () => {
+        const modelPickerGroups = ["自定义生图", "视频生成", "其他模型"];
+        const canvasQuickActions = [{ id: "group-1", name: "常用动作", actions: [], enabled: true, sortOrder: 0 }];
+
+        await updatePostgresAuthSettings({ modelPickerGroups, canvasQuickActions });
+
+        expect(mocks.updateSettings).toHaveBeenCalledWith({
+            modelPickerGroups,
+            canvasQuickActions: [
+                {
+                    id: "group-1",
+                    name: "常用动作",
+                    actions: [],
+                    enabled: true,
+                    sortOrder: 0,
+                },
+            ],
+        });
+    });
 });

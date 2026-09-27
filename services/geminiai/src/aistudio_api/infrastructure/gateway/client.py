@@ -67,6 +67,10 @@ class AIStudioClient:
             await self._session.ensure_context()
             logger.info("浏览器预热完成")
 
+    async def close(self) -> None:
+        """释放浏览器进程及其专用执行线程。"""
+        await self._session.close()
+
     async def switch_auth(self, auth_file: str | None) -> None:
         """切换账号的 auth 文件。"""
         if self._session is not None:

@@ -11,6 +11,7 @@ import { ensureMagicProxyProvider, type MagicProxyEgressInfo } from "@/lib/serve
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 import {
     appendGeminiToolsRequestLog,
+    appendGeminiToolsRequestLifecycle,
     markGeminiToolsRequestLogRunning,
     openGeminiToolsRequestLog,
     settleGeminiToolsRequestLog,
@@ -284,6 +285,11 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
         ...(headers ? { headers } : {}),
     }).catch(() => "");
     if (openLogId) await markGeminiToolsRequestLogRunning(openLogId).catch(() => undefined);
+    // 每个阶段即时落库：请求可能耗时数分钟，否则后台在结束前只能看到「排队中」。
+    const pushPhase = async (entry: GeminiToolsLifecycleEntry) => {
+        lifecycle.push(entry);
+        if (openLogId) await appendGeminiToolsRequestLifecycle(openLogId, entry).catch(() => undefined);
+    };
     const egressNow = () => geminiToolsProxyEgress().catch(() => undefined);
     const egress = await egressNow();
 
@@ -306,7 +312,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
 
     const availableModels = new Set(catalogFromAccounts(await listGeminiToolsAccounts()).map((item) => normalizeModelId(item.id)));
     if (!availableModels.has(normalizeModelId(model))) {
-        lifecycle.push({
+        await pushPhase({
             phase: "failed",
             message: "模型不在当前 Google 账号额度目录中",
             time: new Date().toISOString(),
@@ -330,7 +336,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
     const withQuota = modelAccounts.filter((account) => account.quotas.some((quota) => normalizeModelId(quota.model) === normalizeModelId(model) && (quota.remainingPercent === undefined || quota.remainingPercent > 0)));
     const accounts = stickyAccounts(withQuota.length ? withQuota : modelAccounts, gateway.sessionStickiness ? sessionKey(init, body, context.keyPrefix) : "");
     if (!accounts.length) {
-        lifecycle.push({
+        await pushPhase({
             phase: "failed",
             message: "没有可用于调用的 Google 账号",
             time: new Date().toISOString(),
@@ -359,7 +365,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             const project = account.projectId ? { projectId: account.projectId, planType: account.planType } : await loadCodeAssist(token.accessToken);
             if (!account.projectId) await updateGeminiToolsAccountCredentials(account.id, { ...token, projectId: project.projectId, planType: project.planType });
 
-            lifecycle.push({
+            await pushPhase({
                 phase: "auth",
                 message: `验证账号 [${account.email || account.id}] 凭据与额度`,
                 time: new Date().toISOString(),
@@ -369,7 +375,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
 
             const nativePayload = protocolRequest(protocol, body || {});
             const upstreamStart = Date.now();
-            lifecycle.push({
+            await pushPhase({
                 phase: "upstream",
                 message: "调用 Google Cloud Code 语言模型生成接口",
                 time: new Date(upstreamStart).toISOString(),
@@ -380,7 +386,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             attemptedGeneration = true;
             const native = await cloudCodeGenerate(token.accessToken, project.projectId, model, nativePayload);
             const responseEnd = Date.now();
-            lifecycle.push({
+            await pushPhase({
                 phase: "response",
                 message: "收到 Google Cloud Code 接口响应 (HTTP 200)",
                 time: new Date(responseEnd).toISOString(),
@@ -390,8 +396,13 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
 
             const formatted = protocolResponse(protocol, native, model);
             const usage = usageFromNative(native);
+            const content = textFromNative(native);
+            const reasoning = reasoningFromNative(native);
+            const functionCalls = functionCallsFromNative(native);
+            const finishReason = finishReasonFromNative(native);
+            const previewText = (content || reasoning || (functionCalls.length ? `[工具调用: ${functionCalls.map((c) => c.name).join(", ")}]` : finishReason ? `[结束原因: ${finishReason}]` : "")).slice(0, 500);
             const finishAt = Date.now();
-            lifecycle.push({
+            await pushPhase({
                 phase: "success",
                 message: "协议格式转换与 Token 统计完成",
                 time: new Date(finishAt).toISOString(),
@@ -416,7 +427,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                         totalTokens: usage.totalTokens,
                         keyPrefix: context.keyPrefix,
                         requestPreview: previewRequest(body),
-                        responsePreview: textFromNative(native).slice(0, 500),
+                        responsePreview: previewText,
                         proxyEgress: egress,
                         lifecycle,
                         ...(clientIp ? { clientIp } : {}),
@@ -427,11 +438,17 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                     return appendGeminiToolsRequestLog(settlePayload);
                 })(),
             ]);
-            return streamingRequested(body) && protocol === "openai" ? openAiSseResponse(formatted as OpenAiResponse, usage.totalTokens) : Response.json(formatted, { headers: { "x-gemini-tools-total-tokens": String(usage.totalTokens) } });
+            if (streamingRequested(body)) {
+                if (protocol === "anthropic") {
+                    return anthropicSseResponse(formatted as Record<string, unknown>, usage.totalTokens);
+                }
+                return openAiSseResponse(formatted as OpenAiResponse, usage.totalTokens);
+            }
+            return Response.json(formatted, { headers: { "x-gemini-tools-total-tokens": String(usage.totalTokens) } });
         } catch (error) {
             lastError = error instanceof GeminiToolsError ? error : new GeminiToolsError(error instanceof Error ? error.message : "Google 上游请求失败");
             failedAccount = { id: account.id, email: account.email };
-            lifecycle.push({
+            await pushPhase({
                 phase: "failed",
                 message: `账号 [${account.email || account.id}] 处理失败: ${lastError.message}`,
                 time: new Date().toISOString(),
@@ -696,38 +713,159 @@ type OpenAiResponse = {
     object: string;
     created: number;
     model: string;
-    choices: Array<{ index: number; message: { role: "assistant"; content: string; reasoning_content?: string }; finish_reason: string }>;
+    choices: Array<{
+        index: number;
+        message: {
+            role: "assistant";
+            content: string | null;
+            reasoning_content?: string;
+            tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+        };
+        finish_reason: string;
+    }>;
     usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 };
+
+function functionCallsFromNative(native: Record<string, unknown>) {
+    const candidates = Array.isArray(native.candidates) ? native.candidates : [];
+    const content = record(record(candidates[0]).content);
+    const parts = Array.isArray(content.parts) ? content.parts : [];
+    const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    for (const raw of parts) {
+        const part = record(raw);
+        if (part.functionCall && typeof part.functionCall === "object") {
+            const call = record(part.functionCall);
+            const name = text(call.name, 200);
+            if (name) {
+                calls.push({ name, args: record(call.args) });
+            }
+        }
+    }
+    return calls;
+}
+
+function finishReasonFromNative(native: Record<string, unknown>) {
+    const candidates = Array.isArray(native.candidates) ? native.candidates : [];
+    const candidate = record(candidates[0]);
+    return text(candidate.finishReason, 100);
+}
 
 function protocolResponse(protocol: "openai" | "gemini" | "anthropic" | "admin-test", native: Record<string, unknown>, model: string) {
     if (protocol === "gemini") return native;
     const content = textFromNative(native);
     const reasoning = reasoningFromNative(native);
     const usage = usageFromNative(native);
+    const functionCalls = functionCallsFromNative(native);
+    const finishReason = finishReasonFromNative(native);
+    const effectiveText = content || (functionCalls.length === 0 && reasoning ? reasoning : "");
+
     if (protocol === "anthropic") {
-        return { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model, content: [{ type: "text", text: content }], stop_reason: "end_turn", usage: { input_tokens: usage.promptTokens, output_tokens: usage.completionTokens } };
+        const contentBlocks: Array<Record<string, unknown>> = [];
+        if (reasoning && content) {
+            contentBlocks.push({ type: "thinking", thinking: reasoning });
+            contentBlocks.push({ type: "text", text: content });
+        } else if (effectiveText) {
+            contentBlocks.push({ type: "text", text: effectiveText });
+        }
+        for (const call of functionCalls) {
+            contentBlocks.push({
+                type: "tool_use",
+                id: `toolu_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
+                name: call.name,
+                input: call.args,
+            });
+        }
+        if (contentBlocks.length === 0) {
+            contentBlocks.push({ type: "text", text: finishReason ? `[生成结束: ${finishReason}]` : "" });
+        }
+        const stopReason = functionCalls.length > 0 ? "tool_use" : finishReason === "MAX_TOKENS" ? "max_tokens" : "end_turn";
+        return {
+            id: `msg_${randomUUID()}`,
+            type: "message",
+            role: "assistant",
+            model,
+            content: contentBlocks,
+            stop_reason: stopReason,
+            usage: { input_tokens: usage.promptTokens, output_tokens: usage.completionTokens },
+        };
     }
+
+    const openAiToolCalls = functionCalls.map((call) => ({
+        id: `call_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
+        type: "function" as const,
+        function: {
+            name: call.name,
+            arguments: JSON.stringify(call.args),
+        },
+    }));
+
+    const openAiFinishReason = openAiToolCalls.length > 0
+        ? "tool_calls"
+        : finishReason === "MAX_TOKENS"
+          ? "length"
+          : finishReason === "SAFETY"
+            ? "content_filter"
+            : "stop";
+
     return {
         id: `chatcmpl-${randomUUID()}`,
         object: "chat.completion",
         created: Math.floor(Date.now() / 1000),
         model,
-        choices: [{ index: 0, message: { role: "assistant", content, ...(reasoning ? { reasoning_content: reasoning } : {}) }, finish_reason: "stop" }],
+        choices: [
+            {
+                index: 0,
+                message: {
+                    role: "assistant",
+                    content: effectiveText || (openAiToolCalls.length ? null : ""),
+                    ...(reasoning ? { reasoning_content: reasoning } : {}),
+                    ...(openAiToolCalls.length ? { tool_calls: openAiToolCalls } : {}),
+                },
+                finish_reason: openAiFinishReason,
+            },
+        ],
         usage: { prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens, total_tokens: usage.totalTokens },
     } satisfies OpenAiResponse;
 }
 
 function openAiSseResponse(payload: OpenAiResponse, totalTokens: number) {
-    const message = payload.choices[0]?.message;
+    const choice = payload.choices[0];
+    const message = choice?.message;
+    const chunkId = payload.id;
+    const created = payload.created;
+    const model = payload.model;
+
+    const initialDelta: Record<string, unknown> = { role: "assistant" };
+    if (message?.reasoning_content) {
+        initialDelta.reasoning_content = message.reasoning_content;
+    }
+    if (message?.content) {
+        initialDelta.content = message.content;
+    }
+    if (message?.tool_calls?.length) {
+        initialDelta.tool_calls = message.tool_calls.map((call, idx) => ({
+            index: idx,
+            id: call.id,
+            type: call.type,
+            function: call.function,
+        }));
+    }
+
     const chunk = {
-        id: payload.id,
+        id: chunkId,
         object: "chat.completion.chunk",
-        created: payload.created,
-        model: payload.model,
-        choices: [{ index: 0, delta: { role: "assistant", content: message?.content || "", ...(message?.reasoning_content ? { reasoning_content: message.reasoning_content } : {}) }, finish_reason: null }],
+        created,
+        model,
+        choices: [{ index: 0, delta: initialDelta, finish_reason: null }],
     };
-    const final = { ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: payload.usage };
+    const final = {
+        id: chunkId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{ index: 0, delta: {}, finish_reason: choice?.finish_reason || "stop" }],
+        usage: payload.usage,
+    };
     const encoder = new TextEncoder();
     return new Response(
         new ReadableStream({
@@ -738,7 +876,116 @@ function openAiSseResponse(payload: OpenAiResponse, totalTokens: number) {
                 controller.close();
             },
         }),
-        { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "x-gemini-tools-total-tokens": String(totalTokens) } },
+        {
+            headers: {
+                "content-type": "text/event-stream; charset=utf-8",
+                "cache-control": "no-cache, no-transform",
+                "connection": "keep-alive",
+                "x-accel-buffering": "no",
+                "x-gemini-tools-total-tokens": String(totalTokens),
+            },
+        },
+    );
+}
+
+function anthropicSseResponse(payload: Record<string, unknown>, totalTokens: number) {
+    const encoder = new TextEncoder();
+    return new Response(
+        new ReadableStream({
+            start(controller) {
+                const sendEvent = (event: string, data: Record<string, unknown>) => {
+                    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+                };
+
+                const msgId = text(payload.id, 100) || `msg_${randomUUID()}`;
+                const model = text(payload.model, 100);
+                const usage = record(payload.usage);
+                const inputTokens = positiveNumber(usage.input_tokens, 0);
+                const outputTokens = positiveNumber(usage.output_tokens, 0);
+                const stopReason = text(payload.stop_reason, 50) || "end_turn";
+
+                sendEvent("message_start", {
+                    type: "message_start",
+                    message: {
+                        id: msgId,
+                        type: "message",
+                        role: "assistant",
+                        content: [],
+                        model,
+                        stop_reason: null,
+                        stop_sequence: null,
+                        usage: { input_tokens: inputTokens, output_tokens: 1 },
+                    },
+                });
+
+                const contentBlocks = Array.isArray(payload.content) ? payload.content : [];
+                contentBlocks.forEach((blockRaw, index) => {
+                    const block = record(blockRaw);
+                    const blockType = text(block.type, 50);
+                    if (blockType === "thinking") {
+                        const thinkingText = text(block.thinking, 1_000_000);
+                        sendEvent("content_block_start", {
+                            type: "content_block_start",
+                            index,
+                            content_block: { type: "thinking", thinking: "" },
+                        });
+                        sendEvent("content_block_delta", {
+                            type: "content_block_delta",
+                            index,
+                            delta: { type: "thinking_delta", thinking: thinkingText },
+                        });
+                        sendEvent("content_block_stop", { type: "content_block_stop", index });
+                    } else if (blockType === "tool_use") {
+                        sendEvent("content_block_start", {
+                            type: "content_block_start",
+                            index,
+                            content_block: {
+                                type: "tool_use",
+                                id: block.id,
+                                name: block.name,
+                                input: {},
+                            },
+                        });
+                        sendEvent("content_block_delta", {
+                            type: "content_block_delta",
+                            index,
+                            delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input || {}) },
+                        });
+                        sendEvent("content_block_stop", { type: "content_block_stop", index });
+                    } else {
+                        const contentText = text(block.text, 1_000_000);
+                        sendEvent("content_block_start", {
+                            type: "content_block_start",
+                            index,
+                            content_block: { type: "text", text: "" },
+                        });
+                        sendEvent("content_block_delta", {
+                            type: "content_block_delta",
+                            index,
+                            delta: { type: "text_delta", text: contentText },
+                        });
+                        sendEvent("content_block_stop", { type: "content_block_stop", index });
+                    }
+                });
+
+                sendEvent("message_delta", {
+                    type: "message_delta",
+                    delta: { stop_reason: stopReason, stop_sequence: null },
+                    usage: { output_tokens: outputTokens },
+                });
+                sendEvent("message_stop", { type: "message_stop" });
+                controller.close();
+            },
+        }),
+        {
+            headers: {
+                "content-type": "text/event-stream; charset=utf-8",
+                "cache-control": "no-cache, no-transform",
+                "connection": "keep-alive",
+                "x-accel-buffering": "no",
+                "x-gemini-tools-total-tokens": String(totalTokens),
+            },
+        },
     );
 }
 

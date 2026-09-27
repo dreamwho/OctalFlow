@@ -1,0 +1,5 @@
+packages:
+  - desktop
+  - canvas-mcp
+allowBuilds:
+  electron-winstaller: false

@@ -12,7 +12,6 @@ export function reorderLogicalModels(models: LogicalModel[], capability: Logical
     let scopedIndex = 0;
     return models.map((model) => (model.capability === capability ? reordered[scopedIndex++] : model));
 }
-
 export function moveLogicalModel(models: LogicalModel[], capability: LogicalModelCapability, modelId: string, offset: -1 | 1) {
     const scoped = models.filter((model) => model.capability === capability);
     const index = scoped.findIndex((model) => model.id === modelId);
@@ -22,4 +21,13 @@ export function moveLogicalModel(models: LogicalModel[], capability: LogicalMode
 
 export function setLogicalModelPickerVisibility(models: LogicalModel[], modelId: string, visible: boolean) {
     return models.map((model) => (model.id === modelId ? { ...model, pickerVisible: visible } : model));
+}
+
+export function moveModelPickerGroup(groups: string[], index: number, offset: -1 | 1): string[] {
+    const targetIndex = index + offset;
+    if (targetIndex < 0 || targetIndex >= groups.length) return groups;
+    const reordered = [...groups];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+    return reordered;
 }

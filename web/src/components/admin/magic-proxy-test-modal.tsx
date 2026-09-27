@@ -97,8 +97,9 @@ export function MagicProxyTestModal({ open, onClose, nodes, delayResults, onDela
                     const rating = result.delay < 100 ? "极速响应 (<100ms)" : result.delay < 300 ? "良好 (<300ms)" : "延迟偏高 (>300ms)";
                     appendLog("ok", `✅ [${node.name}] 测速成功！往返延迟: ${result.delay} ms · 链路评级: ${rating}`, node.name);
                 } else {
+                    // 失败原因由服务端分环节给出（解析失败 / 端口不可达 / 协议握手失败 / 节点未写入运行时），
+                    // 不再附加固定的排查话术，避免与真实断点冲突。
                     appendLog("warn", `❌ [${node.name}] 测速未通过: ${result.error || "连接超时或节点不可用"}`, node.name);
-                    appendLog("warn", `💡 诊断排查：请检查服务器出网链路、该节点境外服务器/端口是否可达，或订阅凭据是否已失效。`, node.name);
                 }
             } catch (err) {
                 if (signal.aborted || cancelledRef.current || (err instanceof Error && err.name === "AbortError")) {

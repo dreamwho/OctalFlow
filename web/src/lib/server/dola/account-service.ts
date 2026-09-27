@@ -25,6 +25,14 @@ export async function getDolaAccountCookie(id: string) {
     return account ? decryptSecretValue(account.cookieCiphertext) : null;
 }
 
+export async function exportDolaGoogleAccountCookies(accountIds?: string[]) {
+    const accounts = (await readDatabase()).accounts.filter((item) => item.authType === "google");
+    const selected = accountIds === undefined ? accounts : accounts.filter((item) => accountIds.includes(item.id));
+    if (accountIds !== undefined && new Set(accountIds).size !== selected.length) throw new Error("所选账号中包含不存在或非 Google 授权的账号");
+    if (!selected.length) throw new Error("没有可导出的 Google 授权账号");
+    return selected.map((item) => parseDolaCookieHeader(decryptSecretValue(item.cookieCiphertext)).cookie);
+}
+
 export async function importDolaAccounts(items: DolaAccountImportItem[]) {
     const parsed = parseDolaImportInputs(items);
     const results: DolaAccountImportResult[] = [];
@@ -87,6 +95,7 @@ export async function addOrUpdateGoogleDolaAccount(params: { cookie: string; ema
         email: params.email,
         name: params.name || (params.email ? `Google 账号 (${params.email})` : undefined),
         authType: "google",
+        group: "Google 授权",
     }]);
     const first = importResult.results[0];
     if (first?.account) {
@@ -354,7 +363,8 @@ export async function reserveDolaAccount(_model?: string): Promise<StoredDolaAcc
         const account = candidates[0];
         if (!account) return;
         account.activeAttempts += 1;
-        account.updatedAt = new Date().toISOString();
+        account.lastUsedAt = new Date().toISOString();
+        account.updatedAt = account.lastUsedAt;
         selected = structuredClone(account);
         await writeJsonDataFile(FILE_NAME, db);
     });

@@ -99,6 +99,35 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  dola-api:
+    platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
+    image: ${DREAMYO_DOLA_API_IMAGE:-dreamyo-dola-api:offline}
+    container_name: dreamyo-dola-api
+    network_mode: host
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      DOLA_PROVIDER_KEY: ${DREAMYO_DOLA_PROVIDER_KEY:?请在 .env 中配置至少 32 位 Dola Provider 内部服务密钥}
+      DOLA_PROVIDER_PORT: "18082"
+      DOLA_ENABLE_BROWSER: "1"
+      DOLA_INTERACTIVE_BROWSER_MAX_SESSIONS: ${DOLA_INTERACTIVE_BROWSER_MAX_SESSIONS:-1}
+      DOLA_TASK_STATE_PATH: /app/web/.data/dola/provider-tasks.json
+      DOLA_PROFILE_DIR: /app/web/.data/dola/profiles
+    volumes:
+      - dreamyo-data:/app/web/.data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
   app:
     platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
     image: ${DREAMYO_IMAGE:-dreamyo-app:offline}
@@ -145,10 +174,14 @@ services:
       GEMINI_TOOLS_OAUTH_REDIRECT_URI: ${GEMINI_TOOLS_OAUTH_REDIRECT_URI:-}
       DREAMYO_CHATGPT_API_URL: http://127.0.0.1:8046
       DREAMYO_CHATGPT_API_KEY: ${DREAMYO_CHATGPT_API_KEY:?请在 .env 中配置至少 32 位 ChatGPT API 内部服务密钥}
+      DREAMYO_DOLA_PROVIDER_URL: http://127.0.0.1:18082
+      DREAMYO_DOLA_PROVIDER_KEY: ${DREAMYO_DOLA_PROVIDER_KEY:?请在 .env 中配置至少 32 位 Dola Provider 内部服务密钥}
     depends_on:
       geminiai:
         condition: service_healthy
       chatgpt-api:
+        condition: service_healthy
+      dola-api:
         condition: service_healthy
       magic-proxy:
         condition: service_healthy

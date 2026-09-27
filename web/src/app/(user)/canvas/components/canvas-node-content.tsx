@@ -227,21 +227,23 @@ export function LoadingContent({ theme, scale = 1, node, completed = false, onCo
                 <div className="inline-flex max-w-full flex-col gap-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 backdrop-blur-md shadow-sm">
                     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 font-medium leading-tight">
                         <span className="font-semibold text-white">
-                            {completed ? "生成完成" : "生成中"}
+                            {completed ? "生成完成" : node?.metadata?.uploading ? "上传中" : "生成中"}
                         </span>
                         <span className="tabular-nums tracking-tight text-white/90">
                             {estimated ? "预计 " : ""}{percent}%
                         </span>
-                        {!completed && node?.metadata?.generationStage ? (
+                        {!completed && !node?.metadata?.uploading && node?.metadata?.generationStage ? (
                             <span className="text-[0.88em] font-normal text-white/75">
                                 · {node.metadata.generationStage}
                             </span>
                         ) : null}
                     </div>
-                    <div className="flex items-center gap-1.5 text-[0.85em] font-normal text-white/80 tabular-nums leading-tight">
-                        <Clock3 className="size-[1.1em] shrink-0 opacity-70" />
-                        <span>耗时 {elapsedText}</span>
-                    </div>
+                    {node?.metadata?.uploading ? null : (
+                        <div className="flex items-center gap-1.5 text-[0.85em] font-normal text-white/80 tabular-nums leading-tight">
+                            <Clock3 className="size-[1.1em] shrink-0 opacity-70" />
+                            <span>耗时 {elapsedText}</span>
+                        </div>
+                    )}
                     {detail ? (
                         <div className="mt-0.5 text-[0.8em] font-normal leading-snug text-white/70">
                             {detail}
@@ -256,38 +258,29 @@ export function LoadingContent({ theme, scale = 1, node, completed = false, onCo
 export function ErrorContent({ node, theme, onRetry, onRegenerate, scale = 1 }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry" | "onRegenerate" | "scale">) {
     const readableScale = Math.max(0.25, scale);
     const fontSize = Math.max(12, 12 / readableScale);
-    const lineHeight = Math.max(20, 20 / readableScale);
     const controlHeight = Math.max(32, 32 / readableScale);
-    const rawDetails = (node.metadata?.errorDetails || "").trim();
-    const errorDetails = rawDetails || "生成失败，请重试";
     const handleAction = onRegenerate || onRetry;
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden px-5 py-4 text-center">
-            <div
-                data-canvas-node-error-details
-                role="alert"
-                title={rawDetails}
-                className="thin-scrollbar max-h-[60%] w-[86%] overflow-y-auto rounded-lg border px-3 py-2.5 text-left whitespace-pre-wrap break-words"
-                style={{ color: theme.node.danger, background: theme.node.dangerSurface, borderColor: theme.node.dangerBorder, fontSize, lineHeight }}
-            >
-                <div className="flex items-center gap-1.5 font-semibold">
-                    <CircleAlert className="size-3.5 shrink-0" />
-                    生成失败
-                </div>
-                {rawDetails ? <div className="mt-1 font-normal leading-5 opacity-90">{rawDetails}</div> : null}
-            </div>
+        <div data-canvas-node-error className="flex h-full w-full flex-col items-center justify-center p-4 text-center">
             <button
                 type="button"
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border font-medium transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ background: theme.node.dangerSurface, borderColor: theme.node.dangerBorder, color: theme.node.danger, height: controlHeight, paddingInline: Math.max(12, 12 / readableScale), fontSize }}
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border font-medium whitespace-nowrap shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                    background: theme.node.dangerSurface,
+                    borderColor: theme.node.dangerBorder,
+                    color: theme.node.danger,
+                    height: controlHeight,
+                    paddingInline: Math.max(14, 14 / readableScale),
+                    fontSize,
+                }}
                 onClick={(event) => {
                     event.stopPropagation();
                     handleAction?.(node);
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
             >
-                <RefreshCw className="size-3.5" />
-                再次生成
+                <RefreshCw className="size-3.5 shrink-0" />
+                <span className="shrink-0 whitespace-nowrap">再次生成</span>
             </button>
         </div>
     );

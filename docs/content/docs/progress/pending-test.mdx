@@ -5,6 +5,351 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### Dola 失败会话截图时机（2026-09-27）
+
+- 失败任务以提交时记录的会话 ID 打开 `/chat/<会话 ID>`；只有地址匹配、骨架屏消失且会话正文可见后才提取页面错误并截图。页面一直未就绪时不保存占位图，请求日志注明“会话页面未加载完成，未保存截图”。
+- 本地无真实 Dola 账号的浏览器夹具已验证加载占位、正文出现和错误会话 ID 三种状态；仍需用真实失败任务确认截图显示该次会话的具体错误卡片与最新回复。
+
+### easyframe MiniMax H3 专属视频管理控制台（2026-09-26）
+
+- **独立专属管理页面架构（`AdminMinimaxH3Section`）**：
+  1. 参照阿里云百炼语音设计模式，在后台「上游配置」与桌面端「模型与渠道」独立开设 `minimaxH3` 专属管理面板，权限绑定 `upstream.manage`。
+  2. 支持 API Base URL 配置（默认 `https://minimax.api.easyframe.cn`）、API Key 安全脱敏持久化（含 `hasApiKey` 状态标签与保存前明文不落页面保护）及渠道总开关。
+  3. 四个 MiniMax H3 视频模型可用性开关（`minimax-h3-mini`、`minimax-h3-fast`、`minimax-h3-base`、`minimax-h3-pro`），附带档位分类（极速档、高速档、标准档、旗舰档）、场景建议及逻辑模型调度状态。
+  4. **彻底根除「已启用但无可用渠道」问题**：编写 `promoteMinimaxH3LogicalModels`，在保存渠道时自动将已启用的 H3 模型关联为优先级 0 的激活绑定并对齐前端公开能力，确保 `resolveLogicalModelConfig` 能够立即可用。
+  5. **模型与参数规格 Tab**：卡片化呈现 MiniMax H3 四个模型的详细技术参数，包括分辨率档位（480p / 720p）、生成时长（5-15 秒整数）、支持的生成模式（文生视频 t2va、首帧 i2va、首尾帧 fl2va、多参考 ref2va）及严格的素材输入规范契约（首尾帧互斥、最多 9 图 3 视频 3 音频上限 15 个）。
+  6. **视频任务历史 Tab**：支持分页查询 H3 视频生成记录，支持视频直接播放预览与任务详情查看；提交用户按照公开账号规范格式化为 `ID：0001`。
+  7. **后端安全拨号与连通性测试（`POST /api/admin/minimax-h3`）**：支持在后台一键测试与上游 easyframe 的网络连通性，自动探测 `/v1/models`，回显真实网络拨号耗时、鉴权状态及上游可用模型清单。
+- 自动化回归与质量门禁：
+  - `src/lib/minimax-h3.test.ts`、`src/app/api/admin/minimax-h3/route.test.ts`、`src/components/admin/admin-minimax-h3-section.test.tsx`、`src/components/admin/admin-section-nav.test.tsx`、`src/lib/model-routing-config.test.ts` 全部通过（共 35 项测试通过）。
+  - `npx tsc --noEmit` 全量 TypeScript 编译通过，0 错误。
+
+- **画布多图上传/拖拽/粘贴网格排版与文件名命名**：
+  1. 上传、拖拽及剪切板粘贴多张图片时，废除原有固定倾斜叠放（`+ index * 40`），采用整齐矩阵网格排版（≤4 张且非 3 张采用 2 列，其余默认 3 列，行间距与列间距为 `CANVAS_NODE_GAP`），创建完成后自动选中所有新增节点。
+  2. 图片节点默认标题从固定“图片上传”调整为使用原始文件名（`file.name`），文件上传中占位节点也同步使用文件名。
+- **画布框选节点悬浮工具栏与两套布局算法**：
+  1. 多选节点（`selectedNodeIds.size > 1`）时在选中节点包围盒正上方居中弹出半透明毛玻璃浮动操作条，包含选中数量徽标、编组按钮及「布局 ▼」下拉菜单。
+  2. **宫格布局**：按当前节点空间相对物理位置自适应聚类为视觉行、行内从左到右排序，重排为对齐网格。
+  3. **智能布局**：根据节点各自的真实宽高比例，进行自适应紧凑瀑布流（Masonry Bin-Packing）优化排版，将节点依次放入当前累计高度最小的列，消除纵向间距浪费。
+- **通用代理节点下拉展示优化**：
+  在后台代理管理与链式代理落地节点下拉选项中，精简为仅显示节点名称与所属分组（如 `${node.name} [${group.name}]`），隐藏暴露的 URL 地址。
+- **DOLA 链式代理跳板+落地测试拨号失败排查与修复**：
+  1. 修复 Dola 测速探针：`DOLA_TEST_URL` 原为 `https://www.dola.com`，上游返回 302 Found 重定向到 `/chat/`，导致 Mihomo 默认判定测速失败；现调整为 `https://www.dola.com/chat/`，直接返回 HTTP 200。
+  2. 修复内建 DNS 解析：补齐公共 DNS 与纯 IP `default-nameserver` 兜底，确保在开启 `dns.enable` 时通用代理落地节点能即时解析。
+- **DOLA 视频节点再次生成报错【参考素材格式不正确】与 502 修复**：
+  1. 修复站内参考素材误判：已有站内媒体（如 `/api/reference-assets/...`、`/api/generation-log-assets/...`）此前被误判为非公开 URL 并强制重复调用 `publishReferenceMedia` 导致格式报错。现增加 `isUsableReferenceUrl` 白名单，直接原样复用。
+  2. 修复空快照短路重试：视频节点重试时，若快照已为空，不再短路传空，而是从当前连线动态重新解析参考图素材。
+  3. 修复 Dola 路由与上游 Provider 格式兼容：支持从 `references`、`images`、`first_frame`、`last_frame` 等多种字段自动归一化参考素材。
+- **复制已连接素材的视频节点时连线保留**：
+  修复在画布中复制/克隆已连接图片素材的视频节点时丢失入向连线的问题，复制节点时同步复制所有入向参考连线。
+- 自动化回归与质量门禁：
+  - Python Dola-API 全量 64 项测试全部通过（`64 passed`）。
+  - TypeScript 单元与集成测试（包含画布布局算法、空间聚类、瀑布流、视频参考素材解析、多图文件动作等）114 项测试全部通过。
+  - Next.js 生产模式全量编译（`pnpm build`）成功，0 类型与打包错误。
+
+### 链式代理通用落地节点域名解析与全局 nameserver 兜底（2026-09-26）
+
+- **链式代理卡在通用代理落地节点（真实根因）**：机场订阅自带 `proxy-server-nameserver` 会促使 Mihomo 开启内建 DNS（`dns.enable: true`）并建立 `nameserver-policy`。但生成的配置中仅将订阅私有 DoH 绑定至机场自身节点域名，**未配置全局 `nameserver` 兜底**。当内核接管 DNS 后，未命中策略的任意外部域名（特别是通用代理/链式代理落地节点域名如 `us.ipwo.net`）因无解析器可用直接失败，导致链式代理建立 TCP 隧道时因落地节点域名无法解析而彻底挂死。
+- **实测验证结果**：
+  1. 真实容器与 Trojan 跳板节点实测：跳板节点（`🇨🇳 台湾 02`，129.204.141.190:4020）**完全未屏蔽通用代理的 7878 端口**，且与落地节点 `us.ipwo.net:7878`（带认证凭据）建立 HTTP CONNECT 隧道正常通畅，公网延迟仅 960ms，成功拿到美国 Comcast 真实住宅 IP 出口（`108.35.125.205`）。
+  2. 修复落盘：在 `subscriptionDnsPolicy` 中补齐 `nameserver: ["223.5.5.5", "119.29.29.29", "1.1.1.1", "8.8.8.8"]` 全局公共兜底解析器，并将 `default-nameserver` 补齐纯 IP 兜底，确保内核内建 DNS 开启时未命中 policy 的通用代理域名能即时并发解析。
+- 自动化回归：`magic-proxy-service.test.ts` 56 项测试全部通过，相关 6 套测试套件 68 项测试全部通过，`pnpm run typecheck` 0 错误，生产构建编译成功。
+
+### 跳板兜底持久化、链路诊断误报与画布 @ 引用修复（2026-09-26）
+
+- **跳板兜底保存后为空（真实 bug）**：`magic-proxy-repository` 的 `binding()` 读取时按 `hop_node` + `landing_node_id` 重建 `chained_config`，`hop_fallback_node` 被丢弃。已补全并在仓库测试中断言链式兜底往返。
+- **链式连通性误报「跳板拨号失败」**：`describeChainFailure` 在服务组的测速结果里查跳板节点，而跳板节点不属于服务组（服务组只含链式出口节点），因此永远查不到、一律报拨号失败——与「单节点测试该节点是通的」一致。现新增 `probeHopGroupDelays` 单独探测跳板组，Google/ChatGPT/Dola 三处诊断均已接入。
+- **纯文本 `@图片N` 引用范围**：`parseCanvasPromptDocument` 的标记映射表此前用全部素材构建，超出已连接数量的 `@图片3/@图片4` 会落到未连线的画布图片上。现只解析 `active`（已连接）素材。
+- **竖版参考图溢出**：缩略图内的 `img`/`video` 此前没有尺寸样式，按原始尺寸溢出；已补 `size-full object-cover`。
+- **提示词素材删除与光标位置插入修复（2026-09-26 已完成）**：
+  1. **提示词内参考素材的 × 删除按钮**：ProseMirror 原生事件分发会把点击内联节点的 SVG 图标当作选区拖拽并阻止 `button` 的 `onClick`，现为 `ReferenceTokenView` 与 `SkillTokenView` 增加 `contentEditable={false}`，`<X>` 图标添加 `pointer-events-none`，绑定 `onPointerDown`/`onMouseDown` 显式阻止冒泡与默认行为，并在 `ReactNodeViewRenderer` 的 `stopEvent` 中放行交互控件，点击 × 即可直接触发 `deleteNode()` 删除该引用。
+  2. **提示词中间 `@` 引用光标定位**：此前失焦时调用 `.chain().focus().setTextSelection()` 会导致选区跳至文档末尾，现改用原子的 `insertContentAt({ from, to }, content).focus()` 精确定位，并修复了 `positionAtPlainOffset` 对空段落子节点（`childCount === 0`）跳过导致的偏移量计算偏差，在任何位置键入 `@` 引用后即原地替换并跟随光标。
+- 自动化回归：Web 全量 679 个测试文件共 3,356 项测试全部通过、`pnpm run typecheck` 0 错误、生产模式编译（`pnpm build`）成功。
+
+### 参考素材点击更换、生成媒体下载出网方式与 GeminiTools 实时日志（2026-09-25）
+
+- **参考素材点击更换**：`ReferenceTokenView` 的缩略图改为按钮，点击通过 React context 把该 token 的文档位置回传宿主，宿主用与 `@` 相同的 `MentionPortal` 打开选择器（替换态展示全部素材，含未连接），选中后原地 `updateAttributes` 替换引用而非新增；选中未连接素材仍会触发自动连线。点击弹出层与编辑器之外可关闭并清除替换态。
+- **生成媒体下载出网方式（已先验证当前行为）**：`writeRemoteAsset` → `fetchSafeOutbound` → `dispatcherFor`，规则是「调用方显式传 proxyUrl 用它，否则目标为公网时用 `resolveServerProxyUrl()`（**读环境变量**），否则直连」。因此生成媒体下载**既不走链式代理也不走其跳板节点**，而是走全局服务器代理，且此前无法在后台调整。新增 `SafeOutboundOptions.directOnly` 与设置 `generationDefaults.mediaDownloadEgress`（`server-proxy` 默认 / `direct`），后台「生成默认值」面板可选择；下载失败时按历史行为回退（设置读取异常按 server-proxy 处理）。
+- **GeminiTools 实时日志**：新增 `appendGeminiToolsRequestLifecycle`，服务端 7 处 `lifecycle.push` 改为 `pushPhase`（推入并即时落库）。
+- 自动化回归：Web 全量 3352 项 + 新增设置用例通过、`pnpm run typecheck` 0 错误。
+- 待真实环境确认：① 点击参考图缩略图能打开选择器并原地替换；② 后台切到「强制直连」后生成媒体仍能正常落盘（若上游地址仅代理可达会下载失败，此时切回默认）；③ GeminiTools 请求执行期间日志逐阶段出现。
+
+### 画布 @ 引用编号与弹出层关闭修复（2026-09-25）
+
+- **`@图片N` 序号错误**：`buildCanvasResourceReferences` 先按画布顺序给全部素材编号（`globalReferences`），再用已连接素材的编号覆盖，未连接素材仍保留画布顺序编号——因此**没有任何连线时 `@图片1` 会落到画布上的第一张图片**。现改为已连接素材优先、再统一顺序编号（与 `buildNodeMentionReferences` 同一规则），未连接素材排在已连接之后且 `active=false`。新增 2 项用例：已连接图片从 `图片1` 连续编号且画布首图排在后面；无连线时不产生任何已连接映射。
+- **`@` 弹出层无法点击空白关闭**：此前只能删除 `@` 或选中一项。现监听弹出层与编辑器之外的 `pointerdown` 即关闭，并记录被主动关闭的引用区间与查询词，光标仍停在同一处时不会立刻重开。
+- 自动化回归：Web 全量 3352 项测试通过、`pnpm run typecheck` 0 错误。
+
+### GPTAPI 刷新日志风暴与画布保存可见性（2026-09-25）
+
+- **重复日志根因**：后台反复出现 `oauth_refresh_http_401: refresh_token_reused`。`refresh_token_reused` 不在 `_TERMINAL_REFRESH_ERROR_CODES` 中，被当作可重试错误 → 账号不写 `refresh_token_invalid_at`、不升级为异常状态、始终留在候选池 → 每个请求的 preflight 与每次上游 401 的 auth_recovery（`force=True`，绕过 5 分钟退避）都再消费一次已失效的 RT。本地库 `call_records` 中该错误已累计 171 条、preflight/auth_recovery 成对出现。已把该 code 与相关文案归入终止错误；新增 3 项 Python 用例覆盖终止/可重试两侧。
+- **画布节点「消失」**：调查确认服务端不会因临时 URL 丢弃节点（唯一规则是把 `data:`/`blob:` 改写成空串），因此「刷新后节点不见」最可能是**保存被静默丢弃**：顶栏只写 `data-save-status` 属性、没有任何渲染点，`retryProjectSave` 未接线，且 409/413/401/404 属不可重试且无提示。现顶栏显示保存中/保存失败（含原因）与重试按钮。另有两条「数据在但看不见」的路径需注意：多图批次子节点在根节点 `imageBatchExpanded=false` 时完全不渲染（该折叠状态会被持久化），以及节点坐标在当前视口外。
+- 自动化回归：Web 全量 3350 项、Python 86 项通过，`pnpm run typecheck` 0 错误。
+- 未完成（如实说明）：① 其余渠道（GeminiTools、ChatGPT API、Dola API）请求日志仍未接入实时阶段；② 生成媒体「下载走哪条链路」尚无后台选项（当前实现未验证），需新增设置以避免下载占用代理流量。
+
+### 魔法代理兜底/跳板兜底、图片「排队中」与请求日志实时进度（2026-09-25）
+
+- **兜底节点保存后消失（真实 bug）**：`magic_proxy_settings`（PostgreSQL）只有 `*_enabled/node/mode/chained_config` 列，**没有 `*_fallback_node`**，保存时兜底节点被静默丢弃；文件 Provider 存的是完整 JSON 所以单测没暴露。已为四个服务各补一列并纳入读写映射，仓库测试新增兜底节点往返断言。
+- **图片长期「排队中」根因**：`ensureMagicProxyProvider` 每次生成请求都要抢魔法代理的全局运行锁，而订阅刷新、内核热重载、批量测速共用同一把锁；请求日志在进入锁**之前**已写 `queued`，所以被堵住时表现为「排队中 + 0ms」（与用户截图一致）。现锁空闲时照常完整自愈，锁被占用时退化为纯读解析出口；新增回归用例断言「慢操作占锁时出口解析 1 秒内返回」。
+- **请求日志实时进度**：`markGeminiAiRequestLogRunning` 被导入却从未调用，中间阶段只存在内存、要等 settle 才入库，运行期间后台只能看到「排队中」。现受理/路由/上游/响应各阶段即时落库，且列表存在进行中记录时每 5 秒自动刷新，无进行中请求则停止轮询。
+- **魔法代理连通性测试**：魔法代理模式新增「测试当前节点连通性」按钮（复用单节点探测，失败直接给出断点环节），此前只有链式代理有测试入口。
+- **链式跳板兜底**：新增独立 provider 文件 `failover/hop-<provider>.yaml`（顺序 `[跳板, 兜底]`）与内核 fallback 组，出口 `dialer-proxy` 指向该组；跳板兜底与跳板相同会被拒绝。回归用例断言 provider 文件成员顺序、配置中的 fallback 组、`dialer-proxy` 指向与校验拒绝。
+- 自动化回归：全量 3350 项测试通过、`pnpm run typecheck` 0 错误。
+- 待真实环境确认：① PostgreSQL 环境保存兜底节点后刷新页面仍在；② 图片生成期间后台日志显示「执行中」并逐步出现路由/上游/响应阶段；③ 链式代理设置跳板兜底后，停用跳板仍能出网。
+- 已知未完成：其余渠道（GeminiTools、ChatGPT API、Dola API）的请求日志仍是结束后一次性显示，需要接入同一套实时阶段机制。
+
+### 魔法代理测速超时不再判为节点不可用（2026-09-25）
+
+- 部署 loopback 修复后复测：**可用 169 个 / 失败 66 个**（修复前 18 / 217）。剩余失败经分类后均非配置问题：
+  1. 带 `[Premium]` 的节点全部指向 `9.9.9.9:1`（机场对未开通套餐放的哨兵地址）；
+  2. 机场信息占位节点（`1.1.1.1:443`、`0.0.0.0:443`、流量/到期提示节点）；
+  3. `mm.good2026.com` / `x1` / `x2` 整个机场（端口 31901–32641，解析到 `43.198.86.155`）TCP 全部不可达，属机场侧或服务器出网对该 IP 的限制；
+  4. 同主机上少数节点报 `504`，而同主机其它节点通过——通过节点的耗时已贴近 4 秒上限（实测 3023/3138/3633ms）。
+- 本次修复第 4 类引发的副作用：内核 `504` 表示「本次没在时限内测出」，此前被当作失败写入 `alive:false`，而代理节点下拉会过滤已标记不可用的节点，导致**本来可用的节点静默消失**。现只有 `503`（确定拨号失败）与 `404`（节点不在运行时 provider 中）写失败记录，超时保留上一次状态；日志文案也改为「节点测速超时未出结果（并发压力下常见，可稍后重测）」。
+- 已知数据异常（非本方问题）：`A-美国1` 的 server 为 `1.hongcha.de5.netzz.feimavip.sbs`（两个域名拼接），同一订阅 26 个节点中仅此 1 个，判断为机场侧数据问题。
+- 自动化回归：新增「超时不写 alive:false、节点仍可选」用例；魔法代理服务 53 项、全量 3347 项测试通过；类型检查 0 错误。
+
+### 魔法代理真实根因（已复现）：机场 loopback 解析器被绑到节点域名（2026-09-25）
+
+- 用户提供服务器侧真实产物后定位到确凿根因：生成的 `config.yaml` 里出现
+  `nameserver-policy: {086d67b3-….ro7xtkti5v.sbs: [udp://127.0.0.1:7874]}`。
+  `udp://127.0.0.1:7874` 是**机场给自家客户端用的本机 DNS**；在 mihomo 容器里 127.0.0.1 就是容器本身、该端口无任何服务，解析会被**瞬间拒绝**。
+- 真实内核对照复现（同一节点、同一容器，唯一差别是该策略）：
+  - 绑上 loopback 解析器 → 健康检查 **0.028 秒**失败
+  - 剔除后回落系统 DNS → 失败耗时 **3.73 秒**（域名确实解析成功、在尝试真实连接）
+  这 0.028 秒正是此前日志中「200–700ms 极速失败」的来源（该耗时含应用侧 DNS+TCP 探测）。
+- 影响面：该订阅共 **141 个 anytls 节点**全部指向 `086d67b3-….sbs`，因此整批被解析阻断——与「本机 90% 可用」形成对照（本机运行了那个本机 DNS）。
+- 修复：`nameserver-policy` 构建时剔除容器内不可用的 loopback 解析器（`localhost`、`::1`、`127.0.0.0/8`）；若某订阅剔除后无可用解析器则不产生策略条目，该域名回落系统 DNS。同时 `default-nameserver` 只透传纯 IP（内核对 DoH URL 会报 `default nameserver should be pure IP` 并拒绝整份配置）。
+- 自动化回归：以服务器真实节点形态（`.sbs` 主机名 + `udp://127.0.0.1:7874`）断言不产生策略条目，另一订阅的可用 DoH 仍按订阅绑定；魔法代理服务 52 项、全量测试通过；类型检查 0 错误。
+- 待真实环境确认：部署后刷新订阅再做全面测速。若仍有节点失败，其诊断结论会指出具体环节（例如 `zz.feimavip.sbs:12001` 这类系统 DNS 可解析但 TCP 不可达的，属机场侧节点问题；`1.1.1.1`、`0.0.0.0` 等为机场信息占位节点，本就不可用）。
+
+### 魔法代理动态配置合法性：default-nameserver 必须是纯 IP（2026-09-25）
+
+- 内核实测：`default-nameserver` 里出现 DoH URL 时，mihomo 直接报 `default nameserver should be pure IP` 并**拒绝整份动态配置**。机场 dns 段常把 DoH 地址写进这个键，此前原样透传会让动态配置无法加载。
+- 修复：只透传纯 IP 形式的 `default-nameserver` 条目（`1.1.1.1` 或 `1.1.1.1:53`），其余丢弃；无有效条目时不写该键。
+- 内核实测修订：此前记录的「`proxy-server-nameserver` 解析失败时不回退」结论不准确。用 DNS 查询观测确认，**列表内条目是并发竞速**的（`[不可达解析器, 可用解析器]` 三种形态下可用解析器均收到查询），死条目不会阻断其他条目；真实行为是 `proxy-server-nameserver` 会**取代** `nameserver` 用于节点域名解析，而不认识该域名的解析器会返回 NXDOMAIN 并被采信。
+- 自动化回归：`default-nameserver` 过滤断言（DoH 地址被丢弃、保留纯 IP）；魔法代理服务 51 项、全量 3345 项测试通过；类型检查 0 错误。
+
+### 魔法代理真实根因：单个机场的私有 DoH 被当成全局解析器（2026-09-25）
+
+- 用户复测反馈：诊断生效后仍大面积失败，且失败结论集中在「TCP 可达，但 mihomo 拨号阶段失败」；本机 90% 节点可用。
+- **根因确证（上一轮改动引入的回归）**：经真实 Mihomo v1.19.30 容器做 DNS 查询观测，`proxy-server-nameserver` 是解析「代理服务器域名」的**唯一权威**——把该解析器指向一个会对域名返回 NXDOMAIN 的服务器后，即使配置了 `nameserver: 223.5.5.5` 且公网可正常解析，mihomo 也**完全不回退**，节点必然拨号失败。此前实现把**第一个启用订阅**的机场私有 DoH 设为全局 `proxy-server-nameserver`，导致其他机场的节点域名全部解析失败、永远拨不通——这解释了「同一订阅全通、其余订阅全挂」的分布，也解释了本机 Clash（每个订阅独立配置）正常而服务端异常。
+- 修复：改为 `nameserver-policy`，把每个订阅声明的 DoH **精确绑定到该订阅自己节点的 server 域名**；不再注入全局 `proxy-server-nameserver` / `nameserver` / fake-ip 等键（这些键会接管其他订阅的解析行为）。IP 直连节点不进入策略。
+- 真实验收（mihomo v1.19.30 双 provider 场景）：A 机场节点靠私有 DoH 解析 → `{"delay":261}` 通过；B 机场节点公网解析 → `{"delay":551}` 通过且**未被 A 的 DoH 接管**；私有 DoH 只收到 A 自己的域名查询，隔离生效。
+- 诊断精度修正：① 节点域名可能同时有 A/AAAA 记录，改为对所有地址并发探测，任一可达即算可达——修掉此前只测到 IPv6 就误报「TCP 不可达」的问题（日志中 `mm.good2026.com`、`cfyes.7770006.xyz` 即属此类误报）；② 把「失败发生在代理协议握手阶段」改为「失败发生在 mihomo 拨号阶段（域名解析、凭据、协议参数或 TLS 不匹配）」，因为应用侧的系统 DNS 探测无法区分 mihomo 侧的解析失败与握手失败。
+- 自动化回归：`nameserver-policy` 按订阅隔离（含 IP 直连节点不入策略、其他订阅域名不入策略、替换导入后整体移除）；魔法代理服务 51 项、全量测试通过；类型检查 0 错误。
+- 待真实环境确认：部署后重新刷新一次订阅（触发动态配置重写与热重载），再做全面测速；此前被判失败的节点应大量恢复。
+
+### 魔法代理批量测速「正常节点被判失败」根因修复与分环节失败诊断（2026-09-25）
+
+- 用户报告：本机 Clash 可正常使用的节点，在系统里做全面测速时大量判定为「不可用」，怀疑系统无法理解这些节点的协议。
+- 经真实 Mihomo v1.19.30（linux/amd64 容器）逐项实测，**否定了协议不兼容的猜测**：`anytls` 节点可正常载入为 `AnyTLS`；且失败在日志中呈**订阅级分布**（某订阅 trojan 全通、其他订阅的 anytls/ss/vless 全挂），而非协议级。
+- 找到并修复的真实缺陷（**测速放大效应**）：单节点健康检查只要未成功就回退组级测速，而组级端点 `/group/<name>/delay` 会带动**组内全部节点并发拨号**；批量测速又跑 8 条并发通道，于是每一个失败节点都触发一次「全组重拨」，数百次叠加后耗尽容器拨号资源，把本来正常的节点也一起拖成失败——日志中的 `504 get delay: all proxies timeout`、`DIRECT` 在 167ms↔3391ms 之间剧烈抖动、`容器直连出网不可用`、同一节点先后给出 202ms 与「拨号失败」均是该放大效应的表现。
+- 修改：① 单节点测速**不再回退组级测速**，只拨当前节点；② 按内核状态码给出确定结论（实测 200=成功、503=节点存在但拨号失败、404=节点不在运行时 provider 中，后者属系统侧问题、与节点无关）；③ 失败时由应用侧做**分环节探测**（系统 DNS 解析 → 对 `server:port` 建 TCP），把「解析失败 / 端口不可达 / 代理协议握手失败」三种完全不同的故障区分开。
+- 验证边界（实测结论，非推测）：Mihomo 健康检查失败时只返回通用文案 `{"message":"An error occurred in the delay test"}`，且**任何日志级别（含 debug）都不记录失败原因**，因此分环节探测是唯一能拿到真实原因的途径；provider 节点确实会被组级测速纳入（实测 `{"DIRECT":235,"LOCAL | working http proxy":405}`），说明测量机制本身没有问题。
+- 自动化回归：`probeNodeDelay` 与失败诊断的单测覆盖三条分支（DNS 失败 / TCP 不可达 / TCP 可达但握手失败），并显式断言失败路径**不产生任何组级端点调用**；魔法代理服务 51 项、全量测试通过。
+- 待真实环境确认：部署后在魔法代理页重做一次全面测速，失败节点现在会直接显示断点环节；若出现「TCP 可达但失败在协议握手阶段」，说明该节点参数（凭据/协议字段/TLS）与订阅下发的定义不一致，需对照订阅原始 YAML 核对。
+- 另发现（与本次改动无关）：用户提供的 `b.xlovehuawei.com:9066/ssp/go/link/...?clash=1&extend=1` 订阅地址当前返回的响应仅 82 字节，内容只有 `dns: proxy-server-nameserver` 一段、**不含任何节点**，多种客户端 UA 与去掉 `extend=1` 结果一致；该订阅需在机场侧确认是否已过期或需重新获取订阅地址。
+
+### 魔法代理保存失败原因透出与热重载失败不再静默（2026-09-25）
+
+- 用户报告「魔法代理保存设置失败报错」，界面只给出笼统的「控制器拒绝了配置请求（HTTP 400）」，无法判断是哪个节点、哪段配置被内核拒绝。
+- 改动：
+  1. **控制器错误原因透出**：`controllerRequest` 失败时读取内核返回的响应体（JSON 的 `message` 或文本前 200 字）拼接进错误信息，保存/导入失败时界面直接显示内核给出的原因；
+  2. **保存时热重载失败不再静默**：此前 `syncMihomoProvider` 把 `config.yaml` 热重载失败 `catch` 掉，导致新订阅/策略组实际未加载、后续选中该组才报 400。现在保存/导入路径上的热重载失败会抛出并把内核原因带给用户；导入路径已有 rollback（失败时用旧配置重写磁盘并抛错），数据库与磁盘保持一致，用户删除问题订阅即可恢复。后台读取/启动自愈路径（`repairMagicProxyRuntimeConfig`）仍保持吞掉异常，不会让页面读取失败。
+- 真实内核验证：用 mihomo v1.19.30 容器（linux/amd64）对生成的动态配置执行 `-t` 校验，含订阅 dns 段透传（`enable`/`fake-ip`/`proxy-server-nameserver`）与真实机场 dns 段经白名单裁剪后的两种配置均返回 `test is successful`；同时复现了用户服务器上那条 `path is not subpath of home directory` 报错，确认 provider 路径必须落在 `/root/.config/mihomo` 下（当前实现已符合）。
+- 自动化回归：魔法代理 5 个测试文件 69 项、全量 677 文件 3,344 项测试通过。
+- 待真实环境确认：服务器部署新包后保存一次魔法代理绑定，确认失败时能看到内核返回的具体原因。
+
+### 画布四项交互修复：@引用插入、弹出层悬停与缩略图、连线删除、粘贴乐观上传（2026-09-25）
+
+- 用户报告的四个问题与根因（全部用 Playwright 真实画布复现/验证）：
+  1. **@ 引用插入位置**：复测直输 @、参考 chips、未连接素材 flyout 三条路径的插入位置均正确落在光标处；为防御「弹出层打开期间选区被内容同步重置」的时序问题，插入范围改为使用弹出层记录的 @query 区间（不再依赖实时光标重推导），并增加防重复提交守卫（pointerdown 与 click 双事件不会插入两次）；
+  2. **弹出层悬停失效**：「可能@的内容」「搜索素材」「Skill」列表行没有 onMouseEnter 联动，键盘高亮索引无法跟随鼠标——已补齐悬停高亮（含未连接素材二级列表的独立悬停态）；缩略图补 `loading=lazy` + `decoding=async`；
+  3. **连线无法删除（真实回归）**：节点容器层 `pointer-events-auto absolute inset-0` 盖住下层连线 SVG，空白点击被拦截，连线永远无法选中（Playwright elementFromPoint 定位证实）。改为容器 `pointer-events-none` + 节点根 `pointer-events-auto`，点击穿透后连线可选中、Delete 可删除；
+  4. **粘贴/上传卡顿**：`createImageFileNode/createVideoFileNode/createAudioFileNode` 原先等待上传完成才建节点。现改为**乐观建节点**：立即用本地 blob 预览创建节点并进入「上传中」状态，上传服务改用 XHR 暴露真实字节进度（fetch 无 upload.onprogress），节点显示与生成等待一致的烟雾动画 + 真实百分比；上传成功后替换为服务器地址并按真实尺寸重排，失败则移除节点并提示。
+- 附带修复：画布「预计进度」存量失败测试与本次修改无关（已用变更前代码对照复跑证实同样失败）。
+- 自动化回归：新增 `e2e/canvas-bugfix-repro.spec.ts`（5 项：三条插入路径、连线选中+删除、粘贴即时建节点+上传遮罩+完成态）全部通过；既有 canvas E2E 8 项通过（1 项为上述存量失败）；画布与魔法代理相关单测 399 项通过；全量 677 文件 3,340 项测试通过；生产构建与类型检查 0 错误。
+- 待真实环境确认：上传中节点的烟雾动画与真实百分比在慢速网络下的观感；@ 弹出层在节点较多时的悬停流畅度（缩略图已懒加载，若仍有卡顿需进一步排查对象存储签名地址的原图加载）。
+
+
+### 魔法代理节点订阅 Tab 分组、节点下拉分组选择、兜底节点与单节点测速精确化（2026-09-24）
+
+- 需求与问题背景：
+  1. 魔法代理页的「代理节点」列表此前用下拉筛选订阅，节点越来越多时需要改为**按订阅 Tab 分组**显示；
+  2. 其他功能页（GeminiAIStudio/GeminiTools/ChatGPTAPI/DolaAPI）选择魔法节点时下拉平铺全部节点，需要**按订阅分组**选择并支持搜索；
+  3. 魔法节点缺少**兜底节点**能力：某功能绑定的节点无法连通时，应可设定兜底节点接管；
+  4. 测速日志出现「可用 12 个、不可用 82 个」，且某节点本机 Clash 直测正常（与服务器同局域网），系统内却报「Mihomo 出网正常（DIRECT 167ms），但该节点拨号失败」。
+- 实现方案：
+  1. **节点列表 Tab 化**：`admin-magic-proxy-section.tsx` 的代理节点区改为 antd Tabs（全部 + 每个订阅一个 Tab，标签带节点数），替换原「按所属订阅筛选」下拉；
+  2. **节点下拉分组**：新增 `groupMagicProxyOptions` helper，魔法节点下拉、链式跳板下拉均按订阅分组（antd Select 分组 options），魔法节点下拉额外前置「订阅策略组」分组（「自动选择」等自动选优组），并全部开启 `showSearch` 按名称过滤；
+  3. **兜底节点（内核级 fallback）**：绑定新增 `fallback_node`（仅 magic 模式、只能是真实节点且不得与主节点相同）；动态 Mihomo 配置为配置了兜底的服务生成 `dreamyo-Failover-<服务>` **fallback 组**（成员 = 主节点 + 兜底节点，`url` gstatic、`interval` 300、`lazy`），服务组选中该 fallback 组——主节点健康检查失败时由内核自动切换兜底、恢复后自动切回；保存/读取/刷新全链路保留兜底字段（`storedBinding`/`cloneBinding`/`normalizedBinding`），清空即回退普通节点选中；fallback 校验失败明确报「兜底节点不在当前订阅中」；前端魔法节点下方新增「兜底节点（可选）」下拉，支持搜索与清除；
+  4. **单节点测速精确化**：`probeNodeDelay` 优先调用 Mihomo **provider 单节点健康检查端点**（`/providers/proxies/<provider>/<node>/healthcheck`），只拨当前节点本身；旧版内核端点不可用或返回无效时回退组级测速。此前的单节点测速实际走组级接口、带动组内**全部节点并发拨号**（日志可见一次单节点测试前有 94 节点批量任务），资源竞争会让正常节点在 4 秒超时内误判失败——这正是「本机正常、系统报拨号失败」的主要原因；失败文案同步改为「可能是节点域名解析失败或服务器/端口不可达」，不再武断宣称「被墙」。
+- 自动化测试与质量验收：
+  - `magic-proxy-service.test.ts` 47 项全部通过（新增：fallback 组生成与选中/清空回退、兜底节点越界拒绝、单节点健康检查端点优先且不再触发组级拨号）；
+  - `magic-proxy-binding-card.test.tsx` 5 项、`admin-magic-proxy-section.test.ts` 3 项全部通过（新增分组 helper 断言）；
+  - 魔法代理相关 11 个测试文件共 111 项全部通过；`tsc --noEmit` 0 错误。
+- 待真实环境确认：部署后需在真实订阅环境确认 ① 节点 Tab 分组与下拉分组渲染；② 兜底节点真实切换（停用主节点后请求自动走兜底、恢复后切回）；③ 对此前误报「拨号失败」的节点用新单节点测速复测，若仍失败则属节点域名在服务器 DNS 解析异常，可对比 Mihomo 容器内 `nslookup` 验证。
+
+### @ 弹出层分类悬停残留与悬停意图延时（2026-09-25）
+
+- 用户报告：鼠标掠过「添加参照」分类行（主体/图片/视频/音频）后高亮残留不清除；分类的二级列表（未连接素材）在鼠标无意掠过时立即弹出并加载大量缩略图，造成卡顿。
+- 修复（canvas-rich-prompt-editor MentionPortal）：
+  1. **悬停意图延时**：分类行悬停需停留 280ms 才展开对应二级列表；快速掠过只取消挂起的展开定时器，不再触发未连接素材的缩略图加载；
+  2. **即时高亮无残留**：分类行高亮跟随 `hoveredCategory`（移出行立即清除）；已展开列表在移出行/二级列表/菜单 240ms 后收起，重入当前分类（如从二级列表回行）会取消收起；
+  3. 二级列表容器增加 `data-canvas-resource-flyout` 稳定测试标识。
+- 自动化回归：新增 E2E「分类悬停需停留才弹出二级列表且移开后清除残留」（悬停 600ms 后可见、移开 800ms 后消失）；画布复现套件 6 项、全量 3,344 项测试通过。
+
+### go 代理（SSP 面板）订阅全部节点拨号失败、测速数据滞后与不可用节点过滤（2026-09-25）
+
+- 用户报告：导入 `b.xlovehuawei.com:9066/ssp/go/link/...?clash=1` 订阅后全部节点测速失败（本机 Clash 正常）；各功能页代理管理下拉的延迟数据滞后；不可用节点应从选择列表移除。
+- 根因（实测取证）：
+  1. **面板的 `go/link` 地址是远程 DNS 注入配置**：无论参数/UA 均只返回 82 字节的 `dns:` 片段，核心为 `proxy-server-nameserver`（面板专用 DoH）。节点服务器域名必须经该 DoH 解析——本机 Clash 应用了此 dns 配置所以正常，而 Mihomo 容器没有 dns 配置，节点域名走系统 DNS 解析失败/被污染 → 全部拨号失败；
+  2. **延迟数据滞后**：overview 先取 Mihomo 内存 provider 历史（bootstrap 未配置 provider 自动健康检查，该历史只在测速瞬间更新），持久化的最新测速结果被旧内存值覆盖；
+- 修复：
+  1. 解析 Clash YAML 订阅时捕获 `dns` 段并随订阅记录持久化（加密 JSON，无表结构变更），动态 Mihomo 配置注入第一个启用订阅的 dns 配置（自动补 `enable: true` 缺省；已用真实 mihomo v1.19.30 验证配置可解析）；订阅刷新/替换时同步更新或移除；
+  2. 延迟/存活取值优先级反转：持久化测速结果优先于内存历史；单节点测速结果照常持久化；
+  3. 魔法节点/跳板下拉过滤 `alive === false` 的节点（当前已绑定节点仍显示为「当前绑定」）。
+- 自动化回归：新增订阅 dns 透传（含刷新移除）与延迟优先级单测；魔法代理服务 50 项、全量 3,344 项测试通过；画布 E2E 回归通过；生产构建 0 错误。
+- 待真实环境确认：服务器部署新包后在魔法代理页**重新刷新该订阅**（触发 dns 配置写入与热重载），再单节点测速验证拨号恢复；若仍失败，需在 Mihomo 容器内验证该 DoH 的可达性（`docker exec dreamyo-magic-proxy wget -q -O- https://d.xlovexiaomi.com:9088/dns-query/c`）。
+
+### 魔法代理升级迁移自愈：旧动态配置不再阻塞部署（2026-09-25）
+
+- 服务器升级复现的故障：旧版本应用写入的动态 `config.yaml`（provider 路径为 App 侧 `/app/web/...`）持久保存在共享运行卷中，Mihomo 容器重建后加载该文件直接 fatal 崩溃循环，而应用又因 magic-proxy 健康检查不通过无法启动，形成死锁（compose 报 `dependency failed to start`）。
+- 三层修复：
+  1. **入口脚本配置校验回退**：启动时先 `mihomo -t` 校验 `config.yaml`，解析失败回退 bootstrap 启动（已用真实 mihomo v1.19.30 镜像实证：坏配置 → 回退 → 正常监听）；
+  2. **一键部署脚本启动前清理**：从 `dreamyo-magic-proxy-runtime` 卷移除旧 `config.yaml`（清理失败仅警告不阻塞，由入口脚本兜底）；
+  3. **应用启动自愈**：新增 `instrumentation.ts` 启动钩子调用 `repairMagicProxyRuntimeConfig`，按当前设置重写正确的动态配置（含订阅文件与 failover provider 文件）并热重载；同一配置版本只修复一次。
+- 自动化回归：新增启动自愈单测（坏配置被重写为 Mihomo 侧路径 + 热重载调用），魔法代理服务 48 项、离线部署合约 12 项、全量 3,341 项测试通过；入口脚本回退行为经真实容器验证。
+
+### 魔法代理真实 Mihomo 内核复测：修正策略组/兜底组生成写法与节点归属（2026-09-24）
+
+- 复测背景：对前两轮实现用真实 Mihomo v1.19.30 容器逐端点复测（热重载、provider 单节点健康检查、策略组选中、fallback 组），发现三处真实内核下才会暴露的缺陷并已修复：
+  1. **组 proxies 直接引用 provider 节点名会被内核拒绝**（实测报 `not found`，此前热重载静默失败）：「自动选择」等订阅策略组改为 `use` + 组级 `filter` 精确正则圈定 provider 节点成员（Go RE2 元字符转义）；
+  2. **兜底 fallback 组的「主节点优先」顺序无法靠 filter 保证**（实测组员顺序跟随 provider 文件顺序）：改为每个服务独立的 failover provider 文件（`runtime/failover/<provider>.yaml`，内容按 [主节点, 兜底节点] 排序），绑定保存/订阅刷新时同步重写并通知内核重读；
+  3. **跨订阅同名节点重命名后丢失订阅归属**（节点去重重命名用同名后缀导致相互覆盖，Tab 计数显示 0、部分节点消失）：聚合节点改为带原始名/订阅来源一次性计算并递增去重后缀，节点归属与订阅 Tab 计数全部正确。
+- 真实内核复测结论（全部通过）：生产代码生成的完整 config.yaml 被真实 Mihomo v1.19.30 无错加载；服务组可选中「自动选择」策略组且内核自动选优生效；failover 组按主节点优先取存活成员、主节点模拟故障后自动切换兜底、服务组选中同步生效；`PUT /configs?force=true` 热重载、provider 单节点健康检查（成功返回 delay、失败 503 触发回退）、failover provider 文件 PUT 重读均实测通过。
+- 浏览器级回归（生产构建 + 真实内核 + 隔离数据目录）通过：订阅文件导入后节点列表按订阅 Tab 分组且计数正确；GeminiAIStudio 代理管理页魔法节点下拉按「订阅策略组 / 订阅名」分组展示并可搜索；「自动选择」组可保存为服务出口并在内核生效；兜底节点保存后 failover 文件/内核选中即时生效，清空后自动回退。
+- 自动化回归：Web 全量 677 个测试文件、3,340 项测试全部通过，生产构建与类型检查 0 错误。
+
+### 订阅策略组（自动选择）支持、动态配置 Mihomo 侧路径修复与链式代理诊断修正（2026-09-24）
+
+- 需求与问题背景：
+  1. 魔法代理导入的订阅与本机 Clash 导入不一致：Clash 里的「自动选择」（url-test）策略组在本系统中不可见、也无法作为服务出口，用户希望选择该组时自动使用当前最快的节点；
+  2. 节点测速页单节点访问 Google 成功，但链式代理（GeminiAIStudio）「测试 Google 连通性」失败，且报错文案一律显示「节点可能已失效或被墙」，无法定位真实断点。
+- 根因分析：
+  1. **策略组从未进入运行时**：订阅解析时已保存 `proxy-groups`，但生成的动态 `config.yaml` 从不热加载，运行中的 Mihomo 根本没有「自动选择」等组实体；且服务组 `proxies` 未包含策略组，即使存在也无法被选中；
+  2. **动态配置 Provider 路径错误（重大隐患）**：`config.yaml` 内的 provider 路径写成了 App 侧 `/app/web/.magic-proxy-runtime/...`，Mihomo 容器内实际为 `/root/.config/mihomo/runtime/...`——Mihomo 容器一旦重启加载该配置，全部订阅节点丢失、所有出口回落 DIRECT；
+  3. **链式失败误诊**：`describeChainFailure` 用组名反查 provider，`dreamyo-Chained-Exit-geminiai/-geminiTools/-dola` 带后缀名匹配失败（兜底成无后缀的 chatgptApi 出口名），永远走不到「跳板正常但跳板→落地→目标失败」的精确诊断分支；
+  4. **跳板组选中失败被静默吞掉**：显式保存链式代理时跳板组选中失败仅 `.catch(() => undefined)`，跳板组停留在 DIRECT 时链式出口变成「国内直连落地」，表现为全部超时且无任何报错。
+- 修复实现：
+  1. 新增 `resolveSubscriptionPolicyGroups`：订阅策略组进入动态配置成为真实组实体，组名保留 Clash 原名（如「自动选择」），仅跨订阅重名或与节点/保留名冲突时加订阅名前缀；成员必须真实存在于聚合节点，引用其他组的成员被剔除后不足 2 个则不生成；
+  2. 服务组与链式跳板组 `proxies` 加入全部策略组名，控制器允许将「自动选择」选为服务出口；魔法节点绑定校验改为「节点 + 策略组」全集（保存、读取、订阅刷新全链路一致），前端魔法节点下拉追加「自动选优」组选项并显示组内当前最快节点与延迟；
+  3. 动态 `config.yaml` 的 provider 路径改为 Mihomo 侧 `/root/.config/mihomo/runtime/...`，并增加 `profile.store-selected: true`（bootstrap 两份配置同步补齐），重载/重启后不再丢失各 select 组选中项；
+  4. 订阅导入/刷新/启停后通过控制器 `PUT /configs?force=true` 热加载动态配置，新策略组无须重启 Mihomo 容器即可生效；
+  5. 链式失败诊断按全部出口名精确匹配 provider；显式启用链式代理时跳板组选中失败改为明确报错，不再静默回落。
+- 自动化测试与质量验收：
+  - `web/src/lib/server/magic-proxy-service.test.ts` 44 项全部通过（新增 3 项：动态配置 Mihomo 侧路径/策略组/热重载、绑定「自动选择」组、GeminiAIStudio 链式出口失败按「跳板→落地」精确诊断）；
+  - `magic-proxy-binding-card.test.tsx`、`admin-magic-proxy-section.test.ts`、`magic-proxy route/repository/read-settings` 相关 19 项全部通过；
+  - `gemini-tools-service`、`admin-dola-api-section`、`admin-chatgpt-api-section` 回归通过；`tsc --noEmit` 0 错误。
+- 待真实环境确认：需在部署环境刷新一次订阅（触发配置生成+热重载）后，确认「自动选择」组出现在魔法节点下拉并可正常作为服务出口；链式代理跳板→落地真实链路需用真实跳板与 IPWO 落地节点复测。
+
+### 0.1.1 版本发布、全站文档与 dreamyo 品牌截图/资产升级（2026-09-24）
+
+- 需求与问题背景：
+  1. 用户明确指令：“将当前版本号更新为0.1.1，同时将所有文档内容和github上发布的截图以及logo全部更新到最新版的dreamyo系列”；
+  2. 需在项目全栈（`VERSION`、`web/package.json`、`apps/desktop/package.json`、`docs/package.json`、Docker Compose 镜像声明、客户端运行时环境变量）全面提升版本号至 `0.1.1`；
+  3. `CHANGELOG.md` 整理封版 `## v0.1.1 (2026-09-24)`，保留空的 `## Unreleased`；
+  4. 全站文档及代码中的遗留历史旧品牌表述全面核查替换为统一的 dreamyo 品牌标准；
+  5. GitHub README 与文档展示的页面截图全量更新为最新 dreamyo UI 设计体系图册（首页、创作工作区、画布编辑器）。
+- 架构与设计实现：
+  1. **全栈版本号统一升级至 0.1.1**：
+     - 根目录 `VERSION` 更新为 `v0.1.1`；
+     - `web/package.json`、`apps/desktop/package.json`、`docs/package.json` 同步提升至 `0.1.1`；
+     - `web/src/constant/env.ts` 客户端运行时版本回退与 `web/src/app/api/media-proxy/route.ts` User-Agent 同步升级为 `0.1.1`；
+     - `docker-compose*.yml` 与 `web/scripts/compose-contract.mjs` 容器镜像声明统一对齐为 `:v0.1.1` 并通过 14 项自动化约束测试；
+  2. **dreamyo 品牌体系与文档规范全量统一**：
+     - `README.md` 首页标题徽标、发布说明链接更新为 0.1.1，品牌标识对齐 `web/public/logo.svg?v=0.1.1`；
+     - 全量清除管理帮助与引导中的历史遗留品牌名词，统一使用 dreamyo 品牌 Logo 与品牌指南；
+     - 站点结构化数据测试与元数据统一对齐 dreamyo 品牌身份；
+  3. **品牌 Logo、Icon 与核心展示截图升级**：
+     - 核验并同步 dreamyo 官方设计资产：`docs/public/logo.svg`、`docs/public/icon.svg` 与 `docs/public/brand/dreamyo/logo-horizontal.png` 保持双站完全一致；
+     - 将 `全新UI设计/选中/` 最新视觉标准生成为高质量 WebP 截图：`docs/public/screenshots/pages/01-home.webp`（最新首页）、`02-create.webp`（最新统一创作 Agent）与 `03a-canvas-editor.webp`（最新画布编辑器），使 GitHub / README 视觉展示完美对齐最新版。
+- 自动化测试与质量验收：
+  - `pnpm test scripts/compose-contract.test.mjs src/lib/structured-data.test.ts src/lib/model-routing-config.test.ts`（43 tests 全部通过）；
+  - `git grep "无限进化"` 全局搜索结果为 0；
+  - `git grep -E "0\.0\.(6|19)" -- docs README.md` 全局搜索结果为 0。
+
+### 代理管理交互优化、Gemini 思考模型协议适配、大图预览 1080P 适配与 MiniMax 视频能力推断修复（2026-09-24）
+
+- 需求与问题背景：
+  1. **代理管理按钮尺寸与配色优化**：各代理管理页面（`MagicProxyBindingCard`、`ChatGPTChainedProxyPanel`、`ChatGPTMagicProxyPanel`）的操作按钮过扁（高度仅 24px），主按钮缺乏统一品牌色。需提升为 36px 舒适尺寸并切换为 dreamyo 紫色主题；
+  2. **魔法代理与链式代理自动故障切换（Failover）**：当遇到当前选定节点失效、超时或被阻断时，系统需具备自动切换至可联通健康节点的能力；
+  3. **/create 与工作台图片大图预览 1080P 错乱**：在 1080P 屏幕下，大图预览弹窗因固定 1680px 宽和无模糊半透遮罩，导致提示词面板与底层组件严重透光穿透并造成排版错乱；
+  4. **MiniMax 视频模型“已启用但无可用渠道”**：已启用 easyframe MiniMax 渠道且配置 Base URL / Key，但逻辑模型管理中 `minimax-h3-*` 系列仍提示无可用渠道；
+  5. **Gemini Tools 外部 API 思考模型空响应 Bug**：使用 `gemini-3.8-flash-high` 提交请求时，耗时 13.6s 消耗 9 Token 却返回空正文，后台日志亦无响应内容。
+- 架构与设计实现：
+  1. **按钮尺寸与 dreamyo 紫色视觉统一**：
+     - 去除 `size="small"`，统一升级为 `h-9`（36px）与舒适内边距；
+     - 主操作按钮应用 `linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff)` 核心渐变紫与高对比文字；
+  2. **Mihomo 内核与应用层双层故障自愈方案设计**：
+     - 设计了包含内核级 `fallback` 策略组与应用层主动健康探测置换的双层容灾机制；
+  3. **Lightbox 模态隔离与宽高比自适应**：
+     - 将遮罩层升级为深暗磨砂玻璃背景（`background: rgba(4, 7, 18, 0.88)`，`backdrop-filter: blur(20px)`），层级锁定 `zIndex={1300}`，阻断下层透光；
+     - 尺寸受控于 `max-width: min(92vw, 1400px)` 与 `max-height: calc(100dvh - 48px)`，媒体自适应收拢并配备半透明悬浮胶囊工具栏；
+  4. **MiniMax H3 视频能力推断与路由诊断增强**：
+     - 在 `inferModelCapability` 中新增 `minimax[-_.\s]?(?:h3|video)|h3`，精准识别为视频能力；
+     - 逻辑模型卡片与抽屉新增具体未解析原因提示（渠道停用、凭据未填、未勾选模型等）；
+  5. **Gemini Tools 思考链正文保底与多协议映射**：
+     - 增加 `effectiveText` 判定，避免纯思考输出时正文被清空；
+     - 完善 Anthropic `thinking` / `tool_use` 与 OpenAI `reasoning_content` / `tool_calls` 结构化映射；日志预览支持 `[思考]` 与 `[工具调用]` 标识。
+- 自动化测试与质量验收：
+  - `web/src/lib/model-routing-config.test.ts`（24 tests 全部通过）；
+  - `web/src/lib/server/gemini-tools-service.test.ts`（18 tests 全部通过）；
+  - `web/src/lib/server/magic-proxy-service.test.ts`（41 tests 全部通过）；
+  - `web/src/components/admin/magic-proxy-binding-card.test.tsx`（3 tests 全部通过）；
+  - `pnpm typecheck` 静态类型检查 0 错误；
+  - `pnpm build` 生产构建成功，75/75 个页面/路由静态编译通过。
+
+### 魔法代理多订阅独立存储、Mihomo 内核订阅分组与跨页面节点测速数据展示（2026-09-24）
+
+- 需求与问题背景：
+  1. **多订阅独立文件落盘需求**：此前导入新订阅（URL 或文件）会直接覆盖原有单例订阅（`subscriptionUrlCiphertext` 与 `nodesCiphertext`），导致用户无法同时共存多个机场或自建代理订阅。用户明确要求：“每次导入都是一个单独的订阅文件”；
+  2. **Mihomo 内核订阅与内置地域分组识别**：Mihomo 原生支持多 `proxy-providers` 与多 `proxy-groups`。用户明确要求每个订阅导入后自动识别订阅分组及其 Clash YAML 内部地域/功能分组（如“🇭🇰 香港节点”、“🇺🇸 美国节点”等），在内核中分别注册订阅分组与二级功能分组；
+  3. **跨功能页节点测速数据直观呈现**：此前在 GeminiAIStudio、GeminiTools、ChatGPT API、Dola API 等功能页选择魔法代理节点时，下拉框仅展示 `${node.name} · ${node.type}`，无法评估节点延迟。用户明确要求在节点名称后显示最近测速数据，方便用户优选低延迟节点；
+  4. **线上数据零损坏与无感迁移约束**：严格遵循用户指令“注意不可以影响线上版本的数据”，已有单订阅数据必须透明无损平滑迁移。
+- 架构与设计实现：
+  1. **多订阅数据模型与双轨数据库扩展（`MagicProxySubscription`）**：
+     - 在 `dreamyo_magic_proxy_settings` 表与文件 Provider 存储中新增 `subscriptions_ciphertext` 与 `node_delays_ciphertext` 两个 AES-256-GCM 加密列；
+     - 向下兼容自愈：当 `subscriptions_ciphertext` 为空时，自动将历史存量的 `subscription_url_ciphertext` 与 `nodes_ciphertext` 转换为首个初始订阅「默认订阅 (Legacy)」，并继续同步维护顶层聚合节点字段，已有业务读取 100% 零破坏；
+     - 测速延迟持久化：节点测速结果持久化保存至 `node_delays_ciphertext`，Mihomo 容器重启或页面刷新后测速数据不再重置为未知；
+  2. **Mihomo 多 Provider 独立落盘与动态配置生成（`runtime/config.yaml`）**：
+     - 独立文件落盘：每个启用的订阅独立落盘至 `runtime/subscriptions/sub_<id>.yaml`，并同步维护合并保底的 `runtime/subscription.yaml`；
+     - 动态配置生成：自动为每个启用的订阅声明 `proxy-providers: sub-<id>`，生成顶级订阅分组 `订阅 · <名称>`，并自动识别 Clash 订阅内部的 `proxy-groups` 映射为二级代理组 `<订阅名称> · <内置分组>`；
+     - 内核热重载：通过 Mihomo External Controller `PUT /configs?force=true` 发送动态配置路径，秒级热重载代理组与 Provider，零连接中断；容器重启时 `entrypoint.sh` 优先加载动态 `config.yaml`；
+  3. **跨页面节点测速数据展示与富文本选项组件（`MagicProxyBindingCard` & `magicProxyNodeOption`）**：
+     - 节点选项统一呈现：有延迟时展示 `${node.name} · ${node.type} (${node.delay}ms)`，超时/不可用时展示 `(不可用)`，未测速展示 `(未测速)`；
+     - 下拉列表富文本渲染：区分所属订阅徽标，并根据延迟渲染彩色状态（<200ms 极速绿、200-500ms 良好蓝、>500ms 偏高黄、超时红、未测速灰）；
+     - 多订阅时支持按订阅分组（`<Select.OptGroup>`）归类展示；
+     - 覆盖 GeminiAIStudio、GeminiTools、ChatGPT API、Dola API 及有头测试弹窗中的所有魔法代理节点选择器；
+  4. **管理后台魔法代理交互全面升级（`admin-magic-proxy-section.tsx`）**：
+     - 订阅管理卡片：展示订阅列表、节点数、识别出的内置分组详情 Tag、行内快速重命名、单订阅启用/停用开关、单订阅独立刷新与删除；
+     - 追加导入机制：区分 URL 订阅追加导入与本地文件订阅追加导入，导入后作为全新独立条目追加，绝不覆盖已有订阅；
+     - 节点与分组监控：分组面板展示系统服务组与各订阅专属分组，节点列表支持按「所属订阅」与延迟状态快速筛选。
+- 自动化测试与构建验收：
+  - **单元与集成测试**：
+    - `web/src/lib/server/magic-proxy-service.test.ts`（43 tests 全部通过，新增多订阅独立文件落盘、分组生成与向后兼容迁移用例）；
+    - `web/src/lib/server/database/magic-proxy-repository.test.ts`（新增 subscriptions 与 nodeDelays 持久化加密测试全部通过）；
+    - `web/src/app/api/admin/magic-proxy/route.test.ts`（新增 subscription 路由 GET/PATCH/DELETE 测试全部通过）；
+    - `web/src/components/admin/magic-proxy-binding-card.test.tsx`（新增测速延迟展示与向后兼容断言全部通过）；
+    - `web/src/components/admin/admin-magic-proxy-section.test.ts`（新增多订阅列表渲染与交互断言全部通过）；
+  - **全量回归**：
+    - `npm test --prefix web`：677 个测试文件全部通过（3,331 项通过，0 项失败）；
+    - `npm test --prefix apps/desktop`：30 项测试全部通过；
+    - `web/scripts/compose-contract.test.mjs` & `docker-offline-package.test.mjs`：全量通过；
+    - Python 服务单元测试：ChatGPT-API（83 passed）、Dola-API（63 passed）、GeminiAI（121 passed）全量通过；
+  - **生产编译**：`npm run --prefix web build` 生产构建成功，75/75 个页面/路由静态编译通过。
+
 ### 魔法代理机场标准订阅链接（V2board/一元机场等）自动适配、Base64 与多协议节点解析转换及网络回退容错（2026-09-24）
 
 - 需求与问题背景：

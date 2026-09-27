@@ -128,12 +128,21 @@ class AccountService:
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/145.0.0.0 Safari/537.36"
     )
+    # refresh_token_reused：refresh_token 已被其他刷新消费（上游明确判定不可再用于该账号）。
+    # 必须归入终止错误，否则账号永远不写 refresh_token_invalid_at、始终留在候选池，
+    # 每次请求预检与每次上游 401 恢复都会再烧一次已失效的 RT，日志被反复刷屏。
     _TERMINAL_REFRESH_ERROR_CODES = frozenset({
         "invalid_grant",
         "invalid_refresh_token",
         "refresh_token_invalidated",
+        "refresh_token_reused",
+        "refresh_token_expired",
+        "refresh_token_not_found",
     })
-    _TERMINAL_REFRESH_MESSAGE_FRAGMENTS = ("session has ended",)
+    _TERMINAL_REFRESH_MESSAGE_FRAGMENTS = (
+        "session has ended",
+        "already been used to generate a new access token",
+    )
     # 刷新进度追踪
     _refresh_progress: dict[str, dict] = {}
     _refresh_progress_lock = Lock()

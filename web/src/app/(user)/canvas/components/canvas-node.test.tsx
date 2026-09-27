@@ -300,37 +300,39 @@ describe("CanvasNode task content", () => {
 });
 
 describe("CanvasNode error content", () => {
-    it("centers the error and retry action inside the node", () => {
+    it("centers the retry action inside the node without exposing technical error copy", () => {
         const failedNode: CanvasNodeData = { ...imageNode, metadata: { status: "error", errorDetails: "生成失败，请稍后重试" } };
 
         const markup = renderImageNode({ data: failedNode, onRetry: noop });
 
         expect(markup).toContain("h-full w-full flex-col items-center justify-center");
         expect(markup).toContain(`color:${canvasThemes.light.node.danger}`);
-        expect(markup).toContain("生成失败，请稍后重试");
+        expect(markup).not.toContain("生成失败，请稍后重试");
         expect(markup).toContain("再次生成");
     });
 
-    it.each(["light", "dark"] as const)("wraps complete error copy in a themed %s error surface", (themeName) => {
+    it.each(["light", "dark"] as const)("renders retry action in a themed %s error surface without showing raw error details", (themeName) => {
         const theme = canvasThemes[themeName];
         const errorDetails = "即梦 CLI 参考图暂存失败：媒体上传请求被上游拒绝，请检查可用授权素材地址后再试。";
         const markup = renderContent({ ...imageNode, metadata: { status: "error", errorDetails } }, theme);
 
-        expect(markup).toContain("data-canvas-node-error-details");
-        expect(markup).toContain("whitespace-pre-wrap break-words");
+        expect(markup).toContain("data-canvas-node-error");
+        expect(markup).not.toContain("data-canvas-node-error-details");
         expect(markup).toContain(`background:${theme.node.dangerSurface}`);
         expect(markup).toContain(`border-color:${theme.node.dangerBorder}`);
-        expect(markup).toContain(errorDetails);
+        expect(markup).not.toContain(errorDetails);
+        expect(markup).toContain("再次生成");
     });
 
-    it("keeps error copy and retry control readable when the canvas is zoomed out", () => {
+    it("keeps retry control readable when the canvas is zoomed out", () => {
         const failedNode: CanvasNodeData = { ...imageNode, metadata: { status: "error", errorDetails: "当前模型能力不满足参考素材或数量参数" } };
 
         const markup = renderImageNode({ data: failedNode, scale: 0.25, onRetry: noop });
 
-        expect(markup).toContain("font-size:48px;line-height:80");
+        expect(markup).toContain("font-size:48px");
         expect(markup).toContain("height:128px");
-        expect(markup).toContain("当前模型能力不满足参考素材或数量参数");
+        expect(markup).not.toContain("当前模型能力不满足参考素材或数量参数");
+        expect(markup).toContain("再次生成");
     });
 
     it("renders a cancelled terminal state without a retry action", () => {

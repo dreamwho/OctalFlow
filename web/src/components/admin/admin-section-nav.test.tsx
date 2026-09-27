@@ -19,6 +19,7 @@ describe("admin navigation order", () => {
             "GeminiTools",
             "GPTAPI",
             "MiniMax 音频",
+            "MiniMax H3",
             "TokenHub",
             "百炼语音",
             "即梦 CLI",

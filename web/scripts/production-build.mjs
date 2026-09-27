@@ -21,8 +21,12 @@ try {
         exitCode = runNode(path.join(webRoot, "node_modules/typescript/bin/tsc"), ["--noEmit", "--pretty", "false"], "TypeScript 类型检查");
     }
     if (exitCode === 0) {
+        // 构建期把 DREAMYO_DATA_DIR 指向隔离目录：预渲染不再读取本机真实运行数据，
+        // 避免运行中的 Camoufox/geminiai 清理 profile 文件导致 standalone 复制竞态，
+        // 也防止本机账号数据被打进构建产物。
         exitCode = runNode(path.join(webRoot, "node_modules/next/dist/bin/next"), ["build", ...process.argv.slice(2)], "Next.js production 构建", {
             NEXT_SKIP_BUILD_TYPECHECK: "1",
+            DREAMYO_DATA_DIR: path.join(webRoot, ".next", "build-isolated-data"),
         });
         if (exitCode === 0) {
             const standaloneData = path.join(webRoot, process.env.NEXT_DIST_DIR?.trim() || ".next", "standalone", ".data");

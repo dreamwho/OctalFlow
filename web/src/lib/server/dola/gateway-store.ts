@@ -4,11 +4,11 @@ import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib
 import { decryptSecretValue, encryptSecretValue, isEncryptionKeyReady } from "@/lib/server/secret-crypto";
 
 const FILE_NAME = "dola/gateway.json";
-export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; captureVerificationScreenshot: boolean; dispatchGroups: string[] };
+export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; pollIntervalMs: number; captureFailureScreenshot: boolean; dispatchGroups: string[] };
 export type DolaApiKey = { id: string; name: string; prefix: string; key?: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
 type StoredKey = DolaApiKey & { hash: string; keyCiphertext?: string };
 type Database = { gateway: DolaGatewaySettings; apiKeys: StoredKey[] };
-const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, captureVerificationScreenshot: true, dispatchGroups: [] }, apiKeys: [] };
+const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, pollIntervalMs: 2_500, captureFailureScreenshot: false, dispatchGroups: [] }, apiKeys: [] };
 
 export async function getDolaGatewaySettings() {
     const db = await readDatabase();
@@ -16,7 +16,8 @@ export async function getDolaGatewaySettings() {
         enabled: db.gateway?.enabled ?? false,
         autoWatermark: db.gateway?.autoWatermark ?? true,
         rotationLimit: db.gateway?.rotationLimit ?? 2,
-        captureVerificationScreenshot: db.gateway?.captureVerificationScreenshot ?? true,
+        pollIntervalMs: db.gateway?.pollIntervalMs ?? 2_500,
+        captureFailureScreenshot: db.gateway?.captureFailureScreenshot ?? false,
         dispatchGroups: Array.isArray(db.gateway?.dispatchGroups) ? [...db.gateway.dispatchGroups] : [],
     };
 }
@@ -27,7 +28,8 @@ export async function updateDolaGatewaySettings(patch: Partial<Omit<DolaGatewayS
         if (typeof patch.enabled === "boolean") db.gateway.enabled = patch.enabled;
         if (typeof patch.autoWatermark === "boolean") db.gateway.autoWatermark = patch.autoWatermark;
         if (typeof patch.rotationLimit === "number" && Number.isSafeInteger(patch.rotationLimit) && patch.rotationLimit >= 0) db.gateway.rotationLimit = patch.rotationLimit;
-        if (typeof patch.captureVerificationScreenshot === "boolean") db.gateway.captureVerificationScreenshot = patch.captureVerificationScreenshot;
+        if (typeof patch.pollIntervalMs === "number" && Number.isSafeInteger(patch.pollIntervalMs) && patch.pollIntervalMs > 0) db.gateway.pollIntervalMs = patch.pollIntervalMs;
+        if (typeof patch.captureFailureScreenshot === "boolean") db.gateway.captureFailureScreenshot = patch.captureFailureScreenshot;
         if (patch.dispatchGroups === null || Array.isArray(patch.dispatchGroups)) db.gateway.dispatchGroups = normalizeGroups(patch.dispatchGroups);
         value = { ...db.gateway };
     });
@@ -113,12 +115,14 @@ function publicKey(value: StoredKey): DolaApiKey {
 async function readDatabase(): Promise<Database> {
     const value = await readJsonDataFile<Partial<Database>>(FILE_NAME, EMPTY);
     const rotationLimit = value.gateway?.rotationLimit;
+    const pollIntervalMs = value.gateway?.pollIntervalMs;
     return {
         gateway: {
             enabled: value.gateway?.enabled === true,
             autoWatermark: value.gateway?.autoWatermark === true,
             rotationLimit: Number.isSafeInteger(rotationLimit) && (rotationLimit ?? 0) >= 0 ? rotationLimit as number : 2,
-            captureVerificationScreenshot: value.gateway?.captureVerificationScreenshot !== false,
+            pollIntervalMs: Number.isSafeInteger(pollIntervalMs) && (pollIntervalMs ?? 0) > 0 ? pollIntervalMs as number : 2_500,
+            captureFailureScreenshot: value.gateway?.captureFailureScreenshot === true,
             dispatchGroups: normalizeGroups(value.gateway?.dispatchGroups),
         },
         apiKeys: Array.isArray(value.apiKeys) ? structuredClone(value.apiKeys) : [],

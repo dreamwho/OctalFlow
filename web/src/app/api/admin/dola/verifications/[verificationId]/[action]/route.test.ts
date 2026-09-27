@@ -1,9 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), request: vi.fn(), openLog: vi.fn(), settleLog: vi.fn(), ready: vi.fn(), refreshCookie: vi.fn(), unusable: vi.fn() }));
+const mocks = vi.hoisted(() => ({ admin: vi.fn(), request: vi.fn(), ready: vi.fn(), refreshCookie: vi.fn(), unusable: vi.fn() }));
 vi.mock("@/lib/server/dola/admin", () => ({ requireDolaAdmin: mocks.admin, dolaRouteError: () => new Response("failure", { status: 502 }) }));
 vi.mock("@/lib/server/dola/provider", () => ({ dolaRuntimeRequest: mocks.request }));
-vi.mock("@/lib/server/dola/log-store", () => ({ openDolaRequestLog: mocks.openLog, settleDolaRequestLog: mocks.settleLog }));
 vi.mock("@/lib/server/dola/account-service", () => ({ markDolaAccountReady: mocks.ready, markDolaAccountUnusable: mocks.unusable, refreshDolaAccountCookieIfVersion: mocks.refreshCookie, updateDolaAccountCredentials: vi.fn(), updateDolaAccountQuota: vi.fn() }));
 
 import { POST } from "./route";
@@ -11,7 +10,6 @@ import { POST } from "./route";
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.admin.mockResolvedValue({ user: { id: "admin" } });
-    mocks.openLog.mockResolvedValue("fixture-log");
     mocks.request.mockResolvedValue(new Response(JSON.stringify({ status: "needs_review", screenshotBase64: "png" }), { status: 200, headers: { "content-type": "application/json" } }));
 });
 
@@ -26,8 +24,6 @@ it("saves only an authenticated browser Cookie and closes after the account upda
     expect(await response?.json()).toMatchObject({ code: 0, data: { status: "saved", changed: true, windowClosed: true } });
     expect(mocks.refreshCookie).toHaveBeenCalledWith("fixture-account", cookie, 2);
     expect(mocks.request.mock.calls[1][0]).toMatch(/\/close$/);
-    expect(mocks.openLog.mock.calls[0][0].requestPreview).not.toContain(leaseToken);
-    expect(mocks.settleLog.mock.calls[0][1].responsePreview).not.toContain(cookie);
 });
 
 it("keeps the browser open and the stored Cookie untouched when login is invalid", async () => {
@@ -48,15 +44,12 @@ it("persists the needs_login classification for the headed account when the test
     expect(mocks.request).toHaveBeenCalledTimes(1);
 });
 
-it("forwards typed text to the browser without persisting text or lease in request logs", async () => {
+it("forwards typed text to the browser without creating a generation request log", async () => {
     const leaseToken = "private-lease-token-value";
     const text = "private manual entry";
     const request = new Request("http://localhost/api/admin/dola/verifications/fixture/keyboard", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken, text }) });
     const response = await POST(request, { params: Promise.resolve({ verificationId: "fixture", action: "keyboard" }) });
     expect(response?.status).toBe(200);
     expect(JSON.parse(mocks.request.mock.calls[0][1].body)).toEqual({ leaseToken, text });
-    const log = mocks.openLog.mock.calls[0][0];
-    expect(log.requestPreview).not.toContain(leaseToken);
-    expect(log.requestPreview).not.toContain(text);
-    expect(mocks.settleLog.mock.calls[0][1].responsePreview).not.toContain("png");
+    expect(mocks.request).toHaveBeenCalledTimes(1);
 });

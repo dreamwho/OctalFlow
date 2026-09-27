@@ -13,8 +13,8 @@ type Props = {
     active: boolean;
     models: DolaModel[];
     accounts: DolaAccount[];
-    captureVerificationScreenshot?: boolean;
-    onToggleCaptureVerificationScreenshot?: (enabled: boolean) => Promise<void>;
+    captureFailureScreenshot?: boolean;
+    onToggleCaptureFailureScreenshot?: (enabled: boolean) => Promise<void>;
     onLaunchHeadedTest?: (accountId: string, model?: string) => void;
 };
 type StatusFilter = "" | DolaRequestLogStatus;
@@ -22,7 +22,7 @@ type SourceFilter = "" | "runtime" | "admin-test" | "external";
 type ProxyFilter = "" | "direct" | "magic" | "generic" | "chained";
 type PhaseFilter = "" | DolaRequestLogPhase;
 
-export function DolaRequestLogPanel({ active, models, accounts, captureVerificationScreenshot, onToggleCaptureVerificationScreenshot, onLaunchHeadedTest }: Props) {
+export function DolaRequestLogPanel({ active, models, accounts, captureFailureScreenshot, onToggleCaptureFailureScreenshot, onLaunchHeadedTest }: Props) {
     const { message } = App.useApp();
     const [page, setPage] = useState<DolaLogPage | null>(null);
     const [loading, setLoading] = useState(false);
@@ -64,8 +64,8 @@ export function DolaRequestLogPanel({ active, models, accounts, captureVerificat
     }, [models, page?.items]);
     const accountOptions = useMemo(() => {
         const values = new Map<string, string>();
-        accounts.forEach((item) => values.set(item.id, item.name || item.email || item.id));
-        page?.items.forEach((item) => item.accountId && values.set(item.accountId, item.accountName || values.get(item.accountId) || item.accountId));
+        accounts.forEach((item) => values.set(item.id, item.name || item.email || "未命名账号"));
+        page?.items.forEach((item) => item.accountId && values.set(item.accountId, values.get(item.accountId) || item.accountName || "已删除账号"));
         return [{ value: "", label: "全部账号" }, ...Array.from(values.entries()).map(([value, label]) => ({ value, label }))];
     }, [accounts, page?.items]);
 
@@ -96,13 +96,13 @@ export function DolaRequestLogPanel({ active, models, accounts, captureVerificat
                 title="请求日志"
                 extra={
                     <Space wrap size={8}>
-                        {onToggleCaptureVerificationScreenshot ? (
+                        {onToggleCaptureFailureScreenshot ? (
                             <div className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-                                <span>异常截图</span>
+                                <span>失败截图</span>
                                 <Switch
                                     size="small"
-                                    checked={captureVerificationScreenshot ?? true}
-                                    onChange={(checked) => void onToggleCaptureVerificationScreenshot(checked)}
+                                    checked={captureFailureScreenshot ?? false}
+                                    onChange={(checked) => void onToggleCaptureFailureScreenshot(checked)}
                                 />
                             </div>
                         ) : null}
@@ -133,11 +133,11 @@ export function DolaRequestLogPanel({ active, models, accounts, captureVerificat
                     </Button>
                 </div>
                 <div aria-busy={loading} className="mt-1 divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {page?.items.length ? page.items.map((log) => <DolaRequestLogRow key={log.id} log={log} onClick={() => setSelectedLog(log)} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />) : <Empty className="my-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? "正在读取请求日志" : "暂无符合条件的请求记录"} />}
+                    {page?.items.length ? page.items.map((log) => <DolaRequestLogRow key={log.id} log={log} accountName={displayAccountName(log, accounts)} onClick={() => setSelectedLog(log)} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />) : <Empty className="my-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? "正在读取请求日志" : "暂无符合条件的请求记录"} />}
                 </div>
                 {page?.total ? <div className="flex justify-end border-t border-zinc-200 pt-3 dark:border-zinc-800"><Pagination current={page.page} pageSize={page.pageSize} total={page.total} showSizeChanger={false} showTotal={(total) => `共 ${total} 条`} onChange={setPageNumber} /></div> : null}
             </Card>
-            <DolaRequestLogDrawer log={selectedLog} onClose={() => setSelectedLog(null)} onTaskCancelled={() => void load()} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />
+            <DolaRequestLogDrawer log={selectedLog} accountName={selectedLog ? displayAccountName(selectedLog, accounts) : ""} onClose={() => setSelectedLog(null)} onTaskCancelled={() => void load()} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />
             <DolaVerificationDialog
                 request={verificationTarget}
                 admin
@@ -166,7 +166,11 @@ const phaseOptions: Array<{ value: DolaRequestLogPhase; label: string }> = [
     { value: "needs_review", label: "待人工确认" },
 ];
 
-function DolaRequestLogRow({ log, onClick, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog; onClick: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
+function displayAccountName(log: DolaRequestLog, accounts: DolaAccount[]) {
+    return accounts.find((account) => account.id === log.accountId)?.name || log.accountName || (log.accountId ? "已删除账号" : "未识别账号");
+}
+
+function DolaRequestLogRow({ log, accountName, onClick, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog; accountName: string; onClick: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
     const pending = ["queued", "routing", "auth", "upstream", "response", "running", "submitted", "generating"].includes(log.phase);
     const needsReview = log.phase === "needs_review";
     const success = log.phase === "success";
@@ -201,7 +205,7 @@ function DolaRequestLogRow({ log, onClick, onOpenVerification, onLaunchHeadedTes
                     {log.taskId ? <><span>·</span><span className="max-w-[180px] truncate font-mono">任务 {log.taskId}</span></> : null}
                 </div>
             </div>
-            <div className="min-w-0 text-xs text-zinc-500 dark:text-zinc-400"><div className="truncate" title={log.accountName || log.accountId}>{log.accountName || log.accountId || "未识别账号"}</div><div className="mt-0.5 truncate">{formatDate(log.createdAt)}</div>{log.quotaRemaining !== undefined ? <div className="mt-0.5 truncate">额度：{quotaLabel(log)}</div> : null}</div>
+            <div className="min-w-0 text-xs text-zinc-500 dark:text-zinc-400"><div className="truncate" title={accountName}>{accountName}</div><div className="mt-0.5 truncate">{formatDate(log.createdAt)}</div>{log.quotaRemaining !== undefined ? <div className="mt-0.5 truncate">额度：{quotaLabel(log)}</div> : null}</div>
             <div className="flex flex-col items-end gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                 <div>{formatDuration(log.durationMs)}</div>
                 <div className="flex flex-wrap items-center justify-end gap-1">
@@ -237,7 +241,7 @@ function DolaRequestLogRow({ log, onClick, onOpenVerification, onLaunchHeadedTes
     );
 }
 
-function DolaRequestLogDrawer({ log, onClose, onTaskCancelled, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog | null; onClose: () => void; onTaskCancelled?: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
+function DolaRequestLogDrawer({ log, accountName, onClose, onTaskCancelled, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog | null; accountName: string; onClose: () => void; onTaskCancelled?: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
     const { message } = App.useApp();
     const { width, resizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 660, minWidth: 440 });
     const [salvaging, setSalvaging] = useState(false);
@@ -245,6 +249,7 @@ function DolaRequestLogDrawer({ log, onClose, onTaskCancelled, onOpenVerificatio
     const [cancelling, setCancelling] = useState(false);
     const copy = (value: string | undefined, tip: string) => { if (!value) return; void navigator.clipboard.writeText(value).then(() => message.success(tip)); };
     const errorHint = log?.error ? dolaErrorHint(log.error) : null;
+    const conversationReply = log ? dolaConversationReply(log.responsePreview) : "";
     const canSalvage = Boolean(log?.phase === "success" && log.taskId);
     const pendingTask = Boolean(log && ["queued", "routing", "auth", "upstream", "response", "running", "submitted", "generating"].includes(log.phase) && log.taskId);
     const cancelTask = async () => {
@@ -315,11 +320,11 @@ function DolaRequestLogDrawer({ log, onClose, onTaskCancelled, onOpenVerificatio
                     </div>
                 </section>
             ) : null}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Highlight icon={<Clock className="size-3.5" />} label="耗时" value={formatDuration(log.durationMs)} /><Highlight icon={<BarChart3 className="size-3.5" />} label="响应" value={formatBytes(log.responseBytes)} /><Highlight icon={<CircleUserRound className="size-3.5" />} label="账号" value={log.accountName || log.accountId || "未识别"} /><Highlight icon={<Network className="size-3.5" />} label="代理" value={proxyLabel(log.proxyEgress)} /></div>
-            <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">请求基本信息</h3><div className="grid gap-x-4 gap-y-3 rounded-lg border border-zinc-200 p-3.5 text-sm dark:border-zinc-800 sm:grid-cols-2"><Detail label="模型 ID" value={log.model || "未声明"} /><Detail label="能力类型" value={log.capability === "image" ? "图片" : "视频"} /><Detail label="调用来源" value={sourceLabel(log.source)} /><Detail label="请求路径" value={`${log.method} ${log.path}`} /><Detail label="状态码" value={String(log.statusCode || "执行中")} /><Detail label="阶段" value={phaseLabel(log.phase)} /><Detail label="请求时间" value={formatDateWithMs(log.createdAt)} /><Detail label="耗时" value={formatDuration(log.durationMs)} />{log.accountId ? <Detail label="账号 ID" value={log.accountId} /> : null}{log.proxyEgress && log.proxyEgress.mode !== "direct" ? <Detail label="代理节点名称" value={log.proxyEgress.nodeName || log.proxyEgress.address || "已配置节点"} /> : null}{log.proxyEgress?.address && log.proxyEgress.address !== log.proxyEgress.nodeName ? <Detail label="代理出口地址" value={log.proxyEgress.address} /> : null}{log.taskId ? <Detail label="上游任务 ID" value={log.taskId} /> : null}{log.verificationId ? <Detail label="验证会话 ID" value={log.verificationId} /> : null}{log.requestedDuration ? <Detail label="视频参数" value={`${log.requestedDuration} 秒 · ${log.ratio || "默认比例"}`} /> : null}{log.contentType ? <Detail label="响应类型" value={log.contentType} /> : null}{log.clientIp ? <Detail label="客户端 IP" value={log.clientIp} /> : null}</div></section>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Highlight icon={<Clock className="size-3.5" />} label="耗时" value={formatDuration(log.durationMs)} /><Highlight icon={<BarChart3 className="size-3.5" />} label="响应" value={formatBytes(log.responseBytes)} /><Highlight icon={<CircleUserRound className="size-3.5" />} label="账号" value={accountName} /><Highlight icon={<Network className="size-3.5" />} label="代理" value={proxyLabel(log.proxyEgress)} /></div>
+            <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">请求基本信息</h3><div className="grid gap-x-4 gap-y-3 rounded-lg border border-zinc-200 p-3.5 text-sm dark:border-zinc-800 sm:grid-cols-2"><Detail label="模型 ID" value={log.model || "未声明"} /><Detail label="能力类型" value={log.capability === "image" ? "图片" : "视频"} /><Detail label="调用来源" value={sourceLabel(log.source)} /><Detail label="请求路径" value={`${log.method} ${log.path}`} /><Detail label="状态码" value={String(log.statusCode || "执行中")} /><Detail label="阶段" value={phaseLabel(log.phase)} /><Detail label="请求时间" value={formatDateWithMs(log.createdAt)} /><Detail label="耗时" value={formatDuration(log.durationMs)} />{log.accountId ? <Detail label="账号名称" value={accountName} /> : null}{log.proxyEgress && log.proxyEgress.mode !== "direct" ? <Detail label="代理节点名称" value={log.proxyEgress.nodeName || log.proxyEgress.address || "已配置节点"} /> : null}{log.proxyEgress?.address && log.proxyEgress.address !== log.proxyEgress.nodeName ? <Detail label="代理出口地址" value={log.proxyEgress.address} /> : null}{log.taskId ? <Detail label="上游任务 ID" value={log.taskId} /> : null}{log.verificationId ? <Detail label="验证会话 ID" value={log.verificationId} /> : null}{log.requestedDuration ? <Detail label="视频参数" value={`${log.requestedDuration} 秒 · ${log.ratio || "默认比例"}`} /> : null}{log.contentType ? <Detail label="响应类型" value={log.contentType} /> : null}{log.clientIp ? <Detail label="客户端 IP" value={log.clientIp} /> : null}</div></section>
             {log.quotaRemaining !== undefined ? <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">额度观察</h3><div className="rounded-lg border border-zinc-200 p-3.5 text-sm dark:border-zinc-800"><div className="font-medium">{quotaLabel(log)}</div><div className="mt-1 text-xs text-zinc-500">仅记录 Provider 返回或账号快照中的额度，不把额度推断成成功结果。</div></div></section> : null}
             <section><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">过程日志与时序</h3><span className="text-xs text-zinc-500">共 {log.lifecycle?.length || 1} 个执行阶段 · 总历时 {formatDuration(log.durationMs)}</span></div>{log.lifecycle?.length ? <div className="space-y-2 rounded-lg border border-zinc-200 p-3.5 dark:border-zinc-800">{log.lifecycle.map((entry, index) => <div key={`${entry.time}-${index}`} className="flex items-start gap-3 text-xs"><span className={`mt-0.5 shrink-0 text-sm ${entry.phase === "success" ? "text-emerald-500" : entry.phase === "failed" ? "text-rose-500" : entry.phase === "needs_review" ? "text-amber-500" : "text-blue-500"}`}>{entry.phase === "success" ? "✓" : entry.phase === "failed" ? "✕" : "●"}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-zinc-400 dark:text-zinc-500">{formatDateWithMs(entry.time)}</span>{entry.durationMs !== undefined ? <Tag className="m-0 border-0 bg-zinc-100 text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">+{entry.durationMs}ms</Tag> : null}<Tag color={entry.phase === "success" ? "success" : entry.phase === "failed" ? "error" : entry.phase === "needs_review" ? "gold" : "processing"} className="m-0 text-[10px]">{phaseLabel(entry.phase)}</Tag><span className="font-medium text-zinc-800 dark:text-zinc-200">{entry.message}</span></div>{entry.detail ? <div className="mt-1 break-all rounded bg-zinc-50 p-2 font-mono text-[11px] leading-relaxed text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">{entry.detail}</div> : null}</div></div>)}</div> : <div className="rounded-lg border border-dashed border-zinc-200 p-4 text-center text-xs text-zinc-500 dark:border-zinc-800">未记录详细阶段日志</div>}</section>
-            {log.requestPreview ? <LogPreview title="请求摘要" value={log.requestPreview} /> : null}{log.responsePreview ? <LogPreview title="响应摘要" value={log.responsePreview} /> : null}{errorHint && !log.error?.includes(errorHint) ? <Alert type="warning" showIcon message="错误分类" description={errorHint} /> : null}{log.error ? <LogPreview title="错误信息" value={log.error} danger /> : null}
+            {log.requestPreview ? <LogPreview title="请求摘要" value={log.requestPreview} /> : null}{conversationReply ? <LogPreview title="Dola 会话回复" value={conversationReply} /> : null}{log.responsePreview ? <LogPreview title="响应摘要" value={log.responsePreview} /> : null}{errorHint && !log.error?.includes(errorHint) ? <Alert type="warning" showIcon message="错误分类" description={errorHint} /> : null}{log.error ? <LogPreview title="错误信息" value={log.error} danger /> : null}
             <Alert type="info" showIcon message="日志已自动脱敏" description="授权 Cookie、Token、API Key、上传参考图和生成视频二进制不会在此处保存或展示。" />
         </div> : null}
     </Drawer>;
@@ -328,6 +333,7 @@ function DolaRequestLogDrawer({ log, onClose, onTaskCancelled, onOpenVerificatio
 function Highlight({ icon, label, value }: { icon: ReactNode; label: string; value: string }) { return <div className="min-w-0 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50"><div className="flex items-center gap-1.5 text-xs text-zinc-500">{icon}<span>{label}</span></div><div className="mt-1 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100" title={value}>{value}</div></div>; }
 function Detail({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><div className="text-xs text-zinc-500">{label}</div><div className="mt-0.5 break-all text-sm text-zinc-900 dark:text-zinc-100">{value}</div></div>; }
 function LogPreview({ title, value, danger = false }: { title: string; value: string; danger?: boolean }) { return <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">{title}</h3><pre className={`max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg border p-3 font-mono text-xs leading-relaxed ${danger ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-200" : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300"}`}>{value}</pre></section>; }
+function dolaConversationReply(preview?: string) { try { const value = JSON.parse(preview || "") as { conversationReply?: unknown; diagnostics?: { upstreamResponseText?: unknown } }; const text = value.conversationReply || value.diagnostics?.upstreamResponseText; return typeof text === "string" ? text : ""; } catch { return ""; } }
 function RequestMetric({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: "neutral" | "success" | "danger" | "warning" }) { const color = tone === "success" ? "text-emerald-700 dark:text-emerald-400" : tone === "danger" ? "text-red-600 dark:text-red-400" : tone === "warning" ? "text-amber-700 dark:text-amber-400" : "text-zinc-950 dark:text-zinc-100"; return <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"><div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{label}</div><div className={`mt-2 text-2xl font-semibold tracking-tight ${color}`}>{value}</div><div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">{detail}</div></div>; }
 function buildCurlCommand(log: DolaRequestLog) { const url = log.path.startsWith("http") ? log.path : `${typeof window !== "undefined" ? window.location.origin : ""}${log.path.startsWith("/") ? "" : "/"}${log.path}`; const lines = [`curl -X ${log.method || "POST"} "${url}"`]; for (const [key, value] of Object.entries(log.headers || {})) lines.push(`  -H "${key}: ${value.replace(/"/g, '\\"')}"`); if (log.requestPreview) lines.push(`  --data-raw '${log.requestPreview.replace(/'/g, "'\\''")}'`); return lines.join(" \\\n"); }
 function sourceLabel(value: DolaRequestLog["source"]) { return value === "admin-test" ? "后台实测" : value === "external" ? "外部 API" : "站内调用"; }

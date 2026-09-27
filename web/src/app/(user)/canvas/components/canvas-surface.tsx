@@ -976,7 +976,8 @@ export function CanvasSurface({
                         );
                     })}
                 </svg>
-                <div className="pointer-events-auto absolute inset-0 overflow-visible">
+                {/* pointer-events-none：让空白区域的点击穿透到下层连线 SVG，否则连线永远无法选中/删除 */}
+                <div className="pointer-events-none absolute inset-0 overflow-visible">
                     {renderedNodes.map((node) => {
                         const viewProps = getNodeViewProps(node);
                         return (

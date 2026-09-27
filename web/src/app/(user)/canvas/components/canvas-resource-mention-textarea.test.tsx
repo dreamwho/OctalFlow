@@ -104,6 +104,18 @@ describe("canvas resource mention textarea", () => {
         ).toEqual({ left: 604, top: 50 });
     });
 
+    it("anchors immediately below the target element when preferPlacement is below", () => {
+        expect(
+            resolveMentionMenuPosition({
+                anchor: { left: 100, top: 50, right: 124, bottom: 74 },
+                boundary: { left: 0, top: 0, right: 900, bottom: 700 },
+                menuWidth: 288,
+                menuHeight: 88,
+                preferPlacement: "below",
+            }),
+        ).toEqual({ left: 100, top: 80 });
+    });
+
     it("renders ordinary prompt text directly when no active reference label appears in the value", () => {
         const markup = renderToStaticMarkup(<CanvasResourceMentionTextarea value="镜头缓慢推进" references={[image("图片1")]} onChange={() => undefined} style={{ background: "#1a1a1a", color: "#ffffff" }} />);
 

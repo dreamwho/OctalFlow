@@ -1,0 +1,25 @@
+appId: com.dreamyo.dola
+productName: Dola Studio
+asar: true
+directories:
+  output: dist
+files:
+  - package.json
+  - src/**/*
+  - resources/dreamyo-mark.png
+extraResources:
+  - from: resources/sidecars
+    to: sidecars
+    filter:
+      - "**/*"
+mac:
+  icon: resources/dreamyo.icns
+  category: public.app-category.video
+  identity: null
+  target: [dmg, zip]
+win:
+  icon: resources/dreamyo.ico
+  target: [nsis]
+nsis:
+  oneClick: false
+  perMachine: false

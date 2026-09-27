@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { availableForModel, isDateBeforeToday, isNormalDolaAccount, normalizeDolaAccountStatus } from "./account-service";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { addOrUpdateGoogleDolaAccount, availableForModel, exportDolaGoogleAccountCookies, getDolaAccount, importDolaAccounts, isDateBeforeToday, isNormalDolaAccount, listDolaAccounts, markDolaAccountUsed, normalizeDolaAccountStatus, reserveDolaAccount } from "./account-service";
 import type { StoredDolaAccount } from "./account-service";
 
 function createMockAccount(overrides: Partial<StoredDolaAccount> = {}): StoredDolaAccount {
@@ -24,7 +27,49 @@ function createMockAccount(overrides: Partial<StoredDolaAccount> = {}): StoredDo
     };
 }
 
+describe("Dola Google account persistence", () => {
+    it("stores the authorized account in its own group and reads it back", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "dreamyo-dola-google-"));
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
+        try {
+            await importDolaAccounts([{ cookie: "sid=authorized-session", name: "原 Cookie 账号" }]);
+            const account = await addOrUpdateGoogleDolaAccount({ cookie: "sid=authorized-session", name: "Google 测试账号" });
+            expect(account.authType).toBe("google");
+            expect(account.group).toBe("Google 授权");
+            expect(await getDolaAccount(account.id)).toMatchObject({ id: account.id, name: "Google 测试账号", group: "Google 授权" });
+            expect(await listDolaAccounts()).toHaveLength(1);
+            const second = await addOrUpdateGoogleDolaAccount({ cookie: "sid=another-session", name: "第二个 Google 账号" });
+            expect(await exportDolaGoogleAccountCookies()).toEqual(["sid=authorized-session", "sid=another-session"]);
+            expect(await exportDolaGoogleAccountCookies([second.id])).toEqual(["sid=another-session"]);
+            await expect(exportDolaGoogleAccountCookies(["missing-account"])).rejects.toThrow("不存在或非 Google");
+        } finally {
+            vi.unstubAllEnvs();
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+});
+
 describe("Dola account grouping & dispatch filtering", () => {
+    it("rotates new submissions while retaining the selected account for task polls", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "dreamyo-dola-rotation-"));
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
+        try {
+            await importDolaAccounts([{ cookie: "sid=rotation-one", name: "轮询账号一" }, { cookie: "sid=rotation-two", name: "轮询账号二" }]);
+            const first = await reserveDolaAccount("dola-seedance-2-5");
+            await markDolaAccountUsed(first!.id, true);
+            const second = await reserveDolaAccount("dola-seedance-2-5");
+            expect(first?.id).toBeTruthy();
+            expect(second?.id).toBeTruthy();
+            expect(second?.id).not.toBe(first?.id);
+            expect((await getDolaAccount(first!.id))?.activeAttempts).toBe(0);
+            expect((await getDolaAccount(first!.id))?.requestCount).toBe(1);
+        } finally {
+            vi.unstubAllEnvs();
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
     it("filters accounts by dispatchGroups whitelist in availableForModel", () => {
         const accInBatchA = createMockAccount({ id: "acc-1", group: "Batch A" });
         const accInBatchB = createMockAccount({ id: "acc-2", group: "Batch B" });

@@ -15,7 +15,7 @@ vi.mock("@/stores/use-config-store", () => ({
 import type { AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import { cancelServerVideoGenerationTask, createServerVideoGenerationTask, createVideoGenerationTask, pollVideoGenerationTask } from "./video";
-import { createUpstreamVideoGenerationTask } from "./video-core";
+import { createUpstreamVideoGenerationTask, isUsableReferenceUrl, publishReferenceMedia } from "./video-core";
 import { buildCompatibleVideoPayloadVariants, compatibleVideoCreatePaths, compatibleVideoPollPaths, isGlobalAiOpcVideoConfig } from "./video-providers";
 import { normalizeCompatibleVideoDuration, normalizeGlobalAiOpcVideoDuration } from "./video-payloads";
 import { normalizeVideoSeconds } from "./video-support";
@@ -78,6 +78,33 @@ describe("video API service", () => {
             { type: "image", role: "first_frame", url: "https://cdn.example.com/first.png" },
             { type: "image", role: "last_frame", url: "https://cdn.example.com/last.png" },
         ]);
+    });
+
+    it("identifies usable server-registered reference asset urls without re-uploading", async () => {
+        expect(isUsableReferenceUrl("/api/reference-assets/permanent/2026/09/image.png")).toBe(true);
+        expect(isUsableReferenceUrl("/api/generation-log-assets/temporary/2026/09/frame.png")).toBe(true);
+        expect(isUsableReferenceUrl("https://img.example.com/photo.jpg")).toBe(true);
+        expect(isUsableReferenceUrl("data:image/png;base64,xxxx")).toBe(false);
+        expect(isUsableReferenceUrl("")).toBe(false);
+        expect(isUsableReferenceUrl(undefined)).toBe(false);
+
+        await expect(publishReferenceMedia("image", "/api/reference-assets/demo.png")).resolves.toBe("/api/reference-assets/demo.png");
+    });
+
+    it("preserves server-registered reference assets directly in video creation payload", async () => {
+        const fetchMock = vi.fn().mockResolvedValue(json({ task: { id: "video-task-server-asset", model: "video-v1" } }));
+        vi.stubGlobal("fetch", fetchMock);
+        const references = [
+            { id: "img-1", name: "已存素材", type: "image/png", url: "/api/reference-assets/permanent/2026/09/img.png", videoRole: "reference" },
+        ] as ReferenceImage[];
+
+        await createServerVideoGenerationTask(config, "重试视频生成", references);
+
+        const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+        expect(body.references).toEqual([
+            { type: "image", role: "reference", url: "/api/reference-assets/permanent/2026/09/img.png" },
+        ]);
+        expect(mocks.imageToDataUrl).not.toHaveBeenCalled();
     });
 
     it("routes the public creation helper through the server task endpoint", async () => {

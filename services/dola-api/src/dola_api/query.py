@@ -203,12 +203,12 @@ def _identity_query(identity: dict[str, str], cookie: str = "") -> str:
         "language": "zh",
         "device_platform": "web",
         "doubao_device_platform": "web",
-        "doubao_pc_version": "3.36.11",
+        "doubao_pc_version": identity.get("doubao_pc_version") or identity.get("pc_version") or "3.36.11",
         "aid": "495671",
         "real_aid": "495671",
         "pkg_type": "release_version",
         "device_id": identity.get("device_id", ""),
-        "pc_version": "3.36.11",
+        "pc_version": identity.get("pc_version") or "3.36.11",
         "web_id": identity.get("web_id", ""),
         "tea_uuid": identity.get("tea_uuid", ""),
         "region": identity.get("region", "JP"),
@@ -335,9 +335,9 @@ async def fetch_generation_result(cookie: str, conversation_id: str, identity: d
     if proxy_url:
         client_options["proxy"] = proxy_url
     payloads: list[Any] = []
-    # The info endpoint may only expose the video cover while the chain
-    # endpoint carries the finished creation, so both are always consulted and
-    # a video result always wins over images collected along the way.
+    chain_loaded = False
+    # A real completed Dola video is carried by chain/single. Query that once
+    # per poll; conversation/info is only useful if the chain response failed.
     async with httpx.AsyncClient(**client_options) as client:
         for path, request_payload in generation_query_payloads(conversation_id):
             try:
@@ -346,24 +346,35 @@ async def fetch_generation_result(cookie: str, conversation_id: str, identity: d
                     continue
                 body = response.json()
                 payloads.append(body)
+                if path == "/im/chain/single" and isinstance(body, dict):
+                    downlink = body.get("downlink_body")
+                    chain_loaded = isinstance(downlink, dict) and isinstance(downlink.get("pull_singe_chain_downlink_body"), dict)
+                    if chain_loaded and body.get("code") in (None, 0, "0"):
+                        break
             except (httpx.HTTPError, ValueError, json.JSONDecodeError):
                 continue
-    return parse_generation_payloads(payloads)
+    parsed = parse_generation_payloads(payloads)
+    assistant_text = _extract_assistant_text(payloads) if chain_loaded else ""
+    if assistant_text:
+        parsed["assistantText"] = assistant_text
+    if chain_loaded and not any(parsed.get(key) for key in ("url", "imageUrls", "error")):
+        parsed["pending"] = True
+    return parsed
 
 
 def generation_query_payloads(conversation_id: str) -> tuple[tuple[str, dict[str, Any]], ...]:
+    single = {"cmd": 3100, "uplink_body": {"pull_singe_chain_uplink_body": {"conversation_id": conversation_id, "anchor_index": 9007199254740991, "conversation_type": 3, "direction": 1, "limit": 20, "ext": {}, "filter": {"index_list": []}, "evaluate_ab_params": "", "evaluate_common_params": ""}}, "sequence_id": str(uuid.uuid4()), "channel": 2, "version": "1"}
     info = {"cmd": 1110, "uplink_body": {"get_conv_info_uplink_body": {"conversation_id": conversation_id, "ext": {"cold_start": "true"}, "bot_id": "", "conversation_type": 3, "option": {"need_bot_info": True}}}, "sequence_id": conversation_id, "channel": 2, "version": "1"}
-    single = {"cmd": 3100, "uplink_body": {"pull_singe_chain_uplink_body": {"conversation_id": conversation_id, "anchor_index": 9007199254740991, "conversation_type": 3, "direction": 1, "limit": 20, "ext": {}, "filter": {"index_list": []}, "evaluate_ab_params": "", "evaluate_common_params": ""}}, "sequence_id": "111", "channel": 2, "version": "1"}
-    return (("/im/conversation/info", info), ("/im/chain/single", single))
+    return (("/im/chain/single", single), ("/im/conversation/info", info))
 
 
 def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
     video_url = ""
     image_urls: list[str] = []
-    refusal = ""
+    protocol_error = ""
     for body in payloads:
-        if not refusal:
-            refusal = _generation_refused(body)
+        if not protocol_error and isinstance(body, dict) and body.get("code") not in (None, 0, "0"):
+            protocol_error = str(body.get("message") or body.get("msg") or body["code"]).strip()
         if not video_url:
             video_url = decode_main_url(extract_video_url(body) or "")
         for url in extract_image_urls(body):
@@ -372,77 +383,146 @@ def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
     if video_url or image_urls:
         return {"url": video_url, "imageUrls": image_urls, "payload": extract_vod_payload(payloads)}
 
+    # Check for explicit failure inside creation blocks (e.g. status == 4/5, fail_msg/fail_code)
+    creation_err_code, creation_err_msg = _extract_creation_failure(payloads)
+    if creation_err_code or creation_err_msg:
+        raw_assistant_text = _extract_assistant_text(payloads)
+        err_msg = creation_err_msg or raw_assistant_text or creation_err_code
+        return {
+            "url": "",
+            "imageUrls": [],
+            "payload": extract_vod_payload(payloads),
+            "error": creation_err_code or "upstream_generation_failed",
+            "rawError": err_msg,
+        }
+
     # If a creation block is active (e.g. video.status == 1 generating), keep polling.
     if _has_creation_block(payloads):
         return {}
 
     raw_assistant_text = _extract_assistant_text(payloads)
-    if refusal:
-        raw_error = raw_assistant_text or refusal
+    if protocol_error:
+        raw_error = protocol_error
         return {
             "url": "",
             "imageUrls": [],
             "payload": extract_vod_payload(payloads),
-            "error": refusal,
+            "error": _classify_refusal_code(raw_error) or "upstream_protocol_error",
             "rawError": raw_error,
         }
 
-    # Upstream answered with conversational refusal, clarification, or general
-    # error text without creating a video/image task. Terminate as failed and
-    # retain the exact upstream response text so request logs reflect reality.
+    # A normal assistant reply can precede a creation block. Only explicit
+    # refusal text is terminal; otherwise continue polling the conversation.
     if raw_assistant_text:
         classified = _classify_refusal_code(raw_assistant_text)
-        error_code = classified if classified else raw_assistant_text
-        return {
-            "url": "",
-            "imageUrls": [],
-            "payload": extract_vod_payload(payloads),
-            "error": error_code,
-            "rawError": raw_assistant_text,
-        }
+        if classified:
+            return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": classified, "rawError": raw_assistant_text}
 
     return {}
 
 
-def _is_user_message(msg: Any) -> bool:
-    if not isinstance(msg, dict):
-        return False
-    holder = msg.get("message") if isinstance(msg.get("message"), dict) else msg
-    sender_type = holder.get("sender_type")
-    if sender_type in (1, "1"):
-        return True
-    if sender_type in (2, "2"):
-        return False
-    role = str(
-        holder.get("role")
-        or holder.get("author")
-        or holder.get("sender")
-        or holder.get("from")
-        or ""
-    ).strip().lower()
-    if role in {"1", "user", "human"} or "user" in role:
-        return True
-    for flag in ("is_user", "from_user", "is_self", "user_send"):
-        if holder.get(flag) in (True, 1, "1", "true"):
-            return True
-    return False
-
-
-def _has_creation_block(value: Any) -> bool:
-    """Return True if any payload contains a creation block or active creation."""
+def _extract_creation_failure(value: Any) -> tuple[str, str]:
+    """Extract (error_code, error_msg) from a failed creation block if present."""
     for item in _walk(value):
         if not isinstance(item, dict):
             continue
-        if item.get("block_type") == 2074:
-            return True
+        creations = []
         block = item.get("creation_block")
-        if isinstance(block, dict):
-            creations = block.get("creations")
-            if isinstance(creations, list) and len(creations) > 0:
-                return True
+        if isinstance(block, dict) and isinstance(block.get("creations"), list):
+            creations.extend(block["creations"])
         if item.get("type") in {1, 2, "1", "2"} and (
             item.get("video") or item.get("image") or item.get("creation_id")
         ):
+            creations.append(item)
+
+        for creation in creations:
+            if not isinstance(creation, dict):
+                continue
+            media = creation.get("video") or creation.get("image") or creation
+            if not isinstance(media, dict):
+                continue
+            status = media.get("status") if "status" in media else creation.get("status")
+            fail_code = (
+                media.get("fail_code")
+                or media.get("failCode")
+                or creation.get("fail_code")
+                or creation.get("failCode")
+            )
+            fail_msg = (
+                media.get("fail_msg")
+                or media.get("failMsg")
+                or media.get("error_msg")
+                or media.get("errorMsg")
+                or media.get("fail_reason")
+                or media.get("fail_desc")
+                or creation.get("fail_msg")
+                or creation.get("failMsg")
+                or creation.get("error_msg")
+                or creation.get("errorMsg")
+            )
+            is_failed_status = str(status) in {"4", "5", "failed", "risk", "rejected"}
+            raw_msg = str(fail_msg or "").strip()
+            if is_failed_status or raw_msg or fail_code:
+                classified = _classify_refusal_code(raw_msg)
+                if not classified:
+                    if str(status) == "5" or any(w in raw_msg for w in ("违规", "社区规范", "安全", "敏感", "未通过", "审核")):
+                        classified = "content_policy_violation"
+                    elif fail_code or is_failed_status:
+                        classified = "upstream_generation_failed"
+                error_detail = raw_msg or (f"fail_code: {fail_code}" if fail_code else "upstream_generation_failed")
+                return classified or "upstream_generation_failed", error_detail
+    return "", ""
+
+
+def _is_assistant_message(msg: Any) -> bool:
+    if not isinstance(msg, dict):
+        return False
+    holder = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+    if holder.get("user_type") in (2, "2") or holder.get("sender_type") in (2, "2"):
+        return True
+    role = str(holder.get("role") or holder.get("author") or holder.get("sender") or "").strip().lower()
+    return role in {"2", "assistant", "bot"}
+
+
+def _is_failed_creation(item: dict[str, Any]) -> bool:
+    media = item.get("video") or item.get("image") or item
+    if not isinstance(media, dict):
+        return False
+    status = str(media.get("status") if "status" in media else item.get("status") or "").strip()
+    fail_code = media.get("fail_code") or media.get("failCode") or item.get("fail_code") or item.get("failCode")
+    fail_msg = media.get("fail_msg") or media.get("failMsg") or media.get("error_msg") or item.get("fail_msg") or item.get("failMsg")
+    return status in {"4", "5", "failed", "risk", "rejected"} or bool(fail_code) or bool(fail_msg)
+
+
+def _has_creation_block(value: Any) -> bool:
+    """Return True if any payload contains an ACTIVE (generating) creation block."""
+    for item in _walk(value):
+        if not isinstance(item, dict):
+            continue
+        creations = []
+        block = item.get("creation_block")
+        if isinstance(block, dict) and isinstance(block.get("creations"), list):
+            creations.extend(block["creations"])
+        if item.get("type") in {1, 2, "1", "2"} and (
+            item.get("video") or item.get("image") or item.get("creation_id")
+        ):
+            creations.append(item)
+
+        if creations:
+            for c in creations:
+                if isinstance(c, dict) and not _is_failed_creation(c):
+                    return True
+            continue
+
+        if item.get("block_type") == 2074:
+            content = item.get("content")
+            if isinstance(content, dict):
+                c_block = content.get("creation_block")
+                if isinstance(c_block, dict) and isinstance(c_block.get("creations"), list):
+                    for c in c_block["creations"]:
+                        if isinstance(c, dict) and not _is_failed_creation(c):
+                            return True
+                    continue
             return True
     return False
 
@@ -473,49 +553,31 @@ def _extract_text_from_message(msg: dict[str, Any]) -> str:
 
 
 def _extract_assistant_text(payloads: list[Any]) -> str:
-    """Extract assistant response text when no video/image creation block was produced."""
+    """Extract the conversation's assistant replies without the user's prompt."""
+    replies: list[str] = []
     for body in payloads:
         for item in _walk(body):
             if not isinstance(item, dict):
                 continue
             messages = item.get("messages")
             if isinstance(messages, list):
-                for msg in reversed(messages):
+                for msg in messages:
                     if not isinstance(msg, dict):
                         continue
-                    if _is_user_message(msg):
+                    if not _is_assistant_message(msg):
                         continue
                     text = _extract_text_from_message(msg)
-                    if text:
-                        return text
-    fallback_chunks: list[str] = []
-    for body in payloads:
-        for item in _walk(body):
-            if not isinstance(item, dict):
-                continue
-            if item.get("block_type") == 10000:
-                text_block = item.get("text_block")
-                if isinstance(text_block, dict) and isinstance(text_block.get("text"), str):
-                    t = text_block["text"].strip()
-                    if t and t not in fallback_chunks:
-                        fallback_chunks.append(t)
-                elif isinstance(item.get("text"), str) and item["text"].strip():
-                    t = item["text"].strip()
-                    if t and t not in fallback_chunks:
-                        fallback_chunks.append(t)
-            elif isinstance(item.get("tts_content"), str):
-                t = item["tts_content"].strip()
-                if t and t not in fallback_chunks:
-                    fallback_chunks.append(t)
-    return "\n".join(fallback_chunks)
+                    if text and text not in replies:
+                        replies.append(text)
+    return "\n\n".join(replies)
 
 
 def _classify_refusal_code(text: str) -> str:
     """Classify known refusal/failure categories or return empty if unknown."""
     if not text:
         return ""
-    if "视频生成失败" in text or "图片生成失败" in text or "出了点问题" in text:
-        return "upstream_generation_failed"
+    if any(k in text for k in ("违规", "社区规范", "内容安全", "涉及敏感", "无法通过审核", "未通过审核", "敏感内容")):
+        return "content_policy_violation"
     if (
         "生成次数已经到达上限" in text
         or "生成次数已到达上限" in text
@@ -536,34 +598,28 @@ def _classify_refusal_code(text: str) -> str:
         return "upstream_quota_insufficient"
     if "服务访问频繁" in text or "710022002" in text or ("频繁" in text and "稍后" in text):
         return "rate_limited"
+    if "视频" in text and ("无法直接生成" in text or "不支持该时长" in text):
+        return "upstream_unsupported_duration"
+    if any(k in text for k in ("视频生成失败", "图片生成失败", "出了点问题", "生成失败", "无法生成")):
+        return "upstream_generation_failed"
     return ""
 
 
-def _generation_refused(value: Any) -> str:
-    """Return a short refusal reason when upstream answered without a creation.
-
-    Covers plain failures, quota exhaustion ("今天的生成次数已经到达上限，明天再来免费生成吧"),
-    and quota refusals ("需要消耗 N 个额度…无法生成"),
-    both of which leave an accepted task with nothing to poll forever.  Dola's
-    generic failure toast "出了点问题，请稍后重试。" is persisted as the
-    assistant message and must terminate the task the same way.
-    """
+def match_recent_conversation_id(value: Any, local_conversation_id: str) -> str:
+    """Only recover a conversation carrying this submission's local ID."""
+    if not local_conversation_id:
+        return ""
     for item in _walk(value):
-        if not isinstance(item, str):
+        if not isinstance(item, dict) or item.get("local_conversation_id") != local_conversation_id:
             continue
-        code = _classify_refusal_code(item)
-        if code:
-            return code
+        candidate = extract_conversation_id(item)
+        if candidate:
+            return candidate
     return ""
 
 
-async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], proxy_url: str | None = None) -> str:
-    """Recover the newest conversation only after a real submit ACK.
-
-    The caller must gate this fallback on the submit stream's ACK marker; using
-    the most recent conversation without that proof could attach an unrelated
-    task to the current request.
-    """
+async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], local_conversation_id: str, proxy_url: str | None = None) -> str:
+    """Recover only a recent conversation correlated with this submit request."""
     query = _identity_query(identity, cookie)
     payload = {
         "cmd": 3200,
@@ -595,6 +651,6 @@ async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], pr
             response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie), json=payload)
             if response.status_code < 200 or response.status_code >= 300:
                 return ""
-            return extract_conversation_id(response.json())
+            return match_recent_conversation_id(response.json(), local_conversation_id)
     except (httpx.HTTPError, ValueError, json.JSONDecodeError):
         return ""

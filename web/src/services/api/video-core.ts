@@ -151,9 +151,27 @@ export async function createServerVideoGenerationTask(
     const selectedModel = (config.model || config.videoModel).trim();
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
     const serverReferences = await Promise.all([
-        ...references.map(async (item) => ({ type: "image", role: item.videoRole || "reference", url: isPublicMediaUrl(item.url || item.dataUrl) ? item.url || item.dataUrl : await publishReferenceMedia("image", await imageToDataUrl(item)) })),
-        ...videoReferences.map(async (item) => ({ type: "video", role: "reference", url: isPublicMediaUrl(item.url) ? item.url : await publishReferenceMedia("video", await referenceBlobDataUrl(item.storageKey, item.url)) })),
-        ...audioReferences.map(async (item) => ({ type: "audio", role: "reference", url: isPublicMediaUrl(item.url) ? item.url : await publishReferenceMedia("audio", await referenceBlobDataUrl(item.storageKey, item.url)) })),
+        ...references.map(async (item) => ({
+            type: "image",
+            role: item.videoRole || "reference",
+            url: isUsableReferenceUrl(item.url || item.serverUrl || item.dataUrl)
+                ? (item.url || item.serverUrl || item.dataUrl)!
+                : await publishReferenceMedia("image", await imageToDataUrl(item)),
+        })),
+        ...videoReferences.map(async (item) => ({
+            type: "video",
+            role: "reference",
+            url: isUsableReferenceUrl(item.url)
+                ? item.url!
+                : await publishReferenceMedia("video", await referenceBlobDataUrl(item.storageKey, item.url)),
+        })),
+        ...audioReferences.map(async (item) => ({
+            type: "audio",
+            role: "reference",
+            url: isUsableReferenceUrl(item.url)
+                ? item.url!
+                : await publishReferenceMedia("audio", await referenceBlobDataUrl(item.storageKey, item.url)),
+        })),
     ]);
     const response = await fetch("/api/video-generation-tasks", {
         method: "POST",
@@ -203,8 +221,15 @@ export function taskContext(options?: RequestOptions) {
     };
 }
 
+export function isUsableReferenceUrl(value?: string | null): boolean {
+    if (!value) return false;
+    const text = value.trim();
+    return /^https?:\/\//i.test(text) || /^\/api\/(?:reference-assets|generation-log-assets|media-proxy)\//i.test(text);
+}
+
 export async function publishReferenceMedia(type: "image" | "video" | "audio", dataUrl: string, persistent = false) {
     if (!dataUrl) throw new Error("参考素材读取失败，请重新上传");
+    if (isUsableReferenceUrl(dataUrl)) return dataUrl;
     const response = await fetch("/api/reference-assets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, dataUrl, persistent }) });
     const payload = (await response.json().catch(() => ({}))) as { upstreamUrl?: string; error?: string };
     if (!response.ok || !payload.upstreamUrl) throw new Error(payload.error || "站内参考素材签名不可用，请配置 DREAMYO_ENCRYPTION_KEY");

@@ -25,9 +25,16 @@ export type CanvasResourceReference = {
 
 export function buildCanvasResourceReferences(nodes: CanvasNodeData[], connections: CanvasConnection[], contextNodeId?: string | null) {
     const contextNodes = contextNodeId ? getMentionResourceNodes(contextNodeId, nodes, connections) : [];
-    const globalReferences = labelResourceNodes(nodes.filter(isResourceNode), false);
-    const activeByNodeId = new Map(labelResourceNodes(contextNodes, true).map((reference) => [reference.nodeId, reference]));
-    return globalReferences.map((reference) => activeByNodeId.get(reference.nodeId) || reference);
+    const activeIds = new Set(contextNodes.map((item) => item.id));
+    const allResourceNodes = nodes.filter(isResourceNode);
+    // 编号必须只按「已连接引用的素材」顺序产生：@图片1 对应第一个已连接图片。
+    // 此前先按画布顺序给全部素材编号、再用已连接编号覆盖，未连接素材仍保留画布顺序编号，
+    // 于是没有任何连线时 @图片1 会被解析成画布上的第一张图片（错误）。
+    const orderedNodes = [
+        ...allResourceNodes.filter((item) => activeIds.has(item.id)),
+        ...allResourceNodes.filter((item) => !activeIds.has(item.id)),
+    ];
+    return labelResourceNodes(orderedNodes, false).map((reference) => ({ ...reference, active: activeIds.has(reference.nodeId) }));
 }
 
 export function buildNodeMentionReferences(node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[]) {

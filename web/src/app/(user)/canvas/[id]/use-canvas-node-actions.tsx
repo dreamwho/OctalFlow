@@ -170,7 +170,18 @@ export function useCanvasNodeActions({ state, core }: { state: CanvasPageState; 
             position: { x: source.position.x + CANVAS_NODE_GAP, y: source.position.y + CANVAS_NODE_GAP },
         };
 
+        const incomingConnections = connectionsRef.current
+            .filter((conn) => conn.toNodeId === nodeId)
+            .map((conn) => ({
+                ...conn,
+                id: `conn-${nanoid()}`,
+                toNodeId: id,
+            }));
+
         setNodes((prev) => [...prev, next]);
+        if (incomingConnections.length) {
+            setConnections((prev) => [...prev, ...incomingConnections]);
+        }
         setSelectedNodeIds(new Set([id]));
         setSelectedConnectionId(null);
         setDialogNodeId(id);
@@ -192,7 +203,9 @@ export function useCanvasNodeActions({ state, core }: { state: CanvasPageState; 
 
         clipboardRef.current = {
             nodes: copiedNodes,
-            connections: connectionsRef.current.filter((connection) => selectedIds.has(connection.fromNodeId) && selectedIds.has(connection.toNodeId)).map((connection) => ({ ...connection })),
+            connections: connectionsRef.current
+                .filter((connection) => selectedIds.has(connection.toNodeId))
+                .map((connection) => ({ ...connection })),
         };
     }, []);
 
@@ -229,9 +242,11 @@ export function useCanvasNodeActions({ state, core }: { state: CanvasPageState; 
         });
 
         const nextConnections = clipboard.connections.flatMap((connection) => {
-            const fromNodeId = idMap.get(connection.fromNodeId);
             const toNodeId = idMap.get(connection.toNodeId);
-            if (!fromNodeId || !toNodeId) return [];
+            if (!toNodeId) return [];
+            const fromNodeId = idMap.get(connection.fromNodeId) ||
+                (nodesRef.current.some((n) => n.id === connection.fromNodeId) ? connection.fromNodeId : undefined);
+            if (!fromNodeId) return [];
             return [
                 {
                     ...connection,

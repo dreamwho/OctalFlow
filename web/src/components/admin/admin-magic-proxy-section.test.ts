@@ -28,4 +28,17 @@ describe("magic proxy admin section", () => {
         expect(source).not.toContain("MagicProxyBindingCard");
         expect(source).not.toContain("updateMagicProxyBinding");
     });
+
+    it("provides multi-subscription management controls and group indicators", () => {
+        const source = readFileSync(new URL("./admin-magic-proxy-section.tsx", import.meta.url), "utf8");
+
+        expect(source).toContain("已导入订阅列表");
+        expect(source).toContain("追加新订阅");
+        expect(source).toContain("updateMagicProxySubscriptionSetting");
+        expect(source).toContain("deleteMagicProxySubscription");
+        expect(source).toContain("个内置分组");
+        expect(source).toContain("<Tabs");
+        expect(source).toContain('key: "all"');
+        expect(source).toContain("订阅别名");
+    });
 });

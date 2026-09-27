@@ -14,8 +14,7 @@ export async function startDesktopRuntime({ app, edition, safeStorage, onProgres
     const dataRoot = path.join(app.getPath("userData"), "data");
     const secrets = await readOrCreateRuntimeSecrets(path.join(app.getPath("userData"), "runtime-secrets.bin"), safeStorage);
     const mainToken = randomBytes(32).toString("base64url");
-    const port = await availableLoopbackPort();
-    const [geminiPort, dolaPort, chatGptPort, controllerPort, proxyGeminiPort, proxyToolsPort, proxyChatPort, proxyDolaPort] = await Promise.all(Array.from({ length: 8 }, () => availableLoopbackPort()));
+    const [port, geminiPort, dolaPort, chatGptPort, controllerPort, proxyGeminiPort, proxyToolsPort, proxyChatPort, proxyDolaPort] = await availableLoopbackPorts(9);
     const origin = `http://127.0.0.1:${port}`;
     const browserMajor = app.isPackaged ? Number(JSON.parse(await readFile(path.join(runtimeRoot, "sidecars", "camoufox", "version.json"), "utf8")).version?.split(".")[0]) : null;
     if (app.isPackaged && (!Number.isInteger(browserMajor) || browserMajor < 1)) throw new Error("桌面安装包的 Camoufox 版本文件无效");
@@ -128,17 +127,25 @@ function validRuntimeSecrets(value) {
     return { encryptionKey: value.encryptionKey, installToken: value.installToken, adminPassword: value.adminPassword };
 }
 
-async function availableLoopbackPort() {
-    return new Promise((resolve, reject) => {
-        const server = net.createServer();
-        server.unref();
-        server.on("error", reject);
-        server.listen({ host: "127.0.0.1", port: 0 }, () => {
-            const address = server.address();
-            const port = typeof address === "object" && address ? address.port : 0;
-            server.close((error) => error ? reject(error) : resolve(port));
-        });
-    });
+export async function availableLoopbackPorts(count) {
+    const servers = [];
+    try {
+        for (let index = 0; index < count; index += 1) {
+            const server = net.createServer();
+            server.unref();
+            await new Promise((resolve, reject) => {
+                server.once("error", reject);
+                server.listen({ host: "127.0.0.1", port: 0 }, () => {
+                    server.off("error", reject);
+                    resolve();
+                });
+            });
+            servers.push(server);
+        }
+        return servers.map((server) => server.address().port);
+    } finally {
+        await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));
+    }
 }
 
 export async function waitForRuntime(origin, child, providers = [], onProgress) {

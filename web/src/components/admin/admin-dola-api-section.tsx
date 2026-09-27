@@ -2,10 +2,11 @@
 
 import { Alert, App, Button, Card, Descriptions, Empty, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Statistic, Switch, Table, Tabs, Tag, Upload } from "antd";
 import type { UploadProps } from "antd";
-import { Activity, Bot, CheckCircle2, Copy, Eye, EyeOff, FileKey2, KeyRound, Pencil, Play, RefreshCw, Trash2, UploadCloud } from "lucide-react";
+import { Activity, Bot, CheckCircle2, Copy, Eye, EyeOff, FileKey2, KeyRound, Pencil, Play, RefreshCw, Search, Trash2, UploadCloud } from "lucide-react";
+import { saveAs } from "file-saver";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { batchDeleteDolaAccounts, batchSetDolaAccountGroup, createDolaApiKey, deleteDolaAccount, deleteDolaApiKey, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, refreshDolaAccount, resetDolaAccountQuota, startDolaGoogleLogin, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaApiKey, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
+import { batchDeleteDolaAccounts, batchSetDolaAccountGroup, closeDolaGoogleLoginSession, completeDolaGoogleLoginSession, createDolaApiKey, deleteDolaAccount, deleteDolaApiKey, exportDolaGoogleAccountCookie, exportDolaGoogleAccountCookies, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, refreshDolaAccount, resetDolaAccountQuota, startDolaGoogleLogin, startDolaGoogleLoginSession, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaApiKey, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
 import { genericProxyRequest, type ChatGptProxyView } from "@/services/api/generic-proxy";
 import { dolaErrorHint } from "@/lib/dola-errors";
 import { DolaVerificationDialog } from "@/app/(user)/canvas/components/dola-verification-dialog";
@@ -21,9 +22,10 @@ export function AdminDolaApiSection() {
     const [error, setError] = useState("");
     const [activeTab, setActiveTab] = useState<DolaTab>("accounts");
     const [importOpen, setImportOpen] = useState(false);
-    const [importItems, setImportItems] = useState<Array<{ cookie: string; sourceFileName: string; sourceOrdinal: number }>>([]);
+    const [importItems, setImportItems] = useState<Array<{ cookie: string; sourceFileName: string; sourceOrdinal: number; authType?: "cookie" | "google" }>>([]);
     const [pastedCookies, setPastedCookies] = useState("");
     const [importGroup, setImportGroup] = useState("");
+    const [importAuthType, setImportAuthType] = useState<"cookie" | "google">("cookie");
     const [importing, setImporting] = useState(false);
     const [testOpen, setTestOpen] = useState(false);
     const [testModel, setTestModel] = useState("dola-seedance-2-5");
@@ -72,22 +74,24 @@ export function AdminDolaApiSection() {
         showUploadList: false,
         beforeUpload: async (file) => {
             const text = await file.text();
-            const items = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((cookie, index) => ({ cookie, sourceFileName: file.name, sourceOrdinal: index + 1 }));
+            const authType = /^Dola-Google-Cookies-\d{8}\.txt$/i.test(file.name) ? "google" as const : importAuthType;
+            const items = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((cookie, index) => ({ cookie, sourceFileName: file.name, sourceOrdinal: index + 1, authType }));
             setImportItems((current) => [...current, ...items]);
+            if (authType === "google") setImportAuthType("google");
             return false;
         },
     };
 
     const submitImport = async () => {
         const group = importGroup.trim() || undefined;
-        const pastedItems = pastedCookies.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((cookie, index) => ({ cookie, sourceFileName: "粘贴内容", sourceOrdinal: index + 1, group }));
-        const items = [...importItems.map((item) => ({ ...item, group: ((item as Record<string, unknown>).group as string) || group })), ...pastedItems];
+        const pastedItems = pastedCookies.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((cookie, index) => ({ cookie, sourceFileName: "粘贴内容", sourceOrdinal: index + 1, authType: importAuthType, group }));
+        const items = [...importItems.map((item) => ({ ...item, group })), ...pastedItems];
         if (!items.length) { message.warning("请先选择 Cookie 文本文件或粘贴 Cookie Header"); return; }
         setImporting(true);
         try {
             const result = await importDolaAccounts(items);
             message.success(`已处理 ${result.results.length} 条 Cookie`);
-            setImportItems([]); setPastedCookies(""); setImportGroup(""); setImportOpen(false); await load();
+            setImportItems([]); setPastedCookies(""); setImportGroup(""); setImportAuthType("cookie"); setImportOpen(false); await load();
         } catch (reason) { message.error(reason instanceof Error ? reason.message : "Cookie 导入失败"); } finally { setImporting(false); }
     };
 
@@ -118,20 +122,25 @@ export function AdminDolaApiSection() {
     const toggleGateway = async (enabled: boolean) => { try { await updateDolaGateway(enabled); await load(); message.success(enabled ? "Dola 网关已启用" : "Dola 网关已停用"); } catch (reason) { message.error(reason instanceof Error ? reason.message : "保存网关设置失败"); } };
     const toggleAutoWatermark = async (enabled: boolean) => { try { await updateDolaGateway(undefined, enabled); await load(); message.success(enabled ? "已开启自动去水印" : "已关闭自动去水印"); } catch (reason) { message.error(reason instanceof Error ? reason.message : "保存自动去水印设置失败"); } };
     const saveRotationLimit = async (limit: number) => { try { await updateDolaGateway(undefined, undefined, limit); await load(); message.success("账号轮换次数上限已保存"); } catch (reason) { message.error(reason instanceof Error ? reason.message : "保存账号轮换次数失败"); } };
-    const toggleCaptureVerificationScreenshot = async (enabled: boolean) => { try { await updateDolaGateway(undefined, undefined, undefined, enabled); await load(); message.success(enabled ? "已开启异常页面截图捕获" : "已关闭异常页面截图捕获"); } catch (reason) { message.error(reason instanceof Error ? reason.message : "保存异常截图设置失败"); } };
+    const toggleCaptureFailureScreenshot = async (enabled: boolean) => { try { await updateDolaGateway(undefined, undefined, undefined, enabled); await load(); message.success(enabled ? "已开启生成失败截图" : "已关闭生成失败截图"); } catch (reason) { message.error(reason instanceof Error ? reason.message : "保存失败截图设置失败"); } };
+    const savePollInterval = async (intervalMs: number) => { try { await updateDolaGateway(undefined, undefined, undefined, undefined, undefined, intervalMs); await load(); message.success("协议轮询间隔已保存，新任务生效"); } catch (reason) { message.error(reason instanceof Error ? reason.message : "保存协议轮询间隔失败"); } };
     return <div className="space-y-4">
         {error ? <Alert type="error" showIcon message="Dola API 状态读取失败" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : null}
-        <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as DolaTab)} items={[
+        <Tabs activeKey={activeTab} onChange={(key) => { setActiveTab(key as DolaTab); if (key === "accounts") void load(); }} items={[
             { key: "accounts", label: "账号与渠道" }, { key: "statistics", label: "统计报表" }, { key: "gateway", label: "反代网关与 API 密钥" }, { key: "logs", label: "请求日志" }, { key: "proxy", label: "代理管理" },
         ]} />
         {loading && !state ? <Card><Spin /> 读取 Dola API 状态…</Card> : null}
-        {activeTab === "accounts" ? <AccountsPanel state={state} onRefresh={load} onImport={() => setImportOpen(true)} onTest={() => openTestModal()} onTestAccount={(accountId, headless) => openTestModal({ accountId, headless })} onSaveRotationLimit={saveRotationLimit} /> : null}
+        {activeTab === "accounts" ? <AccountsPanel state={state} onRefresh={load} onImport={() => setImportOpen(true)} onTest={() => openTestModal()} onTestAccount={(accountId, headless) => openTestModal({ accountId, headless })} onSaveRotationLimit={saveRotationLimit} onManageProxy={() => setActiveTab("proxy")} /> : null}
         {activeTab === "statistics" ? <StatisticsPanel state={state} /> : null}
-        {activeTab === "gateway" ? <GatewayPanel state={state} onToggle={toggleGateway} onToggleAutoWatermark={toggleAutoWatermark} onToggleCaptureScreenshot={toggleCaptureVerificationScreenshot} rawKey={rawKey} setRawKey={setRawKey} open={keyOpen} setOpen={setKeyOpen} name={keyName} setName={setKeyName} onCreated={load} /> : null}
-        {activeTab === "logs" ? <DolaRequestLogPanel active models={state?.models || []} accounts={state?.accounts || []} captureVerificationScreenshot={state?.gateway.captureVerificationScreenshot} onToggleCaptureVerificationScreenshot={toggleCaptureVerificationScreenshot} onLaunchHeadedTest={(accountId, model) => openTestModal({ accountId, model, headless: false })} /> : null}
+        {activeTab === "gateway" ? <GatewayPanel state={state} onToggle={toggleGateway} onToggleAutoWatermark={toggleAutoWatermark} onToggleCaptureScreenshot={toggleCaptureFailureScreenshot} onSavePollInterval={savePollInterval} rawKey={rawKey} setRawKey={setRawKey} open={keyOpen} setOpen={setKeyOpen} name={keyName} setName={setKeyName} onCreated={load} /> : null}
+        {activeTab === "logs" ? <DolaRequestLogPanel active models={state?.models || []} accounts={state?.accounts || []} captureFailureScreenshot={state?.gateway.captureFailureScreenshot} onToggleCaptureFailureScreenshot={toggleCaptureFailureScreenshot} onLaunchHeadedTest={(accountId, model) => openTestModal({ accountId, model, headless: false })} /> : null}
         {activeTab === "proxy" ? <MagicProxyBindingCard provider="dola" /> : null}
-        <Modal title="导入 Dola Cookie 账号" open={importOpen} onCancel={() => { if (!importing) { setImportOpen(false); setImportItems([]); setPastedCookies(""); setImportGroup(""); } }} onOk={() => void submitImport()} okButtonProps={{ loading: importing, disabled: !importItems.length && !pastedCookies.trim() }} okText="开始导入">
-            <Alert type="info" showIcon message="支持 Cookie Header 粘贴和文本文件" description="每行一个 Cookie Header；一个文件可按非空行导入多个账号，也支持同时选择多个文件。Cookie 值不会回显到列表、审计或响应。" />
+        <Modal title="导入 Dola Cookie 账号" open={importOpen} onCancel={() => { if (!importing) { setImportOpen(false); setImportItems([]); setPastedCookies(""); setImportGroup(""); setImportAuthType("cookie"); } }} onOk={() => void submitImport()} okButtonProps={{ loading: importing, disabled: !importItems.length && !pastedCookies.trim() }} okText="开始导入">
+            <Alert type="info" showIcon message="支持 Cookie Header 粘贴和文本文件" description="每行一个 Cookie Header；导出的 Dola-Google-Cookies-日期.txt 会自动识别为 Google 授权账号。Cookie 值不会回显到列表、审计或响应。" />
+            <div className="mt-4 space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">账号类型</label>
+                <Select className="w-full" value={importAuthType} onChange={setImportAuthType} options={[{ value: "cookie", label: "普通 Cookie" }, { value: "google", label: "Google 授权 Cookie" }]} />
+            </div>
             <div className="mt-4 space-y-1.5">
                 <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">账号分组（选填，如：分组A、批次1、号商X）</label>
                 <Input placeholder="输入本次导入账号的分组名称" value={importGroup} onChange={(e) => setImportGroup(e.target.value)} />
@@ -240,7 +249,7 @@ export function AdminDolaApiSection() {
                     <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">提示词</label>
                     <Input.TextArea rows={4} value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
                 </div>
-                {testResult ? <Alert type={testResult.status === "failed" ? "error" : "warning"} message={testResult.status === "failed" ? testResult.error : `状态：${testResult.status}`} description={<Space direction="vertical" size={4}><span>{testResult.taskId ? `任务：${testResult.taskId}` : "已记录 Provider 响应"}</span>{testHint && !testResult.error?.includes(testHint) ? <span className="text-xs">{testHint}</span> : null}{testResult.taskId ? <Space wrap><Button size="small" loading={queryingTest} onClick={() => void queryTest()}>查询状态</Button>{testResult.verificationId ? <Button size="small" type="primary" onClick={() => setTestVerification({ taskId: testResult.taskId!, verificationId: testResult.verificationId! })}>处理验证</Button> : null}</Space> : null}</Space>} /> : null}
+                {testResult ? <Alert type={testResult.status === "failed" ? "error" : "warning"} message={testResult.status === "failed" ? testResult.error : `状态：${testResult.status}`} description={<Space direction="vertical" size={4}><span>{testResult.taskId ? `任务：${testResult.taskId}` : "已记录 Provider 响应"}</span>{testResult.rawError && testResult.rawError !== testResult.error ? <span className="text-xs">上游详情：{testResult.rawError}</span> : null}{testResult.conversationId && /^\d{12,32}$/.test(testResult.conversationId) ? <a href={`https://www.dola.com/chat/${testResult.conversationId}`} target="_blank" rel="noopener noreferrer">打开本次 Dola 会话</a> : null}{testHint && !testResult.error?.includes(testHint) ? <span className="text-xs">{testHint}</span> : null}{testResult.taskId ? <Space wrap><Button size="small" loading={queryingTest} onClick={() => void queryTest()}>查询状态</Button>{testResult.verificationId ? <Button size="small" type="primary" onClick={() => setTestVerification({ taskId: testResult.taskId!, verificationId: testResult.verificationId! })}>处理验证</Button> : null}</Space> : null}</Space>} /> : null}
             </div>
         </Modal>
         <DolaVerificationDialog request={testVerification} admin onClose={() => setTestVerification(null)} onResolved={() => { setTestVerification(null); void queryTest(); message.success("验证已完成，正在查询原测试任务"); }} />
@@ -304,24 +313,66 @@ function GoogleLoginModal({
     const [accountName, setAccountName] = useState("");
     const [manualCookie, setManualCookie] = useState("");
     const [authorizing, setAuthorizing] = useState(false);
+    const [sessionTimeout, setSessionTimeout] = useState(180);
+    const [remoteSession, setRemoteSession] = useState<{ verificationId: string; leaseToken: string; name: string } | null>(null);
+    const [nativeSession, setNativeSession] = useState<{ verificationId: string; leaseToken: string; name: string } | null>(null);
+    const [nativeBusy, setNativeBusy] = useState(false);
+    const nativeClosedRef = useRef(false);
+    const remoteRequest = useMemo(() => remoteSession ? { taskId: "", verificationId: remoteSession.verificationId, leaseToken: remoteSession.leaseToken } : null, [remoteSession]);
+    const closeRemote = useCallback(() => setRemoteSession(null), []);
+    const resolveRemote = useCallback(async () => { setRemoteSession(null); setAccountName(""); await onSuccess(); }, [onSuccess]);
+
+    useEffect(() => {
+        if (!nativeSession) return;
+        const path = `/api/admin/dola/verifications/${encodeURIComponent(nativeSession.verificationId)}/close`;
+        const release = () => {
+            if (nativeClosedRef.current) return;
+            nativeClosedRef.current = true;
+            void fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken: nativeSession.leaseToken }), keepalive: true }).catch(() => undefined);
+        };
+        window.addEventListener("pagehide", release);
+        return () => { window.removeEventListener("pagehide", release); release(); };
+    }, [nativeSession]);
+
+    const closeNative = async () => {
+        if (!nativeSession || nativeBusy) return;
+        setNativeBusy(true);
+        try {
+            await closeDolaGoogleLoginSession(nativeSession.verificationId, nativeSession.leaseToken);
+            nativeClosedRef.current = true;
+            setNativeSession(null);
+        } catch (error) { message.error(error instanceof Error ? error.message : "关闭授权浏览器失败"); }
+        finally { setNativeBusy(false); }
+    };
+
+    const completeNative = async () => {
+        if (!nativeSession || nativeBusy) return;
+        setNativeBusy(true);
+        try {
+            const result = await completeDolaGoogleLoginSession(nativeSession.verificationId, nativeSession.leaseToken, nativeSession.name);
+            if (result.status !== "saved") {
+                message.warning(result.status === "needs_login" ? "Dola 登录尚未完成，请继续在浏览器中操作" : "尚未确认登录状态，账号未保存");
+                return;
+            }
+            if (result.windowClosed) nativeClosedRef.current = true;
+            setNativeSession(null);
+            setAccountName("");
+            message.success("Google 授权账号已保存");
+            await onSuccess();
+        } catch (error) { message.error(error instanceof Error ? error.message : "保存 Google 授权账号失败"); }
+        finally { setNativeBusy(false); }
+    };
 
     const submit = async () => {
         setAuthorizing(true);
         try {
             if (mode === "browser") {
-                message.loading({ content: "正在启动全新隔离环境的 Camoufox 浏览器，请在桌面弹出的窗口中登录 Google…", key: "dola-google", duration: 15 });
-                const result = await startDolaGoogleLogin({
-                    name: accountName.trim() || undefined,
-                    timeoutSeconds: 180,
-                });
-                if (result.account) {
-                    message.success({ content: `Google 授权成功！已添加账号 ${result.account.name}`, key: "dola-google" });
-                    setAccountName("");
-                    onClose();
-                    await onSuccess();
-                } else {
-                    message.warning({ content: "未能获取到有效的登录凭据", key: "dola-google" });
-                }
+                const result = await startDolaGoogleLoginSession(sessionTimeout);
+                if (result.mode === "native") {
+                    nativeClosedRef.current = false;
+                    setNativeSession({ verificationId: result.verificationId, leaseToken: result.leaseToken, name: accountName.trim() });
+                } else setRemoteSession({ verificationId: result.verificationId, leaseToken: result.leaseToken, name: accountName.trim() });
+                onClose();
             } else {
                 if (!manualCookie.trim()) {
                     message.warning("请粘贴已授权的 Google Session 或 Cookie");
@@ -350,13 +401,13 @@ function GoogleLoginModal({
     };
 
     return (
-        <Modal
+        <><Modal
             title="添加 Dola Google 授权账号"
             open={open}
             onCancel={() => { if (!authorizing) onClose(); }}
             onOk={() => void submit()}
             okButtonProps={{ loading: authorizing }}
-            okText={mode === "browser" ? "启动浏览器并授权" : "确认添加"}
+            okText={mode === "browser" ? "启动 Google 授权" : "确认添加"}
             width={520}
         >
             <div className="space-y-4">
@@ -364,7 +415,7 @@ function GoogleLoginModal({
                     type="info"
                     showIcon
                     message="Google 账号独立管理与全新安全指纹"
-                    description="Google 授权账号采用独立分类管理，支持在本机弹出全新隔离的 Camoufox 浏览器窗口直接进行 Google 登录；授权成功后自动同步并参与视频与生图任务调度。"
+                    description="本机访问会直接打开可复制粘贴的浏览器；服务器访问使用网页内远程画面。两种方式都保存到独立的「Google 授权」分组。"
                 />
 
                 <div className="space-y-1.5">
@@ -374,7 +425,7 @@ function GoogleLoginModal({
                         value={mode}
                         onChange={setMode}
                         options={[
-                            { value: "browser", label: "本地 Camoufox 自动授权 (推荐 - 弹出真实窗口快捷登录)" },
+                            { value: "browser", label: "浏览器授权（自动选择本机或远程）" },
                             { value: "manual", label: "录入已有 Google 授权 Session / Cookie" },
                         ]}
                     />
@@ -389,32 +440,37 @@ function GoogleLoginModal({
                     />
                 </div>
 
+                {mode === "browser" ? <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">远程窗口最长空闲时间（秒）</label><InputNumber className="w-full" min={1} value={sessionTimeout} onChange={(value) => setSessionTimeout(value || 180)} /><p className="text-xs text-zinc-500">服务器远程操作会续期，到期后回收；本机有头窗口在完成、取消、关闭窗口或离开页面时回收。</p></div> : null}
+
+                {authorizing && mode === "browser" ? <Alert type="info" showIcon message="正在启动授权浏览器" description="浏览器启动后会自动显示授权窗口；请保留当前页面。" /> : null}
+
                 {mode === "browser" ? (
                     <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 p-3 text-xs leading-relaxed text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
                         <p className="font-medium text-zinc-800 dark:text-zinc-200">授权流程说明：</p>
                         <ol className="mt-1.5 list-decimal space-y-1 pl-4">
-                            <li>点击下方“启动浏览器并授权”后，系统将在桌面打开一个独立的 Camoufox 浏览器窗口。</li>
-                            <li>环境完全隔离、无共享缓存与历史记录，您可在该窗口中直接点击“Continue with Google”完成登录。</li>
-                            <li>登录成功后系统将自动捕获 Dola 登录会话凭据并关闭窗口，账号自动进入「Google 授权」池。</li>
+                            <li>本机直接操作新打开的浏览器；服务器上通过网页内的远程画面完成 Google 和 Dola 登录。</li>
+                            <li>远程画面可点击和滚动；粘贴文字可使用画面下方的输入框。</li>
+                            <li>登录完成后点击「检测登录并保存账号」，只有 Cookie 验证通过才会保存并关闭浏览器。</li>
                         </ol>
                     </div>
                 ) : (
                     <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Session / Cookie Header</label>
+                        <Alert type="info" showIcon message="导入 Dola 会话 Cookie" description="如果账号已保存在本地项目，可在账号池点击「复制 Cookie」，再粘贴到此处导入线上项目。首次提取时，在完成 Google 登录的 dola.com 页面打开开发者工具 → 网络，选中 /alice/user/launch 请求，复制请求标头中的 Cookie 值。请使用 Dola 域的 Cookie，不要粘贴 accounts.google.com 的 Cookie。" />
+                        <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Dola Session / Cookie Header</label>
                         <Input.TextArea
                             rows={4}
-                            placeholder="粘贴由 Google 登录提取的 Cookie Header 或 Session 凭据"
+                            placeholder="Cookie: name=value; other=value（或单个 name=value）"
                             value={manualCookie}
                             onChange={(e) => setManualCookie(e.target.value)}
                         />
                     </div>
                 )}
             </div>
-        </Modal>
+        </Modal><DolaVerificationDialog request={remoteRequest} admin headedTest googleLogin googleAccountName={remoteSession?.name} onClose={closeRemote} onResolved={resolveRemote} /><Modal title="Dola Google 本机授权" open={Boolean(nativeSession)} maskClosable={false} onCancel={() => void closeNative()} footer={<Space><Button loading={nativeBusy} onClick={() => void closeNative()}>不保存，关闭浏览器</Button><Button type="primary" loading={nativeBusy} onClick={() => void completeNative()}>检测登录并保存账号</Button></Space>}><Alert type="info" showIcon message="请直接在本机 Camoufox 窗口登录" description="可在浏览器中正常输入、复制和粘贴。完成 Google 与 Dola 登录后返回这里检测并保存；取消或关闭页面会释放浏览器。" /></Modal></>
     );
 }
 
-function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSaveRotationLimit }: { state: DolaAdminState | null; onRefresh: () => Promise<void>; onImport: () => void; onTest: () => void; onTestAccount: (accountId: string, headless: boolean) => void; onSaveRotationLimit: (limit: number) => Promise<void> }) {
+function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSaveRotationLimit, onManageProxy }: { state: DolaAdminState | null; onRefresh: () => Promise<void>; onImport: () => void; onTest: () => void; onTestAccount: (accountId: string, headless: boolean) => void; onSaveRotationLimit: (limit: number) => Promise<void>; onManageProxy: () => void }) {
     const { message } = App.useApp();
     const accounts = state?.accounts || [];
     const [busyId, setBusyId] = useState("");
@@ -489,13 +545,17 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
         if (!headedAccount) return;
         const row = headedAccount;
         const [mode, ...rest] = headedProxy.split(":");
+        if ((mode === "magic" || mode === "chained") && (!state?.proxy.enabled || state.proxy.mode !== mode || !state.proxy.target)) {
+            message.warning(`请先在代理管理中配置并启用 Dola ${mode === "magic" ? "魔法代理" : "链式代理"}`);
+            return;
+        }
         const target = mode === "generic" ? rest.join(":") : state?.proxy.target || "";
         void runFor(row.id, async () => {
-            const result = await startDolaHeadedTest(row.id, { mode: mode as "direct" | "magic" | "generic" | "chained", target });
+            const result = await startDolaHeadedTest(row.id, { mode: mode as "direct" | "magic" | "generic" | "chained", target, timeoutSeconds: headedTimeout });
             setHeadedAccount(null);
             setAccountVerification({ verificationId: result.verificationId, accountId: row.id });
             setHeadedSessions((current) => [...current, { verificationId: result.verificationId, accountId: row.id, createdAt: new Date().toISOString() }]);
-            message.success("独立 Camoufox 窗口已打开，管理员关闭前不会自动结束");
+            message.success(result.headless ? "远程浏览器已打开，空闲超时后自动回收" : "本机独立浏览器已打开，关闭窗口后自动回收");
         });
     };
 
@@ -583,8 +643,9 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
 
     const isRunnableAccount = (account: DolaAccount) => account.enabled && isNormalAccount(account);
     const isValidatableAccount = (account: DolaAccount) => account.enabled && account.status !== "disabled";
-    const [accountTab, setAccountTab] = useState<"all" | "normal" | "invalid" | "dispatchable" | "rate_limited" | "quota_exhausted">("all");
+    const [accountTab, setAccountTab] = useState<"all" | "google" | "normal" | "invalid" | "dispatchable" | "rate_limited" | "quota_exhausted">("all");
     const [groupFilter, setGroupFilter] = useState<string>("all");
+    const [accountSearch, setAccountSearch] = useState("");
     const [groupModalOpen, setGroupModalOpen] = useState(false);
     const [targetAccount, setTargetAccount] = useState<DolaAccount | null>(null);
     const [singleGroupName, setSingleGroupName] = useState("");
@@ -599,9 +660,11 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
     const [poolRefreshing, setPoolRefreshing] = useState(false);
     const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
     const [batchDeleting, setBatchDeleting] = useState(false);
+    const [exportingCookies, setExportingCookies] = useState(false);
     const [accountVerification, setAccountVerification] = useState<{ verificationId: string; accountId: string } | null>(null);
     const [headedAccount, setHeadedAccount] = useState<DolaAccount | null>(null);
     const [headedProxy, setHeadedProxy] = useState("direct");
+    const [headedTimeout, setHeadedTimeout] = useState(180);
     const [headedGenericNodes, setHeadedGenericNodes] = useState<Array<{ value: string; label: string }>>([]);
     const [headedSessions, setHeadedSessions] = useState<Array<{ verificationId: string; accountId: string; createdAt: string }>>([]);
     useEffect(() => { void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }, []);
@@ -616,6 +679,7 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
 
     const accountTabCounts = useMemo(() => ({
         all: accounts.length,
+        google: accounts.filter((account) => account.authType === "google").length,
         normal: accounts.filter(isNormalAccount).length,
         invalid: accounts.filter(isInvalidAccount).length,
         dispatchable: accounts.filter(isDispatchableAccount).length,
@@ -625,7 +689,8 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
 
     const visibleAccounts = useMemo(() => {
         let list = accounts;
-        if (accountTab === "normal") list = list.filter(isNormalAccount);
+        if (accountTab === "google") list = list.filter((account) => account.authType === "google");
+        else if (accountTab === "normal") list = list.filter(isNormalAccount);
         else if (accountTab === "invalid") list = list.filter(isInvalidAccount);
         else if (accountTab === "dispatchable") list = list.filter(isDispatchableAccount);
         else if (accountTab === "rate_limited") list = list.filter(isRateLimitedAccount);
@@ -636,8 +701,10 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
         } else if (groupFilter && groupFilter !== "all") {
             list = list.filter((account) => account.group === groupFilter);
         }
+        const keyword = accountSearch.trim().toLowerCase();
+        if (keyword) list = list.filter((account) => account.id.toLowerCase().includes(keyword) || account.name.toLowerCase().includes(keyword));
         return list;
-    }, [accountTab, groupFilter, accounts, dispatchGroups]);
+    }, [accountTab, groupFilter, accountSearch, accounts, dispatchGroups]);
 
     const saveDispatchGroups = async () => {
         setSavingDispatchGroups(true);
@@ -721,8 +788,26 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
             setBatchDeleting(false);
         }
     };
+    const exportGoogleCookies = async () => {
+        setExportingCookies(true);
+        try {
+            const { blob, fileName } = await exportDolaGoogleAccountCookies(selectedAccountIds.length ? selectedAccountIds : undefined);
+            saveAs(blob, fileName);
+            message.success("Google 授权 Cookie TXT 已导出，可在线上后台批量导入");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "批量导出 Dola Cookie 失败");
+        } finally {
+            setExportingCookies(false);
+        }
+    };
+    const copyGoogleCookie = (row: DolaAccount) => runFor(row.id, async () => {
+        const { cookie } = await exportDolaGoogleAccountCookie(row.id);
+        await navigator.clipboard.writeText(cookie);
+        message.success("Dola Cookie 已复制，可在线上后台手动导入");
+    });
     const accountTabs = [
         { key: "all", label: `全部 ${accountTabCounts.all}` },
+        { key: "google", label: `Google 授权 ${accountTabCounts.google}` },
         { key: "normal", label: `正常 ${accountTabCounts.normal}` },
         { key: "invalid", label: `失效 ${accountTabCounts.invalid}` },
         { key: "dispatchable", label: `可轮询 ${accountTabCounts.dispatchable}` },
@@ -730,7 +815,7 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
         { key: "quota_exhausted", label: `额度已用完 ${accountTabCounts.quota_exhausted}` },
     ] as const;
 
-    return <><Card title="Dola API" extra={<Space wrap><Button icon={<RefreshCw className="size-4" />} onClick={() => void onRefresh()}>刷新</Button><Button icon={<FileKey2 className="size-4" />} onClick={onImport}>导入 Cookie</Button><Button icon={<KeyRound className="size-4" />} onClick={() => setGoogleModalOpen(true)}>Google 授权登录</Button><Button type="primary" icon={<Play className="size-4" />} disabled={!state?.models.length} onClick={onTest}>通信测试</Button></Space>}><Descriptions size="small" column={{ xs: 1, sm: 3 }} items={[{ key: "transport", label: "提交方式", children: <Tag color="blue">Camoufox 页面会话</Tag> }, { key: "provider", label: "Provider", children: state?.healthy ? <Tag color="green">正常</Tag> : <Tag>待连接</Tag> }, { key: "proxy", label: "代理策略", children: <Tag>请在“代理管理”配置</Tag> }]} /><div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">账号轮换次数上限</div><div className="text-xs text-zinc-500">站内画布/工作台与外部 API 生成视频遇账号限额（rate_limited）时自动切换账号的最大次数；0 表示不切换，配额用尽后任务保持轮询等待上游真实结果，不再提前判失败。</div></div><div className="flex shrink-0"><Space.Compact><InputNumber min={0} precision={0} style={{ width: 224 }} value={rotationLimit ?? 0} onChange={(value) => setRotationLimit(value ?? 0)} /><Button type="primary" loading={savingRotation} disabled={rotationLimit === null || rotationLimit === state?.gateway.rotationLimit} onClick={() => void saveRotation()}>保存</Button></Space.Compact></div></div><div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">任务调度生效分组 (白名单)</div><div className="text-xs text-zinc-500">限制只有属于选定分组的账号才参与画布/工作台与外部 API 任务的轮询和轮换；留空表示全部分组可用账号均参与调度。</div></div><div className="flex shrink-0 items-center gap-2"><Select mode="tags" style={{ minWidth: 260, maxWidth: 420 }} placeholder="全部分组参与轮询 (默认)" value={dispatchGroups} onChange={setDispatchGroups} options={availableGroups.map((g) => ({ value: g, label: g }))} /><Button type="primary" loading={savingDispatchGroups} onClick={() => void saveDispatchGroups()}>保存</Button></div></div></Card><Card title="账号池" extra={<Space wrap><Select size="small" style={{ width: 130 }} value={groupFilter} onChange={setGroupFilter} options={[{ value: "all", label: "全部分组" }, { value: "__none__", label: "未分组" }, ...availableGroups.map((g) => ({ value: g, label: `分组：${g}` }))]} /><Button size="small" disabled={!selectedAccountIds.length} onClick={() => { setBatchGroupName(""); setBatchGroupModalOpen(true); }}>批量设置分组{selectedAccountIds.length ? ` (${selectedAccountIds.length})` : ""}</Button><Popconfirm title={`删除选中的 ${selectedAccountIds.length} 个 Dola 账号？`} description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void batchDeleteSelected()}><Button danger size="small" icon={<Trash2 className="size-4" />} loading={batchDeleting} disabled={!selectedAccountIds.length}>批量删除</Button></Popconfirm><Button size="small" icon={<RefreshCw className={`size-4 ${poolRefreshing ? "animate-spin" : ""}`} />} disabled={poolRefreshing} onClick={() => void refreshPool()}>刷新</Button><Button size="small" icon={<RefreshCw className={`size-4 ${refreshRunning ? "animate-spin" : ""}`} />} disabled={!accounts.filter(isValidatableAccount).length} onClick={() => (refreshRunning ? setRefreshModalOpen(true) : startRefreshAll())}>{refreshAllButtonText}</Button></Space>}><Tabs size="small" className="mb-1" activeKey={accountTab} onChange={(key) => { setAccountTab(key as typeof accountTab); setSelectedAccountIds([]); }} items={accountTabs.map((tab) => ({ key: tab.key, label: tab.label }))} /><Table rowKey="id" size="small" pagination={{ pageSize: 10 }} rowSelection={{ selectedRowKeys: selectedAccountIds, onChange: (keys) => setSelectedAccountIds(keys as string[]) }} dataSource={visibleAccounts} scroll={{ x: "max-content" }} columns={[{ title: "账号", render: (_: unknown, row: DolaAccount) => (<div className="flex flex-col gap-0.5"><div className="flex items-center gap-1.5"><span className="font-medium text-zinc-900 dark:text-zinc-100">{row.name}</span>{row.authType === "google" ? (<Tag color="purple" className="m-0 text-[10px]">Google 授权</Tag>) : (<Tag color="default" className="m-0 text-[10px]">Cookie 导入</Tag>)}</div>{row.email ? <span className="text-[11px] text-zinc-500">{row.email}</span> : null}</div>) }, { title: "分组", render: (_: unknown, row: DolaAccount) => (<button type="button" className="cursor-pointer text-left" onClick={() => openEditGroup(row)} title="点击修改分组">{row.group ? <Tag color="blue" className="m-0 text-xs">{row.group}</Tag> : <Tag className="m-0 text-xs text-zinc-400">未分组</Tag>}</button>) }, { title: "登录状态", render: (_: unknown, row: DolaAccount) => {
+    return <><Card title="Dola API" extra={<Space wrap><Button icon={<RefreshCw className="size-4" />} onClick={() => void onRefresh()}>刷新</Button><Button icon={<FileKey2 className="size-4" />} onClick={onImport}>导入 Cookie</Button><Button icon={<KeyRound className="size-4" />} onClick={() => setGoogleModalOpen(true)}>Google 授权登录</Button><Button type="primary" icon={<Play className="size-4" />} disabled={!state?.models.length} onClick={onTest}>通信测试</Button></Space>}><Descriptions size="small" column={{ xs: 1, sm: 3 }} items={[{ key: "transport", label: "提交方式", children: <Tag color="blue">Camoufox 页面会话</Tag> }, { key: "provider", label: "Provider", children: state?.healthy ? <Tag color="green">正常</Tag> : <Tag>待连接</Tag> }, { key: "proxy", label: "代理策略", children: <Tag>请在“代理管理”配置</Tag> }]} /><div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">账号轮换次数上限</div><div className="text-xs text-zinc-500">站内画布/工作台与外部 API 生成视频遇账号限额（rate_limited）时自动切换账号的最大次数；0 表示不切换，配额用尽后任务保持轮询等待上游真实结果，不再提前判失败。</div></div><div className="flex shrink-0"><Space.Compact><InputNumber min={0} precision={0} style={{ width: 224 }} value={rotationLimit ?? 0} onChange={(value) => setRotationLimit(value ?? 0)} /><Button type="primary" loading={savingRotation} disabled={rotationLimit === null || rotationLimit === state?.gateway.rotationLimit} onClick={() => void saveRotation()}>保存</Button></Space.Compact></div></div><div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"><div className="min-w-0"><div className="text-sm font-medium">任务调度生效分组 (白名单)</div><div className="text-xs text-zinc-500">限制只有属于选定分组的账号才参与画布/工作台与外部 API 任务的轮询和轮换；留空表示全部分组可用账号均参与调度。</div></div><div className="flex shrink-0 items-center gap-2"><Select mode="tags" style={{ minWidth: 260, maxWidth: 420 }} placeholder="全部分组参与轮询 (默认)" value={dispatchGroups} onChange={setDispatchGroups} options={availableGroups.map((g) => ({ value: g, label: g }))} /><Button type="primary" loading={savingDispatchGroups} onClick={() => void saveDispatchGroups()}>保存</Button></div></div></Card><Card title="账号池" extra={<Space wrap><Input size="small" allowClear prefix={<Search className="size-3.5" />} placeholder="搜索账号 ID 或名称" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} style={{ width: 210 }} /><Select size="small" style={{ width: 130 }} value={groupFilter} onChange={setGroupFilter} options={[{ value: "all", label: "全部分组" }, { value: "__none__", label: "未分组" }, ...availableGroups.map((g) => ({ value: g, label: `分组：${g}` }))]} />{accountTab === "google" ? <Button size="small" icon={<Copy className="size-3.5" />} loading={exportingCookies} disabled={!accountTabCounts.google} onClick={() => void exportGoogleCookies()}>{selectedAccountIds.length ? `导出选中 ${selectedAccountIds.length} 个 Cookie TXT` : `导出全部 ${accountTabCounts.google} 个 Cookie TXT`}</Button> : null}<Button size="small" disabled={!selectedAccountIds.length} onClick={() => { setBatchGroupName(""); setBatchGroupModalOpen(true); }}>批量设置分组{selectedAccountIds.length ? ` (${selectedAccountIds.length})` : ""}</Button><Popconfirm title={`删除选中的 ${selectedAccountIds.length} 个 Dola 账号？`} description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void batchDeleteSelected()}><Button danger size="small" icon={<Trash2 className="size-4" />} loading={batchDeleting} disabled={!selectedAccountIds.length}>批量删除</Button></Popconfirm><Button size="small" icon={<RefreshCw className={`size-4 ${poolRefreshing ? "animate-spin" : ""}`} />} disabled={poolRefreshing} onClick={() => void refreshPool()}>刷新</Button><Button size="small" icon={<RefreshCw className={`size-4 ${refreshRunning ? "animate-spin" : ""}`} />} disabled={!accounts.filter(isValidatableAccount).length} onClick={() => (refreshRunning ? setRefreshModalOpen(true) : startRefreshAll())}>{refreshAllButtonText}</Button></Space>}><Tabs size="small" className="mb-1" activeKey={accountTab} onChange={(key) => { setAccountTab(key as typeof accountTab); setSelectedAccountIds([]); }} items={accountTabs.map((tab) => ({ key: tab.key, label: tab.label }))} /><Table rowKey="id" size="small" pagination={{ pageSize: 10 }} rowSelection={{ selectedRowKeys: selectedAccountIds, onChange: (keys) => setSelectedAccountIds(keys as string[]) }} dataSource={visibleAccounts} scroll={{ x: "max-content" }} columns={[{ title: "账号", render: (_: unknown, row: DolaAccount) => (<div className="flex flex-col gap-0.5"><div className="flex items-center gap-1.5"><span className="font-medium text-zinc-900 dark:text-zinc-100">{row.name}</span>{row.authType === "google" ? (<Tag color="purple" className="m-0 text-[10px]">Google 授权</Tag>) : (<Tag color="default" className="m-0 text-[10px]">Cookie 导入</Tag>)}</div>{row.email ? <span className="text-[11px] text-zinc-500">{row.email}</span> : null}</div>) }, { title: "分组", render: (_: unknown, row: DolaAccount) => (<button type="button" className="cursor-pointer text-left" onClick={() => openEditGroup(row)} title="点击修改分组">{row.group ? <Tag color="blue" className="m-0 text-xs">{row.group}</Tag> : <Tag className="m-0 text-xs text-zinc-400">未分组</Tag>}</button>) }, { title: "登录状态", render: (_: unknown, row: DolaAccount) => {
     if (row.status === "needs_login" || row.loginState === "needs_login") {
         return <Tag color="error">登录失效</Tag>;
     }
@@ -755,7 +840,7 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
     return <Tag color="blue">登录有效 · 未参与轮询</Tag>;
 } }, { title: "请求", dataIndex: "requestCount" }, { title: "成功", dataIndex: "successCount" }, { title: "额度", render: (_: unknown, row: DolaAccount) => row.quota?.length ? row.quota.map((quota) => quota.remaining === null ? (quota.source === "unknown" ? "上游未公开" : "未知") : `${quota.remaining}/${quota.limit ?? "—"}`).join("、") : "未知" }, { title: "操作", render: (_: unknown, row: DolaAccount) => {
         const busy = busyId === row.id || activeIds.includes(row.id);
-        return <Space wrap><Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEditAccount(row)}>编辑</Button>{row.status === "quota_exhausted" ? (<Button size="small" type="primary" ghost loading={busy} onClick={() => void runFor(row.id, () => resetDolaAccountQuota(row.id).then(() => { message.success("账号额度已重置为正常"); return onRefresh(); }))}>重置额度</Button>) : null}{row.status === "rate_limited" ? (<Button size="small" type="primary" ghost loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { status: "ready" }).then(() => onRefresh()))}>解除频繁</Button>) : null}<Button size="small" loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { enabled: !row.enabled }).then(() => onRefresh()))}>{row.enabled ? "停用" : "启用"}</Button><Button size="small" loading={busy} onClick={() => void checkAccount(row)}>检测登录状态</Button><Button size="small" onClick={() => openEditGroup(row)}>分组</Button><Button size="small" loading={busy} onClick={() => { const active = headedSessions.find((item) => item.accountId === row.id); if (active) setAccountVerification({ verificationId: active.verificationId, accountId: row.id }); else void openHeadedOptions(row); }}>{headedSessions.some((item) => item.accountId === row.id) ? "返回有头测试" : "有头测试"}</Button><Popconfirm title="删除该 Dola 账号？" description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void runFor(row.id, () => deleteDolaAccount(row.id).then(() => onRefresh()))}><Button danger size="small" loading={busy}>删除</Button></Popconfirm></Space>;
+        return <Space wrap><Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEditAccount(row)}>编辑</Button>{row.authType === "google" ? <Button size="small" icon={<Copy className="size-3.5" />} loading={busy} onClick={() => void copyGoogleCookie(row)}>复制 Cookie</Button> : null}{row.status === "quota_exhausted" ? (<Button size="small" type="primary" ghost loading={busy} onClick={() => void runFor(row.id, () => resetDolaAccountQuota(row.id).then(() => { message.success("账号额度已重置为正常"); return onRefresh(); }))}>重置额度</Button>) : null}{row.status === "rate_limited" ? (<Button size="small" type="primary" ghost loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { status: "ready" }).then(() => onRefresh()))}>解除频繁</Button>) : null}<Button size="small" loading={busy} onClick={() => void runFor(row.id, () => updateDolaAccount(row.id, { enabled: !row.enabled }).then(() => onRefresh()))}>{row.enabled ? "停用" : "启用"}</Button><Button size="small" loading={busy} onClick={() => void checkAccount(row)}>检测登录状态</Button><Button size="small" onClick={() => openEditGroup(row)}>分组</Button><Button size="small" loading={busy} onClick={() => { const active = headedSessions.find((item) => item.accountId === row.id); if (active) setAccountVerification({ verificationId: active.verificationId, accountId: row.id }); else void openHeadedOptions(row); }}>{headedSessions.some((item) => item.accountId === row.id) ? "返回有头测试" : "有头测试"}</Button><Popconfirm title="删除该 Dola 账号？" description="只移除账号记录，不影响已生成任务；仍有运行中任务的账号会被跳过。" okText="删除" cancelText="取消" onConfirm={() => void runFor(row.id, () => deleteDolaAccount(row.id).then(() => onRefresh()))}><Button danger size="small" loading={busy}>删除</Button></Popconfirm></Space>;
     } }]} /></Card><Modal title={`编辑 Dola 账号 · ${editingAccount?.name || ""}`} open={Boolean(editingAccount)} onCancel={() => { if (!savingAccount) { setEditingAccount(null); setEditCookie(""); } }} onOk={() => void saveAccount()} confirmLoading={savingAccount} okText="保存更改" destroyOnHidden>
         <div className="space-y-4">
             <div><label className="mb-1 block text-xs text-zinc-500">账号 ID（只读）</label><Input value={editingAccount?.id || ""} readOnly onClick={(event) => event.currentTarget.select()} className="font-mono" /></div>
@@ -778,19 +863,21 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
                                                 </>
                                             );
                                         })()}
-                                    </div><div className="text-xs text-zinc-500">关闭弹层（未转入后台）会停止剩余账号的验证；转入后台后可点击「正在验证账号」按钮重新查看进度。</div></div></Modal><Modal title={`有头测试 · ${headedAccount?.name || ""}`} open={Boolean(headedAccount)} onCancel={() => setHeadedAccount(null)} onOk={launchHeaded} okText="打开独立窗口" okButtonProps={{ loading: Boolean(headedAccount && busyId === headedAccount.id) }}><div className="space-y-3"><p>选择本次测试的出口；浏览器使用全新实例与空白上下文，仅加载该账号的 Cookie。操作完成后请在后台点击「检测登录并保存 Cookie」，再关闭独立窗口；直接关闭原生窗口可能无法读取新 Cookie。</p><Select className="w-full" value={headedProxy} onChange={setHeadedProxy} options={[{ value: "direct", label: "不使用代理 · 直连" }, ...headedGenericNodes, ...(state?.proxy.enabled && (state.proxy.mode === "magic" || state.proxy.mode === "chained") ? [{ value: state.proxy.mode, label: `${state.proxy.mode === "magic" ? "魔法代理" : "链式代理"} · 当前 Dola 绑定出口 ${state.proxy.target}` }] : [])]} /><p className="text-xs text-zinc-500">魔法代理和链式代理使用代理管理中 Dola 当前已绑定的出口；通用代理可选任一已启用节点，本次选择不修改生成任务的代理绑定。</p></div></Modal><DolaVerificationDialog request={accountVerification ? { taskId: "", verificationId: accountVerification.verificationId } : null} admin headedTest onClose={() => { setAccountVerification(null); void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }} onResolved={async () => { message.success("账号页面已重新检测，并同步当前凭据与状态"); setAccountVerification(null); await listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); await onRefresh(); }} /><GoogleLoginModal open={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onSuccess={onRefresh} /></>;
+                                    </div><div className="text-xs text-zinc-500">关闭弹层（未转入后台）会停止剩余账号的验证；转入后台后可点击「正在验证账号」按钮重新查看进度。</div></div></Modal><Modal title={`有头测试 · ${headedAccount?.name || ""}`} open={Boolean(headedAccount)} onCancel={() => setHeadedAccount(null)} onOk={launchHeaded} okText="打开独立窗口" okButtonProps={{ loading: Boolean(headedAccount && busyId === headedAccount.id) }}><div className="space-y-3"><p>选择本次测试的出口；浏览器使用全新实例与空白上下文，仅加载该账号的 Cookie。本机打开独立窗口，服务器通过网页远程操作。操作完成后请点击「检测登录并保存 Cookie」。</p><Select className="w-full" value={headedProxy} onChange={setHeadedProxy} options={[{ value: "direct", label: "不使用代理 · 直连" }, ...headedGenericNodes, { value: "magic", label: `魔法代理${state?.proxy.enabled && state.proxy.mode === "magic" ? ` · ${state.proxy.target}` : " · 需要配置"}` }, { value: "chained", label: `链式代理${state?.proxy.enabled && state.proxy.mode === "chained" ? ` · ${state.proxy.target}` : " · 需要配置"}` }]} />{(headedProxy === "magic" || headedProxy === "chained") && (!state?.proxy.enabled || state.proxy.mode !== headedProxy || !state.proxy.target) ? <Alert type="info" showIcon message="请先配置 Dola 代理出口" description="在代理管理中选择魔法代理节点，或配置链式代理的跳板与落地节点，保存后返回有头测试。该配置也用于 Dola 生成任务。" action={<Button size="small" onClick={() => { setHeadedAccount(null); onManageProxy(); }}>前往代理管理</Button>} /> : null}<div><label className="mb-1 block text-xs">远程窗口最长空闲时间（秒）</label><InputNumber className="w-full" min={1} precision={0} value={headedTimeout} onChange={(value) => setHeadedTimeout(value || 180)} /></div><p className="text-xs text-zinc-500">魔法代理和链式代理使用代理管理中 Dola 当前已绑定的出口；通用代理可选任一已启用节点，本次选择不修改生成任务的代理绑定。远程窗口在空闲超时后自动回收。</p></div></Modal><DolaVerificationDialog request={accountVerification ? { taskId: "", verificationId: accountVerification.verificationId } : null} admin headedTest onClose={() => { setAccountVerification(null); void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }} onResolved={async () => { message.success("账号页面已重新检测，并同步当前凭据与状态"); setAccountVerification(null); await listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); await onRefresh(); }} /><GoogleLoginModal open={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onSuccess={onRefresh} /></>;
 }
 
 function StatisticsPanel({ state }: { state: DolaAdminState | null }) { const stats = state?.stats; return <div className="grid gap-4 sm:grid-cols-3"><Card><Statistic title="账号总数" value={stats?.totalAccounts || 0} prefix={<Bot className="size-4" />} /></Card><Card><Statistic title="成功请求" value={stats?.successCount || 0} prefix={<CheckCircle2 className="size-4" />} /></Card><Card><Statistic title="失败请求" value={stats?.errorCount || 0} prefix={<Activity className="size-4" />} /></Card></div>; }
 
-function GatewayPanel({ state, onToggle, onToggleAutoWatermark, onToggleCaptureScreenshot, rawKey, setRawKey, open, setOpen, name, setName, onCreated }: { state: DolaAdminState | null; onToggle: (enabled: boolean) => Promise<void>; onToggleAutoWatermark: (enabled: boolean) => Promise<void>; onToggleCaptureScreenshot?: (enabled: boolean) => Promise<void>; rawKey: string; setRawKey: (value: string) => void; open: boolean; setOpen: (value: boolean) => void; name: string; setName: (value: string) => void; onCreated: () => Promise<void> }) {
+function GatewayPanel({ state, onToggle, onToggleAutoWatermark, onToggleCaptureScreenshot, onSavePollInterval, rawKey, setRawKey, open, setOpen, name, setName, onCreated }: { state: DolaAdminState | null; onToggle: (enabled: boolean) => Promise<void>; onToggleAutoWatermark: (enabled: boolean) => Promise<void>; onToggleCaptureScreenshot?: (enabled: boolean) => Promise<void>; onSavePollInterval: (intervalMs: number) => Promise<void>; rawKey: string; setRawKey: (value: string) => void; open: boolean; setOpen: (value: boolean) => void; name: string; setName: (value: string) => void; onCreated: () => Promise<void> }) {
     const { message } = App.useApp();
     const [creating, setCreating] = useState(false);
     const [keys, setKeys] = useState<DolaApiKey[]>(state?.apiKeys || []);
     const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
     const [busyKeyId, setBusyKeyId] = useState<string>("");
+    const [pollIntervalMs, setPollIntervalMs] = useState<number | null>(state?.gateway.pollIntervalMs ?? 2_500);
 
     useEffect(() => setKeys(state?.apiKeys || []), [state?.apiKeys]);
+    useEffect(() => setPollIntervalMs(state?.gateway.pollIntervalMs ?? 2_500), [state?.gateway.pollIntervalMs]);
 
     const create = async () => {
         setCreating(true);
@@ -850,10 +937,17 @@ function GatewayPanel({ state, onToggle, onToggleAutoWatermark, onToggleCaptureS
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
                     <div>
-                        <div className="text-sm font-medium">异常页面截图</div>
-                        <div className="text-xs text-zinc-500">协议提交发生安全验证、登录失效、限流或未知提交错误时，保存浏览器真实页面并在请求日志中提供放大查看；默认开启。</div>
+                        <div className="text-sm font-medium">生成失败时抓取会话截图</div>
+                        <div className="text-xs text-zinc-500">默认关闭。请求日志直接显示协议读取的会话回复；开启后，只有明确失败才额外启动浏览器进入对应会话截图，会增加住宅代理流量。交互式页面验证仍可正常显示画面。</div>
                     </div>
-                    <Switch checked={state?.gateway.captureVerificationScreenshot ?? true} onChange={(checked) => void onToggleCaptureScreenshot?.(checked)} />
+                    <Switch checked={state?.gateway.captureFailureScreenshot ?? false} onChange={(checked) => void onToggleCaptureScreenshot?.(checked)} />
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                    <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">协议轮询间隔（毫秒）</div>
+                        <div className="text-xs text-zinc-500">默认 2500 毫秒；调大可减少住宅代理请求，但结果发现会稍晚。仅对新提交任务生效。</div>
+                    </div>
+                    <Space.Compact><InputNumber min={1} precision={0} value={pollIntervalMs} onChange={setPollIntervalMs} style={{ width: 128 }} /><Button disabled={!pollIntervalMs || pollIntervalMs === state?.gateway.pollIntervalMs} onClick={() => pollIntervalMs && void onSavePollInterval(pollIntervalMs)}>保存</Button></Space.Compact>
                 </div>
             </Card>
             <Card

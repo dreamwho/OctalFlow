@@ -12,6 +12,9 @@ class VideoRequest(BaseModel):
     ratio: str = "16:9"
     size: str | None = None
     references: list[dict] = Field(default_factory=list)
+    images: list[str] | list[dict] | None = None
+    first_frame: str | None = None
+    last_frame: str | None = None
     accountId: str | None = None
     credentialVersion: int | None = None
     proxyMode: Literal["direct", "managed"] = "direct"
@@ -21,6 +24,8 @@ class VideoRequest(BaseModel):
     cookie: str | None = None
     requestId: str | None = None
     headless: bool | None = None
+    captureFailureScreenshot: bool = False
+    pollIntervalMs: int = Field(default=2_500, gt=0)
 
 
 class VideoTask(BaseModel):
@@ -34,6 +39,7 @@ class VideoTask(BaseModel):
     proxyTarget: str | None = None
     conversationId: str | None = None
     error: str | None = None
+    rawError: str | None = None
     verificationId: str | None = None
     videoUrl: str | None = None
     imageUrls: list[str] | None = None
@@ -51,6 +57,7 @@ class AccountInspectRequest(BaseModel):
     proxyUrl: str | None = None
     cookie: str
     headless: bool | None = None
+    timeoutSeconds: int | None = None
     authOnly: bool = False
 
 
@@ -84,4 +91,9 @@ class GoogleLoginRequest(BaseModel):
     proxySource: Literal["direct", "magic", "generic", "chained"] | None = None
     proxyTarget: str | None = None
     proxyUrl: str | None = None
-    timeoutSeconds: int = 180
+    timeoutSeconds: int = Field(default=180, gt=0)
+
+
+class GoogleLoginSessionRequest(GoogleLoginRequest):
+    ownerId: str = Field(min_length=1)
+    headless: bool = True

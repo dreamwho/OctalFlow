@@ -8,6 +8,7 @@ PACKAGE_DIR="${DREAMYO_PACKAGE_DIR:-$REPO_ROOT/本次修改需上传文件_$PACK
 PLATFORM="${DREAMYO_DOCKER_PLATFORM:-linux/amd64}"
 APP_IMAGE="${DREAMYO_OFFLINE_APP_IMAGE:-dreamyo-app:offline}"
 GEMINIAI_IMAGE="${DREAMYO_OFFLINE_GEMINIAI_IMAGE:-dreamyo-geminiai:offline}"
+DOLA_API_IMAGE="${DREAMYO_OFFLINE_DOLA_API_IMAGE:-dreamyo-dola-api:offline}"
 MAGIC_PROXY_IMAGE="${DREAMYO_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}"
 POSTGRES_IMAGE="${DREAMYO_OFFLINE_POSTGRES_IMAGE:-postgres:16.6-alpine}"
 BUILD_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
@@ -261,6 +262,14 @@ else
         --progress "$BUILD_PROGRESS" \
         "$REPO_ROOT/services/geminiai"
 
+    printf '构建 Dola API 镜像：%s（平台 %s）\n' "$DOLA_API_IMAGE" "$PLATFORM"
+    docker buildx build \
+        --platform "$PLATFORM" \
+        --tag "$DOLA_API_IMAGE" \
+        --load \
+        --progress "$BUILD_PROGRESS" \
+        "$REPO_ROOT/services/dola-api"
+
     printf '拉取 Mihomo 镜像（不重新构建）：%s（平台 %s）\n' "$MAGIC_PROXY_IMAGE" "$PLATFORM"
     # 本地已有该镜像时跳过拉取（国际网络不可达时仍可打包）
     docker image inspect --platform "$PLATFORM" "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || \
@@ -272,15 +281,17 @@ else
     fi
 
     if [[ "$DATABASE_MODE" == embedded ]]; then
-        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
     else
-        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
     fi
 
     printf '导出主应用镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/app.tar" "$APP_IMAGE"
     printf '导出 GeminiAI 镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/geminiai.tar" "$GEMINIAI_IMAGE"
+    printf '导出 Dola API 镜像归档\n'
+    docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/dola-api.tar" "$DOLA_API_IMAGE"
     printf '导出 Mihomo 镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/magic-proxy.tar" "$MAGIC_PROXY_IMAGE"
     if [[ "$DATABASE_MODE" == embedded ]]; then
@@ -289,7 +300,7 @@ else
     fi
 fi
 
-IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/magic-proxy.tar)
+IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/dola-api.tar images/magic-proxy.tar)
 if [[ "$DATABASE_MODE" == embedded ]]; then
     IMAGE_ARCHIVES+=(images/postgres.tar)
 fi
@@ -301,8 +312,7 @@ install -m 0755 "$REPO_ROOT/scripts/deploy-docker-offline.sh" "$PACKAGE_DIR/一�
 install -m 0644 "$REPO_ROOT/$COMPOSE_FILE" "$PACKAGE_DIR/$COMPOSE_FILE"
 install -m 0644 "$REPO_ROOT/.env.example" "$PACKAGE_DIR/.env.example"
 
-# GeminiTools OAuth 凭据只保存在本地 .env（不入库）；打包时注入部署包模板，
-# 由一键部署脚本种子到服务器 .env，避免每次更新都要手工补配置。
+# 仅在管理员显式选择时将本地密钥放入私有部署包。
 seeded_oauth_keys=0
 seed_env_example_from_local_env() {
     local key="$1" value
@@ -315,19 +325,22 @@ seed_env_example_from_local_env() {
     ' "$PACKAGE_DIR/.env.example" > "$PACKAGE_DIR/.env.example.seed" && mv "$PACKAGE_DIR/.env.example.seed" "$PACKAGE_DIR/.env.example"
     seeded_oauth_keys=1
 }
-seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_ID
-seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_SECRET
-seed_env_example_from_local_env DREAMYO_GEMINIAI_STUDIO_URL
-seed_env_example_from_local_env DREAMYO_CHATGPT_API_PROXY_URL
-seed_env_example_from_local_env DREAMYO_ENCRYPTION_KEY
-seed_env_example_from_local_env DREAMYO_INSTALL_TOKEN
-seed_env_example_from_local_env DREAMYO_MAINTENANCE_TOKEN
-seed_env_example_from_local_env DREAMYO_WORKER_TOKEN
-seed_env_example_from_local_env DREAMYO_GEMINIAI_API_KEY
-seed_env_example_from_local_env DREAMYO_CHATGPT_API_KEY
-seed_env_example_from_local_env DREAMYO_MAGIC_PROXY_SECRET
-seed_env_example_from_local_env DREAMYO_ALLOW_PRIVATE_UPSTREAMS
-seed_env_example_from_local_env DREAMYO_PRIVATE_UPSTREAM_HOSTS
+if [[ "${DREAMYO_SEED_LOCAL_ENV:-0}" == 1 ]]; then
+    seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_ID
+    seed_env_example_from_local_env GEMINI_TOOLS_OAUTH_CLIENT_SECRET
+    seed_env_example_from_local_env DREAMYO_GEMINIAI_STUDIO_URL
+    seed_env_example_from_local_env DREAMYO_CHATGPT_API_PROXY_URL
+    seed_env_example_from_local_env DREAMYO_ENCRYPTION_KEY
+    seed_env_example_from_local_env DREAMYO_INSTALL_TOKEN
+    seed_env_example_from_local_env DREAMYO_MAINTENANCE_TOKEN
+    seed_env_example_from_local_env DREAMYO_WORKER_TOKEN
+    seed_env_example_from_local_env DREAMYO_GEMINIAI_API_KEY
+    seed_env_example_from_local_env DREAMYO_CHATGPT_API_KEY
+    seed_env_example_from_local_env DREAMYO_DOLA_PROVIDER_KEY
+    seed_env_example_from_local_env DREAMYO_MAGIC_PROXY_SECRET
+    seed_env_example_from_local_env DREAMYO_ALLOW_PRIVATE_UPSTREAMS
+    seed_env_example_from_local_env DREAMYO_PRIVATE_UPSTREAM_HOSTS
+fi
 if [[ "$seeded_oauth_keys" == 1 ]]; then
     chmod 0600 "$PACKAGE_DIR/.env.example"
     printf '已将本地关键环境变量（OAuth/AIStudio/ChatGPT API代理/私网放行等）注入部署包模板（部署时会自动种子到服务器 .env）\n'
@@ -355,6 +368,7 @@ DREAMYO_PRIVATE_MIGRATION=$PRIVATE_MIGRATION
 DREAMYO_PRIVATE_SETTINGS_SYNC=$PRIVATE_SETTINGS_SYNC
 DREAMYO_IMAGE=$APP_IMAGE
 DREAMYO_GEMINIAI_IMAGE=$GEMINIAI_IMAGE
+DREAMYO_DOLA_API_IMAGE=$DOLA_API_IMAGE
 DREAMYO_MAGIC_PROXY_IMAGE=$MAGIC_PROXY_IMAGE
 DREAMYO_COMPOSE_FILE=$COMPOSE_FILE
 EOF
@@ -399,7 +413,10 @@ $DEFAULT_APPLICATION_URL/install
 \`\`\`
 
 首次安装令牌会在脚本完成时显示，也保存在服务器部署目录的 .env 中。请保密保存 .env，重复部署继续复用原有密钥。"
-    PRIVATE_CONTENT_NOTICE='- 不包含本机 .env、用户渠道密钥、支付密钥和账号登录态。请部署后在后台或服务器 .env 中配置；外部模型生成仍需网络、有效账号和额度，离线部署不等于离线调用外部模型。'
+    PRIVATE_CONTENT_NOTICE='- 默认不包含本机 .env、用户渠道密钥、支付密钥和账号登录态。请部署后在后台或服务器 .env 中配置；外部模型生成仍需网络、有效账号和额度，离线部署不等于离线调用外部模型。'
+    if [[ "$seeded_oauth_keys" == 1 ]]; then
+        PRIVATE_CONTENT_NOTICE='- 本包通过 DREAMYO_SEED_LOCAL_ENV=1 注入了本机部分密钥，必须仅通过受控私有渠道传输；不包含完整 .env 或账号登录态。'
+    fi
 fi
 
 cat > "$PACKAGE_DIR/README.md" <<EOF

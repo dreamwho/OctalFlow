@@ -131,6 +131,9 @@ resolve_expected_image_archives() {
     # 若 SHA256SUMS 未包含镜像归档，则结合 manifest.env 与数据库模式动态构建
     if [[ "${#archives[@]}" -eq 0 ]]; then
         archives=(images/app.tar images/geminiai.tar)
+        if grep -q '^DREAMYO_DOLA_API_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/dola-api.tar" ]]; then
+            archives+=(images/dola-api.tar)
+        fi
         if grep -q '^DREAMYO_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/magic-proxy.tar" ]]; then
             archives+=(images/magic-proxy.tar)
         fi
@@ -309,6 +312,10 @@ fi
 [[ "$PRIVATE_MIGRATION" != 1 || "$PRIVATE_SETTINGS_SYNC" != 1 ]] || die "首次迁移快照与在线设置同步不能同时启用"
 APP_IMAGE="$(read_manifest_value DREAMYO_IMAGE)"
 GEMINIAI_IMAGE="$(read_manifest_value DREAMYO_GEMINIAI_IMAGE)"
+DOLA_API_IMAGE=""
+if grep -q '^DREAMYO_DOLA_API_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
+    DOLA_API_IMAGE="$(read_manifest_value DREAMYO_DOLA_API_IMAGE)"
+fi
 MAGIC_PROXY_IMAGE=""
 if grep -q '^DREAMYO_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
     MAGIC_PROXY_IMAGE="$(read_manifest_value DREAMYO_MAGIC_PROXY_IMAGE)"
@@ -449,6 +456,7 @@ ensure_env_value NEXT_PUBLIC_SITE_URL "${NEXT_PUBLIC_SITE_URL:-http://localhost:
 ensure_env_value DREAMYO_TRUSTED_PROXY_HOPS "${DREAMYO_TRUSTED_PROXY_HOPS:-0}"
 ensure_env_value DREAMYO_GEMINIAI_API_KEY "${DREAMYO_GEMINIAI_API_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_CHATGPT_API_KEY "${DREAMYO_CHATGPT_API_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_DOLA_PROVIDER_KEY "${DREAMYO_DOLA_PROVIDER_KEY:-$(generate_token)}"
 # GeminiTools OAuth 凭据由打包机注入部署包 .env.example，服务器 .env 缺失时自动种子
 seed_env_from_example() {
     local key="$1" value
@@ -468,11 +476,13 @@ seed_env_from_example DREAMYO_MAINTENANCE_TOKEN
 seed_env_from_example DREAMYO_WORKER_TOKEN
 seed_env_from_example DREAMYO_GEMINIAI_API_KEY
 seed_env_from_example DREAMYO_CHATGPT_API_KEY
+seed_env_from_example DREAMYO_DOLA_PROVIDER_KEY
 seed_env_from_example DREAMYO_MAGIC_PROXY_SECRET
 seed_env_from_example DREAMYO_ALLOW_PRIVATE_UPSTREAMS
 seed_env_from_example DREAMYO_PRIVATE_UPSTREAM_HOSTS
 
 ensure_env_value DREAMYO_CHATGPT_API_KEY "${DREAMYO_CHATGPT_API_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_DOLA_PROVIDER_KEY "${DREAMYO_DOLA_PROVIDER_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_MAGIC_PROXY_SECRET "${DREAMYO_MAGIC_PROXY_SECRET:-$(generate_token)}"
 ensure_env_value DREAMYO_ENCRYPTION_KEY "${DREAMYO_ENCRYPTION_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_INSTALL_TOKEN "${DREAMYO_INSTALL_TOKEN:-$(generate_token)}"
@@ -523,7 +533,7 @@ fi
 
 encryption_key="$(read_env_value DREAMYO_ENCRYPTION_KEY)"
 [[ "${#encryption_key}" -ge 32 ]] || die "DREAMYO_ENCRYPTION_KEY 至少需要 32 个字符"
-for key in DREAMYO_INSTALL_TOKEN DREAMYO_MAINTENANCE_TOKEN DREAMYO_WORKER_TOKEN DREAMYO_GEMINIAI_API_KEY DREAMYO_CHATGPT_API_KEY DREAMYO_MAGIC_PROXY_SECRET; do
+for key in DREAMYO_INSTALL_TOKEN DREAMYO_MAINTENANCE_TOKEN DREAMYO_WORKER_TOKEN DREAMYO_GEMINIAI_API_KEY DREAMYO_CHATGPT_API_KEY DREAMYO_DOLA_PROVIDER_KEY DREAMYO_MAGIC_PROXY_SECRET; do
     value="$(read_env_value "$key")"
     [[ "${#value}" -ge 32 ]] || die "$key 至少需要 32 个字符"
 done
@@ -540,6 +550,9 @@ fi
 
 docker image inspect "$APP_IMAGE" >/dev/null 2>&1 || die "主应用镜像未加载：$APP_IMAGE"
 docker image inspect "$GEMINIAI_IMAGE" >/dev/null 2>&1 || die "GeminiAI 镜像未加载：$GEMINIAI_IMAGE"
+if [[ -n "$DOLA_API_IMAGE" ]]; then
+    docker image inspect "$DOLA_API_IMAGE" >/dev/null 2>&1 || die "Dola Provider 镜像未加载：$DOLA_API_IMAGE"
+fi
 if [[ -n "$MAGIC_PROXY_IMAGE" ]]; then
     docker image inspect "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || die "Mihomo 镜像未加载：$MAGIC_PROXY_IMAGE"
 fi
@@ -577,7 +590,7 @@ resolve_compose_project_name() {
     elif [[ "${#configured_projects[@]}" -eq 1 ]]; then
         selected="${configured_projects[0]}"
     else
-        for candidate in dreamyo dreamyo-magic-proxy dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-geminiai; do
+        for candidate in dreamyo dreamyo-magic-proxy dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-dola-api dreamyo-geminiai; do
             container_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$candidate" 2>/dev/null || true)"
             [[ "$container_project" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || continue
             case " ${running_projects[*]:-} " in
@@ -599,9 +612,9 @@ printf '持久数据卷项目名：%s\n' "$COMPOSE_PROJECT_NAME"
 compose_diagnostics() {
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps >&2 || true
     if [[ "$DATABASE_MODE" == embedded ]]; then
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy app generation-worker geminiai postgres >&2 || true
+        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy app generation-worker geminiai dola-api postgres >&2 || true
     else
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy app generation-worker geminiai >&2 || true
+        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy app generation-worker geminiai dola-api >&2 || true
     fi
 }
 
@@ -686,13 +699,25 @@ fs.chmodSync(target, 0o700);
         app /app/services/chatgpt-api/.venv/bin/python /app/services/chatgpt-api/scripts/sync_private_settings.py \
         --gemini-snapshot /private-settings-sync || die "GeminiAIStudio 授权同步失败；服务保持停止，服务器回滚备份已保留"
 fi
-for obsolete_container in dreamyo dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-geminiai dreamyo-magic-proxy dreamyo-postgres; do
+for obsolete_container in dreamyo dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-dola-api dreamyo-geminiai dreamyo-magic-proxy dreamyo-postgres; do
     obsolete_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$obsolete_container" 2>/dev/null || true)"
     if [[ -n "$obsolete_project" && "$obsolete_project" != "$COMPOSE_PROJECT_NAME" ]]; then
         docker rm -f "$obsolete_container" >/dev/null || die "无法安全切换现有容器项目名：$obsolete_container"
     fi
 done
 printf '启动服务……\n'
+# 旧版本应用写入的动态 config.yaml 可能携带无效 provider 路径（App 侧路径），会让 Mihomo
+# 启动即崩溃循环并阻塞整个部署。启动前统一清理：Mihomo 先以 bootstrap 健康启动，
+# 应用就绪后自动重写正确配置并热重载。
+magic_proxy_runtime_volume="${COMPOSE_PROJECT_NAME}_dreamyo-magic-proxy-runtime"
+if docker volume inspect "$magic_proxy_runtime_volume" >/dev/null 2>&1; then
+    if docker run --rm --pull never --network none -v "$magic_proxy_runtime_volume:/proxy-runtime" --entrypoint /bin/sh "$MAGIC_PROXY_IMAGE" -c 'rm -f /proxy-runtime/config.yaml'; then
+        printf '已清理魔法代理运行卷中的旧动态配置，将由应用重新生成。\n'
+    else
+        # 清理失败不阻塞部署：入口脚本会用 mihomo -t 校验旧配置并回退 bootstrap 启动。
+        printf '警告：无法清理魔法代理运行卷中的旧动态配置，入口脚本将在启动时校验并回退\n' >&2
+    fi
+fi
 # 绑定挂载的 bootstrap 配置内容变化不会触发 Compose 重建容器；每次部署强制重建
 # 无状态的 magic-proxy，保证更新后的监听声明（含 ChatGPTAPI 17892）立即生效。
 if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --pull never --force-recreate magic-proxy; then

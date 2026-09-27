@@ -5,7 +5,7 @@ import { ArrowRight, CheckCircle2, Network, RefreshCw, ShieldCheck, Zap } from "
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
-import { getMagicProxy, testChatGptChain, testMagicProxyDola, testMagicProxyGoogle, updateMagicProxyBinding, type MagicProxyGoogleTestReport, type MagicProxyNode, type MagicProxyProvider, type MagicProxyState } from "@/services/api/magic-proxy";
+import { getMagicProxy, testChatGptChain, testMagicProxyDola, testMagicProxyGoogle, testMagicProxyNode, updateMagicProxyBinding, type MagicProxyDelayResult, type MagicProxyGoogleTestReport, type MagicProxyNode, type MagicProxyProvider, type MagicProxyState } from "@/services/api/magic-proxy";
 import { genericProxyRequest, getGenericProxyBindings, saveGenericProxyBinding, type ChatGptProxyView, type GenericProxyBindings } from "@/services/api/generic-proxy";
 
 const providerLabels: Record<MagicProxyProvider, string> = {
@@ -29,13 +29,16 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
     const [enabled, setEnabled] = useState(false);
     const [source, setSource] = useState<ProxySource>("magic");
     const [node, setNode] = useState("");
+    const [fallbackNode, setFallbackNode] = useState("");
     const [target, setTarget] = useState("");
     const [hopNode, setHopNode] = useState("");
+    const [hopFallbackNode, setHopFallbackNode] = useState("");
     const [landingNodeId, setLandingNodeId] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
     const [testReport, setTestReport] = useState<MagicProxyGoogleTestReport | null>(null);
+    const [nodeTest, setNodeTest] = useState<MagicProxyDelayResult | null>(null);
     const [error, setError] = useState("");
 
     const load = useCallback(async () => {
@@ -68,8 +71,10 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
             }
 
             setNode(magicBinding?.node || "");
+            setFallbackNode(magicBinding?.fallback_node || "");
             setTarget(genericBinding?.target || "");
             setHopNode(magicBinding?.chained_config?.hop_node || "");
+            setHopFallbackNode(magicBinding?.chained_config?.hop_fallback_node || "");
             setLandingNodeId(magicBinding?.chained_config?.landing_node_id || "");
         } catch (loadError) {
             setError(loadError instanceof Error ? loadError.message : "读取代理绑定失败");
@@ -101,7 +106,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
             for (const item of group.nodes || []) {
                 options.push({
                     value: item.id,
-                    label: `${item.name || item.id} · ${item.url} [${group.name}]`,
+                    label: `${item.name || item.id} [${group.name}]`,
                 });
             }
         }
@@ -111,28 +116,34 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         return options;
     }, [genericView?.groups, landingNodeId]);
 
-    // 跳板节点选项列表（从 Clash 订阅中选取）
+    // 跳板节点选项列表（从 Clash 订阅中选取，按订阅分组）
     const nodes = state?.nodes || [];
+    // 不可用节点（最近测速失败）不进入选择列表，避免选到失效节点
+    const selectableNodes = useMemo(() => nodes.filter((item) => item.alive !== false), [nodes]);
+    const hopSelectGroups = useMemo(() => groupMagicProxyOptions(selectableNodes), [selectableNodes]);
     const hopOptions = useMemo(() => {
-        const options = nodes.map((item: MagicProxyNode) => ({
-            value: item.name,
-            label: `${item.name} (${item.type})`,
-        }));
-        if (hopNode && !options.some((item) => item.value === hopNode)) {
-            options.unshift({ value: hopNode, label: `${hopNode} (当前配置)` });
+        const groups = hopSelectGroups.map((grp) => ({ ...grp, options: [...grp.options] }));
+        if (hopNode && !flatMagicProxyOptions(groups).some((item) => item.value === hopNode)) {
+            groups.unshift({ label: "当前配置", options: [{ value: hopNode, label: `${hopNode} (当前配置)` }] });
         }
-        return options;
-    }, [hopNode, nodes]);
+        return groups;
+    }, [hopNode, hopSelectGroups]);
 
     const persistSourceSwitch = (nextSource: ProxySource) => {
         // 允许直接切入对应视图进行配置，不作前置报错阻断
         setSource(nextSource);
     };
 
-    const persist = async (nextEnabled: boolean, nextSource: ProxySource, overrides: { node?: string; target?: string; hopNode?: string; landingNodeId?: string } = {}) => {
+    const persist = async (
+        nextEnabled: boolean,
+        nextSource: ProxySource,
+        overrides: { node?: string; fallbackNode?: string; target?: string; hopNode?: string; hopFallbackNode?: string; landingNodeId?: string } = {},
+    ) => {
         const effectiveNode = overrides.node ?? node;
+        const effectiveFallback = overrides.fallbackNode ?? fallbackNode;
         const effectiveTarget = overrides.target ?? target;
         const effectiveHop = overrides.hopNode ?? hopNode;
+        const effectiveHopFallback = overrides.hopFallbackNode ?? hopFallbackNode;
         const effectiveLanding = overrides.landingNodeId ?? landingNodeId;
 
         if (nextEnabled && nextSource === "magic") {
@@ -164,7 +175,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                 await updateMagicProxyBinding({ provider, enabled: false }).catch(() => undefined);
                 await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
             } else if (nextSource === "magic") {
-                await updateMagicProxyBinding({ provider, enabled: true, mode: "magic", node: effectiveNode });
+                await updateMagicProxyBinding({ provider, enabled: true, mode: "magic", node: effectiveNode, fallback_node: effectiveFallback || "" });
                 await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
             } else if (nextSource === "chained") {
                 await updateMagicProxyBinding({
@@ -174,6 +185,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                     chained_config: {
                         hop_node: effectiveHop,
                         landing_node_id: effectiveLanding,
+                        ...(effectiveHopFallback ? { hop_fallback_node: effectiveHopFallback } : {}),
                     },
                 });
                 await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
@@ -191,6 +203,23 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
             message.error(nextError);
         } finally {
             setSaving(false);
+        }
+    };
+
+    // 魔法代理模式只需要验证「当前节点能不能用」，复用单节点探测（失败时会给出解析/端口/拨号阶段的具体断点）。
+    const handleNodeTest = async () => {
+        if (!node) return;
+        setTesting(true);
+        setNodeTest(null);
+        try {
+            const result = await testMagicProxyNode(node);
+            setNodeTest(result);
+            if (typeof result.delay === "number") message.success(`当前节点连通性通过 (${result.delay} ms)`);
+            else message.warning(result.error || "当前节点连通性未通过");
+        } catch (testError) {
+            message.error(testError instanceof Error ? testError.message : "测试当前节点连通性失败");
+        } finally {
+            setTesting(false);
         }
     };
 
@@ -214,11 +243,24 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         }
     };
 
+    const nodeSelectGroups = useMemo(() => {
+        // 订阅策略组（如「自动选择」url-test）与节点一样可作为服务出口，自动选优当前最快节点。
+        const policyOptions: MagicProxySelectOption[] = (state?.subscriptionGroups || []).map((grp) => {
+            const delaySuffix = typeof grp.delay === "number" && grp.delay > 0 ? ` (${grp.delay}ms)` : grp.alive === false ? " (不可用)" : "";
+            const nowSuffix = grp.now ? ` · 当前 ${grp.now}` : "";
+            return { value: grp.name, label: `${grp.name} · ${grp.type} 自动选优${nowSuffix}${delaySuffix}` };
+        });
+        const extraGroups: MagicProxySelectGroup[] = policyOptions.length ? [{ label: "订阅策略组", options: policyOptions }] : [];
+        return groupMagicProxyOptions(selectableNodes, extraGroups);
+    }, [selectableNodes, state?.subscriptionGroups]);
+
     const nodeOptions = useMemo(() => {
-        const options = nodes.map((item: MagicProxyNode) => ({ value: item.name, label: `${item.name} · ${item.type}` }));
-        if (node && !options.some((option) => option.value === node)) options.unshift({ value: node, label: `${node} · 当前绑定` });
-        return options;
-    }, [node, nodes]);
+        const groups = nodeSelectGroups.map((grp) => ({ ...grp, options: [...grp.options] }));
+        if (node && !flatMagicProxyOptions(groups).some((option) => option.value === node)) {
+            groups.unshift({ label: "当前绑定", options: [{ value: node, label: `${node} · 当前绑定` }] });
+        }
+        return groups;
+    }, [node, nodeSelectGroups]);
 
     const configured = state?.configured === true;
     const runtimeAvailable = state?.runtimeAvailable === true;
@@ -313,6 +355,8 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                 value={node || undefined}
                                 placeholder={magicUnavailableReason || "请选择魔法节点"}
                                 options={nodeOptions}
+                                showSearch
+                                optionFilterProp="label"
                                 disabled={loading || saving || !configured || !runtimeAvailable || !nodes.length}
                                 onChange={(value: string) => {
                                     setNode(value);
@@ -320,7 +364,59 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                 }}
                             />
                         </div>
-                        {magicActive && node ? <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">当前节点已保存，立即生效。</div> : null}
+                        {magicActive && node ? (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                <Button
+                                    size="small"
+                                    icon={<Zap className="size-3.5 text-amber-500" />}
+                                    loading={testing}
+                                    disabled={saving || !node}
+                                    onClick={() => void handleNodeTest()}
+                                >
+                                    测试当前节点连通性
+                                </Button>
+                                {nodeTest ? (
+                                    <Tag color={typeof nodeTest.delay === "number" ? "success" : "error"} className="m-0 max-w-full whitespace-normal text-left">
+                                        {typeof nodeTest.delay === "number" ? `连通正常 ${nodeTest.delay} ms` : nodeTest.error}
+                                    </Tag>
+                                ) : null}
+                                <span className="text-xs text-zinc-500 dark:text-zinc-400">当前节点已保存，立即生效。</span>
+                            </div>
+                        ) : null}
+
+                        <label htmlFor={`magic-proxy-fallback-${provider}`} className="mb-1.5 mt-4 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                            兜底节点（可选）
+                        </label>
+                        <div className="min-w-0 sm:max-w-sm">
+                            <Select
+                                id={`magic-proxy-fallback-${provider}`}
+                                aria-label="兜底节点"
+                                className="w-full"
+                                value={fallbackNode || undefined}
+                                placeholder="主节点失联时自动切换的节点"
+                                options={nodeSelectGroups}
+                                allowClear
+                                showSearch
+                                optionFilterProp="label"
+                                disabled={loading || saving || !configured || !runtimeAvailable || !nodes.length || !node}
+                                onClear={() => {
+                                    setFallbackNode("");
+                                    void persist(true, "magic", { fallbackNode: "" });
+                                }}
+                                onChange={(value: string) => {
+                                    if (!value) return;
+                                    setFallbackNode(value);
+                                    void persist(true, "magic", { fallbackNode: value });
+                                }}
+                            />
+                        </div>
+                        <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                            {magicActive && fallbackNode ? (
+                                <span>主节点无法连通时，由 Mihomo 健康检查自动切换到兜底节点，恢复后自动切回主节点。</span>
+                            ) : (
+                                <span>设置后主节点拨号失败时会自动使用兜底节点接管本次连接，恢复后切回主节点。</span>
+                            )}
+                        </div>
                     </div>
                 ) : source === "generic" ? (
                     <div className="min-w-0">
@@ -386,10 +482,37 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     value={hopNode || undefined}
                                     placeholder={magicUnavailableReason || "请选择跳板节点 (如香港/新加坡专线)"}
                                     options={hopOptions}
+                                    showSearch
+                                    optionFilterProp="label"
                                     disabled={loading || saving || !configured || !runtimeAvailable || !nodes.length}
                                     onChange={(value: string) => setHopNode(value)}
                                 />
                                 <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">流量第一跳：通过加密隧道出海，建议选择低延迟专线。</div>
+                                <label htmlFor={`chained-hop-fallback-${provider}`} className="mb-1.5 mt-3 block text-xs font-medium text-zinc-800 dark:text-zinc-200">
+                                    跳板兜底节点（可选）
+                                </label>
+                                <Select
+                                    id={`chained-hop-fallback-${provider}`}
+                                    aria-label="跳板兜底节点"
+                                    className="w-full"
+                                    value={hopFallbackNode || undefined}
+                                    placeholder="跳板失联时自动切换的备用跳板"
+                                    options={hopSelectGroups}
+                                    allowClear
+                                    showSearch
+                                    optionFilterProp="label"
+                                    disabled={loading || saving || !configured || !runtimeAvailable || !nodes.length || !hopNode}
+                                    onClear={() => {
+                                        setHopFallbackNode("");
+                                        void persist(true, "chained", { hopNode, hopFallbackNode: "", landingNodeId });
+                                    }}
+                                    onChange={(value: string) => {
+                                        if (!value) return;
+                                        setHopFallbackNode(value);
+                                        void persist(true, "chained", { hopNode, hopFallbackNode: value, landingNodeId });
+                                    }}
+                                />
+                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">设置后跳板拨号失败时由内核自动切到备用跳板，恢复后切回主跳板。</div>
                             </div>
 
                             <div className="min-w-0">
@@ -423,11 +546,33 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     </span>
                                 ) : null}
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Button size="small" icon={<Zap className="size-3.5 text-amber-500" />} loading={testing} disabled={saving || !hopNode || !landingNodeId} onClick={() => void handleGoogleTest()}>
+                            <div className="flex items-center gap-2.5">
+                                <Button
+                                    icon={<Zap className="size-3.5 text-amber-500" />}
+                                    loading={testing}
+                                    disabled={saving || !hopNode || !landingNodeId}
+                                    onClick={() => void handleGoogleTest()}
+                                    className="h-9 px-3.5 rounded-lg border-purple-200/80 bg-white text-zinc-800 hover:!border-purple-400 hover:!text-purple-700 hover:bg-purple-50/50 dark:border-purple-900/60 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:!border-purple-500 dark:hover:!text-purple-300 font-medium text-xs sm:text-sm shadow-sm transition-all"
+                                >
                                     测试 {provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"} 连通性
                                 </Button>
-                                <Button type="primary" size="small" icon={<CheckCircle2 className="size-3.5" />} loading={saving} disabled={!hopNode || !landingNodeId} onClick={() => void persist(true, "chained", { hopNode, landingNodeId })}>
+                                <Button
+                                    type="primary"
+                                    icon={<CheckCircle2 className="size-3.5" />}
+                                    loading={saving}
+                                    disabled={!hopNode || !landingNodeId}
+                                    onClick={() => void persist(true, "chained", { hopNode, landingNodeId })}
+                                    className="h-9 px-4 rounded-lg font-medium text-xs sm:text-sm !border-0 text-white shadow-[0_4px_14px_rgba(110,83,246,0.38)] hover:shadow-[0_6px_20px_rgba(110,83,246,0.48)] hover:brightness-105 active:scale-[0.98] transition-all"
+                                    style={
+                                        (!hopNode || !landingNodeId || saving)
+                                            ? undefined
+                                            : {
+                                                background: "linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff)",
+                                                border: "none",
+                                                color: "#ffffff",
+                                            }
+                                    }
+                                >
                                     保存并启用链式代理
                                 </Button>
                             </div>
@@ -461,5 +606,30 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
 }
 
 export function magicProxyNodeOption(node: MagicProxyNode) {
-    return { value: node.name, label: `${node.name} · ${node.type}` };
+    let delaySuffix = "";
+    if (typeof node.delay === "number" && node.delay > 0) {
+        delaySuffix = ` (${node.delay}ms)`;
+    } else if (node.alive === false) {
+        delaySuffix = " (不可用)";
+    }
+    const subPrefix = node.subscriptionName ? `[${node.subscriptionName}] ` : "";
+    return { value: node.name, label: `${subPrefix}${node.name} · ${node.type}${delaySuffix}` };
+}
+
+type MagicProxySelectOption = { value: string; label: string };
+type MagicProxySelectGroup = { label: string; options: MagicProxySelectOption[] };
+
+/** 节点数量随订阅增长，按订阅分组并支持搜索，避免平铺长列表难以选择。 */
+export function groupMagicProxyOptions(nodes: MagicProxyNode[], extraGroups: MagicProxySelectGroup[] = []): MagicProxySelectGroup[] {
+    const bySub = new Map<string, MagicProxySelectOption[]>();
+    for (const item of nodes) {
+        const key = item.subscriptionName || "未分组订阅";
+        if (!bySub.has(key)) bySub.set(key, []);
+        bySub.get(key)!.push(magicProxyNodeOption(item));
+    }
+    return [...extraGroups, ...[...bySub.entries()].map(([label, options]) => ({ label, options }))];
+}
+
+export function flatMagicProxyOptions(groups: MagicProxySelectGroup[]): MagicProxySelectOption[] {
+    return groups.flatMap((grp) => grp.options);
 }

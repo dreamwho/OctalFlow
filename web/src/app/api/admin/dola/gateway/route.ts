@@ -14,13 +14,14 @@ export async function GET() {
 export async function PATCH(request: Request) {
     const access = await requireDolaAdmin();
     if ("error" in access) return access.error;
-    const parsed = await readJsonBodyResult<{ enabled?: unknown; autoWatermark?: unknown; rotationLimit?: unknown; captureVerificationScreenshot?: unknown; dispatchGroups?: unknown }>(request);
+    const parsed = await readJsonBodyResult<{ enabled?: unknown; autoWatermark?: unknown; rotationLimit?: unknown; pollIntervalMs?: unknown; captureFailureScreenshot?: unknown; dispatchGroups?: unknown }>(request);
     if (!parsed.ok) return apiCompatError(parsed.status, parsed.message);
-    const patch: { enabled?: boolean; autoWatermark?: boolean; rotationLimit?: number; captureVerificationScreenshot?: boolean; dispatchGroups?: string[] | null } = {};
+    const patch: { enabled?: boolean; autoWatermark?: boolean; rotationLimit?: number; pollIntervalMs?: number; captureFailureScreenshot?: boolean; dispatchGroups?: string[] | null } = {};
     if (typeof parsed.data.enabled === "boolean") patch.enabled = parsed.data.enabled;
     if (typeof parsed.data.autoWatermark === "boolean") patch.autoWatermark = parsed.data.autoWatermark;
     if (typeof parsed.data.rotationLimit === "number" && Number.isSafeInteger(parsed.data.rotationLimit) && parsed.data.rotationLimit >= 0) patch.rotationLimit = parsed.data.rotationLimit;
-    if (typeof parsed.data.captureVerificationScreenshot === "boolean") patch.captureVerificationScreenshot = parsed.data.captureVerificationScreenshot;
+    if (typeof parsed.data.pollIntervalMs === "number" && Number.isSafeInteger(parsed.data.pollIntervalMs) && parsed.data.pollIntervalMs > 0) patch.pollIntervalMs = parsed.data.pollIntervalMs;
+    if (typeof parsed.data.captureFailureScreenshot === "boolean") patch.captureFailureScreenshot = parsed.data.captureFailureScreenshot;
     if (parsed.data.dispatchGroups === null || Array.isArray(parsed.data.dispatchGroups)) patch.dispatchGroups = parsed.data.dispatchGroups as string[] | null;
     try { return apiSuccess(await updateDolaGatewaySettings(patch), "Dola 网关设置已保存"); } catch (error) { return dolaRouteError(error, "保存 Dola 网关设置失败"); }
 }

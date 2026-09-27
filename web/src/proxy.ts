@@ -24,7 +24,13 @@ export function proxy(request: NextRequest) {
         if (pathname === "/desktop/authorize" || isAdminLocalCloudPath(pathname)) return securedJsonResponse({ code: 403, data: null, msg: "管理员本地版不提供云端账户与商业服务" }, 403, contentSecurityPolicy);
     }
 
-    if (!request.nextUrl.pathname.startsWith("/api/") || request.nextUrl.pathname.startsWith("/api/billing/webhooks/") || ["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    if (
+        !request.nextUrl.pathname.startsWith("/api/") ||
+        request.nextUrl.pathname.startsWith("/api/billing/webhooks/") ||
+        request.nextUrl.pathname.startsWith("/api/gemini-tools/") ||
+        request.nextUrl.pathname.startsWith("/api/chatgpt-api/") ||
+        ["GET", "HEAD", "OPTIONS"].includes(request.method)
+    ) {
         return securedNextResponse(requestHeaders, contentSecurityPolicy);
     }
 

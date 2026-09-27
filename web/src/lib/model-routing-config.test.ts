@@ -53,6 +53,13 @@ describe("model routing config", () => {
         expect(models.find((model) => model.id === "sdxl")?.capability).toBe("image");
     });
 
+    it("recognizes MiniMax H3 models as video capability", () => {
+        const models = normalizeLogicalModelsConfig(undefined, [channel("one", ["minimax-h3-mini", "minimax-h3-fast", "minimax-h3-base", "minimax-h3-pro", "MiniMax-H3"])]);
+        for (const id of ["minimax-h3-mini", "minimax-h3-fast", "minimax-h3-base", "minimax-h3-pro", "minimax-h3"]) {
+            expect(models.find((model) => model.id.toLowerCase() === id.toLowerCase())?.capability).toBe("video");
+        }
+    });
+
     it("keeps an explicitly selected logical model capability", () => {
         const channels = [channel("one", ["stable-diffusion-2.0"])];
         const models = normalizeLogicalModelsConfig(

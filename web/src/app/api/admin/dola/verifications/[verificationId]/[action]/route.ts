@@ -1,9 +1,9 @@
 import { apiCompatError, apiSuccess } from "@/app/api/_shared/api-response";
 import { readJsonBodyResult } from "@/lib/auth/request";
-import { dolaRouteError, requireDolaAdmin } from "@/lib/server/dola/admin";
+import { auditDolaAdminAction, auditDolaAdminFailure, dolaRouteError, requireDolaAdmin } from "@/lib/server/dola/admin";
 import { dolaRuntimeRequest } from "@/lib/server/dola/provider";
-import { openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry } from "@/lib/server/dola/log-store";
 import { markDolaAccountReady, markDolaAccountUnusable, refreshDolaAccountCookieIfVersion, updateDolaAccountCredentials, updateDolaAccountQuota } from "@/lib/server/dola/account-service";
+import { completeDolaGoogleLoginSession } from "@/lib/server/dola/service";
 import type { DolaQuotaSnapshot } from "@/lib/server/dola/types";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function POST(request: Request, context: Context) {
     const access = await requireDolaAdmin();
     if ("error" in access) return access.error;
     const { verificationId, action } = await context.params;
-    if (!/^(open|input|keyboard|finalize|resume|close)$/.test(action)) return apiCompatError(404, "验证操作不存在");
+    if (!/^(open|input|keyboard|finalize|google-finalize|resume|close)$/.test(action)) return apiCompatError(404, "验证操作不存在");
     let body: Record<string, unknown> = {};
     if (action !== "open") {
         const parsed = await readJsonBodyResult<Record<string, unknown>>(request);
@@ -25,15 +25,16 @@ export async function POST(request: Request, context: Context) {
         if (action === "input" && (!["down", "move", "up", "wheel"].includes(String(body.action)) || typeof body.x !== "number" || typeof body.y !== "number" || (body.action === "wheel" && (typeof body.deltaY !== "number" || !Number.isFinite(body.deltaY))))) return apiCompatError(400, "页面坐标或动作无效");
         if (action === "keyboard" && (typeof body.text !== "string" || !body.text.length || body.text.length > 500)) return apiCompatError(400, "键盘输入无效");
     }
-    const started = Date.now();
-    const lifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(started).toISOString(), phase: "queued", message: `提交验证操作：${action}`, durationMs: 0, detail: `验证会话: ${verificationId}` }];
-    let logId = "";
-    try {
-        logId = await openDolaRequestLog({ source: "admin-test", capability: "video", method: "POST", path: `/v1/verifications/${encodeURIComponent(verificationId)}/${action}`, model: "", verificationId: verificationId.slice(0, 300), requestPreview: JSON.stringify({ action, ...(action === "input" ? { pointer: body.action } : {}) }), headers: { "content-type": "application/json" }, lifecycle });
-    } catch (error) {
-        console.error("Failed to open Dola verification request log", error);
+    if (action === "google-finalize") {
+        try {
+            const result = await completeDolaGoogleLoginSession(verificationId, String(body.leaseToken), typeof body.name === "string" ? body.name.trim().slice(0, 120) : undefined);
+            if (result.status === "saved") await auditDolaAdminAction(request, access.user, "admin.dola.google_login.complete", { type: "dola_account", id: result.account?.id });
+            return apiSuccess(result, result.status === "saved" ? "Google 授权账号已保存" : "Dola 登录尚未确认，浏览器保持打开");
+        } catch (error) {
+            await auditDolaAdminFailure(request, access.user, "admin.dola.google_login.complete", { type: "dola_verification", id: verificationId });
+            return dolaRouteError(error, "保存 Google 授权账号失败，浏览器保持打开");
+        }
     }
-    lifecycle.push({ time: new Date().toISOString(), phase: "upstream", message: "向 Dola Provider 发起验证操作", durationMs: Date.now() - started, detail: "租约令牌仅用于服务端转发" });
     try {
         const response = await dolaRuntimeRequest(`/v1/verifications/${encodeURIComponent(verificationId)}/${action}`, {
             method: "POST",
@@ -43,9 +44,10 @@ export async function POST(request: Request, context: Context) {
         const bytes = new Uint8Array(await response.arrayBuffer());
         const payload = parseRecord(bytes);
         const error = !response.ok ? stringValue(payload?.detail || payload?.error) || "Dola 验证操作失败" : "";
-        lifecycle.push({ time: new Date().toISOString(), phase: response.ok ? "success" : "failed", message: response.ok ? "验证操作已返回" : "验证操作失败", durationMs: Date.now() - started, detail: `HTTP ${response.status}` });
-        if (logId) await settleDolaRequestLog(logId, { statusCode: response.status, durationMs: Date.now() - started, phase: response.ok ? "success" : "failed", ...(error ? { error } : {}), responsePreview: summarizeResponse(payload, bytes), responseBytes: bytes.byteLength, contentType: response.headers.get("content-type") || undefined, verificationId: verificationId.slice(0, 300), lifecycle });
+        const alreadyClosed = action === "close" && response.status === 404 && error === "verification_not_found";
+        const succeeded = response.ok || alreadyClosed;
         if (!response.ok) {
+            if (alreadyClosed) return apiSuccess({ verificationId, status: "closed" }, "授权浏览器已关闭");
             return apiCompatError(response.status, error);
         }
         if (action === "finalize") {
@@ -95,7 +97,6 @@ export async function POST(request: Request, context: Context) {
         }
         return apiSuccess(withoutCredential(payload), action === "open" ? "已打开 Dola 验证窗口" : action === "resume" ? "已恢复 Dola 请求" : action === "close" ? "已关闭 Dola 验证" : "验证操作已发送");
     } catch (error) {
-        if (logId) await settleDolaRequestLog(logId, { statusCode: 502, durationMs: Date.now() - started, phase: "failed", error: error instanceof Error ? error.message : "Dola 验证操作失败", verificationId: verificationId.slice(0, 300), lifecycle: [...lifecycle, { time: new Date().toISOString(), phase: "failed", message: error instanceof Error ? error.message : "Dola 验证操作失败", durationMs: Date.now() - started }] });
         return dolaRouteError(error, "Dola 验证操作失败");
     }
 }
@@ -106,9 +107,3 @@ function parseRecord(bytes: Uint8Array) {
 function stringValue(value: unknown) { return typeof value === "string" ? value.slice(0, 800) : ""; }
 function nonNegativeNumber(value: unknown) { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : null; }
 function withoutCredential(value: Record<string, unknown> | null) { if (!value) return value; const { cookie: _cookie, ...safe } = value; return safe; }
-function summarizeResponse(value: Record<string, unknown> | null, bytes: Uint8Array) {
-    if (!value) return bytes.byteLength ? "Dola 验证响应无法解析" : "";
-    const summary = Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl|video_?url/i.test(key)));
-    const rendered = JSON.stringify(summary, null, 2);
-    return rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered;
-}

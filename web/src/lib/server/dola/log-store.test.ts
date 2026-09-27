@@ -77,4 +77,19 @@ describe("Dola request log store", () => {
         expect(page.items[0]?.error).toBe("upstream_generation_failed");
         expect(page.stats.pending).toBe(0);
     });
+
+    it("clears a submission screenshot when the failed conversation has no verified screenshot", async () => {
+        const logId = await openDolaRequestLog({ source: "runtime", capability: "video", method: "POST", path: "/v1/videos", model: "dola-seedance-2-5", screenshotBase64: "submission-home-screen" });
+        await advanceDolaTaskLog(logId, { phase: "failed", message: "上游失败", screenshotBase64: null });
+        const page = await listDolaRequestLogs({ status: "failed" });
+        expect(page.items[0]?.screenshotBase64).toBeUndefined();
+    });
+
+    it("keeps the complete protocol conversation reply readable in the response log", async () => {
+        const logId = await openDolaRequestLog({ source: "runtime", capability: "video", method: "POST", path: "/v1/videos", model: "dola-seedance-2-5" });
+        const reply = `你的视频生成好了。${"后续会话说明".repeat(700)}`;
+        await settleDolaRequestLog(logId, { statusCode: 200, durationMs: 1, phase: "success", responsePreview: JSON.stringify({ conversationReply: reply, status: "completed" }) });
+        const log = (await listDolaRequestLogs({ keyword: "你的视频生成好了" })).items[0];
+        expect(JSON.parse(log?.responsePreview || "{}")).toMatchObject({ conversationReply: reply, status: "completed" });
+    });
 });

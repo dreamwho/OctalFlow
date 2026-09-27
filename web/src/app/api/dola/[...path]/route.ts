@@ -141,6 +141,7 @@ async function proxy(request: Request, context: Context) {
     let requestedDuration: number | undefined;
     let requestedRatio = "";
     let accountId = "";
+    let accountName = "";
     const videoCreate = request.method === "POST" && ["/v1/videos", "/v1/images"].includes(runtimePath.split("?", 1)[0]);
     let holdAccountAttempt = false;
     let requestProxyEgress: { mode: "direct" | "magic" | "generic" | "chained"; nodeName?: string; address?: string } = { mode: "direct" };
@@ -172,6 +173,7 @@ async function proxy(request: Request, context: Context) {
                 return NextResponse.json({ error: "没有可用的 Dola Cookie 账号" }, { status: 503 });
             }
             accountId = account.id;
+            accountName = account.name;
             const cookie = await getDolaAccountCookie(account.id);
             if (!cookie) {
                 await releaseDolaAccountAttempt(account.id);
@@ -188,8 +190,16 @@ async function proxy(request: Request, context: Context) {
             }
             delete payload.cookie;
             holdAccountAttempt = true;
+            const normalizedReferences = Array.isArray(payload.references) && payload.references.length
+                ? payload.references
+                : [
+                    ...(typeof payload.first_frame === "string" && payload.first_frame.trim() ? [{ url: payload.first_frame.trim(), role: "first_frame", type: "image" }] : []),
+                    ...(Array.isArray(payload.images) ? payload.images.map((img) => typeof img === "string" ? { url: img, role: "reference", type: "image" } : img) : (typeof payload.image === "string" && payload.image.trim() ? [{ url: payload.image.trim(), role: "reference", type: "image" }] : [])),
+                    ...(typeof payload.last_frame === "string" && payload.last_frame.trim() ? [{ url: payload.last_frame.trim(), role: "last_frame", type: "image" }] : [])
+                ];
             body = JSON.stringify({
                 ...payload,
+                references: normalizedReferences,
                 accountId: account.id,
                 credentialVersion: account.credentialVersion,
                 cookie,
@@ -219,11 +229,11 @@ async function proxy(request: Request, context: Context) {
     try {
         upstream = await dolaRuntimeRequest(upstreamPath, { method: request.method, headers, body, signal: request.signal });
     } catch (error) {
-        if (accountId) await markDolaAccountUsed(accountId, false).catch(() => undefined);
+        if (videoCreate && accountId) await markDolaAccountUsed(accountId, false).catch(() => undefined);
         await safeSettleLog(logId, { statusCode: 502, durationMs: Date.now() - startedAt, phase: "failed", error: error instanceof Error ? error.message : "Dola Provider 请求失败", model: requestModel || undefined, accountId: accountId || undefined, requestedDuration, ratio: requestedRatio || undefined, proxyEgress: requestProxyEgress, lifecycle: [...lifecycle, logLifecycleEntry("failed", error instanceof Error ? error.message : "Dola Provider 请求失败", startedAt)] });
         return NextResponse.json({ error: error instanceof Error ? error.message : "Dola Provider 请求失败" }, { status: 502 });
     }
-    if (accountId) await markDolaAccountUsed(accountId, upstream.ok, !(holdAccountAttempt && upstream.ok)).catch(() => undefined);
+    if (videoCreate && accountId) await markDolaAccountUsed(accountId, upstream.ok, !(holdAccountAttempt && upstream.ok)).catch(() => undefined);
     if (videoCreate || queryMatch) {
         const bytes = new Uint8Array(await upstream.arrayBuffer());
         const payload = parseJsonRecord(bytes);
@@ -233,7 +243,7 @@ async function proxy(request: Request, context: Context) {
         if (attachedTaskLogId) {
             if (upstream.ok) {
                 const phase = dolaTaskLogPhase(stringValue(payload?.status), Boolean(verificationId));
-                const errorText = stringValue(payload?.error);
+                const errorText = extractDolaError(payload);
                 if (phase === "failed" && (isDolaRateLimitError(errorText) || isDolaQuotaExhaustedError(errorText)) && externalTaskRow) {
                     // 账号级限额或额度用尽：标记当前账号状态，并自动用下一个可用账号重新提交同一请求
                     const rotation = await rotateDolaRateLimitedTask({
@@ -266,30 +276,45 @@ async function proxy(request: Request, context: Context) {
                               : phase === "needs_review"
                                 ? "任务等待人工确认（页面验证）"
                                 : phase === "generating"
-                                  ? "Dola 上游已受理，生成中"
+                                  ? dolaTaskProgressMessage(payload)
                                   : "Dola 上游排队中，等待生成",
-                    detail: dolaResultMediaDetail(payload) || `上游任务状态: ${stringValue(payload?.status) || "unknown"}`,
+                    detail: `${dolaResultMediaDetail(payload) || `任务状态: ${stringValue(payload?.status) || "unknown"}`}${dolaConversationNote(payload)}${dolaConversationScreenshotNote(payload)}`,
                     statusCode: upstream.status,
                     responsePreview: summarizeResponse(payload, bytes),
                     responseBytes: bytes.byteLength,
-                    ...(phase === "failed" && errorText ? { error: errorText } : {}),
+                    ...(phase === "failed" ? { error: errorText ? describeDolaFailure(errorText) : "上游未返回错误原因 (no error detail from upstream)" } : {}),
                     ...(verificationId ? { verificationId } : {}),
-                    ...(screenshotBase64 ? { screenshotBase64 } : {}),
+                    screenshotBase64: screenshotBase64 || null,
                 });
             } else if (upstream.status === 404) {
                 await safeAdvanceTaskLog(attachedTaskLogId, { phase: "failed", message: "生成失败：任务在 Provider 中不存在（可能已被重启清理）", statusCode: upstream.status, error: "task_not_found" });
             }
         } else {
             const phase = classifyDolaPhase(upstream, payload, verificationId);
+            const errorText = extractDolaError(payload);
             if (upstream.ok && stringValue(payload?.status) === "failed" && accountId) {
-                if (isDolaQuotaExhaustedError(stringValue(payload?.error))) {
-                    await markDolaAccountQuotaExhausted(accountId, stringValue(payload?.error)).catch(() => undefined);
-                } else if (isDolaRateLimitError(stringValue(payload?.error))) {
-                    await markDolaAccountRateLimited(accountId, stringValue(payload?.error)).catch(() => undefined);
+                if (isDolaQuotaExhaustedError(errorText)) {
+                    await markDolaAccountQuotaExhausted(accountId, errorText).catch(() => undefined);
+                } else if (isDolaRateLimitError(errorText)) {
+                    await markDolaAccountRateLimited(accountId, errorText).catch(() => undefined);
                 }
             }
-            lifecycle.push({ time: new Date().toISOString(), phase, message: phase === "needs_review" ? "Provider 返回待人工确认状态" : phase === "submitted" ? "已提交到 Dola 上游，任务排队中" : upstream.ok ? "Provider 已返回任务响应" : "Provider 请求失败", durationMs: Date.now() - startedAt, detail: `HTTP ${upstream.status}${taskId ? `, 任务: ${taskId}` : ""}` });
-            await safeSettleLog(logId, { statusCode: upstream.status, durationMs: Date.now() - startedAt, phase, ...(upstream.ok ? {} : { error: stringValue(payload?.error) ? describeDolaFailure(stringValue(payload?.error)) : "Dola Provider 请求失败" }), model: requestModel || stringValue(payload?.model) || undefined, requestBytes, requestPreview, responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, accountId: accountId || undefined, taskId: taskId || undefined, verificationId: verificationId || undefined, screenshotBase64: screenshotBase64 || undefined, requestedDuration: requestedDuration || numberValue(payload?.duration), ratio: requestedRatio || stringValue(payload?.ratio) || undefined, ...quotaObservation(payload), proxyEgress: requestProxyEgress, responsePreview: summarizeResponse(payload, bytes), lifecycle });
+            const lifecycleMessage =
+                phase === "needs_review"
+                    ? "Provider 返回待人工确认状态"
+                    : phase === "submitted"
+                      ? "已提交到 Dola 上游，任务排队中"
+                      : phase === "failed"
+                        ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}`
+                        : upstream.ok
+                          ? "Provider 已返回任务响应"
+                          : "Provider 请求失败";
+            lifecycle.push({ time: new Date().toISOString(), phase, message: lifecycleMessage, durationMs: Date.now() - startedAt, detail: `HTTP ${upstream.status}${taskId ? `, 任务: ${taskId}` : ""}` });
+            const logError =
+                phase === "failed" || !upstream.ok
+                    ? (errorText ? describeDolaFailure(errorText) : "Dola Provider 请求失败")
+                    : undefined;
+            await safeSettleLog(logId, { statusCode: upstream.status, durationMs: Date.now() - startedAt, phase, ...(logError ? { error: logError } : {}), model: requestModel || stringValue(payload?.model) || undefined, requestBytes, requestPreview, responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, accountId: accountId || undefined, accountName: accountName || undefined, taskId: taskId || undefined, verificationId: verificationId || undefined, screenshotBase64: screenshotBase64 || undefined, requestedDuration: requestedDuration || numberValue(payload?.duration), ratio: requestedRatio || stringValue(payload?.ratio) || undefined, ...quotaObservation(payload), proxyEgress: requestProxyEgress, responsePreview: summarizeResponse(payload, bytes), lifecycle });
         }
         if (videoCreate && upstream.ok && taskId) await bindDolaExternalTask({ taskId, apiKeyId: principalId, accountId });
         if (queryMatch && upstream.ok && terminalDolaStatus(stringValue(payload?.status))) {
@@ -446,15 +471,19 @@ function logLifecycleEntry(phase: DolaRequestLogPhase, message: string, startedA
 function summarizeRequest(bytes: Uint8Array) {
     try {
         const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
-        return JSON.stringify({ model: typeof value.model === "string" ? value.model : undefined, duration: numberValue(value.duration), ratio: typeof value.ratio === "string" ? value.ratio : undefined, referenceCount: Array.isArray(value.references) ? value.references.length : 0, promptLength: typeof value.prompt === "string" ? value.prompt.length : 0 });
+        const refCount = Array.isArray(value.references)
+            ? value.references.length
+            : (Array.isArray(value.images) ? value.images.length : (value.first_frame || value.image ? 1 : 0));
+        return JSON.stringify({ model: typeof value.model === "string" ? value.model : undefined, duration: numberValue(value.duration), ratio: typeof value.ratio === "string" ? value.ratio : undefined, referenceCount: refCount, promptLength: typeof value.prompt === "string" ? value.prompt.length : 0 });
     } catch { return "请求体无法解析为 JSON 摘要"; }
 }
 function summarizeResponse(value: Record<string, unknown> | null, bytes: Uint8Array) {
     if (!value) return bytes.byteLength ? "Provider 返回了无法解析的响应" : "";
     // Media result URLs stay visible: they are the deliverable the admin needs to see in the log detail.
-    const summary = Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl/i.test(key)).map(([key, item]) => [key, typeof item === "string" && item.length > 500 ? `${item.slice(0, 500)}…` : item]));
+    const reply = stringValue((value.diagnostics as Record<string, unknown> | undefined)?.upstreamResponseText);
+    const summary = { ...(reply ? { conversationReply: reply } : {}), ...Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl/i.test(key)).map(([key, item]) => [key, typeof item === "string" && item.length > 500 ? `${item.slice(0, 500)}…` : item])) };
     const rendered = JSON.stringify(summary, null, 2);
-    return rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered;
+    return reply ? rendered : rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered;
 }
 function classifyDolaPhase(response: Response, value: Record<string, unknown> | null, verificationId: string) {
     const status = stringValue(value?.status).toLowerCase();
@@ -475,10 +504,34 @@ function dolaResultMediaDetail(value: Record<string, unknown> | null) {
     if (!urls.length) return "";
     return urls.length === 1 ? `结果地址: ${urls[0]}` : `结果地址 (${urls.length}): ${urls.slice(0, 3).join(", ")}${urls.length > 3 ? " …" : ""}`;
 }
+function dolaTaskProgressMessage(value: Record<string, unknown> | null) {
+    if (stringValue(value?.status) !== "running") return "Dola 上游已受理，生成中";
+    const stage = stringValue((value?.diagnostics as Record<string, unknown> | undefined)?.submitStage);
+    if (stage === "uploading_references") return "正在上传参考图，尚未确认 Dola 已受理";
+    if (stage === "submitting_to_dola") return "正在提交到 Dola，等待会话确认";
+    return "正在准备 Dola 提交，尚未确认上游已受理";
+}
+function dolaConversationNote(value: Record<string, unknown> | null) {
+    const id = stringValue(value?.conversationId || value?.conversation_id);
+    return /^\d{12,32}$/.test(id) ? `；会话: https://www.dola.com/chat/${id}` : "；尚无已确认的会话 ID";
+}
+function dolaConversationScreenshotNote(value: Record<string, unknown> | null) {
+    const reason = stringValue((value?.diagnostics as Record<string, unknown> | undefined)?.resultScreenshotError);
+    if (reason === "result_query_conversation_not_ready") return "；会话页面未加载完成，未保存截图";
+    return reason ? `；会话截图未获取（${reason}）` : "";
+}
 async function safeFindTaskLog(taskId: string) {
     try { return await findDolaTaskLogIdByTaskId(taskId, "external"); } catch (error) { console.error("Failed to locate Dola external task log", error); return ""; }
 }
 async function safeAdvanceTaskLog(id: string, advance: Parameters<typeof advanceDolaTaskLog>[1]) {
     if (!id) return;
     try { await advanceDolaTaskLog(id, advance); } catch (error) { console.error("Failed to advance Dola external task log", error); }
+}
+
+function extractDolaError(payload: Record<string, unknown> | null | undefined): string {
+    const raw = stringValue(payload?.rawError || payload?.raw_error || (payload?.diagnostics as Record<string, unknown>)?.upstreamResponseText);
+    const err = stringValue(payload?.error || payload?.detail);
+    if (err && err !== "upstream_generation_failed") return err;
+    if (raw) return raw;
+    return err;
 }

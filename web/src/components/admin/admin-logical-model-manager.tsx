@@ -1,6 +1,6 @@
 "use client";
 
-import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Tag } from "antd";
+import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
 import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, MessageSquare, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -13,8 +13,8 @@ import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, Logical
 import type { ModelIconKey } from "@/lib/auth/store-types";
 import { modelIconOptions } from "@/lib/model-icons";
 import { logicalModelDisplayName } from "@/lib/public-model-catalog";
-import { capabilityLabel, isLogicalModelResolvable, normalizeDefaultModelsConfig, resolveLogicalModelConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
-import { moveLogicalModel, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
+import { capabilityLabel, channelConnectionReady, channelSupportsModel, isLogicalModelResolvable, normalizeDefaultModelsConfig, resolveLogicalModelConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
+import { moveLogicalModel, moveModelPickerGroup, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
 
 type Props = {
     channels: SystemModelChannel[];
@@ -54,6 +54,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
     const [draft, setDraft] = useState<LogicalModel | null>(null);
     const [query, setQuery] = useState("");
     const [capabilityFilter, setCapabilityFilter] = useState<LogicalModelCapability | "all">("all");
+    const [managerTab, setManagerTab] = useState<string>("all");
     const [modelStats, setModelStats] = useState<Record<string, { avgDurationMs: number; samples: number }>>({});
     const [editingGroup, setEditingGroup] = useState<string | null>(null);
     const [groupName, setGroupName] = useState("");
@@ -62,16 +63,17 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
         if (!model.enabled) return 2;
         return resolveLogicalModelConfig(logicalModels, channels, model.capability, model.id) ? 0 : 1;
     };
+    const activeCapability = (["text", "image", "video", "audio"].includes(managerTab) ? managerTab : capabilityFilter) as LogicalModelCapability | "all";
     const visibleModels = useMemo(
         () =>
             logicalModels
                 .filter(
-                    (model) => (capabilityFilter === "all" || model.capability === capabilityFilter) && (!deferredQuery || `${model.id} ${model.name} ${model.pickerGroup || ""} ${model.bindings.map((binding) => binding.upstreamModel).join(" ")}`.toLowerCase().includes(deferredQuery)),
+                    (model) => (activeCapability === "all" || model.capability === activeCapability) && (!deferredQuery || `${model.id} ${model.name} ${model.pickerGroup || ""} ${model.bindings.map((binding) => binding.upstreamModel).join(" ")}`.toLowerCase().includes(deferredQuery)),
                 )
                 // 排序：已启用且有可用渠道 → 已启用但无渠道 → 未启用；同组内保持手动排序
                 .sort((left, right) => resolveRank(left) - resolveRank(right)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [capabilityFilter, deferredQuery, logicalModels, channels],
+        [activeCapability, deferredQuery, logicalModels, channels],
     );
 
     useEffect(() => {
@@ -174,18 +176,56 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
         persistGroups(modelPickerGroups, logicalModels.map((model) => selected.has(model.id) ? { ...model, pickerGroup: group } : model.pickerGroup === group ? { ...model, pickerGroup: fallback } : model), "分类模型已更新");
     };
 
+    const toggleModelEnabled = (modelId: string, enabled: boolean) => {
+        const nextModels = logicalModels.map((m) => (m.id === modelId ? { ...m, enabled } : m));
+        const nextDefaultModels = normalizeDefaultModelsConfig(defaultModels, nextModels, channels);
+        onChange({ logicalModels: nextModels, defaultModels: nextDefaultModels });
+        void onPersist({ systemChannels: channels, logicalModels: nextModels, modelPickerGroups, defaultModels: nextDefaultModels }, enabled ? "模型已启用并保存" : "模型已停用并保存");
+    };
+
+    const moveGroup = (index: number, direction: -1 | 1) => {
+        const nextGroups = moveModelPickerGroup(modelPickerGroups, index, direction);
+        if (nextGroups === modelPickerGroups) return;
+        persistGroups(nextGroups, logicalModels, "分类排序已更新并保存");
+    };
+
+    const tabItems = [
+        {
+            key: "all",
+            label: `全部模型 (${logicalModels.length})`,
+        },
+        {
+            key: "text",
+            label: `文本模型 (${logicalModels.filter((m) => m.capability === "text").length})`,
+        },
+        {
+            key: "image",
+            label: `图片模型 (${logicalModels.filter((m) => m.capability === "image").length})`,
+        },
+        {
+            key: "video",
+            label: `视频模型 (${logicalModels.filter((m) => m.capability === "video").length})`,
+        },
+        {
+            key: "audio",
+            label: `音频模型 (${logicalModels.filter((m) => m.capability === "audio").length})`,
+        },
+        {
+            key: "categories",
+            label: `模型分类管理 (${modelPickerGroups.length})`,
+        },
+        {
+            key: "defaults",
+            label: "默认与展示排序",
+        },
+    ];
+
     return (
         <section className="border-t border-stone-200 pt-5 dark:border-stone-800">
-            <div className="mb-5 rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-950">
-                <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">前端模型分类</h3><p className="mt-1 text-xs text-stone-500">只有已启用且绑定可用渠道的模型可加入分类；分类顺序即前端显示顺序。</p></div><Button icon={<Plus className="size-4" />} onClick={() => { setEditingGroup(""); setGroupName(""); }}>新增分类</Button></div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                    {modelPickerGroups.map((group) => <div key={group} className="min-w-0 rounded-lg border border-stone-200 p-3 dark:border-stone-800">
-                        <div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-sm">{group}</strong><Space size={2}><Button type="text" size="small" icon={<Pencil className="size-3.5" />} aria-label={`重命名 ${group}`} onClick={() => { setEditingGroup(group); setGroupName(group); }} /><Popconfirm title={`删除分类“${group}”？`} description="其中模型会移入第一个保留的分类。" onConfirm={() => deleteGroup(group)}><Button type="text" size="small" danger icon={<Trash2 className="size-3.5" />} aria-label={`删除分类 ${group}`} /></Popconfirm></Space></div>
-                        <Select mode="multiple" className="w-full" placeholder="选择可用模型" value={logicalModels.filter((model) => model.pickerGroup === group && isLogicalModelResolvable(logicalModels, channels, model.capability, model.id)).map((model) => model.id)} options={logicalModels.filter((model) => isLogicalModelResolvable(logicalModels, channels, model.capability, model.id)).map((model) => ({ value: model.id, label: model.name }))} onChange={(ids: string[]) => setGroupModels(group, ids)} />
-                    </div>)}
-                </div>
-            </div>
-            <Modal open={editingGroup !== null} title={editingGroup ? "重命名分类" : "新增分类"} okText="保存" onOk={saveGroup} onCancel={() => setEditingGroup(null)}><Input aria-label="分类名称" maxLength={80} value={groupName} onChange={(event) => setGroupName(event.target.value)} /></Modal>
+            <Modal open={editingGroup !== null} title={editingGroup ? "重命名分类" : "新增分类"} okText="保存" onOk={saveGroup} onCancel={() => setEditingGroup(null)}>
+                <Input aria-label="分类名称" maxLength={80} value={groupName} onChange={(event) => setGroupName(event.target.value)} />
+            </Modal>
+
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -206,95 +246,91 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
                 </Space>
             </div>
 
-            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="min-w-0">
-                    <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
-                        <Input allowClear value={query} prefix={<Search className="size-4 text-stone-400" />} placeholder="搜索模型昵称、ID 或上游模型" onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} />
-                        <Select value={capabilityFilter} options={[{ label: "全部能力", value: "all" }, ...capabilityOptions]} onChange={(value: LogicalModelCapability | "all") => setCapabilityFilter(value)} />
+            <div className="mt-4">
+                <Tabs activeKey={managerTab} onChange={setManagerTab} items={tabItems} />
+            </div>
+
+            {managerTab === "categories" ? (
+                <div className="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-950">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <h3 className="text-sm font-semibold">前端模型分类</h3>
+                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">只有已启用且绑定可用渠道的模型可加入分类；支持上移/下移调整分类排序，该顺序直接决定前端展示顺序。</p>
+                        </div>
+                        <Button icon={<Plus className="size-4" />} onClick={() => { setEditingGroup(""); setGroupName(""); }}>
+                            新增分类
+                        </Button>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-                        {visibleModels.map((model) => {
-                            const resolved = resolveLogicalModelConfig(logicalModels, channels, model.capability, model.id);
-                            const isDefault = Object.values(defaultModels).some((value) => value.toLowerCase() === model.id.toLowerCase());
-                            const stat = modelStats[model.id] || Object.values(model.bindings).reduce((found, binding) => found || modelStats[binding.upstreamModel], null as (typeof modelStats)[string] | null);
-                            return (
-                                <article key={model.id} className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-stone-200 bg-white p-4 transition hover:border-indigo-300 dark:border-stone-800 dark:bg-stone-950 dark:hover:border-indigo-500/50">
-                                    <div className="flex min-w-0 items-start justify-between gap-2">
-                                        <div className="flex min-w-0 items-center gap-2.5">
-                                            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-stone-100 text-stone-600 dark:bg-stone-900 dark:text-stone-300">
-                                                {model.icon || resolveModelIcon(`${model.id} ${model.name}`, model.capability, undefined, modelProviderHint(model, channels)) ? <ModelIcon model={`${model.id} ${model.name}`} capability={model.capability} iconKey={model.icon} providerHint={modelProviderHint(model, channels)} /> : model.capability === "text" ? <MessageSquare className="size-4.5" /> : <DreamyoIcon name={model.capability} size={20} />}
-                                            </span>
-                                            <div className="min-w-0">
-                                                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                                                    <span className="truncate font-mono text-sm font-semibold text-stone-950 dark:text-stone-100" title={model.name}>
-                                                        {model.name}
-                                                    </span>
-                                                    {isDefault ? (
-                                                        <Tag color="blue" className="m-0">
-                                                            默认
-                                                        </Tag>
-                                                    ) : null}
-                                                </div>
-                                                <p className="mt-0.5 truncate text-xs text-stone-400 dark:text-stone-500">{model.id}</p>
-                                            </div>
-                                        </div>
-                                        <Tag color={model.enabled ? "green" : "default"} className="m-0 shrink-0">
-                                            {model.enabled ? "启用" : "停用"}
-                                        </Tag>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                        <Tag
-                                            color={resolved ? "success" : model.bindings.length ? "warning" : "default"}
-                                            className="m-0"
-                                            title={resolved ? `实际路由：${resolved.channel.name} / ${resolved.binding.upstreamModel}` : undefined}
-                                        >
-                                            {resolved ? `${resolved.channel.name} / ${resolved.binding.upstreamModel}` : model.bindings.length ? "已启用但无可用渠道" : "未绑定渠道"}
-                                        </Tag>
-                                        <Tag color={CAPABILITY_TAG_COLORS[model.capability]} className="m-0">
-                                            {capabilityLabel(model.capability)}
-                                        </Tag>
-                                        {model.pickerGroup ? <Tag className="m-0">前端分组：{model.pickerGroup}</Tag> : null}
-                                        {model.pickerVisible === false ? <Tag className="m-0">节点隐藏</Tag> : null}
-                                    </div>
-                                    <div className="mt-auto flex items-center justify-between gap-2 border-t border-stone-100 pt-2.5 dark:border-stone-800/70">
-                                        <span className="min-w-0 truncate text-xs text-stone-500 dark:text-stone-400">
-                                            {stat && stat.samples > 0 ? (
-                                                <>
-                                                    最近平均生成 <span className="font-semibold tabular-nums text-stone-700 dark:text-stone-200">{formatDurationMinSec(stat.avgDurationMs)}</span>
-                                                    <span className="ml-1 text-stone-400">（{stat.samples} 次）</span>
-                                                </>
-                                            ) : (
-                                                "暂无生成记录"
-                                            )}
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {modelPickerGroups.map((group, groupIndex) => (
+                            <div key={group} className="min-w-0 rounded-lg border border-stone-200 p-3 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-900/30">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="inline-flex size-5 items-center justify-center rounded bg-stone-200/80 text-xs font-mono font-semibold text-stone-700 dark:bg-stone-800 dark:text-stone-300">
+                                            {groupIndex + 1}
                                         </span>
-                                        <Space size={4} className="shrink-0">
-                                            <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEdit(model)} aria-label={`编辑 ${model.name}`}>
-                                                编辑
-                                            </Button>
-                                            <Popconfirm
-                                                title="删除逻辑模型"
-                                                description={`删除后前端将不再显示「${model.name}」，对应默认模型会自动清理。`}
-                                                okText="删除"
-                                                cancelText="取消"
-                                                okButtonProps={{ danger: true }}
-                                                onConfirm={() => deleteModel(model.id)}
-                                            >
-                                                <Button danger size="small" icon={<Trash2 className="size-3.5" />} aria-label={`删除 ${model.name}`}>
-                                                    删除
-                                                </Button>
-                                            </Popconfirm>
-                                        </Space>
+                                        <strong className="truncate text-sm">{group}</strong>
                                     </div>
-                                </article>
-                            );
-                        })}
-                        {!visibleModels.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={logicalModels.length ? "没有匹配的逻辑模型" : "渠道尚未同步到模型目录"} /> : null}
+                                    <Space size={2}>
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            icon={<ArrowUp className="size-3.5" />}
+                                            disabled={groupIndex === 0}
+                                            aria-label={`上移分类 ${group}`}
+                                            title="上移"
+                                            onClick={() => moveGroup(groupIndex, -1)}
+                                        />
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            icon={<ArrowDown className="size-3.5" />}
+                                            disabled={groupIndex === modelPickerGroups.length - 1}
+                                            aria-label={`下移分类 ${group}`}
+                                            title="下移"
+                                            onClick={() => moveGroup(groupIndex, 1)}
+                                        />
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            icon={<Pencil className="size-3.5" />}
+                                            aria-label={`重命名 ${group}`}
+                                            title="重命名"
+                                            onClick={() => { setEditingGroup(group); setGroupName(group); }}
+                                        />
+                                        <Popconfirm
+                                            title={`删除分类“${group}”？`}
+                                            description="其中模型会移入第一个保留的分类。"
+                                            onConfirm={() => deleteGroup(group)}
+                                        >
+                                            <Button
+                                                type="text"
+                                                size="small"
+                                                danger
+                                                icon={<Trash2 className="size-3.5" />}
+                                                aria-label={`删除分类 ${group}`}
+                                                title="删除"
+                                            />
+                                        </Popconfirm>
+                                    </Space>
+                                </div>
+                                <Select
+                                    mode="multiple"
+                                    className="w-full"
+                                    placeholder="选择可用模型"
+                                    value={logicalModels.filter((model) => model.pickerGroup === group && isLogicalModelResolvable(logicalModels, channels, model.capability, model.id)).map((model) => model.id)}
+                                    options={logicalModels.filter((model) => isLogicalModelResolvable(logicalModels, channels, model.capability, model.id)).map((model) => ({ value: model.id, label: model.name }))}
+                                    onChange={(ids: string[]) => setGroupModels(group, ids)}
+                                />
+                            </div>
+                        ))}
                     </div>
                 </div>
-
-                <div className="min-w-0 space-y-4">
+            ) : managerTab === "defaults" ? (
+                <div className="grid gap-4 lg:grid-cols-2">
                     <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-4 dark:border-stone-800 dark:bg-stone-900/40">
-                        <SectionTitle icon={<GitBranch className="size-4" />} title="默认模型" />
+                        <SectionTitle icon={<GitBranch className="size-4" />} title="默认模型配置" />
+                        <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">设置全站各能力（文本、图片、视频、音频）的默认路由模型。</p>
                         <div className="mt-4 space-y-4">
                             {availableDefaultFields.map(({ capability, key, label }) => {
                                 const options = logicalModels.filter((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)).map((model) => ({ label: logicalModelDisplayName(model), value: model.id }));
@@ -322,9 +358,138 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
                             })}
                         </div>
                     </div>
-                    <LogicalModelDisplayOrder models={logicalModels} onChange={(nextModels) => onChange({ logicalModels: nextModels, defaultModels })} />
+                    <div>
+                        <LogicalModelDisplayOrder models={logicalModels} onChange={(nextModels) => onChange({ logicalModels: nextModels, defaultModels })} />
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+                    <div className="min-w-0">
+                        <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
+                            <Input allowClear value={query} prefix={<Search className="size-4 text-stone-400" />} placeholder="搜索模型昵称、ID 或上游模型" onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} />
+                            <Select value={activeCapability} options={[{ label: "全部能力", value: "all" }, ...capabilityOptions]} onChange={(value: LogicalModelCapability | "all") => setCapabilityFilter(value)} />
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                            {visibleModels.map((model) => {
+                                const resolved = resolveLogicalModelConfig(logicalModels, channels, model.capability, model.id);
+                                const isDefault = Object.values(defaultModels).some((value) => value.toLowerCase() === model.id.toLowerCase());
+                                const stat = modelStats[model.id] || Object.values(model.bindings).reduce((found, binding) => found || modelStats[binding.upstreamModel], null as (typeof modelStats)[string] | null);
+                                const unresolved = !resolved ? getBindingUnresolvedDetail(model, channels) : null;
+                                return (
+                                    <article key={model.id} className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-stone-200 bg-white p-4 transition hover:border-indigo-300 dark:border-stone-800 dark:bg-stone-950 dark:hover:border-indigo-500/50">
+                                        <div className="flex min-w-0 items-start justify-between gap-2">
+                                            <div className="flex min-w-0 items-center gap-2.5">
+                                                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-stone-100 text-stone-600 dark:bg-stone-900 dark:text-stone-300">
+                                                    {model.icon || resolveModelIcon(`${model.id} ${model.name}`, model.capability, undefined, modelProviderHint(model, channels)) ? <ModelIcon model={`${model.id} ${model.name}`} capability={model.capability} iconKey={model.icon} providerHint={modelProviderHint(model, channels)} /> : model.capability === "text" ? <MessageSquare className="size-4.5" /> : <DreamyoIcon name={model.capability} size={20} />}
+                                                </span>
+                                                <div className="min-w-0">
+                                                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                                        <span className="truncate font-mono text-sm font-semibold text-stone-950 dark:text-stone-100" title={model.name}>
+                                                            {model.name}
+                                                        </span>
+                                                        {isDefault ? (
+                                                            <Tag color="blue" className="m-0">
+                                                                默认
+                                                            </Tag>
+                                                        ) : null}
+                                                    </div>
+                                                    <p className="mt-0.5 truncate text-xs text-stone-400 dark:text-stone-500">{model.id}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <Switch
+                                                    size="small"
+                                                    checked={model.enabled}
+                                                    checkedChildren="启用"
+                                                    unCheckedChildren="停用"
+                                                    onChange={(checked) => toggleModelEnabled(model.id, checked)}
+                                                    aria-label={`切换 ${model.name} 启用状态`}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <Tag
+                                                color={resolved ? "success" : model.bindings.length ? "warning" : "default"}
+                                                className="m-0"
+                                                title={resolved ? `实际路由：${resolved.channel.name} / ${resolved.binding.upstreamModel}` : unresolved?.reason}
+                                            >
+                                                {resolved ? `${resolved.channel.name} / ${resolved.binding.upstreamModel}` : unresolved?.label || "未绑定渠道"}
+                                            </Tag>
+                                            <Tag color={CAPABILITY_TAG_COLORS[model.capability]} className="m-0">
+                                                {capabilityLabel(model.capability)}
+                                            </Tag>
+                                            {model.pickerGroup ? <Tag className="m-0">前端分组：{model.pickerGroup}</Tag> : null}
+                                            {model.pickerVisible === false ? <Tag className="m-0">节点隐藏</Tag> : null}
+                                        </div>
+                                        <div className="mt-auto flex items-center justify-between gap-2 border-t border-stone-100 pt-2.5 dark:border-stone-800/70">
+                                            <span className="min-w-0 truncate text-xs text-stone-500 dark:text-stone-400">
+                                                {stat && stat.samples > 0 ? (
+                                                    <>
+                                                        最近平均生成 <span className="font-semibold tabular-nums text-stone-700 dark:text-stone-200">{formatDurationMinSec(stat.avgDurationMs)}</span>
+                                                        <span className="ml-1 text-stone-400">（{stat.samples} 次）</span>
+                                                    </>
+                                                ) : (
+                                                    "暂无生成记录"
+                                                )}
+                                            </span>
+                                            <Space size={4} className="shrink-0">
+                                                <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEdit(model)} aria-label={`编辑 ${model.name}`}>
+                                                    编辑
+                                                </Button>
+                                                <Popconfirm
+                                                    title="删除逻辑模型"
+                                                    description={`删除后前端将不再显示「${model.name}」，对应默认模型会自动清理。`}
+                                                    okText="删除"
+                                                    cancelText="取消"
+                                                    okButtonProps={{ danger: true }}
+                                                    onConfirm={() => deleteModel(model.id)}
+                                                >
+                                                    <Button danger size="small" icon={<Trash2 className="size-3.5" />} aria-label={`删除 ${model.name}`}>
+                                                        删除
+                                                    </Button>
+                                                </Popconfirm>
+                                            </Space>
+                                        </div>
+                                    </article>
+                                );
+                            })}
+                            {!visibleModels.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={logicalModels.length ? "没有匹配的逻辑模型" : "渠道尚未同步到模型目录"} /> : null}
+                        </div>
+                    </div>
+
+                    <div className="min-w-0 space-y-4">
+                        <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-4 dark:border-stone-800 dark:bg-stone-900/40">
+                            <SectionTitle icon={<GitBranch className="size-4" />} title="默认模型" />
+                            <div className="mt-4 space-y-4">
+                                {availableDefaultFields.map(({ capability, key, label }) => {
+                                    const options = logicalModels.filter((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)).map((model) => ({ label: logicalModelDisplayName(model), value: model.id }));
+                                    const selected = logicalModels.find((model) => model.id === defaultModels[key]);
+                                    const resolved = selected ? resolveLogicalModelConfig(logicalModels, channels, capability, selected.id) : null;
+                                    return (
+                                        <LabeledControl key={key} label={label}>
+                                            <Select
+                                                className="w-full"
+                                                allowClear
+                                                showSearch
+                                                optionFilterProp="label"
+                                                value={defaultModels[key] || undefined}
+                                                placeholder={`选择可用${capabilityLabel(capability)}模型`}
+                                                options={options}
+                                                status={defaultModels[key] && !resolved ? "error" : undefined}
+                                                onChange={(value: string | undefined) => updateDefault(key, value || "")}
+                                            />
+                                            <div className={`mt-1 flex items-center gap-1 text-xs ${resolved ? "text-stone-500 dark:text-stone-400" : "text-amber-600 dark:text-amber-400"}`}>
+                                                {!resolved ? <AlertTriangle className="size-3.5 shrink-0" /> : null}
+                                                <span>{resolved ? `实际路由：${resolved.channel.name} / ${resolved.binding.upstreamModel}` : defaultModels[key] ? "当前默认模型不可解析" : "尚未设置默认模型"}</span>
+                                            </div>
+                                        </LabeledControl>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <Drawer
                 title={editingId ? "编辑逻辑模型" : "新建逻辑模型"}
@@ -553,6 +718,36 @@ function LogicalModelDisplayOrder({ models, onChange }: { models: LogicalModel[]
     );
 }
 
+function getBindingUnresolvedDetail(model: LogicalModel, channels: SystemModelChannel[]) {
+    if (!model.enabled) {
+        return { label: "模型已停用", reason: "逻辑模型当前处于停用状态，路由解析已挂起" };
+    }
+    if (!model.bindings.length) {
+        return { label: "未绑定渠道", reason: "尚未添加任何模型渠道绑定" };
+    }
+    const enabledBindings = model.bindings.filter((b) => b.enabled);
+    if (!enabledBindings.length) {
+        return { label: "绑定已关闭", reason: "该逻辑模型下的所有渠道绑定开关均已关闭" };
+    }
+    const reasons: string[] = [];
+    for (const binding of enabledBindings) {
+        const channel = channels.find((c) => c.id === binding.channelId);
+        if (!channel) {
+            reasons.push(`引用的渠道不存在 (ID: ${binding.channelId})`);
+        } else if (!channel.enabled) {
+            reasons.push(`绑定的渠道「${channel.name}」已停用，请在「模型渠道」页面开启此渠道`);
+        } else if (!channelConnectionReady(channel)) {
+            reasons.push(`绑定的渠道「${channel.name}」未配置有效 Base URL 或 API Key`);
+        } else if (!channelSupportsModel(channel, binding.upstreamModel)) {
+            reasons.push(`绑定的渠道「${channel.name}」模型列表中未勾选「${binding.upstreamModel}」`);
+        }
+    }
+    if (reasons.length) {
+        return { label: "已启用但无可用渠道", reason: reasons.join("；") };
+    }
+    return { label: "无可用渠道", reason: "无满足当前能力类型的可用渠道" };
+}
+
 function BindingEditor({
     binding,
     capability,
@@ -567,6 +762,9 @@ function BindingEditor({
     onRemove: () => void;
 }) {
     const channel = channels.find((item) => item.id === binding.channelId);
+    const channelDisabled = Boolean(channel && !channel.enabled);
+    const channelNotReady = Boolean(channel && channel.enabled && !channelConnectionReady(channel));
+    const channelMissingModel = Boolean(channel && channel.enabled && channelConnectionReady(channel) && !channelSupportsModel(channel, binding.upstreamModel));
     const profile = binding.capabilityProfile || {};
     const effectiveAsync = profile.supportsAsync ?? (capability === "image" || capability === "video");
     const timeoutSeconds = profile.timeoutMs ? Math.round(profile.timeoutMs / 1000) : undefined;
@@ -614,6 +812,22 @@ function BindingEditor({
                 </div>
                 <Button danger type="text" aria-label="删除渠道绑定" icon={<Trash2 className="size-4" />} onClick={onRemove} />
             </div>
+            {channelDisabled ? (
+                <div className="mt-2.5 flex items-center gap-1.5 rounded-md border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                    <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
+                    <span>所选渠道「{channel?.name}」当前处于停用状态，请前往「模型渠道」页面开启此渠道。</span>
+                </div>
+            ) : channelNotReady ? (
+                <div className="mt-2.5 flex items-center gap-1.5 rounded-md border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                    <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
+                    <span>所选渠道「{channel?.name}」尚未配置有效 Base URL 或 API Key。</span>
+                </div>
+            ) : channelMissingModel ? (
+                <div className="mt-2.5 flex items-center gap-1.5 rounded-md border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                    <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
+                    <span>所选渠道「{channel?.name}」的模型列表中未启用上游模型「{binding.upstreamModel}」，请在渠道配置中勾选此模型。</span>
+                </div>
+            ) : null}
             <div className="mt-3 rounded-md border border-stone-200/80 bg-white/70 p-3 dark:border-stone-800 dark:bg-stone-950/40">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>

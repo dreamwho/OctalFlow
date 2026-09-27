@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
     writeFile: vi.fn(),
     rename: vi.fn(),
     unlink: vi.fn(),
+    lookup: vi.fn(),
+    connect: vi.fn(),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -29,6 +31,13 @@ vi.mock("node:fs/promises", () => ({
     unlink: mocks.unlink,
     writeFile: mocks.writeFile,
 }));
+// 失败诊断会做真实 DNS/TCP 探测，测试必须注入假实现，否则会依赖外网且结果不确定。
+vi.mock("node:dns/promises", () => ({ lookup: mocks.lookup }));
+// 只替身 connect：isIP 等其余实现必须保留真实行为，整体替身会让未列出的导出变成 undefined。
+vi.mock("node:net", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:net")>();
+    return { ...actual, connect: mocks.connect };
+});
 vi.mock("@/lib/server/data-adapter", () => ({
     readJsonDataFile: vi.fn(async (fileName: string, fallback: unknown) => structuredClone(mocks.files.get(fileName) ?? fallback)),
     writeJsonDataFile: vi.fn(async (fileName: string, value: unknown) => void mocks.files.set(fileName, structuredClone(value))),
@@ -52,7 +61,7 @@ vi.mock("@/lib/server/chatgpt-api-service", () => ({
     syncChatGptApiRuntimeProxy: (...args: unknown[]) => chatGptServiceMocks.syncChatGptApiRuntimeProxy(...(args as [])),
 }));
 
-import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, resolveHopNodeName, testMagicProxyAllNodes, testMagicProxyDolaAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "./magic-proxy-service";
+import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, repairMagicProxyRuntimeConfig, resolveHopNodeName, testMagicProxyAllNodes, testMagicProxyDolaAccess, testMagicProxyGoogleAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "./magic-proxy-service";
 import { UnsafeOutboundUrlError } from "@/lib/server/safe-outbound-fetch";
 
 const SUBSCRIPTION_URL = "https://subscription.example/clash.yaml?token=private-token";
@@ -76,6 +85,8 @@ describe("magic proxy service", () => {
         mocks.writeFile.mockReset();
         mocks.rename.mockReset();
         mocks.unlink.mockReset();
+        mocks.lookup.mockReset();
+        mocks.connect.mockReset();
         mocks.mkdir.mockResolvedValue(undefined);
         mocks.chmod.mockResolvedValue(undefined);
         mocks.writeFile.mockImplementation(async (path: string, content: string | Uint8Array) => void mocks.providerFiles.set(path, String(content)));
@@ -102,7 +113,6 @@ describe("magic proxy service", () => {
     });
 
     afterEach(() => {
-        expect(configCalls()).toHaveLength(0);
         vi.unstubAllEnvs();
         vi.unstubAllGlobals();
         vi.clearAllMocks();
@@ -180,7 +190,7 @@ describe("magic proxy service", () => {
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
         mocks.safeFetch.mockClear();
 
-        const result = await importMagicProxySubscription({ content: SUBSCRIPTION_YAML });
+        const result = await importMagicProxySubscription({ content: SUBSCRIPTION_YAML, replace: true });
 
         expect(result.nodes).toEqual([{ name: "Tokyo-01", type: "ss" }]);
         expect(mocks.safeFetch).not.toHaveBeenCalled();
@@ -262,7 +272,7 @@ describe("magic proxy service", () => {
         expect(selectionFor(DOLA_GROUP)).toBe("Tokyo-01");
 
         const report = await testMagicProxyDolaAccess();
-        expect(report.targetUrl).toBe("https://www.dola.com");
+        expect(report.targetUrl).toBe("https://www.dola.com/chat/");
         expect(report.items).toEqual([expect.objectContaining({ service: "dola", group: DOLA_GROUP, activeNode: "Tokyo-01", enabled: true, ok: true, delay: 88 })]);
     });
 
@@ -570,20 +580,23 @@ describe("magic proxy service", () => {
         expect(selectionFor(GEMINIAI_GROUP)).toBe("dreamyo-Chained-Exit-geminiai");
     });
 
-    it("tests provider nodes through the group delay API instead of the per-name proxy endpoint", async () => {
+    it("probes a single node through the provider healthcheck endpoint without ever falling back to group delays", async () => {
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
 
+        // 单节点测速优先走 provider 健康检查端点（mock 返回 77），避免全组并发拨号资源竞争。
         const single = await testMagicProxyNodeDelay({ node: "Tokyo-01" });
-        expect(single).toEqual({ name: "Tokyo-01", delay: 88 });
+        expect(single).toEqual({ name: "Tokyo-01", delay: 77 });
 
-        const missing = await testMagicProxyNodeDelay({ node: "Osaka-99" });
-        expect(missing).toEqual({
-            name: "Osaka-99",
-            error: expect.stringContaining("Mihomo 出网正常（DIRECT 42ms）"),
-        });
+        // 端点返回无效延迟时如实上报，绝不回退组级测速：组级端点会带动组内全部节点并发拨号，
+        // 批量测速的并发通道会因此互相拖垮，把正常节点也一起判为失败。
+        const invalid = await testMagicProxyNodeDelay({ node: "Osaka-99" });
+        expect(invalid).toEqual({ name: "Osaka-99", error: "节点测速未返回有效延迟，请重试" });
+        expect(groupDelayCalls()).toHaveLength(0);
 
         const all = await testMagicProxyAllNodes();
         expect(all.results).toEqual([{ name: "Tokyo-01", delay: 88 }]);
+        // 只有显式的整组测速才允许调用组级端点。
+        expect(groupDelayCalls()).toHaveLength(1);
 
         // 逐节点 /proxies/<name>/delay 对 provider 节点一律 404，不允许再走该端点。
         expect(
@@ -592,6 +605,57 @@ describe("magic proxy service", () => {
                 return parsed.pathname.startsWith("/proxies/") && parsed.pathname.endsWith("/delay") && (init as RequestInit | undefined)?.method === "GET";
             }),
         ).toBe(false);
+    });
+
+    it("keeps an inconclusive timeout out of the persisted alive flag so working nodes are not hidden", async () => {
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+        // 内核 504 表示「本次没在时限内测出」，并发压力下正常节点也会偶发；不能据此把节点标记为不可用。
+        mocks.lookup.mockResolvedValue([]);
+        const original = mocks.controllerFetch.getMockImplementation();
+        mocks.controllerFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+            const parsed = new URL(String(url));
+            if (parsed.pathname.endsWith("/healthcheck")) return jsonResponse({ message: "context deadline exceeded" }, 504);
+            return original ? original(url, init) : controllerResponse(url, init);
+        });
+
+        const timeout = await testMagicProxyNodeDelay({ node: "Tokyo-01" });
+        expect(timeout.error).toContain("节点测速超时未出结果");
+
+        // 不写 alive:false，节点在下拉里继续可选
+        const overview = await getMagicProxyOverview();
+        const record = (mocks.files.get("magic-proxy.json") as { nodeDelays?: Record<string, { alive?: boolean }> } | undefined)?.nodeDelays?.["Tokyo-01"];
+        expect(record?.alive).not.toBe(false);
+        expect(overview.nodes.find((item) => item.name === "Tokyo-01")?.alive).not.toBe(false);
+    });
+
+    it("locates the failing stage of a dead node instead of repeating the kernel's generic message", async () => {
+        await importMagicProxySubscription({
+            content: `proxies:
+  - name: HK-01
+    type: ss
+    server: hk.private.example
+    port: 443
+    cipher: aes-256-gcm
+    password: node-password
+`,
+        });
+
+        // 节点域名无法解析：常见于机场要求专用 DoH 解析而容器系统 DNS 不认。
+        mocks.lookup.mockResolvedValueOnce([]);
+        expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("应用侧无法用系统 DNS 解析节点域名 hk.private.example");
+
+        // 域名可解析但端口不可达：节点已下线或被封锁。
+        mocks.lookup.mockResolvedValueOnce([{ address: "203.0.113.9", family: 4 }]);
+        mocks.connect.mockImplementationOnce(() => fakeSocket("timeout"));
+        expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("TCP 443 均不可达");
+
+        // TCP 可达仍未通过健康检查：问题在代理协议握手阶段，与网络可达性无关。
+        mocks.lookup.mockResolvedValueOnce([{ address: "203.0.113.9", family: 4 }]);
+        mocks.connect.mockImplementationOnce(() => fakeSocket("connect"));
+        expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("失败发生在 mihomo 拨号阶段");
+
+        // 三类失败都必须只拨当前节点，不得触发全组重拨。
+        expect(groupDelayCalls()).toHaveLength(0);
     });
 
     it("falls back to the bound magic node when a chained landing cannot be rebuilt instead of leaving a stale exit selected", async () => {
@@ -733,12 +797,379 @@ describe("magic proxy service", () => {
             expect(result.nodes.map((n) => n.type)).toEqual(["ss", "trojan", "vless", "vmess"]);
         });
     });
+
+    describe("fallback node and per-node healthcheck", () => {
+        const TWO_NODE_YAML = `proxies:
+  - name: Tokyo-01
+    type: ss
+    server: node.private.example
+    port: 443
+    cipher: aes-256-gcm
+    password: node-password
+  - name: HK-01
+    type: ss
+    server: hk.private.example
+    port: 443
+    cipher: aes-256-gcm
+    password: node-password
+`;
+
+        it("startup repair rewrites the dynamic config with mihomo-side paths and hot reloads", async () => {
+            await importMagicProxySubscription({ content: TWO_NODE_YAML });
+            // 模拟旧版本写入的坏配置：provider 路径指向 App 侧目录
+            mocks.providerFiles.set("/runtime/mihomo/config.yaml", `proxy-providers:\n  dreamyo-Subscription:\n    type: file\n    path: /app/web/.magic-proxy-runtime/subscription.yaml\n`);
+            mocks.controllerFetch.mockClear();
+
+            await repairMagicProxyRuntimeConfig();
+
+            const dynamicConfig = parseDocument(mocks.providerFiles.get("/runtime/mihomo/config.yaml") || "").toJS();
+            expect(dynamicConfig["proxy-providers"]["dreamyo-Subscription"].path).toBe("/root/.config/mihomo/runtime/subscription.yaml");
+            expect(dynamicConfig["proxy-groups"]).toEqual(expect.arrayContaining([expect.objectContaining({ name: GEMINIAI_GROUP })]));
+            const reloadCalls = mocks.controllerFetch.mock.calls.filter(([url, init]) => {
+                const parsed = new URL(String(url));
+                return parsed.pathname === "/configs" && parsed.searchParams.get("force") === "true" && (init as RequestInit | undefined)?.method === "PUT";
+            });
+            expect(reloadCalls).toHaveLength(1);
+        });
+
+        it("generates a kernel fallback group and selects it as the service egress when a fallback node is set", async () => {
+            await importMagicProxySubscription({ content: TWO_NODE_YAML });
+
+            await updateMagicProxyBinding({ provider: "geminiai", enabled: true, node: "Tokyo-01", fallback_node: "HK-01" });
+
+            const dynamicConfig = parseDocument(mocks.providerFiles.get("/runtime/mihomo/config.yaml") || "").toJS();
+            // 兜底成员经独立 failover provider 文件引入，保证「主节点优先」顺序（组员顺序跟随文件顺序）。
+            expect(dynamicConfig["proxy-providers"]["dreamyo-Failover-Src-geminiai"]).toEqual({ type: "file", path: "/root/.config/mihomo/runtime/failover/geminiai.yaml" });
+            expect(dynamicConfig["proxy-groups"]).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ name: "dreamyo-Failover-GeminiAIStudio", type: "fallback", use: ["dreamyo-Failover-Src-geminiai"], url: "https://www.gstatic.com/generate_204", interval: 300, lazy: true }),
+                    expect.objectContaining({ name: GEMINIAI_GROUP, proxies: expect.arrayContaining(["dreamyo-Failover-GeminiAIStudio"]) }),
+                ]),
+            );
+            const failoverFile = parseDocument(mocks.providerFiles.get("/runtime/mihomo/failover/geminiai.yaml") || "").toJS();
+            expect(failoverFile.proxies.map((node: { name: string }) => node.name)).toEqual(["Tokyo-01", "HK-01"]);
+            expect(selectionFor(GEMINIAI_GROUP)).toBe("dreamyo-Failover-GeminiAIStudio");
+
+            const overview = await getMagicProxyOverview();
+            expect(overview.bindings.geminiai).toMatchObject({ enabled: true, node: "Tokyo-01", fallback_node: "HK-01" });
+
+            // 清空兜底后回退到普通节点选中。
+            await updateMagicProxyBinding({ provider: "geminiai", enabled: true, node: "Tokyo-01", fallback_node: "" });
+            expect(selectionFor(GEMINIAI_GROUP)).toBe("Tokyo-01");
+        });
+
+        it("resolves the provider egress without queueing behind a long magic-proxy operation", async () => {
+            await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+            await updateMagicProxyBinding({ provider: "geminiai", enabled: true, mode: "magic", node: "Tokyo-01" });
+
+            // 用一个不会立刻返回的订阅刷新占住魔法代理运行锁
+            let releaseSlow!: () => void;
+            mocks.safeFetch.mockImplementation(
+                () =>
+                    new Promise((resolve) => {
+                        releaseSlow = () => resolve(new Response(SUBSCRIPTION_YAML, { status: 200 }));
+                    }),
+            );
+            const slow = importMagicProxySubscription({ url: "https://subscription.example/slow.yaml" });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            // 生成请求解析出口必须立即返回，不能被慢操作堵在「排队中」
+            const started = Date.now();
+            const egress = await ensureMagicProxyProvider("geminiai");
+            expect(Date.now() - started).toBeLessThan(1000);
+            expect(egress).toMatchObject({ enabled: true, egress: { mode: "magic", node_name: "Tokyo-01" } });
+
+            releaseSlow();
+            await slow;
+        });
+
+        it("keeps the fallback node when the main node is saved first (user's two-step order)", async () => {
+            await importMagicProxySubscription({ content: TWO_NODE_YAML });
+            await updateMagicProxyBinding({ provider: "geminiai", enabled: true, mode: "magic", node: "Tokyo-01" });
+            await updateMagicProxyBinding({ provider: "geminiai", enabled: true, mode: "magic", node: "Tokyo-01", fallback_node: "HK-01" });
+
+            const overview = await getMagicProxyOverview();
+            expect(overview.bindings.geminiai).toMatchObject({ enabled: true, node: "Tokyo-01", fallback_node: "HK-01" });
+        });
+
+        it("wires a hop fallback group for the chained dialer when a hop fallback is configured", async () => {
+            vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+            vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+            chatGptServiceMocks.resolveGenericProxyNodeUrl.mockResolvedValue("http://landing.private.example:8080");
+            await importMagicProxySubscription({ content: TWO_NODE_YAML });
+
+            await updateMagicProxyBinding({
+                provider: "chatgptApi",
+                enabled: true,
+                mode: "chained",
+                chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-1", hop_fallback_node: "HK-01" },
+            });
+
+            // 跳板兜底写入独立 provider 文件，成员顺序 = [跳板, 兜底]（内核按文件顺序决定 fallback 优先级）
+            const hopProviderFile = [...mocks.providerFiles.entries()].find(([path]) => path.includes("failover/hop-chatgptApi.yaml"));
+            expect(hopProviderFile).toBeTruthy();
+            expect(parseDocument(hopProviderFile![1]).toJS()).toMatchObject({ proxies: [{ name: "Tokyo-01" }, { name: "HK-01" }] });
+
+            // 动态配置里声明 fallback 组与对应 provider
+            const dynamicConfig = parseDocument(mocks.providerFiles.get("/runtime/mihomo/config.yaml") || "").toJS();
+            expect(dynamicConfig["proxy-providers"]["dreamyo-Failover-Hop-chatgptApi"]).toBeTruthy();
+            expect(dynamicConfig["proxy-groups"]).toEqual(
+                expect.arrayContaining([expect.objectContaining({ name: "dreamyo-Chained-Hop-Failover-ChatGPTAPI", type: "fallback", use: ["dreamyo-Failover-Hop-chatgptApi"] })]),
+            );
+
+            // dialer-proxy 指向兜底组，跳板失联由内核自动切换
+            const exitNode = parseDocument(mocks.providerFiles.get("/runtime/mihomo/subscription.yaml") || "").toJS();
+            expect(exitNode.proxies).toEqual(
+                expect.arrayContaining([expect.objectContaining({ name: "dreamyo-Chained-Exit", "dialer-proxy": "dreamyo-Chained-Hop-Failover-ChatGPTAPI" })]),
+            );
+
+            // 兜底与跳板相同必须被拒绝
+            await expect(
+                updateMagicProxyBinding({
+                    provider: "chatgptApi",
+                    enabled: true,
+                    mode: "chained",
+                    chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-1", hop_fallback_node: "Tokyo-01" },
+                }),
+            ).rejects.toThrow("跳板兜底节点不能与跳板节点相同");
+        });
+
+        it("rejects a fallback node outside the subscription and forbids a policy group as fallback", async () => {
+            await importMagicProxySubscription({ content: TWO_NODE_YAML });
+
+            await expect(updateMagicProxyBinding({ provider: "geminiai", enabled: true, node: "Tokyo-01", fallback_node: "不存在的节点" })).rejects.toThrow("兜底节点不在当前订阅中");
+        });
+
+        it("probes a single node through the provider healthcheck endpoint without a group-wide dial", async () => {
+            await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+
+            const single = await testMagicProxyNodeDelay({ node: "Tokyo-01" });
+            expect(single).toEqual({ name: "Tokyo-01", delay: 77 });
+            expect(
+                mocks.controllerFetch.mock.calls.filter(([url]) => String(url).includes("/providers/proxies/dreamyo-Subscription/Tokyo-01/healthcheck")),
+            ).toHaveLength(1);
+            // 健康检查命中后不再发起组级全量拨号。
+            expect(
+                mocks.controllerFetch.mock.calls.filter(([url]) => new URL(String(url)).pathname.startsWith("/group/")),
+            ).toHaveLength(0);
+        });
+    });
+
+    describe("subscription policy groups and dynamic config", () => {
+        const POLICY_GROUP_YAML = `proxies:
+  - name: 日本3|电信
+    type: vless
+    server: jp3.private.example
+    port: 443
+    uuid: uuid-jp3
+    udp: true
+  - name: 香港1|三网
+    type: vless
+    server: hk1.private.example
+    port: 443
+    uuid: uuid-hk1
+    udp: true
+proxy-groups:
+  - name: 红茶云
+    type: select
+    proxies:
+      - 自动选择
+      - 日本3|电信
+  - name: 自动选择
+    type: url-test
+    proxies:
+      - 日本3|电信
+      - 香港1|三网
+`;
+
+        it("scopes each subscription's private DoH to its own node hostnames instead of applying it globally", async () => {
+            // 实测 mihomo：proxy-server-nameserver 是解析代理服务器域名的唯一权威且不回退，
+            // 设成全局值会让其他机场的节点域名全部解析失败，因此必须按订阅绑定到各自节点域名。
+            // 机场常把 DoH 地址误写进 default-nameserver；内核要求该键必须是纯 IP，否则整份配置被拒绝。
+            const dnsYaml = `dns:
+  proxy-server-nameserver:
+    - "https://panel-doh.example:9088/dns-query/c"
+  default-nameserver:
+    - "https://panel-doh.example:9088/dns-query/c"
+    - 223.5.5.5
+proxies:
+  - name: Tokyo-01
+    type: ss
+    server: node.private.example
+    port: 443
+    cipher: aes-256-gcm
+    password: node-password
+  - name: Direct-IP-01
+    type: ss
+    server: 203.0.113.7
+    port: 443
+    cipher: aes-256-gcm
+    password: node-password
+`;
+            const otherAirportYaml = `proxies:
+  - name: Other-01
+    type: ss
+    server: other.airport.example
+    port: 443
+    cipher: aes-256-gcm
+    password: node-password
+`;
+            await importMagicProxySubscription({ content: dnsYaml });
+            await importMagicProxySubscription({ content: otherAirportYaml });
+
+            const dynamicConfig = parseDocument(mocks.providerFiles.get("/runtime/mihomo/config.yaml") || "").toJS();
+            // 不设全局 proxy-server-nameserver：那会接管其他订阅的节点域名解析。
+            expect(dynamicConfig.dns["proxy-server-nameserver"]).toBeUndefined();
+            // 全局 nameserver 兜底公共 DNS，避免未命中策略的域名（如通用代理落地节点）无法解析
+            expect(dynamicConfig.dns.nameserver).toEqual(["223.5.5.5", "119.29.29.29", "1.1.1.1", "8.8.8.8"]);
+            expect(dynamicConfig.dns.enable).toBe(true);
+            // 只绑定该订阅自己的节点域名；IP 直连节点与其他订阅的域名都不进入策略。
+            expect(dynamicConfig.dns["nameserver-policy"]).toEqual({
+                "node.private.example": ["https://panel-doh.example:9088/dns-query/c"],
+            });
+            // default-nameserver 只保留纯 IP，DoH 地址被丢弃（否则内核拒绝整份配置）
+            expect(dynamicConfig.dns["default-nameserver"]).toEqual(["223.5.5.5"]);
+
+            // 替换导入（无 dns 段）后 dns 配置整体移除
+            await importMagicProxySubscription({ content: SUBSCRIPTION_YAML, replace: true });
+            const refreshed = parseDocument(mocks.providerFiles.get("/runtime/mihomo/config.yaml") || "").toJS();
+            expect(refreshed.dns).toBeUndefined();
+        });
+
+        it("drops loopback resolvers the container cannot use and keeps those node hostnames on system DNS", async () => {
+            // 真实机场写法：proxy-server-nameserver 指向它自己客户端的本机 DNS。
+            // 在 mihomo 容器里 127.0.0.1:7874 没有任何服务，绑上去会让该订阅全部节点极速解析失败。
+            const loopbackDnsYaml = `dns:
+  proxy-server-nameserver:
+    - "udp://127.0.0.1:7874"
+proxies:
+  - name: HK-01
+    type: anytls
+    server: 086d67b3-9a39-4363-a0dd-f3da531a4db1.ro7xtkti5v.sbs
+    port: 8327
+    password: node-password
+    sni: cache-v1.edge.example.cn
+`;
+            // 另一个订阅用真正可用的 DoH，仍应按订阅绑定。
+            const usableDnsYaml = `dns:
+  proxy-server-nameserver:
+    - "https://panel-doh.example:9088/dns-query/c"
+proxies:
+  - name: JP-01
+    type: ss
+    server: jp.private.example
+    port: 443
+    cipher: aes-256-gcm
+    password: node-password
+`;
+            await importMagicProxySubscription({ content: loopbackDnsYaml });
+            await importMagicProxySubscription({ content: usableDnsYaml });
+
+            const dynamicConfig = parseDocument(mocks.providerFiles.get("/runtime/mihomo/config.yaml") || "").toJS();
+            const policy = dynamicConfig.dns["nameserver-policy"];
+            // loopback 解析器不产生策略条目，该域名回落系统 DNS（服务器实测可正常解析）
+            expect(policy["086d67b3-9a39-4363-a0dd-f3da531a4db1.ro7xtkti5v.sbs"]).toBeUndefined();
+            expect(policy["jp.private.example"]).toEqual(["https://panel-doh.example:9088/dns-query/c"]);
+        });
+
+        it("prefers persisted test results over stale mihomo provider history in the overview", async () => {
+            await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+
+            // 单节点测速持久化 77ms；mock 的 provider 历史固定为 42ms
+            const single = await testMagicProxyNodeDelay({ node: "Tokyo-01" });
+            expect(single.delay).toBe(77);
+            // persistNodeDelays 为异步落盘，等待写完成后断言
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
+            const overview = await getMagicProxyOverview();
+            expect(overview.nodes[0]?.delay).toBe(77);
+        });
+
+        it("generates the dynamic config with mihomo-side provider paths, policy groups, and a hot reload", async () => {
+            await importMagicProxySubscription({ content: POLICY_GROUP_YAML });
+
+            const configFile = "/runtime/mihomo/config.yaml";
+            expect(mocks.providerFiles.has(configFile)).toBe(true);
+            const dynamicConfig = parseDocument(mocks.providerFiles.get(configFile) || "").toJS();
+            expect(dynamicConfig.profile).toEqual({ "store-selected": true });
+            expect(dynamicConfig["proxy-providers"]["dreamyo-Subscription"]).toEqual({ type: "file", path: "/root/.config/mihomo/runtime/subscription.yaml" });
+            // 内核不允许组 proxies 直接引用 provider 节点名：策略组必须 use + 组级 filter 圈定成员。
+            expect(dynamicConfig["proxy-groups"]).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ name: GEMINIAI_GROUP, type: "select", proxies: expect.arrayContaining(["DIRECT", "自动选择"]) }),
+                    expect.objectContaining({ name: "自动选择", type: "url-test", use: ["dreamyo-Subscription"], filter: "^(?:日本3\\|电信|香港1\\|三网)$", url: "https://www.gstatic.com/generate_204", interval: 300, lazy: true }),
+                ]),
+            );
+            // 订阅内引用其他组的「红茶云」选择器成员被剔除后不足以成组，不得生成非法组实体。
+            expect((dynamicConfig["proxy-groups"] as Array<Record<string, unknown>>).some((grp) => grp.name === "红茶云")).toBe(false);
+
+            const reloadCalls = mocks.controllerFetch.mock.calls.filter(([url, init]) => {
+                const parsed = new URL(String(url));
+                return parsed.pathname === "/configs" && parsed.searchParams.get("force") === "true" && (init as RequestInit | undefined)?.method === "PUT";
+            });
+            expect(reloadCalls).toHaveLength(1);
+            expect(JSON.parse(String((reloadCalls[0]?.[1] as RequestInit | undefined)?.body))).toEqual({ path: "/root/.config/mihomo/runtime/config.yaml" });
+
+            const overview = await getMagicProxyOverview();
+            expect(overview.subscriptionGroups).toEqual([expect.objectContaining({ name: "自动选择", type: "url-test", subName: "本地文件订阅", proxies: ["日本3|电信", "香港1|三网"] })]);
+        });
+
+        it("allows binding a service to a subscription policy group like 自动选择", async () => {
+            await importMagicProxySubscription({ content: POLICY_GROUP_YAML });
+
+            await updateMagicProxyBinding({ provider: "geminiai", enabled: true, node: "自动选择" });
+            expect(selectionFor(GEMINIAI_GROUP)).toBe("自动选择");
+
+            const overview = await getMagicProxyOverview();
+            expect(overview.bindings.geminiai).toMatchObject({ enabled: true, node: "自动选择" });
+
+            await expect(updateMagicProxyBinding({ provider: "geminiTools", enabled: true, node: "不存在的组" })).rejects.toThrow("所选节点不在当前订阅中");
+        });
+
+        it("diagnoses a geminiai chained exit failure as hop-to-landing instead of a dead node", async () => {
+            chatGptServiceMocks.resolveGenericProxyNodeUrl.mockResolvedValue("http://landing.private.example:8080");
+            await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+            await updateMagicProxyBinding({ provider: "geminiai", enabled: true, mode: "chained", chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-g" } });
+
+            const previousImplementation = mocks.controllerFetch.getMockImplementation();
+            mocks.controllerFetch.mockImplementation(async (input: string | URL, init?: RequestInit) => {
+                const parsed = new URL(String(input));
+                if (parsed.pathname === `/proxies/${encodeURIComponent(GEMINIAI_GROUP)}` && init?.method === "GET") {
+                    return jsonResponse({ name: GEMINIAI_GROUP, type: "Selector", now: "dreamyo-Chained-Exit-geminiai" });
+                }
+                // 复刻真实故障：跳板节点本身可达（延迟 88ms），但链式出口访问 Google 失败。
+                if (parsed.pathname.startsWith("/group/") && parsed.pathname.endsWith("/delay") && parsed.searchParams.get("url")?.includes("google")) {
+                    return jsonResponse({ DIRECT: 60, "Tokyo-01": 88 });
+                }
+                return controllerResponse(String(input), init);
+            });
+
+            try {
+                const report = await testMagicProxyGoogleAccess();
+                const geminiaiItem = report.items.find((item) => item.service === "geminiai");
+                expect(geminiaiItem?.activeNode).toBe("dreamyo-Chained-Exit-geminiai");
+                expect(geminiaiItem?.error).toContain("跳板 Tokyo-01 正常（88ms）");
+                expect(geminiaiItem?.error).toContain("跳板→落地→目标 链路访问 Google 失败");
+                expect(geminiaiItem?.error).not.toContain("节点可能已失效或被墙");
+            } finally {
+                if (previousImplementation) mocks.controllerFetch.mockImplementation(previousImplementation);
+            }
+        });
+    });
 });
 
 function controllerResponse(url: string, init?: RequestInit) {
     const parsed = new URL(url);
     if (parsed.pathname === PROVIDER_ENDPOINT && init?.method === "GET") return jsonResponse({ proxies: providerRuntimeNodes() });
     if (parsed.pathname === PROVIDER_ENDPOINT && init?.method === "PUT") return new Response(null, { status: 204 });
+    const providerHealthcheck = parsed.pathname.match(/^\/providers\/proxies\/dreamyo-Subscription\/([^/]+)\/healthcheck$/);
+    if (providerHealthcheck && init?.method === "GET") {
+        const nodeName = decodeURIComponent(providerHealthcheck[1]);
+        if (nodeName === "Tokyo-01") return jsonResponse({ delay: 77 });
+        // 节点存在但拨号失败：mihomo 用 503 + 通用文案表达，不含任何原因。
+        if (nodeName === "HK-01") return jsonResponse({ message: "An error occurred in the delay test" }, 503);
+        return jsonResponse({ delay: 0 });
+    }
     if (parsed.pathname === "/proxies" && parsed.search === "" && init?.method === "GET") return groupsResponse(providerRuntimeNodes().map((node) => node.name));
     // 组级测速：mihomo 对 provider 节点的 /proxies/<name>/delay 一律 404，只有组测速返回真实延迟。
     if (parsed.pathname.startsWith("/group/") && parsed.pathname.endsWith("/delay") && init?.method === "GET") {
@@ -771,8 +1202,28 @@ function dolaRuntimeConfigured() {
     return Boolean(process.env.DREAMYO_MAGIC_PROXY_DOLA_PORT && process.env.DREAMYO_MAGIC_PROXY_DOLA_URL);
 }
 
-function jsonResponse(value: unknown) {
-    return new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
+function jsonResponse(value: unknown, status = 200) {
+    return new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
+}
+
+function groupDelayCalls() {
+    return mocks.controllerFetch.mock.calls.filter(([url, init]) => {
+        const parsed = new URL(String(url));
+        return parsed.pathname.startsWith("/group/") && parsed.pathname.endsWith("/delay") && (init as RequestInit | undefined)?.method === "GET";
+    });
+}
+
+/** 假 socket：只触发诊断代码注册的期望事件，避免单元测试真的建 TCP 连接。 */
+function fakeSocket(event: "connect" | "timeout" | "error") {
+    const socket = {
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
+        once: vi.fn((name: string, callback: () => void) => {
+            if (name === event) queueMicrotask(callback);
+            return socket;
+        }),
+    };
+    return socket;
 }
 
 function providerRuntimeNodes() {
@@ -809,10 +1260,6 @@ function providerGetCalls() {
 
 function groupGetCalls() {
     return controllerCalls("/proxies", "GET");
-}
-
-function configCalls() {
-    return controllerCalls("/configs");
 }
 
 function selectionFor(group: string) {

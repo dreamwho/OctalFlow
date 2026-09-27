@@ -1,0 +1,24 @@
+{
+  "name": "dola-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.mjs",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build": "node --check src/main.mjs && node --check src/store.mjs && node --check src/proxy-runtime.mjs && node --check src/subscription-uri.mjs && node --check src/watermark.mjs && node --check src/prompt-references.mjs && node --check src/proxy-batch-test.mjs && node --check src/preload.cjs && node --check src/renderer.js",
+    "start": "electron .",
+    "test": "node --test src/*.test.mjs",
+    "freeze:provider": "node scripts/freeze-provider.mjs",
+    "stage:sidecars": "node scripts/stage-sidecars.mjs",
+    "pack:mac": "electron-builder --mac dmg zip",
+    "pack:win": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}

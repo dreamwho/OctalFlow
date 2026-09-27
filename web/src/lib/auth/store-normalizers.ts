@@ -475,6 +475,7 @@ export function normalizeAgentSkills(skills: AgentSkill[] | undefined) {
 
 export function normalizeGenerationDefaults(settings: Partial<GenerationDefaultSettings> | undefined): GenerationDefaultSettings {
     return {
+        mediaDownloadEgress: allowedText(settings?.mediaDownloadEgress, ["server-proxy", "direct"], DEFAULT_SETTINGS.generationDefaults.mediaDownloadEgress || "server-proxy") as "server-proxy" | "direct",
         canvasImageCount: normalizePositiveSafeInteger(settings?.canvasImageCount, DEFAULT_SETTINGS.generationDefaults.canvasImageCount),
         imageSize: allowedText(settings?.imageSize, ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"], DEFAULT_SETTINGS.generationDefaults.imageSize),
         imageQuality: allowedText(settings?.imageQuality, ["auto", "low", "medium", "high"], DEFAULT_SETTINGS.generationDefaults.imageQuality),

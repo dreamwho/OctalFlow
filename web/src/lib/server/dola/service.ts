@@ -193,9 +193,41 @@ export async function testDolaVideo(input: {
     const observedQuota = quotaObservation(result);
     lifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: responsePhase === "needs_review" ? "Provider 返回待人工确认状态" : responsePhase === "submitted" ? "已提交到 Dola 上游，任务排队中" : responsePhase === "generating" ? "Dola 上游已受理，生成中" : response.ok ? "Provider 已受理请求" : "Provider 返回失败", durationMs: Date.now() - started, detail: `HTTP ${response.status}${taskId ? `, 任务: ${taskId}` : ""}${verificationId ? ", 已提供验证会话" : ""}` });
     if (!isTemporaryAccount) await markDolaAccountUsed(account.id, response.ok);
-    const error = response.ok ? undefined : stringValue(result?.error) || "Provider 请求失败";
-    await safeSettleDolaRequestLog(logId, { statusCode: response.status, durationMs: Date.now() - started, phase: responsePhase, ...(error ? { error } : {}), responsePreview, responseBytes: responseBytes.byteLength, contentType: response.headers.get("content-type") || undefined, accountId: account.id, accountName: account.name, ...(taskId ? { taskId } : {}), ...(verificationId ? { verificationId } : {}), ...observedQuota, proxyEgress: proxyEgress(proxy.egress), lifecycle });
-    return { status: responsePhase, model: profile.id, ...(taskId ? { taskId } : {}), channelId: "dola", statusUrl: stringValue(result?.statusUrl), elapsedMs: Date.now() - started, ...(verificationId ? { verificationId } : {}), ...(conversationId ? { conversationId } : {}), ...(videoUrl ? { videoUrl } : {}), ...(error ? { error } : {}) };
+    const screenshotBase64 = stringValue(result?.screenshotBase64);
+    const resultError = stringValue(result?.error);
+    const error = response.ok
+        ? (responsePhase === "failed" ? (resultError ? describeDolaFailure(resultError) : "Dola 生成失败") : undefined)
+        : (resultError ? describeDolaFailure(resultError) : "Provider 请求失败");
+    await safeSettleDolaRequestLog(logId, {
+        statusCode: response.status,
+        durationMs: Date.now() - started,
+        phase: responsePhase,
+        ...(error ? { error } : {}),
+        responsePreview,
+        responseBytes: responseBytes.byteLength,
+        contentType: response.headers.get("content-type") || undefined,
+        accountId: account.id,
+        accountName: account.name,
+        ...(taskId ? { taskId } : {}),
+        ...(verificationId ? { verificationId } : {}),
+        ...(screenshotBase64 ? { screenshotBase64 } : {}),
+        ...observedQuota,
+        proxyEgress: proxyEgress(proxy.egress),
+        lifecycle,
+    });
+    return {
+        status: responsePhase,
+        model: profile.id,
+        ...(taskId ? { taskId } : {}),
+        channelId: "dola",
+        statusUrl: stringValue(result?.statusUrl),
+        elapsedMs: Date.now() - started,
+        ...(verificationId ? { verificationId } : {}),
+        ...(conversationId ? { conversationId } : {}),
+        ...(videoUrl ? { videoUrl } : {}),
+        ...(error ? { error } : {}),
+        ...(screenshotBase64 ? { screenshotBase64 } : {}),
+    };
 }
 
 export async function startDolaGoogleLogin(input?: { manualCookie?: string; email?: string; name?: string; timeoutSeconds?: number }) {
@@ -206,7 +238,9 @@ export async function startDolaGoogleLogin(input?: { manualCookie?: string; emai
             name: input.name?.trim() || undefined,
         });
         await refreshDolaAccount(account.id).catch(() => undefined);
-        return { account: await getDolaAccount(account.id), status: "success" };
+        const saved = await getDolaAccount(account.id);
+        if (!saved) throw new Error("Google 授权账号保存后未能读取");
+        return { account: saved, status: "success" };
     }
 
     let proxy: Awaited<ReturnType<typeof resolveDolaProxyEgress>>;
@@ -234,13 +268,56 @@ export async function startDolaGoogleLogin(input?: { manualCookie?: string; emai
         throw new Error(stringValue(payload?.error ?? payload?.detail) || "Google 授权登录未完成或已超时");
     }
 
-    const cookie = stringValue(payload.cookie);
+    const cookie = typeof payload.cookie === "string" ? payload.cookie : "";
     const email = stringValue(payload.email) || input?.email?.trim() || undefined;
     const name = stringValue(payload.name) || input?.name?.trim() || undefined;
+    const loginResponse = await dolaRuntimeRequest("/v1/accounts/inspect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId: "google-login", credentialVersion: 1, authOnly: true, proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), cookie }),
+    });
+    const loginPayload = parseRecord(new Uint8Array(await loginResponse.arrayBuffer()));
+    const loginProbe = loginPayload?.loginProbe && typeof loginPayload.loginProbe === "object" ? loginPayload.loginProbe as Record<string, unknown> : null;
+    if (!loginResponse.ok || loginProbe?.state !== "ready") throw new Error("Google 授权 Cookie 尚未通过登录检测，请重新授权并等待验证完成");
 
     const account = await addOrUpdateGoogleDolaAccount({ cookie, email, name });
-    await refreshDolaAccount(account.id).catch(() => undefined);
-    return { account: await getDolaAccount(account.id), status: "success" };
+    const verification = await refreshDolaAccount(account.id);
+    if (verification.account?.loginState !== "ready") throw new Error("Google 授权 Cookie 尚未通过登录检测，请重新授权并等待验证完成");
+    const saved = await getDolaAccount(account.id);
+    if (!saved) throw new Error("Google 授权账号保存后未能读取");
+    return { account: saved, status: "success" };
+}
+
+export async function startDolaGoogleLoginSession(ownerId: string, timeoutSeconds: number, mode: "native" | "remote") {
+    const proxy = await resolveDolaProxyEgress();
+    const response = await dolaRuntimeRequest("/v1/accounts/google-login/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ownerId, proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), timeoutSeconds, headless: mode === "remote" }),
+    });
+    const payload = parseRecord(new Uint8Array(await response.arrayBuffer()));
+    if (!response.ok || !stringValue(payload?.verificationId)) throw new Error(stringValue(payload?.detail ?? payload?.error) || "无法启动 Google 授权浏览器");
+    const leaseToken = stringValue(payload?.leaseToken);
+    if (mode === "native" && !leaseToken) throw new Error("本地授权浏览器缺少会话租约，请更新 Dola Provider");
+    return { verificationId: stringValue(payload?.verificationId), leaseToken, mode };
+}
+
+export async function completeDolaGoogleLoginSession(verificationId: string, leaseToken: string, name?: string) {
+    const response = await dolaRuntimeRequest(`/v1/verifications/${encodeURIComponent(verificationId)}/google-finalize`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken }),
+    });
+    const payload = parseRecord(new Uint8Array(await response.arrayBuffer()));
+    if (!response.ok) throw new Error(stringValue(payload?.detail ?? payload?.error) || "检测 Google 授权失败");
+    const cookie = typeof payload?.cookie === "string" ? payload.cookie : "";
+    if (payload?.status !== "ready" || !cookie) return { status: stringValue(payload?.status) || "unknown" };
+
+    const account = await addOrUpdateGoogleDolaAccount({ cookie, name });
+    const verification = await refreshDolaAccount(account.id);
+    if (verification.account?.loginState !== "ready") return { status: "needs_login" };
+    const closed = await dolaRuntimeRequest(`/v1/verifications/${encodeURIComponent(verificationId)}/close`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken }),
+    }).then((result) => result.ok).catch(() => false);
+    return { status: "saved", account: await getDolaAccount(account.id), windowClosed: closed };
 }
 
 export async function queryDolaTask(taskId: string) {
@@ -261,6 +338,8 @@ export async function queryDolaTask(taskId: string) {
         const taskPhase = response.ok ? dolaTaskLogPhase(stringValue(value.status), Boolean(verificationId)) : "failed";
         const taskAccountId = stringValue(value.accountId);
         const taskError = stringValue(value.error);
+        const rawError = stringValue(value.rawError);
+        const failureDetail = taskError ? `${describeDolaFailure(taskError)}${rawError && rawError !== taskError ? `：${rawError}` : ""}` : rawError || "Dola 生成失败";
         const screenshotBase64 = stringValue(value.screenshotBase64);
         if (taskAccountId && (taskPhase === "success" || taskPhase === "failed")) {
             await updateDolaAccountGenerationValidation(taskAccountId, {
@@ -282,14 +361,13 @@ export async function queryDolaTask(taskId: string) {
                 const errorText = taskError;
                 await safeAdvanceDolaTaskLog(attachedLogId, {
                     phase,
-                    message: phase === "success" ? "生成完成，最终结果已返回" : phase === "failed" ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}` : phase === "needs_review" ? "任务等待人工确认（页面验证）" : phase === "generating" ? "Dola 上游已受理，生成中" : "Dola 上游排队中，等待生成",
-                    detail: dolaResultMediaDetail(value) || `上游任务状态: ${stringValue(value.status) || "unknown"}`,
+                    message: phase === "success" ? "生成完成，最终结果已返回" : phase === "failed" ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}` : phase === "needs_review" ? "任务等待人工确认（页面验证）" : phase === "generating" ? dolaTaskProgressMessage(value) : "Dola 上游排队中，等待生成",
+                    detail: `${dolaResultMediaDetail(value) || `任务状态: ${stringValue(value.status) || "unknown"}`}${dolaConversationNote(value)}${dolaConversationScreenshotNote(value)}`,
                     statusCode: response.status,
                     responsePreview: summarizeResponse(value, bytes),
                     responseBytes: bytes.byteLength,
-                    ...(phase === "failed" && errorText ? { error: errorText } : {}),
+                    ...(phase === "failed" ? { error: failureDetail, screenshotBase64: screenshotBase64 || null } : screenshotBase64 ? { screenshotBase64 } : {}),
                     ...(verificationId ? { verificationId } : {}),
-                    ...(screenshotBase64 ? { screenshotBase64 } : {}),
                 });
             } else if (response.status === 404) {
                 await safeAdvanceDolaTaskLog(attachedLogId, { phase: "failed", message: "生成失败：任务在 Provider 中不存在（可能已被重启清理）", statusCode: response.status, error: "task_not_found" });
@@ -298,7 +376,19 @@ export async function queryDolaTask(taskId: string) {
             const phase = classifyResponsePhase(response, value, verificationId);
             const observedQuota = quotaObservation(value);
             lifecycle.push({ time: new Date().toISOString(), phase, message: phase === "needs_review" ? "任务仍待人工确认" : response.ok ? "任务状态已返回" : "任务查询失败", durationMs: Date.now() - started, detail: `HTTP ${response.status}` });
-            await safeSettleDolaRequestLog(logId, { statusCode: response.status, durationMs: Date.now() - started, phase, responsePreview: summarizeResponse(value, bytes), responseBytes: bytes.byteLength, contentType: response.headers.get("content-type") || undefined, ...(verificationId ? { verificationId } : {}), ...(screenshotBase64 ? { screenshotBase64 } : {}), ...observedQuota, lifecycle });
+            await safeSettleDolaRequestLog(logId, {
+                statusCode: response.status,
+                durationMs: Date.now() - started,
+                phase,
+                responsePreview: summarizeResponse(value, bytes),
+                responseBytes: bytes.byteLength,
+                contentType: response.headers.get("content-type") || undefined,
+                ...(phase === "failed" ? { error: failureDetail } : !response.ok ? { error: "任务查询失败" } : {}),
+                ...(verificationId ? { verificationId } : {}),
+                ...(screenshotBase64 ? { screenshotBase64 } : {}),
+                ...observedQuota,
+                lifecycle,
+            });
         }
         return { status: response.ok ? stringValue(value.status) || "running" : "failed", taskId, ...value, ...(typeof value.taskId === "string" || typeof value.id !== "string" ? {} : { taskId: value.id }) };
     } catch (error) {
@@ -456,7 +546,7 @@ export async function startDolaAccountVerification(id: string) {
     return { status: validation.login ? "ready" : "unverified", account: await getDolaAccount(id), quota, protocol: validation };
 }
 
-export async function startDolaHeadedAccountTest(id: string, selection: { mode: "direct" | "magic" | "generic" | "chained"; target?: string }) {
+export async function startDolaHeadedAccountTest(id: string, selection: { mode: "direct" | "magic" | "generic" | "chained"; target?: string; headless: boolean; timeoutSeconds: number }) {
     const account = await getDolaAccount(id);
     if (!account) throw new DolaProviderError("Dola 账号不存在", 404);
     const cookie = await getDolaAccountCookie(id);
@@ -480,10 +570,10 @@ export async function startDolaHeadedAccountTest(id: string, selection: { mode: 
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, cookie,
             proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target,
-            ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), headless: false }),
+            ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), headless: selection.headless, timeoutSeconds: selection.timeoutSeconds }),
     });
     const payload = await response.json().catch(() => null) as { verificationId?: string; pageUrl?: string; detail?: string } | null;
-    if (!response.ok || !payload?.verificationId) throw new DolaProviderError(payload?.detail || "Dola 有头测试窗口未能打开", response.status || 502);
+    if (!response.ok || !payload?.verificationId) throw new DolaProviderError(payload?.detail?.startsWith("camoufox_launch_failed") ? `Camoufox 浏览器启动失败（${payload.detail}），请检查服务器浏览器运行环境` : payload?.detail || "Dola 测试浏览器未能打开", response.status || 502);
     return { verificationId: payload.verificationId, pageUrl: payload.pageUrl, proxyMode: proxy.egress.mode, proxyTarget: proxy.egress.target || "" };
 }
 
@@ -581,9 +671,10 @@ function parseRecord(bytes: Uint8Array) {
 function summarizeResponse(value: Record<string, unknown> | null, bytes: Uint8Array) {
     if (!value) return bytes.byteLength ? "Provider 返回了无法解析的响应" : "";
     // Media result URLs stay visible: they are the deliverable the admin needs to see in the log detail.
-    const summary = Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl/i.test(key)).map(([key, item]) => [key, typeof item === "string" && item.length > 500 ? `${item.slice(0, 500)}…` : item]));
+    const reply = stringValue((value.diagnostics as Record<string, unknown> | undefined)?.upstreamResponseText);
+    const summary = { ...(reply ? { conversationReply: reply } : {}), ...Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl/i.test(key)).map(([key, item]) => [key, typeof item === "string" && item.length > 500 ? `${item.slice(0, 500)}…` : item])) };
     const rendered = JSON.stringify(summary, null, 2);
-    return rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered;
+    return reply ? rendered : rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered;
 }
 function classifyResponsePhase(response: Response, value: Record<string, unknown> | null, verificationId: string) {
     const status = stringValue(value?.status).toLowerCase();
@@ -603,6 +694,22 @@ function dolaResultMediaDetail(value: Record<string, unknown> | null) {
     const urls = videoUrl ? [videoUrl] : imageUrls;
     if (!urls.length) return "";
     return urls.length === 1 ? `结果地址: ${urls[0]}` : `结果地址 (${urls.length}): ${urls.slice(0, 3).join(", ")}${urls.length > 3 ? " …" : ""}`;
+}
+function dolaTaskProgressMessage(value: Record<string, unknown> | null) {
+    if (stringValue(value?.status) !== "running") return "Dola 上游已受理，生成中";
+    const stage = stringValue((value?.diagnostics as Record<string, unknown> | undefined)?.submitStage);
+    if (stage === "uploading_references") return "正在上传参考图，尚未确认 Dola 已受理";
+    if (stage === "submitting_to_dola") return "正在提交到 Dola，等待会话确认";
+    return "正在准备 Dola 提交，尚未确认上游已受理";
+}
+function dolaConversationNote(value: Record<string, unknown> | null) {
+    const id = stringValue(value?.conversationId || value?.conversation_id);
+    return /^\d{12,32}$/.test(id) ? `；会话: https://www.dola.com/chat/${id}` : "；尚无已确认的会话 ID";
+}
+function dolaConversationScreenshotNote(value: Record<string, unknown> | null) {
+    const reason = stringValue((value?.diagnostics as Record<string, unknown> | undefined)?.resultScreenshotError);
+    if (reason === "result_query_conversation_not_ready") return "；会话页面未加载完成，未保存截图";
+    return reason ? `；会话截图未获取（${reason}）` : "";
 }
 async function safeFindAdminTaskLog(taskId: string) {
     try {

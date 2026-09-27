@@ -55,6 +55,7 @@ export function useCanvasGenerationProgress(node?: CanvasNodeData, completed = f
         () => clock,
         () => 0,
     );
+    const uploading = node?.metadata?.uploading === true;
     const [mountedAt] = useState(Date.now);
     const startedAt = node?.metadata?.generationStartedAt || mountedAt;
     const estimate = estimateCanvasProgress(now ? now - startedAt : 0, node?.type, node?.metadata?.generationExpectedMs);
@@ -91,6 +92,21 @@ export function useCanvasGenerationProgress(node?: CanvasNodeData, completed = f
             clearTimeout(hold);
         };
     }, [completed, onComplete]);
+    // 上传中的乐观节点：进度是 XHR 上报的真实字节进度，不走生成估算。
+    if (uploading) {
+        const uploadPercent = Math.max(0, Math.min(100, Math.round(node?.metadata?.uploadProgress ?? 0)));
+        return {
+            status: `上传中 ${uploadPercent}%`,
+            percent: uploadPercent,
+            estimated: false,
+            completed: false,
+            elapsedSeconds: 0,
+            elapsedText: formatGenerationElapsed(0),
+            elapsedLabel: "",
+            detail: "",
+            title: "正在上传到服务器，真实进度",
+        };
+    }
     const displayed = completed ? Math.round(percent + (100 - percent) * completion) : percent;
     const estimated = usesModelAverage || real === undefined || percent > real;
     const effectiveNow = completed && node?.metadata?.generationFinishedAt

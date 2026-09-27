@@ -128,6 +128,14 @@ export function AdminGeminiAiSection() {
         if (activeTab === "logs") void loadLogs();
     }, [activeTab, loadLogs]);
 
+    // 请求可能耗时数分钟，存在进行中的记录时自动跟随刷新；没有进行中的请求就完全停止轮询。
+    const hasPendingLog = Boolean(logPage?.items?.some((item) => item.phase === "queued" || item.phase === "running"));
+    useEffect(() => {
+        if (activeTab !== "logs" || !hasPendingLog) return;
+        const timer = setInterval(() => void loadLogs(), 5000);
+        return () => clearInterval(timer);
+    }, [activeTab, hasPendingLog, loadLogs]);
+
     const runAccountAction = async (accountId: string, work: () => Promise<unknown>, successMessage: string) => {
         setAccountActionId(accountId);
         try {

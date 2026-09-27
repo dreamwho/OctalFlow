@@ -62,6 +62,7 @@ export function AmbientBackground({ respectReducedMotion = false }: { respectRed
         };
 
         const render = (now: number) => {
+            if (document.visibilityState !== "visible") { frame = 0; return; }
             context.clearRect(0, 0, width, height);
             stars.forEach((star) => {
                 const elapsed = now - startedAt + star.phase;
@@ -91,12 +92,18 @@ export function AmbientBackground({ respectReducedMotion = false }: { respectRed
         resize();
         window.addEventListener("resize", resize);
         const start = () => {
-            if (!frame) frame = requestAnimationFrame(render);
+            if (!frame && sprite.naturalWidth && document.visibilityState === "visible") frame = requestAnimationFrame(render);
+        };
+        const visibility = () => {
+            if (document.visibilityState === "visible") start();
+            else { cancelAnimationFrame(frame); frame = 0; }
         };
         sprite.addEventListener("load", start, { once: true });
+        document.addEventListener("visibilitychange", visibility);
         if (sprite.complete) start();
         return () => {
             window.removeEventListener("resize", resize);
+            document.removeEventListener("visibilitychange", visibility);
             cancelAnimationFrame(frame);
         };
     }, [respectReducedMotion]);

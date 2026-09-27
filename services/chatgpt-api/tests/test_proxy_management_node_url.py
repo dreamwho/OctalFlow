@@ -135,6 +135,44 @@ def test_node_reference_registers_group_usage_for_delete_guard() -> None:
         service.delete_group("ipwo-group")
 
 
+def test_duplicate_node_ids_are_repaired_across_groups_before_selection() -> None:
+    from contracts.proxy import ProxyReference
+    from services.proxy_management_service import ProxyManagementService
+
+    config_store = _MemoryConfig({
+        "proxy_groups": [
+            {
+                "id": "ipg0",
+                "name": "IPG0",
+                "enabled": True,
+                "nodes": [{"id": "taiwan", "name": "台湾", "url": "http://first.example:8080", "enabled": True}],
+            },
+            {
+                "id": "ipwo",
+                "name": "ipwo",
+                "enabled": True,
+                "nodes": [{"id": "taiwan", "name": "台湾", "url": "http://second.example:8080", "enabled": True}],
+            },
+        ],
+    })
+    service = ProxyManagementService(config_store)
+
+    groups = service.view().groups
+    first_id, second_id = groups[0].nodes[0].id, groups[1].nodes[0].id
+
+    assert first_id == "taiwan"
+    assert second_id == "ipwo-taiwan"
+    assert second_id != first_id
+    assert service.resolve_node_url(second_id) == "http://second.example:8080"
+
+    selected = service.save_defaults(
+        default_reference=ProxyReference(mode="node", node_id=second_id),
+        fallback_reference=None,
+    )
+    assert selected.effective_default.group_id == "ipwo"
+    assert selected.effective_default.node_id == second_id
+
+
 def test_call_egress_registry_scopes_by_call_id() -> None:
     register_call_egress("call-1", {"mode": "generic", "address": "us.ipwo.net:7878"})
     register_call_egress("", {"mode": "generic"})

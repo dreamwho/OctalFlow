@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 test.describe.configure({ mode: "serial" });
 
@@ -16,10 +17,10 @@ async function openDolaAccounts(page: Page) {
 }
 
 function accountRow(page: Page, name: string) {
-    return page.getByRole("row", { name: new RegExp(name) });
+    return page.getByRole("row", { name: new RegExp(`${name}(?:\\s|$)`) });
 }
 
-test("导入的账号以待验证状态进入账号池并展示中文状态", async ({ page, request }) => {
+test("导入的账号进入账号池并展示中文状态", async ({ page, request }) => {
     const existing = await request.get("/api/admin/dola");
     expect(existing.ok(), await existing.text()).toBe(true);
     const previous = ((await existing.json()) as { data: { accounts: Array<{ id: string }> } }).data.accounts;
@@ -40,10 +41,64 @@ test("导入的账号以待验证状态进入账号池并展示中文状态", as
     expect(imported.ok(), await imported.text()).toBe(true);
 
     await openDolaAccounts(page);
-    await expect(accountRow(page, "e2e-ready").getByText("未验证").first()).toBeVisible();
-    await expect(accountRow(page, "e2e-expired").getByText("未验证").first()).toBeVisible();
-    await expect(accountRow(page, "e2e-boom").getByText("未验证").first()).toBeVisible();
-    await expect(accountRow(page, "e2e-ready").getByText("登录未检测")).toBeVisible();
+    await expect(accountRow(page, "e2e-ready").getByText("登录有效 · 可轮询")).toBeVisible();
+    await expect(accountRow(page, "e2e-expired")).toBeVisible();
+    await expect(accountRow(page, "e2e-boom")).toBeVisible();
+});
+
+test("账号池可按账号名称和 ID 搜索", async ({ page, request }) => {
+    const overview = await request.get("/api/admin/dola");
+    const accounts = ((await overview.json()) as { data: { accounts: Array<{ id: string; name: string }> } }).data.accounts;
+    const account = accounts.find((item) => item.name === "e2e-ready");
+    expect(account).toBeTruthy();
+    await openDolaAccounts(page);
+    const search = page.getByPlaceholder("搜索账号 ID 或名称");
+    await search.fill("e2e-ready");
+    await expect(accountRow(page, "e2e-ready")).toBeVisible();
+    await expect(accountRow(page, "e2e-expired")).toHaveCount(0);
+    await search.fill(account!.id);
+    await expect(accountRow(page, "e2e-ready")).toBeVisible();
+    await expect(accountRow(page, "e2e-expired")).toHaveCount(0);
+    for (const width of [390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect(search).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+});
+
+test("服务器账号测试使用远程浏览器并可关闭回收", async ({ page, request }) => {
+    const logsBeforeResponse = await request.get("/api/admin/dola/logs?pageSize=1");
+    const logsBefore = ((await logsBeforeResponse.json()) as { data: { total: number } }).data.total;
+    await openDolaAccounts(page);
+    await accountRow(page, "e2e-ready").getByRole("button", { name: "有头测试" }).click();
+    const options = page.getByRole("dialog", { name: /有头测试 · e2e-ready/ });
+    await expect(options.getByText("远程窗口最长空闲时间（秒）")).toBeVisible();
+    await options.getByRole("combobox").click();
+    await expect(page.getByText("魔法代理 · 需要配置")).toBeVisible();
+    await expect(page.getByText("链式代理 · 需要配置")).toBeVisible();
+    await options.getByRole("combobox").click();
+    await options.getByRole("button", { name: "打开独立窗口" }).click();
+    const remote = page.getByRole("dialog", { name: "Dola 有头测试" });
+    await expect(remote.getByAltText("Dola 账号实际页面")).toBeVisible();
+    await remote.getByRole("button", { name: "刷新画面" }).click();
+    await remote.getByRole("button", { name: "Tab", exact: true }).click();
+    for (const width of [390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect.poll(async () => {
+            const bounds = await remote.boundingBox();
+            return Boolean(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width);
+        }).toBe(true);
+    }
+    const state = await request.get(`http://127.0.0.1:${process.env.DREAMYO_PROTOCOL_FIXTURE_PORT || 4010}/__state`);
+    const requests = ((await state.json()) as { requests: Array<{ path: string; headless?: boolean; timeoutSeconds?: number }> }).requests;
+    const started = requests.findLast((item) => item.path.endsWith("/accounts/headed-test"));
+    expect(started).toBeTruthy();
+    expect(started).toMatchObject({ headless: true, timeoutSeconds: 180 });
+    await remote.getByRole("button", { name: "结束测试" }).click();
+    await page.getByRole("dialog", { name: "结束有头测试" }).getByRole("button", { name: "不保存，关闭浏览器" }).click();
+    await expect(remote).toBeHidden();
+    const logsAfterResponse = await request.get("/api/admin/dola/logs?pageSize=1");
+    expect(((await logsAfterResponse.json()) as { data: { total: number } }).data.total).toBe(logsBefore);
 });
 
 test("检测 Cookie 有效的账号展示等待动画、可用状态与额度", async ({ page }) => {
@@ -53,12 +108,11 @@ test("检测 Cookie 有效的账号展示等待动画、可用状态与额度", 
         await route.continue();
     });
     const row = accountRow(page, "e2e-ready");
-    const checkButton = row.getByRole("button", { name: "协议验证" });
+    const checkButton = row.getByRole("button", { name: "检测登录状态" });
     await checkButton.click();
     await expect(checkButton).toHaveClass(/ant-btn-loading/);
     await expect(page.getByText("检测完成：登录、页面签名与只读协议均已通过")).toBeVisible();
-    await expect(row.getByText("可用")).toBeVisible();
-    await expect(row.getByText("登录有效")).toBeVisible();
+    await expect(row.getByText("登录有效 · 可轮询")).toBeVisible();
     await expect(row.getByText("5/100")).toBeVisible();
     await page.unroute(REFRESH_ROUTE);
 });
@@ -66,7 +120,7 @@ test("检测 Cookie 有效的账号展示等待动画、可用状态与额度", 
 test("检测 Cookie 失效的账号标记登录失效并清空额度", async ({ page }) => {
     await openDolaAccounts(page);
     const row = accountRow(page, "e2e-expired");
-    await row.getByRole("button", { name: "协议验证" }).click();
+    await row.getByRole("button", { name: "检测登录状态" }).click();
     await expect(page.getByText("检测完成：Cookie 已失效，需要重新导入或登录")).toBeVisible();
     await expect(row.getByText("登录失效").first()).toBeVisible();
     await expect(row.getByText("未知", { exact: true })).toBeVisible();
@@ -106,7 +160,7 @@ test("批量登录态协议检测展示进度并支持转后台与停止", async
     await page.getByRole("button", { name: "检测全部登录状态" }).click();
     const modal = page.getByRole("dialog");
     await expect(modal).toBeVisible();
-    await expect(accountRow(page, "e2e-ready").getByRole("button", { name: "协议验证" })).toHaveClass(/ant-btn-loading/);
+    await expect(accountRow(page, "e2e-ready").getByRole("button", { name: "检测登录状态" })).toHaveClass(/ant-btn-loading/);
     await expect(modal.getByText("2/4")).toBeVisible();
     await modal.getByRole("button", { name: "转入后台" }).click();
     await expect(modal).toBeHidden();
@@ -164,6 +218,33 @@ test("通信测试经 Provider 提交并可查询到完成状态", async ({ page
     await expect(modal.getByText("状态：submitted")).toBeVisible({ timeout: 15_000 });
     await modal.getByRole("button", { name: "查询状态" }).click();
     await expect(modal.getByText("状态：completed")).toBeVisible({ timeout: 15_000 });
+    await page.keyboard.press("Escape");
+    await page.getByRole("tab", { name: "请求日志" }).click();
+    await page.getByRole("button", { name: /生成完成.*后台实测/ }).first().click();
+    await expect(page.getByRole("heading", { name: "Dola 会话回复" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dola 会话回复" }).locator("..").getByText("你的视频生成好了。")).toBeVisible();
+});
+
+test("生成失败截图默认关闭并可在控制台开启", async ({ page, request }) => {
+    await openDolaAccounts(page);
+    await page.getByRole("tab", { name: "反代网关与 API 密钥" }).click();
+    const switchControl = page.getByText("生成失败时抓取会话截图").locator("../..").getByRole("switch");
+    await expect(switchControl).not.toBeChecked();
+    await switchControl.click();
+    await expect(switchControl).toBeChecked();
+    const enabled = await request.get("/api/admin/dola/gateway");
+    expect(((await enabled.json()) as { data: { captureFailureScreenshot: boolean } }).data.captureFailureScreenshot).toBe(true);
+    await switchControl.click();
+    await expect(switchControl).not.toBeChecked();
+    const interval = page.getByRole("spinbutton");
+    await interval.fill("30000");
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(async () => {
+        const gateway = await request.get("/api/admin/dola/gateway");
+        return ((await gateway.json()) as { data: { pollIntervalMs: number } }).data.pollIntervalMs;
+    }).toBe(30_000);
+    await interval.fill("2500");
+    await page.getByRole("button", { name: /保\s*存/ }).click();
 });
 
 test("后台主按钮保持标准紧凑尺寸", async ({ page }) => {
@@ -175,6 +256,152 @@ test("后台主按钮保持标准紧凑尺寸", async ({ page }) => {
     expect(box!.height).toBeLessThan(40);
 });
 
+test("手动导入 Google 授权会话后独立分组持久化并在账号池可见", async ({ page, request }) => {
+    const imported = await request.post("/api/admin/dola/accounts/google-login", {
+        data: { manualCookie: "Cookie: session=e2e-google-authorized; uid=901", name: "e2e-google-authorized" },
+    });
+    expect(imported.ok(), await imported.text()).toBe(true);
+    const account = ((await imported.json()) as { data: { account: { id: string; group: string; authType: string } } }).data.account;
+    expect(account).toMatchObject({ group: "Google 授权", authType: "google" });
+
+    const overview = await request.get("/api/admin/dola");
+    expect(overview.ok(), await overview.text()).toBe(true);
+    const stored = ((await overview.json()) as { data: { accounts: Array<{ id: string; group: string; authType: string }> } }).data.accounts;
+    expect(stored.find((item) => item.id === account.id)).toMatchObject({ group: "Google 授权", authType: "google" });
+
+    await openDolaAccounts(page);
+    await page.getByRole("tab", { name: /Google 授权/ }).click();
+    await expect(accountRow(page, "e2e-google-authorized")).toBeVisible();
+    await expect(accountRow(page, "e2e-google-authorized").getByText("Google 授权").first()).toBeVisible();
+    await accountRow(page, "e2e-google-authorized").getByRole("checkbox").check();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "导出选中 1 个 Cookie TXT" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/^Dola-Google-Cookies-\d{8}\.txt$/);
+    expect(await readFile(await download.path(), "utf8")).toBe("session=e2e-google-authorized; uid=901\n");
+    for (const width of [390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        const exportButton = page.getByRole("button", { name: "导出选中 1 个 Cookie TXT" });
+        await expect(exportButton).toBeVisible();
+        const bounds = await exportButton.boundingBox();
+        expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, `viewport ${width}: ${JSON.stringify(bounds)}`).toBe(true);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    let importedAuthType = "";
+    await page.route("**/api/admin/dola/accounts", async (route) => {
+        if (route.request().method() === "POST") {
+            const body = route.request().postDataJSON() as { items: Array<{ authType?: string }> };
+            importedAuthType = body.items[0]?.authType || "";
+        }
+        await route.continue();
+    });
+    await page.getByRole("button", { name: "导入 Cookie" }).click();
+    const importModal = page.getByRole("dialog", { name: "导入 Dola Cookie 账号" });
+    await importModal.locator('input[type="file"]').setInputFiles({ name: download.suggestedFilename(), mimeType: "text/plain", buffer: await readFile(await download.path()) });
+    await expect(importModal.getByText("已解析 1 条", { exact: false })).toBeVisible();
+    await importModal.getByRole("button", { name: "开始导入" }).click();
+    await expect(importModal).toBeHidden();
+    expect(importedAuthType).toBe("google");
+});
+
+test("浏览器授权返回未登录 Cookie 时拒绝保存账号", async ({ request }) => {
+    const response = await request.post("/api/admin/dola/accounts/google-login", { data: { name: "e2e-premature-google" } });
+    expect(response.ok()).toBe(false);
+    expect(await response.text()).toContain("尚未通过登录检测");
+    const overview = await request.get("/api/admin/dola");
+    expect(overview.ok()).toBe(true);
+    const accounts = ((await overview.json()) as { data: { accounts: Array<{ name: string }> } }).data.accounts;
+    expect(accounts.some((account) => account.name === "e2e-premature-google")).toBe(false);
+});
+
+test("网页远程 Google 授权保存账号后关闭浏览器会话", async ({ page, request }) => {
+    await openDolaAccounts(page);
+    await page.getByRole("button", { name: "Google 授权登录" }).click();
+    const setup = page.getByRole("dialog", { name: "添加 Dola Google 授权账号" });
+    await setup.getByPlaceholder(/Google 账号 01/).fill("e2e-remote-google");
+    await setup.getByRole("button", { name: "启动 Google 授权" }).click();
+    const remote = page.getByRole("dialog", { name: "Dola Google 远程授权" });
+    await expect(remote.getByText("请在画面中完成 Google 与 Dola 登录")).toBeVisible();
+    await expect(remote.getByAltText("Dola 账号实际页面")).toBeVisible();
+    for (const width of [390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect.poll(async () => {
+            const bounds = await remote.boundingBox();
+            return Boolean(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width);
+        }, { message: `远程授权弹窗应完整位于 ${width}px 视口内` }).toBe(true);
+        await expect(remote.getByRole("button", { name: "检测登录并保存账号" })).toBeVisible();
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await remote.getByAltText("Dola 账号实际页面").click();
+    await remote.getByPlaceholder(/粘贴或输入文字/).fill("example");
+    await remote.getByRole("button", { name: "发送文字" }).click();
+    await remote.getByRole("button", { name: "检测登录并保存账号" }).click();
+    await expect(remote).toBeHidden();
+    await page.getByRole("tab", { name: /Google 授权/ }).click();
+    await expect(accountRow(page, "e2e-remote-google").getByText("登录有效")).toBeVisible();
+    const accountsResponse = await request.get("/api/admin/dola");
+    const accounts = ((await accountsResponse.json()) as { data: { accounts: Array<{ id: string; name: string }> } }).data.accounts;
+    const accountId = accounts.find((item) => item.name === "e2e-remote-google")?.id;
+    expect(accountId).toBeTruthy();
+    const exported = await request.post(`/api/admin/dola/accounts/${accountId}/export-cookie`);
+    const exportedCookie = ((await exported.json()) as { data: { cookie: string } }).data.cookie;
+    expect(exportedCookie).toBe(`session=e2e-ready-google-cookie; padding=${"a".repeat(1000)}`);
+    const state = await request.get(`http://127.0.0.1:${process.env.DREAMYO_PROTOCOL_FIXTURE_PORT || 4010}/__state`);
+    const requests = ((await state.json()) as { requests: Array<{ path: string }> }).requests;
+    expect(requests.some((item) => item.path.includes("/google-finalize"))).toBe(true);
+    expect(requests.some((item) => item.path.includes("/verifications/") && item.path.endsWith("/close"))).toBe(true);
+});
+
+test("取消网页远程 Google 授权会关闭浏览器会话", async ({ page, request }) => {
+    const before = await request.get(`http://127.0.0.1:${process.env.DREAMYO_PROTOCOL_FIXTURE_PORT || 4010}/__state`);
+    const prior = ((await before.json()) as { requests: Array<{ path: string }> }).requests.filter((item) => item.path.includes("/verifications/") && item.path.endsWith("/close")).length;
+    await openDolaAccounts(page);
+    await page.getByRole("button", { name: "Google 授权登录" }).click();
+    await page.getByRole("dialog", { name: "添加 Dola Google 授权账号" }).getByRole("button", { name: "启动 Google 授权" }).click();
+    const remote = page.getByRole("dialog", { name: "Dola Google 远程授权" });
+    await expect(remote.getByAltText("Dola 账号实际页面")).toBeVisible();
+    await remote.getByRole("button", { name: "取消授权" }).click();
+    const confirmation = page.getByRole("dialog", { name: "结束 Google 授权" });
+    await confirmation.getByRole("button", { name: "不保存，关闭浏览器" }).click();
+    await expect(remote).toBeHidden();
+    const after = await request.get(`http://127.0.0.1:${process.env.DREAMYO_PROTOCOL_FIXTURE_PORT || 4010}/__state`);
+    const closed = ((await after.json()) as { requests: Array<{ path: string }> }).requests.filter((item) => item.path.includes("/verifications/") && item.path.endsWith("/close")).length;
+    expect(closed).toBeGreaterThan(prior);
+});
+
+test("已关闭的 Google 授权会话再次关闭不报错", async ({ request }) => {
+    const started = await request.post("/api/admin/dola/accounts/google-login/session", { data: { timeoutSeconds: 180 } });
+    expect(started.ok()).toBe(true);
+    const { verificationId, leaseToken } = ((await started.json()) as { data: { verificationId: string; leaseToken: string } }).data;
+    const path = `/api/admin/dola/verifications/${verificationId}/close`;
+    const first = await request.post(path, { data: { leaseToken } });
+    expect(first.ok(), await first.text()).toBe(true);
+    const second = await request.post(path, { data: { leaseToken } });
+    expect(second.ok()).toBe(true);
+    expect(((await second.json()) as { data: { status: string } }).data.status).toBe("closed");
+});
+
+test("本机授权入口显示独立浏览器操作并在取消时释放会话", async ({ page }) => {
+    const verificationId = "e2e-native-google-session";
+    const leaseToken = "e2e-native-google-lease-token";
+    let closeCalls = 0;
+    await page.route("**/api/admin/dola/accounts/google-login/session", async (route) => {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: 0, data: { mode: "native", verificationId, leaseToken }, msg: "已打开本机授权浏览器" }) });
+    });
+    await page.route(`**/api/admin/dola/verifications/${verificationId}/close`, async (route) => {
+        closeCalls++;
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: 0, data: { status: "closed" }, msg: "授权浏览器已关闭" }) });
+    });
+    await openDolaAccounts(page);
+    await page.getByRole("button", { name: "Google 授权登录" }).click();
+    await page.getByRole("dialog", { name: "添加 Dola Google 授权账号" }).getByRole("button", { name: "启动 Google 授权" }).click();
+    const native = page.getByRole("dialog", { name: "Dola Google 本机授权" });
+    await expect(native.getByText("请直接在本机 Camoufox 窗口登录")).toBeVisible();
+    await native.getByRole("button", { name: "不保存，关闭浏览器" }).click();
+    await expect(native).toBeHidden();
+    expect(closeCalls).toBe(1);
+});
+
 test("账号池展示来源分类与 Google 授权标注", async ({ page }) => {
     const google = await page.request.post("/api/admin/dola/accounts", {
         data: { items: [{ cookie: "session=e2e-google-cookie; uid=201", name: "e2e-google", authType: "google", sourceFileName: "e2e.txt", sourceOrdinal: 1 }] },
@@ -183,11 +410,11 @@ test("账号池展示来源分类与 Google 授权标注", async ({ page }) => {
     await openDolaAccounts(page);
     await page.getByRole("tab", { name: /Google 授权/ }).click();
     await expect(accountRow(page, "e2e-google")).toBeVisible();
-    await expect(accountRow(page, "e2e-google").getByText("Google 授权")).toBeVisible();
+    await expect(accountRow(page, "e2e-google").getByText("Google 授权").first()).toBeVisible();
     await expect(accountRow(page, "e2e-ready")).toHaveCount(0);
-    await page.getByRole("tab", { name: /Cookie 导入/ }).click();
+    await page.getByRole("tab", { name: /全部/ }).click();
     await expect(accountRow(page, "e2e-ready")).toBeVisible();
-    await expect(accountRow(page, "e2e-google")).toHaveCount(0);
+    await expect(accountRow(page, "e2e-google")).toBeVisible();
 });
 
 test("Google 授权登录弹窗支持浏览器与手动两种模式", async ({ page }) => {
@@ -195,12 +422,12 @@ test("Google 授权登录弹窗支持浏览器与手动两种模式", async ({ p
     await page.getByRole("button", { name: "Google 授权登录" }).click();
     const modal = page.getByRole("dialog");
     await expect(modal.getByText("授权流程说明")).toBeVisible();
-    await expect(modal.getByRole("button", { name: "启动浏览器并授权" })).toBeVisible();
+    await expect(modal.getByRole("button", { name: "启动 Google 授权" })).toBeVisible();
     // antd v6 会在下拉里渲染隐藏的 a11y listbox（role=option 不可点），必须在可见下拉容器内按文本点击
     const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
     await modal.getByRole("combobox").click();
     await dropdown.getByText("录入已有 Google 授权 Session / Cookie").click();
-    await expect(modal.getByPlaceholder(/粘贴由 Google 登录提取/)).toBeVisible();
+    await expect(modal.getByPlaceholder(/Cookie: name=value/)).toBeVisible();
     await expect(modal.getByRole("button", { name: "确认添加" })).toBeVisible();
     await modal.getByRole("button", { name: /取\s*消/ }).click();
     await expect(modal).toBeHidden();

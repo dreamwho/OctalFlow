@@ -14,6 +14,7 @@ export const CANVAS_GRID_SIZE = 22;
 export const CANVAS_NODE_GAP = CANVAS_GRID_SIZE * 2;
 
 export type CanvasNodeLayoutUpdate = { id: string; position: Position };
+export type CanvasLayoutMode = "grid" | "smart" | "type";
 
 export function resolveCanvasNodePointerSelection(selectedNodeIds: ReadonlySet<string>, nodeId: string, button: number, additive: boolean) {
     if (button !== 0) return null;
@@ -29,10 +30,103 @@ export function resolveCanvasNodePointerSelection(selectedNodeIds: ReadonlySet<s
 }
 
 /**
+ * 宫格布局：保持节点当前空间上下左右顺序，以等距网格对齐排列。
+ */
+export function resolveCanvasGridLayout(nodes: CanvasNodeData[], selectedNodeIds: Iterable<string>): CanvasNodeLayoutUpdate[] {
+    const selected = new Set(selectedNodeIds);
+    const roots = nodes.filter((node) => selected.has(node.id) && !node.metadata?.batchRootId);
+    if (roots.length < 2) return [];
+
+    const left = Math.min(...roots.map((node) => node.position.x));
+    const top = Math.min(...roots.map((node) => node.position.y));
+
+    // 空间排序：按自然人类视觉阅读顺序（自上而下分行、同行从左至右）
+    const avgHeight = roots.reduce((sum, n) => sum + n.height, 0) / roots.length;
+    const rowTolerance = Math.max(CANVAS_NODE_GAP, avgHeight * 0.45);
+    const sortedByY = [...roots].sort((a, b) => a.position.y - b.position.y);
+    const rows: CanvasNodeData[][] = [];
+    for (const node of sortedByY) {
+        const matchingRow = rows.find((r) => Math.abs(r[0].position.y - node.position.y) <= rowTolerance);
+        if (matchingRow) {
+            matchingRow.push(node);
+        } else {
+            rows.push([node]);
+        }
+    }
+    rows.forEach((row) => row.sort((a, b) => a.position.x - b.position.x));
+    const ordered = rows.flat();
+
+    const columns = ordered.length <= 4 && ordered.length !== 3 ? 2 : Math.max(2, Math.min(4, Math.ceil(Math.sqrt(ordered.length))));
+    const updates: CanvasNodeLayoutUpdate[] = [];
+    let x = left;
+    let currentY = top;
+    let rowMaxHeight = 0;
+
+    ordered.forEach((node, index) => {
+        if (index > 0 && index % columns === 0) {
+            x = left;
+            currentY += rowMaxHeight + CANVAS_NODE_GAP;
+            rowMaxHeight = 0;
+        }
+        updates.push({ id: node.id, position: { x, y: currentY } });
+        x += node.width + CANVAS_NODE_GAP;
+        rowMaxHeight = Math.max(rowMaxHeight, node.height);
+    });
+
+    return updates;
+}
+
+/**
+ * 智能布局：根据节点各自的真实宽高比例大小，进行多列瀑布流紧凑排版，消除纵向空隙。
+ */
+export function resolveCanvasSmartLayout(nodes: CanvasNodeData[], selectedNodeIds: Iterable<string>): CanvasNodeLayoutUpdate[] {
+    const selected = new Set(selectedNodeIds);
+    const roots = nodes.filter((node) => selected.has(node.id) && !node.metadata?.batchRootId);
+    if (roots.length < 2) return [];
+
+    const left = Math.min(...roots.map((node) => node.position.x));
+    const top = Math.min(...roots.map((node) => node.position.y));
+
+    const columns = roots.length <= 2 ? roots.length : roots.length <= 4 ? 2 : Math.max(2, Math.min(4, Math.ceil(Math.sqrt(roots.length))));
+
+    // 空间拓扑排序
+    const sorted = [...roots].sort((a, b) => {
+        const yDiff = a.position.y - b.position.y;
+        if (Math.abs(yDiff) > CANVAS_NODE_GAP) return yDiff;
+        return a.position.x - b.position.x;
+    });
+
+    const colHeights = new Array(columns).fill(top);
+    const avgWidth = roots.reduce((sum, n) => sum + n.width, 0) / roots.length;
+
+    const updates: CanvasNodeLayoutUpdate[] = [];
+    sorted.forEach((node) => {
+        let minCol = 0;
+        for (let i = 1; i < columns; i++) {
+            if (colHeights[i] < colHeights[minCol]) {
+                minCol = i;
+            }
+        }
+        const colX = left + minCol * (avgWidth + CANVAS_NODE_GAP);
+        updates.push({ id: node.id, position: { x: colX, y: colHeights[minCol] } });
+        colHeights[minCol] += node.height + CANVAS_NODE_GAP;
+    });
+
+    return updates;
+}
+
+/**
  * Arranges only top-level selected nodes. Batch children remain attached to
  * their own batch behavior and must not be independently rearranged.
  */
-export function resolveCanvasSelectionLayout(nodes: CanvasNodeData[], selectedNodeIds: Iterable<string>): CanvasNodeLayoutUpdate[] {
+export function resolveCanvasSelectionLayout(nodes: CanvasNodeData[], selectedNodeIds: Iterable<string>, mode?: CanvasLayoutMode): CanvasNodeLayoutUpdate[] {
+    if (mode === "smart") {
+        return resolveCanvasSmartLayout(nodes, selectedNodeIds);
+    }
+    if (mode === "grid") {
+        return resolveCanvasGridLayout(nodes, selectedNodeIds);
+    }
+
     const selected = new Set(selectedNodeIds);
     const roots = nodes.map((node, index) => ({ node, index })).filter(({ node }) => selected.has(node.id) && !node.metadata?.batchRootId);
     if (roots.length < 2) return [];

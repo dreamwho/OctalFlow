@@ -312,7 +312,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                   );
     } catch (error) {
         await refundConsumedPoints();
-        if (isDolaChannel && dolaAccountId) await markDolaAccountUsed(dolaAccountId, false, true).catch(() => undefined);
+        if (isDolaChannel && dolaAccountId && request.method === "POST" && ["/v1/videos", "/v1/images"].includes(geminiAiPath.split("?", 1)[0])) await markDolaAccountUsed(dolaAccountId, false, true).catch(() => undefined);
         const errorMessage = error instanceof Error ? error.message : "Dola Provider 请求失败";
         await safeRecordSystemProtocolTrace({ request, userId, channelName: channel.name, protocol: modelConfig?.protocol || channel.advancedConfig?.protocol || (globalChannel ? "globalaiopc" : apiFormat), model: upstreamModel, path: geminiAiPath, body: protocolRuntimeBody ?? requestBody.body, requestContentType: contentType, durationMs: Date.now() - protocolRequestStartedAt, error: errorMessage });
         if (isDolaChannel) {
@@ -380,7 +380,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         }
     }
     if (upstream.ok) pointsSettled = true;
-    if (isDolaChannel && dolaAccountId) {
+    if (isDolaChannel && dolaAccountId && request.method === "POST" && ["/v1/videos", "/v1/images"].includes(geminiAiPath.split("?", 1)[0])) {
         await markDolaAccountUsed(dolaAccountId, upstream.ok, !dolaHold).catch(() => undefined);
     }
     if (isDolaChannel) {
@@ -390,7 +390,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             const providerStatus = stringValue(responseSnapshot.value?.status);
             if (upstream.ok) {
                 const phase = dolaTaskLogPhase(providerStatus, Boolean(responseSnapshot.verificationId));
-                const errorText = stringValue(responseSnapshot.value?.error);
+                const errorText = responseSnapshot.error || stringValue(responseSnapshot.value?.error);
                 await safeAdvanceDolaTaskLog(dolaAttachedTaskLogId, {
                     phase,
                     message:
@@ -403,13 +403,13 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                                 : phase === "generating"
                                   ? "Dola 上游已受理，生成中"
                                   : "Dola 上游排队中，等待生成",
-                    detail: dolaResultMediaDetail(responseSnapshot.value) || `上游任务状态: ${providerStatus || "unknown"}`,
+                    detail: `${dolaResultMediaDetail(responseSnapshot.value) || `上游任务状态: ${providerStatus || "unknown"}`}${dolaConversationScreenshotNote(responseSnapshot.value)}`,
                     statusCode: upstream.status,
                     responsePreview: responseSnapshot.preview,
                     responseBytes: responseSnapshot.bytes,
-                    ...(phase === "failed" && errorText ? { error: errorText } : {}),
+                    ...(phase === "failed" ? { error: errorText ? describeDolaFailure(errorText) : "上游未返回错误原因 (no error detail from upstream)" } : {}),
                     ...(responseSnapshot.verificationId ? { verificationId: responseSnapshot.verificationId } : {}),
-                    ...(responseSnapshot.screenshotBase64 ? { screenshotBase64: responseSnapshot.screenshotBase64 } : {}),
+                    screenshotBase64: responseSnapshot.screenshotBase64 || null,
                 });
             } else if (upstream.status === 404) {
                 await safeAdvanceDolaTaskLog(dolaAttachedTaskLogId, { phase: "failed", message: "生成失败：任务在 Provider 中不存在（可能已被重启清理）", statusCode: upstream.status, error: "task_not_found" });
@@ -420,8 +420,23 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                 // 只有 Provider 返回真实 verificationId 才标记 verification_required。
                 await setDolaAccountStatus(dolaAccountId, "verification_required").catch(() => undefined);
             }
-            dolaLifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: responsePhase === "needs_review" ? "Dola 返回待人工确认状态" : responsePhase === "submitted" ? "已提交到 Dola 上游，任务排队中" : upstream.ok ? "Dola Provider 已返回响应" : "Dola Provider 返回失败", durationMs: Date.now() - upstreamStartedAt, detail: `HTTP ${upstream.status}${responseSnapshot.taskId ? `, 任务: ${responseSnapshot.taskId}` : ""}` });
-            await safeSettleDolaLog(dolaLogId, { statusCode: upstream.status, durationMs: Date.now() - upstreamStartedAt, phase: responsePhase, ...(upstream.ok ? {} : { error: responseSnapshot.error || "Dola Provider 请求失败" }), responsePreview: responseSnapshot.preview, responseBytes: responseSnapshot.bytes, contentType: upstream.headers.get("content-type") || undefined, accountId: dolaAccountId || undefined, accountName: await dolaAccountDisplayName(dolaAccountId), taskId: responseSnapshot.taskId || undefined, verificationId: responseSnapshot.verificationId || undefined, screenshotBase64: responseSnapshot.screenshotBase64 || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
+            const dolaErrorText = responseSnapshot.error || (responsePhase === "failed" ? "Dola 上游任务执行失败" : "");
+            const settledError =
+                responsePhase === "failed" || !upstream.ok
+                    ? (dolaErrorText ? describeDolaFailure(dolaErrorText) : "Dola Provider 请求失败")
+                    : undefined;
+            const lifecycleMessage =
+                responsePhase === "needs_review"
+                    ? "Dola 返回待人工确认状态"
+                    : responsePhase === "submitted"
+                      ? "已提交到 Dola 上游，任务排队中"
+                      : responsePhase === "failed"
+                        ? `生成失败${dolaErrorText ? `：${describeDolaFailure(dolaErrorText)}` : ""}`
+                        : upstream.ok
+                          ? "Dola Provider 已返回响应"
+                          : "Dola Provider 返回失败";
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: lifecycleMessage, durationMs: Date.now() - upstreamStartedAt, detail: `HTTP ${upstream.status}${responseSnapshot.taskId ? `, 任务: ${responseSnapshot.taskId}` : ""}` });
+            await safeSettleDolaLog(dolaLogId, { statusCode: upstream.status, durationMs: Date.now() - upstreamStartedAt, phase: responsePhase, ...(settledError ? { error: settledError } : {}), responsePreview: responseSnapshot.preview, responseBytes: responseSnapshot.bytes, contentType: upstream.headers.get("content-type") || undefined, accountId: dolaAccountId || undefined, accountName: await dolaAccountDisplayName(dolaAccountId), taskId: responseSnapshot.taskId || undefined, verificationId: responseSnapshot.verificationId || undefined, screenshotBase64: responseSnapshot.screenshotBase64 || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
         }
     }
     if (isChatGptApiChannel) return chatGptApiRuntimeResponse(upstream, request, pointsResult, refundedPointsRemaining);
@@ -1272,12 +1287,15 @@ async function snapshotDolaResponse(response: Response) {
         const taskId = stringValue(value?.taskId || value?.id);
         const verificationId = stringValue(value?.verificationId || value?.verification_id);
         const screenshotBase64 = typeof value?.screenshotBase64 === "string" ? value.screenshotBase64 : typeof value?.screenshot_base64 === "string" ? value.screenshot_base64 : "";
-        const error = stringValue(value?.error || value?.detail);
+        const rawError = stringValue(value?.rawError || value?.raw_error || (value?.diagnostics as Record<string, unknown>)?.upstreamResponseText);
+        const baseError = stringValue(value?.error || value?.detail);
+        const error = baseError && baseError !== "upstream_generation_failed" ? baseError : (rawError || baseError);
         if (!value) return { preview: bytes.byteLength ? "Dola Provider 返回了无法解析的响应" : "", bytes: bytes.byteLength, error, taskId, verificationId, screenshotBase64, value: null };
         // Media result URLs stay visible: they are the deliverable the admin needs to see in the log detail.
-        const summary = Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl/i.test(key)).map(([key, item]) => [key, typeof item === "string" && item.length > 500 ? `${item.slice(0, 500)}…` : item]));
+        const reply = stringValue((value.diagnostics as Record<string, unknown> | undefined)?.upstreamResponseText);
+        const summary = { ...(reply ? { conversationReply: reply } : {}), ...Object.fromEntries(Object.entries(value).filter(([key]) => !/cookie|token|secret|password|base64|dataurl/i.test(key)).map(([key, item]) => [key, typeof item === "string" && item.length > 500 ? `${item.slice(0, 500)}…` : item])) };
         const rendered = JSON.stringify(summary, null, 2);
-        return { preview: rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered, bytes: bytes.byteLength, error, taskId, verificationId, screenshotBase64, value };
+        return { preview: reply ? rendered : rendered.length > 4_000 ? `${rendered.slice(0, 4_000)}…` : rendered, bytes: bytes.byteLength, error, taskId, verificationId, screenshotBase64, value };
     } catch {
         return { preview: "Dola Provider 响应无法读取", bytes: undefined as number | undefined, error: "响应无法读取", taskId: "", verificationId: "", screenshotBase64: "", value: null };
     }
@@ -1304,4 +1322,9 @@ function dolaResultMediaDetail(value: Record<string, unknown> | null) {
     const urls = videoUrl ? [videoUrl] : imageUrls;
     if (!urls.length) return "";
     return urls.length === 1 ? `结果地址: ${urls[0]}` : `结果地址 (${urls.length}): ${urls.slice(0, 3).join(", ")}${urls.length > 3 ? " …" : ""}`;
+}
+function dolaConversationScreenshotNote(value: Record<string, unknown> | null) {
+    const reason = stringValue((value?.diagnostics as Record<string, unknown> | undefined)?.resultScreenshotError);
+    if (reason === "result_query_conversation_not_ready") return "；会话页面未加载完成，未保存截图";
+    return reason ? `；会话截图未获取（${reason}）` : "";
 }

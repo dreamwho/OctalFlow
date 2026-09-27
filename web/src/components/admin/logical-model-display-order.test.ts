@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LogicalModel } from "@/lib/auth/store";
-import { moveLogicalModel, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
+import { moveLogicalModel, moveModelPickerGroup, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
 
 const models = [model("image-a", "image"), model("text-a", "text"), model("image-b", "image"), model("video-a", "video"), model("image-c", "image")];
 
@@ -18,6 +18,14 @@ describe("logical model display order", () => {
     it("hides a model from node pickers without disabling its route", () => {
         const result = setLogicalModelPickerVisibility(models, "image-b", false);
         expect(result.find((item) => item.id === "image-b")).toMatchObject({ enabled: true, pickerVisible: false });
+    });
+
+    it("moves model picker groups up and down within bounds", () => {
+        const groups = ["OpenAI", "Anthropic", "Google", "MiniMax"];
+        expect(moveModelPickerGroup(groups, 2, -1)).toEqual(["OpenAI", "Google", "Anthropic", "MiniMax"]);
+        expect(moveModelPickerGroup(groups, 2, 1)).toEqual(["OpenAI", "Anthropic", "MiniMax", "Google"]);
+        expect(moveModelPickerGroup(groups, 0, -1)).toBe(groups);
+        expect(moveModelPickerGroup(groups, 3, 1)).toBe(groups);
     });
 });
 

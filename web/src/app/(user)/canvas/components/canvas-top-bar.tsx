@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Dropdown, Modal } from "antd";
-import { BookOpen, Bot, Check, ChevronDown, LibraryBig, Menu, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
+import { AlertTriangle, BookOpen, Bot, Check, ChevronDown, LibraryBig, Loader2, Menu, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -21,6 +21,7 @@ export function CanvasTopBar({
     onCancelTitleEditing,
     onSwitchProject,
     saveState,
+    onRetrySave,
     canUndo,
     canRedo,
     onWorkbench,
@@ -45,6 +46,7 @@ export function CanvasTopBar({
     onCancelTitleEditing: () => void;
     onSwitchProject: (id: string) => void;
     saveState?: CanvasProjectSaveState;
+    onRetrySave?: () => void;
     canUndo: boolean;
     canRedo: boolean;
     onWorkbench: () => void;
@@ -91,6 +93,26 @@ export function CanvasTopBar({
     return (
         <>
             <div className="canvas-topbar pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between gap-2 px-3 pt-3 sm:px-5 sm:pt-4" data-save-status={saveState?.status || "saved"} style={{ color: theme.node.text }}>
+                {/* 保存失败此前没有任何界面提示（只写 data-save-status 属性），
+                    节点可能只存在于内存、刷新即丢失，这里必须让用户看见并能重试。 */}
+                {saveState?.status === "error" || saveState?.status === "conflict" ? (
+                    <div className="pointer-events-auto flex max-w-[min(420px,60vw)] items-center gap-2 rounded-lg border border-rose-300/70 bg-rose-50/95 px-2.5 py-1.5 text-xs text-rose-700 shadow-sm dark:border-rose-800/70 dark:bg-rose-950/90 dark:text-rose-200">
+                        <AlertTriangle className="size-3.5 shrink-0" />
+                        <span className="min-w-0 truncate">{saveState.message || (saveState.status === "conflict" ? "画布已在其他页面更新，请刷新后重试" : "画布保存失败，改动可能丢失")}</span>
+                        {onRetrySave ? (
+                            <button type="button" className="shrink-0 rounded border border-rose-300 px-1.5 py-0.5 font-medium hover:bg-rose-100 dark:border-rose-700 dark:hover:bg-rose-900" onClick={onRetrySave}>
+                                重试
+                            </button>
+                        ) : null}
+                    </div>
+                ) : saveState?.status === "saving" ? (
+                    <div className="flex items-center gap-1.5 rounded-lg bg-black/5 px-2.5 py-1.5 text-xs opacity-80 dark:bg-white/10">
+                        <Loader2 className="size-3.5 animate-spin" />
+                        <span>保存中…</span>
+                    </div>
+                ) : (
+                    <span aria-hidden />
+                )}
                 <div className="canvas-topbar-left pointer-events-auto flex min-w-0 items-center gap-2 sm:gap-3">
                     <Dropdown
                         overlayClassName="octal-dark-overlay dark"

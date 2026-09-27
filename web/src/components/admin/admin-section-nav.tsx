@@ -219,6 +219,7 @@ export const adminSections: AdminSection[] = [
     { key: "geminiTools", label: "GeminiTools", description: "使用当前浏览器授权 Google 账号，管理 Antigravity 文本模型、额度、网关、API 密钥和请求日志。", shortDescription: "Antigravity 网关", icon: <KeyRound className="size-4" /> },
     { key: "chatgptApi", label: "GPTAPI", description: "管理 ChatGPT 账号、模型目录、代理来源、兼容网关、API 密钥和请求日志。", shortDescription: "ChatGPT 网关", icon: <Bot className="size-4" /> },
     { key: "minimax", label: "MiniMax 音频", description: "管理 MiniMax 语音、音乐模型、音色目录和请求日志。", shortDescription: "语音与音乐", icon: <Music2 className="size-4" /> },
+    { key: "minimaxH3", label: "MiniMax H3", description: "管理 easyframe MiniMax H3 视频模型、API 密钥、渠道状态与生成记录。", shortDescription: "H3 视频", icon: <Film className="size-4" /> },
     { key: "tencentMusic", label: "TokenHub", description: "管理 TokenHub 音频/音乐模型、生成记录和请求日志。", shortDescription: "音频/音乐", icon: <Music2 className="size-4" /> },
     { key: "qwenAudio", label: "百炼语音", description: "管理 Qwen-Audio-TTS、CosyVoice、Qwen-TTS 音色模型与请求日志。", shortDescription: "百炼语音", icon: <Music2 className="size-4" /> },
     { key: "dreamina", label: "即梦 CLI", description: "查看即梦 CLI 安装与授权状态，配置 Seedream、Seedance 和图片超清模型。", shortDescription: "账号与模型", icon: <Sparkles className="size-4" /> },
@@ -240,7 +241,7 @@ export const adminSectionGroups: AdminSectionGroup[] = [
     { title: "经营分析", items: sectionsFor(["overview", "users", "logs", "generationOperations"]) },
     { title: "商品运营", items: sectionsFor(["products", "orders", "promotions", "coupons", "referrals"]) },
     { title: "财务管理", items: sectionsFor(["points", "payments", "cdk", "wallet"]) },
-    { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "genericProxy", "runninghub", "geminiai", "dolaApi", "geminiTools", "chatgptApi", "minimax", "tencentMusic", "qwenAudio", "dreamina", "skills", "canvasActions"]) },
+    { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "genericProxy", "runninghub", "geminiai", "dolaApi", "geminiTools", "chatgptApi", "minimax", "minimaxH3", "tencentMusic", "qwenAudio", "dreamina", "skills", "canvasActions"]) },
     { title: "系统管理", items: sectionsFor(["site", "settings", "accountDeletion", "mediaStorage", "externalStorage", "backup", "updates", "adminHelp"]) },
     { title: "内容运营", items: sectionsFor(["works", "announcements", "prompts"]) },
 ];

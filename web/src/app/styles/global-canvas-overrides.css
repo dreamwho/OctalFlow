@@ -529,16 +529,29 @@ html:not(.dark) .canvas-zoom-dock {
     color-scheme: dark;
 }
 
-/* 画布提示词编辑器与 ProseMirror 输入光标强制为文本 I-beam */
+/* 画布提示词编辑器与 ProseMirror 输入光标强制为文本 I-beam 与可见光标 */
+[data-canvas-prompt-editor],
 [data-canvas-prompt-editor] .ProseMirror,
 [data-canvas-prompt-editor] .canvas-resource-editor-content,
+.canvas-node-prompt-surface,
 .canvas-node-prompt-surface .ProseMirror,
 .canvas-node-prompt-surface .canvas-resource-editor-content,
+.canvas-prompt-editor-modal,
 .canvas-prompt-editor-modal .ProseMirror,
 .canvas-prompt-editor-modal .canvas-resource-editor-content,
 .canvas-resource-editor-content,
 .canvas-resource-editor-content .ProseMirror {
     cursor: text !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    caret-color: currentColor !important;
+}
+
+.canvas-node-prompt-surface .ProseMirror:focus,
+.canvas-prompt-editor-modal .ProseMirror:focus,
+[data-canvas-prompt-editor] .ProseMirror:focus {
+    outline: none !important;
+    caret-color: currentColor !important;
 }
 
 [data-canvas-prompt-editor] [data-canvas-prompt-token],

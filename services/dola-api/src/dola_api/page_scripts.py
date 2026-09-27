@@ -314,14 +314,14 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
       if (!best) return null;
       const params = new URLSearchParams();
       for (const [key, value] of best.searchParams.entries()) if (completionKeys.has(key) && value) params.set(key, value);
-      const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name"].map((key) => [key, params.get(key) || ""]));
+      const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name", "pc_version", "doubao_pc_version"].map((key) => [key, params.get(key) || ""]));
       return { url: `${location.origin}/chat/completion?${params.toString()}`, identity, identitySource: best.pathname };
     };
     const fallbackRequest = () => {
       if (!cfg.fallbackQuery) return null;
       const params = new URLSearchParams(String(cfg.fallbackQuery));
       if (!params.get("device_id") || !params.get("web_id")) return null;
-      const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name"].map((key) => [key, params.get(key) || ""]));
+      const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name", "pc_version", "doubao_pc_version"].map((key) => [key, params.get(key) || ""]));
       return { url: `${location.origin}/chat/completion?${params.toString()}`, identity, identitySource: "provider_fresh_identity" };
     };
     const send = (request) => {
@@ -786,4 +786,3 @@ DOLA_30S_UNLOCKER_SCRIPT = r"""
   };
 })();
 """
-

@@ -10,7 +10,7 @@ import re
 import secrets
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 from .contracts import AccountInspectRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
 from .page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from .protocol import PROFILES, canonical_ratio, sanitize_video_prompt_duration, validate_request
-from .query import decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_generation_payloads, probe_account_login
+from .query import _classify_refusal_code, _extract_assistant_text, decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_account_login_state, parse_generation_payloads, probe_account_login
 from .task_store import decrypt_secret, decrypt_cookie, encrypt_secret, encrypt_cookie, load_state, save_state
 from .uploads import resolve_references
 
@@ -28,6 +28,23 @@ DOLA_BOT_ID = "7339470689562525703"
 DOLA_AID = "495671"
 DOLA_PC_VERSION = "3.36.11"
 DOLA_VERSION_CODE = "20800"
+DOLA_CONVERSATION_RENDERED_SCRIPT = """(conversationId) => {
+    if (location.pathname !== `/chat/${conversationId}` || document.readyState === 'loading') return false;
+    const main = document.querySelector('main') || document.body;
+    const mainText = (main.innerText || '').trim();
+    if (!mainText || (mainText.includes('AI 创作') && mainText.includes('让创作随灵感而生'))) return false;
+    const sidebarEdge = Math.min(280, innerWidth * 0.25);
+    if (Array.from(main.querySelectorAll('h1, h2')).some((item) => item.textContent?.trim() === 'AI 创作' && item.getBoundingClientRect().left >= sidebarEdge)) return false;
+    const pending = document.querySelectorAll('[aria-busy="true"], [role="progressbar"], [class*="skeleton" i], [class*="shimmer" i], [class*="animate-pulse"]');
+    for (const item of pending) {
+        const rect = item.getBoundingClientRect();
+        if (rect.width && rect.height && rect.right > sidebarEdge && rect.top < innerHeight) return false;
+    }
+    return Array.from(main.querySelectorAll('[data-message-id]:not([data-send-message-boundary])')).some((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.width && rect.height && rect.left >= sidebarEdge && (item.innerText || '').trim();
+    });
+}"""
 
 
 @dataclass
@@ -55,6 +72,12 @@ class VerificationSession:
     lease_token: str
     created_at: str
     pointer_down: bool = False
+    owner_id: str = ""
+    expiry_task: asyncio.Task[None] | None = None
+    activity_event: asyncio.Event = field(default_factory=asyncio.Event)
+    last_activity_at: float = field(default_factory=time.monotonic)
+    navigation_task: asyncio.Task[None] | None = None
+    navigation_error: str = ""
 
 
 class CamoufoxSessionPool:
@@ -70,6 +93,7 @@ class CamoufoxSessionPool:
         self._tasks: dict[str, VideoTask] = {}
         self._task_meta: dict[str, dict[str, Any]] = {}
         self._verifications: dict[str, VerificationSession] = {}
+        self._pending_interactive_browsers = 0
         self._lock = asyncio.Lock()
         self._persist_lock = asyncio.Lock()
         self._loaded = False
@@ -354,8 +378,16 @@ class CamoufoxSessionPool:
         from camoufox.async_api import AsyncCamoufox  # type: ignore
 
         proxy_url = _proxy_url_for_request(request.proxyMode, request.proxyUrl)
-        manager = AsyncCamoufox(**_camoufox_browser_options(False, proxy_url, request.accountId))
-        browser = await manager.__aenter__()
+        headless = request.headless is not False
+        await self._reserve_interactive_browser(request.accountId, "headed_test")
+        try:
+            manager = AsyncCamoufox(**_camoufox_browser_options(headless, proxy_url, request.accountId))
+            browser = await manager.__aenter__()
+        except BaseException as error:
+            await self._release_interactive_browser_slot()
+            if isinstance(error, Exception):
+                raise RuntimeError(f"camoufox_launch_failed:{type(error).__name__}") from error
+            raise
         keep_open = False
         try:
             context = await browser.new_context(**_camoufox_context_options())
@@ -366,15 +398,82 @@ class CamoufoxSessionPool:
                 page = await context.new_page()
                 await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
                 session = PageSession(request.accountId, request.credentialVersion, request.proxyMode, request.proxyTarget or "", proxy_url or "", request.cookie)
-                verification_id = await self._register_verification("", None, session, manager, context, page, [], {"type": "inspect", "subtype": "headed_test", "pageState": "manual"})
+                verification_id = await self._register_verification("", None, session, manager, context, page, [], {"type": "inspect", "subtype": "headed_test", "pageState": "manual"}, owner_id=request.accountId, lifetime_seconds=request.timeoutSeconds if headless else None)
+                if not headless:
+                    def release_if_empty() -> None:
+                        if not any(not current.is_closed() for current in context.pages):
+                            asyncio.create_task(self._discard_verification(verification_id))
+                    if hasattr(context, "on"):
+                        context.on("page", lambda current: current.on("close", release_if_empty))
+                    if hasattr(page, "on"):
+                        page.on("close", release_if_empty)
+                    if hasattr(browser, "on"):
+                        browser.on("disconnected", lambda: asyncio.create_task(self._discard_verification(verification_id)))
                 keep_open = True
                 return {"status": "headed_ready", "verificationId": verification_id, "accountId": request.accountId, "pageUrl": str(page.url)[:500]}
             finally:
                 if not keep_open:
                     await context.close()
         finally:
-            if not keep_open:
-                await manager.__aexit__(None, None, None)
+            try:
+                if not keep_open:
+                    await manager.__aexit__(None, None, None)
+            finally:
+                await self._release_interactive_browser_slot()
+
+    async def start_google_login_session(self, owner_id: str, proxy_mode: str = "direct", proxy_url: str | None = None, timeout_seconds: int = 180, headless: bool = True) -> dict[str, Any]:
+        if os.getenv("DOLA_ENABLE_BROWSER", "0") != "1":
+            raise RuntimeError("camoufox_runtime_disabled")
+        from camoufox.async_api import AsyncCamoufox  # type: ignore
+
+        resolved_proxy = _proxy_url_for_request(proxy_mode, proxy_url)
+        await self._reserve_interactive_browser(owner_id, "google_login")
+        try:
+            manager = AsyncCamoufox(**_camoufox_browser_options(headless, resolved_proxy))
+            browser = await manager.__aenter__()
+        except BaseException:
+            await self._release_interactive_browser_slot()
+            raise
+        keep_open = False
+        try:
+            context = await browser.new_context(**_camoufox_context_options())
+            try:
+                page = await context.new_page()
+                session = PageSession("", 1, proxy_mode, "", resolved_proxy or "", "")
+                verification_id = await self._register_verification("", None, session, manager, context, page, [], {"type": "inspect", "subtype": "google_login", "pageState": "manual"}, owner_id=owner_id, lifetime_seconds=timeout_seconds if headless else None)
+                verification = self._verifications[verification_id]
+                if not headless:
+                    def release_if_empty() -> None:
+                        if not any(not current.is_closed() for current in context.pages):
+                            asyncio.create_task(self._discard_verification(verification_id))
+                    if hasattr(context, "on"):
+                        context.on("page", lambda current: current.on("close", release_if_empty))
+                    if hasattr(page, "on"):
+                        page.on("close", release_if_empty)
+                    if hasattr(browser, "on"):
+                        browser.on("disconnected", lambda: asyncio.create_task(self._discard_verification(verification_id)))
+                verification.navigation_task = asyncio.create_task(self._navigate_google_login(verification))
+                keep_open = True
+                return {"status": "ready", "verificationId": verification_id, "leaseToken": verification.lease_token}
+            finally:
+                if not keep_open:
+                    await context.close()
+        finally:
+            try:
+                if not keep_open:
+                    await manager.__aexit__(None, None, None)
+            finally:
+                await self._release_interactive_browser_slot()
+
+    async def _navigate_google_login(self, verification: VerificationSession) -> None:
+        try:
+            await verification.page.goto(os.getenv("DOLA_LOGIN_URL", "https://www.dola.com/login"), wait_until="domcontentloaded")
+            self._touch_verification(verification)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            verification.navigation_error = f"Dola 登录页打开失败：{error}"
+            await self._discard_verification(verification.verification_id)
 
     def list_headed_tests(self) -> list[dict[str, str]]:
         return [{"verificationId": item.verification_id, "accountId": item.page_session.account_id, "createdAt": item.created_at}
@@ -394,7 +493,25 @@ class CamoufoxSessionPool:
         verification = self._verifications.get(verification_id)
         if not verification:
             raise ValueError("verification_not_found")
+        if verification.navigation_task:
+            try:
+                await verification.navigation_task
+            except asyncio.CancelledError as error:
+                raise ValueError("verification_not_found") from error
+            if verification.navigation_error:
+                raise RuntimeError(verification.navigation_error)
+            if verification_id not in self._verifications:
+                raise ValueError("verification_not_found")
+        self._touch_verification(verification)
         return await self._verification_snapshot(verification, include_lease=True)
+
+    @staticmethod
+    def _active_verification_page(verification: VerificationSession) -> Any:
+        if verification.decision.get("subtype") == "google_login":
+            pages = [page for page in verification.context.pages if not page.is_closed()]
+            if pages:
+                verification.page = pages[-1]
+        return verification.page
 
     async def verification_input(self, verification_id: str, input: VerificationInput) -> dict[str, Any]:
         await self._ensure_loaded()
@@ -402,42 +519,64 @@ class CamoufoxSessionPool:
         if not verification:
             raise ValueError("verification_not_found")
         self._check_verification_lease(verification, input.leaseToken)
-        viewport = await self._verification_viewport(verification.page)
+        self._touch_verification(verification)
+        page = self._active_verification_page(verification)
+        viewport = await self._verification_viewport(page)
         if not math.isfinite(input.x) or not math.isfinite(input.y) or input.x < 0 or input.y < 0 or input.x > viewport["width"] or input.y > viewport["height"]:
             raise ValueError("verification_coordinate_invalid")
         if input.action == "wheel":
-            if verification.decision.get("subtype") != "headed_test" or input.deltaY is None or not math.isfinite(input.deltaY):
+            if verification.decision.get("subtype") not in {"headed_test", "google_login"} or input.deltaY is None or not math.isfinite(input.deltaY):
                 raise ValueError("verification_wheel_invalid")
-            await verification.page.mouse.move(input.x, input.y)
-            await verification.page.mouse.wheel(0, input.deltaY)
+            await page.mouse.move(input.x, input.y)
+            await page.mouse.wheel(0, input.deltaY)
         elif input.action == "down":
             if verification.pointer_down:
                 raise ValueError("verification_pointer_already_down")
-            await verification.page.mouse.move(input.x, input.y)
-            await verification.page.mouse.down()
+            await page.mouse.move(input.x, input.y)
+            await page.mouse.down()
             verification.pointer_down = True
         elif input.action == "move":
             if not verification.pointer_down:
                 raise ValueError("verification_pointer_not_down")
-            await verification.page.mouse.move(input.x, input.y)
+            await page.mouse.move(input.x, input.y)
         else:
             if not verification.pointer_down:
                 raise ValueError("verification_pointer_not_down")
-            await verification.page.mouse.move(input.x, input.y)
-            await verification.page.mouse.up()
+            await page.mouse.move(input.x, input.y)
+            await page.mouse.up()
             verification.pointer_down = False
+        if input.action in {"down", "move"}:
+            return {"verificationId": verification_id, "status": "needs_review"}
+        self._touch_verification(verification)
         return await self._verification_snapshot(verification)
 
     async def verification_keyboard(self, verification_id: str, input: VerificationKeyboardInput) -> dict[str, Any]:
         verification = self._verifications.get(verification_id)
-        if not verification or verification.decision.get("subtype") != "headed_test":
+        if not verification or verification.decision.get("subtype") not in {"headed_test", "google_login"}:
             raise ValueError("headed_test_not_found")
         self._check_verification_lease(verification, input.leaseToken)
+        self._touch_verification(verification)
+        page = self._active_verification_page(verification)
         if input.text in {"Enter", "Tab", "Backspace", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"}:
-            await verification.page.keyboard.press(input.text)
+            await page.keyboard.press(input.text)
         else:
-            await verification.page.keyboard.insert_text(input.text)
+            await page.keyboard.insert_text(input.text)
         return await self._verification_snapshot(verification)
+
+    async def finalize_google_login_session(self, verification_id: str, lease: VerificationLease) -> dict[str, Any]:
+        verification = self._verifications.get(verification_id)
+        if not verification or verification.decision.get("subtype") != "google_login":
+            raise ValueError("verification_not_found")
+        self._check_verification_lease(verification, lease.leaseToken)
+        self._touch_verification(verification)
+        cookies = await verification.context.cookies("https://www.dola.com/")
+        cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name") and item.get("value"))
+        if not cookie:
+            return {"status": "needs_login", "verificationId": verification_id}
+        probe = await probe_account_login(cookie, verification.page_session.proxy_url or None)
+        if probe.get("state") != "ready":
+            return {"status": "needs_login" if probe.get("state") == "needs_login" else "unknown", "verificationId": verification_id}
+        return {"status": "ready", "verificationId": verification_id, "cookie": cookie}
 
     async def finalize_headed_test(self, verification_id: str, lease: VerificationLease) -> dict[str, Any]:
         verification = self._verifications.get(verification_id)
@@ -584,7 +723,7 @@ class CamoufoxSessionPool:
         await self._ensure_loaded()
         verification = self._verifications.get(verification_id)
         if not verification:
-            raise ValueError("verification_not_found")
+            return {"verificationId": verification_id, "status": "closed", "taskId": ""}
         self._check_verification_lease(verification, lease.leaseToken)
         task = self._tasks.get(verification.task_id) if verification.task_id else None
         if task:
@@ -609,27 +748,53 @@ class CamoufoxSessionPool:
         try:
             context = await browser.new_context(**_camoufox_context_options())
             page = await context.new_page()
+            launch_ready = asyncio.Event()
+            launch_revision = 0
+
+            async def observe_launch(response: Any) -> None:
+                nonlocal launch_revision
+                try:
+                    from urllib.parse import urlsplit
+
+                    url = urlsplit(str(response.url))
+                    if url.hostname not in {"dola.com", "www.dola.com"} or url.path != "/alice/user/launch":
+                        return
+                    payload = await response.json()
+                    if parse_account_login_state(payload) == "ready":
+                        launch_revision += 1
+                        launch_ready.set()
+                except Exception:
+                    pass
+
+            page.on("response", lambda response: asyncio.create_task(observe_launch(response)))
             login_url = os.getenv("DOLA_LOGIN_URL", "https://www.dola.com/login")
             await page.goto(login_url, wait_until="domcontentloaded")
 
             deadline = asyncio.get_event_loop().time() + timeout_seconds
             logged_in_cookie = ""
             user_email = ""
+            checked_candidate: tuple[str, int] | None = None
 
             while asyncio.get_event_loop().time() < deadline:
                 current_url = page.url.lower()
-                cookies = await context.cookies()
-                cookie_names = {c.get("name") for c in cookies}
-                has_session_cookie = bool(cookie_names & {"sessionid", "session", "token", "auth_token", "uid", "user_id"})
-                is_on_chat = "dola.com/chat" in current_url or "dola.com/create" in current_url or ("dola.com" in current_url and "/login" not in current_url and "/sign-in" not in current_url)
-
-                if (has_session_cookie and is_on_chat) or (has_session_cookie and len(cookies) >= 3):
+                cookies = await context.cookies("https://www.dola.com/")
+                if launch_ready.is_set() and cookies and "dola.com" in current_url:
                     try:
                         title = (await page.title()).lower()
                         body = (await page.locator("body").inner_text()).strip()
                         if not _page_looks_logged_out(current_url, title, body):
-                            cookie_pairs = [f"{item['name']}={item['value']}" for item in cookies if item.get("name")]
-                            logged_in_cookie = "; ".join(cookie_pairs)
+                            cookie_pairs = [f"{item['name']}={item['value']}" for item in cookies if item.get("name") and item.get("value")]
+                            candidate = "; ".join(cookie_pairs)
+                            candidate_key = (candidate, launch_revision)
+                            if not candidate or candidate_key == checked_candidate:
+                                await asyncio.sleep(2)
+                                continue
+                            checked_candidate = candidate_key
+                            login_probe = await probe_account_login(candidate, resolved_proxy)
+                            if login_probe.get("state") != "ready":
+                                await asyncio.sleep(2)
+                                continue
+                            logged_in_cookie = candidate
                             try:
                                 user_info = await page.evaluate("""() => {
                                     const meta = document.querySelector('meta[name="user-email"]');
@@ -660,7 +825,34 @@ class CamoufoxSessionPool:
             except Exception:
                 pass
 
-    async def _register_verification(self, task_id: str, request: VideoRequest | None, session: PageSession, browser: Any, context: Any, page: Any, references: list[dict[str, Any]], decision: Any) -> str:
+    async def _reserve_interactive_browser(self, owner_id: str, subtype: str) -> None:
+        try:
+            limit = int(os.getenv("DOLA_INTERACTIVE_BROWSER_MAX_SESSIONS", "1"))
+        except ValueError as error:
+            raise RuntimeError("DOLA_INTERACTIVE_BROWSER_MAX_SESSIONS must be a positive integer") from error
+        if limit < 1:
+            raise RuntimeError("DOLA_INTERACTIVE_BROWSER_MAX_SESSIONS must be a positive integer")
+        old_sessions: list[VerificationSession] = []
+        async with self._lock:
+            active = [item for item in self._verifications.values() if item.decision.get("subtype") in {"google_login", "headed_test"}]
+            replacing = [item for item in active if item.owner_id == owner_id and item.decision.get("subtype") == subtype]
+            if len(active) - len(replacing) + self._pending_interactive_browsers >= limit:
+                raise RuntimeError("交互浏览器已达到并发上限，请关闭现有窗口后重试")
+            self._pending_interactive_browsers += 1
+            for item in replacing:
+                old_sessions.append(self._verifications.pop(item.verification_id))
+        try:
+            for item in old_sessions:
+                await self._close_verification_resources(item)
+        except BaseException:
+            await self._release_interactive_browser_slot()
+            raise
+
+    async def _release_interactive_browser_slot(self) -> None:
+        async with self._lock:
+            self._pending_interactive_browsers -= 1
+
+    async def _register_verification(self, task_id: str, request: VideoRequest | None, session: PageSession, browser: Any, context: Any, page: Any, references: list[dict[str, Any]], decision: Any, owner_id: str = "", lifetime_seconds: int | None = None) -> str:
         verification_id = f"dola-verification-{uuid.uuid4()}"
         verification = VerificationSession(
             verification_id=verification_id,
@@ -674,15 +866,55 @@ class CamoufoxSessionPool:
             decision=_verification_decision(decision),
             lease_token=secrets.token_urlsafe(32),
             created_at=datetime.now(timezone.utc).isoformat(),
+            owner_id=owner_id,
         )
+        old_sessions: list[VerificationSession] = []
         async with self._lock:
+            if owner_id:
+                for old_id, old in list(self._verifications.items()):
+                    if old.owner_id == owner_id and old.decision.get("subtype") == verification.decision.get("subtype"):
+                        old_sessions.append(self._verifications.pop(old_id))
             self._verifications[verification_id] = verification
+            if lifetime_seconds is not None:
+                verification.expiry_task = asyncio.create_task(self._expire_verification(verification_id, lifetime_seconds))
+        for old in old_sessions:
+            await self._close_verification_resources(old)
         return verification_id
 
     async def _discard_verification(self, verification_id: str) -> None:
-        verification = self._verifications.pop(verification_id, None)
+        async with self._lock:
+            verification = self._verifications.pop(verification_id, None)
         if not verification:
             return
+        await self._close_verification_resources(verification)
+
+    async def _expire_verification(self, verification_id: str, lifetime_seconds: int) -> None:
+        try:
+            while (verification := self._verifications.get(verification_id)) is not None:
+                remaining = verification.last_activity_at + lifetime_seconds - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    await asyncio.wait_for(verification.activity_event.wait(), remaining)
+                    verification.activity_event.clear()
+                except asyncio.TimeoutError:
+                    continue
+            await self._discard_verification(verification_id)
+        except asyncio.CancelledError:
+            pass
+
+    @staticmethod
+    def _touch_verification(verification: VerificationSession) -> None:
+        verification.last_activity_at = time.monotonic()
+        verification.activity_event.set()
+
+    @staticmethod
+    async def _close_verification_resources(verification: VerificationSession) -> None:
+        if verification.expiry_task and verification.expiry_task is not asyncio.current_task():
+            verification.expiry_task.cancel()
+        if verification.navigation_task and verification.navigation_task is not asyncio.current_task():
+            verification.navigation_task.cancel()
+            await asyncio.gather(verification.navigation_task, return_exceptions=True)
         try:
             await verification.context.close()
         except Exception:
@@ -692,12 +924,19 @@ class CamoufoxSessionPool:
         except Exception:
             pass
 
+    async def close_all_verifications(self) -> None:
+        for verification_id in list(self._verifications):
+            await self._discard_verification(verification_id)
+
     async def _verification_snapshot(self, verification: VerificationSession, include_lease: bool = False) -> dict[str, Any]:
-        viewport = await self._verification_viewport(verification.page)
+        page = self._active_verification_page(verification)
+        viewport = await self._verification_viewport(page)
         try:
-            screenshot = await verification.page.screenshot(type="png")
-        except Exception:
+            screenshot = await page.screenshot(type="png")
+            screenshot_error = ""
+        except Exception as error:
             screenshot = b""
+            screenshot_error = str(error)[:500]
         snapshot: dict[str, Any] = {
             "verificationId": verification.verification_id,
             "taskId": verification.task_id,
@@ -706,8 +945,9 @@ class CamoufoxSessionPool:
             "createdAt": verification.created_at,
             "viewport": viewport,
             "screenshotBase64": base64.b64encode(screenshot).decode("ascii"),
-            "pageUrl": str(verification.page.url)[:500],
+            "pageUrl": str(page.url)[:500],
             "pageState": str(verification.decision.get("pageState") or "verification_required"),
+            **({"screenshotError": screenshot_error} if screenshot_error else {}),
         }
         if include_lease:
             snapshot["leaseToken"] = verification.lease_token
@@ -728,8 +968,7 @@ class CamoufoxSessionPool:
             raise PermissionError("verification_lease_invalid")
 
     async def _run_page_submit(self, task_id: str, request: VideoRequest, key: tuple[str, int, str]) -> None:
-        self._tasks[task_id] = self._tasks[task_id].model_copy(update={"status": "running"})
-        await self._persist()
+        await self._set_submit_stage(task_id, "opening_page")
         try:
             # The browser adapter is deliberately isolated behind this method.
             # It is enabled only in a Camoufox runtime; the protocol request is
@@ -738,11 +977,9 @@ class CamoufoxSessionPool:
             identity = result.get("identity") if isinstance(result.get("identity"), dict) else {}
             cookie = str(result.get("cookie") or request.cookie or "")
             conversation_id = _result_conversation_id(result)
-            if not conversation_id and result.get("ackReceived") and cookie:
-                # The ACK proves this submit created a conversation, so the
-                # newest recent conversation belongs to this task even when the
-                # stream itself did not echo the id.
-                conversation_id = await fetch_recent_conversation_id(cookie, identity, self._sessions[key].proxy_url or None)
+            local_conversation_id = str(result.get("localConversationId") or "")
+            if not conversation_id and result.get("ackReceived") and cookie and local_conversation_id:
+                conversation_id = await fetch_recent_conversation_id(cookie, identity, local_conversation_id, self._sessions[key].proxy_url or None)
             video_url = _result_video_url(result)
             image_urls = _result_image_urls(result)
             diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
@@ -756,7 +993,10 @@ class CamoufoxSessionPool:
                 "proxyMode": self._sessions[key].proxy_mode,
                 "proxyTarget": self._sessions[key].proxy_target,
                 "proxyUrl": self._sessions[key].proxy_url,
+                "captureFailureScreenshot": request.captureFailureScreenshot,
+                "pollIntervalMs": request.pollIntervalMs,
                 **({"ackReceived": True} if result.get("ackReceived") else {}),
+                **({"localConversationId": local_conversation_id} if local_conversation_id else {}),
                 **({"diagnostics": diagnostics} if diagnostics else {}),
                 **({"screenshotBase64": result.get("screenshotBase64")} if result.get("screenshotBase64") else {}),
             }
@@ -805,19 +1045,30 @@ class CamoufoxSessionPool:
                 if result.get("ackReceived"):
                     # The submit stream carried SSE_ACK but no conversation id;
                     # keep the task accepted so the refresh path can recover it.
-                    self._tasks[task_id] = self._tasks[task_id].model_copy(update={"status": "accepted", "error": None, "diagnostics": diagnostics or None})
+                    self._tasks[task_id] = self._tasks[task_id].model_copy(update={"status": "accepted", "error": None, "diagnostics": {**diagnostics, "conversationResolution": "pending_correlated_id"}})
                     await self._persist()
                     return
                 raise RuntimeError("submission_unknown")
             self._tasks[task_id] = self._tasks[task_id].model_copy(update={"status": "accepted", "conversationId": conversation_id, "error": None, "diagnostics": diagnostics or None})
             await self._persist()
         except Exception as error:  # noqa: BLE001
-            reason = str(error)[:500]
+            stage = str(self._task_meta.get(task_id, {}).get("submitStage") or "submission")
+            reason = str(error).strip()[:500] or type(error).__name__
+            reason = f"{stage}: {reason}"
             status = "failed"
             meta = self._task_meta.get(task_id, {})
             meta_diagnostics = meta.get("diagnostics")
-            self._tasks[task_id] = self._tasks[task_id].model_copy(update={"status": status, "error": reason, **({"diagnostics": meta_diagnostics} if isinstance(meta_diagnostics, dict) else {}), **({"screenshotBase64": meta.get("screenshotBase64")} if meta.get("screenshotBase64") else {})})
+            task_diagnostics = self._tasks[task_id].diagnostics
+            self._tasks[task_id] = self._tasks[task_id].model_copy(update={"status": status, "error": reason, "rawError": reason, "screenshotBase64": None, "diagnostics": {**(task_diagnostics if isinstance(task_diagnostics, dict) else {}), **(meta_diagnostics if isinstance(meta_diagnostics, dict) else {}), "submitStage": stage, "failureType": type(error).__name__}})
             await self._persist()
+
+    async def _set_submit_stage(self, task_id: str, stage: str, **details: Any) -> None:
+        meta = self._task_meta[task_id]
+        meta["submitStage"] = stage
+        task = self._tasks[task_id]
+        diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
+        self._tasks[task_id] = task.model_copy(update={"status": "running", "diagnostics": {**diagnostics, "submitStage": stage, **details}})
+        await self._persist()
 
     async def _submit_in_camoufox(self, task_id: str, request: VideoRequest, session: PageSession) -> dict[str, Any]:
         if os.getenv("DOLA_ENABLE_BROWSER", "0") != "1":
@@ -863,10 +1114,11 @@ class CamoufoxSessionPool:
             page_body = (await page.locator("body").inner_text()).strip()
             if _page_is_region_restricted(page.url, page_title, page_body):
                 screenshot_base64 = ""
-                try:
-                    screenshot_base64 = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
-                except Exception:
-                    pass
+                if request.captureFailureScreenshot:
+                    try:
+                        screenshot_base64 = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
+                    except Exception:
+                        pass
                 return {
                     "status": 451,
                     "restricted": True,
@@ -880,7 +1132,7 @@ class CamoufoxSessionPool:
                     "subtype": "age_confirmation" if age_confirmation else "unknown",
                     "pageState": "age_confirmation_required" if age_confirmation else "verification_required",
                 }
-                initial_references = [item for item in request.references if isinstance(item, dict) and (item.get("uri") or item.get("url") or item.get("dataUrl"))]
+                initial_references = _normalize_request_references(request)
                 verification_id = await self._register_verification(task_id, request, session, browser_manager, context, page, initial_references, decision)
                 keep_open = True
                 screenshot_base64 = ""
@@ -898,18 +1150,21 @@ class CamoufoxSessionPool:
                 }
             if auth_state == "needs_login" or _page_looks_logged_out(page.url, page_title, page_body):
                 screenshot_base64 = ""
-                try:
-                    screenshot_base64 = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
-                except Exception:
-                    pass
+                if request.captureFailureScreenshot:
+                    try:
+                        screenshot_base64 = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
+                    except Exception:
+                        pass
                 return {
                     "status": 401,
                     "needsLogin": True,
                     "screenshotBase64": screenshot_base64,
                     "diagnostics": {"pageState": "needs_login", "pageUrl": str(page.url)[:500]},
                 }
-            references = [item for item in request.references if isinstance(item, dict) and (item.get("uri") or item.get("url") or item.get("dataUrl"))]
+            references = _normalize_request_references(request)
+            await self._set_submit_stage(task_id, "uploading_references", referenceCount=len(references))
             resolved_references = await resolve_references(page, references, proxy_url)
+            await self._set_submit_stage(task_id, "submitting_to_dola")
             result = await _execute_completion_submit(page, request, resolved_references, session.cookie)
             cookies = await context.cookies()
             cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name")) or session.cookie
@@ -934,10 +1189,11 @@ class CamoufoxSessionPool:
                     }
                 except Exception:
                     pass
-                try:
-                    result["screenshotBase64"] = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
-                except Exception:
-                    pass
+                if request.captureFailureScreenshot:
+                    try:
+                        result["screenshotBase64"] = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
+                    except Exception:
+                        pass
             elif (
                 result.get("signatureRejected")
                 or result.get("restricted")
@@ -951,12 +1207,26 @@ class CamoufoxSessionPool:
                 # Preserve the actual page shown by the browser for protocol
                 # failures such as submission_unknown.  The screenshot is
                 # evidence only; it never changes the error classification.
-                try:
-                    diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
-                    result["diagnostics"] = {**diagnostics, "pageUrl": str(page.url)[:500]}
-                    result["screenshotBase64"] = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
-                except Exception:
-                    pass
+                diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
+                result["diagnostics"] = {**diagnostics, "pageUrl": str(page.url)[:500]}
+                if request.captureFailureScreenshot:
+                    try:
+                        result["screenshotBase64"] = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
+                    except Exception:
+                        pass
+            if request.captureFailureScreenshot and not result.get("screenshotBase64"):
+                is_success = bool(
+                    result.get("videoUrl")
+                    or _result_image_urls(result)
+                    or (result.get("conversationId") and (result.get("status") in ("accepted", 200, 0, None) or result.get("ackReceived")))
+                )
+                if not is_success or result.get("error") or int(result.get("status") or 0) >= 400:
+                    try:
+                        diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
+                        result["diagnostics"] = {**diagnostics, "pageUrl": str(page.url)[:500]}
+                        result["screenshotBase64"] = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
+                    except Exception:
+                        pass
             if result.get("verificationRequired"):
                 verification_id = await self._register_verification(task_id, request, session, browser_manager, context, page, resolved_references, result.get("verificationDecision"))
                 result["verificationId"] = verification_id
@@ -969,6 +1239,18 @@ class CamoufoxSessionPool:
             result["cookie"] = cookie or session.cookie
             result["identity"] = _identity_from_result(result)
             return result
+        except Exception:
+            if request.captureFailureScreenshot:
+                try:
+                    if "page" in locals() and page:
+                        shot = await page.screenshot(type="png")
+                        self._task_meta[task_id] = {
+                            **self._task_meta.get(task_id, {}),
+                            "screenshotBase64": base64.b64encode(shot).decode("ascii"),
+                        }
+                except Exception:
+                    pass
+            raise
         finally:
             if not is_headless and not keep_open:
                 try:
@@ -989,10 +1271,8 @@ class CamoufoxSessionPool:
             return
         conversation_id = str(task.conversationId or meta.get("conversationId") or "")
         cookie = str(meta.get("cookie") or "")
-        if not conversation_id and meta.get("ackReceived") and cookie:
-            # Submit streams sometimes acknowledge without echoing the
-            # conversation id; the ACK proves we created the newest one.
-            conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None) or ""
+        if not conversation_id and meta.get("ackReceived") and cookie and meta.get("localConversationId"):
+            conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta["localConversationId"]), str(meta.get("proxyUrl") or "") or None) or ""
             if conversation_id:
                 meta["conversationId"] = conversation_id
                 self._tasks[task_id] = task.model_copy(update={"conversationId": conversation_id})
@@ -1010,7 +1290,20 @@ class CamoufoxSessionPool:
             self._tasks[task_id] = task.model_copy(update={"status": "failed", "error": "task_state_proxy_unavailable"})
             await self._persist()
             return
+        now_ms = int(time.time() * 1000)
+        if now_ms - int(meta.get("lastResultPollAt") or 0) < int(meta.get("pollIntervalMs") or 2_500):
+            return
+        meta["lastResultPollAt"] = now_ms
         result = await fetch_generation_result(cookie, conversation_id, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None)
+        assistant_text = str(result.get("assistantText") or "")
+        if assistant_text:
+            diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
+            if diagnostics.get("upstreamResponseText") != assistant_text:
+                task = task.model_copy(update={"diagnostics": {**diagnostics, "upstreamResponseText": assistant_text}})
+                self._tasks[task_id] = task
+                await self._persist()
+        if result.get("pending"):
+            return
         if not result:
             try:
                 result = await self._fetch_generation_result_in_page(conversation_id, meta)
@@ -1019,6 +1312,13 @@ class CamoufoxSessionPool:
                 self._tasks[task_id] = task.model_copy(update={"diagnostics": {**diagnostics, "resultQueryFallback": "failed", "resultQueryError": str(error)[:160]}})
                 await self._persist()
                 return
+        assistant_text = str(result.get("assistantText") or "")
+        if assistant_text:
+            diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
+            if diagnostics.get("upstreamResponseText") != assistant_text:
+                task = task.model_copy(update={"diagnostics": {**diagnostics, "upstreamResponseText": assistant_text}})
+                self._tasks[task_id] = task
+                await self._persist()
         wants_video = _task_wants_video(task.model)
         # Video conversations also expose cover thumbnails as images; only the
         # capability the task asked for may complete it.
@@ -1026,11 +1326,26 @@ class CamoufoxSessionPool:
             error_text = str(result.get("error"))[:1000]
             raw_error = str(result.get("rawError") or result.get("error") or "")[:2000]
             diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
+            screenshot_base64 = ""
+            screenshot_error = ""
+            if meta.get("captureFailureScreenshot") and os.getenv("DOLA_ENABLE_BROWSER", "0") == "1":
+                try:
+                    page_result = await self._fetch_generation_result_in_page(conversation_id, meta)
+                    if page_result.get("screenshotBase64"):
+                        screenshot_base64 = str(page_result["screenshotBase64"])
+                    if page_result.get("rawError"):
+                        raw_error = str(page_result["rawError"])[:2000]
+                    if page_result.get("error") and (error_text == "upstream_generation_failed" or not error_text):
+                        error_text = str(page_result["error"])[:1000]
+                except Exception as capture_error:
+                    screenshot_error = str(capture_error)[:160]
             self._tasks[task_id] = task.model_copy(
                 update={
                     "status": "failed",
                     "error": error_text,
-                    "diagnostics": {**diagnostics, "upstreamResponseText": raw_error},
+                    "rawError": raw_error,
+                    "screenshotBase64": screenshot_base64 or None,
+                    "diagnostics": {**diagnostics, "upstreamResponseText": assistant_text or raw_error, **({"resultScreenshotError": screenshot_error} if screenshot_error else {})},
                 }
             )
             await self._persist()
@@ -1049,6 +1364,8 @@ class CamoufoxSessionPool:
     async def _fetch_generation_result_in_page(self, conversation_id: str, meta: dict[str, Any]) -> dict[str, Any]:
         if os.getenv("DOLA_ENABLE_BROWSER", "0") != "1":
             raise RuntimeError("camoufox_runtime_disabled")
+        if not re.fullmatch(r"\d{12,32}", conversation_id):
+            raise RuntimeError("result_query_invalid_conversation_id")
         try:
             from camoufox.async_api import AsyncCamoufox  # type: ignore
         except ImportError as error:
@@ -1064,23 +1381,96 @@ class CamoufoxSessionPool:
                 await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(cookie))
             page = await context.new_page()
-            auth_state = await _goto_dola_page(page, os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image"))
+            conv_url = f"https://www.dola.com/chat/{conversation_id}" if conversation_id else os.getenv("DOLA_WEB_URL", "https://www.dola.com/chat/create-image")
+            auth_state = await _goto_dola_page(page, conv_url)
             title = (await page.title()).lower()
             body = (await page.locator("body").inner_text()).strip()
             if await page.locator("text=Verify you are human").count() or _page_has_verification_marker(title, body):
                 raise RuntimeError("result_query_verification_required")
             if auth_state == "needs_login" or _page_looks_logged_out(page.url, title, body):
                 raise RuntimeError("result_query_login_required")
+
+            from urllib.parse import urlsplit
+
+            expected_path = f"/chat/{conversation_id}"
+            target = page.locator(f'a[href="{expected_path}"], a[href="https://www.dola.com{expected_path}"]').first
+            if await target.count():
+                await target.click()
+                await page.wait_for_url(f"**{expected_path}")
+            if urlsplit(str(page.url)).path != expected_path:
+                raise RuntimeError("result_query_wrong_conversation")
+
+            # A matching SPA URL can still show Dola's conversation skeleton.
+            # Wait for visible text in the conversation pane before collecting
+            # DOM errors or treating a screenshot as evidence of this task.
+            try:
+                await page.wait_for_function(DOLA_CONVERSATION_RENDERED_SCRIPT, arg=conversation_id, timeout=45_000)
+            except Exception as error:
+                raise RuntimeError("result_query_conversation_not_ready") from error
+
+            # Scroll the chat history container to the bottom so the latest card / error is in the viewport.
+            try:
+                await page.evaluate("""() => {
+                    const root = document.querySelector('main') || document.body;
+                    const sidebarEdge = Math.min(280, innerWidth * 0.25);
+                    const scrollables = Array.from(root.querySelectorAll('*')).filter(el => {
+                        const rect = el.getBoundingClientRect();
+                        if (el.closest('aside, nav, [role="navigation"]') || rect.right <= sidebarEdge || rect.left < sidebarEdge) return false;
+                        const style = window.getComputedStyle(el);
+                        const overflow = style.overflowY || style.overflow;
+                        return (overflow === 'auto' || overflow === 'scroll') && el.scrollHeight > el.clientHeight && el.clientHeight > 150;
+                    });
+                    const chat = scrollables.sort((a, b) => b.clientHeight - a.clientHeight)[0];
+                    if (chat) chat.scrollTop = chat.scrollHeight;
+                    window.scrollTo(0, document.body.scrollHeight);
+                }""")
+            except Exception:
+                pass
+
             payloads: list[Any] = []
             for path, request_body in generation_query_payloads(conversation_id):
                 transport = await _execute_signed_page_json(page, path, request_body)
                 if not _json_transport_ready(transport):
                     continue
                 try:
-                    payloads.append(json.loads(str(transport.get("text") or "")))
+                    payload = json.loads(str(transport.get("text") or ""))
+                    payloads.append(payload)
+                    downlink = payload.get("downlink_body") if isinstance(payload, dict) else None
+                    if path == "/im/chain/single" and isinstance(payload, dict) and payload.get("code") in (None, 0, "0") and isinstance(downlink, dict) and isinstance(downlink.get("pull_singe_chain_downlink_body"), dict):
+                        break
                 except (TypeError, ValueError, json.JSONDecodeError):
                     continue
-            return parse_generation_payloads(payloads)
+            parsed = parse_generation_payloads(payloads)
+            assistant_text = _extract_assistant_text(payloads)
+            if assistant_text:
+                parsed["assistantText"] = assistant_text
+
+            # Only read the target conversation's assistant messages. A broad
+            # page search also sees the user's prompt and unrelated sidebar.
+            dom_error = ""
+            try:
+                dom_error = await page.evaluate("""() => {
+                    const root = document.querySelector('main') || document.body;
+                    const messages = root.querySelectorAll('[data-message-id]:not([data-send-message-boundary])');
+                    const latest = messages[messages.length - 1];
+                    return (latest?.innerText || '').trim().slice(0, 2000);
+                }""")
+            except Exception:
+                pass
+
+            if dom_error:
+                code = _classify_refusal_code(dom_error)
+                if code:
+                    parsed["error"] = code
+                if code or parsed.get("error"):
+                    parsed["rawError"] = dom_error
+
+            if meta.get("captureFailureScreenshot") and (parsed.get("error") or (not parsed.get("url") and not parsed.get("imageUrls"))):
+                try:
+                    parsed["screenshotBase64"] = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
+                except Exception:
+                    pass
+            return parsed
 
 
 def _task_wants_video(model: str) -> bool:
@@ -1568,6 +1958,22 @@ async def _read_account_quota(page: Any) -> tuple[list[dict[str, Any]], dict[str
     return quota, diagnostics
 
 
+def _normalize_request_references(request: VideoRequest) -> list[dict[str, Any]]:
+    ref_list = list(request.references or [])
+    if not ref_list:
+        if request.first_frame:
+            ref_list.append({"url": request.first_frame, "role": "first_frame", "type": "image"})
+        if request.images:
+            for img in request.images:
+                if isinstance(img, str):
+                    ref_list.append({"url": img, "role": "reference", "type": "image"})
+                elif isinstance(img, dict):
+                    ref_list.append(img)
+        if request.last_frame:
+            ref_list.append({"url": request.last_frame, "role": "last_frame", "type": "image"})
+    return [item for item in ref_list if isinstance(item, dict) and (item.get("uri") or item.get("url") or item.get("dataUrl"))]
+
+
 async def _execute_completion_submit(page: Any, request: VideoRequest, references: list[dict[str, Any]], cookie: str = "") -> dict[str, Any]:
     """Send one signed request with the identity created by the loaded page.
 
@@ -1578,6 +1984,7 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
     """
     profile = validate_request(request.model, request.duration, request.ratio)
     body = _build_request_body(profile, request, references)
+    local_conversation_id = str(body["client_meta"]["local_conversation_id"])
     observed_urls: list[str] = []
 
     def observe_request(browser_request: Any) -> None:
@@ -1643,6 +2050,7 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
         "contentType": str(payload.get("contentType") or ""),
         "responseBytes": int(payload.get("responseBytes") or 0),
         "conversationId": conversation_id,
+        "localConversationId": local_conversation_id,
         "videoUrl": decode_main_url(extract_video_url(events) or ""),
         "imageUrls": extract_image_urls(events),
         "ackReceived": "SSE_ACK" in event_names or bool(conversation_id),
@@ -1657,7 +2065,7 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
         "unsigned": bool(payload.get("requestObserved")) and not bool(payload.get("requestSigned")),
         "diagnostics": diagnostics,
         "identitySource": str(payload.get("identitySource") or "")[:200],
-        **{key: str(identity.get(key) or "") for key in ("device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name")},
+        **{key: str(identity.get(key) or "") for key in ("device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name", "pc_version", "doubao_pc_version")},
     }
 
 
@@ -1778,7 +2186,7 @@ def _build_request_body(profile: Any, request: VideoRequest, references: list[di
         chat_ability = {"ability_type": 17, "ability_param": json.dumps(ability_param, ensure_ascii=False, separators=(",", ":"))}
     body: dict[str, Any] = {
         "client_meta": {
-            "local_conversation_id": f"local_{now_ms}",
+            "local_conversation_id": f"local_{uuid.uuid4().hex}",
             "conversation_id": "",
             "bot_id": DOLA_BOT_ID,
             "last_section_id": "",
@@ -1994,7 +2402,7 @@ def _verification_decision(value: Any) -> dict[str, Any]:
     result: dict[str, Any] = {"type": "inspect" if diagnostic else "verify", "subtype": "page" if diagnostic else "unknown"}
     if isinstance(value.get("type"), str) and value["type"] in {"verify", "verification", "inspect"}:
         result["type"] = value["type"]
-    if isinstance(value.get("subtype"), str) and value["subtype"] in {"slide", "unknown", "page", "age_confirmation", "headed_test"}:
+    if isinstance(value.get("subtype"), str) and value["subtype"] in {"slide", "unknown", "page", "age_confirmation", "headed_test", "google_login"}:
         result["subtype"] = value["subtype"]
     if isinstance(value.get("code"), str) and value["code"].isdigit():
         result["code"] = value["code"][:32]
@@ -2040,6 +2448,8 @@ def _identity_from_result(result: dict[str, Any]) -> dict[str, str]:
         "region": str(result.get("region") or "JP"),
         "sys_region": str(result.get("sys_region") or "JP"),
         "web_tab_id": str(result.get("web_tab_id") or ""),
+        "pc_version": str(result.get("pc_version") or ""),
+        "doubao_pc_version": str(result.get("doubao_pc_version") or ""),
     }
 
 

@@ -448,14 +448,14 @@ export function ChatGptProxyManager({
             json({ id, ...(nodeId ? { node_id: nodeId } : {}) }),
         );
     const applyGroupTest = async (id: string, nodeId?: string) => {
-        const outcome = await act(`test-${nodeId || id}`, () => testGroup(id, nodeId), false);
+        const outcome = await act(`test-${nodeId ? `${id}:${nodeId}` : id}`, () => testGroup(id, nodeId), false);
         if (!outcome.ok) return;
         const result = outcome.result;
         setNodeTests((current) => ({
             ...current,
             ...Object.fromEntries(
                 result.results.map(({ node_id, result: test }) => [
-                    node_id,
+                    `${id}:${node_id}`,
                     {
                         state: test.ok ? "healthy" : "unhealthy",
                         latency_ms: test.latency_ms,
@@ -635,7 +635,7 @@ export function ChatGptProxyManager({
                                                 </div>
                                                 {group.references.length ? <p className="break-all text-xs text-zinc-500">引用：{group.references.join("、")}</p> : null}
                                                 {group.nodes.map((storedNode) => {
-                                                    const node = { ...storedNode, health: nodeTests[storedNode.id] || storedNode.health };
+                                                    const node = { ...storedNode, health: nodeTests[`${group.id}:${storedNode.id}`] || storedNode.health };
                                                     const protoTag = getProxyProtocolTag(node.url);
                                                     return (
                                                         <div key={node.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2 last:border-b-0 last:pb-0">
@@ -653,7 +653,7 @@ export function ChatGptProxyManager({
                                                                     {node.health?.state === "healthy" ? "可用" : node.health?.state === "unhealthy" ? "异常" : "未检测"}
                                                                 </Tag>
                                                                 {node.health?.latency_ms != null ? `${node.health.latency_ms} ms` : null} · 图片并发 {node.image_concurrency_limit || "不限"}
-                                                                <Button size="small" disabled={Boolean(busy)} loading={busy === `test-${node.id}`} onClick={() => void applyGroupTest(group.id, node.id)}>
+                                                                <Button size="small" disabled={Boolean(busy)} loading={busy === `test-${group.id}:${node.id}`} onClick={() => void applyGroupTest(group.id, node.id)}>
                                                                     测试节点
                                                                 </Button>
                                                             </span>

@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
     getOverview: vi.fn(),
     updateBinding: vi.fn(),
     importSubscription: vi.fn(),
+    updateSubscription: vi.fn(),
+    deleteSubscription: vi.fn(),
     testDola: vi.fn(),
 }));
 
@@ -38,11 +40,13 @@ vi.mock("@/lib/server/magic-proxy-service", () => ({
     getMagicProxyOverview: mocks.getOverview,
     updateMagicProxyBinding: mocks.updateBinding,
     importMagicProxySubscription: mocks.importSubscription,
+    updateMagicProxySubscription: mocks.updateSubscription,
+    deleteMagicProxySubscription: mocks.deleteSubscription,
     testMagicProxyDolaAccess: mocks.testDola,
 }));
 
 import { GET, PATCH, POST as proxyPOST } from "./route";
-import { POST } from "./subscription/route";
+import { DELETE as subDELETE, GET as subGET, PATCH as subPATCH, POST } from "./subscription/route";
 
 describe("magic proxy admin routes", () => {
     beforeEach(() => {
@@ -103,5 +107,29 @@ describe("magic proxy admin routes", () => {
         expect(await response!.json()).toMatchObject({ code: 0, data: { targetUrl: "https://www.dola.com", overallOk: true } });
         expect(mocks.testDola).toHaveBeenCalledOnce();
         expect(mocks.auditAction).toHaveBeenLastCalledWith(expect.any(Request), user, "admin.magic_proxy.dola_test", { type: "magic_proxy", id: "dola" }, { ok: true });
+    });
+
+    it("returns subscriptions overview via GET on subscription route", async () => {
+        const response = await subGET();
+        expect(await response!.json()).toEqual({ code: 0, data: overview, msg: "OK" });
+    });
+
+    it("updates subscription name and status via PATCH and audits the change", async () => {
+        mocks.readJson.mockResolvedValue({ id: "sub_1", name: "新订阅名", enabled: false });
+        mocks.updateSubscription.mockResolvedValue(overview);
+        const response = await subPATCH(new Request("http://localhost/api/admin/magic-proxy/subscription", { method: "PATCH", body: "{}" }));
+
+        expect(await response!.json()).toEqual({ code: 0, data: overview, msg: "订阅已更新" });
+        expect(mocks.updateSubscription).toHaveBeenCalledWith({ id: "sub_1", name: "新订阅名", enabled: false });
+        expect(mocks.auditAction).toHaveBeenLastCalledWith(expect.any(Request), user, "admin.magic_proxy.subscription.update", { type: "magic_proxy_subscription", id: "sub_1" }, { enabled: false, name: "新订阅名" });
+    });
+
+    it("deletes a subscription via DELETE and audits the deletion", async () => {
+        mocks.deleteSubscription.mockResolvedValue(overview);
+        const response = await subDELETE(new Request("http://localhost/api/admin/magic-proxy/subscription?id=sub_1", { method: "DELETE" }));
+
+        expect(await response!.json()).toEqual({ code: 0, data: overview, msg: "订阅已删除" });
+        expect(mocks.deleteSubscription).toHaveBeenCalledWith("sub_1");
+        expect(mocks.auditAction).toHaveBeenLastCalledWith(expect.any(Request), user, "admin.magic_proxy.subscription.delete", { type: "magic_proxy_subscription", id: "sub_1" });
     });
 });

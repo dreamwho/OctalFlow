@@ -34,6 +34,32 @@ describe("canvas rich prompt editor token document", () => {
         expect(plainOffsetAtPosition(doc, posMention)).toBe(10);
     });
 
+    it("maps offsets correctly through documents containing empty paragraphs", () => {
+        const text = "第一行\n\n第三行内容";
+        const doc = parseCanvasPromptDocument(text, [], [], [], []);
+        expect(serializeCanvasPromptDocument(doc)).toBe(text);
+        // Offset 0: start of line 1
+        expect(plainOffsetAtPosition(doc, positionAtPlainOffset(doc, 0))).toBe(0);
+        // Offset 4: on the empty second line
+        const posEmpty = positionAtPlainOffset(doc, 4);
+        expect(plainOffsetAtPosition(doc, posEmpty)).toBe(4);
+        // Offset 5: start of line 3
+        const posLine3 = positionAtPlainOffset(doc, 5);
+        expect(plainOffsetAtPosition(doc, posLine3)).toBe(5);
+    });
+
+    it("resolves cursor position for inline @ insertion in the middle of a sentence", () => {
+        const text = "前缀文字 @ 后缀文字";
+        const doc = parseCanvasPromptDocument(text, [], [], [], []);
+        // '@' is at index 5
+        const posAtMention = positionAtPlainOffset(doc, 5);
+        expect(plainOffsetAtPosition(doc, posAtMention)).toBe(5);
+        // End of '@' is at index 6
+        const posAfterMention = positionAtPlainOffset(doc, 6);
+        expect(plainOffsetAtPosition(doc, posAfterMention)).toBe(6);
+        expect(posAtMention).toBeLessThan(posAfterMention);
+    });
+
     it("keeps Skill tokens out of the public prompt while preserving their inline position", () => {
         const skill = { type: "skill" as const, id: "skill-1", label: "室内设计" };
         const doc = parseCanvasPromptDocument("参考 @图片1 后", [image("图片1")], [], [{ id: skill.id, name: skill.label, description: "测试 Skill" }], [skill.id], [{ token: skill, start: 7, end: 7 }]);
@@ -102,5 +128,18 @@ describe("canvas rich prompt editor token document", () => {
         expect(isSubjectReference({ ...image("图3"), title: "产品主体图" })).toBe(true);
         expect(isSubjectReference({ ...image("图4"), title: "自然风景" })).toBe(false);
         expect(isSubjectReference({ ...image("图5"), kind: "video", title: "角色视频" })).toBe(false);
+    });
+
+    it("recognizes all occurrences when the same image is referenced multiple times", () => {
+        const text = "【参考素材职责】\n@图片1 锁定公司入口前台形象墙：现代风格\n@图片1 再次使用作为背景\n@图片2 锁定玻璃过道";
+        const doc = parseCanvasPromptDocument(text, [image("图片1"), image("图片2")], [], [], []);
+        const tokens: string[] = [];
+        for (const paragraph of doc.content) {
+            for (const item of paragraph.content || []) {
+                if (item.type === "referenceToken") tokens.push(String((item.attrs as { label?: string } | null)?.label));
+            }
+        }
+        expect(tokens).toEqual(["图片1", "图片1", "图片2"]);
+        expect(serializeCanvasPromptDocument(doc)).toBe(text);
     });
 });

@@ -3,6 +3,7 @@ import { resolveGlobalAiOpcPreset } from "@/lib/globalaiopc-catalog";
 import { inferModelCapability, isCreativeGenerationModel, normalizeModelId } from "@/lib/model-capability";
 import { normalizeModelIconKey } from "@/lib/model-icons";
 import { channelConnectionReady, protocolCatalogCapability, resolveChannelModelConfig } from "@/lib/channel-protocol-registry";
+export { channelConnectionReady } from "@/lib/channel-protocol-registry";
 
 const CAPABILITY_DEFAULT_KEYS = {
     text: "textModel",
@@ -152,7 +153,7 @@ export function resolveLogicalModelCapabilityProfile(binding: Pick<LogicalModelB
     };
 }
 
-function channelSupportsModel(channel: Pick<SystemModelChannel, "models">, model: string) {
+export function channelSupportsModel(channel: Pick<SystemModelChannel, "models">, model: string) {
     const target = normalizeModelName(model);
     return Boolean(target && channel.models.some((item) => normalizeModelName(item) === target));
 }

@@ -82,7 +82,7 @@ def test_headed_account_uses_fresh_context_and_only_closes_on_request(monkeypatc
     pool._loaded = True
 
     async def scenario():
-        result = await pool.start_headed_test(AccountInspectRequest(accountId="fixture", cookie="sid=fixture", proxyMode="direct"))
+        result = await pool.start_headed_test(AccountInspectRequest(accountId="fixture", cookie="sid=fixture", proxyMode="direct", headless=False))
         lease = (await pool.open_verification(result["verificationId"]))["leaseToken"]
         assert result["status"] == "headed_ready"
         assert next(value for kind, value in events if kind == "browser")["headless"] is False
@@ -102,12 +102,20 @@ def test_headed_account_uses_fresh_context_and_only_closes_on_request(monkeypatc
             return {"state": "needs_login"}
 
         monkeypatch.setattr(session_module, "probe_account_login", rejected)
-        second = await pool.start_headed_test(AccountInspectRequest(accountId="fixture", cookie="sid=expired"))
+        second = await pool.start_headed_test(AccountInspectRequest(accountId="fixture", cookie="sid=expired", headless=False))
         second_lease = (await pool.open_verification(second["verificationId"]))["leaseToken"]
         rejected_result = await pool.finalize_headed_test(second["verificationId"], VerificationLease(leaseToken=second_lease))
         assert rejected_result["status"] == "needs_login" and "cookie" not in rejected_result
         assert pool.list_headed_tests()[0]["verificationId"] == second["verificationId"]
         await pool.close_verification(second["verificationId"], VerificationLease(leaseToken=second_lease))
+
+        third = await pool.start_headed_test(AccountInspectRequest(accountId="fixture", cookie="sid=fixture", headless=True, timeoutSeconds=180))
+        assert next(value for kind, value in reversed(events) if kind == "browser")["headless"] is True
+        fourth = await pool.start_headed_test(AccountInspectRequest(accountId="fixture", cookie="sid=fixture", headless=True, timeoutSeconds=180))
+        assert [item["verificationId"] for item in pool.list_headed_tests()] == [fourth["verificationId"]]
+        assert ("close_browser", None) in events
+        fourth_lease = (await pool.open_verification(fourth["verificationId"]))["leaseToken"]
+        await pool.close_verification(fourth["verificationId"], VerificationLease(leaseToken=fourth_lease))
 
     asyncio.run(scenario())
     assert ("text", "hello") in events and ("key", "Tab") in events

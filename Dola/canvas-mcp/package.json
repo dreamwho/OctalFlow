@@ -1,0 +1,15 @@
+{
+  "name": "dreamyo-canvas-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check client.mjs && node --check server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test client.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.1.0",
+    "zod": "^4.6.5"
+  }
+}

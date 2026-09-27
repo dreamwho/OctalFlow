@@ -4,7 +4,7 @@ import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-li
 import { toUndiciRequestBody } from "@/lib/server/undici-request-body";
 import {
     appendGeminiAiRequestLog,
-    markGeminiAiRequestLogRunning,
+    appendGeminiAiRequestLifecycle,
     openGeminiAiRequestLog,
     settleGeminiAiRequestLog,
     type GeminiAiRequestCapability,
@@ -75,7 +75,7 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
     try {
         const binding = await ensureMagicProxyProvider("geminiai");
         if (metadata && binding.egress) metadata.proxyEgress = binding.egress;
-        lifecycle.push({
+        const routingEntry: GeminiAiRequestLifecycleEntry = {
             phase: "routing",
             message: binding.egress ? "代理出口路由绑定完成" : "使用直接连接 (Direct)",
             time: new Date().toISOString(),
@@ -83,15 +83,19 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
             detail: binding.egress
                 ? `模式: ${binding.egress.mode === "magic" ? "魔法代理" : binding.egress.mode === "chained" ? "链式代理" : "通用代理"}, 节点: ${binding.egress.node_name || binding.egress.address || "默认出口"}`
                 : "未配置代理出口，直接连接 sidecar / Google 官方网关",
-        });
+        };
+        lifecycle.push(routingEntry);
+        if (openLogId) await appendGeminiAiRequestLifecycle(openLogId, routingEntry).catch(() => undefined);
 
-        lifecycle.push({
+        const upstreamEntry: GeminiAiRequestLifecycleEntry = {
             phase: "upstream",
             message: "向 GeminiAI sidecar 发起实际请求",
             time: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
             detail: `目标地址: ${sidecarUrl(config.baseUrl, normalizedPath)}, 认证: ${options.unauthenticated ? "未鉴权请求" : "Bearer Token 授权"}`,
-        });
+        };
+        lifecycle.push(upstreamEntry);
+        if (openLogId) await appendGeminiAiRequestLifecycle(openLogId, upstreamEntry).catch(() => undefined);
 
         // 必须用 npm undici 的 fetch：Node 内置 fetch 的 dispatcher 与 npm undici Agent 接口不兼容
         // （报 invalid onRequestStart method / fetch failed）。
@@ -105,13 +109,15 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
         } as never);
 
         const rotations = Number(response.headers.get("x-aistudio-rotations"));
-        lifecycle.push({
+        const responseEntry: GeminiAiRequestLifecycleEntry = {
             phase: "response",
             message: `收到上游响应 HTTP ${response.status}`,
             time: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
             detail: `状态码: ${response.status}, Content-Type: ${response.headers.get("content-type") || "未知"}${Number.isFinite(rotations) && rotations > 0 ? `, 已自动换号 ${Math.floor(rotations)} 次` : ""}`,
-        });
+        };
+        lifecycle.push(responseEntry);
+        if (openLogId) await appendGeminiAiRequestLifecycle(openLogId, responseEntry).catch(() => undefined);
 
         // Image JSON contains base64 media. Read it once before logging so the
         // log preview does not hold a second streamed branch while the task

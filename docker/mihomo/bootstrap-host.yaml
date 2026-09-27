@@ -4,6 +4,10 @@ mode: rule
 log-level: info
 external-controller: 127.0.0.1:9090
 
+# 保留各 select 组的选中项，避免重启后服务出口静默回落 DIRECT。
+profile:
+  store-selected: true
+
 proxy-providers:
   dreamyo-Subscription:
     type: file

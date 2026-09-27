@@ -190,9 +190,7 @@ export function ImageVideoWorkbench() {
     }, [referenceModalOpen, assetTab, addReferenceFiles]);
 
     useEffect(() => {
-        const interval = window.setInterval(() => setNow(Date.now()), 1000);
         void fetch("/api/model-generation-stats").then((response) => response.ok ? response.json() : null).then((data: { data?: typeof durationStats } | null) => { if (data?.data) setDurationStats(data.data); }).catch(() => undefined);
-        return () => window.clearInterval(interval);
     }, []);
 
     useEffect(() => {
@@ -267,6 +265,22 @@ export function ImageVideoWorkbench() {
         const slots = log.requestSnapshot?.slots || [];
         return slots.map((slot) => ({ key: `${log.id}:${slot.id}`, log, slot, asset: slot.assetIndex === undefined ? undefined : log.assets[slot.assetIndex] }));
     }).filter((item) => statusFilter === "all" || item.slot.status === (statusFilter === "failed" ? "failed" : statusFilter)), [logs, statusFilter]);
+
+    const hasPendingCards = resultCards.some((card) => card.slot.status === "pending" && !card.slot.needsReview);
+    useEffect(() => {
+        if (!hasPendingCards) return;
+        let interval: number | undefined;
+        const sync = () => {
+            if (interval !== undefined) window.clearInterval(interval);
+            if (document.visibilityState === "visible") {
+                setNow(Date.now());
+                interval = window.setInterval(() => setNow(Date.now()), 1000);
+            }
+        };
+        sync();
+        document.addEventListener("visibilitychange", sync);
+        return () => { document.removeEventListener("visibilitychange", sync); if (interval !== undefined) window.clearInterval(interval); };
+    }, [hasPendingCards]);
 
     const submit = useCallback(async (regenerate?: ResultCard) => {
         const kind = regenerate?.log.kind || currentKind;
@@ -501,7 +515,39 @@ export function ImageVideoWorkbench() {
                     {mentionQuery !== null && mentionOptions.length ? <div className={styles.mentionMenu} role="listbox" aria-label="引用参考图片">{mentionOptions.map((item) => <button key={item.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(item.label)}><img src={item.url} alt="" /><span><strong>@{item.label}</strong><small>{item.name}</small></span></button>)}</div> : null}
                 </div>
             </Modal>
-            <Modal open={Boolean(lightbox)} onCancel={() => setLightbox(undefined)} footer={null} closable={false} width="min(1680px, calc(100vw - 24px))" centered destroyOnHidden className={styles.lightboxModal} styles={{ container: { padding: 0, background: "transparent", boxShadow: "none" }, body: { padding: 0 } }}>
+            <Modal
+                open={Boolean(lightbox)}
+                onCancel={() => setLightbox(undefined)}
+                footer={null}
+                closable={false}
+                width="auto"
+                centered
+                destroyOnHidden
+                zIndex={1300}
+                className={styles.lightboxModal}
+                style={{ maxWidth: "min(92vw, 1400px)", margin: "0 auto", padding: 0 }}
+                styles={{
+                    mask: {
+                        background: "rgba(4, 7, 18, 0.88)",
+                        backdropFilter: "blur(20px)",
+                        WebkitBackdropFilter: "blur(20px)",
+                    },
+                    container: {
+                        padding: 0,
+                        background: "transparent",
+                        boxShadow: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                    },
+                    body: {
+                        padding: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                    },
+                }}
+            >
                 {lightbox ? <div className={styles.lightboxContent}>
                     <div className={styles.lightboxToolbar}><strong title={lightbox.title}>{lightbox.title}</strong><div className={styles.lightboxActions}><button type="button" onClick={() => downloadOriginal(lightbox)}><Download />下载原图</button><button type="button" aria-label="关闭预览" onClick={() => setLightbox(undefined)}><X /></button></div></div>
                     {lightbox.kind === "image" ? <img src={imagePreviewUrl(lightbox.url, 2000)} alt={lightbox.title} /> : <video src={lightbox.url} controls autoPlay />}

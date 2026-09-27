@@ -30,8 +30,8 @@ export function audioExtension(mimeType?: string) {
     return "mp3";
 }
 
-export async function uploadCanvasImage(input: string | Blob): Promise<UploadedImage> {
-    const image = await uploadImage(input);
+export async function uploadCanvasImage(input: string | Blob, options?: { onProgress?: (percent: number) => void }): Promise<UploadedImage> {
+    const image = await uploadImage(input, options);
     return { ...image, url: await resolveStoredImageDataUrl(image.storageKey, image.url) };
 }
 

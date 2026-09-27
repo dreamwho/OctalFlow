@@ -5,6 +5,8 @@ export type MagicProxyNode = {
     type: string;
     alive?: boolean;
     delay?: number | null;
+    subscriptionId?: string;
+    subscriptionName?: string;
 };
 
 export type MagicProxyGroup = {
@@ -14,14 +16,35 @@ export type MagicProxyGroup = {
     all: string[];
 };
 
+export type MagicProxySubscriptionGroup = {
+    name: string;
+    type?: string;
+    proxies: string[];
+};
+
+export type MagicProxyPublicSubscription = {
+    id: string;
+    name: string;
+    url: string;
+    type: "remote" | "file";
+    enabled: boolean;
+    nodeCount: number;
+    groups: MagicProxySubscriptionGroup[];
+    updatedAt: string;
+    lastTestedAt?: string;
+};
+
 export type MagicProxyChainedConfig = {
     hop_node: string;
     landing_node_id: string;
+    hop_fallback_node?: string;
 };
 
 export type MagicProxyBinding = {
     enabled: boolean;
     node?: string;
+    /** 兜底节点：主节点拨号失败时由内核 fallback 组自动接管（仅 magic 模式）。 */
+    fallback_node?: string;
     mode?: "magic" | "chained";
     chained_config?: MagicProxyChainedConfig;
 };
@@ -33,18 +56,45 @@ export type MagicProxyState = {
     nodeCount: number;
     nodes: MagicProxyNode[];
     groups: MagicProxyGroup[];
+    subscriptionGroups?: MagicProxySubscriptionGroupView[];
+    subscriptions?: MagicProxyPublicSubscription[];
     bindings: Partial<Record<MagicProxyProvider, MagicProxyBinding>> & Record<Exclude<MagicProxyProvider, "dola">, MagicProxyBinding>;
+};
+
+export type MagicProxySubscriptionGroupView = {
+    name: string;
+    type: string;
+    subId: string;
+    subName: string;
+    proxies: string[];
+    now?: string;
+    alive?: boolean;
+    delay?: number | null;
 };
 
 export type MagicProxyBindingPatch = {
     provider: MagicProxyProvider;
     enabled: boolean;
     node?: string;
+    fallback_node?: string;
     mode?: "magic" | "chained";
     chained_config?: MagicProxyChainedConfig;
 };
 
-export type MagicProxySubscriptionImport = { url?: string; content?: string };
+export type MagicProxySubscriptionImport = {
+    url?: string;
+    content?: string;
+    name?: string;
+    subscriptionId?: string;
+    id?: string;
+    replace?: boolean;
+};
+
+export type MagicProxySubscriptionUpdate = {
+    id: string;
+    name?: string;
+    enabled?: boolean;
+};
 
 type ApiEnvelope<T> = { code?: number; data?: T; msg?: string; error?: string };
 
@@ -73,10 +123,21 @@ export const importMagicProxySubscription = (input: string | MagicProxySubscript
         body: json(typeof input === "string" ? { url: input } : input),
     });
 
-export const refreshMagicProxySubscription = () =>
+export const refreshMagicProxySubscription = (subscriptionId?: string) =>
     request<MagicProxyState>("/api/admin/magic-proxy/subscription", {
         method: "POST",
-        body: json({}),
+        body: json(subscriptionId ? { subscriptionId } : {}),
+    });
+
+export const updateMagicProxySubscriptionSetting = (input: MagicProxySubscriptionUpdate) =>
+    request<MagicProxyState>("/api/admin/magic-proxy/subscription", {
+        method: "PATCH",
+        body: json(input),
+    });
+
+export const deleteMagicProxySubscription = (id: string) =>
+    request<MagicProxyState>(`/api/admin/magic-proxy/subscription?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
     });
 
 export const updateMagicProxyBinding = (input: MagicProxyBindingPatch) =>

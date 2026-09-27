@@ -38,7 +38,8 @@ import { getInputSummary, isDreaminaUpscaleImageNode, isHiddenBatchChild, resolv
 import { analyzeCanvasVideo, extractCanvasVideoDepth, extractCanvasVideoFrames, type CanvasVideoFrameAsset } from "./canvas-video-frame-api";
 import { videoStorageKey } from "./use-canvas-video-frame-extraction";
 import { fitCanvasImageNodeSize, fitNodeSize } from "../utils/canvas-node-size";
-import { CANVAS_NODE_GAP, resolveCanvasNodePlacement, resolveCanvasSelectionLayout } from "../utils/canvas-surface-geometry";
+import { CANVAS_NODE_GAP, resolveCanvasNodePlacement, resolveCanvasSelectionLayout, type CanvasLayoutMode } from "../utils/canvas-surface-geometry";
+import { CanvasSelectionToolbar } from "../components/canvas-selection-toolbar";
 import { createInteriorDesignConfigNode, interiorDesignModels, interiorDesignNodePatch, isInteriorDesignNode } from "../utils/canvas-interior-design";
 import { resolveCanvasDolaWatermark } from "./dola-watermark-api";
 import { DolaVerificationDialog } from "../components/dola-verification-dialog";
@@ -101,6 +102,7 @@ function DreamyoCanvasPage() {
         createProject,
         updateProject,
         projectSaveState,
+        retryProjectSave,
         renameProject,
         deleteProjects,
         currentProject,
@@ -353,9 +355,9 @@ function DreamyoCanvasPage() {
         },
         [setNodes],
     );
-    const arrangeSelectedNodes = useCallback(() => {
+    const arrangeSelectedNodes = useCallback((mode: CanvasLayoutMode = "grid") => {
         setNodes((current) => {
-            const updates = resolveCanvasSelectionLayout(current, selectedNodeIdsRef.current);
+            const updates = resolveCanvasSelectionLayout(current, selectedNodeIdsRef.current, mode);
             if (!updates.length) return current;
             const positions = new Map(updates.map((update) => [update.id, update.position]));
             return current.map((node) => (positions.has(node.id) ? { ...node, position: positions.get(node.id)! } : node));
@@ -706,6 +708,7 @@ function DreamyoCanvasPage() {
                     onCancelTitleEditing={() => setTitleEditing(false)}
                     onSwitchProject={(id) => router.push(`/canvas/${id}`)}
                     saveState={projectSaveState}
+                    onRetrySave={() => retryProjectSave(currentProject?.id || "")}
                     canUndo={historyState.canUndo}
                     canRedo={historyState.canRedo}
                     onWorkbench={() => router.push("/create")}
@@ -984,6 +987,15 @@ function DreamyoCanvasPage() {
 
                 <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
 
+                <CanvasSelectionToolbar
+                    selectedNodeIds={selectedNodeIds}
+                    nodes={nodes}
+                    viewport={viewport}
+                    onLayout={arrangeSelectedNodes}
+                    onDuplicate={copySelectedNodes}
+                    onDelete={() => deleteNodes(new Set(selectedNodeIds))}
+                />
+
                 {contextMenu ? (
                     <CanvasNodeContextMenu
                         menu={contextMenu}
@@ -1091,7 +1103,7 @@ function DreamyoCanvasPage() {
                     onResolved={resolveDolaVerification}
                 />
 
-                <input ref={imageInputRef} type="file" accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
+                <input ref={imageInputRef} type="file" multiple accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
 

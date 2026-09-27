@@ -7,7 +7,8 @@ const DOLA_ERROR_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
     [/login|auth|cookie|credential/i, "账号登录态失效，请重新验证 Cookie (account session expired; re-verify the cookie)"],
     [/task[_ ]?not[_ ]?found/i, "任务不存在或已被 Provider 清理 (task not found; it may have been cleaned up)"],
     [/timeout|timed out/i, "上游处理超时 (upstream timeout)"],
-    [/sensitive|risk|moderation|blocked/i, "内容被上游风控拦截 (content blocked by upstream risk control)"],
+    [/content_policy_violation|sensitive|risk|moderation|blocked|社区规范|违规|安全审核/i, "内容被上游风控拦截/违反社区规范 (content policy violation / safety moderation)"],
+    [/upstream_generation_failed|generation_failed|生成失败/i, "上游模型生成失败 (upstream generation failed)"],
 ];
 
 /** 识别上游账号今日生成额度耗尽（Dola 协议约定错误码：upstream_quota_exhausted / quota_exhausted / 今日生成次数已达上限 / 额度已用完） */
@@ -31,7 +32,7 @@ export function isAccountClassGenerationError(text: string) {
 
 /** 内容风控/参数错误：换号无意义，立即失败 */
 export function isContentClassGenerationError(text: string) {
-    return /sensitive|moderation|inappropriate|policy|content.*(blocked|violation|flagged)|invalid (request|parameter|prompt)|unsupported/i.test(text || "");
+    return /content_policy_violation|sensitive|moderation|inappropriate|policy|content.*(blocked|violation|flagged)|invalid (request|parameter|prompt)|unsupported/i.test(text || "");
 }
 
 /** 反代账号池协议统一的失败判定：账号类错误且非内容类错误才允许换号重试 */

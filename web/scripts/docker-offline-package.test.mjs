@@ -16,13 +16,27 @@ afterEach(() => {
 });
 
 describe("offline Docker package scripts", () => {
+    it("keeps local secrets out of the package unless explicitly requested", () => {
+        const fixture = createFixture();
+        writeFileSync(path.join(fixture.root, ".env"), "DREAMYO_DOLA_PROVIDER_KEY=local-private-value\n", "utf8");
+        const packageDir = buildPackage(fixture);
+        expect(readFileSync(path.join(packageDir, ".env.example"), "utf8")).not.toContain("local-private-value");
+
+        const rerun = run("bash", ["scripts/build-docker-offline-package.sh", "--reuse-images"], fixture.root, {
+            ...fixture.environment,
+            DREAMYO_SEED_LOCAL_ENV: "1",
+        });
+        expect(rerun.status, rerun.stderr || rerun.stdout).toBe(0);
+        expect(readFileSync(path.join(packageDir, ".env.example"), "utf8")).toContain("DREAMYO_DOLA_PROVIDER_KEY=local-private-value");
+    });
+
     it("builds the default external-db package with fake Docker, checks archives, and archives prior dated output", () => {
         const fixture = createFixture();
         const packageDir = buildPackage(fixture);
 
         expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DATABASE_MODE=external");
         expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DOCKER_PLATFORM=linux/amd64");
-        expect(readdirSync(path.join(packageDir, "images")).sort()).toEqual(["app.tar", "geminiai.tar", "magic-proxy.tar"]);
+        expect(readdirSync(path.join(packageDir, "images")).sort()).toEqual(["app.tar", "dola-api.tar", "geminiai.tar", "magic-proxy.tar"]);
         expect(readFileSync(path.join(packageDir, "SHA256SUMS"), "utf8")).toContain("images/app.tar");
         expect(readFileSync(path.join(fixture.root, "scripts", "build-docker-offline-package.sh"), "utf8")).not.toContain("rm -rf");
 
@@ -276,6 +290,7 @@ printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
         esac
         ;;
     run)
+        if [[ "$*" == *"--entrypoint /bin/sh"* && "$*" == *"rm -f /proxy-runtime/config.yaml"* ]]; then exit 0; fi
         if [[ "$*" == *"--user 0"* && "$*" == *"/private-settings-source:ro"* ]]; then exit 0; fi
         if [[ "$*" == *"process.stdout.write"* ]]; then printf '1000:1000'; exit 0; fi
         if [[ "$*" == *"dreamyo-geminiai-accounts"* ]]; then printf 'dreamyo_dreamyo-geminiai-accounts\\n'; exit 0; fi

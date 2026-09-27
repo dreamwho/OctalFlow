@@ -10,6 +10,7 @@ import { NODE_DEFAULT_SIZE } from "../constants";
 import { CanvasNodeType, type CanvasAssistantSession, type Position } from "../types";
 import { fitCanvasImageNodeSize, fitNodeSize } from "../utils/canvas-node-size";
 import { PANORAMA_IMAGE_SIZE, isPanoramaRatio } from "../utils/canvas-panorama";
+import { CANVAS_NODE_GAP } from "../utils/canvas-surface-geometry";
 
 import { CANVAS_DROP_NODE_OFFSET, VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH } from "./canvas-page-elements";
 import { audioMetadata, imageMetadata, isAudioFile, replaceCanvasNodeMediaMetadata, uploadCanvasImage, videoMetadata } from "./canvas-page-utils";
@@ -77,18 +78,17 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
 
     const handleImageInputChange = useCallback(
         async (event: ReactChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0];
+            const rawFiles = event.target.files ? Array.from(event.target.files) : [];
             const target = uploadTargetRef.current;
-            if (!file) return;
-            if (!file.type.startsWith("image/") && !file.type.startsWith("video/") && !isAudioFile(file)) {
-                uploadTargetRef.current = null;
-                event.target.value = "";
-                message.error("请选择图片、视频、MP3 或 WAV 文件");
-                return;
-            }
+            if (!rawFiles.length) return;
 
             try {
                 if (target?.nodeId) {
+                    const file = rawFiles[0];
+                    if (!file.type.startsWith("image/") && !file.type.startsWith("video/") && !isAudioFile(file)) {
+                        message.error("请选择图片、视频、MP3 或 WAV 文件");
+                        return;
+                    }
                     if (isAudioFile(file)) {
                         await replaceAudioNodeFile(target.nodeId, file);
                         return;
@@ -147,8 +147,38 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
                     setSelectedConnectionId(null);
                     setDialogNodeId(target.nodeId);
                 } else {
-                    const position = target?.position || screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
-                    await (isAudioFile(file) ? createAudioFileNode(file, position) : file.type.startsWith("video/") ? createVideoFileNode(file, position) : createImageFileNode(file, position));
+                    const validFiles = rawFiles.filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isAudioFile(f));
+                    if (!validFiles.length) {
+                        message.error("请选择图片、视频、MP3 或 WAV 文件");
+                        return;
+                    }
+                    const basePosition = target?.position || screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
+                    if (validFiles.length === 1) {
+                        const file = validFiles[0];
+                        await (isAudioFile(file) ? createAudioFileNode(file, basePosition) : file.type.startsWith("video/") ? createVideoFileNode(file, basePosition) : createImageFileNode(file, basePosition));
+                    } else {
+                        const cols = validFiles.length <= 4 && validFiles.length !== 3 ? 2 : 3;
+                        const itemWidth = 340;
+                        const itemHeight = 240;
+                        setSelectedNodeIds(new Set());
+                        setSelectedConnectionId(null);
+                        const creations = validFiles.map((file, index) => {
+                            const col = index % cols;
+                            const row = Math.floor(index / cols);
+                            const nextPos = {
+                                x: basePosition.x + col * (itemWidth + CANVAS_NODE_GAP),
+                                y: basePosition.y + row * (itemHeight + CANVAS_NODE_GAP),
+                            };
+                            return isAudioFile(file) ? createAudioFileNode(file, nextPos, true) : file.type.startsWith("video/") ? createVideoFileNode(file, nextPos, true, false) : createImageFileNode(file, nextPos, true, false);
+                        });
+                        const results = await Promise.allSettled(creations);
+                        const createdIds = results
+                            .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && typeof r.value === "string")
+                            .map((r) => r.value);
+                        if (createdIds.length) {
+                            setSelectedNodeIds(new Set(createdIds));
+                        }
+                    }
                 }
             } catch (error) {
                 message.error(error instanceof Error ? error.message : "文件添加失败，请稍后重试");
@@ -169,11 +199,24 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
             const pos = screenToCanvas(event.clientX, event.clientY);
             setSelectedNodeIds(new Set());
             setSelectedConnectionId(null);
+            const cols = files.length <= 4 && files.length !== 3 ? 2 : 3;
+            const itemWidth = 340;
+            const itemHeight = 240;
             const creations = files.map((file, index) => {
-                const nextPos = { x: pos.x + index * CANVAS_DROP_NODE_OFFSET, y: pos.y + index * CANVAS_DROP_NODE_OFFSET };
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+                const nextPos = files.length > 1
+                    ? { x: pos.x + col * (itemWidth + CANVAS_NODE_GAP), y: pos.y + row * (itemHeight + CANVAS_NODE_GAP) }
+                    : pos;
                 return isAudioFile(file) ? createAudioFileNode(file, nextPos, true) : file.type.startsWith("video/") ? createVideoFileNode(file, nextPos, true, false) : createImageFileNode(file, nextPos, true, false);
             });
             void Promise.allSettled(creations).then((results) => {
+                const createdIds = results
+                    .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && typeof r.value === "string")
+                    .map((r) => r.value);
+                if (createdIds.length) {
+                    setSelectedNodeIds(new Set(createdIds));
+                }
                 const failures = results.filter((result) => result.status === "rejected");
                 if (failures.length) message.error(failures.length === files.length ? "文件添加失败" : `有 ${failures.length} 个文件添加失败`);
             });

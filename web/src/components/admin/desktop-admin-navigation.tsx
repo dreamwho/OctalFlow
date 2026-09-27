@@ -9,7 +9,7 @@ import type { PublicUser } from "@/lib/auth/store";
 import styles from "./desktop-admin-navigation.module.css";
 
 const groups = [
-    { label: "模型与渠道", icon: Layers3, items: ["channels", "geminiai", "dolaApi", "geminiTools", "chatgptApi", "dreamina", "runninghub", "minimax", "tencentMusic", "qwenAudio"] },
+    { label: "模型与渠道", icon: Layers3, items: ["channels", "geminiai", "dolaApi", "geminiTools", "chatgptApi", "dreamina", "runninghub", "minimax", "minimaxH3", "tencentMusic", "qwenAudio"] },
     { label: "网络代理", icon: Globe2, items: ["magicProxy", "genericProxy"] },
     { label: "运行记录", icon: Activity, items: ["logs", "generationOperations"] },
     { label: "应用设置", icon: SlidersHorizontal, items: ["settings", "canvasActions", "skills", "mediaStorage", "backup"] },

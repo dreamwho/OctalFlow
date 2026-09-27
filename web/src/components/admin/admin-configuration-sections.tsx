@@ -1,15 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { DataLifecyclePanel } from "@/components/admin/admin-data-lifecycle-settings";
 import { GenerationConcurrencyPanel, GenerationCostControlPanel, GenerationDefaultsPanel } from "@/components/admin/admin-generation-settings";
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { buildAdminSettingsPatch, resolveAdminSettingsAccess } from "@/components/admin/admin-settings-access";
 import { LabeledControl, SectionTitle, SettingInlineToggle, SettingToggle } from "@/components/admin/admin-settings-controls";
 import { SiteLogoPreview, SiteSettingStatus, siteSocialItems } from "@/components/admin/admin-site-preview";
-import { Button, Input, InputNumber, Radio, Switch, Tag } from "antd";
+import { Button, Input, InputNumber, Radio, Switch, Tabs, Tag } from "antd";
 import { Database, Globe2, Image as ImageIcon, Mail, Megaphone, Palette, Plus, Save, Search, Send, SlidersHorizontal, Sparkles, Trash2, Upload, UserCog } from "lucide-react";
 
-import { SettingsAnchorItem, SettingsStatusTile } from "./admin-dashboard-elements";
+import { SettingsStatusTile } from "./admin-dashboard-elements";
 import type { AdminDashboardController } from "./use-admin-dashboard-controller";
 
 export function AdminSiteSection({ controller }: { controller: AdminDashboardController }) {
@@ -237,10 +238,220 @@ export function AdminSettingsSection({ controller, desktopEdition }: { controlle
     } = controller;
     const access = resolveAdminSettingsAccess(currentUser);
     if (desktopEdition === "admin") access.system = false;
+    const [settingsTab, setSettingsTab] = useState<string>(() => (access.system ? "theme" : "generation"));
     if (activeSection !== "settings" || (!access.system && !access.upstream)) return null;
     const description = access.system && access.upstream ? "管理主题外观、账号注册、邮箱服务、生成与数据维护。" : access.system ? "管理主题外观、账号注册、邮箱服务与数据维护。" : "管理生成并发、成本保护与默认参数。";
-    const navigationClass =
-        access.system && access.upstream ? "grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2 2xl:grid-cols-1" : access.system ? "grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2 2xl:grid-cols-1" : "grid grid-cols-1 gap-1.5 2xl:grid-cols-1";
+
+    const settingsTabItems = [
+        ...(access.system
+            ? [
+                  {
+                      key: "theme",
+                      label: "主题外观",
+                      icon: <Palette className="size-4" />,
+                      children: (
+                          <section id="admin-settings-theme" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  <div className="min-w-0">
+                                      <SectionTitle icon={<Palette className="size-4" />} title="系统主题模式" />
+                                      <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">由后台统一设定前台与后台的主题风格，前台用户端不提供切换开关，确保全站风格统一。</p>
+                                  </div>
+                                  <Button
+                                      className="w-full sm:w-auto"
+                                      loading={settingsLoading}
+                                      icon={<Save className="size-4" />}
+                                      onClick={() => saveSettings({ site: getLatestSiteSettings() }, "主题设置已保存")}
+                                  >
+                                      保存主题设置
+                                  </Button>
+                              </div>
+                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                  <LabeledControl label="前端用户端主题">
+                                      <Radio.Group
+                                          value={settings.site.frontendTheme || "dark"}
+                                          onChange={(event) => updateSiteSetting("frontendTheme", event.target.value)}
+                                          optionType="button"
+                                          buttonStyle="solid"
+                                      >
+                                          <Radio.Button value="dark">深色主题 (Dark)</Radio.Button>
+                                          <Radio.Button value="light">浅色主题 (Light)</Radio.Button>
+                                      </Radio.Group>
+                                  </LabeledControl>
+                                  <LabeledControl label="管理后台主题">
+                                      <Radio.Group
+                                          value={settings.site.adminTheme || "dark"}
+                                          onChange={(event) => updateSiteSetting("adminTheme", event.target.value)}
+                                          optionType="button"
+                                          buttonStyle="solid"
+                                      >
+                                          <Radio.Button value="dark">深色主题 (Dark)</Radio.Button>
+                                          <Radio.Button value="light">浅色主题 (Light)</Radio.Button>
+                                      </Radio.Group>
+                                  </LabeledControl>
+                              </div>
+                          </section>
+                      ),
+                  },
+                  {
+                      key: "account",
+                      label: "账号与登录",
+                      icon: <UserCog className="size-4" />,
+                      children: (
+                          <section id="admin-settings-account" className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+                              <SectionTitle icon={<UserCog className="size-4" />} title="账号策略" />
+                              <p className="mt-1 mb-4 text-xs text-stone-500 dark:text-stone-400">管理用户开放注册、邮箱注册规则与支持的登录方式。</p>
+                              <div className="grid gap-3 max-w-2xl">
+                                  <SettingToggle
+                                      title="开放注册"
+                                      description="关闭后，新账号不能自助注册。"
+                                      checked={settings.registrationEnabled}
+                                      checkedChildren="开放"
+                                      unCheckedChildren="关闭"
+                                      onChange={(registrationEnabled) => setSettings((current) => ({ ...current, registrationEnabled }))}
+                                  />
+                                  <SettingToggle
+                                      title="邮箱注册"
+                                      description="开启后，注册页必须填写邮箱；邮箱唯一，不允许重复注册。"
+                                      checked={settings.emailRegistrationEnabled}
+                                      checkedChildren="开启"
+                                      unCheckedChildren="关闭"
+                                      onChange={(emailRegistrationEnabled) => setSettings((current) => ({ ...current, emailRegistrationEnabled }))}
+                                  />
+                                  <SettingToggle
+                                      title="账号密码登录"
+                                      description="关闭后，登录弹窗不再展示账号密码表单（至少保留一种登录方式）。"
+                                      checked={settings.loginMethods.password}
+                                      checkedChildren="开启"
+                                      unCheckedChildren="关闭"
+                                      onChange={(password) =>
+                                          setSettings((current) => {
+                                              const wechat = password ? current.loginMethods.wechat : true;
+                                              const defaultMethod = password ? (current.loginMethods.defaultMethod === "password" || !wechat ? "password" : "wechat") : "wechat";
+                                              return { ...current, loginMethods: { password, wechat, defaultMethod } };
+                                          })
+                                      }
+                                  />
+                                  <SettingToggle
+                                      title="微信登录"
+                                      description="开启后，登录弹窗提供微信扫码方式（需服务端配置微信开放平台凭据）。"
+                                      checked={settings.loginMethods.wechat}
+                                      checkedChildren="开启"
+                                      unCheckedChildren="关闭"
+                                      onChange={(wechat) =>
+                                          setSettings((current) => {
+                                              const password = current.loginMethods.password || !wechat;
+                                              const defaultMethod = wechat && current.loginMethods.defaultMethod === "wechat" ? "wechat" : password ? "password" : "wechat";
+                                              return { ...current, loginMethods: { password, wechat, defaultMethod } };
+                                          })
+                                      }
+                                  />
+                                  <LabeledControl label="默认登录方式">
+                                      <Radio.Group
+                                          value={settings.loginMethods.defaultMethod}
+                                          onChange={(event) => setSettings((current) => ({ ...current, loginMethods: { ...current.loginMethods, defaultMethod: event.target.value } }))}
+                                          optionType="button"
+                                          buttonStyle="solid"
+                                      >
+                                          <Radio.Button value="password" disabled={!settings.loginMethods.password}>账号密码</Radio.Button>
+                                          <Radio.Button value="wechat" disabled={!settings.loginMethods.wechat}>微信扫码</Radio.Button>
+                                      </Radio.Group>
+                                  </LabeledControl>
+                              </div>
+                          </section>
+                      ),
+                  },
+                  {
+                      key: "mail",
+                      label: "邮箱服务",
+                      icon: <Mail className="size-4" />,
+                      children: (
+                          <section id="admin-settings-mail" className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  <div>
+                                      <SectionTitle icon={<Mail className="size-4" />} title="SMTP 邮件服务" />
+                                      <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">配置用于发送验证码、密码找回等系统通知的 SMTP 发信邮箱。</p>
+                                  </div>
+                                  <Button className="w-full sm:w-auto" loading={mailTestLoading} icon={<Send className="size-4" />} onClick={() => void testMailSettings()}>
+                                      测试邮箱
+                                  </Button>
+                              </div>
+                              <div className="mt-4 grid gap-3 max-w-3xl">
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                      <LabeledControl label="邮箱类型">
+                                          <Input value={settings.mail.provider} placeholder="QQ 邮箱" onChange={(event) => updateMailSetting("provider", event.target.value)} />
+                                      </LabeledControl>
+                                      <LabeledControl label="SMTP 服务器">
+                                          <Input value={settings.mail.host} placeholder="smtp.qq.com" onChange={(event) => updateMailSetting("host", event.target.value)} />
+                                      </LabeledControl>
+                                  </div>
+                                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                                      <LabeledControl label="端口">
+                                          <InputNumber className="w-full" min={1} max={65535} precision={0} value={settings.mail.port} onChange={(value) => updateMailSetting("port", Number(value) || 465)} />
+                                      </LabeledControl>
+                                      <SettingInlineToggle title="SSL" checked={settings.mail.secure} checkedChildren="开启" unCheckedChildren="关闭" onChange={(secure) => updateMailSetting("secure", secure)} />
+                                  </div>
+                                  <div className="grid gap-3 lg:grid-cols-2">
+                                      <LabeledControl label="邮箱账号">
+                                          <Input value={settings.mail.username} placeholder="csyqlz@gmail.com" onChange={(event) => updateMailSetting("username", event.target.value)} />
+                                      </LabeledControl>
+                                      <LabeledControl label="授权码 / 密码">
+                                          <Input.Password value={settings.mail.password} placeholder="QQ 邮箱请填写 SMTP 授权码" onChange={(event) => updateMailSetting("password", event.target.value)} />
+                                      </LabeledControl>
+                                  </div>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                      <LabeledControl label="发件邮箱">
+                                          <Input value={settings.mail.fromEmail} placeholder="默认使用邮箱账号" onChange={(event) => updateMailSetting("fromEmail", event.target.value)} />
+                                      </LabeledControl>
+                                      <LabeledControl label="发件名称">
+                                          <Input value={settings.mail.fromName} placeholder={settings.site.title || "网站名称"} onChange={(event) => updateMailSetting("fromName", event.target.value)} />
+                                      </LabeledControl>
+                                  </div>
+                                  <LabeledControl label="测试收件邮箱">
+                                      <Input value={mailTestTo} placeholder="留空则发送到发件邮箱" onChange={(event) => setMailTestTo(event.target.value)} />
+                                  </LabeledControl>
+                                  <div className="rounded-lg border border-cyan-200/70 bg-cyan-50/80 px-3 py-2 text-xs leading-5 text-cyan-900 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-100">
+                                      QQ、网易、企业邮箱都可填写对应 SMTP；QQ 默认 `smtp.qq.com:465 SSL`，密码通常使用邮箱授权码。
+                                  </div>
+                              </div>
+                          </section>
+                      ),
+                  },
+              ]
+            : []),
+        ...(access.upstream
+            ? [
+                  {
+                      key: "generation",
+                      label: "生成控制",
+                      icon: <SlidersHorizontal className="size-4" />,
+                      children: (
+                          <section id="admin-settings-generation" className="space-y-4">
+                              <div className="grid gap-4 xl:grid-cols-2">
+                                  <GenerationConcurrencyPanel settings={settings} onChange={updateGenerationConcurrency} />
+                                  <GenerationCostControlPanel settings={settings} onChange={updateGenerationCostControl} />
+                              </div>
+                              <GenerationDefaultsPanel settings={settings} onChange={updateGenerationDefaults} />
+                          </section>
+                      ),
+                  },
+              ]
+            : []),
+        ...(access.system
+            ? [
+                  {
+                      key: "lifecycle",
+                      label: "数据维护",
+                      icon: <Database className="size-4" />,
+                      children: (
+                          <section id="admin-settings-lifecycle">
+                              <DataLifecyclePanel settings={settings} onChange={updateDataLifecycle} />
+                          </section>
+                      ),
+                  },
+              ]
+            : []),
+    ];
+
     return (
         <Panel>
             <PanelHeader
@@ -265,7 +476,7 @@ export function AdminSettingsSection({ controller, desktopEdition }: { controlle
                     </div>
                 }
             />
-            <div className="space-y-3 p-3 sm:space-y-5 sm:p-5">
+            <div className="space-y-4 p-3 sm:space-y-5 sm:p-5">
                 <div className={`grid gap-2 sm:gap-3 ${access.system && access.upstream ? "grid-cols-2" : "grid-cols-1"}`}>
                     {access.system ? (
                         <SettingsStatusTile
@@ -287,191 +498,8 @@ export function AdminSettingsSection({ controller, desktopEdition }: { controlle
                     ) : null}
                 </div>
 
-                <div className="grid gap-4 2xl:grid-cols-[248px_minmax(0,1fr)]">
-                    <aside className="2xl:sticky 2xl:top-4 2xl:self-start">
-                        <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-                            <div className="px-2 pb-2 text-xs font-semibold text-stone-500 dark:text-stone-400">设置顺序</div>
-                            <nav className={navigationClass} aria-label="系统设置分组">
-                                {access.system ? <SettingsAnchorItem href="#admin-settings-theme" icon={<Palette className="size-4" />} title="主题外观" detail="前台与后台主题" /> : null}
-                                {access.system ? <SettingsAnchorItem href="#admin-settings-account" icon={<UserCog className="size-4" />} title="账号与邮箱" detail="注册、SMTP、测试邮件" /> : null}
-                                {access.upstream ? <SettingsAnchorItem href="#admin-settings-generation" icon={<SlidersHorizontal className="size-4" />} title="生成控制" detail="默认值、并发上限" /> : null}
-                                {access.system ? <SettingsAnchorItem href="#admin-settings-lifecycle" icon={<Database className="size-4" />} title="数据维护" detail="到期记录、批次大小" /> : null}
-                            </nav>
-                        </div>
-                    </aside>
-
-                    <div className="min-w-0 space-y-4">
-                        {access.system ? (
-                            <section id="admin-settings-theme" className="scroll-mt-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div className="min-w-0">
-                                        <SectionTitle icon={<Palette className="size-4" />} title="系统主题模式" />
-                                        <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">由后台统一设定前台与后台的主题风格，前台用户端不提供切换开关，确保全站风格统一。</p>
-                                    </div>
-                                    <Button
-                                        className="w-full sm:w-auto"
-                                        loading={settingsLoading}
-                                        icon={<Save className="size-4" />}
-                                        onClick={() => saveSettings({ site: getLatestSiteSettings() }, "主题设置已保存")}
-                                    >
-                                        保存主题设置
-                                    </Button>
-                                </div>
-                                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                    <LabeledControl label="前端用户端主题">
-                                        <Radio.Group
-                                            value={settings.site.frontendTheme || "dark"}
-                                            onChange={(event) => updateSiteSetting("frontendTheme", event.target.value)}
-                                            optionType="button"
-                                            buttonStyle="solid"
-                                        >
-                                            <Radio.Button value="dark">深色主题 (Dark)</Radio.Button>
-                                            <Radio.Button value="light">浅色主题 (Light)</Radio.Button>
-                                        </Radio.Group>
-                                    </LabeledControl>
-                                    <LabeledControl label="管理后台主题">
-                                        <Radio.Group
-                                            value={settings.site.adminTheme || "dark"}
-                                            onChange={(event) => updateSiteSetting("adminTheme", event.target.value)}
-                                            optionType="button"
-                                            buttonStyle="solid"
-                                        >
-                                            <Radio.Button value="dark">深色主题 (Dark)</Radio.Button>
-                                            <Radio.Button value="light">浅色主题 (Light)</Radio.Button>
-                                        </Radio.Group>
-                                    </LabeledControl>
-                                </div>
-                            </section>
-                        ) : null}
-                        {access.system ? (
-                            <section id="admin-settings-account" className="scroll-mt-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                                <div className="grid gap-5 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.28fr)]">
-                                    <div className="min-w-0 space-y-4">
-                                        <SectionTitle icon={<UserCog className="size-4" />} title="账号策略" />
-                                        <div className="grid gap-3">
-                                            <SettingToggle
-                                                title="开放注册"
-                                                description="关闭后，新账号不能自助注册。"
-                                                checked={settings.registrationEnabled}
-                                                checkedChildren="开放"
-                                                unCheckedChildren="关闭"
-                                                onChange={(registrationEnabled) => setSettings((current) => ({ ...current, registrationEnabled }))}
-                                            />
-                                            <SettingToggle
-                                                title="邮箱注册"
-                                                description="开启后，注册页必须填写邮箱；邮箱唯一，不允许重复注册。"
-                                                checked={settings.emailRegistrationEnabled}
-                                                checkedChildren="开启"
-                                                unCheckedChildren="关闭"
-                                                onChange={(emailRegistrationEnabled) => setSettings((current) => ({ ...current, emailRegistrationEnabled }))}
-                                            />
-                                            <SettingToggle
-                                                title="账号密码登录"
-                                                description="关闭后，登录弹窗不再展示账号密码表单（至少保留一种登录方式）。"
-                                                checked={settings.loginMethods.password}
-                                                checkedChildren="开启"
-                                                unCheckedChildren="关闭"
-                                                onChange={(password) =>
-                                                    setSettings((current) => {
-                                                        const wechat = password ? current.loginMethods.wechat : true;
-                                                        const defaultMethod = password ? (current.loginMethods.defaultMethod === "password" || !wechat ? "password" : "wechat") : "wechat";
-                                                        return { ...current, loginMethods: { password, wechat, defaultMethod } };
-                                                    })
-                                                }
-                                            />
-                                            <SettingToggle
-                                                title="微信登录"
-                                                description="开启后，登录弹窗提供微信扫码方式（需服务端配置微信开放平台凭据）。"
-                                                checked={settings.loginMethods.wechat}
-                                                checkedChildren="开启"
-                                                unCheckedChildren="关闭"
-                                                onChange={(wechat) =>
-                                                    setSettings((current) => {
-                                                        const password = current.loginMethods.password || !wechat;
-                                                        const defaultMethod = wechat && current.loginMethods.defaultMethod === "wechat" ? "wechat" : password ? "password" : "wechat";
-                                                        return { ...current, loginMethods: { password, wechat, defaultMethod } };
-                                                    })
-                                                }
-                                            />
-                                            <LabeledControl label="默认登录方式">
-                                                <Radio.Group
-                                                    value={settings.loginMethods.defaultMethod}
-                                                    onChange={(event) => setSettings((current) => ({ ...current, loginMethods: { ...current.loginMethods, defaultMethod: event.target.value } }))}
-                                                    optionType="button"
-                                                    buttonStyle="solid"
-                                                >
-                                                    <Radio.Button value="password" disabled={!settings.loginMethods.password}>账号密码</Radio.Button>
-                                                    <Radio.Button value="wechat" disabled={!settings.loginMethods.wechat}>微信扫码</Radio.Button>
-                                                </Radio.Group>
-                                            </LabeledControl>
-                                        </div>
-                                    </div>
-
-                                    <div className="min-w-0 border-t border-stone-200 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0 dark:border-stone-800">
-                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                            <SectionTitle icon={<Mail className="size-4" />} title="邮箱服务" />
-                                            <Button className="w-full sm:w-auto" loading={mailTestLoading} icon={<Send className="size-4" />} onClick={() => void testMailSettings()}>
-                                                测试邮箱
-                                            </Button>
-                                        </div>
-                                        <div className="mt-4 grid gap-3">
-                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                <LabeledControl label="邮箱类型">
-                                                    <Input value={settings.mail.provider} placeholder="QQ 邮箱" onChange={(event) => updateMailSetting("provider", event.target.value)} />
-                                                </LabeledControl>
-                                                <LabeledControl label="SMTP 服务器">
-                                                    <Input value={settings.mail.host} placeholder="smtp.qq.com" onChange={(event) => updateMailSetting("host", event.target.value)} />
-                                                </LabeledControl>
-                                            </div>
-                                            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                                                <LabeledControl label="端口">
-                                                    <InputNumber className="w-full" min={1} max={65535} precision={0} value={settings.mail.port} onChange={(value) => updateMailSetting("port", Number(value) || 465)} />
-                                                </LabeledControl>
-                                                <SettingInlineToggle title="SSL" checked={settings.mail.secure} checkedChildren="开启" unCheckedChildren="关闭" onChange={(secure) => updateMailSetting("secure", secure)} />
-                                            </div>
-                                            <div className="grid gap-3 lg:grid-cols-2">
-                                                <LabeledControl label="邮箱账号">
-                                                    <Input value={settings.mail.username} placeholder="csyqlz@gmail.com" onChange={(event) => updateMailSetting("username", event.target.value)} />
-                                                </LabeledControl>
-                                                <LabeledControl label="授权码 / 密码">
-                                                    <Input.Password value={settings.mail.password} placeholder="QQ 邮箱请填写 SMTP 授权码" onChange={(event) => updateMailSetting("password", event.target.value)} />
-                                                </LabeledControl>
-                                            </div>
-                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                <LabeledControl label="发件邮箱">
-                                                    <Input value={settings.mail.fromEmail} placeholder="默认使用邮箱账号" onChange={(event) => updateMailSetting("fromEmail", event.target.value)} />
-                                                </LabeledControl>
-                                                <LabeledControl label="发件名称">
-                                                    <Input value={settings.mail.fromName} placeholder={settings.site.title || "网站名称"} onChange={(event) => updateMailSetting("fromName", event.target.value)} />
-                                                </LabeledControl>
-                                            </div>
-                                            <LabeledControl label="测试收件邮箱">
-                                                <Input value={mailTestTo} placeholder="留空则发送到发件邮箱" onChange={(event) => setMailTestTo(event.target.value)} />
-                                            </LabeledControl>
-                                            <div className="rounded-lg border border-cyan-200/70 bg-cyan-50/80 px-3 py-2 text-xs leading-5 text-cyan-900 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-100">
-                                                QQ、网易、企业邮箱都可填写对应 SMTP；QQ 默认 `smtp.qq.com:465 SSL`，密码通常使用邮箱授权码。
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </section>
-                        ) : null}
-
-                        {access.upstream ? (
-                            <section id="admin-settings-generation" className="scroll-mt-6 space-y-4">
-                                <div className="grid gap-4 xl:grid-cols-2">
-                                    <GenerationConcurrencyPanel settings={settings} onChange={updateGenerationConcurrency} />
-                                    <GenerationCostControlPanel settings={settings} onChange={updateGenerationCostControl} />
-                                </div>
-                                <GenerationDefaultsPanel settings={settings} onChange={updateGenerationDefaults} />
-                            </section>
-                        ) : null}
-                        {access.system ? (
-                            <section id="admin-settings-lifecycle" className="scroll-mt-6">
-                                <DataLifecyclePanel settings={settings} onChange={updateDataLifecycle} />
-                            </section>
-                        ) : null}
-                    </div>
+                <div className="mt-2">
+                    <Tabs activeKey={settingsTab} onChange={setSettingsTab} items={settingsTabItems} />
                 </div>
             </div>
         </Panel>

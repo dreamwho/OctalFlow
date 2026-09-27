@@ -34,4 +34,13 @@ fi
 chmod 600 "$provider_file"
 chown 1000:1000 "$runtime_dir" "$provider_file"
 
+if [ -f "$runtime_dir/config.yaml" ]; then
+    # 旧版本应用可能写入过携带无效 provider 路径的动态配置：先校验，解析失败回退
+    # bootstrap 启动，避免容器崩溃循环卡死整个部署（应用随后会重写正确配置并热重载）。
+    if /mihomo -t -f "$runtime_dir/config.yaml" >/dev/null 2>&1; then
+        exec /mihomo -f "$runtime_dir/config.yaml" -secret "$DREAMYO_MAGIC_PROXY_SECRET" -ext-ctl "$DREAMYO_MAGIC_PROXY_LISTEN_HOST:9090"
+    fi
+    printf '%s\n' 'runtime config.yaml is invalid; falling back to bootstrap config' >&2
+fi
+
 exec /mihomo -secret "$DREAMYO_MAGIC_PROXY_SECRET" -ext-ctl "$DREAMYO_MAGIC_PROXY_LISTEN_HOST:9090"

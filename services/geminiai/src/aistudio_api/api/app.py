@@ -73,25 +73,31 @@ async def lifespan(app: FastAPI):
         account_count,
     )
 
-    # 后台预热浏览器，避免首次请求延迟
+    # 预热会让 Camoufox 在无请求时持续占用 CPU 和内存，默认按需启动。
     warmup_task = None
     async def _warmup():
         try:
             await client.warmup()
         except Exception as e:
             logger.warning("浏览器预热失败: %s", e)
-    if account_count:
+    if account_count and settings.browser_preheat:
         warmup_task = asyncio.create_task(_warmup())
 
-    yield
-    logger.info("Shutting down")
-    if warmup_task and not warmup_task.done():
-        warmup_task.cancel()
-    runtime_state.client = None
-    runtime_state.busy_lock = None
-    runtime_state.account_request_lock = None
-    runtime_state.account_service = None
-    runtime_state.rotator = None
+    try:
+        yield
+    finally:
+        logger.info("Shutting down")
+        if warmup_task and not warmup_task.done():
+            warmup_task.cancel()
+            await asyncio.gather(warmup_task, return_exceptions=True)
+        try:
+            await client.close()
+        finally:
+            runtime_state.client = None
+            runtime_state.busy_lock = None
+            runtime_state.account_request_lock = None
+            runtime_state.account_service = None
+            runtime_state.rotator = None
 
 
 app = FastAPI(title="AI Studio API", lifespan=lifespan)

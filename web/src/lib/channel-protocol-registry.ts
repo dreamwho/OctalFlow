@@ -181,7 +181,7 @@ const dolaVideoOperations: ProtocolOperation = {
     createPath: "/v1/videos",
     imageToVideoPath: "/v1/videos",
     queryPath: "/v1/videos/:task_id",
-    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","duration":{{duration}},"ratio":"{{ratio}}","images":"{{images}}","first_frame":"{{first_frame}}","last_frame":"{{last_frame}}"}',
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","duration":{{duration}},"ratio":"{{ratio}}","images":"{{images}}","first_frame":"{{first_frame}}","last_frame":"{{last_frame}}","references":"{{references}}"}',
     resultField: "data.video_url / video_url",
     statusField: "status",
     durationRange: "5、10、15、30 秒（按模型）",

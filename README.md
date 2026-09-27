@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/public/logo.svg?v=0.0.6" width="108" alt="dreamyo logo">
+  <img src="web/public/logo.svg?v=0.1.1" width="108" alt="dreamyo logo">
 </p>
 
 <h1 align="center">dreamyo</h1>
@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/dreamwho/dreamyo"><img src="https://img.shields.io/github/stars/dreamwho/dreamyo?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.0.6-2563eb?style=flat-square" alt="Version"></a>
+  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.1.1-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-f97316?style=flat-square" alt="License"></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.2-000000?style=flat-square&logo=nextdotjs" alt="Next.js"></a>
   <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-16-4169e1?style=flat-square&logo=postgresql" alt="PostgreSQL"></a>
@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://www.dreamyo.com">演示站</a> ·
   <a href="docs/index.md">文档索引</a> ·
-  <a href="docs/content/docs/overview/configuration.mdx">0.0.6 发布说明</a> ·
+  <a href="docs/content/docs/overview/configuration.mdx">0.1.1 发布说明</a> ·
   <a href="#目录与文件用途">目录与文件用途</a> ·
   <a href="docs/content/docs/overview/page-gallery.mdx">页面图册</a> ·
   <a href="https://linux.do">LINUX DO</a> ·
@@ -385,7 +385,7 @@ dreamyo 调用外部 AI 模型，不要求 GPU。服务器主要承担 Web、Pos
 
 ## 快速开始
 
-> 安装过 0.0.2 的用户必须先删除旧数据库或数据库卷，再重新安装 0.0.6，并通过 `/install` 重新初始化数据库；不支持沿用旧数据库或原地升级。
+> 升级至 0.1.1 时，请参照更新记录和部署手册通过 `/install` 检查数据库状态，已部署环境可直接通过一键部署更新脚本完成容器平滑热更。
 
 ### Docker Compose
 

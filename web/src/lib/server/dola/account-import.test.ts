@@ -14,4 +14,9 @@ describe("Dola Cookie import", () => {
         expect(result[0]?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
         expect(result[1]?.error).toBeTruthy();
     });
+    it("puts Google-authorized credentials in their own group by default", () => {
+        const [account] = parseDolaImportInputs([{ cookie: "session=authorized", authType: "google" }]);
+        expect(account?.authType).toBe("google");
+        expect(account?.group).toBe("Google 授权");
+    });
 });

@@ -78,10 +78,9 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
         for (const group of genericGroups) {
             for (const node of group.nodes || []) {
                 const nodeName = node.name || node.id;
-                const nodeAddress = node.url || "";
                 options.push({
                     value: node.id,
-                    label: nodeAddress ? `${nodeName} · ${nodeAddress} [${group.name}]` : `${nodeName} [${group.name}]`,
+                    label: `${nodeName} [${group.name}]`,
                 });
             }
         }
@@ -292,10 +291,30 @@ export function ChatGptChainedProxyPanel({ proxyRuntime }: { proxyRuntime: ChatG
                         )}
                     </div>
                     <Space>
-                        <Button onClick={() => void handleTest()} loading={testing} disabled={testing}>
+                        <Button
+                            onClick={() => void handleTest()}
+                            loading={testing}
+                            disabled={testing}
+                            className="h-9 px-3.5 rounded-lg border-purple-200/80 bg-white text-zinc-800 hover:!border-purple-400 hover:!text-purple-700 hover:bg-purple-50/50 dark:border-purple-900/60 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:!border-purple-500 dark:hover:!text-purple-300 font-medium text-xs sm:text-sm shadow-sm transition-all"
+                        >
                             测试 ChatGPT 连通性
                         </Button>
-                        <Button type="primary" onClick={() => void handleSave()} loading={saving || proxyRuntime.saving} disabled={!canSave || saving || proxyRuntime.saving}>
+                        <Button
+                            type="primary"
+                            onClick={() => void handleSave()}
+                            loading={saving || proxyRuntime.saving}
+                            disabled={!canSave || saving || proxyRuntime.saving}
+                            className="h-9 px-4 rounded-lg font-medium text-xs sm:text-sm !border-0 text-white shadow-[0_4px_14px_rgba(110,83,246,0.38)] hover:shadow-[0_6px_20px_rgba(110,83,246,0.48)] hover:brightness-105 active:scale-[0.98] transition-all"
+                            style={
+                                (!canSave || saving || proxyRuntime.saving)
+                                    ? undefined
+                                    : {
+                                        background: "linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff)",
+                                        border: "none",
+                                        color: "#ffffff",
+                                    }
+                            }
+                        >
                             保存并启用链式代理
                         </Button>
                     </Space>

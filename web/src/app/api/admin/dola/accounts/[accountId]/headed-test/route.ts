@@ -3,6 +3,7 @@ import { readJsonBodyResult } from "@/lib/auth/request";
 import { auditDolaAdminAction, auditDolaAdminFailure, dolaRouteError, requireDolaAdmin } from "@/lib/server/dola/admin";
 import { startDolaHeadedAccountTest } from "@/lib/server/dola/service";
 import { DolaProviderError } from "@/lib/server/dola/provider";
+import { dolaGoogleLoginMode } from "@/lib/server/dola/provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +21,12 @@ export async function POST(request: Request, context: { params: Promise<{ accoun
         if (mode !== "direct" && mode !== "magic" && mode !== "generic" && mode !== "chained") throw new DolaProviderError("请选择测试代理方式", 400);
         const target = typeof body.target === "string" ? body.target.trim() : "";
         if (mode !== "direct" && !target) throw new DolaProviderError("请选择测试代理节点", 400);
-        const result = await startDolaHeadedAccountTest(accountId, { mode, target });
+        const timeoutSeconds = body.timeoutSeconds;
+        if (!Number.isSafeInteger(timeoutSeconds) || Number(timeoutSeconds) <= 0) throw new DolaProviderError("窗口空闲时间必须为正整数秒", 400);
+        const headless = dolaGoogleLoginMode(request.url) === "remote";
+        const result = await startDolaHeadedAccountTest(accountId, { mode, target, headless, timeoutSeconds: Number(timeoutSeconds) });
         await auditDolaAdminAction(request, access.user, "admin.dola.account.headed_test", { type: "dola_account", id: accountId }, { mode, target });
-        return apiSuccess(result, "已打开独立 Camoufox 有头测试窗口");
+        return apiSuccess({ ...result, headless }, headless ? "已打开 Dola 远程测试浏览器" : "已打开独立 Camoufox 有头测试窗口");
     } catch (error) {
         await auditDolaAdminFailure(request, access.user, "admin.dola.account.headed_test", { type: "dola_account", id: accountId });
         return dolaRouteError(error, "启动 Dola 有头测试失败");

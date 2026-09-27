@@ -247,6 +247,8 @@ export type GenerationConcurrencySettings = {
 };
 
 export type GenerationDefaultSettings = {
+    /** 生成媒体从上游下载时的出网方式：`server-proxy` 跟随服务器代理，`direct` 强制直连以节省代理流量。 */
+    mediaDownloadEgress?: "server-proxy" | "direct";
     canvasImageCount: number;
     imageSize: string;
     imageQuality: string;

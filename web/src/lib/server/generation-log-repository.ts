@@ -11,6 +11,7 @@ import { createDatedMediaPath, GENERATION_MEDIA_ROOT } from "@/lib/server/local-
 import { deleteLocalMediaRegistrations, getLocalMediaRegistration, registerLocalMediaAsset } from "@/lib/server/local-media-registry";
 import { deleteExternalMediaObject, persistExternalMediaIfEnabled } from "@/lib/server/object-storage-service";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { getAuthSettings } from "@/lib/auth/store";
 import { isSafeOutboundUrl } from "@/lib/server/security";
 import type { GenerationLogAsset, GenerationLogDatabase, GenerationLogKind, GenerationLogSource, GenerationLogStatus, StoredGenerationLog } from "./generation-log-types";
 
@@ -97,12 +98,24 @@ export async function writeDataUrlAsset(dataUrl: string, type: GenerationLogKind
     return writeAssetBytes(bytes, mimeType, type, context);
 }
 
+/** 读取「生成媒体下载出网方式」设置；设置读取失败时按历史行为（跟随服务器代理）处理。 */
+async function readMediaDownloadDirectOnly() {
+    try {
+        const settings = await getAuthSettings();
+        return settings.generationDefaults.mediaDownloadEgress === "direct";
+    } catch {
+        return false;
+    }
+}
+
 export async function writeRemoteAsset(url: string, type: GenerationLogKind, context: GenerationAssetContext): Promise<GenerationLogAsset | null> {
     if (!(await isSafeRemoteAssetUrl(url))) return null;
+    // 下载生成媒体默认跟随服务器代理（与历史行为一致）；管理员可切换为强制直连以节省代理流量。
+    const directOnly = await readMediaDownloadDirectOnly();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SERVER_ASSET_DOWNLOAD_TIMEOUT_MS);
     try {
-        const response = await fetchSafeOutbound(url, { cache: "no-store", redirect: "manual", signal: controller.signal }, { allowProxyFakeIpSpace: true });
+        const response = await fetchSafeOutbound(url, { cache: "no-store", redirect: "manual", signal: controller.signal }, { allowProxyFakeIpSpace: true, directOnly });
         if (!response.ok || !response.body) return null;
         const contentLength = Number(response.headers.get("content-length") || 0);
         const maxBytes = maxServerAssetBytes(type);

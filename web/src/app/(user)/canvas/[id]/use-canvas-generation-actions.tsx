@@ -814,14 +814,19 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     return;
                 }
                 if (node.type === CanvasNodeType.Video) {
-                    if (!context) throw new Error("视频生成上下文已丢失，无法继续重试");
-                    const videoReferences =
-                        restoreCanvasVideoGenerationReferences(node.metadata) ||
-                        resolveCanvasVideoGenerationReferences({
-                            metadata: sourceNode.metadata,
-                            context,
-                            availableInputs: buildNodeGenerationInputs(sourceNode.id, nodesRef.current, connectionsRef.current),
-                        });
+                    const restored = restoreCanvasVideoGenerationReferences(node.metadata);
+                    const hasRestoredReferences = Boolean(restored && (restored.images.length > 0 || restored.videos.length > 0 || restored.audios.length > 0));
+                    const availableInputs = [
+                        ...buildNodeGenerationInputs(sourceNode.id, nodesRef.current, connectionsRef.current),
+                        ...(sourceNode.id !== node.id ? buildNodeGenerationInputs(node.id, nodesRef.current, connectionsRef.current) : []),
+                    ];
+                    const videoReferences = hasRestoredReferences
+                        ? restored!
+                        : resolveCanvasVideoGenerationReferences({
+                              metadata: node.metadata || sourceNode.metadata,
+                              context: context || (await hydrateNodeGenerationContext(buildNodeGenerationContext(node.id, nodesRef.current, connectionsRef.current, prompt))),
+                              availableInputs,
+                          });
                     const task = await createServerVideoGenerationTask(generationConfig, prompt, videoReferences.images, videoReferences.videos, videoReferences.audios, {
                         signal: controller.signal,
                         conversationId: currentProject?.creativeConversationId,

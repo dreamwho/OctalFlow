@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from .contracts import AccountInspectRequest, GoogleLoginRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest
+from .contracts import AccountInspectRequest, GoogleLoginRequest, GoogleLoginSessionRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest
 from .session import CamoufoxSessionPool
 
-app = FastAPI(title="dreamyo Dola Camoufox Provider")
 pool = CamoufoxSessionPool()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        yield
+    finally:
+        await pool.close_all_verifications()
+
+app = FastAPI(title="dreamyo Dola Camoufox Provider", lifespan=lifespan)
 
 
 def require_internal(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)) -> None:
@@ -87,6 +96,8 @@ async def submit(request: VideoRequest) -> dict:
         **({"diagnostics": task.diagnostics} if task.diagnostics else {}),
         **({"videoUrl": task.videoUrl, "video_url": task.videoUrl} if task.videoUrl else {}),
         **({"imageUrls": task.imageUrls} if task.imageUrls else {}),
+        **({"error": task.error} if task.error else {}),
+        **({"rawError": task.rawError, "raw_error": task.rawError} if getattr(task, "rawError", None) else {}),
         "transport": "protocol-page-signed",
     }
 
@@ -106,6 +117,8 @@ async def query(task_id: str) -> dict:
         payload["conversation_id"] = task.conversationId
     if task.videoUrl:
         payload["video_url"] = task.videoUrl
+    if getattr(task, "rawError", None):
+        payload["raw_error"] = task.rawError
     if task.imageUrls:
         # OpenAI-compatible result envelope so standard clients and the image
         # task poller can read data[0].url directly.
@@ -124,6 +137,8 @@ async def open_verification(verification_id: str) -> dict:
         return await pool.open_verification(verification_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @app.post("/internal/runtime/v1/verifications/{verification_id}/input", dependencies=[Depends(require_internal)])
@@ -152,6 +167,18 @@ async def verification_keyboard(verification_id: str, input: VerificationKeyboar
 async def finalize_headed_test(verification_id: str, request: VerificationLease) -> dict:
     try:
         return await pool.finalize_headed_test(verification_id, request)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/internal/runtime/v1/verifications/{verification_id}/google-finalize", dependencies=[Depends(require_internal)])
+async def finalize_google_login_session(verification_id: str, request: VerificationLease) -> dict:
+    try:
+        return await pool.finalize_google_login_session(verification_id, request)
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
     except ValueError as error:
@@ -194,6 +221,16 @@ async def google_login(request: GoogleLoginRequest) -> dict:
         )
     except TimeoutError as error:
         raise HTTPException(status_code=408, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+
+
+@app.post("/internal/runtime/v1/accounts/google-login/session", dependencies=[Depends(require_internal)])
+async def start_google_login_session(request: GoogleLoginSessionRequest) -> dict:
+    try:
+        return await pool.start_google_login_session(request.ownerId, proxy_mode=request.proxyMode, proxy_url=request.proxyUrl, timeout_seconds=request.timeoutSeconds, headless=request.headless)
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:

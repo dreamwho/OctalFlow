@@ -8,8 +8,9 @@ import { uploadMediaFile } from "@/services/file-storage";
 import { NODE_DEFAULT_SIZE } from "../constants";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "../types";
 import { fitCanvasImageNodeSize, fitNodeSize } from "../utils/canvas-node-size";
+import { CANVAS_NODE_GAP } from "../utils/canvas-surface-geometry";
 
-import { CANVAS_DROP_NODE_OFFSET, NODE_STATUS_SUCCESS, VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, createCanvasNode } from "./canvas-page-elements";
+import { CANVAS_DROP_NODE_OFFSET, NODE_STATUS_LOADING, NODE_STATUS_SUCCESS, VIDEO_NODE_MAX_HEIGHT, VIDEO_NODE_MAX_WIDTH, createCanvasNode } from "./canvas-page-elements";
 import { audioMetadata, imageMetadata, uploadCanvasImage, videoMetadata } from "./canvas-page-utils";
 
 import type { CanvasInteractions } from "./use-canvas-interactions";
@@ -37,69 +38,142 @@ export function useCanvasFileActions({ state, interactions }: { state: CanvasPag
     } = state;
     const { getCanvasCenter, deleteNodes, deleteConnection, copySelectedNodes, pasteCopiedNodes, undoCanvas, redoCanvas } = interactions;
 
+    const patchUploadNode = useCallback(
+        (id: string, updater: (node: CanvasNodeData) => CanvasNodeData | null) => {
+            setNodes((prev) => prev.flatMap((node) => {
+                if (node.id !== id) return [node];
+                const next = updater(node);
+                return next ? [next] : [];
+            }));
+        },
+        [setNodes],
+    );
+
+    const runUploadNode = useCallback(
+        <T,>(id: string, blobUrl: string | null, task: (onProgress: (percent: number) => void) => Promise<T>, finalize: (node: CanvasNodeData, result: T) => CanvasNodeData, failureMessage: string) => {
+            void task((percent) => patchUploadNode(id, (node) => ({ ...node, metadata: { ...node.metadata, uploadProgress: percent } })))
+                .then((result) => {
+                    if (blobUrl) URL.revokeObjectURL(blobUrl);
+                    patchUploadNode(id, (node) => finalize(node, result));
+                })
+                .catch((error) => {
+                    // 上传失败时移除乐观节点，行为与旧的“上传成功才建节点”保持一致，并给出明确提示。
+                    if (blobUrl) URL.revokeObjectURL(blobUrl);
+                    patchUploadNode(id, () => null);
+                    message.error(error instanceof Error && error.message ? `${failureMessage}：${error.message}` : failureMessage);
+                });
+        },
+        [message, patchUploadNode],
+    );
+
     const createImageFileNode = useCallback(async (file: File, position: Position, preserveSelection = false, openDialog = true) => {
-        const image = await uploadCanvasImage(file);
-        const size = fitCanvasImageNodeSize(image.width, image.height);
-        const id = `image-${nanoid()}`;
+        const draft = createCanvasNode(CanvasNodeType.Image, position);
+        const id = draft.id;
+        const blobUrl = URL.createObjectURL(file);
         const newNode: CanvasNodeData = {
-            id,
-            type: CanvasNodeType.Image,
-            title: "图片上传",
-            position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
-            width: size.width,
-            height: size.height,
-            metadata: imageMetadata(image),
+            ...draft,
+            title: file.name || "图片上传",
+            metadata: {
+                ...draft.metadata,
+                content: blobUrl,
+                status: NODE_STATUS_LOADING,
+                uploading: true,
+                uploadProgress: 0,
+                uploadKind: "image",
+            },
         };
 
         setNodes((prev) => [...prev, newNode]);
         setSelectedNodeIds((current) => (preserveSelection ? new Set([...current, id]) : new Set([id])));
         setSelectedConnectionId(null);
         if (openDialog) setDialogNodeId(id);
+        runUploadNode(
+            id,
+            blobUrl,
+            (onProgress) => uploadCanvasImage(file, { onProgress }),
+            (node, image) => {
+                const size = fitCanvasImageNodeSize(image.width, image.height);
+                return {
+                    ...node,
+                    title: node.title || file.name || "图片上传",
+                    width: size.width,
+                    height: size.height,
+                    metadata: imageMetadata(image),
+                };
+            },
+            "图片上传失败",
+        );
         return id;
-    }, []);
+    }, [runUploadNode]);
 
     const createVideoFileNode = useCallback(async (file: File, position: Position, preserveSelection = false, openDialog = true) => {
-        const video = await uploadMediaFile(file, "video");
-        const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-        const id = `video-${nanoid()}`;
+        const draft = createCanvasNode(CanvasNodeType.Video, position);
+        const id = draft.id;
+        const blobUrl = URL.createObjectURL(file);
         setNodes((prev) => [
             ...prev,
             {
-                id,
-                type: CanvasNodeType.Video,
-                title: "视频上传",
-                position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
-                width: size.width,
-                height: size.height,
-                metadata: videoMetadata(video),
+                ...draft,
+                title: file.name || "视频上传",
+                metadata: {
+                    ...draft.metadata,
+                    content: blobUrl,
+                    status: NODE_STATUS_LOADING,
+                    uploading: true,
+                    uploadProgress: 0,
+                    uploadKind: "video",
+                },
             },
         ]);
         setSelectedNodeIds((current) => (preserveSelection ? new Set([...current, id]) : new Set([id])));
         setSelectedConnectionId(null);
         if (openDialog) setDialogNodeId(id);
+        runUploadNode(
+            id,
+            blobUrl,
+            (onProgress) => uploadMediaFile(file, "video", { onProgress }),
+            (node, video) => {
+                const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+                return {
+                    ...node,
+                    title: node.title || file.name || "视频上传",
+                    width: size.width,
+                    height: size.height,
+                    metadata: videoMetadata(video),
+                };
+            },
+            "视频上传失败",
+        );
         return id;
-    }, []);
+    }, [runUploadNode]);
 
     const createAudioFileNode = useCallback(async (file: File, position: Position, preserveSelection = false) => {
-        const audio = await uploadMediaFile(file, "audio");
         const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
         const id = `audio-${nanoid()}`;
+        const blobUrl = URL.createObjectURL(file);
         setNodes((prev) => [
             ...prev,
             {
                 id,
                 type: CanvasNodeType.Audio,
-                title: "音频上传",
+                title: file.name || "音频上传",
                 position: { x: position.x - spec.width / 2, y: position.y - spec.height / 2 },
                 width: spec.width,
                 height: spec.height,
-                metadata: audioMetadata(audio),
+                metadata: { content: blobUrl, status: NODE_STATUS_LOADING, uploading: true, uploadProgress: 0, uploadKind: "audio" as const },
             },
         ]);
         setSelectedNodeIds((current) => (preserveSelection ? new Set([...current, id]) : new Set([id])));
         setSelectedConnectionId(null);
+        runUploadNode(
+            id,
+            blobUrl,
+            (onProgress) => uploadMediaFile(file, "audio", { onProgress }),
+            (node, audio) => ({ ...node, title: node.title || file.name || "音频上传", metadata: audioMetadata(audio) }),
+            "音频上传失败",
+        );
         return id;
-    }, []);
+    }, [runUploadNode]);
 
     const createTextNodeFromClipboard = useCallback(
         (text: string) => {
@@ -131,7 +205,24 @@ export function useCanvasFileActions({ state, interactions }: { state: CanvasPag
                 event.preventDefault();
                 setSelectedNodeIds(new Set());
                 const center = getCanvasCenter();
-                void Promise.allSettled(images.map((file, index) => createImageFileNode(file, { x: center.x + index * CANVAS_DROP_NODE_OFFSET, y: center.y + index * CANVAS_DROP_NODE_OFFSET }, true, false))).then((results) => {
+                const cols = images.length <= 4 && images.length !== 3 ? 2 : 3;
+                const itemWidth = 340;
+                const itemHeight = 240;
+                const creations = images.map((file, index) => {
+                    const col = index % cols;
+                    const row = Math.floor(index / cols);
+                    const pos = images.length > 1
+                        ? { x: center.x + col * (itemWidth + CANVAS_NODE_GAP), y: center.y + row * (itemHeight + CANVAS_NODE_GAP) }
+                        : center;
+                    return createImageFileNode(file, pos, true, false);
+                });
+                void Promise.allSettled(creations).then((results) => {
+                    const createdIds = results
+                        .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && typeof r.value === "string")
+                        .map((r) => r.value);
+                    if (createdIds.length) {
+                        setSelectedNodeIds(new Set(createdIds));
+                    }
                     const failures = results.filter((result) => result.status === "rejected");
                     if (failures.length) message.error(failures.length === images.length ? "剪切板图片添加失败" : `有 ${failures.length} 张剪切板图片添加失败`);
                     if (failures.length < images.length) message.success(`已从剪切板添加 ${images.length - failures.length} 张图片`);

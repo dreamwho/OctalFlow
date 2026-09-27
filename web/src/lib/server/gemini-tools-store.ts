@@ -386,6 +386,17 @@ export async function markGeminiToolsRequestLogRunning(id: string) {
     });
 }
 
+/**
+ * 追加一条执行阶段并同步推进状态。
+ * 生成类请求可能耗时数分钟，必须边执行边落库，否则后台只能在整个请求结束后才看到链路。
+ */
+export async function appendGeminiToolsRequestLifecycle(id: string, entry: GeminiToolsLifecycleEntry) {
+    await patchGeminiToolsLog(id, (log) => {
+        log.lifecycle = [...(log.lifecycle || []), entry];
+        if (log.phase === "queued") log.phase = "running";
+    });
+}
+
 export async function settleGeminiToolsRequestLog(
     id: string,
     settle: {

@@ -56,7 +56,7 @@ async function fetchPinned(input: URL, init: RequestInit, options?: SafeOutbound
     if (!target) throw new UnsafeOutboundUrlError();
 
     const headers = new Headers(init.headers);
-    const dispatcher = dispatcherFor(target.url, target.address, target.family, options?.proxyUrl);
+    const dispatcher = dispatcherFor(target.url, target.address, target.family, options?.proxyUrl, options?.directOnly === true);
     const body = await toUndiciRequestBody(init.body);
     return (await undiciFetch(target.url, { ...init, body, headers, dispatcher } as import("undici").RequestInit & { dispatcher: Dispatcher })) as unknown as Response;
 }
@@ -77,8 +77,8 @@ function redirectedRequestInit(currentUrl: URL, nextUrl: URL, status: number, in
     return { ...init, headers };
 }
 
-function dispatcherFor(url: URL, address: string, family: 4 | 6, proxyUrlOverride?: string) {
-    const proxyUrl = proxyUrlOverride ? normalizeProxyUrl(proxyUrlOverride) : isPublicIpAddress(address) || isProxyFakeIpAddress(address) ? resolveServerProxyUrl() : "";
+function dispatcherFor(url: URL, address: string, family: 4 | 6, proxyUrlOverride?: string, directOnly = false) {
+    const proxyUrl = directOnly ? "" : proxyUrlOverride ? normalizeProxyUrl(proxyUrlOverride) : isPublicIpAddress(address) || isProxyFakeIpAddress(address) ? resolveServerProxyUrl() : "";
     const servername = /^\d+(?:\.\d+){3}$/.test(url.hostname) || url.hostname.includes(":") ? undefined : url.hostname;
     const key = [proxyUrl, url.protocol, url.host, address, family].join("|");
     const now = Date.now();

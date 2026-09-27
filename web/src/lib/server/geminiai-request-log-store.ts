@@ -103,6 +103,18 @@ export async function markGeminiAiRequestLogRunning(id: string) {
     });
 }
 
+/**
+ * 追加一条执行阶段并同步推进状态。
+ * 请求可能耗时数分钟（图片生成实测 185 秒），必须边执行边落库，
+ * 否则后台只能在整个请求结束后才看到链路，运行期间一直停在「排队中」。
+ */
+export async function appendGeminiAiRequestLifecycle(id: string, entry: GeminiAiRequestLifecycleEntry) {
+    await patchGeminiAiRequestLog(id, (log) => {
+        log.lifecycle = [...(log.lifecycle || []), entry];
+        if (log.phase === "queued") log.phase = "running";
+    });
+}
+
 /** Settle an open log with the final status/response. */
 export async function settleGeminiAiRequestLog(
     id: string,

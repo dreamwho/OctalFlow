@@ -143,7 +143,7 @@ export async function advanceDolaTaskLog(
         contentType?: string;
         error?: string;
         verificationId?: string;
-        screenshotBase64?: string;
+        screenshotBase64?: string | null;
         requestedDuration?: number;
         ratio?: string;
         quotaRemaining?: number | null;
@@ -153,12 +153,12 @@ export async function advanceDolaTaskLog(
     await patchDolaRequestLog(id, (log) => {
         const previous = log.phase;
         if (advance.statusCode !== undefined) log.statusCode = Math.max(0, Math.floor(advance.statusCode));
-        if (advance.responsePreview) log.responsePreview = truncate(advance.responsePreview, 4_000);
+        if (advance.responsePreview) log.responsePreview = sanitizePreview(advance.responsePreview);
         if (advance.responseBytes !== undefined) log.responseBytes = Math.max(0, Math.floor(advance.responseBytes));
         if (advance.contentType) log.contentType = truncate(advance.contentType, 160);
         if (advance.error) log.error = truncate(advance.error, 1_000);
         if (advance.verificationId) log.verificationId = truncate(advance.verificationId, 300);
-        if (advance.screenshotBase64) log.screenshotBase64 = advance.screenshotBase64;
+        if (advance.screenshotBase64 !== undefined) log.screenshotBase64 = advance.screenshotBase64 || undefined;
         if (advance.requestedDuration !== undefined) log.requestedDuration = advance.requestedDuration;
         if (advance.ratio) log.ratio = truncate(advance.ratio, 32);
         if (advance.quotaRemaining !== undefined) log.quotaRemaining = advance.quotaRemaining;
@@ -208,7 +208,7 @@ export async function settleDolaRequestLog(
         else log.phase = settle.error || log.statusCode >= 400 ? "failed" : "success";
         if (settle.error) log.error = truncate(settle.error, 1_000);
         if (settle.requestPreview) log.requestPreview = truncate(settle.requestPreview, 4_000);
-        if (settle.responsePreview) log.responsePreview = truncate(settle.responsePreview, 4_000);
+        if (settle.responsePreview) log.responsePreview = sanitizePreview(settle.responsePreview);
         if (settle.requestBytes !== undefined) log.requestBytes = Math.max(0, Math.floor(settle.requestBytes));
         if (settle.responseBytes !== undefined) log.responseBytes = Math.max(0, Math.floor(settle.responseBytes));
         if (settle.contentType) log.contentType = truncate(settle.contentType, 160);
@@ -344,7 +344,7 @@ function sanitizePreview(value: string) {
     try {
         const parsed = JSON.parse(value) as unknown;
         const rendered = JSON.stringify(redactValue(parsed), null, 2);
-        return truncate(rendered, 4_000);
+        return typeof parsed === "object" && parsed !== null && "conversationReply" in parsed ? rendered : truncate(rendered, 4_000);
     } catch {
         return truncate(value.replace(/(?:cookie|authorization|x-api-key|token|secret|password)\s*[:=]\s*[^,;\s]+/gi, "$1:〔已脱敏〕"), 4_000);
     }
@@ -355,7 +355,7 @@ function redactValue(value: unknown, key = ""): unknown {
     if (key && /cookie|authorization|api[-_]?key|token|secret|password|base64|dataurl/i.test(key)) return "〔已脱敏〕";
     if (typeof value === "string") {
         if (/^data:(?:image|video)\//i.test(value) || value.length > 512 && /^[a-z0-9+/=_-]+$/i.test(value.replace(/\s/g, ""))) return "〔媒体或编码数据已脱敏〕";
-        return value.length > 600 ? `${value.slice(0, 600)}…` : value;
+        return key === "conversationReply" ? value : value.length > 600 ? `${value.slice(0, 600)}…` : value;
     }
     if (Array.isArray(value)) return value.slice(0, 32).map((item) => redactValue(item));
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).slice(0, 64).map(([entryKey, item]) => [entryKey, redactValue(item, entryKey)]));

@@ -129,7 +129,22 @@ export function ChatGptMagicProxyPanel({ proxyRuntime, hideSourceSwitch = false 
                             />
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <Button type="primary" loading={saving || proxyRuntime.saving} disabled={loading || saving || proxyRuntime.saving || Boolean(unavailableReason) || !node.trim()} onClick={() => void saveNode()}>
+                            <Button
+                                type="primary"
+                                loading={saving || proxyRuntime.saving}
+                                disabled={loading || saving || proxyRuntime.saving || Boolean(unavailableReason) || !node.trim()}
+                                onClick={() => void saveNode()}
+                                className="h-9 px-4 rounded-lg font-medium text-xs sm:text-sm !border-0 text-white shadow-[0_4px_14px_rgba(110,83,246,0.38)] hover:shadow-[0_6px_20px_rgba(110,83,246,0.48)] hover:brightness-105 active:scale-[0.98] transition-all"
+                                style={
+                                    (loading || saving || proxyRuntime.saving || Boolean(unavailableReason) || !node.trim())
+                                        ? undefined
+                                        : {
+                                            background: "linear-gradient(125deg, #4e46e9, #6e53f6 55%, #8979ff)",
+                                            border: "none",
+                                            color: "#ffffff",
+                                        }
+                                }
+                            >
                                 保存并启用魔法代理
                             </Button>
                             <Tag color={state.bindings.chatgptApi?.node ? "success" : "default"} className="m-0">

@@ -1,31 +1,56 @@
 "use client";
 
-import { Alert, App, Button, Empty, Input, Tag } from "antd";
-import { FileText, Gauge, Globe, RefreshCw, ShieldCheck, Terminal, Upload, Wifi, WifiOff } from "lucide-react";
+import { Alert, App, Button, Empty, Input, Popconfirm, Select, Switch, Tabs, Tag, Tooltip } from "antd";
+import {
+    Check,
+    Edit3,
+    FileText,
+    FolderTree,
+    Gauge,
+    Globe,
+    Layers,
+    Plus,
+    RefreshCw,
+    ShieldCheck,
+    Terminal,
+    Trash2,
+    Upload,
+    Wifi,
+    WifiOff,
+    X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { MagicProxyTestModal } from "@/components/admin/magic-proxy-test-modal";
 import {
+    deleteMagicProxySubscription,
     getMagicProxy,
     importMagicProxySubscription,
     refreshMagicProxySubscription,
     testMagicProxyAllNodes,
     testMagicProxyNode,
+    updateMagicProxySubscriptionSetting,
     type MagicProxyDelayResult,
     type MagicProxyGroup,
     type MagicProxyNode,
+    type MagicProxyPublicSubscription,
     type MagicProxyState,
 } from "@/services/api/magic-proxy";
 
 export function AdminMagicProxySection() {
     const { message } = App.useApp();
     const [state, setState] = useState<MagicProxyState | null>(null);
+    const [subscriptionName, setSubscriptionName] = useState("");
     const [subscriptionUrl, setSubscriptionUrl] = useState("");
     const [subscriptionFile, setSubscriptionFile] = useState<File | null>(null);
     const subscriptionFileInputRef = useRef<HTMLInputElement>(null);
     const [loading, setLoading] = useState(true);
     const [action, setAction] = useState<"import" | "file-import" | "refresh" | "">("");
+    const [actionSubId, setActionSubId] = useState("");
+    const [editingSubId, setEditingSubId] = useState<string | null>(null);
+    const [editingSubName, setEditingSubName] = useState("");
+    const [subFilter, setSubFilter] = useState<string>("all");
     const [error, setError] = useState("");
     const [delayResults, setDelayResults] = useState<Record<string, MagicProxyDelayResult>>({});
     const [testingNode, setTestingNode] = useState("");
@@ -88,7 +113,7 @@ export function AdminMagicProxySection() {
         void loadState();
     }, [loadState]);
 
-    const importSubscription = async () => {
+    const importSubscription = async (replace = false) => {
         const url = subscriptionUrl.trim();
         if (!url) {
             message.error("请输入订阅地址");
@@ -97,9 +122,15 @@ export function AdminMagicProxySection() {
         setAction("import");
         setError("");
         try {
-            setState(await importMagicProxySubscription(url));
+            const nextState = await importMagicProxySubscription({
+                url,
+                name: subscriptionName.trim() || undefined,
+                replace,
+            });
+            setState(nextState);
             setSubscriptionUrl("");
-            message.success("魔法代理订阅已导入并替换");
+            setSubscriptionName("");
+            message.success(replace ? "魔法代理订阅已导入并替换" : "新魔法代理订阅已追加导入");
         } catch (importError) {
             const nextError = importError instanceof Error ? importError.message : "导入魔法代理订阅失败";
             setError(nextError);
@@ -109,7 +140,7 @@ export function AdminMagicProxySection() {
         }
     };
 
-    const importSubscriptionFile = async () => {
+    const importSubscriptionFile = async (replace = false) => {
         if (!subscriptionFile) {
             message.error("请选择 YAML 或文本文件");
             return;
@@ -118,10 +149,16 @@ export function AdminMagicProxySection() {
         setError("");
         try {
             const content = await subscriptionFile.text();
-            setState(await importMagicProxySubscription({ content }));
+            const nextState = await importMagicProxySubscription({
+                content,
+                name: subscriptionName.trim() || undefined,
+                replace,
+            });
+            setState(nextState);
             setSubscriptionFile(null);
+            setSubscriptionName("");
             if (subscriptionFileInputRef.current) subscriptionFileInputRef.current.value = "";
-            message.success("魔法代理文件订阅已导入并替换");
+            message.success(replace ? "魔法代理文件订阅已导入并替换" : "新文件订阅已追加导入");
         } catch (importError) {
             const nextError = importError instanceof Error ? importError.message : "导入魔法代理文件失败";
             setError(nextError);
@@ -131,22 +168,83 @@ export function AdminMagicProxySection() {
         }
     };
 
-    const refreshSubscription = async () => {
-        setAction("refresh");
+    const refreshSubscription = async (subId?: string) => {
+        if (subId) {
+            setActionSubId(subId);
+        } else {
+            setAction("refresh");
+        }
         setError("");
         try {
-            setState(await refreshMagicProxySubscription());
-            message.success("魔法代理订阅已更新");
+            const nextState = await refreshMagicProxySubscription(subId);
+            setState(nextState);
+            message.success(subId ? "该订阅已更新" : "魔法代理订阅已更新");
         } catch (refreshError) {
             const nextError = refreshError instanceof Error ? refreshError.message : "更新魔法代理订阅失败";
             setError(nextError);
             message.error(nextError);
         } finally {
             setAction("");
+            setActionSubId("");
+        }
+    };
+
+    const toggleSubscriptionEnabled = async (sub: MagicProxyPublicSubscription) => {
+        setActionSubId(sub.id);
+        try {
+            const nextState = await updateMagicProxySubscriptionSetting({
+                id: sub.id,
+                enabled: !sub.enabled,
+            });
+            setState(nextState);
+            message.success(`已${!sub.enabled ? "启用" : "停用"}订阅「${sub.name}」`);
+        } catch (err) {
+            message.error(err instanceof Error ? err.message : "切换订阅状态失败");
+        } finally {
+            setActionSubId("");
+        }
+    };
+
+    const saveSubscriptionRename = async (id: string) => {
+        const nextName = editingSubName.trim();
+        if (!nextName) {
+            message.error("订阅名称不能为空");
+            return;
+        }
+        setActionSubId(id);
+        try {
+            const nextState = await updateMagicProxySubscriptionSetting({
+                id,
+                name: nextName,
+            });
+            setState(nextState);
+            setEditingSubId(null);
+            setEditingSubName("");
+            message.success("订阅已重命名");
+        } catch (err) {
+            message.error(err instanceof Error ? err.message : "重命名失败");
+        } finally {
+            setActionSubId("");
+        }
+    };
+
+    const deleteSubscription = async (sub: MagicProxyPublicSubscription) => {
+        setActionSubId(sub.id);
+        try {
+            const nextState = await deleteMagicProxySubscription(sub.id);
+            setState(nextState);
+            message.success(`订阅「${sub.name}」已删除`);
+        } catch (err) {
+            message.error(err instanceof Error ? err.message : "删除订阅失败");
+        } finally {
+            setActionSubId("");
         }
     };
 
     const nodeCount = state?.nodeCount ?? state?.nodes.length ?? 0;
+    const subscriptions = state?.subscriptions || [];
+    const enabledSubCount = subscriptions.filter((s) => s.enabled).length;
+    const subCount = subscriptions.length;
 
     return (
         <div className="space-y-4">
@@ -169,66 +267,277 @@ export function AdminMagicProxySection() {
                     title="魔法代理"
                     description="导入或更新订阅，并查看当前运行时状态、分组和节点。GeminiAIStudio、GeminiTools、GPTAPI 与 Dola API 的节点绑定请分别在各自 Provider 页面设置。"
                     actions={
-                        <Button icon={<RefreshCw className="size-4" />} loading={loading && !action} onClick={() => void loadState()}>
+                        <Button icon={<RefreshCw className="size-4" />} loading={loading && !action && !actionSubId} onClick={() => void loadState()}>
                             刷新状态
                         </Button>
                     }
                 />
-                <div className="space-y-4 p-3 sm:p-5">
-                    <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-                        <div className="min-w-0">
-                            <label htmlFor="magic-proxy-subscription" className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                                订阅地址导入
-                            </label>
-                            <Input.Password id="magic-proxy-subscription" value={subscriptionUrl} autoComplete="new-password" placeholder="输入订阅地址，导入后不会回显" onChange={(event) => setSubscriptionUrl(event.target.value)} />
-                            <div className="mt-3 flex min-w-0 flex-wrap gap-2">
-                                <Button type="primary" icon={<ShieldCheck className="size-4" />} loading={action === "import"} onClick={() => void importSubscription()}>
-                                    导入/替换订阅
-                                </Button>
-                            </div>
-                        </div>
-                        <div className="min-w-0">
-                            <label htmlFor="magic-proxy-subscription-file" className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                                YAML / 文本文件导入
-                            </label>
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                <input
-                                    ref={subscriptionFileInputRef}
-                                    id="magic-proxy-subscription-file"
-                                    type="file"
-                                    accept=".yaml,.yml,.txt,text/yaml,text/plain"
-                                    className="sr-only"
-                                    onChange={(event) => setSubscriptionFile(event.target.files?.[0] || null)}
-                                />
-                                <Button icon={<Upload className="size-4" />} onClick={() => subscriptionFileInputRef.current?.click()}>
-                                    选择文件
-                                </Button>
-                                <span className="min-w-0 max-w-full truncate text-xs text-zinc-500 dark:text-zinc-400" title={subscriptionFile?.name}>
-                                    {subscriptionFile?.name || "支持 .yaml、.yml、.txt，内容需包含 Clash proxies"}
-                                </span>
-                                <Button type="primary" ghost disabled={!subscriptionFile} loading={action === "file-import"} icon={<FileText className="size-4" />} onClick={() => void importSubscriptionFile()}>
-                                    导入文件
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button disabled={!state?.configured} loading={action === "refresh"} onClick={() => void refreshSubscription()}>
-                            更新订阅地址
-                        </Button>
-                        <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">已保存的订阅地址不会回填；文件导入后如需更新，请重新选择文件导入。</p>
-                    </div>
-
+                <div className="space-y-5 p-3 sm:p-5">
+                    {/* 统计指标卡 */}
                     <div className="grid gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 sm:grid-cols-2 xl:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-800">
-                        <StatusMetric label="订阅状态" value={loading && !state ? "读取中" : state?.configured ? "已配置" : "未配置"} detail={state?.configured ? "订阅信息已由服务端保存" : "请先导入一份订阅"} />
+                        <StatusMetric
+                            label="订阅状态"
+                            value={loading && !state ? "读取中" : state?.configured ? (subCount > 0 ? `已配置 (${enabledSubCount}/${subCount})` : "已配置") : "未配置"}
+                            detail={state?.configured ? (subCount > 0 ? `${enabledSubCount} 个启用 / 共 ${subCount} 个订阅` : "订阅信息已由服务端保存") : "请先导入一份订阅"}
+                        />
                         <StatusMetric
                             label="运行时"
                             value={loading && !state ? "读取中" : state?.runtimeAvailable ? "可用" : "不可用"}
                             detail={state?.runtimeAvailable ? "可以读取当前节点状态" : "运行时暂不可用"}
                             tone={state?.runtimeAvailable ? "success" : "warning"}
                         />
-                        <StatusMetric label="节点数" value={state ? String(nodeCount) : "—"} detail="当前订阅中的可选节点" />
+                        <StatusMetric label="节点数" value={state ? String(nodeCount) : "—"} detail="当前已启用订阅中的可选节点" />
                         <StatusMetric label="最近更新" value={state ? formatMagicProxyDate(state.lastUpdatedAt) : "—"} detail="服务端订阅更新时间" />
+                    </div>
+
+                    {/* 已导入订阅列表（多订阅独立管理） */}
+                    {subscriptions.length > 0 ? (
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h4 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                                    <Layers className="size-3.5 text-blue-500" />
+                                    已导入订阅列表 ({subscriptions.length})
+                                </h4>
+                                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                    支持多订阅独立共存与分别刷新、停用或删除
+                                </span>
+                            </div>
+                            <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                                {subscriptions.map((sub) => {
+                                    const isEditing = editingSubId === sub.id;
+                                    const isBusy = actionSubId === sub.id;
+                                    const groupCount = sub.groups?.length || 0;
+                                    return (
+                                        <div
+                                            key={sub.id}
+                                            className={`flex flex-col gap-3 p-3 transition-colors sm:flex-row sm:items-center sm:justify-between sm:p-4 ${
+                                                !sub.enabled
+                                                    ? "bg-zinc-50/70 opacity-60 dark:bg-zinc-900/40"
+                                                    : "bg-white dark:bg-zinc-950"
+                                            }`}
+                                        >
+                                            <div className="min-w-0 flex-1 space-y-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {isEditing ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Input
+                                                                size="small"
+                                                                value={editingSubName}
+                                                                autoFocus
+                                                                className="w-44"
+                                                                onChange={(e) => setEditingSubName(e.target.value)}
+                                                                onPressEnter={() => void saveSubscriptionRename(sub.id)}
+                                                            />
+                                                            <Button
+                                                                size="small"
+                                                                type="primary"
+                                                                icon={<Check className="size-3.5" />}
+                                                                loading={isBusy}
+                                                                onClick={() => void saveSubscriptionRename(sub.id)}
+                                                            />
+                                                            <Button
+                                                                size="small"
+                                                                icon={<X className="size-3.5" />}
+                                                                onClick={() => setEditingSubId(null)}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                                                                {sub.name}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                className="text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-200"
+                                                                onClick={() => {
+                                                                    setEditingSubId(sub.id);
+                                                                    setEditingSubName(sub.name);
+                                                                }}
+                                                                title="重命名"
+                                                            >
+                                                                <Edit3 className="size-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    <Tag color={sub.type === "remote" ? "blue" : "purple"} className="m-0 text-[11px]">
+                                                        {sub.type === "remote" ? "远程 URL" : "本地文件"}
+                                                    </Tag>
+                                                    <Tag className="m-0 text-[11px] text-zinc-600 dark:text-zinc-400">
+                                                        {sub.nodeCount} 个节点
+                                                    </Tag>
+                                                    {groupCount > 0 ? (
+                                                        <Tooltip
+                                                            title={
+                                                                <div className="max-h-48 space-y-1 overflow-y-auto py-1">
+                                                                    <div className="mb-1 border-b border-zinc-700 pb-1 text-xs font-semibold">
+                                                                        识别出的内置分组 ({groupCount}):
+                                                                    </div>
+                                                                    {sub.groups.map((g, idx) => (
+                                                                        <div key={idx} className="text-xs">
+                                                                            • {g.name} ({g.proxies.length} 节点)
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            }
+                                                        >
+                                                            <Tag color="cyan" className="m-0 flex cursor-pointer items-center gap-1 text-[11px]">
+                                                                <FolderTree className="size-3" />
+                                                                {groupCount} 个内置分组
+                                                            </Tag>
+                                                        </Tooltip>
+                                                    ) : null}
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+                                                    <span className="max-w-md truncate" title={sub.url}>
+                                                        来源: {sub.url}
+                                                    </span>
+                                                    <span>•</span>
+                                                    <span>更新时间: {formatMagicProxyDate(sub.updatedAt)}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex shrink-0 items-center gap-3 self-end sm:self-center">
+                                                <div className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+                                                    <span>{sub.enabled ? "已启用" : "已停用"}</span>
+                                                    <Switch
+                                                        size="small"
+                                                        checked={sub.enabled}
+                                                        loading={isBusy}
+                                                        onChange={() => void toggleSubscriptionEnabled(sub)}
+                                                    />
+                                                </div>
+
+                                                {sub.type === "remote" ? (
+                                                    <Tooltip title="从远端重新同步更新此订阅">
+                                                        <Button
+                                                            size="small"
+                                                            icon={<RefreshCw className="size-3.5" />}
+                                                            loading={isBusy}
+                                                            onClick={() => void refreshSubscription(sub.id)}
+                                                        >
+                                                            刷新
+                                                        </Button>
+                                                    </Tooltip>
+                                                ) : null}
+
+                                                <Popconfirm
+                                                    title="确认删除订阅？"
+                                                    description="删除后将自动清理对应的独立订阅文件及节点，不影响其他订阅。"
+                                                    okText="确认删除"
+                                                    cancelText="取消"
+                                                    okButtonProps={{ danger: true }}
+                                                    onConfirm={() => void deleteSubscription(sub)}
+                                                >
+                                                    <Button
+                                                        size="small"
+                                                        danger
+                                                        icon={<Trash2 className="size-3.5" />}
+                                                        loading={isBusy}
+                                                    >
+                                                        删除
+                                                    </Button>
+                                                </Popconfirm>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* 新增 / 追加订阅区域 */}
+                    <div className="space-y-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/30 sm:p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200/80 pb-2.5 dark:border-zinc-800/80">
+                            <span className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                                <Plus className="size-3.5 text-blue-500" />
+                                新增 / 追加订阅
+                            </span>
+                            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                导入新订阅将作为独立文件保存并识别内置分组，不会覆盖已有订阅
+                            </span>
+                        </div>
+
+                        <div className="max-w-xs">
+                            <label htmlFor="magic-proxy-subscription-name" className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                                订阅别名（可选）
+                            </label>
+                            <Input
+                                id="magic-proxy-subscription-name"
+                                placeholder="例如：一元机场、香港专线（留空自动命名）"
+                                value={subscriptionName}
+                                onChange={(e) => setSubscriptionName(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+                            <div className="min-w-0">
+                                <label htmlFor="magic-proxy-subscription" className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                                    订阅地址导入
+                                </label>
+                                <Input.Password
+                                    id="magic-proxy-subscription"
+                                    value={subscriptionUrl}
+                                    autoComplete="new-password"
+                                    placeholder="输入订阅地址，导入后不会回显"
+                                    onChange={(event) => setSubscriptionUrl(event.target.value)}
+                                />
+                                <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+                                    <Button
+                                        type="primary"
+                                        icon={<Plus className="size-4" />}
+                                        loading={action === "import"}
+                                        onClick={() => void importSubscription(false)}
+                                    >
+                                        追加新订阅
+                                    </Button>
+                                    <Button
+                                        icon={<ShieldCheck className="size-4" />}
+                                        loading={action === "import"}
+                                        onClick={() => void importSubscription(true)}
+                                    >
+                                        导入/替换订阅
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="min-w-0">
+                                <label htmlFor="magic-proxy-subscription-file" className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                                    YAML / 文本文件导入
+                                </label>
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <input
+                                        ref={subscriptionFileInputRef}
+                                        id="magic-proxy-subscription-file"
+                                        type="file"
+                                        accept=".yaml,.yml,.txt,text/yaml,text/plain"
+                                        className="sr-only"
+                                        onChange={(event) => setSubscriptionFile(event.target.files?.[0] || null)}
+                                    />
+                                    <Button icon={<Upload className="size-4" />} onClick={() => subscriptionFileInputRef.current?.click()}>
+                                        选择文件
+                                    </Button>
+                                    <span className="min-w-0 max-w-full truncate text-xs text-zinc-500 dark:text-zinc-400" title={subscriptionFile?.name}>
+                                        {subscriptionFile?.name || "支持 .yaml、.yml、.txt，内容需包含 Clash proxies"}
+                                    </span>
+                                    <Button
+                                        type="primary"
+                                        ghost
+                                        disabled={!subscriptionFile}
+                                        loading={action === "file-import"}
+                                        icon={<FileText className="size-4" />}
+                                        onClick={() => void importSubscriptionFile(false)}
+                                    >
+                                        导入文件
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button disabled={!state?.configured} loading={action === "refresh" && !actionSubId} onClick={() => void refreshSubscription()}>
+                            更新订阅地址
+                        </Button>
+                        <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">已保存的订阅地址不会回填；文件导入后如需更新，请重新选择文件导入。</p>
                     </div>
                 </div>
             </Panel>
@@ -249,7 +558,7 @@ export function AdminMagicProxySection() {
             <Panel>
                 <PanelHeader
                     title="代理节点"
-                    description="节点列表仅显示名称、类型、存活状态和延迟；Provider 节点绑定请在对应的 Provider 页面完成。测速通过节点请求外部连通性检查地址，结果仅表示节点当前可用性。"
+                    description="节点列表仅显示名称、类型、所属订阅、存活状态和延迟；Provider 节点绑定请在对应的 Provider 页面完成。测速通过节点请求外部连通性检查地址，结果仅表示节点当前可用性。"
                     actions={
                         <div className="flex flex-wrap items-center gap-2">
                             <Button
@@ -293,17 +602,37 @@ export function AdminMagicProxySection() {
                     }
                 />
                 {state?.nodes.length ? (
-                    <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3">
-                        {state.nodes.map((node) => (
-                            <MagicProxyNodeCard
-                                key={`${node.type}-${node.name}`}
-                                node={node}
-                                delayResult={delayResults[node.name]}
-                                testing={testingAll || testingNode === node.name}
-                                disabled={testingAll || (testingNode !== "" && testingNode !== node.name)}
-                                onTest={() => openNodeTestModal(node.name)}
-                            />
-                        ))}
+                    <div className="space-y-4 p-3 sm:p-4">
+                        <Tabs
+                            size="small"
+                            activeKey={subFilter}
+                            onChange={setSubFilter}
+                            items={[
+                                { key: "all", label: `全部 (${state.nodes.length})` },
+                                ...subscriptions.map((s) => ({
+                                    key: s.id,
+                                    label: `${s.name} (${state.nodes.filter((n) => n.subscriptionId === s.id).length})`,
+                                })),
+                            ]}
+                        />
+
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            {state.nodes.map((node) => {
+                                if (subFilter !== "all" && node.subscriptionId !== subFilter) {
+                                    return null;
+                                }
+                                return (
+                                    <MagicProxyNodeCard
+                                        key={`${node.type}-${node.name}`}
+                                        node={node}
+                                        delayResult={delayResults[node.name]}
+                                        testing={testingAll || testingNode === node.name}
+                                        disabled={testingAll || (testingNode !== "" && testingNode !== node.name)}
+                                        onTest={() => openNodeTestModal(node.name)}
+                                    />
+                                );
+                            })}
+                        </div>
                     </div>
                 ) : (
                     <Empty className="my-8" image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? "正在读取节点" : "暂无代理节点"} />
@@ -340,12 +669,14 @@ function StatusMetric({ label, value, detail, tone = "neutral" }: { label: strin
 }
 
 function MagicProxyGroupCard({ group }: { group: MagicProxyGroup }) {
+    const isSubGroup = group.name.startsWith("订阅 · ");
     return (
         <div className="min-w-0 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
             <div className="flex min-w-0 items-center justify-between gap-3">
                 <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-zinc-950 dark:text-zinc-100" title={group.name}>
-                        {group.name}
+                    <div className="flex items-center gap-1.5 truncate text-sm font-medium text-zinc-950 dark:text-zinc-100" title={group.name}>
+                        {isSubGroup ? <FolderTree className="size-3.5 shrink-0 text-blue-500" /> : null}
+                        <span className="truncate">{group.name}</span>
                     </div>
                     <div className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">{group.type}</div>
                 </div>
@@ -372,7 +703,14 @@ function MagicProxyNodeCard({ node, delayResult, testing, disabled, onTest }: { 
                     <div className="truncate text-sm font-medium text-zinc-950 dark:text-zinc-100" title={node.name}>
                         {node.name}
                     </div>
-                    <div className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">{node.type}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">{node.type}</span>
+                        {node.subscriptionName ? (
+                            <Tag className="m-0 border-blue-200 bg-blue-50 px-1 py-0 text-[10px] leading-tight text-blue-600 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400">
+                                {node.subscriptionName}
+                            </Tag>
+                        ) : null}
+                    </div>
                 </div>
                 <Tag color={alive === true ? "success" : alive === false ? "error" : "default"} className="m-0 shrink-0">
                     {alive === true ? <Wifi className="mr-1 inline size-3" /> : alive === false ? <WifiOff className="mr-1 inline size-3" /> : null}
@@ -387,7 +725,7 @@ function MagicProxyNodeCard({ node, delayResult, testing, disabled, onTest }: { 
                     ) : testedDelay ? (
                         <span className="font-medium text-emerald-600 dark:text-emerald-400">{testedDelay}</span>
                     ) : typeof node.delay === "number" ? (
-                        `${node.delay} ms`
+                        <span className="font-medium text-emerald-600 dark:text-emerald-400">{node.delay} ms</span>
                     ) : (
                         "未知"
                     )}

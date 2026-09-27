@@ -24,7 +24,7 @@ export default function nextConfig(phase: string): NextConfig {
     return {
         distDir,
         output: "standalone",
-        outputFileTracingExcludes: { "*": ["**/.data/**"] },
+        outputFileTracingExcludes: { "*": ["**/.data/**", "**/web/.data/**", "**/geminiai/accounts/**"] },
         serverExternalPackages: ["node-unrar-js"],
         outputFileTracingRoot: turbopackRoot,
         turbopack: { root: turbopackRoot },

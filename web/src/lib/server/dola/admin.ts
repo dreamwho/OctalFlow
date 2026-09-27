@@ -22,5 +22,7 @@ export async function auditDolaAdminFailure(request: Request, user: Awaited<Retu
 
 export function dolaRouteError(error: unknown, fallback: string) {
     if (error instanceof DolaProviderError) return apiCompatError(error.status, error.message);
+    const message = error instanceof Error ? error.message : "";
+    if (message && message !== "fetch failed") return apiCompatError(500, `${fallback}：${message}`);
     return apiCompatError(500, fallback);
 }

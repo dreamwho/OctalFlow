@@ -219,6 +219,14 @@ ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_enabled boolean N
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_node text;
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_mode text;
 ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_chained_config jsonb;
+-- 兜底节点（内核 fallback 组的主节点失联接管成员）：原先只存在于文件 Provider 的 JSON 里，
+-- PostgreSQL 缺列会让保存“成功”后读回为空，必须为每种服务各建一列。
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS geminiai_fallback_node text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS gemini_tools_fallback_node text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS chatgpt_api_fallback_node text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS dola_fallback_node text;
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS subscriptions_ciphertext text NOT NULL DEFAULT '';
+ALTER TABLE magic_proxy_settings ADD COLUMN IF NOT EXISTS node_delays_ciphertext text NOT NULL DEFAULT '';
 INSERT INTO magic_proxy_settings (id) VALUES ('default') ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS gemini_tools_accounts (

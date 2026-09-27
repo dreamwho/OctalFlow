@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { assertMinimaxH3VideoReferences, buildMinimaxH3VideoRequest } from "@/lib/minimax-h3";
+import { assertMinimaxH3VideoReferences, buildMinimaxH3VideoRequest, promoteMinimaxH3LogicalModels, MINIMAX_H3_MODELS } from "@/lib/minimax-h3";
+import type { LogicalModel, SystemModelChannel } from "@/lib/auth/store-types";
 import type { VideoGenerationReference } from "@/lib/video-reference-contract";
 
 const IMAGE = "https://cdn.example.com/dog.png";
@@ -51,5 +52,43 @@ describe("minimax-h3 video contract", () => {
     it("asserts reference mixing before task creation", () => {
         expect(() => assertMinimaxH3VideoReferences([reference({ role: "first_frame" }), reference()])).toThrow("不能与普通参考素材混用");
         expect(() => assertMinimaxH3VideoReferences([reference()])).not.toThrow();
+    });
+
+    it("promotes and binds minimax-h3 logical models to the dedicated channel", () => {
+        const channel: SystemModelChannel = {
+            id: "easyframe-minimax-h3",
+            name: "easyframe MiniMaxH3",
+            baseUrl: "https://minimax.api.easyframe.cn",
+            apiKey: "test-key",
+            apiFormat: "openai",
+            models: ["minimax-h3-mini", "minimax-h3-base"],
+            enabled: true,
+        };
+        const existing: LogicalModel[] = [
+            {
+                id: "minimax-h3-mini",
+                name: "MiniMax H3 Mini",
+                capability: "video",
+                enabled: true,
+                bindings: [{ id: "old-channel:minimax-h3-mini", channelId: "old-channel", upstreamModel: "minimax-h3-mini", enabled: true, priority: 2 }],
+            },
+        ];
+        const { logicalModels } = promoteMinimaxH3LogicalModels(existing, channel);
+        const mini = logicalModels.find((m) => m.id === "minimax-h3-mini");
+        expect(mini).toBeDefined();
+        expect(mini?.bindings[0]).toMatchObject({
+            channelId: "easyframe-minimax-h3",
+            upstreamModel: "minimax-h3-mini",
+            enabled: true,
+            priority: 0,
+        });
+        const base = logicalModels.find((m) => m.id === "minimax-h3-base");
+        expect(base).toBeDefined();
+        expect(base?.bindings[0]).toMatchObject({
+            channelId: "easyframe-minimax-h3",
+            upstreamModel: "minimax-h3-base",
+            enabled: true,
+            priority: 0,
+        });
     });
 });

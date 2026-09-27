@@ -67,7 +67,7 @@ services:
         condition: service_healthy
 
   app:
-    image: ${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.0.6}
+    image: ${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}
     container_name: dreamyo
     env_file:
       - .env
@@ -126,7 +126,7 @@ services:
     restart: unless-stopped
 
   generation-worker:
-    image: ${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.0.6}
+    image: ${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}
     container_name: dreamyo-generation-worker
     command: ["node", "/app/web/scripts/generation-worker.mjs"]
     environment:

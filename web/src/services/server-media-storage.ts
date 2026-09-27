@@ -12,7 +12,7 @@ const SERVER_MEDIA_ROUTES = [
     { prefix: "/api/reference-assets/", scope: "reference" as const },
 ];
 
-export async function uploadServerMedia(input: string | Blob, type: ServerMediaType, maxBytes = CREATIVE_UPLOAD_MAX_BYTES): Promise<StoredServerMedia> {
+export async function uploadServerMedia(input: string | Blob, type: ServerMediaType, maxBytes = CREATIVE_UPLOAD_MAX_BYTES, options?: { onProgress?: (percent: number) => void }): Promise<StoredServerMedia> {
     const existing = typeof input === "string" ? parseServerMediaUrl(input) : null;
     if (existing?.storageKey.startsWith("permanent/")) return readExistingServerMedia(existing, type);
 
@@ -22,19 +22,39 @@ export async function uploadServerMedia(input: string | Blob, type: ServerMediaT
     if (blob.size > maxBytes) throw new Error(maxBytes === CREATIVE_UPLOAD_MAX_BYTES ? "单个文件不能超过 20MB" : "生成媒体文件过大");
     if (!isCreativeUploadMimeType(blob.type) || !blob.type.startsWith(`${type}/`)) throw new Error(`仅支持${type === "image" ? "图片" : type === "video" ? "视频" : "音频"}格式`);
 
-    const response = await fetch("/api/reference-assets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, persistent: true, dataUrl: await blobToDataUrl(blob), originalName: originalName || undefined }),
-    });
-    const payload = (await response.json().catch(() => ({}))) as { error?: string; url?: string; token?: string; key?: string; bytes?: number; mimeType?: string };
-    if (!response.ok || !payload.token) throw new Error(payload.error || "文件保存到服务器失败");
+    const body = JSON.stringify({ type, persistent: true, dataUrl: await blobToDataUrl(blob), originalName: originalName || undefined });
+    const payload = options?.onProgress ? await uploadWithProgress(body, options.onProgress) : await uploadWithFetch(body);
+    if (!payload.token) throw new Error(payload.error || "文件保存到服务器失败");
     return {
         url: payload.url || serverMediaUrl(payload.token),
         storageKey: payload.key || payload.token,
         bytes: payload.bytes || blob.size,
         mimeType: payload.mimeType || blob.type,
     };
+}
+
+type UploadPayload = { error?: string; url?: string; token?: string; key?: string; bytes?: number; mimeType?: string };
+
+async function uploadWithFetch(body: string): Promise<UploadPayload> {
+    const response = await fetch("/api/reference-assets", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    return (await response.json().catch(() => ({}))) as UploadPayload;
+}
+
+/** XHR 才能拿到真实上传字节进度（fetch 不暴露 upload.onprogress）。 */
+function uploadWithProgress(body: string, onProgress: (percent: number) => void): Promise<UploadPayload> {
+    return new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open("POST", "/api/reference-assets");
+        request.setRequestHeader("Content-Type", "application/json");
+        request.responseType = "json";
+        request.upload.onprogress = (event) => {
+            if (event.lengthComputable && event.total > 0) onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        };
+        request.onload = () => resolve((request.response || {}) as UploadPayload);
+        request.onerror = () => reject(new Error("文件保存到服务器失败"));
+        request.ontimeout = () => reject(new Error("文件保存到服务器失败"));
+        request.send(body);
+    });
 }
 
 export function serverMediaUrl(storageKey?: string, fallback = "") {

@@ -23,6 +23,7 @@ describe("Next response headers", () => {
     it("never copies runtime data into standalone output", () => {
         const config = createNextConfig("phase-production-build");
 
-        expect(config.outputFileTracingExcludes).toEqual({ "*": ["**/.data/**"] });
+        // 运行期 .data（含 GeminiAI 账号/Camoufox profile）必须全部排除在 standalone 产物之外
+        expect(config.outputFileTracingExcludes).toEqual({ "*": ["**/.data/**", "**/web/.data/**", "**/geminiai/accounts/**"] });
     });
 });

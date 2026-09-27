@@ -60,9 +60,9 @@ describe("Dola gateway store", () => {
 
     it("manages gateway settings", async () => {
         const initial = await getDolaGatewaySettings();
-        expect(initial).toMatchObject({ enabled: false, rotationLimit: 2 });
+        expect(initial).toMatchObject({ enabled: false, rotationLimit: 2, pollIntervalMs: 2_500, captureFailureScreenshot: false });
 
-        const updated = await updateDolaGatewaySettings({ enabled: true, rotationLimit: 3, dispatchGroups: ["分组A"] });
-        expect(updated).toMatchObject({ enabled: true, rotationLimit: 3, dispatchGroups: ["分组A"] });
+        const updated = await updateDolaGatewaySettings({ enabled: true, rotationLimit: 3, pollIntervalMs: 30_000, captureFailureScreenshot: true, dispatchGroups: ["分组A"] });
+        expect(updated).toMatchObject({ enabled: true, rotationLimit: 3, pollIntervalMs: 30_000, captureFailureScreenshot: true, dispatchGroups: ["分组A"] });
     });
 });

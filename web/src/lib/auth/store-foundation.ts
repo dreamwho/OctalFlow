@@ -171,6 +171,8 @@ export const DEFAULT_SETTINGS: AuthSettings = {
     entitlements: DEFAULT_ENTITLEMENT_SETTINGS,
     generationConcurrency: { agent: 2, image: 4, video: 1, audio: 2, text: 4, render: 1, workerLanes: 4 },
     generationDefaults: {
+        // 生成媒体从上游下载时的出网方式：默认跟随服务器代理，可切换为强制直连以节省代理流量。
+        mediaDownloadEgress: "server-proxy",
         canvasImageCount: 1,
         imageSize: "1:1",
         imageQuality: "auto",

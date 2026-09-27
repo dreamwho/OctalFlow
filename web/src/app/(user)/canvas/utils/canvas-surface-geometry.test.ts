@@ -13,6 +13,8 @@ import {
     resolveCanvasNodePlacement,
     resolveCanvasNodePointerSelection,
     resolveCanvasSelectionLayout,
+    resolveCanvasGridLayout,
+    resolveCanvasSmartLayout,
     resolvePromptComposerOverlay,
     resolveSnapGuides,
     samePosition,
@@ -171,6 +173,35 @@ describe("canvas surface geometry", () => {
                 expect(horizontalGap >= CANVAS_NODE_GAP || verticalGap >= CANVAS_NODE_GAP).toBe(true);
             });
         });
+    });
+
+    it("arranges nodes in 宫格布局 by current 2D spatial reading order", () => {
+        const node1 = { ...target, id: "n1", position: { x: 500, y: 100 }, width: 200, height: 150 };
+        const node2 = { ...target, id: "n2", position: { x: 100, y: 110 }, width: 200, height: 150 };
+        const node3 = { ...target, id: "n3", position: { x: 100, y: 400 }, width: 200, height: 150 };
+        const node4 = { ...target, id: "n4", position: { x: 500, y: 390 }, width: 200, height: 150 };
+        const nodes = [node1, node2, node3, node4];
+        const updates = resolveCanvasGridLayout(nodes, ["n1", "n2", "n3", "n4"]);
+        expect(updates).toHaveLength(4);
+        const map = new Map(updates.map((u) => [u.id, u.position]));
+        // n2 is top-left, so it should be at row 0 col 0 (x: 100, y: 100)
+        expect(map.get("n2")).toEqual({ x: 100, y: 100 });
+        // n1 is top-right, so it should be at row 0 col 1
+        expect(map.get("n1")).toEqual({ x: 100 + 200 + CANVAS_NODE_GAP, y: 100 });
+    });
+
+    it("arranges nodes in 智能布局 using adaptive multi-column masonry", () => {
+        const tall = { ...target, id: "tall", position: { x: 100, y: 100 }, width: 200, height: 400 };
+        const short1 = { ...target, id: "short1", position: { x: 350, y: 100 }, width: 200, height: 150 };
+        const short2 = { ...target, id: "short2", position: { x: 350, y: 300 }, width: 200, height: 150 };
+        const nodes = [tall, short1, short2];
+        const updates = resolveCanvasSmartLayout(nodes, ["tall", "short1", "short2"]);
+        expect(updates).toHaveLength(3);
+        const map = new Map(updates.map((u) => [u.id, u.position]));
+        // All nodes are positioned without overlaps
+        expect(map.has("tall")).toBe(true);
+        expect(map.has("short1")).toBe(true);
+        expect(map.has("short2")).toBe(true);
     });
 
     it("snaps a dragged node's top edge to another node's top edge", () => {

@@ -159,8 +159,21 @@ export function GenerationDefaultsPanel({ settings, onChange }: { settings: Auth
                 <LabeledControl label="默认音频格式">
                     <Select className="w-full" value={settings.generationDefaults.audioFormat} options={["mp3", "wav", "opus", "aac", "flac"].map((value) => ({ value, label: value.toUpperCase() }))} onChange={(value) => onChange("audioFormat", value)} />
                 </LabeledControl>
+                <LabeledControl label="生成媒体下载出网方式">
+                    <Select
+                        className="w-full"
+                        value={settings.generationDefaults.mediaDownloadEgress || "server-proxy"}
+                        options={[
+                            { value: "server-proxy", label: "跟随服务器代理（默认）" },
+                            { value: "direct", label: "强制直连（不占代理流量）" },
+                        ]}
+                        onChange={(value) => onChange("mediaDownloadEgress", value)}
+                    />
+                </LabeledControl>
             </div>
-            <div className="mt-2 text-xs leading-5 text-stone-500 dark:text-stone-400">新建画布生图节点和配置节点默认使用；视频分析模型从可用的文本逻辑模型中选择。</div>
+            <div className="mt-2 text-xs leading-5 text-stone-500 dark:text-stone-400">
+                新建画布生图节点和配置节点默认使用；视频分析模型从可用的文本逻辑模型中选择。生成媒体下载出网方式控制把上游生成的图片/视频下载回服务器时是否走代理：选择「强制直连」可避免下载占用代理流量，但若上游地址仅能通过代理访问会下载失败。
+            </div>
         </div>
     );
 }
