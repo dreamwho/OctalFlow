@@ -435,16 +435,6 @@ async function refreshTask(id, force = false) {
       result = await providerJson(`/internal/runtime/v1/tasks/${encodeURIComponent(id)}/rebind`, { method: "POST", body: JSON.stringify({ accountId: account.id, credentialVersion: task.credentialVersion || account.credentialVersion, cookie: store.cookie(account.id), proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name }) });
     }
   }
-  if (result.status === "accepted" && task.failureSource === "browser") result = { ...result, status: "failed", error: task.error };
-  if (result.status === "accepted" && activeAccountId === task.accountId && browserView?.webContents.getURL().startsWith(`https://www.dola.com/chat/${task.conversationId}`)) {
-    const visibleText = await browserView.webContents.executeJavaScript("document.body?.innerText || ''", true).catch(() => "");
-    const failure = String(visibleText).match(/(?:视频|图片)生成失败[^。\n]{0,120}。?/)?.[0];
-    if (failure && !task.prompt.includes(failure)) {
-      result = { ...result, status: "failed", error: failure };
-      task.failureSource = "browser";
-    }
-  }
-  if (result.status === "completed") delete task.failureSource;
   task.status = result.status || task.status;
   task.error = result.error || "";
   task.conversationId = result.conversationId || result.conversation_id || task.conversationId;
@@ -580,6 +570,11 @@ async function downloadTaskAssets(id, ordinal) {
   const downloads = downloadDirectory();
   await mkdir(directory, { recursive: true });
   await mkdir(downloads, { recursive: true });
+  const account = store.state.accounts.find((item) => item.id === task.accountId);
+  if (!account) throw new Error("任务账号不存在");
+  const partition = session.fromPartition(`persist:dola-${account.id}`);
+  const proxy = await resolveProxy(account.proxyId, account.id);
+  await partition.setProxy(proxy.url ? { proxyRules: proxy.url } : { mode: "direct" });
   const files = [];
   for (const [index, originalUrl] of task.resultUrls.entries()) {
     if (ordinal !== undefined && index !== Number(ordinal)) continue;
@@ -593,7 +588,7 @@ async function downloadTaskAssets(id, ordinal) {
     }
     const parsed = new URL(url);
     if (parsed.protocol !== "https:" || !parsed.hostname || !/\.(?:dola\.com|byteintlapi\.com|ibyteimg\.com)$/.test(`.${parsed.hostname.toLowerCase()}`)) throw new Error("生成结果地址不在允许的 Dola/CDN 域名内");
-    const response = await fetch(url, { redirect: "follow" });
+    const response = await partition.fetch(url, { redirect: "follow" });
     const finalHost = new URL(response.url).hostname.toLowerCase();
     if (!["dola.com", "byteintlapi.com", "ibyteimg.com"].some((suffix) => finalHost === suffix || finalHost.endsWith(`.${suffix}`))) throw new Error("素材下载跳转到不受信任的地址");
     if (!response.ok) throw new Error(`素材下载失败：HTTP ${response.status}`);

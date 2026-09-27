@@ -935,6 +935,17 @@ def test_user_prompt_failure_words_and_ordinary_assistant_reply_are_not_terminal
     assert parse_generation_payloads([payload]) == {}
 
 
+def test_latest_assistant_failure_overrides_stale_active_creation():
+    active = {"sender_type": 2, "content_block": [{"block_type": 2074, "content": {"creation_block": {"creations": [{"type": 2, "video": {"status": 1}}]}}}]}
+    failed = {"sender_type": 2, "tts_content": "视频生成失败，生成额度未扣除。"}
+    payload = {"downlink_body": {"pull_singe_chain_downlink_body": {"messages": [active, failed]}}}
+    result = parse_generation_payloads([payload])
+    assert result["error"] == "upstream_generation_failed"
+    assert result["rawError"] == failed["tts_content"]
+    payload["downlink_body"]["pull_singe_chain_downlink_body"]["messages"].append({"sender_type": 2, "tts_content": "正在重新生成中"})
+    assert parse_generation_payloads([payload]) == {}
+
+
 def test_live_chain_user_type_does_not_turn_user_prompt_into_failure():
     payload = {"downlink_body": {"pull_singe_chain_downlink_body": {"messages": [{
         "user_type": 1,

@@ -157,9 +157,51 @@ def test_real_submit_page_does_not_run_any_protocol_probe_before_generation():
 def test_generation_query_payloads_and_parser_share_result_contract():
     conversation_id = "12345678901234567"
     queries = generation_query_payloads(conversation_id)
-    assert [path for path, _ in queries] == ["/im/conversation/info", "/im/chain/single"]
+    assert [path for path, _ in queries] == ["/im/chain/single", "/im/conversation/info"]
     result = parse_generation_payloads([{"creation_block": {"creations": [{"type": 2, "video": {"download_url": "https://cdn.dola.com/final.mp4"}}]}}])
     assert result["url"] == "https://cdn.dola.com/final.mp4"
+
+
+def test_pending_chain_uses_one_protocol_request_without_browser_fallback(monkeypatch):
+    import asyncio
+    import httpx
+    import dola_api.query as query_module
+    import dola_api.session as session_module
+
+    requested_paths = []
+
+    def handler(request):
+        requested_paths.append(request.url.path)
+        return httpx.Response(200, json={"code": 0, "downlink_body": {"pull_singe_chain_downlink_body": {"messages": [
+            {"user_type": 1, "content_block": [{"block_type": 10000, "content": {"text_block": {"text": "请分析视频生成失败的原因"}}}]},
+            {"user_type": 2, "tts_content": "正在生成中"},
+        ]}}})
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(query_module.httpx, "AsyncClient", lambda **kwargs: client(transport=httpx.MockTransport(handler), **kwargs))
+    result = asyncio.run(query_module.fetch_generation_result("session=fixture", "38418045496287761", {}))
+    assert result == {"pending": True, "assistantText": "正在生成中"}
+    assert requested_paths == ["/im/chain/single"]
+
+    pool = CamoufoxSessionPool()
+    pool._tasks["pending-video"] = VideoTask(id="pending-video", model="dola-seedance-2-5", status="accepted", conversationId="38418045496287761")
+    pool._task_meta["pending-video"] = {"conversationId": "38418045496287761", "cookie": "session=fixture", "identity": {}}
+
+    async def pending(*_args):
+        return result
+
+    async def unexpected_browser(*_args):
+        raise AssertionError("有效的等待响应不应启动浏览器")
+
+    async def persist():
+        return None
+
+    monkeypatch.setattr(session_module, "fetch_generation_result", pending)
+    monkeypatch.setattr(pool, "_fetch_generation_result_in_page", unexpected_browser)
+    monkeypatch.setattr(pool, "_persist", persist)
+    asyncio.run(pool._refresh_task("pending-video"))
+    assert pool._tasks["pending-video"].status == "accepted"
+    assert pool._tasks["pending-video"].diagnostics["upstreamResponseText"] == "正在生成中"
 
 
 def test_credit_probe_uses_signed_live_page_identity():
@@ -445,7 +487,7 @@ def test_refresh_task_uses_page_signed_result_fallback(monkeypatch):
     assert task.vodPayload == {"fallback_api": "https://vod.dola.com/fallback"}
 
 
-def test_refresh_task_captures_page_screenshot_and_dom_raw_error(monkeypatch):
+def test_protocol_failure_keeps_reply_without_starting_screenshot_browser(monkeypatch):
     import asyncio
     import dola_api.session as session_module
     from dola_api.app import query
@@ -455,14 +497,10 @@ def test_refresh_task_captures_page_screenshot_and_dom_raw_error(monkeypatch):
     pool._task_meta["task-failed-query"] = {"conversationId": "38417845959375633", "cookie": "sid=abc", "identity": {}, "screenshotBase64": "stale-submission-screen"}
 
     async def direct_query(*_args, **_kwargs):
-        return {"error": "upstream_generation_failed"}
+        return {"error": "content_policy_violation", "rawError": "老房改造提示词存在不符合社区规范的内容，无法生成视频", "assistantText": "老房改造提示词存在不符合社区规范的内容，无法生成视频"}
 
     async def page_query(*_args, **_kwargs):
-        return {
-            "error": "content_policy_violation",
-            "rawError": "老房改造提示词存在不符合社区规范的内容，无法生成视频",
-            "screenshotBase64": "fresh-conversation-screenshot",
-        }
+        raise AssertionError("协议已返回明确原因时不应启动浏览器")
 
     async def persist():
         return None
@@ -477,13 +515,13 @@ def test_refresh_task_captures_page_screenshot_and_dom_raw_error(monkeypatch):
     assert task.status == "failed"
     assert task.error == "content_policy_violation"
     assert task.rawError == "老房改造提示词存在不符合社区规范的内容，无法生成视频"
-    assert task.screenshotBase64 == "fresh-conversation-screenshot"
+    assert task.screenshotBase64 is None
 
     monkeypatch.setattr("dola_api.app.pool", pool)
     serialized = asyncio.run(query("task-failed-query"))
     assert serialized["rawError"] == "老房改造提示词存在不符合社区规范的内容，无法生成视频"
     assert serialized["raw_error"] == "老房改造提示词存在不符合社区规范的内容，无法生成视频"
-    assert serialized["screenshotBase64"] == "fresh-conversation-screenshot"
+    assert serialized.get("screenshotBase64") is None
 
 
 def test_refresh_task_does_not_reuse_unrelated_submission_screenshot(monkeypatch):
@@ -588,13 +626,13 @@ def test_submit_stream_extraction_walks_sse_event_tuples():
 
 
 def test_generic_failure_message_terminates_generation_result():
-    payload = {"messages": [{"content": '[{"block_type":10000,"content":{"text_block":{"text":"出了点问题，请稍后重试。"}}}]'}]}
+    payload = {"messages": [{"sender_type": 2, "content": '[{"block_type":10000,"content":{"text_block":{"text":"出了点问题，请稍后重试。"}}}]'}]}
     assert parse_generation_payloads([payload])["error"] == "upstream_generation_failed"
 
 
 def test_later_failure_message_overrides_stale_active_creation():
-    active = {"messages": [{"content": '[{"block_type":2074,"content":{"creation_block":{"creations":[{"type":2,"video":{"status":1},"image":{"image_ori":{"url":"https://cdn.dola.com/cover.png"}}}]}}}]'}, {"content": '[{"block_type":10000,"content":{"text_block":{"text":"视频生成好后，我会主动发送给你。"}}}]'}]}
-    failed = {"messages": [{"content": '[{"block_type":10000,"content":{"text_block":{"text":"视频生成失败，生成额度未扣除。"}}}]'}]}
+    active = {"messages": [{"sender_type": 2, "content": '[{"block_type":2074,"content":{"creation_block":{"creations":[{"type":2,"video":{"status":1},"image":{"image_ori":{"url":"https://cdn.dola.com/cover.png"}}}]}}}]'}, {"sender_type": 2, "content": '[{"block_type":10000,"content":{"text_block":{"text":"视频生成好后，我会主动发送给你。"}}}]'}]}
+    failed = {"messages": [{"sender_type": 2, "content": '[{"block_type":10000,"content":{"text_block":{"text":"视频生成失败，生成额度未扣除。"}}}]'}]}
     result = parse_generation_payloads([active, failed])
     assert result["error"] == "upstream_generation_failed"
     assert result["rawError"] == "视频生成失败，生成额度未扣除。"
@@ -639,7 +677,7 @@ def test_dola_30s_unlocker_script_contains_required_hooks():
 
 
 def test_quota_exhausted_message_terminates_generation_result():
-    payload = {"messages": [{"content": '[{"block_type":10000,"content":{"text_block":{"text":"今天的生成次数已经到达上限，明天再来免费生成吧"}}}]'}]}
+    payload = {"messages": [{"sender_type": 2, "content": '[{"block_type":10000,"content":{"text_block":{"text":"今天的生成次数已经到达上限，明天再来免费生成吧"}}}]'}]}
     result = parse_generation_payloads([payload])
     assert result["error"] == "upstream_quota_exhausted"
     assert result["rawError"] == "今天的生成次数已经到达上限，明天再来免费生成吧"
@@ -669,7 +707,7 @@ def test_conversational_refusal_without_creation_terminates_with_exact_text():
         }
     }
     result = parse_generation_payloads([downlink_payload])
-    assert result.get("error") == refusal_text
+    assert result.get("error") == "upstream_unsupported_duration"
     assert result.get("rawError") == refusal_text
     assert result.get("url") == ""
 

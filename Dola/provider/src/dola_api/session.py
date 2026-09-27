@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 from .contracts import AccountInspectRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
 from .page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from .protocol import PROFILES, canonical_ratio, sanitize_video_prompt_duration, validate_request
-from .query import _classify_refusal_code, decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_account_login_state, parse_generation_payloads, probe_account_login
+from .query import _classify_refusal_code, _extract_assistant_text, decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_account_login_state, parse_generation_payloads, probe_account_login
 from .task_store import decrypt_secret, decrypt_cookie, encrypt_secret, encrypt_cookie, load_state, save_state
 from .uploads import resolve_references
 
@@ -28,6 +28,23 @@ DOLA_BOT_ID = "7339470689562525703"
 DOLA_AID = "495671"
 DOLA_PC_VERSION = "3.36.11"
 DOLA_VERSION_CODE = "20800"
+DOLA_CONVERSATION_RENDERED_SCRIPT = """(conversationId) => {
+    if (location.pathname !== `/chat/${conversationId}` || document.readyState === 'loading') return false;
+    const main = document.querySelector('main') || document.body;
+    const mainText = (main.innerText || '').trim();
+    if (!mainText || (mainText.includes('AI 创作') && mainText.includes('让创作随灵感而生'))) return false;
+    const sidebarEdge = Math.min(280, innerWidth * 0.25);
+    if (Array.from(main.querySelectorAll('h1, h2')).some((item) => item.textContent?.trim() === 'AI 创作' && item.getBoundingClientRect().left >= sidebarEdge)) return false;
+    const pending = document.querySelectorAll('[aria-busy="true"], [role="progressbar"], [class*="skeleton" i], [class*="shimmer" i], [class*="animate-pulse"]');
+    for (const item of pending) {
+        const rect = item.getBoundingClientRect();
+        if (rect.width && rect.height && rect.right > sidebarEdge && rect.top < innerHeight) return false;
+    }
+    return Array.from(main.querySelectorAll('[data-message-id]:not([data-send-message-boundary])')).some((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.width && rect.height && rect.left >= sidebarEdge && (item.innerText || '').trim();
+    });
+}"""
 
 
 @dataclass
@@ -1215,6 +1232,15 @@ class CamoufoxSessionPool:
             await self._persist()
             return
         result = await fetch_generation_result(cookie, conversation_id, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None)
+        assistant_text = str(result.get("assistantText") or "")
+        if assistant_text:
+            diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
+            if diagnostics.get("upstreamResponseText") != assistant_text:
+                task = task.model_copy(update={"diagnostics": {**diagnostics, "upstreamResponseText": assistant_text}})
+                self._tasks[task_id] = task
+                await self._persist()
+        if result.get("pending"):
+            return
         if not result:
             try:
                 result = await self._fetch_generation_result_in_page(conversation_id, meta)
@@ -1230,27 +1256,13 @@ class CamoufoxSessionPool:
             error_text = str(result.get("error"))[:1000]
             raw_error = str(result.get("rawError") or result.get("error") or "")[:2000]
             diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
-            # A failure screenshot must belong to this exact conversation.
-            screenshot_base64 = ""
-            screenshot_error = ""
-            if os.getenv("DOLA_ENABLE_BROWSER", "0") == "1":
-                try:
-                    page_result = await self._fetch_generation_result_in_page(conversation_id, meta)
-                    if page_result.get("screenshotBase64"):
-                        screenshot_base64 = str(page_result["screenshotBase64"])
-                    if page_result.get("rawError"):
-                        raw_error = str(page_result["rawError"])[:2000]
-                    if page_result.get("error") and (error_text == "upstream_generation_failed" or not error_text):
-                        error_text = str(page_result["error"])[:1000]
-                except Exception as capture_error:
-                    screenshot_error = str(capture_error)[:160]
             self._tasks[task_id] = task.model_copy(
                 update={
                     "status": "failed",
                     "error": error_text,
                     "rawError": raw_error,
-                    "screenshotBase64": screenshot_base64 or None,
-                    "diagnostics": {**diagnostics, "upstreamResponseText": raw_error, **({"resultScreenshotError": screenshot_error} if screenshot_error else {})},
+                    "screenshotBase64": None,
+                    "diagnostics": {**diagnostics, "upstreamResponseText": assistant_text or raw_error},
                 }
             )
             await self._persist()
@@ -1305,12 +1317,19 @@ class CamoufoxSessionPool:
                     await page.wait_for_url(f"**{expected_path}")
             if urlsplit(str(page.url)).path != expected_path:
                 raise RuntimeError("result_query_wrong_conversation")
+            try:
+                await page.wait_for_function(DOLA_CONVERSATION_RENDERED_SCRIPT, arg=conversation_id, timeout=45_000)
+            except Exception as error:
+                raise RuntimeError("result_query_conversation_not_ready") from error
 
             # Scroll the chat history container to the bottom so the latest card / error is in the viewport.
             try:
                 await page.evaluate("""() => {
                     const root = document.querySelector('main') || document.body;
+                    const sidebarEdge = Math.min(280, innerWidth * 0.25);
                     const scrollables = Array.from(root.querySelectorAll('*')).filter(el => {
+                        const rect = el.getBoundingClientRect();
+                        if (el.closest('aside, nav, [role="navigation"]') || rect.right <= sidebarEdge || rect.left < sidebarEdge) return false;
                         const style = window.getComputedStyle(el);
                         const overflow = style.overflowY || style.overflow;
                         return (overflow === 'auto' || overflow === 'scroll') && el.scrollHeight > el.clientHeight && el.clientHeight > 150;
@@ -1328,59 +1347,35 @@ class CamoufoxSessionPool:
                 if not _json_transport_ready(transport):
                     continue
                 try:
-                    payloads.append(json.loads(str(transport.get("text") or "")))
+                    payload = json.loads(str(transport.get("text") or ""))
+                    payloads.append(payload)
+                    downlink = payload.get("downlink_body") if isinstance(payload, dict) else None
+                    if path == "/im/chain/single" and isinstance(payload, dict) and payload.get("code") in (None, 0, "0") and isinstance(downlink, dict) and isinstance(downlink.get("pull_singe_chain_downlink_body"), dict):
+                        break
                 except (TypeError, ValueError, json.JSONDecodeError):
                     continue
             parsed = parse_generation_payloads(payloads)
+            assistant_text = _extract_assistant_text(payloads)
+            if assistant_text:
+                parsed["assistantText"] = assistant_text
 
-            # Extract detailed failure reasons from DOM
+            # Only inspect the latest message inside this rendered conversation.
             dom_error = ""
             try:
                 dom_error = await page.evaluate("""() => {
                     const root = document.querySelector('main') || document.body;
-                    // 1. Toast / notification / alert
-                    const alertSelectors = ['.ant-message-error', '.ant-alert-error', '.ant-notification-notice-error', '[role="alert"]'];
-                    for (const sel of alertSelectors) {
-                        const els = root.querySelectorAll(sel);
-                        for (const el of els) {
-                            const t = (el.innerText || el.textContent || '').trim();
-                            if (t) return t;
-                        }
-                    }
-                    // 2. Failure card or retry block
-                    const failEls = Array.from(root.querySelectorAll('[class*="error"], [class*="fail"], [class*="failed"], [class*="card"]'));
-                    for (const el of failEls.reverse()) {
-                        const t = (el.innerText || el.textContent || '').trim();
-                        if (t && (t.includes('失败') || t.includes('违规') || t.includes('审核') || t.includes('额度') || t.includes('出了点问题') || t.includes('无法生成') || t.includes('限制'))) {
-                            return t.length > 500 ? t.slice(0, 500) : t;
-                        }
-                    }
-                    // 3. Last assistant message containing failure indicators
-                    const msgEls = Array.from(root.querySelectorAll('[class*="message"], [class*="bubble"], [class*="content"]'));
-                    for (const el of msgEls.reverse()) {
-                        const t = (el.innerText || el.textContent || '').trim();
-                        if (t && (t.includes('失败') || t.includes('违规') || t.includes('审核') || t.includes('额度') || t.includes('出了点问题') || t.includes('无法生成') || t.includes('限制'))) {
-                            return t.length > 500 ? t.slice(0, 500) : t;
-                        }
-                    }
-                    return '';
+                    const messages = root.querySelectorAll('[data-message-id]:not([data-send-message-boundary])');
+                    return (messages[messages.length - 1]?.innerText || '').trim().slice(0, 2000);
                 }""")
             except Exception:
                 pass
 
             if dom_error:
-                parsed["rawError"] = dom_error
                 code = _classify_refusal_code(dom_error)
                 if code:
                     parsed["error"] = code
-                elif not parsed.get("error"):
-                    parsed["error"] = dom_error
-
-            if parsed.get("error") or (not parsed.get("url") and not parsed.get("imageUrls")):
-                try:
-                    parsed["screenshotBase64"] = base64.b64encode(await page.screenshot(type="png")).decode("ascii")
-                except Exception:
-                    pass
+                if code or parsed.get("error"):
+                    parsed["rawError"] = dom_error
             return parsed
 
 

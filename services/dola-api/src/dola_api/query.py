@@ -396,27 +396,24 @@ def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
             "rawError": err_msg,
         }
 
-    # If a creation block is active (e.g. video.status == 1 generating), keep polling.
+    latest_reply = _latest_assistant_text(payloads)
+    refusal = _classify_refusal_code(latest_reply)
+    if refusal:
+        return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": refusal, "rawError": latest_reply}
+
+    # A stale active creation may remain in the chain after a final failure
+    # reply. The latest assistant message above takes precedence.
     if _has_creation_block(payloads):
         return {}
 
-    raw_assistant_text = _extract_assistant_text(payloads)
     if protocol_error:
-        raw_error = protocol_error
         return {
             "url": "",
             "imageUrls": [],
             "payload": extract_vod_payload(payloads),
-            "error": _classify_refusal_code(raw_error) or "upstream_protocol_error",
-            "rawError": raw_error,
+            "error": _classify_refusal_code(protocol_error) or "upstream_protocol_error",
+            "rawError": protocol_error,
         }
-
-    # A normal assistant reply can precede a creation block. Only explicit
-    # refusal text is terminal; otherwise continue polling the conversation.
-    if raw_assistant_text:
-        classified = _classify_refusal_code(raw_assistant_text)
-        if classified:
-            return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": classified, "rawError": raw_assistant_text}
 
     return {}
 
@@ -570,6 +567,17 @@ def _extract_assistant_text(payloads: list[Any]) -> str:
                     if text and text not in replies:
                         replies.append(text)
     return "\n\n".join(replies)
+
+
+def _latest_assistant_text(payloads: list[Any]) -> str:
+    for body in reversed(payloads):
+        for item in _walk(body):
+            messages = item.get("messages") if isinstance(item, dict) else None
+            if isinstance(messages, list):
+                for msg in reversed(messages):
+                    if _is_assistant_message(msg) and (text := _extract_text_from_message(msg)):
+                        return text
+    return ""
 
 
 def _classify_refusal_code(text: str) -> str:
