@@ -12,7 +12,7 @@ import string
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -112,6 +112,28 @@ def _proxy_options(proxy_url: str | None) -> dict[str, Any]:
     return {"proxy": proxy_url} if proxy_url else {}
 
 
+def _signed_reference_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    query = dict(parse_qsl(parsed.query))
+    return (parsed.path.startswith("/api/reference-assets/")
+            and query.get("purpose") == "provider-read"
+            and query.get("expires", "").isdigit()
+            and bool(query.get("signature")))
+
+
+def _reference_fetch_route(url: str, proxy_url: str | None) -> tuple[str, str | None]:
+    if not _signed_reference_url(url):
+        return url, proxy_url
+    origin = os.getenv("DOLA_REFERENCE_ASSET_ORIGIN", "").strip()
+    if origin:
+        parsed_origin = urlsplit(origin)
+        if parsed_origin.scheme not in {"http", "https"} or not parsed_origin.netloc or parsed_origin.path not in {"", "/"} or parsed_origin.query or parsed_origin.fragment:
+            raise RuntimeError("reference_asset_origin_invalid")
+        parsed = urlsplit(url)
+        url = urlunsplit((parsed_origin.scheme, parsed_origin.netloc, parsed.path, parsed.query, ""))
+    return url, None
+
+
 async def _read_response_json(response: httpx.Response, label: str) -> dict[str, Any]:
     if response.status_code < 200 or response.status_code >= 300:
         raise RuntimeError(f"{label}_http_{response.status_code}")
@@ -138,9 +160,13 @@ async def _fetch_source_bytes(url: str, proxy_url: str | None) -> tuple[bytes, s
         return _check_source_size(content), mime, "reference.png"
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise RuntimeError("reference_url_invalid")
+    fetch_url, fetch_proxy = _reference_fetch_route(url, proxy_url)
     timeout = httpx.Timeout(45.0, connect=15.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(proxy_url)) as client:
-        response = await client.get(url, headers={"accept": "image/*,*/*;q=0.8"})
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(fetch_proxy)) as client:
+        try:
+            response = await client.get(fetch_url, headers={"accept": "image/*,*/*;q=0.8"})
+        except httpx.RequestError as error:
+            raise RuntimeError(f"reference_fetch_{type(error).__name__}") from error
         if response.status_code < 200 or response.status_code >= 300:
             raise RuntimeError(f"reference_fetch_http_{response.status_code}")
         content = _check_source_size(response.content)
@@ -192,7 +218,10 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(proxy_url)) as client:
         apply_params = {"Action": "ApplyImageUpload", "Version": IMAGEX_API_VERSION, "ServiceId": service_id, "FileSize": str(len(content)), "FileExtension": ext, "s": _random_base36()}
         apply_url = f"https://{imagex_host}/?{urlencode(apply_params)}"
-        apply_response = await client.get(apply_url, headers={"Accept": "*/*", **_sign_imagex_request(method="GET", raw_url=apply_url, credentials=credentials)})
+        try:
+            apply_response = await client.get(apply_url, headers={"Accept": "*/*", **_sign_imagex_request(method="GET", raw_url=apply_url, credentials=credentials)})
+        except httpx.RequestError as error:
+            raise RuntimeError(f"imagex_apply_{type(error).__name__}") from error
         apply_data = await _read_response_json(apply_response, "apply_image_upload")
         upload_address = (apply_data.get("Result") or {}).get("UploadAddress") or {}
         store_infos = upload_address.get("StoreInfos") or []
@@ -208,14 +237,20 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
         if isinstance(upload_address.get("UploadHeader"), dict):
             upload_headers.update({str(key): str(value) for key, value in upload_address["UploadHeader"].items()})
         upload_url = f"https://{upload_host}/upload/v1/{store_uri}"
-        upload_response = await client.post(upload_url, headers=upload_headers, content=content)
+        try:
+            upload_response = await client.post(upload_url, headers=upload_headers, content=content)
+        except httpx.RequestError as error:
+            raise RuntimeError(f"imagex_upload_{type(error).__name__}") from error
         upload_data = await _read_response_json(upload_response, "image_upload")
         if upload_data.get("code") != 2000:
             raise RuntimeError("image_upload_rejected")
         commit_url = f"https://{imagex_host}/?{urlencode({'Action': 'CommitImageUpload', 'Version': IMAGEX_API_VERSION, 'ServiceId': service_id})}"
         commit_body = json.dumps({"SessionKey": session_key}, separators=(",", ":"))
         commit_headers = {"Accept": "*/*", "Content-Type": "application/json", **_sign_imagex_request(method="POST", raw_url=commit_url, credentials=credentials, body=commit_body, include_payload_hash=True)}
-        commit_response = await client.post(commit_url, headers=commit_headers, content=commit_body)
+        try:
+            commit_response = await client.post(commit_url, headers=commit_headers, content=commit_body)
+        except httpx.RequestError as error:
+            raise RuntimeError(f"imagex_commit_{type(error).__name__}") from error
         commit_data = await _read_response_json(commit_response, "commit_image_upload")
     result = commit_data.get("Result") or {}
     results = result.get("Results") if isinstance(result, dict) else []
@@ -230,8 +265,11 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
 
 async def resolve_references(page: Any, references: list[dict[str, Any]], proxy_url: str | None = None) -> list[dict[str, Any]]:
     resolved: list[dict[str, Any]] = []
-    for item in references:
-        resolved.append(await upload_reference(page, item, proxy_url))
+    for index, item in enumerate(references, 1):
+        try:
+            resolved.append(await upload_reference(page, item, proxy_url))
+        except Exception as error:
+            raise RuntimeError(f"reference_{index}_of_{len(references)}: {str(error).strip() or type(error).__name__}") from error
     return resolved
 
 

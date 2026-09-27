@@ -108,6 +108,7 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       DOLA_PROVIDER_KEY: ${DREAMYO_DOLA_PROVIDER_KEY:?请在 .env 中配置至少 32 位 Dola Provider 内部服务密钥}
       DOLA_PROVIDER_PORT: "18082"
+      DOLA_REFERENCE_ASSET_ORIGIN: http://127.0.0.1:${PORT:-8866}
       DOLA_ENABLE_BROWSER: "1"
       DOLA_INTERACTIVE_BROWSER_MAX_SESSIONS: ${DOLA_INTERACTIVE_BROWSER_MAX_SESSIONS:-1}
       DOLA_TASK_STATE_PATH: /app/web/.data/dola/provider-tasks.json

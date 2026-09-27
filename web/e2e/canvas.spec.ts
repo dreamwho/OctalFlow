@@ -98,7 +98,7 @@ for (const outcome of ["success-50", "success-70", "failure", "reduced"] as cons
                 await page.clock.runFor(150);
             }
             await expect(loading).toHaveCount(0);
-            if (outcome === "failure") await expect(result.getByRole("alert")).toContainText("完成进度测试失败");
+            if (outcome === "failure") await expect(result.locator("[data-canvas-node-error]").getByRole("button", { name: "再次生成" })).toBeVisible();
             else await expect(result.locator("video")).toHaveAttribute("src", url);
             await page.clock.runFor(1000);
             await expectCanvasSaved(page);
@@ -134,7 +134,7 @@ test("estimated generation progress advances and survives reload without claimin
         for (const width of [1440, 390, 430]) {
             await page.setViewportSize({ width, height: 900 });
             const parent = (await loading.boundingBox())!;
-            const status = (await loading.locator(":scope > span").boundingBox())!;
+            const status = (await loading.locator(":scope > div").boundingBox())!;
             expect(status.y + status.height).toBeLessThan(parent.y + parent.height);
             expect(status.x + status.width).toBeLessThanOrEqual(parent.x + parent.width);
             await page.screenshot({ path: `.e2e-artifacts/estimated-progress-${width}.png` });
@@ -207,7 +207,7 @@ test("canvas generation progress stays in the top-left on desktop and mobile", a
             const loading = page.locator('[data-node-id="depth-progress"] [data-canvas-node-loading]');
             await expect(loading).toBeVisible();
             await expect(loading).toHaveAttribute("aria-label", "生成中 6%");
-            const label = loading.locator(':scope > span > span:not([role="img"])');
+            const label = loading.locator(':scope > div > div > div > span').first();
             const containerBox = (await loading.boundingBox())!;
             const labelBox = (await label.boundingBox())!;
             expect(labelBox.x).toBeGreaterThan(containerBox.x);

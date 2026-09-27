@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, App, Button, Card, Descriptions, Empty, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Statistic, Switch, Table, Tabs, Tag, Upload } from "antd";
+import { Alert, App, Button, Card, Descriptions, Empty, Input, InputNumber, Modal, Popconfirm, Radio, Select, Space, Spin, Statistic, Switch, Table, Tabs, Tag, Upload } from "antd";
 import type { UploadProps } from "antd";
 import { Activity, Bot, CheckCircle2, Copy, Eye, EyeOff, FileKey2, KeyRound, Pencil, Play, RefreshCw, Search, Trash2, UploadCloud } from "lucide-react";
 import { saveAs } from "file-saver";
@@ -535,23 +535,26 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
 
     const openHeadedOptions = async (row: DolaAccount) => {
         setHeadedAccount(row);
-        setHeadedProxy("direct");
-        try {
-            const view = await genericProxyRequest<ChatGptProxyView>("proxies");
-            setHeadedGenericNodes(view.groups.filter((group) => group.enabled).flatMap((group) => group.nodes.filter((node) => node.enabled).map((node) => ({ value: `generic:node:${node.id}`, label: `${group.name} / ${node.name}` }))));
-        } catch { setHeadedGenericNodes([]); message.warning("通用代理列表暂不可用，仍可直接连接或选择已绑定的代理"); }
+        setHeadedProxyMode("direct");
+        setHeadedGenericNode("");
+        const [overview, generic] = await Promise.allSettled([getDolaAdminState(), genericProxyRequest<ChatGptProxyView>("proxies")]);
+        if (overview.status === "fulfilled") setHeadedBinding(overview.value.proxy);
+        else message.warning("Dola 代理状态暂不可用，请刷新后重试");
+        if (generic.status === "fulfilled") setHeadedGenericNodes(generic.value.groups.filter((group) => group.enabled).flatMap((group) => group.nodes.filter((node) => node.enabled).map((node) => ({ value: `node:${node.id}`, label: `${group.name} / ${node.name}` }))));
+        else setHeadedGenericNodes([]);
     };
     const launchHeaded = () => {
         if (!headedAccount) return;
         const row = headedAccount;
-        const [mode, ...rest] = headedProxy.split(":");
-        if ((mode === "magic" || mode === "chained") && (!state?.proxy.enabled || state.proxy.mode !== mode || !state.proxy.target)) {
+        const mode = headedProxyMode;
+        if (mode === "generic" && !headedGenericNode) { message.warning("请选择通用代理节点"); return; }
+        if ((mode === "magic" || mode === "chained") && (!headedBinding?.enabled || headedBinding.mode !== mode || !headedBinding.target)) {
             message.warning(`请先在代理管理中配置并启用 Dola ${mode === "magic" ? "魔法代理" : "链式代理"}`);
             return;
         }
-        const target = mode === "generic" ? rest.join(":") : state?.proxy.target || "";
+        const target = mode === "generic" ? headedGenericNode : mode === "direct" ? "" : headedBinding?.target || "";
         void runFor(row.id, async () => {
-            const result = await startDolaHeadedTest(row.id, { mode: mode as "direct" | "magic" | "generic" | "chained", target, timeoutSeconds: headedTimeout });
+            const result = await startDolaHeadedTest(row.id, { mode, target, timeoutSeconds: headedTimeout });
             setHeadedAccount(null);
             setAccountVerification({ verificationId: result.verificationId, accountId: row.id });
             setHeadedSessions((current) => [...current, { verificationId: result.verificationId, accountId: row.id, createdAt: new Date().toISOString() }]);
@@ -663,7 +666,9 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
     const [exportingCookies, setExportingCookies] = useState(false);
     const [accountVerification, setAccountVerification] = useState<{ verificationId: string; accountId: string } | null>(null);
     const [headedAccount, setHeadedAccount] = useState<DolaAccount | null>(null);
-    const [headedProxy, setHeadedProxy] = useState("direct");
+    const [headedProxyMode, setHeadedProxyMode] = useState<"direct" | "generic" | "magic" | "chained">("direct");
+    const [headedGenericNode, setHeadedGenericNode] = useState("");
+    const [headedBinding, setHeadedBinding] = useState<DolaAdminState["proxy"] | null>(null);
     const [headedTimeout, setHeadedTimeout] = useState(180);
     const [headedGenericNodes, setHeadedGenericNodes] = useState<Array<{ value: string; label: string }>>([]);
     const [headedSessions, setHeadedSessions] = useState<Array<{ verificationId: string; accountId: string; createdAt: string }>>([]);
@@ -863,7 +868,28 @@ function AccountsPanel({ state, onRefresh, onImport, onTest, onTestAccount, onSa
                                                 </>
                                             );
                                         })()}
-                                    </div><div className="text-xs text-zinc-500">关闭弹层（未转入后台）会停止剩余账号的验证；转入后台后可点击「正在验证账号」按钮重新查看进度。</div></div></Modal><Modal title={`有头测试 · ${headedAccount?.name || ""}`} open={Boolean(headedAccount)} onCancel={() => setHeadedAccount(null)} onOk={launchHeaded} okText="打开独立窗口" okButtonProps={{ loading: Boolean(headedAccount && busyId === headedAccount.id) }}><div className="space-y-3"><p>选择本次测试的出口；浏览器使用全新实例与空白上下文，仅加载该账号的 Cookie。本机打开独立窗口，服务器通过网页远程操作。操作完成后请点击「检测登录并保存 Cookie」。</p><Select className="w-full" value={headedProxy} onChange={setHeadedProxy} options={[{ value: "direct", label: "不使用代理 · 直连" }, ...headedGenericNodes, { value: "magic", label: `魔法代理${state?.proxy.enabled && state.proxy.mode === "magic" ? ` · ${state.proxy.target}` : " · 需要配置"}` }, { value: "chained", label: `链式代理${state?.proxy.enabled && state.proxy.mode === "chained" ? ` · ${state.proxy.target}` : " · 需要配置"}` }]} />{(headedProxy === "magic" || headedProxy === "chained") && (!state?.proxy.enabled || state.proxy.mode !== headedProxy || !state.proxy.target) ? <Alert type="info" showIcon message="请先配置 Dola 代理出口" description="在代理管理中选择魔法代理节点，或配置链式代理的跳板与落地节点，保存后返回有头测试。该配置也用于 Dola 生成任务。" action={<Button size="small" onClick={() => { setHeadedAccount(null); onManageProxy(); }}>前往代理管理</Button>} /> : null}<div><label className="mb-1 block text-xs">远程窗口最长空闲时间（秒）</label><InputNumber className="w-full" min={1} precision={0} value={headedTimeout} onChange={(value) => setHeadedTimeout(value || 180)} /></div><p className="text-xs text-zinc-500">魔法代理和链式代理使用代理管理中 Dola 当前已绑定的出口；通用代理可选任一已启用节点，本次选择不修改生成任务的代理绑定。远程窗口在空闲超时后自动回收。</p></div></Modal><DolaVerificationDialog request={accountVerification ? { taskId: "", verificationId: accountVerification.verificationId } : null} admin headedTest onClose={() => { setAccountVerification(null); void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }} onResolved={async () => { message.success("账号页面已重新检测，并同步当前凭据与状态"); setAccountVerification(null); await listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); await onRefresh(); }} /><GoogleLoginModal open={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onSuccess={onRefresh} /></>;
+                                    </div><div className="text-xs text-zinc-500">关闭弹层（未转入后台）会停止剩余账号的验证；转入后台后可点击「正在验证账号」按钮重新查看进度。</div></div></Modal><Modal title={`有头测试 · ${headedAccount?.name || ""}`} open={Boolean(headedAccount)} onCancel={() => setHeadedAccount(null)} onOk={launchHeaded} okText="打开独立窗口" okButtonProps={{ loading: Boolean(headedAccount && busyId === headedAccount.id) }}>
+        <div className="space-y-3">
+            <p>选择本次测试的出口；浏览器使用全新实例与空白上下文，仅加载该账号的 Cookie。本机打开独立窗口，服务器通过网页远程操作。操作完成后请点击「检测登录并保存 Cookie」。</p>
+            <div className="space-y-2">
+                <label className="block text-xs font-medium">代理方式</label>
+                <Radio.Group value={headedProxyMode} onChange={(event) => setHeadedProxyMode(event.target.value)} className="w-full">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <Radio value="direct" className="m-0">直连</Radio>
+                        <Radio value="generic" className="m-0">通用代理</Radio>
+                        <Radio value="magic" className="m-0">魔法代理</Radio>
+                        <Radio value="chained" className="m-0">链式代理</Radio>
+                    </div>
+                </Radio.Group>
+            </div>
+            {headedProxyMode === "generic" ? <div className="space-y-1"><label className="block text-xs">通用代理节点</label><Select className="w-full" value={headedGenericNode || undefined} onChange={setHeadedGenericNode} options={headedGenericNodes} placeholder="选择已启用节点" showSearch optionFilterProp="label" /></div> : null}
+            {(headedProxyMode === "magic" || headedProxyMode === "chained") ? (headedBinding?.enabled && headedBinding.mode === headedProxyMode && headedBinding.target
+                ? <Alert type="success" showIcon message={`本次使用 Dola 已绑定的${headedProxyMode === "magic" ? "魔法代理" : "链式代理"}`} description={headedBinding.target} />
+                : <Alert type="info" showIcon message={`请配置 Dola ${headedProxyMode === "magic" ? "魔法代理节点" : "链式代理跳板与落地节点"}`} description="在代理管理保存出口后返回账号列表重新打开有头测试。" action={<Button size="small" onClick={() => { setHeadedAccount(null); onManageProxy(); }}>前往代理管理</Button>} />) : null}
+            <div><label className="mb-1 block text-xs">远程窗口最长空闲时间（秒）</label><InputNumber className="w-full" min={1} precision={0} value={headedTimeout} onChange={(value) => setHeadedTimeout(value || 180)} /></div>
+            <p className="text-xs text-zinc-500">魔法代理和链式代理复用 Dola 生成任务当前绑定的出口，便于检查同一条网络路径；本次有头测试不修改代理绑定。远程窗口在空闲超时后自动回收。</p>
+        </div>
+    </Modal><DolaVerificationDialog request={accountVerification ? { taskId: "", verificationId: accountVerification.verificationId } : null} admin headedTest onClose={() => { setAccountVerification(null); void listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); }} onResolved={async () => { message.success("账号页面已重新检测，并同步当前凭据与状态"); setAccountVerification(null); await listDolaHeadedTests().then(setHeadedSessions).catch(() => undefined); await onRefresh(); }} /><GoogleLoginModal open={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onSuccess={onRefresh} /></>;
 }
 
 function StatisticsPanel({ state }: { state: DolaAdminState | null }) { const stats = state?.stats; return <div className="grid gap-4 sm:grid-cols-3"><Card><Statistic title="账号总数" value={stats?.totalAccounts || 0} prefix={<Bot className="size-4" />} /></Card><Card><Statistic title="成功请求" value={stats?.successCount || 0} prefix={<CheckCircle2 className="size-4" />} /></Card><Card><Statistic title="失败请求" value={stats?.errorCount || 0} prefix={<Activity className="size-4" />} /></Card></div>; }

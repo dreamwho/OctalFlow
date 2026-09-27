@@ -48,11 +48,13 @@ describe("outbound url security", () => {
     });
 
     it("allows proxy-tool fake-IP space only for callers that opt in", async () => {
-        mocks.lookup.mockResolvedValue([{ address: "198.18.0.96", family: 4 }]);
+        mocks.lookup.mockResolvedValue([{ address: "198.18.0.96", family: 4 }, { address: "2001:2::1ac", family: 6 }]);
 
         await expect(isSafeOutboundUrl("https://cdn.example.com/result.mp4")).resolves.toBe(false);
         await expect(isSafeOutboundUrl("https://cdn.example.com/result.mp4", { allowProxyFakeIpSpace: true })).resolves.toBe(true);
         await expect(resolveSafeOutboundTarget("https://cdn.example.com/result.mp4", { allowProxyFakeIpSpace: true })).resolves.toMatchObject({ address: "198.18.0.96", family: 4 });
+        mocks.lookup.mockResolvedValue([{ address: "2001:2::1ac", family: 6 }]);
+        await expect(resolveSafeOutboundTarget("https://cdn.example.com/result.mp4", { allowProxyFakeIpSpace: true })).resolves.toMatchObject({ address: "2001:2::1ac", family: 6 });
         // 其它内网/保留地址即使开启选项也不放行
         mocks.lookup.mockResolvedValue([{ address: "10.0.0.8", family: 4 }]);
         await expect(isSafeOutboundUrl("https://cdn.example.com/result.mp4", { allowProxyFakeIpSpace: true })).resolves.toBe(false);

@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
     downloadMediaToFile: vi.fn(),
     writeReferenceMediaFile: vi.fn(),
+    runFfprobe: vi.fn(),
 }));
 
 vi.mock("@/lib/server/media-download", () => ({ downloadMediaToFile: mocks.downloadMediaToFile }));
 vi.mock("@/lib/server/reference-asset-store", () => ({ writeReferenceMediaFile: mocks.writeReferenceMediaFile }));
+vi.mock("@/lib/server/ffmpeg", () => ({ runFfprobe: mocks.runFfprobe }));
 
 import { normalizeVideoResult } from "./video-result-normalizer";
 
@@ -15,6 +17,7 @@ describe("normalizeVideoResult", () => {
         vi.clearAllMocks();
         mocks.downloadMediaToFile.mockResolvedValue({ bytes: 1024, mimeType: "video/mp4" });
         mocks.writeReferenceMediaFile.mockResolvedValue({ token: "permanent/2026/07/19/videos/result.mp4", mimeType: "video/mp4", bytes: 512 });
+        mocks.runFfprobe.mockRejectedValue(new Error("ffprobe unavailable"));
     });
 
     it("stores the upstream result unchanged and records the duration sent to the provider", async () => {
@@ -45,5 +48,12 @@ describe("normalizeVideoResult", () => {
         const result = await normalizeVideoResult({ url: "/api/source.mp4", origin: "http://localhost", requestedDurationSeconds: 60, ownerUserId: "user" });
 
         expect(result.durationMs).toBe(60_000);
+    });
+
+    it("records the actual media duration when Dola shortens a 30-second request", async () => {
+        mocks.runFfprobe.mockResolvedValue({ stdout: "15.040000\n", stderr: "" });
+        const result = await normalizeVideoResult({ url: "/api/source.mp4", origin: "http://localhost", requestedDurationSeconds: 30, ownerUserId: "user" });
+
+        expect(result.durationMs).toBe(15_040);
     });
 });

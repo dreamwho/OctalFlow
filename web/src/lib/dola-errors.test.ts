@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeDolaFailure, dolaErrorHint, isDolaQuotaExhaustedError, isDolaRateLimitError, shouldRotateAccountForError } from "./dola-errors";
+import { describeDolaFailure, dolaErrorHint, isDolaPreparingTask, isDolaQuotaExhaustedError, isDolaRateLimitError, shouldRotateAccountForError } from "./dola-errors";
 
 describe("dola-errors", () => {
     it("识别额度用完错误与今日生成上限", () => {
@@ -37,6 +37,14 @@ describe("dola-errors", () => {
         expect(dolaErrorHint("content_blocked")).toContain("风控");
         expect(dolaErrorHint("timeout")).toContain("超时");
         expect(dolaErrorHint("mystery_error")).toBeNull();
+    });
+
+    it("区分 Provider 参考图准备与 Dola 会话生成", () => {
+        expect(isDolaPreparingTask({ status: "queued" })).toBe(true);
+        expect(isDolaPreparingTask({ status: "running", diagnostics: { submitStage: "uploading_references" } })).toBe(true);
+        expect(isDolaPreparingTask({ status: "running", conversationId: "38418080062463249", diagnostics: { submitStage: "uploading_references" } })).toBe(false);
+        expect(describeDolaFailure("uploading_references: reference_3_of_9: reference_fetch_ConnectError")).toContain("尚未向 Dola 提交");
+        expect(describeDolaFailure("uploading_references: reference_3_of_9: imagex_apply_ConnectError")).toContain("上传服务连接失败");
     });
 
     it("网关描述拼接错误码与注释，未知错误给兜底说明", () => {

@@ -47,6 +47,7 @@ const PRIVATE_ALLOWLISTABLE_IPV6_ADDRESSES = addressBlockList([
 ]);
 // Clash/Surge 等代理工具 fake-IP 模式使用的保留段：系统 TUN 会按 Host 路由到真实公网目标，不属于可攻击的内网地址。
 const PROXY_FAKE_IP_IPV4_ADDRESSES = addressBlockList([["198.18.0.0", 15, "ipv4"]]);
+const PROXY_FAKE_IP_IPV6_ADDRESSES = addressBlockList([["2001:2::", 48, "ipv6"]]);
 
 export type SafeOutboundOptions = {
     allowCredentials?: boolean;
@@ -115,10 +116,10 @@ function isPrivateAllowlistableAddress(address: string) {
 
 export function isProxyFakeIpAddress(address: string) {
     const version = isIP(address);
-    if (!version || version !== 4) return false;
+    if (!version) return false;
     const mapped = mappedIpv4(address);
     if (mapped) return isProxyFakeIpAddress(mapped);
-    return PROXY_FAKE_IP_IPV4_ADDRESSES.check(address, "ipv4");
+    return version === 4 ? PROXY_FAKE_IP_IPV4_ADDRESSES.check(address, "ipv4") : PROXY_FAKE_IP_IPV6_ADDRESSES.check(address, "ipv6");
 }
 
 function addressBlockListContains(address: string, version: number, ipv4: BlockList, ipv6: BlockList) {

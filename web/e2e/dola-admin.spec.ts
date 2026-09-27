@@ -73,10 +73,11 @@ test("服务器账号测试使用远程浏览器并可关闭回收", async ({ pa
     await accountRow(page, "e2e-ready").getByRole("button", { name: "有头测试" }).click();
     const options = page.getByRole("dialog", { name: /有头测试 · e2e-ready/ });
     await expect(options.getByText("远程窗口最长空闲时间（秒）")).toBeVisible();
-    await options.getByRole("combobox").click();
-    await expect(page.getByText("魔法代理 · 需要配置")).toBeVisible();
-    await expect(page.getByText("链式代理 · 需要配置")).toBeVisible();
-    await options.getByRole("combobox").click();
+    await options.getByRole("radio", { name: "魔法代理" }).click();
+    await expect(options.getByText("请配置 Dola 魔法代理节点")).toBeVisible();
+    await options.getByRole("radio", { name: "链式代理" }).click();
+    await expect(options.getByText("请配置 Dola 链式代理跳板与落地节点")).toBeVisible();
+    await options.getByRole("radio", { name: "直连" }).click();
     await options.getByRole("button", { name: "打开独立窗口" }).click();
     const remote = page.getByRole("dialog", { name: "Dola 有头测试" });
     await expect(remote.getByAltText("Dola 账号实际页面")).toBeVisible();

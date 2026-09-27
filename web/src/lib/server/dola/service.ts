@@ -11,7 +11,7 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import type { VideoTask } from "@/lib/server/video-task-store";
 import { dolaProviderProxyMode, getDolaProxyBinding, resolveDolaProxyEgress, type DolaProxyEgress } from "./proxy";
 import { DolaProviderError, dolaHealth, dolaProviderConfigured, dolaRuntimeRequest, validateDolaVideoRequest } from "./provider";
-import { describeDolaFailure } from "@/lib/dola-errors";
+import { describeDolaFailure, isDolaPreparingTask } from "@/lib/dola-errors";
 import { dolaPublicModels, type DolaAccountValidation, type DolaQuotaSnapshot } from "./types";
 
 export async function getDolaOverview() {
@@ -191,7 +191,7 @@ export async function testDolaVideo(input: {
     const responsePreview = summarizeResponse(result, responseBytes);
     const responsePhase = classifyResponsePhase(response, result, verificationId);
     const observedQuota = quotaObservation(result);
-    lifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: responsePhase === "needs_review" ? "Provider 返回待人工确认状态" : responsePhase === "submitted" ? "已提交到 Dola 上游，任务排队中" : responsePhase === "generating" ? "Dola 上游已受理，生成中" : response.ok ? "Provider 已受理请求" : "Provider 返回失败", durationMs: Date.now() - started, detail: `HTTP ${response.status}${taskId ? `, 任务: ${taskId}` : ""}${verificationId ? ", 已提供验证会话" : ""}` });
+    lifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: responsePhase === "needs_review" ? "Provider 返回待人工确认状态" : responsePhase === "submitted" ? "已提交到 Dola 上游，任务排队中" : responsePhase === "running" ? dolaTaskProgressMessage(result) : responsePhase === "generating" ? "Dola 上游已受理，生成中" : response.ok ? "Provider 已受理请求" : "Provider 返回失败", durationMs: Date.now() - started, detail: `HTTP ${response.status}${taskId ? `, Provider 任务: ${taskId}` : ""}${verificationId ? ", 已提供验证会话" : ""}` });
     if (!isTemporaryAccount) await markDolaAccountUsed(account.id, response.ok);
     const screenshotBase64 = stringValue(result?.screenshotBase64);
     const resultError = stringValue(result?.error);
@@ -335,7 +335,7 @@ export async function queryDolaTask(taskId: string) {
         const bytes = new Uint8Array(await response.arrayBuffer());
         const value = parseRecord(bytes) || {};
         const verificationId = stringValue(value.verificationId ?? value.verification_id);
-        const taskPhase = response.ok ? dolaTaskLogPhase(stringValue(value.status), Boolean(verificationId)) : "failed";
+        const taskPhase = response.ok ? (isDolaPreparingTask(value) ? "running" : dolaTaskLogPhase(stringValue(value.status), Boolean(verificationId))) : "failed";
         const taskAccountId = stringValue(value.accountId);
         const taskError = stringValue(value.error);
         const rawError = stringValue(value.rawError);
@@ -361,7 +361,7 @@ export async function queryDolaTask(taskId: string) {
                 const errorText = taskError;
                 await safeAdvanceDolaTaskLog(attachedLogId, {
                     phase,
-                    message: phase === "success" ? "生成完成，最终结果已返回" : phase === "failed" ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}` : phase === "needs_review" ? "任务等待人工确认（页面验证）" : phase === "generating" ? dolaTaskProgressMessage(value) : "Dola 上游排队中，等待生成",
+                    message: phase === "success" ? "生成完成，最终结果已返回" : phase === "failed" ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}` : phase === "needs_review" ? "任务等待人工确认（页面验证）" : phase === "generating" || phase === "running" ? dolaTaskProgressMessage(value) : "Dola 上游排队中，等待生成",
                     detail: `${dolaResultMediaDetail(value) || `任务状态: ${stringValue(value.status) || "unknown"}`}${dolaConversationNote(value)}${dolaConversationScreenshotNote(value)}`,
                     statusCode: response.status,
                     responsePreview: summarizeResponse(value, bytes),
@@ -683,7 +683,8 @@ function classifyResponsePhase(response: Response, value: Record<string, unknown
     if (status.includes("submission_unknown") || error.includes("submission_unknown")) return "failed" as const;
     if (!response.ok) return "failed" as const;
     const taskId = stringValue(value?.taskId ?? value?.id);
-    // Async task creation only means the upstream queued the job, not that generation finished.
+    if (taskId && isDolaPreparingTask(value)) return "running" as const;
+    // A Provider task ID alone does not prove the Dola conversation exists.
     if (taskId && status !== "completed" && status !== "failed") return "submitted" as const;
     if (taskId) return dolaTaskLogPhase(status);
     return "success" as const;
@@ -696,7 +697,7 @@ function dolaResultMediaDetail(value: Record<string, unknown> | null) {
     return urls.length === 1 ? `结果地址: ${urls[0]}` : `结果地址 (${urls.length}): ${urls.slice(0, 3).join(", ")}${urls.length > 3 ? " …" : ""}`;
 }
 function dolaTaskProgressMessage(value: Record<string, unknown> | null) {
-    if (stringValue(value?.status) !== "running") return "Dola 上游已受理，生成中";
+    if (!isDolaPreparingTask(value)) return "Dola 上游已受理，生成中";
     const stage = stringValue((value?.diagnostics as Record<string, unknown> | undefined)?.submitStage);
     if (stage === "uploading_references") return "正在上传参考图，尚未确认 Dola 已受理";
     if (stage === "submitting_to_dola") return "正在提交到 Dola，等待会话确认";

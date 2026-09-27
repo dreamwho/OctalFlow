@@ -30,7 +30,7 @@ import { GEMINIAI_PROTOCOL, geminiAiProviderConfigured, geminiAiRuntimeRequest, 
 import { GEMINI_TOOLS_PROTOCOL, geminiToolsOAuthConfigured, geminiToolsRuntimeRequest, isGeminiToolsRuntimePath } from "@/lib/server/gemini-tools-service";
 import { DOLA_CHANNEL_ID, DOLA_PROTOCOL, dolaProviderConfigured, dolaRuntimeRequest, isDolaRuntimePath } from "@/lib/server/dola/provider";
 import { getDolaAccount, getDolaAccountCookie, markDolaAccountQuotaExhausted, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount, setDolaAccountStatus } from "@/lib/server/dola/account-service";
-import { describeDolaFailure, isDolaQuotaExhaustedError, isDolaRateLimitError } from "@/lib/dola-errors";
+import { describeDolaFailure, isDolaPreparingTask, isDolaQuotaExhaustedError, isDolaRateLimitError } from "@/lib/dola-errors";
 import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
 import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, openDolaRequestLog, markDolaRequestLogRunning, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
 import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
@@ -264,7 +264,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         if (isDolaChannel) dolaHold = readDolaHold(runtimeBody);
         if (isDolaChannel) dolaProxyEgress = readDolaProxyEgress(runtimeBody);
         if (isDolaChannel) {
-            dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: "Dola 账号与代理路由已准备", durationMs: Date.now() - upstreamStartedAt, detail: `账号: ${dolaAccountId || "未识别"}, 代理: ${dolaProxyEgress.mode}` });
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: "Dola 账号与代理路由已准备", durationMs: Date.now() - upstreamStartedAt, detail: `账号: ${await dolaAccountDisplayName(dolaAccountId) || "未识别"}, 代理: ${dolaProxyEgress.mode}` });
             dolaLifecycle.push({ time: new Date().toISOString(), phase: "upstream", message: "向 Dola Camoufox Provider 发起请求", durationMs: Date.now() - upstreamStartedAt, detail: "Cookie 和参考图已由服务端注入并脱敏" });
             await safeMarkDolaLog(dolaLogId, { phase: "upstream", message: "向 Dola Camoufox Provider 发起请求", detail: "Cookie 和参考图已由服务端注入并脱敏" });
         }
@@ -368,8 +368,10 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             const rotationMessage = quotaExhausted
                 ? "上游账号今日生成次数已达上限，已自动切换账号重试 (upstream account daily quota reached limit; auto-switched to another account)"
                 : "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)";
-            dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: rotationMessage, durationMs: Date.now() - upstreamStartedAt, detail: `原账号 ${previousDolaAccountId} 已${quotaExhausted ? "标记为额度已用完" : "进入临时冷却"}；新账号: ${dolaAccountId}` });
-            await safeMarkDolaLog(dolaLogId, { phase: "upstream", message: rotationMessage, detail: `新账号: ${dolaAccountId}` });
+            const previousAccountName = await dolaAccountDisplayName(previousDolaAccountId) || "未识别";
+            const nextAccountName = await dolaAccountDisplayName(dolaAccountId) || "未识别";
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: "routing", message: rotationMessage, durationMs: Date.now() - upstreamStartedAt, detail: `原账号 ${previousAccountName} 已${quotaExhausted ? "标记为额度已用完" : "进入临时冷却"}；新账号: ${nextAccountName}` });
+            await safeMarkDolaLog(dolaLogId, { phase: "upstream", message: rotationMessage, detail: `新账号: ${nextAccountName}` });
             try {
                 const rotationStartedAt = Date.now();
                 upstream = await dolaRuntimeRequest(geminiAiPath, { method: request.method, headers, body: dolaRuntimeBody, signal: request.signal });
@@ -389,7 +391,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             // Poll responses advance the original create log through 排队中 → 生成中 → 生成完成/生成失败.
             const providerStatus = stringValue(responseSnapshot.value?.status);
             if (upstream.ok) {
-                const phase = dolaTaskLogPhase(providerStatus, Boolean(responseSnapshot.verificationId));
+                const phase = isDolaPreparingTask(responseSnapshot.value) ? "running" : dolaTaskLogPhase(providerStatus, Boolean(responseSnapshot.verificationId));
                 const errorText = responseSnapshot.error || stringValue(responseSnapshot.value?.error);
                 await safeAdvanceDolaTaskLog(dolaAttachedTaskLogId, {
                     phase,
@@ -400,8 +402,8 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                               ? `生成失败${errorText ? `：${describeDolaFailure(errorText)}` : ""}`
                               : phase === "needs_review"
                                 ? "任务等待人工确认（页面验证）"
-                                : phase === "generating"
-                                  ? "Dola 上游已受理，生成中"
+                                : phase === "generating" || phase === "running"
+                                  ? dolaTaskProgressMessage(responseSnapshot.value)
                                   : "Dola 上游排队中，等待生成",
                     detail: `${dolaResultMediaDetail(responseSnapshot.value) || `上游任务状态: ${providerStatus || "unknown"}`}${dolaConversationScreenshotNote(responseSnapshot.value)}`,
                     statusCode: upstream.status,
@@ -430,12 +432,14 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                     ? "Dola 返回待人工确认状态"
                     : responsePhase === "submitted"
                       ? "已提交到 Dola 上游，任务排队中"
+                      : responsePhase === "running"
+                        ? dolaTaskProgressMessage(responseSnapshot.value)
                       : responsePhase === "failed"
                         ? `生成失败${dolaErrorText ? `：${describeDolaFailure(dolaErrorText)}` : ""}`
                         : upstream.ok
                           ? "Dola Provider 已返回响应"
                           : "Dola Provider 返回失败";
-            dolaLifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: lifecycleMessage, durationMs: Date.now() - upstreamStartedAt, detail: `HTTP ${upstream.status}${responseSnapshot.taskId ? `, 任务: ${responseSnapshot.taskId}` : ""}` });
+            dolaLifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: lifecycleMessage, durationMs: Date.now() - upstreamStartedAt, detail: `HTTP ${upstream.status}${responseSnapshot.taskId ? `, Provider 任务: ${responseSnapshot.taskId}` : ""}` });
             await safeSettleDolaLog(dolaLogId, { statusCode: upstream.status, durationMs: Date.now() - upstreamStartedAt, phase: responsePhase, ...(settledError ? { error: settledError } : {}), responsePreview: responseSnapshot.preview, responseBytes: responseSnapshot.bytes, contentType: upstream.headers.get("content-type") || undefined, accountId: dolaAccountId || undefined, accountName: await dolaAccountDisplayName(dolaAccountId), taskId: responseSnapshot.taskId || undefined, verificationId: responseSnapshot.verificationId || undefined, screenshotBase64: responseSnapshot.screenshotBase64 || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
         }
     }
@@ -1311,10 +1315,18 @@ function dolaCreateResponsePhase(response: Response, value: Record<string, unkno
     if (hasVerification) return "needs_review";
     if (!response.ok) return "failed";
     const taskId = stringValue(value?.taskId || value?.id);
-    // Async task creation only means the upstream accepted the job; it is queued, not finished.
+    if (taskId && isDolaPreparingTask(value)) return "running";
+    // A Provider task ID alone does not prove the Dola conversation exists.
     if (taskId && status !== "completed" && status !== "failed") return "submitted";
     if (taskId) return dolaTaskLogPhase(status, hasVerification);
     return "success";
+}
+function dolaTaskProgressMessage(value: Record<string, unknown> | null) {
+    if (!isDolaPreparingTask(value)) return "Dola 上游已受理，生成中";
+    const stage = stringValue((value?.diagnostics as Record<string, unknown> | undefined)?.submitStage);
+    if (stage === "uploading_references") return "正在上传参考图，尚未确认 Dola 已受理";
+    if (stage === "submitting_to_dola") return "正在提交到 Dola，等待会话确认";
+    return "正在准备 Dola 提交，尚未确认上游已受理";
 }
 function dolaResultMediaDetail(value: Record<string, unknown> | null) {
     const videoUrl = stringValue(value?.videoUrl || value?.video_url);

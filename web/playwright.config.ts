@@ -7,7 +7,8 @@ const baseURL = `http://127.0.0.1:${port}`;
 const protocolFixturePort = Number(process.env.DREAMYO_PROTOCOL_FIXTURE_PORT || 4010);
 const paymentFixturePort = Number(process.env.DREAMYO_PAYMENT_FIXTURE_PORT || 4020);
 const databaseUrl = process.env.DREAMYO_E2E_DATABASE_URL?.trim() || "";
-const storageState = path.join(process.cwd(), ".e2e-data", "admin-state.json");
+const e2eDataDir = process.env.DREAMYO_E2E_DATA_DIR || path.join(process.cwd(), ".e2e-data");
+const storageState = path.join(e2eDataDir, "admin-state.json");
 
 export default defineConfig({
     testDir: "./e2e",
@@ -80,7 +81,7 @@ export default defineConfig({
                 DREAMYO_INTERNAL_ORIGIN: baseURL,
                 DREAMYO_WORKER_API_ORIGIN: baseURL,
                 DREAMYO_DATABASE_PROVIDER: databaseUrl ? "postgres" : "file",
-                DREAMYO_DATA_DIR: path.join(process.cwd(), ".e2e-data"),
+                DREAMYO_DATA_DIR: e2eDataDir,
                 DREAMYO_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                 DREAMYO_INSTALL_TOKEN: "dreamyo-e2e-install-token-32chars",
                 DREAMYO_MAINTENANCE_TOKEN: "dreamyo-e2e-maintenance-token-32chars",

@@ -200,6 +200,31 @@ describe("video generation candidate failover", () => {
         );
     });
 
+    it("passes a Canvas-style 30-second request with nine signed references to the Dola protocol route", async () => {
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
+        try {
+            mocks.getAuthSettings.mockResolvedValue({
+                ...settings,
+                systemChannels: [{ ...channels[0], id: "dola", models: ["dola-seedance-2-5"], advancedConfig: { protocol: "dola", createPath: "/v1/videos", imageToVideoPath: "/v1/videos", supportsReferenceImage: true } }],
+                logicalModels: [{ ...settings.logicalModels[0], bindings: [{ id: "dola-binding", channelId: "dola", upstreamModel: "dola-seedance-2-5", enabled: true, priority: 1 }] }],
+            });
+            mocks.fetchInternalApi.mockResolvedValue(json({ id: "dola-provider-task", status: "queued" }));
+            const references = Array.from({ length: 9 }, (_, index) => ({ type: "image", url: `http://localhost/api/reference-assets/permanent/reference-${index + 1}.png` }));
+
+            const response = await POST(request({ model: "video", videoSeconds: "30", size: "9:16" }, references));
+            const [url, init] = mocks.fetchInternalApi.mock.calls[0] as [string, RequestInit];
+            const body = JSON.parse(String(init.body));
+
+            expect(response.status).toBe(200);
+            expect(url).toContain("/api/ai/system/dola/v1/videos");
+            expect(body).toMatchObject({ model: "dola-seedance-2-5", duration: 30, ratio: "9:16" });
+            expect(body.images).toHaveLength(9);
+            expect(body.images.every((item: string) => item.includes("purpose=provider-read") && item.includes("signature="))).toBe(true);
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
     it("surfaces an explicit HTTP 200 business failure after safe candidate fallback", async () => {
         mocks.fetchInternalApi.mockImplementation(async () => json({ code: "204", msg: "登录验证失败" }));
 

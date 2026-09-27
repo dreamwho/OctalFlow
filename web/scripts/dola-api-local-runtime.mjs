@@ -37,6 +37,7 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
         DOLA_BROWSER_ENGINE: source.DOLA_BROWSER_ENGINE?.trim() || dotenv.DOLA_BROWSER_ENGINE || "camoufox",
         DOLA_CAMOUFOX_BROWSER: source.DOLA_CAMOUFOX_BROWSER?.trim() || dotenv.DOLA_CAMOUFOX_BROWSER || "",
         DOLA_PROVIDER_PORT: String(port),
+        DOLA_REFERENCE_ASSET_ORIGIN: source.DOLA_REFERENCE_ASSET_ORIGIN?.trim() || source.DREAMYO_INTERNAL_ORIGIN?.trim() || `http://127.0.0.1:${source.PORT || "3333"}`,
         DOLA_TASK_STATE_PATH: source.DOLA_TASK_STATE_PATH?.trim() || dotenv.DOLA_TASK_STATE_PATH || path.join(dataRoot, "dola", "provider-tasks.json"),
         DOLA_PROFILE_DIR: source.DOLA_PROFILE_DIR?.trim() || dotenv.DOLA_PROFILE_DIR || path.join(dataRoot, "dola", "profiles"),
         PYTHONPATH: [path.join(providerRoot, "src"), source.PYTHONPATH].filter(Boolean).join(path.delimiter),

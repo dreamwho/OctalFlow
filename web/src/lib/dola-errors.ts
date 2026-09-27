@@ -1,6 +1,9 @@
 /** Dola 协议错误码识别与双语说明，外部网关与后台界面共用。 */
 
 const DOLA_ERROR_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
+    [/uploading_references.*reference_\d+_of_\d+.*reference_fetch_ConnectError/i, "站内参考图读取连接失败，尚未向 Dola 提交生成请求 (reference fetch failed before submission)"],
+    [/uploading_references.*reference_\d+_of_\d+.*imagex_(?:apply|upload|commit)_ConnectError/i, "参考图上传服务连接失败，尚未向 Dola 提交生成请求 (image upload connection failed before submission)"],
+    [/uploading_references.*ConnectError/i, "参考图准备阶段连接失败，尚未向 Dola 提交生成请求 (reference transfer failed before submission)"],
     [/quota[_ ]?exhausted|upstream_quota_exhausted|生成次数.*(?:上限|已达|到达)|额度.*用完|免费生成次数.*用完|明天再来免费生成|今日额度已用完/i, "上游账号今日生成次数已达上限 (upstream account daily quota exhausted)"],
     [/rate[_ ]?limited|rate limit|too many requests|429|710022002|服务访问频繁|频繁/i, "上游账号触发生成频率/数量限制 (upstream account rate-limited)"],
     [/quota/i, "上游账号配额已耗尽 (upstream account quota exhausted)"],
@@ -10,6 +13,14 @@ const DOLA_ERROR_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
     [/content_policy_violation|sensitive|risk|moderation|blocked|社区规范|违规|安全审核/i, "内容被上游风控拦截/违反社区规范 (content policy violation / safety moderation)"],
     [/upstream_generation_failed|generation_failed|生成失败/i, "上游模型生成失败 (upstream generation failed)"],
 ];
+
+/** A Provider task ID can exist before any Dola conversation or generation request exists. */
+export function isDolaPreparingTask(value: Record<string, unknown> | null) {
+    if (!value || value.conversationId || value.conversation_id) return false;
+    const status = String(value.status || "").toLowerCase();
+    const stage = String((value.diagnostics as Record<string, unknown> | undefined)?.submitStage || "");
+    return status === "queued" || (status === "running" && ["opening_page", "uploading_references", "submitting_to_dola"].includes(stage));
+}
 
 /** 识别上游账号今日生成额度耗尽（Dola 协议约定错误码：upstream_quota_exhausted / quota_exhausted / 今日生成次数已达上限 / 额度已用完） */
 export function isDolaQuotaExhaustedError(text: string) {
