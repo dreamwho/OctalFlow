@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -16,12 +17,17 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+import httpx
+
 from .contracts import AccountInspectRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
+from .fingerprint_identity import http_headers, load_or_create_http_identity, remember_egress_ip, stored_egress_ip
 from .page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from .protocol import PROFILES, canonical_ratio, sanitize_video_prompt_duration, validate_request
 from .query import _classify_refusal_code, _extract_assistant_text, decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_account_login_state, parse_generation_payloads, probe_account_login
 from .task_store import decrypt_secret, decrypt_cookie, encrypt_secret, encrypt_cookie, load_state, save_state
 from .uploads import resolve_references
+
+logger = logging.getLogger("dola.session")
 
 DOLA_WEB_ORIGIN = "https://www.dola.com"
 DOLA_BOT_ID = "7339470689562525703"
@@ -192,7 +198,8 @@ class CamoufoxSessionPool:
             self._sessions.setdefault(key, PageSession(account_id, credential_version, proxy_mode, proxy_target, proxy_url or "", request.cookie))
             task_id = f"dola-{uuid.uuid4()}"
             task = VideoTask(id=task_id, model=profile.model, status="queued", accountId=account_id, credentialVersion=credential_version, proxyMode=proxy_mode, proxyTarget=proxy_target or None)
-            self._task_meta[task_id] = {"accountId": account_id, "credentialVersion": credential_version, "proxyMode": proxy_mode, "proxyTarget": proxy_target, "proxyUrl": proxy_url or "", "cookie": request.cookie}
+            http_identity = _request_http_identity(account_id, request.randomFingerprint, request.userAgent, request.acceptLanguage)
+            self._task_meta[task_id] = {"accountId": account_id, "credentialVersion": credential_version, "proxyMode": proxy_mode, "proxyTarget": proxy_target, "proxyUrl": proxy_url or "", "cookie": request.cookie, **({"httpIdentity": http_identity} if http_identity else {}), **({"randomFingerprint": True} if request.randomFingerprint else {})}
             self._tasks[task_id] = task
             await self._persist()
         asyncio.create_task(self._run_page_submit(task_id, request, key))
@@ -202,7 +209,8 @@ class CamoufoxSessionPool:
         if not request.cookie:
             raise ValueError("missing_cookie")
         proxy_url = _proxy_url_for_request(request.proxyMode, request.proxyUrl)
-        login_probe = await probe_account_login(request.cookie, proxy_url or None)
+        http_identity = _request_http_identity(request.accountId, request.randomFingerprint, request.userAgent, request.acceptLanguage)
+        login_probe = await probe_account_login(request.cookie, proxy_url or None, http_identity)
         if login_probe.get("state") == "needs_login":
             return {"status": "needs_login", "quota": [], "loginProbe": login_probe}
         if request.authOnly:
@@ -214,9 +222,10 @@ class CamoufoxSessionPool:
         except ImportError as error:
             raise RuntimeError("camoufox_not_installed") from error
         is_headless = True if request.headless is None else bool(request.headless)
-        browser_options = _camoufox_browser_options(is_headless, proxy_url, request.accountId)
+        egress_ip = await _egress_ip_for(request.accountId, request.randomFingerprint, proxy_url)
+        browser_options = _camoufox_browser_options(is_headless, proxy_url, request.accountId, egress_ip, _random_identity_for(request.accountId, request.randomFingerprint))
         async with AsyncCamoufox(**browser_options) as browser:
-            context = await browser.new_context(**_camoufox_context_options())
+            context = await browser.new_context(**_camoufox_context_options(_random_identity_for(request.accountId, request.randomFingerprint)))
             if hasattr(context, "add_init_script"):
                 await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(request.cookie))
@@ -256,12 +265,12 @@ class CamoufoxSessionPool:
         except ImportError as error:
             raise RuntimeError("camoufox_not_installed") from error
         is_headless = True if request.headless is None else bool(request.headless)
-        browser_options = _camoufox_browser_options(is_headless, proxy_url, request.accountId)
+        browser_options = _camoufox_browser_options(is_headless, proxy_url, request.accountId, None, _random_identity_for(request.accountId, request.randomFingerprint))
         browser_manager = AsyncCamoufox(**browser_options)
         browser = await browser_manager.__aenter__()
         keep_open = False
         try:
-            context = await browser.new_context(**_camoufox_context_options())
+            context = await browser.new_context(**_camoufox_context_options(_random_identity_for(request.accountId, request.randomFingerprint)))
             if hasattr(context, "add_init_script"):
                 await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(request.cookie))
@@ -381,7 +390,8 @@ class CamoufoxSessionPool:
         headless = request.headless is not False
         await self._reserve_interactive_browser(request.accountId, "headed_test")
         try:
-            manager = AsyncCamoufox(**_camoufox_browser_options(headless, proxy_url, request.accountId))
+            egress_ip = await _egress_ip_for(request.accountId, request.randomFingerprint, proxy_url)
+            manager = AsyncCamoufox(**_camoufox_browser_options(headless, proxy_url, request.accountId, egress_ip, _random_identity_for(request.accountId, request.randomFingerprint)))
             browser = await manager.__aenter__()
         except BaseException as error:
             await self._release_interactive_browser_slot()
@@ -390,7 +400,7 @@ class CamoufoxSessionPool:
             raise
         keep_open = False
         try:
-            context = await browser.new_context(**_camoufox_context_options())
+            context = await browser.new_context(**_camoufox_context_options(_random_identity_for(request.accountId, request.randomFingerprint)))
             try:
                 if hasattr(context, "add_init_script"):
                     await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
@@ -410,7 +420,8 @@ class CamoufoxSessionPool:
                     if hasattr(browser, "on"):
                         browser.on("disconnected", lambda: asyncio.create_task(self._discard_verification(verification_id)))
                 keep_open = True
-                return {"status": "headed_ready", "verificationId": verification_id, "accountId": request.accountId, "pageUrl": str(page.url)[:500]}
+                return {"status": "headed_ready", "verificationId": verification_id, "leaseToken": self._verifications[verification_id].lease_token,
+                        "accountId": request.accountId, "pageUrl": str(page.url)[:500]}
             finally:
                 if not keep_open:
                     await context.close()
@@ -421,7 +432,7 @@ class CamoufoxSessionPool:
             finally:
                 await self._release_interactive_browser_slot()
 
-    async def start_google_login_session(self, owner_id: str, proxy_mode: str = "direct", proxy_url: str | None = None, timeout_seconds: int = 180, headless: bool = True) -> dict[str, Any]:
+    async def start_google_login_session(self, owner_id: str, proxy_mode: str = "direct", proxy_url: str | None = None, timeout_seconds: int = 180, headless: bool = True, proxy_source: str | None = None, proxy_target: str | None = None) -> dict[str, Any]:
         if os.getenv("DOLA_ENABLE_BROWSER", "0") != "1":
             raise RuntimeError("camoufox_runtime_disabled")
         from camoufox.async_api import AsyncCamoufox  # type: ignore
@@ -439,7 +450,7 @@ class CamoufoxSessionPool:
             context = await browser.new_context(**_camoufox_context_options())
             try:
                 page = await context.new_page()
-                session = PageSession("", 1, proxy_mode, "", resolved_proxy or "", "")
+                session = PageSession("", 1, proxy_source or ("direct" if proxy_mode == "direct" else "generic"), proxy_target or "", resolved_proxy or "", "")
                 verification_id = await self._register_verification("", None, session, manager, context, page, [], {"type": "inspect", "subtype": "google_login", "pageState": "manual"}, owner_id=owner_id, lifetime_seconds=timeout_seconds if headless else None)
                 verification = self._verifications[verification_id]
                 if not headless:
@@ -475,8 +486,9 @@ class CamoufoxSessionPool:
             verification.navigation_error = f"Dola 登录页打开失败：{error}"
             await self._discard_verification(verification.verification_id)
 
-    def list_headed_tests(self) -> list[dict[str, str]]:
-        return [{"verificationId": item.verification_id, "accountId": item.page_session.account_id, "createdAt": item.created_at}
+    def list_headed_tests(self) -> list[dict[str, Any]]:
+        return [{"verificationId": item.verification_id, "accountId": item.page_session.account_id, "createdAt": item.created_at,
+                 "headless": item.expiry_task is not None}
                 for item in self._verifications.values() if item.decision.get("subtype") == "headed_test"]
 
     async def get(self, task_id: str) -> VideoTask | None:
@@ -576,7 +588,10 @@ class CamoufoxSessionPool:
         probe = await probe_account_login(cookie, verification.page_session.proxy_url or None)
         if probe.get("state") != "ready":
             return {"status": "needs_login" if probe.get("state") == "needs_login" else "unknown", "verificationId": verification_id}
-        return {"status": "ready", "verificationId": verification_id, "cookie": cookie}
+        return {"status": "ready", "verificationId": verification_id, "cookie": cookie,
+                "proxySource": verification.page_session.proxy_mode,
+                "proxyTarget": verification.page_session.proxy_target,
+                "proxyUrl": verification.page_session.proxy_url}
 
     async def finalize_headed_test(self, verification_id: str, lease: VerificationLease) -> dict[str, Any]:
         verification = self._verifications.get(verification_id)
@@ -655,7 +670,7 @@ class CamoufoxSessionPool:
                 "protocol": protocol,
             }
 
-        references = await resolve_references(verification.page, verification.references, verification.page_session.proxy_url)
+        references = await resolve_references(verification.page, verification.references, verification.page_session.proxy_url, verification.request.imagexProxyMode if verification.request else None, verification.request.imagexProxyUrl if verification.request else None)
         verification.references = references
         try:
             await verification.page.wait_for_load_state("load", timeout=45_000)
@@ -979,7 +994,7 @@ class CamoufoxSessionPool:
             conversation_id = _result_conversation_id(result)
             local_conversation_id = str(result.get("localConversationId") or "")
             if not conversation_id and result.get("ackReceived") and cookie and local_conversation_id:
-                conversation_id = await fetch_recent_conversation_id(cookie, identity, local_conversation_id, self._sessions[key].proxy_url or None)
+                conversation_id = await fetch_recent_conversation_id(cookie, identity, local_conversation_id, self._sessions[key].proxy_url or None, self._task_meta.get(task_id, {}).get("httpIdentity"))
             video_url = _result_video_url(result)
             image_urls = _result_image_urls(result)
             diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
@@ -1041,6 +1056,18 @@ class CamoufoxSessionPool:
                 self._tasks[task_id] = self._tasks[task_id].model_copy(update=update)
                 await self._persist()
                 return
+            assistant_reply = str(diagnostics.get("upstreamResponseText") or "")
+            refusal = _classify_refusal_code(assistant_reply)
+            if refusal:
+                self._tasks[task_id] = self._tasks[task_id].model_copy(update={
+                    "status": "failed",
+                    "error": refusal,
+                    "rawError": assistant_reply[:2000],
+                    "diagnostics": diagnostics or None,
+                    **({"conversationId": conversation_id} if conversation_id else {}),
+                })
+                await self._persist()
+                return
             if not conversation_id:
                 if result.get("ackReceived"):
                     # The submit stream carried SSE_ACK but no conversation id;
@@ -1090,7 +1117,8 @@ class CamoufoxSessionPool:
             pass
         proxy_url = session.proxy_url or None
         is_headless = True if request.headless is None else bool(request.headless)
-        browser_options = _camoufox_browser_options(is_headless, proxy_url, session.account_id)
+        egress_ip = await _egress_ip_for(session.account_id, request.randomFingerprint, proxy_url)
+        browser_options = _camoufox_browser_options(is_headless, proxy_url, session.account_id, egress_ip, _random_identity_for(session.account_id, request.randomFingerprint))
         browser_manager = AsyncCamoufox(**browser_options)
         browser = await browser_manager.__aenter__()
         keep_open = False
@@ -1098,7 +1126,7 @@ class CamoufoxSessionPool:
             # Keep the Camoufox (Firefox) fingerprint fully native: spoofing a
             # Chromium UA here produced contradictory navigator/sec-ch signals
             # that made the bdms signer reject the page.
-            context = await browser.new_context(**_camoufox_context_options())
+            context = await browser.new_context(**_camoufox_context_options(_random_identity_for(session.account_id, request.randomFingerprint)))
             if hasattr(context, "add_init_script"):
                 await context.add_init_script(DOLA_30S_UNLOCKER_SCRIPT)
             await context.add_cookies(_cookie_header_to_playwright(session.cookie))
@@ -1163,7 +1191,7 @@ class CamoufoxSessionPool:
                 }
             references = _normalize_request_references(request)
             await self._set_submit_stage(task_id, "uploading_references", referenceCount=len(references))
-            resolved_references = await resolve_references(page, references, proxy_url)
+            resolved_references = await resolve_references(page, references, proxy_url, request.imagexProxyMode, request.imagexProxyUrl)
             await self._set_submit_stage(task_id, "submitting_to_dola")
             result = await _execute_completion_submit(page, request, resolved_references, session.cookie)
             cookies = await context.cookies()
@@ -1272,7 +1300,7 @@ class CamoufoxSessionPool:
         conversation_id = str(task.conversationId or meta.get("conversationId") or "")
         cookie = str(meta.get("cookie") or "")
         if not conversation_id and meta.get("ackReceived") and cookie and meta.get("localConversationId"):
-            conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta["localConversationId"]), str(meta.get("proxyUrl") or "") or None) or ""
+            conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta["localConversationId"]), str(meta.get("proxyUrl") or "") or None, meta.get("httpIdentity")) or ""
             if conversation_id:
                 meta["conversationId"] = conversation_id
                 self._tasks[task_id] = task.model_copy(update={"conversationId": conversation_id})
@@ -1294,7 +1322,7 @@ class CamoufoxSessionPool:
         if now_ms - int(meta.get("lastResultPollAt") or 0) < int(meta.get("pollIntervalMs") or 2_500):
             return
         meta["lastResultPollAt"] = now_ms
-        result = await fetch_generation_result(cookie, conversation_id, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None)
+        result = await fetch_generation_result(cookie, conversation_id, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None, meta.get("httpIdentity"))
         assistant_text = str(result.get("assistantText") or "")
         if assistant_text:
             diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
@@ -1572,6 +1600,38 @@ async def _goto_dola_page(page: Any, url: str) -> str:
             pass
 
 
+def _request_http_identity(account_id: str, random_fingerprint: bool, user_agent: str | None, accept_language: str | None) -> dict[str, str] | None:
+    """协议请求头身份：桌面端显式透传的真实 UA 优先，其次按账号持久化的随机指纹身份。"""
+    explicit = {key: value for key, value in {"userAgent": user_agent, "acceptLanguage": accept_language}.items() if value}
+    if explicit:
+        return explicit
+    if random_fingerprint and account_id:
+        identity = load_or_create_http_identity(account_id)
+        return http_headers(identity) if identity else None
+    return None
+
+
+def _random_identity_for(account_id: str, random_fingerprint: bool) -> dict[str, Any] | None:
+    if not random_fingerprint or not account_id:
+        return None
+    return load_or_create_http_identity(account_id)
+
+
+async def _egress_ip_for(account_id: str, random_fingerprint: bool, proxy_url: str | None) -> str | None:
+    """Resolve the proxy egress IP, freezing it per proxy for randomized accounts."""
+    if not proxy_url:
+        return None
+    if not random_fingerprint or not account_id:
+        return await _resolve_proxy_egress_ip(proxy_url)
+    stored_ip, stored_proxy = stored_egress_ip(account_id)
+    if stored_ip and (stored_proxy or "") == proxy_url:
+        return stored_ip
+    egress_ip = await _resolve_proxy_egress_ip(proxy_url)
+    if egress_ip:
+        remember_egress_ip(load_or_create_http_identity(account_id) or {}, account_id, proxy_url, egress_ip)
+    return egress_ip
+
+
 def _camoufox_proxy_options(proxy_url: str) -> dict[str, str]:
     """Firefox rejects credentials embedded in the proxy server URL."""
     from urllib.parse import urlsplit
@@ -1588,10 +1648,13 @@ def _camoufox_proxy_options(proxy_url: str) -> dict[str, str]:
     return options
 
 
-def _camoufox_target_os() -> str:
+def _camoufox_target_os(random_identity: dict[str, Any] | None = None) -> str:
     configured = os.getenv("DOLA_CAMOUFOX_OS", "").strip().lower()
     if configured in {"macos", "windows", "linux"}:
         return configured
+    identity_os = str((random_identity or {}).get("os") or "")
+    if identity_os in {"macos", "windows", "linux"}:
+        return identity_os
     return "macos"
 
 
@@ -1636,14 +1699,61 @@ def _account_fingerprint_preset(account_id: str, target_os: str) -> dict[str, An
         return None
 
 
-def _camoufox_browser_options(headless: bool, proxy_url: str | None = None, account_id: str = "") -> dict[str, object]:
-    target_os = _camoufox_target_os()
+_PROXY_EGRESS_IP_URLS = (
+    "https://api.ipify.org",
+    "http://checkip.amazonaws.com",
+    "https://icanhazip.com",
+    "http://api.ipify.org",
+)
+_PROXY_EGRESS_IP_BUDGET_S = 8.0
+_egress_ip_cache: dict[str, str] = {}
+
+
+def _valid_public_ip(value: str) -> bool:
+    return bool(re.match(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$", value) or re.match(r"^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}$", value))
+
+
+async def _resolve_proxy_egress_ip(proxy_url: str) -> str | None:
+    """带明文 HTTP 回退地解析代理出口 IP；成功结果按代理串缓存。
+
+    camoufox 内置的 geoip 探测只走 HTTPS 且全部失败时直接中断浏览器启动；
+    部分机场链路按 SNI 过滤 IP 回显域名会让 6 个 HTTPS 端点全灭（InvalidIP）。
+    明文 HTTP 回显不受 SNI 过滤影响；解析出的 IP 直接传给 camoufox（geoip
+    支持 IP 字符串），完全绕开内置探测。失败不缓存，链路恢复后自动重试。
+    """
+    cached = _egress_ip_cache.get(proxy_url)
+    if cached:
+        return cached
+    deadline = time.monotonic() + _PROXY_EGRESS_IP_BUDGET_S
+    async with httpx.AsyncClient(proxy=proxy_url, follow_redirects=True, trust_env=False) as client:
+        for url in _PROXY_EGRESS_IP_URLS:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                response = await client.get(url, timeout=min(4.0, remaining))
+                ip = response.text.strip()
+            except httpx.HTTPError:
+                continue
+            if response.status_code == 200 and _valid_public_ip(ip):
+                _egress_ip_cache[proxy_url] = ip
+                return ip
+    logger.warning("代理出口 IP 解析失败（HTTPS/HTTP 回退均不可用），本次启动跳过 geoip 指纹对齐")
+    return None
+
+
+def _camoufox_browser_options(headless: bool, proxy_url: str | None = None, account_id: str = "", egress_ip: str | None = None, random_identity: dict[str, Any] | None = None) -> dict[str, object]:
+    target_os = _camoufox_target_os(random_identity)
+    configured_locale = os.getenv("DOLA_CAMOUFOX_LOCALE", "").strip()
     options: dict[str, object] = {
         "headless": headless,
         "enable_cache": False,
         "os": target_os,
-        "locale": os.getenv("DOLA_CAMOUFOX_LOCALE", "zh-CN").strip() or "zh-CN",
+        "locale": configured_locale or str((random_identity or {}).get("locale") or "") or "zh-CN",
     }
+    identity_window = (random_identity or {}).get("window")
+    if isinstance(identity_window, list) and len(identity_window) == 2 and all(isinstance(value, int) and value > 0 for value in identity_window):
+        options["window"] = (identity_window[0], identity_window[1])
     if account_id:
         preset = _account_fingerprint_preset(account_id, target_os)
         if preset:
@@ -1664,7 +1774,7 @@ def _camoufox_browser_options(headless: bool, proxy_url: str | None = None, acco
     selected = os.getenv("DOLA_CAMOUFOX_BROWSER", "").strip()
     if selected:
         options["browser"] = selected
-        options["window"] = (1365, 900)
+        options.setdefault("window", (1365, 900))
         match = re.search(r"(?:^|/)(\d{2,3})(?:\.|$)", selected)
         if match:
             # Camoufox 0.5.x resolves the binary after fingerprint generation;
@@ -1675,16 +1785,22 @@ def _camoufox_browser_options(headless: bool, proxy_url: str | None = None, acco
         options["proxy"] = _camoufox_proxy_options(proxy_url)
         # Keep WebRTC, timezone and geolocation aligned with the actual managed
         # proxy egress.  Camoufox resolves these values through the proxy.
-        options["geoip"] = True
+        # egress_ip comes from our HTTPS+HTTP probe; handing the IP to camoufox
+        # directly avoids its HTTPS-only internal probe aborting the launch on
+        # chains that filter IP-echo domains by SNI.
+        options["geoip"] = egress_ip if egress_ip else False
     return options
 
 
-def _camoufox_context_options() -> dict[str, object]:
-    options: dict[str, object] = {"storage_state": None, "locale": "zh-CN"}
+def _camoufox_context_options(random_identity: dict[str, Any] | None = None) -> dict[str, object]:
+    identity_window = (random_identity or {}).get("window")
+    options: dict[str, object] = {"storage_state": None, "locale": str((random_identity or {}).get("locale") or "") or "zh-CN"}
     if os.getenv("DOLA_CAMOUFOX_BROWSER", "").strip() or os.getenv("DOLA_CAMOUFOX_EXECUTABLE", "").strip():
         # Older Camoufox Juggler schemas reject Playwright 1.62's implicit
         # viewport.isMobile field. The launch window above owns the geometry.
         options["no_viewport"] = True
+    elif isinstance(identity_window, list) and len(identity_window) == 2 and all(isinstance(value, int) and value > 0 for value in identity_window):
+        options["viewport"] = {"width": identity_window[0], "height": identity_window[1]}
     else:
         options["viewport"] = {"width": 1365, "height": 900}
     return options
@@ -2044,6 +2160,9 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
     conversation_id = extract_conversation_id(events) or ""
     decision = _sse_verification_decision(events)
     diagnostics = _submission_diagnostics(events, text, payload)
+    assistant_reply = _extract_assistant_text(events)
+    if assistant_reply:
+        diagnostics["upstreamResponseText"] = assistant_reply[:2000]
     identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
     return {
         "status": int(payload.get("status") or 0),

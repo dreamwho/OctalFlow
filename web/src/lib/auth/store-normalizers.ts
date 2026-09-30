@@ -1,3 +1,4 @@
+import { normalizeGenerationPromptRules } from "@/lib/generation-prompt-rules";
 import { normalizeCanvasQuickActionGroups } from "@/lib/canvas-quick-actions";
 import { randomUUID } from "node:crypto";
 
@@ -475,6 +476,7 @@ export function normalizeAgentSkills(skills: AgentSkill[] | undefined) {
 
 export function normalizeGenerationDefaults(settings: Partial<GenerationDefaultSettings> | undefined): GenerationDefaultSettings {
     return {
+        promptRules: normalizeGenerationPromptRules(settings?.promptRules),
         mediaDownloadEgress: allowedText(settings?.mediaDownloadEgress, ["server-proxy", "direct"], DEFAULT_SETTINGS.generationDefaults.mediaDownloadEgress || "server-proxy") as "server-proxy" | "direct",
         canvasImageCount: normalizePositiveSafeInteger(settings?.canvasImageCount, DEFAULT_SETTINGS.generationDefaults.canvasImageCount),
         imageSize: allowedText(settings?.imageSize, ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"], DEFAULT_SETTINGS.generationDefaults.imageSize),

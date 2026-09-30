@@ -86,6 +86,7 @@ export function validateMihomoBootstrapContracts({ repoRoot }) {
                     { name: "dreamyo-GeminiAIStudio", type: "select", use: ["dreamyo-Subscription"], proxies: ["DIRECT"] },
                     { name: "dreamyo-GeminiTools", type: "select", use: ["dreamyo-Subscription"], proxies: ["DIRECT"] },
                     { name: "dreamyo-ChatGPTAPI", type: "select", use: ["dreamyo-Subscription"], proxies: ["DIRECT"] },
+                    { name: "dreamyo-ChatGPTUpload", type: "select", use: ["dreamyo-Subscription"], proxies: ["DIRECT"] },
                     { name: "dreamyo-DolaAPI", type: "select", use: ["dreamyo-Subscription"], proxies: ["DIRECT"] },
                     { name: "dreamyo-Chained-Hop-GeminiAIStudio", type: "select", use: ["dreamyo-Subscription"], proxies: ["DIRECT"] },
                     { name: "dreamyo-Chained-Hop-GeminiTools", type: "select", use: ["dreamyo-Subscription"], proxies: ["DIRECT"] },
@@ -100,9 +101,10 @@ export function validateMihomoBootstrapContracts({ repoRoot }) {
                     { name: "dreamyo-GeminiAIStudio", type: "mixed", listen: listenHost, port: 17890, proxy: "dreamyo-GeminiAIStudio" },
                     { name: "dreamyo-GeminiTools", type: "mixed", listen: listenHost, port: 17891, proxy: "dreamyo-GeminiTools" },
                     { name: "dreamyo-ChatGPTAPI", type: "mixed", listen: listenHost, port: 17892, proxy: "dreamyo-ChatGPTAPI" },
+                    { name: "dreamyo-ChatGPTUpload", type: "mixed", listen: listenHost, port: 17895, proxy: "dreamyo-ChatGPTUpload" },
                     { name: "dreamyo-DolaAPI", type: "mixed", listen: listenHost, port: 17893, proxy: "dreamyo-DolaAPI" },
                 ]),
-            "listeners 必须保持四项静态 mixed listener",
+            "listeners 必须保持静态 mixed listener",
         );
         return { file, listenHost, providerPath: provider.path, listenerPorts: listeners.map(({ port }) => port) };
     });
@@ -161,6 +163,7 @@ export function validateComposeContract(source, profile) {
         geminiai: `http://${proxyHost}:17890`,
         geminiTools: `http://${proxyHost}:17891`,
         chatgptApi: `http://${proxyHost}:17892`,
+        chatgptUpload: `http://${proxyHost}:17895`,
         dola: `http://${proxyHost}:17893`,
     };
     const proxyListenHost = profile.hostNetwork ? "127.0.0.1" : "0.0.0.0";
@@ -197,12 +200,14 @@ export function validateComposeContract(source, profile) {
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_GEMINIAI_URL === proxyUrls.geminiai, "app 的 GeminiAIStudio 代理地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_URL === proxyUrls.geminiTools, "app 的 GeminiTools 代理地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_CHATGPT_API_URL === proxyUrls.chatgptApi, "app 的 ChatGPTAPI 代理地址不正确");
+    ensure(appEnvironment.DREAMYO_MAGIC_PROXY_CHATGPT_UPLOAD_URL === proxyUrls.chatgptUpload, "app 的 ChatGPT 图片上传代理地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_DOLA_URL === proxyUrls.dola, "app 的 Dola API 代理地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_LISTEN_HOST === proxyListenHost, "app 的 Mihomo 监听地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_PROVIDER_FILE === magicProxyProviderFile, "app 的 Mihomo provider 文件路径不正确");
     ensure(String(appEnvironment.DREAMYO_MAGIC_PROXY_GEMINIAI_PORT) === "17890", "app 的 GeminiAIStudio 代理端口不正确");
     ensure(String(appEnvironment.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_PORT) === "17891", "app 的 GeminiTools 代理端口不正确");
     ensure(String(appEnvironment.DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT) === "17892", "app 的 ChatGPTAPI 代理端口不正确");
+    ensure(String(appEnvironment.DREAMYO_MAGIC_PROXY_CHATGPT_UPLOAD_PORT) === "17895", "app 的 ChatGPT 图片上传代理端口不正确");
     ensure(String(appEnvironment.DREAMYO_MAGIC_PROXY_DOLA_PORT) === "17893", "app 的 Dola API 代理端口不正确");
     ensure(geminiAiEnvironment.AISTUDIO_PROXY === proxyUrls.geminiai, "geminiai 未使用 GeminiAIStudio 专用代理监听");
     ensure(geminiAi.depends_on?.["magic-proxy"]?.condition === "service_healthy", "geminiai 必须等待 magic-proxy 健康");

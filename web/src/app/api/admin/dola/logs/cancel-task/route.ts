@@ -7,7 +7,7 @@ import { transitionVideoTask } from "@/lib/server/video-task-store";
 import { cancellationExecutionPatch, type GenerationCancellationTarget } from "@/lib/server/generation-task-cancellation-service";
 import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-recovery-service";
 import { resolveInternalOrigin } from "@/lib/server/internal-origin";
-import { advanceDolaTaskLog, findDolaTaskLogIdByTaskId } from "@/lib/server/dola/log-store";
+import { cancelDolaTaskLogs } from "@/lib/server/dola/log-store";
 import { auditDolaAdminAction, auditDolaAdminFailure } from "@/lib/server/dola/admin";
 import type { VideoTask } from "@/lib/server/video-task-store";
 
@@ -31,13 +31,7 @@ export async function POST(request: Request) {
 
         // 已取消：幂等成功，并顺带纠正可能滞后的请求日志。
         if (task.status === "cancelled") {
-            for (const source of ["runtime", "admin-test", "external"] as const) {
-                const logId = await findDolaTaskLogIdByTaskId(taskId, source).catch(() => "");
-                if (logId) {
-                    await advanceDolaTaskLog(logId, { phase: "failed", message: "任务已被管理员取消", error: "admin_cancel", statusCode: 0 }).catch(() => undefined);
-                    break;
-                }
-            }
+            await cancelDolaTaskLogs(taskId);
             await auditDolaAdminAction(request, currentUser, "admin.dola.log.cancelTask", { type: "dola_task", id: taskId });
             return NextResponse.json({ videoTaskId: task.id, alreadyCancelled: true, message: "该任务已处于取消状态" });
         }
@@ -60,19 +54,7 @@ export async function POST(request: Request) {
         if (!next) return NextResponse.json({ error: "任务状态已变化，取消失败" }, { status: 409 });
 
         // 同步请求日志：终止状态 + 取消原因，后台列表即时可见。
-        for (const source of ["runtime", "admin-test", "external"] as const) {
-            const logId = await findDolaTaskLogIdByTaskId(taskId, source).catch(() => "");
-            if (logId) {
-                await advanceDolaTaskLog(logId, {
-                    phase: "failed",
-                    message: "任务已被管理员取消",
-                    error: "admin_cancel",
-                    detail: `管理员 ${currentUser.username || currentUser.id} 取消了该任务`,
-                    statusCode: 0,
-                }).catch(() => undefined);
-                break;
-            }
-        }
+        await cancelDolaTaskLogs(taskId, `管理员 ${currentUser.username || currentUser.id} 取消了该任务`);
 
         const origin = resolveInternalOrigin(new URL(request.url).origin);
         after(() => runGenerationTaskRecoveryBatch({ origin, limit: 1, taskIds: [task.id] }));

@@ -1,11 +1,12 @@
+import { dolaQuotaLogFields } from "@/lib/server/dola/quota-observation";
 import { NextResponse } from "next/server";
 
 import { describeDolaFailure, isDolaPreparingTask, isDolaQuotaExhaustedError, isDolaRateLimitError } from "@/lib/dola-errors";
 import { authorizeDolaApiKey, getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
-import { getDolaAccountCookie, markDolaAccountQuotaExhausted, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount } from "@/lib/server/dola/account-service";
+import { getDolaAccount, getDolaAccountCookie, markDolaAccountQuotaExhausted, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount } from "@/lib/server/dola/account-service";
 import { bindDolaExternalTask, getDolaExternalTask, releaseDolaExternalTask, resolveDolaExternalTask, updateDolaExternalTask } from "@/lib/server/dola/external-task-store";
 import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, markDolaRequestLogRunning, openDolaRequestLog, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
-import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
+import { dolaProviderProxyMode, dolaRequestHasReferences, resolveDolaImagexUploadEgress, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
 import { dolaRuntimeRequest, isDolaPublicRuntimePath } from "@/lib/server/dola/provider";
 import { isSafeOutboundUrl } from "@/lib/server/security";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
@@ -27,6 +28,7 @@ export async function POST(request: Request, context: Context) { return proxy(re
 
 /** 上游账号触发限额或额度用尽：标记账号状态，再按后台配置的换号次数上限自动用下一个可用账号重新提交同一请求 */
 async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: string; accountId: string; rotations: number; originalPayload?: Record<string, unknown>; model: string; reason?: string }) {
+    if (/^uploading_references\s*:/i.test(input.reason || "")) return null;
     const isQuota = isDolaQuotaExhaustedError(input.reason || "");
     if (isQuota) {
         await markDolaAccountQuotaExhausted(input.accountId, input.reason).catch(() => undefined);
@@ -40,8 +42,9 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
     const cookie = await getDolaAccountCookie(newAccount.id);
     if (!cookie) return null;
     let proxy: Awaited<ReturnType<typeof resolveDolaProxyEgress>>;
+    let imagex: Awaited<ReturnType<typeof resolveDolaImagexUploadEgress>>;
     try {
-        proxy = await resolveDolaProxyEgress();
+        [proxy, imagex] = await Promise.all([resolveDolaProxyEgress(), resolveDolaImagexUploadEgress(dolaRequestHasReferences(input.originalPayload))]);
     } catch {
         return null;
     }
@@ -56,12 +59,14 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
         proxyTarget: proxy.egress.target,
         proxyNodeName: proxy.egress.nodeName,
         proxyAddress: proxy.egress.address || proxy.egress.target,
-        ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+        proxyUrl: proxy.proxyUrl || null,
+        imagexProxyMode: imagex.mode,
+        imagexProxyUrl: imagex.proxyUrl || null,
         dolaHold: true,
     });
     let upstream: Response;
     try {
-        upstream = await dolaRuntimeRequest("/v1/videos", { method: "POST", headers: { "content-type": "application/json" }, body });
+        upstream = await dolaRuntimeRequest(String(input.model).includes("seedream") ? "/v1/images" : "/v1/videos", { method: "POST", headers: { "content-type": "application/json" }, body });
     } catch {
         return null;
     }
@@ -74,14 +79,16 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
     }
     const newTaskId = stringValue(parsed?.taskId || parsed?.id);
     if (!upstream.ok || !newTaskId) return null;
+    await bindDolaExternalTask({ taskId: newTaskId, apiKeyId: input.principalId, accountId: newAccount.id, originalPayload: input.originalPayload });
     await updateDolaExternalTask(input.taskId, input.principalId, { redirectToTaskId: newTaskId, accountId: newAccount.id, rotations: input.rotations + 1 });
     await releaseDolaAccountAttempt(input.accountId).catch(() => undefined);
+    const previousAccountName = (await getDolaAccount(input.accountId).catch(() => null))?.name || "未识别账号";
     const rotationMessage = isQuota
         ? "上游账号今日生成次数已达上限，已自动切换账号重试 (upstream account daily quota reached limit; auto-switched to another account)"
         : "上游账号触发限额（rate_limited），已自动切换账号重试 (upstream account rate-limited; auto-switched to another account)";
     const rotationDetail = isQuota
-        ? `原账号已标记为额度已用完 (previous account marked as quota exhausted)；新账号 (new account): ${newAccount.id}，新任务 (new task): ${newTaskId}`
-        : `原账号已进入临时冷却 (previous account entered temporary cooldown)；新账号 (new account): ${newAccount.id}，新任务 (new task): ${newTaskId}`;
+        ? `原账号 ${previousAccountName} 已标记为额度已用完 (previous account marked as quota exhausted)；新账号 (new account): ${newAccount.name}，新任务 (new task): ${newTaskId}`
+        : `原账号 ${previousAccountName} 已进入临时冷却 (previous account entered temporary cooldown)；新账号 (new account): ${newAccount.name}，新任务 (new task): ${newTaskId}`;
     return {
         newTaskId,
         newAccountId: newAccount.id,
@@ -138,6 +145,7 @@ async function proxy(request: Request, context: Context) {
     let requestPreview = "";
     let requestBytes = 0;
     let requestModel = "";
+    let originalPayload: Record<string, unknown> | undefined;
     let requestedDuration: number | undefined;
     let requestedRatio = "";
     let accountId = "";
@@ -163,6 +171,7 @@ async function proxy(request: Request, context: Context) {
                 await safeSettleLog(logId, { statusCode: 400, durationMs: Date.now() - startedAt, phase: "failed", error: "Dola 视频请求必须是有效 JSON", requestBytes: bytes.byteLength, requestPreview, lifecycle: [...lifecycle, logLifecycleEntry("failed", "Dola 视频请求必须是有效 JSON", startedAt)] });
                 return NextResponse.json({ error: "Dola 视频请求必须是有效 JSON" }, { status: 400 });
             }
+            originalPayload = Object.fromEntries(Object.entries(payload).filter(([key]) => !/cookie|token|secret|password|accountId|credentialVersion/i.test(key)));
             requestModel = stringValue(payload.model);
             requestedDuration = numberValue(payload.duration);
             requestedRatio = stringValue(payload.ratio);
@@ -181,8 +190,9 @@ async function proxy(request: Request, context: Context) {
                 return NextResponse.json({ error: "Dola 账号 Cookie 无法解密" }, { status: 503 });
             }
             let proxy: Awaited<ReturnType<typeof resolveDolaProxyEgress>>;
+            let imagex: Awaited<ReturnType<typeof resolveDolaImagexUploadEgress>>;
             try {
-                proxy = await resolveDolaProxyEgress();
+                [proxy, imagex] = await Promise.all([resolveDolaProxyEgress(), resolveDolaImagexUploadEgress(dolaRequestHasReferences(payload))]);
             } catch (error) {
                 await releaseDolaAccountAttempt(account.id);
                 await safeSettleLog(logId, { statusCode: 503, durationMs: Date.now() - startedAt, phase: "failed", error: error instanceof Error ? error.message : "Dola 通用代理出口不可用", model: requestModel || undefined, requestedDuration, ratio: requestedRatio || undefined, accountId, accountName: account.name, requestBytes: bytes.byteLength, requestPreview, lifecycle: [...lifecycle, logLifecycleEntry("failed", error instanceof Error ? error.message : "Dola 通用代理出口不可用", startedAt)] });
@@ -209,7 +219,9 @@ async function proxy(request: Request, context: Context) {
                 proxyTarget: proxy.egress.target,
                 proxyNodeName: proxy.egress.nodeName,
                 proxyAddress: proxy.egress.address || proxy.egress.target,
-                ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+                proxyUrl: proxy.proxyUrl || null,
+                imagexProxyMode: imagex.mode,
+                imagexProxyUrl: imagex.proxyUrl || null,
                 dolaHold: true,
             });
             requestProxyEgress = proxy.egress.mode === "direct"
@@ -244,7 +256,7 @@ async function proxy(request: Request, context: Context) {
             if (upstream.ok) {
                 const phase = isDolaPreparingTask(payload) ? "running" : dolaTaskLogPhase(stringValue(payload?.status), Boolean(verificationId));
                 const errorText = extractDolaError(payload);
-                if (phase === "failed" && (isDolaRateLimitError(errorText) || isDolaQuotaExhaustedError(errorText)) && externalTaskRow) {
+                if (phase === "failed" && !/^uploading_references\s*:/i.test(errorText) && (isDolaRateLimitError(errorText) || isDolaQuotaExhaustedError(errorText)) && externalTaskRow) {
                     // 账号级限额或额度用尽：标记当前账号状态，并自动用下一个可用账号重新提交同一请求
                     const rotation = await rotateDolaRateLimitedTask({
                         taskId: decodeURIComponent(queryMatch![1]),
@@ -252,7 +264,7 @@ async function proxy(request: Request, context: Context) {
                         accountId: externalTaskRow.record.accountId,
                         rotations: externalTaskRow.record.rotations || 0,
                         originalPayload: externalTaskRow.record.originalPayload,
-                        model: requestModel,
+                        model: requestModel || stringValue(externalTaskRow.record.originalPayload?.model),
                         reason: errorText,
                     });
                     if (rotation) {
@@ -281,6 +293,7 @@ async function proxy(request: Request, context: Context) {
                     detail: `${dolaResultMediaDetail(payload) || `任务状态: ${stringValue(payload?.status) || "unknown"}`}${dolaConversationNote(payload)}${dolaConversationScreenshotNote(payload)}`,
                     statusCode: upstream.status,
                     responsePreview: summarizeResponse(payload, bytes),
+                    ...dolaQuotaLogFields(payload),
                     responseBytes: bytes.byteLength,
                     ...(phase === "failed" ? { error: errorText ? describeDolaFailure(errorText) : "上游未返回错误原因 (no error detail from upstream)" } : {}),
                     ...(verificationId ? { verificationId } : {}),
@@ -292,7 +305,7 @@ async function proxy(request: Request, context: Context) {
         } else {
             const phase = classifyDolaPhase(upstream, payload, verificationId);
             const errorText = extractDolaError(payload);
-            if (upstream.ok && stringValue(payload?.status) === "failed" && accountId) {
+            if (upstream.ok && stringValue(payload?.status) === "failed" && accountId && !/^uploading_references\s*:/i.test(errorText)) {
                 if (isDolaQuotaExhaustedError(errorText)) {
                     await markDolaAccountQuotaExhausted(accountId, errorText).catch(() => undefined);
                 } else if (isDolaRateLimitError(errorText)) {
@@ -316,9 +329,10 @@ async function proxy(request: Request, context: Context) {
                 phase === "failed" || !upstream.ok
                     ? (errorText ? describeDolaFailure(errorText) : "Dola Provider 请求失败")
                     : undefined;
-            await safeSettleLog(logId, { statusCode: upstream.status, durationMs: Date.now() - startedAt, phase, ...(logError ? { error: logError } : {}), model: requestModel || stringValue(payload?.model) || undefined, requestBytes, requestPreview, responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, accountId: accountId || undefined, accountName: accountName || undefined, taskId: taskId || undefined, verificationId: verificationId || undefined, screenshotBase64: screenshotBase64 || undefined, requestedDuration: requestedDuration || numberValue(payload?.duration), ratio: requestedRatio || stringValue(payload?.ratio) || undefined, ...quotaObservation(payload), proxyEgress: requestProxyEgress, responsePreview: summarizeResponse(payload, bytes), lifecycle });
+            await safeSettleLog(logId, { statusCode: upstream.status, durationMs: Date.now() - startedAt, phase, ...(logError ? { error: logError } : {}), model: requestModel || stringValue(payload?.model) || undefined, requestBytes, requestPreview, responseBytes: bytes.byteLength, contentType: upstream.headers.get("content-type") || undefined, accountId: accountId || undefined, accountName: accountName || undefined, taskId: taskId || undefined, verificationId: verificationId || undefined, screenshotBase64: screenshotBase64 || undefined, requestedDuration: requestedDuration || numberValue(payload?.duration), ratio: requestedRatio || stringValue(payload?.ratio) || undefined, ...quotaObservation(payload), proxyEgress: requestProxyEgress, responsePreview: summarizeResponse(payload, bytes),
+                    ...dolaQuotaLogFields(payload), lifecycle });
         }
-        if (videoCreate && upstream.ok && taskId) await bindDolaExternalTask({ taskId, apiKeyId: principalId, accountId });
+        if (videoCreate && upstream.ok && taskId) await bindDolaExternalTask({ taskId, apiKeyId: principalId, accountId, originalPayload });
         if (queryMatch && upstream.ok && terminalDolaStatus(stringValue(payload?.status))) {
             const releasedAccountId = await releaseDolaExternalTask(decodeURIComponent(queryMatch[1]), principalId);
             if (releasedAccountId) await releaseDolaAccountAttempt(releasedAccountId).catch(() => undefined);
@@ -455,7 +469,7 @@ function quotaObservation(value: Record<string, unknown> | null) {
     const hasLimit = Object.prototype.hasOwnProperty.call(item, "limit");
     return { ...(hasRemaining ? { quotaRemaining: numberOrNull(item.remaining) } : {}), ...(hasLimit ? { quotaLimit: numberOrNull(item.limit) } : {}) };
 }
-function numberOrNull(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) && parsed >= 0 ? parsed : null; }
+function numberOrNull(value: unknown) { if (value === null || value === undefined || value === "") return null; const parsed = Number(value); return Number.isFinite(parsed) && parsed >= 0 ? parsed : null; }
 function terminalDolaStatus(value: string) { return value === "completed" || value === "failed"; }
 
 async function safeOpenLog(input: Parameters<typeof openDolaRequestLog>[0], lifecycle: DolaRequestLifecycleEntry[]) {
@@ -476,7 +490,7 @@ function summarizeRequest(bytes: Uint8Array) {
         const refCount = Array.isArray(value.references)
             ? value.references.length
             : (Array.isArray(value.images) ? value.images.length : (value.first_frame || value.image ? 1 : 0));
-        return JSON.stringify({ model: typeof value.model === "string" ? value.model : undefined, duration: numberValue(value.duration), ratio: typeof value.ratio === "string" ? value.ratio : undefined, referenceCount: refCount, promptLength: typeof value.prompt === "string" ? value.prompt.length : 0 });
+        return JSON.stringify({ model: typeof value.model === "string" ? value.model : undefined, duration: numberValue(value.duration), ratio: typeof value.ratio === "string" ? value.ratio : undefined, referenceCount: refCount, prompt: typeof value.prompt === "string" ? value.prompt : undefined });
     } catch { return "请求体无法解析为 JSON 摘要"; }
 }
 function summarizeResponse(value: Record<string, unknown> | null, bytes: Uint8Array) {

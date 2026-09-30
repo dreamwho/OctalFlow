@@ -1,9 +1,16 @@
 import { referenceLabel, nextReferenceLabel, normalizePictureTags, referencedIds, mentionAtCursor, replaceMention, replaceReferenceToken, deleteReferenceAtCaret } from "./prompt-references.mjs";
 import { testProxyNodes } from "./proxy-batch-test.mjs";
+import { fingerprintOptions } from "./browser-fingerprint.mjs";
+
+const defaultFingerprintSelection = () => Object.fromEntries(fingerprintOptions.map((item) => [item.key, item.default !== false]));
 
 const api = window.dolaDesktop;
 const byId = (id) => document.getElementById(id);
-const state = { accounts: [], accountGroups: [], tasks: [], assets: [], proxies: { generic: [] }, settings: { theme: "dark" }, page: "workspace", proxyTab: "generic", rail: "tasks", mode: "video", activeAccountId: "", expandedAccountId: "", editingProxyId: "", magicFile: null, magicTestResults: new Map(), magicBatch: null, references: [], loadedAssets: new Map(), thumbnails: new Map(), accountMode: "manual" };
+const displayTime = (value) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "暂无";
+const taskErrorText = (task) => task.error === "dola_upstream_rejected_710022002" || (task.diagnostics?.httpStatus === 200 && task.diagnostics?.codes?.includes("710022002"))
+  ? "Dola 拒绝了协议提交（代码 710022002）；此代码不能单独证明账号限流"
+  : task.rawError || task.error;
+const state = { accounts: [], accountGroups: [], accountGroupProxies: {}, editingGroup: "", tasks: [], assets: [], proxies: { generic: [] }, settings: { theme: "dark" }, page: "workspace", proxyTab: "generic", rail: "tasks", mode: "video", activeAccountId: "", expandedAccountId: "", editingProxyId: "", magicFile: null, magicTestResults: new Map(), magicBatch: null, references: [], loadedAssets: new Map(), thumbnails: new Map(), importFiles: [], registrationFiles: [], registrationIds: [], registration: null, accountMode: "manual" };
 
 function node(tag, className = "", content = "") {
   const item = document.createElement(tag);
@@ -19,7 +26,7 @@ function toast(message) {
   toast.timer = setTimeout(() => target.classList.add("hidden"), 4500);
 }
 const loadingLabels = {
-  "account:open": "正在打开账号网页…", "account:add": "正在添加账号…", "account:group-add": "正在创建分组…", "account:update": "正在保存账号…", "account:delete": "正在删除账号…", "account:import": "正在导入账号…", "account:import-file": "正在读取账号文件…", "account:export": "正在导出 Cookie…",
+  "account:open": "正在打开账号网页…", "account:add": "正在添加账号…", "account:group-add": "正在创建分组…", "account:group-proxy": "正在保存分组代理…", "account:update": "正在保存账号…", "account:delete": "正在删除账号…", "account:import": "正在导入账号…", "account:import-file": "正在读取账号文件…", "account:export": "正在导出 Cookie…", "registration:import": "正在导入账号…", "registration:start": "正在打开首个账号…",
   "task:create": "正在提交生成任务…", "task:open": "正在打开任务会话…", "task:refresh": "正在查询任务状态…", "task:unwatermark": "正在获取无水印视频…",
   "asset:choose": "正在选择素材…", "asset:ingest": "正在保存素材…", "asset:read": "正在读取素材…", "asset:download": "正在下载素材…", "asset:download-many": "正在批量下载素材…", "asset:show": "正在打开素材目录…",
   "proxy:test": "正在测试代理连通性…", "proxy:import-magic": "正在导入魔法代理订阅…", "proxy:choose-magic-file": "正在读取订阅文件…", "proxy:import-groups": "正在导入代理组…", "proxy:save": "正在保存代理…", "proxy:save-chain": "正在保存代理链路…", "proxy:delete-magic": "正在删除订阅…", "proxy:delete-chain": "正在删除代理链路…",
@@ -27,7 +34,6 @@ const loadingLabels = {
 };
 const loadingStack = [];
 const inFlight = new Map();
-const browserLoading = new Map();
 function beginLoading(label) {
   const token = Symbol(label);
   loadingStack.push({ token, label });
@@ -54,7 +60,7 @@ async function run(action, payload) {
     try { return await api.call(action, payload); }
     catch (error) { toast(error?.message || error); throw error; }
   };
-  const pending = action === "state" ? work() : withLoading(loadingLabels[action] || "正在处理…", work);
+  const pending = ["state", "account:open", "task:open", "browser:close", "browser:back", "browser:reload"].includes(action) ? work() : withLoading(loadingLabels[action] || "正在处理…", work);
   if (key) {
     inFlight.set(key, pending);
     pending.finally(() => { if (inFlight.get(key) === pending) inFlight.delete(key); }).catch(() => {});
@@ -77,13 +83,26 @@ function render() {
   byId("workspace-path").textContent = state.workspace;
   byId("download-path").textContent = state.downloadDir;
   byId("auto-download").checked = state.settings.autoDownload !== false;
+  byId("browser-static-direct").checked = state.settings.browserStaticDirect !== false;
   byId("auto-unwatermark").checked = state.settings.autoRemoveWatermark !== false;
-  for (const id of ["new-account-group", "import-group"]) {
+  const uploadExit = byId("imagex-upload-proxy");
+  uploadExit.replaceChildren(new Option("直连（默认）", ""), ...selectableProxies().map((item) => new Option(item.name, item.id)));
+  if (state.settings.imagexUploadProxyId && ![...uploadExit.options].some((option) => option.value === state.settings.imagexUploadProxyId)) uploadExit.append(new Option("所选节点已删除，请重新选择", state.settings.imagexUploadProxyId));
+  uploadExit.value = state.settings.imagexUploadProxyId || "";
+  const accountProxy = byId("new-account-proxy");
+  mountProxyPicker(accountProxy, accountProxy.dataset.value || "", true, accountProxy.dataset.mode);
+  for (const id of ["new-account-group", "import-group", "registration-group"]) {
     const select = byId(id);
     const value = select.value;
-    select.replaceChildren(new Option("未分组", "未分组"), ...(state.accountGroups || []).map((group) => new Option(group, group)));
-    select.value = value || "未分组";
+    select.replaceChildren(...(id === "registration-group" ? [new Option("请选择分组", "")] : []), new Option("未分组", "未分组"), ...(state.accountGroups || []).map((group) => new Option(group, group)));
+    select.value = value || (id === "registration-group" ? "" : "未分组");
   }
+  const groupFilter = byId("account-group-filter");
+  const selectedGroup = groupFilter.value;
+  groupFilter.replaceChildren(new Option("全部分组", "all"), new Option("未分组", "未分组"), ...(state.accountGroups || []).map((group) => new Option(group, group)));
+  groupFilter.value = [...groupFilter.options].some((option) => option.value === selectedGroup) ? selectedGroup : "all";
+  byId("edit-group").disabled = groupFilter.value === "all";
+  byId("export-group").disabled = groupFilter.value === "all" || !state.accounts.some((account) => account.group === groupFilter.value && account.cookieFingerprint);
   byId("browser-empty").classList.toggle("hidden", Boolean(state.activeAccountId));
   for (const element of document.querySelectorAll("[data-page]")) element.classList.toggle("nav-active", element.dataset.page === state.page);
   for (const element of document.querySelectorAll(".page")) element.classList.toggle("active-page", element.id === `${state.page}-page`);
@@ -93,40 +112,82 @@ function render() {
   byId("theme-dark").classList.toggle("selected", state.settings.theme === "dark");
   renderAccounts();
   renderProxies();
+  updateRegistrationProxyOptions();
   renderRail();
   renderReferences();
   renderMode();
+  renderRegistration();
   updateBrowserBounds();
+}
+function renderRegistration() {
+  const current = state.registration;
+  byId("registration-banner").classList.toggle("hidden", !current);
+  if (!current) return;
+  byId("registration-progress").textContent = current.status === "completed" ? `批量注册完成 · ${current.total}/${current.total}` : current.status === "failed" ? `批量注册已暂停 · 第 ${current.index}/${current.total} 个` : `正在执行批量注册 · 当前账号：${current.email} · 第 ${current.index}/${current.total} 个`;
+  byId("registration-hint").textContent = current.error || current.message || "正在打开 Dola 登录页面…";
+  for (const id of ["registration-copy-email", "registration-copy-password"]) byId(id).disabled = current.status !== "running";
+  byId("registration-stop").textContent = current.status === "running" ? "停止" : "关闭";
+}
+
+const fingerprintSelection = { "new-account-fingerprint": null, "registration-fingerprint": null };
+function renderFingerprintOptions(id) {
+  const container = byId(id);
+  const enabled = fingerprintSelection[id] ?? defaultFingerprintSelection();
+  fingerprintSelection[id] = enabled;
+  container.replaceChildren(...fingerprintOptions.map((item) => {
+    const chip = node("button", enabled[item.key] ? "selected" : "", item.label);
+    chip.type = "button";
+    chip.setAttribute("aria-pressed", String(Boolean(enabled[item.key])));
+    chip.onclick = () => { enabled[item.key] = !enabled[item.key]; renderFingerprintOptions(id); };
+    return chip;
+  }));
+}
+function selectedFingerprintParams(id) {
+  const enabled = fingerprintSelection[id] || {};
+  return fingerprintOptions.filter((item) => enabled[item.key]).map((item) => item.key);
 }
 function renderAccounts() {
   const existingPopover = byId("account-popover");
-  const draft = existingPopover?.dataset.accountId === state.expandedAccountId ? { name: existingPopover.querySelector("input")?.value, group: existingPopover.querySelectorAll("select")[0]?.value, proxyId: existingPopover.querySelectorAll("select")[1]?.value } : null;
+  const draft = existingPopover?.dataset.accountId === state.expandedAccountId ? { name: existingPopover.querySelector("input")?.value, group: existingPopover.querySelectorAll("select")[0]?.value, proxyId: existingPopover.querySelector(".proxy-picker")?.dataset.value, proxyMode: existingPopover.querySelector(".proxy-picker")?.dataset.mode } : null;
   const list = byId("account-list");
   list.replaceChildren();
   const query = byId("account-search").value.trim().toLowerCase();
-  const accounts = state.accounts.filter((item) => !query || item.name.toLowerCase().includes(query) || item.group.toLowerCase().includes(query));
+  const selectedGroup = byId("account-group-filter").value;
+  const taskStats = new Map();
+  for (const task of state.tasks) {
+    if (!task.accountId) continue;
+    const stats = taskStats.get(task.accountId) || { count: 0, latest: "" };
+    stats.count += 1;
+    if ((task.createdAt || "") > stats.latest) stats.latest = task.createdAt;
+    taskStats.set(task.accountId, stats);
+  }
+  const accounts = state.accounts.filter((item) => (selectedGroup === "all" || item.group === selectedGroup) && (!query || item.name.toLowerCase().includes(query) || item.group.toLowerCase().includes(query))).reverse().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   if (!accounts.length) list.append(node("p", "rail-empty", "暂无账号。点击“添加账号”后手动登录或导入 Cookie。"));
   for (const account of accounts) {
     const card = node("div", `account-card ${account.id === state.activeAccountId ? "active" : ""}`);
     card.setAttribute("role", "listitem");
-    const open = node("button", "account-card");
+    const open = node("button", "account-open");
     open.style.cssText = "border:0;background:transparent;padding:0;margin:0;flex:1;min-width:0";
     open.setAttribute("aria-label", `打开账号 ${account.name}`);
-    const avatar = node("span", "account-avatar", account.name.slice(0, 1).toUpperCase());
     const meta = node("span", "account-meta");
     meta.append(node("span", "account-name", account.name));
-    const detail = node("span", "account-detail", `${account.group} · ${account.status}`);
+    const detail = node("span", "account-detail", `${account.group} · ${account.status} · ${accountProxySummary(account)}`);
     detail.style.display = "block";
     meta.append(detail);
-    open.append(avatar, meta);
+    const stats = taskStats.get(account.id);
+    const quota = account.quota?.find((item) => Number.isFinite(item.remaining));
+    meta.append(node("span", "account-detail", `创建 ${displayTime(account.createdAt)} · 最近任务 ${displayTime(stats?.latest)}`));
+    open.append(meta);
     open.onclick = async () => { try { await run("account:open", { id: account.id }); state.activeAccountId = account.id; state.page = "workspace"; render(); } catch {} };
-    const menu = node("button", "account-menu", "⋯");
+    const menu = node("button", "account-menu", "管理");
     menu.title = "账号操作";
     menu.setAttribute("aria-label", `管理账号 ${account.name}`);
     menu.setAttribute("aria-expanded", String(state.expandedAccountId === account.id));
     menu.dataset.accountId = account.id;
     menu.onclick = () => { state.expandedAccountId = state.expandedAccountId === account.id ? "" : account.id; renderAccounts(); byId("account-popover")?.querySelector("input")?.focus(); };
-    card.append(open, menu);
+    const summary = node("div", "account-summary");
+    summary.append(menu, node("span", "account-detail", `任务 ${stats?.count || 0} 次 · 额度 ${quota ? `${quota.remaining} ${quota.unit === "credit" ? "积分" : quota.unit}` : account.quotaCheckedAt ? "上游未提供" : "未查询"}`));
+    card.append(open, summary);
     const wrapper = node("div");
     wrapper.append(card);
     list.append(wrapper);
@@ -157,22 +218,23 @@ function renderAccountPopover(draft) {
   group.setAttribute("aria-label", "账号分组");
   group.append(new Option("未分组", "未分组"), ...(state.accountGroups || []).map((item) => new Option(item, item)));
   group.value = draft?.group ?? account.group;
-  const proxy = node("select");
-  proxy.setAttribute("aria-label", "代理出口");
-  proxy.append(new Option("直连", ""), ...selectableProxies().map((item) => new Option(item.name, item.id)));
-  proxy.value = draft?.proxyId ?? account.proxyId ?? "";
-  for (const [label, control] of [["账号名称", name], ["账号分组", group], ["代理出口", proxy]]) {
+  for (const [label, control] of [["账号名称", name], ["账号分组", group]]) {
     const field = node("label", "account-popover-field", label);
     field.append(control);
     popup.append(field);
   }
+  const proxy = node("div", "proxy-picker");
+  proxy.id = "account-proxy-picker";
+  mountProxyPicker(proxy, draft?.proxyId ?? account.proxyId ?? "", true, draft?.proxyMode);
+  const proxyField = node("div", "account-popover-field", "代理方式");
+  proxyField.append(proxy);
+  popup.append(proxyField);
   const save = node("button", "primary account-popover-save", "保存修改");
   save.onclick = async () => {
     if (!name.value.trim()) { name.focus(); return; }
     try {
       await withLoading("正在保存账号设置…", async () => {
-        await run("account:update", { id: account.id, patch: { name: name.value, group: group.value, proxyId: proxy.value } });
-        if (state.activeAccountId === account.id && proxy.value !== account.proxyId) await run("account:open", { id: account.id });
+        await run("account:update", { id: account.id, patch: { name: name.value, group: group.value, proxyId: proxyPickerValue(proxy) } });
         state.expandedAccountId = "";
         await refresh();
       });
@@ -180,6 +242,8 @@ function renderAccountPopover(draft) {
     } catch {}
   };
   const footer = node("div", "account-popover-footer");
+  const verify = node("button", "", "检测登录与额度");
+  verify.onclick = async () => { try { await run("account:verify", { id: account.id }); await refresh(); toast("账号状态与额度已更新"); } catch {} };
   const exportButton = node("button", "", "导出 Cookie");
   exportButton.onclick = async () => { try { await run("account:export", { ids: [account.id] }); } catch {} };
   const remove = node("button", "danger", "删除账号");
@@ -187,7 +251,7 @@ function renderAccountPopover(draft) {
     if (!confirm(`删除“${account.name}”及其浏览器登录态？任务记录仍保留。`)) return;
     try { await run("account:delete", { id: account.id }); if (state.activeAccountId === account.id) state.activeAccountId = ""; state.expandedAccountId = ""; await refresh(); } catch {}
   };
-  footer.append(exportButton, remove);
+  footer.append(verify, exportButton, remove);
   popup.prepend(heading);
   popup.append(save, footer);
   document.body.append(popup);
@@ -201,9 +265,73 @@ function positionAccountPopover() {
   popup.style.left = `${Math.max(8, Math.min(rect.right - popup.offsetWidth, innerWidth - popup.offsetWidth - 8))}px`;
   popup.style.top = `${rect.bottom + popup.offsetHeight + 8 <= innerHeight ? rect.bottom + 8 : Math.max(8, rect.top - popup.offsetHeight - 8)}px`;
 }
+function proxyMode(id) {
+  if (!id) return "inherit";
+  if (["direct", "magic", "chained"].includes(id)) return id;
+  const item = selectableProxies().find((item) => item.id === id);
+  return item?.kind === "magic" ? "magic" : item?.kind === "chain" ? "chained" : "generic";
+}
+function proxySummary(id) {
+  const mode = proxyMode(id);
+  return { direct: "直连", magic: "魔法代理", chained: "链式代理" }[mode] || state.proxies.generic?.find((item) => item.id === id)?.name || "节点已删除";
+}
+function accountProxySummary(account) {
+  const groupId = Object.hasOwn(state.accountGroupProxies || {}, account.group) ? state.accountGroupProxies[account.group] : "direct";
+  return account.proxyId ? proxySummary(account.proxyId) : `跟随分组：${proxySummary(groupId)}`;
+}
+function mountProxyPicker(target, value, inherit = false, selectedMode) {
+  target.replaceChildren();
+  target.classList.add("proxy-picker");
+  const mode = selectedMode || proxyMode(value || (inherit ? "" : "direct"));
+  const modes = [...(inherit ? [["inherit", "跟随分组"]] : []), ["direct", "直连"], ["magic", "魔法代理"], ["generic", "通用代理"], ["chained", "链式代理"]];
+  const choices = node("div", "proxy-mode-options");
+  choices.setAttribute("role", "group");
+  choices.setAttribute("aria-label", inherit ? "账号代理方式" : "分组代理方式");
+  const field = node("label", "proxy-node-field", "通用代理节点");
+  const select = node("select");
+  select.setAttribute("aria-label", "通用代理节点");
+  select.append(new Option("请选择通用代理节点", ""), ...(state.proxies.generic || []).map((item) => new Option(`${item.group || "未分组"} / ${item.name}`, item.id)));
+  if (mode === "generic" && value && ![...select.options].some((item) => item.value === value)) select.append(new Option("所选节点已删除，请重新选择", value));
+  select.value = mode === "generic" ? value : "";
+  field.append(select);
+  const hint = node("p", "help");
+  const update = (selected) => {
+    target.dataset.mode = selected;
+    target.dataset.value = selected === "generic" ? select.value : selected === "inherit" ? "" : selected;
+    field.classList.toggle("hidden", selected !== "generic");
+    hint.textContent = selected === "inherit" ? "跟随当前分组设置，分组未设置时直连。" : selected === "magic" ? "使用代理管理中设置的默认魔法节点。" : selected === "chained" ? "使用代理管理中设置的默认链路。" : "";
+    positionAccountPopover();
+  };
+  for (const [key, label] of modes) {
+    const choice = node("label", "proxy-mode-choice");
+    const radio = node("input");
+    radio.type = "radio";
+    radio.name = `${target.id}-mode`;
+    radio.value = key;
+    radio.checked = key === mode;
+    radio.onchange = () => update(key);
+    choice.append(radio, node("span", "", label));
+    choices.append(choice);
+  }
+  select.onchange = () => update("generic");
+  target.append(choices, field, hint);
+  update(mode);
+}
+function proxyPickerValue(target) {
+  if (target.dataset.mode === "generic" && !target.dataset.value) { toast("请选择通用代理节点"); throw new Error("请选择通用代理节点"); }
+  return target.dataset.value || "";
+}
+
 function renderProxies() {
   for (const [kind, count] of [["generic", state.proxies.generic?.length || 0], ["magic", state.proxies.magicSubscriptions?.length || 0], ["chain", state.proxies.chained?.length || 0]]) byId(`proxy-count-${kind}`).textContent = String(count);
   renderProxyTab();
+  for (const [id, kind, setting] of [["magic-default", "magic", "magicProxyId"], ["chain-default", "chain", "chainedProxyId"]]) {
+    const select = byId(id);
+    const value = state.settings[setting] || "";
+    select.replaceChildren(new Option("尚未设置，请选择", ""), ...selectableProxies().filter((item) => item.kind === kind).map((item) => new Option(item.name, item.id)));
+    if (value && ![...select.options].some((item) => item.value === value)) select.append(new Option("所选节点或链路已删除，请重新设置", value));
+    select.value = value;
+  }
   const list = byId("proxy-list");
   list.replaceChildren();
   for (const proxy of state.proxies.generic || []) {
@@ -324,6 +452,31 @@ function selectableProxies() {
     ...(state.proxies.chained || []).map((item) => ({ ...item, kind: "chain" })),
   ];
 }
+function updateRegistrationProxyOptions() {
+  const mode = byId("registration-proxy-mode").value;
+  const select = byId("registration-proxy-id");
+  const previous = select.value;
+  select.replaceChildren(new Option("请选择代理节点", ""), ...selectableProxies().filter((item) => item.kind === mode).map((item) => new Option(item.name, item.id)));
+  select.value = [...select.options].some((option) => option.value === previous) ? previous : "";
+  byId("registration-proxy-field").classList.toggle("hidden", mode !== "generic");
+  updateRegistrationControls();
+}
+function updateRegistrationControls() {
+  const imported = state.registrationIds.length > 0;
+  const ready = (byId("registration-text").value.trim() || state.registrationFiles.length) && byId("registration-group").value && (byId("registration-proxy-mode").value !== "generic" || byId("registration-proxy-id").value);
+  byId("registration-import").disabled = imported || !ready;
+  byId("registration-start").disabled = !imported || state.registration?.status === "running";
+  for (const id of ["registration-text", "registration-group", "registration-proxy-mode", "registration-proxy-id", "registration-file-choose"]) byId(id).disabled = imported;
+}
+async function addRegistrationFiles(files) {
+  if (state.registrationIds.length) return;
+  for (const file of files) {
+    if (!/\.txt$/i.test(file.name) && file.type !== "text/plain") { toast("请选择 TXT 账号密码文件"); continue; }
+    state.registrationFiles.push({ name: file.name, text: await file.text() });
+  }
+  byId("registration-file-names").textContent = state.registrationFiles.length ? state.registrationFiles.map((file) => file.name).join("、") : "尚未选择文件";
+  updateRegistrationControls();
+}
 function renderRail() {
   const target = byId("rail-content");
   target.replaceChildren();
@@ -359,16 +512,56 @@ function renderRail() {
   if (!state.tasks.length) target.append(node("p", "rail-empty", "暂无创作任务。生成后可在这里查询状态并下载结果。"));
   for (const task of state.tasks) {
     const card = node("article", "task-card");
-    card.append(node("h3", "", task.prompt));
+    card.append(node("h3", "", task.prompt || "浏览器内提交的生成任务"));
     card.append(node("span", `state ${task.status === "failed" ? "failed" : ""}`, task.status));
-    card.append(node("p", "", `${task.model} · ${task.ratio} · ${task.createdAt?.slice(0, 16).replace("T", " ")}`));
-    if (task.error) card.append(node("p", "", task.error));
+    card.append(node("p", "", [task.model, task.ratio, task.createdAt ? displayTime(task.createdAt) : ""].filter(Boolean).join(" · ")));
+    if (task.error) card.append(node("p", "", `失败原因：${taskErrorText(task)}${!task.conversationId ? "；未创建 Dola 会话" : ""}`));
+    else if (!task.conversationId && ["queued", "running", "accepted"].includes(task.status)) card.append(node("p", "", `${task.diagnostics?.submitStage === "uploading_references" ? "正在上传参考图" : task.diagnostics?.submitStage === "submitting_to_dola" ? "正在提交到 Dola" : "正在准备提交"}，尚未获得 Dola 会话`));
     if (task.unwatermarkedUrl) card.append(node("p", "", "无水印版本已就绪"));
     else if (task.watermarkError) card.append(node("p", "", `无水印取回：${task.watermarkError}`));
     if (task.status === "needs_review") card.append(node("p", "", "Dola 要求人工验证。请在已登录浏览器中完成验证，再查询状态。"));
     const actions = node("div", "card-actions");
+    if (["completed", "failed"].includes(task.status)) {
+      const replay = node("button", "", "再次生成");
+      replay.onclick = async () => {
+        try {
+          const draft = await run("task:replay", { id: task.id });
+          state.mode = draft.model === "dola-seedream-4-5" ? "image" : "video";
+          state.references = draft.references.map((reference, index) => ({ ...reference, label: referenceLabel(index) }));
+          byId("prompt").value = draft.prompt;
+          byId("expanded-prompt").value = draft.prompt;
+          state.page = "workspace";
+          render();
+          byId("model").value = draft.model;
+          if (draft.ratio) selectComposeOption("ratio", draft.ratio);
+          if (state.mode === "video" && draft.duration) selectComposeOption("duration", String(draft.duration));
+          const roles = state.references.map((reference) => reference.role);
+          byId("reference-mode").value = roles.includes("last_frame") ? "first_last" : roles.includes("first_frame") ? "first_frame" : "reference";
+          renderReferences();
+          await run("browser:close");
+          state.activeAccountId = "";
+          render();
+          byId("prompt").focus();
+          toast("提示词与原参考素材已回填，请在左侧选择账号后提交");
+        } catch {}
+      };
+      actions.append(replay);
+    }
     const refreshButton = node("button", "", "查询状态");
-    refreshButton.onclick = async () => { try { await withLoading("正在打开任务并查询状态…", async () => { const opened = await run("task:open", { id: task.id }); state.activeAccountId = opened.accountId; state.page = "workspace"; render(); await run("task:refresh", { id: task.id }); await refresh(); }); } catch {} };
+    refreshButton.onclick = async () => {
+      try {
+        const updated = await run("task:refresh", { id: task.id });
+        await refresh();
+        if (!updated.conversationId) {
+          toast(updated.error ? `${taskErrorText(updated)}；尚未创建 Dola 会话` : `正在准备提交${updated.diagnostics?.submitStage ? ` · ${updated.diagnostics.submitStage}` : ""}，尚未创建 Dola 会话`);
+          return;
+        }
+        const opened = await run("task:open", { id: task.id });
+        state.activeAccountId = opened.accountId;
+        state.page = "workspace";
+        render();
+      } catch {}
+    };
     actions.append(refreshButton);
     if (task.status === "completed" && task.model !== "dola-seedream-4-5") {
       const watermark = node("button", "", "去水印");
@@ -379,8 +572,8 @@ function renderRail() {
       const download = node("button", "", "下载");
       download.onclick = async () => { try { const result = await run("asset:download", { id: task.id }); toast(`已保存到 ${state.downloadDir}（${result.count} 个）`); await refresh(); } catch {} };
       actions.append(download);
-      for (const [ordinal] of task.resultUrls.entries()) {
-        const one = node("button", "", `${task.model === "dola-seedream-4-5" ? "图片" : "视频"} ${ordinal + 1}`);
+      for (const [ordinal] of task.resultUrls.length > 1 ? task.resultUrls.entries() : []) {
+        const one = node("button", "", `下载${task.model === "dola-seedream-4-5" ? "图片" : "视频"} ${ordinal + 1}`);
         one.onclick = async () => { try { const result = await run("asset:download", { id: task.id, ordinal }); toast(`已保存到 ${result.files?.[0] || state.downloadDir}`); await refresh(); } catch {} };
         actions.append(one);
       }
@@ -604,23 +797,94 @@ window.addEventListener("resize", () => { updateBrowserBounds(); positionAccount
 byId("account-list").addEventListener("scroll", positionAccountPopover);
 new ResizeObserver(updateBrowserBounds).observe(byId("browser-box"));
 for (const dialog of document.querySelectorAll("dialog")) dialog.addEventListener("close", updateBrowserBounds);
+byId("import-dialog").addEventListener("close", () => { state.importFiles = []; byId("import-text").value = ""; byId("import-file-name").textContent = ""; });
 byId("loading-dialog").addEventListener("cancel", (event) => event.preventDefault());
 byId("add-account").onclick = () => { byId("account-dialog").showModal(); updateBrowserBounds(); };
+renderFingerprintOptions("new-account-fingerprint");
+renderFingerprintOptions("registration-fingerprint");
+byId("register-batch").onclick = () => {
+  if (!state.registrationIds.length) {
+    byId("registration-import-status").textContent = "";
+    byId("registration-file-names").textContent = state.registrationFiles.length ? state.registrationFiles.map((file) => file.name).join("、") : "尚未选择文件";
+  }
+  updateRegistrationProxyOptions();
+  byId("registration-dialog").showModal();
+  updateBrowserBounds();
+};
+byId("registration-proxy-mode").onchange = updateRegistrationProxyOptions;
+byId("registration-proxy-id").onchange = updateRegistrationControls;
+byId("registration-group").onchange = updateRegistrationControls;
+byId("registration-text").oninput = updateRegistrationControls;
+byId("registration-file-choose").onclick = () => byId("registration-file-input").click();
+byId("registration-file-input").onchange = async (event) => { await addRegistrationFiles(event.target.files); event.target.value = ""; };
+const registrationZone = byId("registration-file-zone");
+registrationZone.onclick = (event) => { if (event.target.tagName !== "BUTTON" && !state.registrationIds.length) byId("registration-file-input").click(); };
+registrationZone.onkeydown = (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); byId("registration-file-input").click(); } };
+registrationZone.ondragover = (event) => { event.preventDefault(); registrationZone.classList.add("drag-over"); };
+registrationZone.ondragleave = () => registrationZone.classList.remove("drag-over");
+registrationZone.ondrop = async (event) => { event.preventDefault(); registrationZone.classList.remove("drag-over"); await addRegistrationFiles(event.dataTransfer.files); };
+registrationZone.onpaste = async (event) => {
+  event.preventDefault();
+  if (event.clipboardData.files.length) await addRegistrationFiles(event.clipboardData.files);
+  else { byId("registration-text").value += event.clipboardData.getData("text/plain"); updateRegistrationControls(); }
+};
+byId("registration-import").onclick = async () => {
+  try {
+    const imported = await run("registration:import", { text: byId("registration-text").value, files: state.registrationFiles, group: byId("registration-group").value, proxyId: byId("registration-proxy-mode").value === "generic" ? byId("registration-proxy-id").value : byId("registration-proxy-mode").value, fingerprintParams: selectedFingerprintParams("registration-fingerprint") });
+    state.registrationIds = imported.map((item) => item.id);
+    state.registrationFiles = [];
+    byId("registration-text").value = "";
+    byId("registration-file-names").textContent = "文件内容已导入";
+    byId("registration-import-status").textContent = `已导入 ${imported.length} 个账号。点击“开始注册”后逐个打开浏览器。`;
+    await refresh();
+    updateRegistrationControls();
+  } catch {}
+};
+byId("registration-start").onclick = async () => {
+  try {
+    const current = await run("registration:start", { ids: state.registrationIds });
+    state.registration = current;
+    state.activeAccountId = current.accountId;
+    state.page = "workspace";
+    byId("registration-dialog").close();
+    render();
+  } catch {}
+};
+byId("registration-copy-email").onclick = async () => { try { await run("registration:copy-email", { id: state.registration?.accountId }); toast("当前邮箱已复制"); } catch {} };
+byId("registration-copy-password").onclick = async () => { try { await run("registration:copy-password", { id: state.registration?.accountId }); toast("当前密码已复制到剪贴板"); } catch {} };
+byId("registration-stop").onclick = async () => { try { await run("registration:stop"); state.registration = null; state.registrationIds = []; render(); } catch {} };
 document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => byId(button.dataset.closeDialog).close()));
-byId("add-group").onclick = () => { byId("group-dialog").showModal(); updateBrowserBounds(); byId("group-name").focus(); };
+function openGroupSettings(editing = false) {
+  state.editingGroup = editing ? byId("account-group-filter").value : "";
+  byId("group-name").value = state.editingGroup;
+  byId("group-name").readOnly = editing;
+  byId("group-dialog-title").textContent = editing ? "设置分组代理" : "新建账号分组";
+  byId("group-submit").textContent = editing ? "保存设置" : "创建分组";
+  mountProxyPicker(byId("group-proxy"), Object.hasOwn(state.accountGroupProxies, state.editingGroup) ? state.accountGroupProxies[state.editingGroup] : "direct");
+  byId("group-dialog").showModal();
+  updateBrowserBounds();
+  byId("group-name").focus();
+}
+byId("add-group").onclick = () => openGroupSettings();
+byId("edit-group").onclick = () => openGroupSettings(true);
 byId("group-form").onsubmit = async (event) => {
   event.preventDefault();
   const name = byId("group-name").value.trim();
   if (!name) return;
-  try { await run("account:group-add", { name }); byId("group-dialog").close(); byId("group-name").value = ""; await refresh(); toast(`分组“${name}”已创建`); } catch {}
-};
-byId("account-manual").onclick = () => { state.accountMode = "manual"; byId("cookie-field").classList.add("hidden"); byId("account-manual").classList.add("selected"); byId("account-cookie").classList.remove("selected"); byId("account-help").textContent = "创建后将在中间网页手动登录，完成后自动保存登录态。"; };
+  try {
+    const proxyId = proxyPickerValue(byId("group-proxy"));
+    await run(state.editingGroup ? "account:group-proxy" : "account:group-add", { name, proxyId });
+    byId("group-dialog").close();
+    await refresh();
+    toast(state.editingGroup ? "分组代理已保存" : `分组“${name}”已创建`);
+  } catch {}
+};byId("account-manual").onclick = () => { state.accountMode = "manual"; byId("cookie-field").classList.add("hidden"); byId("account-manual").classList.add("selected"); byId("account-cookie").classList.remove("selected"); byId("account-help").textContent = "创建后将在中间网页手动登录，完成后自动保存登录态。"; };
 byId("account-cookie").onclick = () => { state.accountMode = "cookie"; byId("cookie-field").classList.remove("hidden"); byId("account-manual").classList.remove("selected"); byId("account-cookie").classList.add("selected"); byId("account-help").textContent = "导入后还需检查 Dola 真实登录状态。"; };
 byId("account-confirm").onclick = async () => {
   try {
     await withLoading("正在添加账号并打开网页…", async () => {
       const name = byId("new-account-name").value.trim();
-      const account = await run("account:add", { name, group: byId("new-account-group").value, ...(state.accountMode === "cookie" ? { cookie: byId("new-account-cookie").value } : {}) });
+      const account = await run("account:add", { name, group: byId("new-account-group").value, proxyId: proxyPickerValue(byId("new-account-proxy")), fingerprintParams: selectedFingerprintParams("new-account-fingerprint"), ...(state.accountMode === "cookie" ? { cookie: byId("new-account-cookie").value } : {}) });
       byId("account-dialog").close();
       byId("new-account-name").value = "";
       byId("new-account-cookie").value = "";
@@ -633,17 +897,22 @@ byId("account-confirm").onclick = async () => {
   } catch {}
 };
 byId("account-search").oninput = renderAccounts;
+byId("account-group-filter").onchange = () => { const group = byId("account-group-filter").value; byId("edit-group").disabled = group === "all"; byId("export-group").disabled = group === "all" || !state.accounts.some((account) => account.group === group && account.cookieFingerprint); renderAccounts(); };
 byId("import-account").onclick = () => { byId("import-dialog").showModal(); updateBrowserBounds(); };
-byId("import-file").onclick = async () => { try { const file = await run("account:import-file"); if (file) { byId("import-text").value = file.text; byId("import-file-name").textContent = file.name; } } catch {} };
+byId("import-file").onclick = async () => { try { const files = await run("account:import-file"); if (files?.length) { state.importFiles = files; byId("import-file-name").textContent = files.map((file) => file.name).join("、"); } } catch {} };
 byId("import-confirm").onclick = async () => {
   try {
-    const results = await run("account:import", { name: byId("import-name").value, group: byId("import-group").value, text: byId("import-text").value });
+    const results = await run("account:import", { name: byId("import-name").value, group: byId("import-group").value, text: byId("import-text").value, files: state.importFiles });
     const target = byId("import-results");
-    target.replaceChildren(...results.map((item) => node("p", "", `第 ${item.line} 行：${item.error || "已导入"}`)));
+    target.replaceChildren(...results.map((item) => node("p", "", `${item.file} 第 ${item.line} 行：${item.error || "已导入"}`)));
+    state.importFiles = [];
+    byId("import-file-name").textContent = "";
+    byId("import-text").value = "";
     await refresh();
   } catch {}
 };
 byId("export-account").onclick = async () => { try { const result = await run("account:export", { ids: state.accounts.map((item) => item.id) }); if (!result.cancelled) toast(`已导出 ${result.count} 个账号`); } catch {} };
+byId("export-group").onclick = async () => { try { const group = byId("account-group-filter").value; if (group === "all") return; const result = await run("account:export-group", { group }); if (!result.cancelled) toast(`已导出 ${group} 分组 ${result.count} 个账号`); } catch {} };
 byId("mode-video").onclick = () => { state.mode = "video"; renderMode(); };
 byId("mode-image").onclick = () => { state.mode = "image"; renderMode(); };
 byId("reference-mode").onchange = applyReferenceMode;
@@ -719,6 +988,7 @@ byId("submit").onclick = async () => {
     state.tasks.unshift(task);
     state.rail = "tasks";
     renderRail();
+    renderAccounts();
     byId("prompt").value = "";
     byId("expanded-prompt").value = "";
     state.references = [];
@@ -795,16 +1065,20 @@ byId("download-choose").onclick = async () => { try { const directory = await ru
 byId("download-open").onclick = () => run("download:open").catch(() => {});
 byId("auto-download").onchange = async (event) => { try { await run("settings:save", { autoDownload: event.target.checked }); await refresh(); } catch { event.target.checked = !event.target.checked; } };
 byId("auto-unwatermark").onchange = async (event) => { try { await run("settings:save", { autoRemoveWatermark: event.target.checked }); await refresh(); } catch { event.target.checked = !event.target.checked; } };
+for (const [id, setting] of [["magic-default", "magicProxyId"], ["chain-default", "chainedProxyId"]]) {
+  byId(id).onchange = async (event) => { try { await run("settings:save", { [setting]: event.target.value }); await refresh(); toast("默认代理设置已保存"); } catch { await refresh(); } };
+}
+byId("imagex-upload-proxy").onchange = async (event) => { try { await run("settings:save", { imagexUploadProxyId: event.target.value }); await refresh(); } catch { await refresh(); } };
+byId("browser-static-direct").onchange = async (event) => { try { await run("settings:save", { browserStaticDirect: event.target.checked }); await refresh(); toast("设置已保存，重新打开账号后生效"); } catch { await refresh(); } };
 byId("api-enabled").onchange = async (event) => { try { await run("settings:save", { apiEnabled: event.target.checked }); await refresh(); } catch { event.target.checked = !event.target.checked; } };
 byId("api-save-port").onclick = async () => { try { await run("settings:save", { apiPort: Number(byId("api-port").value) }); await refresh(); toast(state.apiOrigin ? "本机 API 端口已更新" : "端口不可用，请查看提示并更换端口"); } catch {} };
 byId("api-new-key").onclick = async () => { try { const result = await run("api:new-key"); const target = byId("api-key-output"); target.textContent = `请立即保存。此密钥只显示一次：\n${result.key}`; target.classList.remove("hidden"); } catch {} };
 byId("api-revoke").onclick = async () => { if (!confirm("撤销当前 API 密钥？已有客户端会立即失效。")) return; try { await run("api:revoke"); byId("api-key-output").classList.add("hidden"); toast("密钥已撤销"); } catch {} };
 api.onTask((message) => {
-  if (message.type === "browser-loading") {
-    if (message.loading && !browserLoading.has(message.browserId)) browserLoading.set(message.browserId, beginLoading("正在加载账号网页…"));
-    if (!message.loading && browserLoading.has(message.browserId)) { endLoading(browserLoading.get(message.browserId)); browserLoading.delete(message.browserId); }
-  }
-  if (message.type === "task") { state.tasks = state.tasks.map((item) => item.id === message.task.id ? message.task : item); renderRail(); }
+  if (message.type === "registration") { state.registration = message.registration; if (message.registration?.status === "running") { state.activeAccountId = message.registration.accountId; state.page = "workspace"; } if (message.registration?.status === "completed") state.registrationIds = []; render(); }
+  if (message.type === "browser-closed") { state.activeAccountId = ""; render(); }
+  if (message.type === "task") { state.tasks = state.tasks.some((item) => item.id === message.task.id) ? state.tasks.map((item) => item.id === message.task.id ? message.task : item) : [message.task, ...state.tasks]; renderRail(); renderAccounts(); }
+  if (message.type === "download-complete") toast(message.message);
   if (message.type === "assets") void refresh();
   if (message.type === "account-saved") void refresh();
   if (message.type === "provider-ready") { state.providerReady = true; byId("provider-state").textContent = "协议服务已连接"; }

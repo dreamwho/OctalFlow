@@ -384,7 +384,7 @@ MAIN_WORLD_JSON_REQUEST_SCRIPT = r"""
   el.id = resultId;
   el.style.display = "none";
   document.documentElement.appendChild(el);
-  const done = (value) => { try { el.value = JSON.stringify(value); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); } };
+  const done = (value) => { try { el.value = JSON.stringify(value); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); } el.dispatchEvent(new Event("dola-json-result", { bubbles: true })); };
   try {
     const identityKeys = new Set([
       "aid", "device_id", "device_platform", "doubao_device_platform",

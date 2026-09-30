@@ -49,10 +49,10 @@ function numberParam(value: string | null, fallback: number) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 function isDolaStatus(value: string | null): value is DolaRequestLogStatus {
-    return value === "success" || value === "failed" || value === "needs_review" || value === "pending";
+    return value === "success" || value === "failed" || value === "needs_review" || value === "pending" || value === "cancelled";
 }
 function isDolaPhase(value: string | null): value is DolaRequestLogPhase {
-    return value === "queued" || value === "routing" || value === "auth" || value === "upstream" || value === "response" || value === "running" || value === "success" || value === "failed" || value === "needs_review";
+    return value === "queued" || value === "routing" || value === "auth" || value === "upstream" || value === "response" || value === "running" || value === "submitted" || value === "generating" || value === "cancelled" || value === "success" || value === "failed" || value === "needs_review";
 }
 function isDolaSource(value: string | null): value is DolaRequestLogSource {
     return value === "runtime" || value === "admin-test" || value === "external";

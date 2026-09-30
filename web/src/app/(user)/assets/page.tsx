@@ -73,6 +73,8 @@ export default function AssetsPage() {
     const [isImageDragActive, setIsImageDragActive] = useState(false);
     const [formKind, setFormKind] = useState<AssetKind>("text");
     const [mediaDraft, setMediaDraft] = useState<MediaDraft>(null);
+    const uploadingRef = useRef(false);
+    const [uploadState, setUploadState] = useState<{ kind: "cover" | "media"; percent: number | null } | null>(null);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [importing, setImporting] = useState(false);
@@ -108,6 +110,7 @@ export default function AssetsPage() {
     };
 
     const saveAsset = async () => {
+        if (uploadingRef.current) return;
         setSaving(true);
         try {
             const values = await form.validateFields();
@@ -143,23 +146,45 @@ export default function AssetsPage() {
     };
 
     const readCoverFile = async (file?: File) => {
-        if (!file) return;
-        const image = await uploadImage(file);
-        form.setFieldValue("coverUrl", image.url);
+        if (!file || uploadingRef.current) return;
+        uploadingRef.current = true;
+        setUploadState({ kind: "cover", percent: null });
+        try {
+            const image = await uploadImage(file, { onProgress: (percent) => setUploadState({ kind: "cover", percent }) });
+            form.setFieldValue("coverUrl", image.url);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "封面上传失败");
+        } finally {
+            uploadingRef.current = false;
+            setUploadState(null);
+            if (coverInputRef.current) coverInputRef.current.value = "";
+        }
     };
 
     const readMediaFile = async (file?: File) => {
-        if (!file || formKind === "text" || !file.type.startsWith(`${formKind}/`)) return message.warning(`请选择${formKind === "image" ? "图片" : formKind === "video" ? "视频" : "音频"}格式文件`);
-        const media = formKind === "image" ? await uploadImage(file) : await uploadMediaFile(file, formKind);
-        const draft: MediaDraft =
-            formKind === "image"
-                ? { dataUrl: media.url, storageKey: media.storageKey, serverUrl: media.url, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType }
-                : formKind === "video"
-                  ? { url: media.url, storageKey: media.storageKey, serverUrl: media.url, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType }
-                  : { url: media.url, storageKey: media.storageKey, serverUrl: media.url, durationMs: "durationMs" in media ? media.durationMs : undefined, bytes: media.bytes, mimeType: media.mimeType };
-        setMediaDraft(draft);
-        if (formKind === "image" && !form.getFieldValue("coverUrl") && "dataUrl" in draft) form.setFieldValue("coverUrl", draft.dataUrl);
-        if (!form.getFieldValue("title")) form.setFieldValue("title", file.name);
+        if (!file || uploadingRef.current) return;
+        if (formKind === "text" || !file.type.startsWith(`${formKind}/`)) return message.warning(`请选择${formKind === "image" ? "图片" : formKind === "video" ? "视频" : "音频"}格式文件`);
+        uploadingRef.current = true;
+        setUploadState({ kind: "media", percent: null });
+        try {
+            const onProgress = (percent: number) => setUploadState({ kind: "media", percent });
+            const media = formKind === "image" ? await uploadImage(file, { onProgress }) : await uploadMediaFile(file, formKind, { onProgress });
+            const draft: MediaDraft =
+                formKind === "image"
+                    ? { dataUrl: media.url, storageKey: media.storageKey, serverUrl: media.url, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType }
+                    : formKind === "video"
+                      ? { url: media.url, storageKey: media.storageKey, serverUrl: media.url, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType }
+                      : { url: media.url, storageKey: media.storageKey, serverUrl: media.url, durationMs: "durationMs" in media ? media.durationMs : undefined, bytes: media.bytes, mimeType: media.mimeType };
+            setMediaDraft(draft);
+            if (formKind === "image" && !form.getFieldValue("coverUrl") && "dataUrl" in draft) form.setFieldValue("coverUrl", draft.dataUrl);
+            if (!form.getFieldValue("title")) form.setFieldValue("title", file.name);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "素材文件上传失败");
+        } finally {
+            uploadingRef.current = false;
+            setUploadState(null);
+            if (imageInputRef.current) imageInputRef.current.value = "";
+        }
     };
 
     const handleCoverDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -391,9 +416,11 @@ export default function AssetsPage() {
                     container: { display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - 24px)" },
                     body: { minHeight: 0, overflowY: "auto" },
                 }}
-                onCancel={() => setIsAssetOpen(false)}
+                onCancel={() => { if (!uploadingRef.current) setIsAssetOpen(false); }}
                 onOk={() => void saveAsset()}
                 confirmLoading={saving}
+                okButtonProps={{ disabled: uploadState !== null }}
+                cancelButtonProps={{ disabled: uploadState !== null }}
                 okText="保存"
                 cancelText="取消"
                 destroyOnHidden
@@ -402,6 +429,7 @@ export default function AssetsPage() {
                     <Form form={form} layout="vertical" requiredMark={false} initialValues={{ kind: "text", tags: [] }}>
                         <Form.Item name="kind" label="类型">
                             <Select
+                                disabled={uploadState !== null}
                                 options={[
                                     { label: "文本", value: "text" },
                                     { label: "图片", value: "image" },
@@ -429,8 +457,8 @@ export default function AssetsPage() {
                                     <Form.Item name="coverUrl" noStyle>
                                         <Input placeholder="可粘贴图片 URL，也可以上传本地封面" />
                                     </Form.Item>
-                                    <Button icon={<Upload className="size-3.5" />} onClick={() => coverInputRef.current?.click()}>
-                                        上传
+                                    <Button icon={<Upload className="size-3.5" />} loading={uploadState?.kind === "cover"} disabled={uploadState !== null} onClick={() => coverInputRef.current?.click()}>
+                                        {uploadState?.kind === "cover" ? uploadState.percent === null ? "处理中…" : `上传 ${uploadState.percent}%` : "上传"}
                                     </Button>
                                 </Space.Compact>
                             </div>
@@ -462,8 +490,8 @@ export default function AssetsPage() {
                                     onDragLeave={handleImageDragLeave}
                                     onDrop={handleImageDrop}
                                 >
-                                    <Button icon={<Upload className="size-4" />} onClick={() => imageInputRef.current?.click()}>
-                                        选择{formKind === "image" ? "图片" : formKind === "video" ? "视频" : "音频"}文件
+                                    <Button icon={<Upload className="size-4" />} loading={uploadState?.kind === "media"} disabled={uploadState !== null} onClick={() => imageInputRef.current?.click()}>
+                                        {uploadState?.kind === "media" ? uploadState.percent === null ? "处理中…" : `上传 ${uploadState.percent}%` : `选择${formKind === "image" ? "图片" : formKind === "video" ? "视频" : "音频"}文件`}
                                     </Button>
                                     {mediaDraft ? (
                                         <Typography.Text type="secondary" className="ml-3 text-xs">

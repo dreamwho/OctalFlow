@@ -73,13 +73,19 @@ async def lifespan(app: FastAPI):
         account_count,
     )
 
-    # 预热会让 Camoufox 在无请求时持续占用 CPU 和内存，默认按需启动。
+    # 预热把浏览器冷启动（约 20s：启动、页面加载、BotGuard、默认模板）从首个
+    # 用户请求挪到服务启动后的后台执行；浏览器本就会在首个请求后常驻，预热的
+    # 额外成本只是更早常驻。可用 AISTUDIO_BROWSER_PREHEAT=0 关闭。
     warmup_task = None
     async def _warmup():
         try:
+            # 与首个请求使用同一粘性账号选择，预热结果才能被复用；
+            # 否则首请求换号会关闭浏览器，预热全部作废。
+            from aistudio_api.application.api_service_common import ensure_active_account
+            await ensure_active_account(0)
             await client.warmup()
         except Exception as e:
-            logger.warning("浏览器预热失败: %s", e)
+            logger.warning("浏览器预热失败（首个请求将自行冷启动）: %s", e)
     if account_count and settings.browser_preheat:
         warmup_task = asyncio.create_task(_warmup())
 

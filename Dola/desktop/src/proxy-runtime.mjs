@@ -6,6 +6,25 @@ import path from "node:path";
 import YAML from "yaml";
 import { parseNodeUriLines } from "./subscription-uri.mjs";
 
+export function accountProxyId(account, state) {
+  return account.proxyId || (Object.hasOwn(state.accountGroupProxies || {}, account.group) ? state.accountGroupProxies[account.group] : "direct");
+}
+
+export function configuredProxyId(id, state) {
+  if (!id || id === "direct") return "";
+  if (id === "magic") {
+    const selected = state.settings.magicProxyId;
+    if (!state.proxies.magicSubscriptions.some((item) => item.nodes.some((node) => node.id === selected))) throw new Error("请在代理管理中设置魔法代理的默认节点");
+    return selected;
+  }
+  if (id === "chained") {
+    const selected = state.settings.chainedProxyId;
+    if (!state.proxies.chained.some((item) => item.id === selected)) throw new Error("请在代理管理中设置默认链式代理");
+    return selected;
+  }
+  return id;
+}
+
 export function parseMagicSubscription(text, subscriptionId) {
   const raw = String(text || "").trim();
   let parsed;

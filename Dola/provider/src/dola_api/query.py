@@ -5,6 +5,7 @@ import json
 import re
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
 
@@ -257,7 +258,7 @@ def parse_account_login_state(value: Any) -> str:
     return "unknown"
 
 
-async def probe_account_login(cookie: str, proxy_url: str | None = None) -> dict[str, Any]:
+async def probe_account_login(cookie: str, proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
     """Check the Cookie login state through Dola's read-only launch protocol."""
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options: dict[str, Any] = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
@@ -267,7 +268,7 @@ async def probe_account_login(cookie: str, proxy_url: str | None = None) -> dict
         async with httpx.AsyncClient(**client_options) as client:
             response = await client.post(
                 f"https://www.dola.com/alice/user/launch?{_launch_query(cookie)}",
-                headers=_headers(cookie),
+                headers=_headers(cookie, http_identity=http_identity),
                 json={"select": {"launch_config": True, "assistant_bot_info": True, "landing_config": True, "user_info": True}},
             )
         try:
@@ -284,34 +285,42 @@ async def probe_account_login(cookie: str, proxy_url: str | None = None) -> dict
         return {"state": "unknown", "transport": "http-launch", "error": type(error).__name__}
 
 
-def _headers(cookie: str, conversation_id: str = "") -> dict[str, str]:
+def _headers(cookie: str, conversation_id: str = "", http_identity: dict[str, str] | None = None) -> dict[str, str]:
+    # http_identity 携带桌面端透传的真实 UA/语言；未提供时保持固定 Chrome/Windows 头。
+    overrides = {
+        "userAgent": "user-agent",
+        "acceptLanguage": "accept-language",
+        "secCHUA": "sec-ch-ua",
+        "secCHUAPlatform": "sec-ch-ua-platform",
+    }
+    identity = {header: http_identity[key] for key, header in overrides.items() if isinstance(http_identity, dict) and isinstance(http_identity.get(key), str) and http_identity.get(key)}
     return {
         "accept": "application/json, text/plain, */*",
-        "accept-language": "zh-CN,zh;q=0.9",
+        "accept-language": identity.get("accept-language", "zh-CN,zh;q=0.9"),
         "content-type": "application/json; encoding=utf-8",
         "agw-js-conv": "str",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/146.0.0.0 Safari/537.36",
+        "user-agent": identity.get("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/146.0.0.0 Safari/537.36"),
         "cookie": cookie,
         "origin": "https://www.dola.com",
         "referer": f"https://www.dola.com/chat/{conversation_id}" if conversation_id else "https://www.dola.com/chat/",
-        "sec-ch-ua": '"Not-A.Brand";v="24", "Chromium";v="146"',
+        "sec-ch-ua": identity.get("sec-ch-ua", '"Not-A.Brand";v="24", "Chromium";v="146"'),
         "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
+        "sec-ch-ua-platform": identity.get("sec-ch-ua-platform", '"Windows"'),
     }
 
 
-async def fetch_video_url(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None) -> str:
-    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url)
+async def fetch_video_url(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> str:
+    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity)
     return str(result.get("url") or "")
 
 
-async def fetch_video_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None) -> dict[str, Any]:
+async def fetch_video_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
     """Backward-compatible alias returning only the video result fields."""
-    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url)
+    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity)
     return {"url": result.get("url") or "", "payload": result.get("payload")}
 
 
-async def fetch_generation_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None) -> dict[str, Any]:
+async def fetch_generation_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
     query = _identity_query(identity, cookie)
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
@@ -324,7 +333,7 @@ async def fetch_generation_result(cookie: str, conversation_id: str, identity: d
     async with httpx.AsyncClient(**client_options) as client:
         for path, request_payload in generation_query_payloads(conversation_id):
             try:
-                response = await client.post(f"https://www.dola.com{path}?{query}", headers=_headers(cookie, conversation_id), json=request_payload)
+                response = await client.post(f"https://www.dola.com{path}?{query}", headers=_headers(cookie, conversation_id, http_identity), json=request_payload)
                 if response.status_code < 200 or response.status_code >= 300:
                     continue
                 body = response.json()
@@ -533,6 +542,51 @@ def _extract_text_from_message(msg: dict[str, Any]) -> str:
     return "\n".join(chunks)
 
 
+def extract_generation_input(payload: dict[str, Any]) -> dict[str, Any]:
+    """Recover only explicitly identified user input from the original chain."""
+    for item in _walk(payload):
+        messages = item.get("messages") if isinstance(item, dict) else None
+        if not isinstance(messages, list):
+            continue
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            holder = msg.get("message") if isinstance(msg.get("message"), dict) else msg
+            role = str(holder.get("role") or "").lower()
+            if holder.get("user_type") not in (1, "1") and holder.get("sender_type") not in (1, "1") and role not in ("user", "1"):
+                continue
+            prompt = _extract_text_from_message(msg)
+            if not prompt:
+                continue
+            references = []
+            for node in _walk(msg):
+                attachments = node.get("attachment_block", {}).get("attachments", []) if isinstance(node, dict) and isinstance(node.get("attachment_block"), dict) else []
+                for attachment in attachments:
+                    image = attachment.get("image") if isinstance(attachment, dict) else None
+                    if isinstance(image, dict):
+                        url = image.get("image_ori", {}).get("url") if isinstance(image.get("image_ori"), dict) else image.get("url")
+                        if url:
+                            references.append({"name": image.get("name") or "参考图", "role": "reference", "url": url})
+            recovered: dict[str, Any] = {"prompt": prompt, "references": references}
+            try:
+                ability = json.loads(holder.get("ext", {}).get("chat_ability", "{}"))
+                parameters = json.loads(ability.get("ability_param", "{}"))
+                parameters = parameters.get("ability_param", parameters)
+                original = parameters.get("input_box_content", {}).get("user_input_content")
+                if isinstance(original, str) and original.strip():
+                    recovered["prompt"] = original
+                for key in ("duration", "ratio"):
+                    if parameters.get(key):
+                        recovered[key] = parameters[key]
+                timestamp = int(holder.get("create_time") or 0)
+                if timestamp:
+                    recovered["createdAt"] = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+            except (ValueError, TypeError, AttributeError, OverflowError, OSError):
+                pass
+            return recovered
+    return {}
+
+
 def _extract_assistant_text(payloads: list[Any]) -> str:
     """Extract only the conversation's assistant replies, never the user's prompt."""
     replies: list[str] = []
@@ -568,6 +622,8 @@ def _classify_refusal_code(text: str) -> str:
     """Classify known refusal/failure categories or return empty if unknown."""
     if not text:
         return ""
+    if "未认证人脸" in text and "不支持" in text and "生成" in text:
+        return "content_policy_violation"
     if any(k in text for k in ("违规", "社区规范", "内容安全", "涉及敏感", "无法通过审核", "未通过审核", "敏感内容")):
         return "content_policy_violation"
     if (
@@ -597,7 +653,7 @@ def _classify_refusal_code(text: str) -> str:
     return ""
 
 
-async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], proxy_url: str | None = None) -> str:
+async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> str:
     """Recover the newest conversation only after a real submit ACK.
 
     The caller must gate this fallback on the submit stream's ACK marker; using
@@ -632,7 +688,7 @@ async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], pr
         client_options["proxy"] = proxy_url
     try:
         async with httpx.AsyncClient(**client_options) as client:
-            response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie), json=payload)
+            response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie, http_identity=http_identity), json=payload)
             if response.status_code < 200 or response.status_code >= 300:
                 return ""
             return extract_conversation_id(response.json())

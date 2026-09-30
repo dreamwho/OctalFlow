@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 
-from dola_api.uploads import _fetch_source_bytes, _prepare_upload, _reference_fetch_route, _sign_imagex_request, resolve_references
+from dola_api.uploads import _fetch_source_bytes, _imagex_upload_proxy, _prepare_upload, _reference_fetch_route, _sign_imagex_request, resolve_references, upload_reference
 
 
 class FakePage:
@@ -23,6 +23,20 @@ def test_imagex_signature_contains_only_expected_signed_headers() -> None:
     assert headers["Authorization"].startswith("AWS4-HMAC-SHA256 Credential=ak/")
     assert "x-amz-security-token" in headers["Authorization"]
     assert headers["x-amz-security-token"] == "token"
+
+
+def test_invalid_imagex_egress_is_rejected(monkeypatch) -> None:
+    monkeypatch.setenv("DOLA_IMAGEX_UPLOAD_EGRESS", "unknown")
+    with pytest.raises(RuntimeError, match="imagex_upload_egress_invalid"):
+        _imagex_upload_proxy("http://127.0.0.1:17893")
+
+
+def test_explicit_imagex_egress_overrides_browser_and_legacy_default(monkeypatch) -> None:
+    monkeypatch.setenv("DOLA_IMAGEX_UPLOAD_EGRESS", "proxy")
+    assert _imagex_upload_proxy("http://127.0.0.1:17893", "direct") is None
+    assert _imagex_upload_proxy("http://127.0.0.1:17894", "managed") == "http://127.0.0.1:17894"
+    with pytest.raises(RuntimeError, match="imagex_upload_proxy_unavailable"):
+        _imagex_upload_proxy(None, "managed")
 
 
 @pytest.mark.anyio
@@ -77,7 +91,7 @@ async def test_signed_reference_reads_internal_origin_without_paid_proxy(monkeyp
 
 @pytest.mark.anyio
 async def test_reference_failure_identifies_image_position(monkeypatch) -> None:
-    async def fail_on_second(_page, item, _proxy):
+    async def fail_on_second(_page, item, _proxy, _imagex_mode, _imagex_url):
         if item["name"] == "second":
             raise RuntimeError("imagex_apply_ConnectError")
         return {"uri": "imagex://first"}
@@ -85,3 +99,58 @@ async def test_reference_failure_identifies_image_position(monkeypatch) -> None:
     monkeypatch.setattr("dola_api.uploads.upload_reference", fail_on_second)
     with pytest.raises(RuntimeError, match="reference_2_of_2: imagex_apply_ConnectError"):
         await resolve_references(None, [{"name": "first"}, {"name": "second"}], "http://127.0.0.1:1")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("egress,mode,upload_proxy,expected_proxy", [
+    ("direct", None, None, None),
+    ("proxy", None, None, "http://127.0.0.1:17893"),
+    ("proxy", "direct", None, None),
+    ("direct", "managed", "http://127.0.0.1:17894", "http://127.0.0.1:17894"),
+    ("direct", "managed", "http://generic.test:8080", "http://generic.test:8080"),
+])
+async def test_imagex_transfer_egress_is_independent_of_browser_proxy(monkeypatch, egress, mode, upload_proxy, expected_proxy) -> None:
+    import dola_api.uploads as uploads
+
+    monkeypatch.setenv("DOLA_IMAGEX_UPLOAD_EGRESS", egress)
+    clients = []
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def __init__(self, **options):
+            clients.append(options)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url, **_options):
+            calls.append(url)
+            return Response({"Result": {"UploadAddress": {"StoreInfos": [{"StoreUri": "image.png", "Auth": "upload-auth"}], "UploadHosts": ["upload.example"], "SessionKey": "session-key"}}})
+
+        async def post(self, url, **_options):
+            calls.append(url)
+            return Response({"code": 2000} if "upload/v1" in url else {"Result": {"Results": [{"Uri": "imagex://stored"}]}})
+
+    monkeypatch.setattr(uploads.httpx, "AsyncClient", Client)
+    page = FakePage({"ok": True, "status": 200, "json": {"code": 0, "data": {"service_id": "svc", "upload_host": "imagex.example", "upload_auth_token": {"access_key": "ak", "secret_key": "secret", "session_token": "token"}}}})
+    result = await upload_reference(page, {"dataUrl": "data:image/png;base64,dGVzdA=="}, "http://127.0.0.1:17893", mode, upload_proxy)
+    assert result["uri"] == "imagex://stored"
+    assert len(clients) == 1
+    assert clients[0].get("proxy") == expected_proxy
+    assert clients[0]["trust_env"] is False
+    assert len(calls) == 3
+    assert calls[0].startswith("https://imagex.example/")
+    assert calls[1] == "https://upload.example/upload/v1/image.png"
+    assert calls[2].startswith("https://imagex.example/")

@@ -1,3 +1,4 @@
+import { DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
 import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
@@ -207,7 +208,7 @@ async function runGlobalAiOpcImageTask(task: ImageTask, origin: string, publicOr
         body: JSON.stringify(
             buildGlobalAiOpcImageRequest(preset, {
                 model: config.model,
-                prompt: withSystemPrompt(config, buildImageReferencePromptText(task.prompt, task.references)),
+                prompt: withSystemPrompt(config, buildImageReferencePromptText(task.prompt, task.references, task.config.promptRules?.imageReference)),
                 quality,
                 size: requestSize,
                 ratio,
@@ -351,7 +352,7 @@ export async function runOpenAiResponsesImageTask(task: ImageTask, origin: strin
 }
 
 export function buildResponsesImageBodies(task: ImageTask, origin: string) {
-    const prompt = withSystemPrompt(task.config, buildImageReferencePromptText(task.prompt, task.references));
+    const prompt = withSystemPrompt(task.config, buildImageReferencePromptText(task.prompt, task.references, task.config.promptRules?.imageReference));
     const imageContent = task.references.map((reference) => ({ type: "input_image", image_url: referenceRequestUrl(reference, origin) }));
     const content = [{ type: "input_text", text: prompt }, ...imageContent];
     return [
@@ -392,7 +393,7 @@ export async function buildJsonImageEditBodies(
         await Promise.all(task.references.map((reference) => (publicUrlReferenceMode ? publicImageReferenceRequestUrl(reference, origin, publicOrigin, referenceContext) : Promise.resolve(jsonImageReferenceRequestUrl(reference, origin)))))
     ).filter(Boolean);
     const mask = task.mask ? (publicUrlReferenceMode ? await publicImageReferenceRequestUrl(task.mask, origin, publicOrigin, referenceContext) : jsonImageReferenceRequestUrl(task.mask, origin)) : "";
-    const prompt = imageUrlObjectOnlyMode ? buildSub2ApiImageEditPrompt(task.prompt, task.references) : buildImageReferencePromptText(task.prompt, task.references);
+    const prompt = imageUrlObjectOnlyMode ? buildSub2ApiImageEditPrompt(task.prompt, task.references, task.config.promptRules?.sub2ApiImageReference) : buildImageReferencePromptText(task.prompt, task.references, task.config.promptRules?.imageReference);
     const base = {
         model: task.config.model,
         prompt: withSystemPrompt(task.config, prompt),
@@ -431,17 +432,8 @@ export async function buildJsonImageEditBodies(
     ];
 }
 
-export function buildSub2ApiImageEditPrompt(prompt: string, references: readonly unknown[]) {
-    const text = prompt.trim();
-    if (!references.length) return text;
-    const fieldHint = references.length === 1 ? "image_urls[0]" : "image_urls";
-    return [
-        `Use the actual reference image supplied in the JSON field ${fieldHint} as visual input, not as a text-only hint.`,
-        "The first reference image, image_urls[0], is the primary identity and character reference. Keep the same person or character, face proportions, hairstyle, body shape, clothing, and main pose as much as possible.",
-        "Only apply the user's requested edit to the existing referenced subject. Do not replace the referenced person or character with a new unrelated person.",
-        "",
-        `User request: ${text}`,
-    ].join("\n");
+export function buildSub2ApiImageEditPrompt(prompt: string, references: readonly unknown[], rule = DEFAULT_GENERATION_PROMPT_RULES.sub2ApiImageReference) {
+    return buildImageReferencePromptText(prompt, references, rule);
 }
 
 import {

@@ -83,19 +83,24 @@ def sanitize_video_prompt_duration(prompt: str) -> str:
         text,
     )
     text = re.sub(r"(?i)\bduration\s*[:=]\s*\d+\s*s?\b", "", text)
-    # 3. '30秒的短视频' / '15s微电影'
+    # 3. '30 秒完整分镜' / '30 秒脚本'：保留“分镜/脚本”的创作语义。
+    text = re.sub(r"(?i)\d+\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?=(?:完整)?分镜|脚本)", "", text)
+    # 4. '30秒的短视频' / '15s微电影'
     text = re.sub(
         r"(?i)(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?:的)?(?:短?视频|片断|片段|微电影)",
         "",
         text,
     )
-    # 4. standalone '30秒' / '15s'
+    # 5. Other mentions of the requested duration (e.g. '完整 30 秒') must not
+    # reach the conversational layer; duration is already in ability_param.
+    text = re.sub(r"(?i)(?<!\d)(?:15|30)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)(?!\d)", "", text)
+    # 6. standalone '30秒' / '15s'
     text = re.sub(
         r"(?i)(?:^|(?<=[\s,，、;:：]))(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)(?=$|[\s,，、;:：])",
         "",
         text,
     )
-    # 5. Clean up duplicate delimiters
+    # 7. Clean up duplicate delimiters
     text = re.sub(
         r"[,，、\s]+",
         lambda m: "，" if "，" in m.group() or "," in m.group() else " ",
@@ -107,5 +112,3 @@ def sanitize_video_prompt_duration(prompt: str) -> str:
         if rest:
             text = rest
     return text.strip()
-
-

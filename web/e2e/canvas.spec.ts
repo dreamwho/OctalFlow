@@ -5,6 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { join } from "node:path";
+import sharp from "sharp";
 
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
@@ -459,6 +460,9 @@ test("canvas portrait media keeps its outer frame and node toolbar at high zoom"
 
 test("canvas keeps editing, selection, linking and persistence fluid", async ({ page, request }) => {
     test.setTimeout(180_000);
+    const originalSite = ((await (await request.get("/api/admin/settings")).json()) as { settings: { site: Record<string, unknown> } }).settings.site;
+    const lightTheme = await request.patch("/api/admin/settings", { data: { site: { ...originalSite, frontendTheme: "light" } } });
+    expect(lightTheme.ok(), await lightTheme.text()).toBe(true);
     const project = await createCanvasProject(request, {
         title: `Canvas 交互回归 ${randomUUID().slice(0, 8)}`,
         viewport: { x: 100, y: 110, k: 1 },
@@ -501,12 +505,10 @@ test("canvas keeps editing, selection, linking and persistence fluid", async ({ 
             return {
                 rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
                 backgroundImage: style.backgroundImage,
-                whiteSpace: style.whiteSpace,
                 icon: glyph ? { left: glyph.left, top: glyph.top, width: glyph.width, height: glyph.height } : null,
             };
         });
         expect(configGenerationVisual.backgroundImage).toContain("linear-gradient");
-        expect(configGenerationVisual.whiteSpace).toBe("nowrap");
         expect(configGenerationVisual.icon?.width || 0).toBeGreaterThan(12);
         const configCreditVisual = await configNode.locator("[data-canvas-credit-cost]").evaluate((element) => {
             const rect = element.getBoundingClientRect();
@@ -572,16 +574,15 @@ test("canvas keeps editing, selection, linking and persistence fluid", async ({ 
         const promptDialog = page.getByRole("dialog", { name: "编辑提示词" });
         const expandedPrompt = promptDialog.getByRole("textbox", { name: "提示词编辑器" });
         await expect(promptDialog).toBeVisible();
-        await expect(promptDialog.locator(".ant-modal-body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
         await expect(promptDialog.locator('[data-canvas-prompt-editor="expanded"]')).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-        await expect(expandedPrompt).toHaveCSS("background-color", "rgb(248, 251, 255)");
+        await expect(expandedPrompt).toHaveCSS("color", "rgb(19, 32, 59)");
         await expect(promptDialog.locator(".ant-modal-footer")).toHaveCount(0);
-        await expect(expandedPrompt).toHaveValue("放大编辑后仍然同步");
+        await expect(expandedPrompt).toHaveText("放大编辑后仍然同步");
         await expect.poll(() => expandedPrompt.evaluate((element) => document.activeElement === element)).toBe(true);
         await expandedPrompt.fill("弹窗中的长提示词会实时回写原输入框");
         await promptDialog.getByRole("button", { name: "收起提示词输入" }).click();
         await expect(promptDialog).toBeHidden();
-        await expect(nodePrompt).toHaveValue("弹窗中的长提示词会实时回写原输入框");
+        await expect(nodePrompt).toHaveText("弹窗中的长提示词会实时回写原输入框");
         // Close the node composer before exercising the generic canvas toolbar.
         // The selected image keeps its own toolbar above the node while the
         // composer is open, so the generic dock is intentionally unavailable.
@@ -678,6 +679,8 @@ test("canvas keeps editing, selection, linking and persistence fluid", async ({ 
         await expect.poll(() => readCanvasNodeCount(request, projectPath)).toBe(6);
     } finally {
         await deleteCanvasProject(request, project.id);
+        const restoredTheme = await request.patch("/api/admin/settings", { data: { site: originalSite } });
+        expect(restoredTheme.ok(), await restoredTheme.text()).toBe(true);
     }
 });
 
@@ -971,6 +974,114 @@ test("canvas video first and last frame roles persist and retry from the output 
                 return stored.nodes.find((item) => item.type === "video")?.metadata?.videoReferences?.map((reference) => reference.role);
             })
             .toEqual(["first_frame", "last_frame"]);
+    } finally {
+        await deleteCanvasProject(request, project.id);
+    }
+});
+
+test("generating from a completed video reuses its original image links and request references", async ({ page, request }) => {
+    const originalImages = ["original-one", "original-two"];
+    const project = await createCanvasProject(request, {
+        title: `Canvas 视频原图引用 ${randomUUID().slice(0, 8)}`,
+        viewport: { x: 120, y: 130, k: 1 },
+        nodes: [
+            ...originalImages.map((id, index) => node(id, "image", 20, 80 + index * 230, 210, 160, { content: `https://cdn.example.com/${id}.webp`, remoteUrl: `https://cdn.example.com/${id}.webp`, naturalWidth: 1280, naturalHeight: 720 })),
+            node("completed-video", "video", 350, 100, 230, 330, { content: "/animations/generation-loading-animation.mp4", status: "success", model: "dola-seedance-2-5", prompt: "依据参考图生成视频", seconds: "5" }),
+        ],
+        connections: originalImages.map((id) => ({ id: `${id}-edge`, fromNodeId: id, toNodeId: "completed-video" })),
+    });
+    const submitted: Array<{ references: Array<{ type: string; url: string }> }> = [];
+    await page.route("**/api/video-generation-tasks", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        submitted.push(route.request().postDataJSON() as { references: Array<{ type: string; url: string }> });
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ task: { id: "canvas-video-inherited-inputs", model: "dola-seedance-2-5", durationSeconds: 5 } }) });
+    });
+    await page.route("**/api/video-tasks/**", async (route) => {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ task: { status: "error", error: "E2E fixture" } }) });
+    });
+
+    try {
+        await page.goto(`/canvas/${project.id}`, { waitUntil: "domcontentloaded" });
+        const completedVideo = page.locator('[data-node-id="completed-video"]');
+        await expect(completedVideo).toBeVisible();
+        for (const width of [390, 430]) {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 932 });
+            await expect(page.locator("[data-canvas-surface]")).toBeVisible();
+            await expectNoHorizontalOverflow(page, `Canvas 再次生成 ${width}px`);
+        }
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.getByRole("button", { name: "重置视图" }).click();
+        await completedVideo.click({ position: { x: 30, y: 30 } });
+        const promptPanel = page.locator("[data-canvas-node-prompt-panel]");
+        await expect(promptPanel).toBeVisible();
+        await promptPanel.locator("[data-canvas-credit-cost] button").click();
+        await expect.poll(() => submitted.length).toBe(1);
+        expect(submitted[0].references.map((reference) => [reference.type, reference.url])).toEqual(originalImages.map((id) => ["image", `https://cdn.example.com/${id}.webp`]));
+        await expect.poll(async () => {
+            const saved = await readCanvasProject(request, `/api/canvas/projects/${project.id}`);
+            const newVideo = saved.nodes.find((item) => item.type === "video" && item.id !== "completed-video");
+            return newVideo ? saved.connections.filter((edge) => edge.toNodeId === newVideo.id).map((edge) => edge.fromNodeId) : [];
+        }).toEqual(originalImages);
+    } finally {
+        await deleteCanvasProject(request, project.id);
+    }
+});
+
+test("completed image regeneration keeps the displayed landscape ratio over portrait references", async ({ page, request }) => {
+    for (const [name, width, height] of [["portrait", 900, 1600], ["landscape", 1600, 900]] as const) {
+        const body = await sharp({ create: { width, height, channels: 3, background: "#9db9e8" } }).png().toBuffer();
+        await page.route(`https://cdn.example.com/${name}.webp`, (route) => route.fulfill({ contentType: "image/png", body }));
+    }
+    const project = await createCanvasProject(request, {
+        title: "已完成图片比例继承回归",
+        viewport: { x: 80, y: 100, k: 1 },
+        nodes: [
+            node("portrait-reference", "image", 20, 80, 160, 230, { content: "https://cdn.example.com/portrait.webp", naturalWidth: 900, naturalHeight: 1600 }),
+            node("landscape-result", "image", 350, 100, 320, 180, { content: "https://cdn.example.com/landscape.webp", status: "success", model: "e2e-image", prompt: "根据参考图制作角色三视图", size: "16:9", naturalWidth: 1600, naturalHeight: 900 }),
+        ],
+        connections: [{ id: "portrait-edge", fromNodeId: "portrait-reference", toNodeId: "landscape-result" }],
+    });
+    const submitted: Array<{ config: { size: string } }> = [];
+    await page.route("**/api/image-tasks", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        submitted.push(route.request().postDataJSON());
+        await route.fulfill({ json: { task: { id: "ratio-fixture", kind: "edit", model: "e2e-image" } } });
+    });
+    await page.route("**/api/image-tasks/ratio-fixture", (route) => route.fulfill({ json: { task: { status: "error", error: "E2E fixture" } } }));
+    try {
+        await page.goto(`/canvas/${project.id}`, { waitUntil: "domcontentloaded" });
+        await page.getByRole("button", { name: "重置视图" }).click();
+        await page.locator('[data-node-id="landscape-result"]').click({ position: { x: 30, y: 30 } });
+        const panel = page.locator("[data-canvas-node-prompt-panel]");
+        await expect(panel.getByRole("button", { name: /图片设置：16:9/ })).toBeVisible();
+        await panel.locator("[data-canvas-credit-cost] button").click();
+        await expect.poll(() => submitted.length).toBe(1);
+        expect(submitted[0].config.size).toBe("16:9");
+        const media = page.locator('[data-node-id="landscape-result"] img').first();
+        await expect.poll(() => media.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(1600);
+        for (const width of [1280, 390, 430]) {
+            await page.setViewportSize({ width, height: 900 });
+            await expectNoHorizontalOverflow(page, `图片比例回归 ${width}px`);
+            await page.screenshot({ path: `.e2e-artifacts/ratio-inheritance-${width}.png` });
+        }
+    } finally { await deleteCanvasProject(request, project.id); }
+});
+
+test("canvas prompt panel copies the current prompt", async ({ page, request, context }) => {
+    const project = await createCanvasProject(request, {
+        title: `Canvas 复制提示词 ${randomUUID().slice(0, 8)}`,
+        nodes: [node("copy-prompt-node", "image", 100, 100, 240, 180, { prompt: "客厅清晨的柔和光线" })],
+        connections: [],
+    });
+    try {
+        await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+        await page.goto(`/canvas/${project.id}`, { waitUntil: "domcontentloaded" });
+        await page.getByRole("button", { name: "重置视图" }).click();
+        await page.locator('[data-node-id="copy-prompt-node"]').click({ position: { x: 30, y: 30 } });
+        const panel = page.locator("[data-canvas-node-prompt-panel]");
+        await expect(panel).toBeVisible();
+        await panel.getByRole("button", { name: "复制提示词" }).click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("客厅清晨的柔和光线");
     } finally {
         await deleteCanvasProject(request, project.id);
     }

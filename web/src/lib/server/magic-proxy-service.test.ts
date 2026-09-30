@@ -53,15 +53,17 @@ vi.mock("@/lib/server/secret-crypto", () => ({
 }));
 
 const chatGptServiceMocks = vi.hoisted(() => ({
+    chatGptRuntimeJson: vi.fn(),
     resolveGenericProxyNodeUrl: vi.fn(async (..._args: unknown[]) => ""),
     syncChatGptApiRuntimeProxy: vi.fn(async (..._args: unknown[]) => undefined),
 }));
 vi.mock("@/lib/server/chatgpt-api-service", () => ({
+    chatGptRuntimeJson: (...args: unknown[]) => chatGptServiceMocks.chatGptRuntimeJson(...args),
     resolveGenericProxyNodeUrl: (...args: unknown[]) => chatGptServiceMocks.resolveGenericProxyNodeUrl(...(args as [])),
     syncChatGptApiRuntimeProxy: (...args: unknown[]) => chatGptServiceMocks.syncChatGptApiRuntimeProxy(...(args as [])),
 }));
 
-import { cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, repairMagicProxyRuntimeConfig, resolveHopNodeName, testMagicProxyAllNodes, testMagicProxyDolaAccess, testMagicProxyGoogleAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "./magic-proxy-service";
+import { chatGptSignedUploadMagicProxyUrl, cleanNodeName, ensureMagicProxyProvider, getMagicProxyOverview, importMagicProxySubscription, repairMagicProxyRuntimeConfig, resolveHopNodeName, testMagicProxyAllNodes, testMagicProxyDolaAccess, testMagicProxyGoogleAccess, testMagicProxyNodeDelay, updateMagicProxyBinding } from "./magic-proxy-service";
 import { UnsafeOutboundUrlError } from "@/lib/server/safe-outbound-fetch";
 
 const SUBSCRIPTION_URL = "https://subscription.example/clash.yaml?token=private-token";
@@ -166,6 +168,24 @@ describe("magic proxy service", () => {
         expect(overview.groups.every((group) => typeof group.now === "string")).toBe(true);
     });
 
+    it("keeps Dola uploads direct without Magic settings and resolves a saved generic group", async () => {
+        expect(await updateMagicProxyBinding({ provider: "dolaUpload", enabled: false })).toMatchObject({ binding: { enabled: false } });
+        chatGptServiceMocks.chatGptRuntimeJson.mockImplementation(async (path: string) => path === "/api/proxy/generic-bindings"
+            ? { bindings: { dolaUpload: { enabled: true, target: "group:residential" } } }
+            : { proxy_url: "http://generic.test:8080", node_name: "Residential-01" });
+        await expect(ensureMagicProxyProvider("dolaUpload")).resolves.toEqual({
+            enabled: true,
+            proxyUrl: "http://generic.test:8080",
+            egress: { mode: "generic", address: "generic.test:8080", node_name: "Residential-01" },
+        });
+        expect(chatGptServiceMocks.chatGptRuntimeJson).toHaveBeenCalledWith("/api/proxy/resolve-url", expect.objectContaining({ body: '{"group_id":"residential"}' }));
+    });
+
+    it("does not silently switch Dola uploads to direct when its proxy settings cannot be read", async () => {
+        chatGptServiceMocks.chatGptRuntimeJson.mockRejectedValue(new Error("runtime unavailable"));
+        await expect(ensureMagicProxyProvider("dolaUpload")).rejects.toThrow("Dola 上传出口配置暂时不可读取");
+    });
+
     it("pins each provider to its own static group without refreshing an already loaded provider", async () => {
         await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
         mocks.controllerFetch.mockClear();
@@ -261,6 +281,30 @@ describe("magic proxy service", () => {
         expect(selectionFor(GEMINI_TOOLS_GROUP)).toBeUndefined();
     });
 
+    it("routes signed upload through the Magic hop while submission keeps its own listener", async () => {
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        await importMagicProxySubscription({ url: SUBSCRIPTION_URL });
+        await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" });
+        mocks.controllerFetch.mockClear();
+
+        expect(await chatGptSignedUploadMagicProxyUrl()).toBe("http://mihomo-listener.test:17895/");
+        expect(selectionFor("dreamyo-ChatGPTUpload")).toBe("Tokyo-01");
+        expect(selectionFor(CHATGPT_API_GROUP)).toBeUndefined();
+    });
+
+    it("accepts a separate upload Magic node without changing the submission node", async () => {
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT", "17892");
+        vi.stubEnv("DREAMYO_MAGIC_PROXY_CHATGPT_API_URL", "http://mihomo-listener.test:17892");
+        await importMagicProxySubscription({ content: `${SUBSCRIPTION_YAML}  - name: Osaka-02\n    type: ss\n    server: upload.private.example\n    port: 443\n    cipher: aes-256-gcm\n    password: upload-password\n` });
+        await updateMagicProxyBinding({ provider: "chatgptApi", enabled: true, node: "Tokyo-01" });
+        mocks.controllerFetch.mockClear();
+
+        expect(await chatGptSignedUploadMagicProxyUrl("Osaka-02")).toBe("http://mihomo-listener.test:17895/");
+        expect(selectionFor("dreamyo-ChatGPTUpload")).toBe("Osaka-02");
+        expect(selectionFor(CHATGPT_API_GROUP)).toBeUndefined();
+    });
+
     it("resolves Dola magic egress through its dedicated listener and probes the Dola origin", async () => {
         vi.stubEnv("DREAMYO_MAGIC_PROXY_DOLA_PORT", "17893");
         vi.stubEnv("DREAMYO_MAGIC_PROXY_DOLA_URL", "http://mihomo-listener.test:17893");
@@ -327,7 +371,7 @@ describe("magic proxy service", () => {
 
         const overview = await getMagicProxyOverview();
 
-        expect(overview.groups.map((group) => group.now)).toEqual(["", "", "", ""]);
+        expect(overview.groups.map((group) => group.now)).toEqual(["", "", "", "", ""]);
     });
 
     it("rejects non-HTTPS or credential-bearing subscription URLs before any outbound request", async () => {

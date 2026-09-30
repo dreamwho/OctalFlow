@@ -2,8 +2,10 @@ from dola_api.protocol import canonical_ratio, sanitize_video_prompt_duration, v
 from dola_api.page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from dola_api.query import decode_main_url, extract_conversation_id, extract_image_urls, extract_main_url, extract_video_url, extract_vod_payload, generation_query_payloads, parse_generation_payloads
 from dola_api.sse import iter_sse_events
-from dola_api.session import CamoufoxSessionPool, PageSession, _build_completion_query, _build_request_body, _camoufox_browser_options, _camoufox_context_options, _page_has_verification_marker, _proxy_url_for_request, _sse_verification_decision, _submission_diagnostics
+from dola_api.session import CamoufoxSessionPool, PageSession, _build_completion_query, _build_request_body, _camoufox_browser_options, _camoufox_context_options, _page_has_verification_marker, _proxy_url_for_request, _sse_verification_decision, _submission_diagnostics, parse_browser_submission, prepare_browser_submission
 from dola_api.contracts import VideoRequest, VideoTask
+import asyncio
+import pytest
 
 
 def test_model_duration_contract_keeps_fast_at_15_seconds():
@@ -229,6 +231,47 @@ def test_submission_diagnostics_keeps_codes_without_secrets():
     assert "secret" not in str(diagnostics)
 
 
+def test_browser_submit_uses_existing_request_builder_without_extra_browser():
+    request = VideoRequest(model="dola-seedance-2-5", prompt="云朵缓慢飘过", duration=5, ratio="16:9")
+    prepared = asyncio.run(prepare_browser_submission(request, None))
+    assert prepared["body"]["option"]["need_create_conversation"] is True
+    assert "__dola_submit_result__" in prepared["script"]
+    assert prepared["referenceCount"] == 0
+
+
+def test_browser_submit_accepts_uploaded_references_without_upload_credentials():
+    references = [{"uri": f"imagex://reference-{index}", "name": f"图{index}.jpg", "width": 1280, "height": 720, "mime": "image/jpeg"} for index in range(3)]
+    request = VideoRequest(model="dola-seedance-2-5", prompt="云朵缓慢飘过", duration=5, references=references)
+    prepared = asyncio.run(prepare_browser_submission(request, None))
+    assert prepared["referenceCount"] == 3
+    assert prepared["resolvedReferences"] == references
+    assert prepared["body"]["option"]["need_create_conversation"] is True
+    assert all(item["uri"] in str(prepared["body"]) for item in references)
+
+
+def test_browser_submit_still_requires_credentials_for_unuploaded_reference():
+    request = VideoRequest(model="dola-seedance-2-5", prompt="云朵", duration=5, references=[{"uri": "imagex://ready"}, {"dataUrl": "data:image/jpeg;base64,dGVzdA=="}])
+    with pytest.raises(ValueError, match="browser_upload_config_missing"):
+        asyncio.run(prepare_browser_submission(request, None))
+
+
+def test_submit_body_keeps_page_fingerprint_and_reference_collection():
+    request = VideoRequest(model="dola-seedance-2-5", prompt="云朵", duration=5, ratio="16:9", cookie="s_v_web_id=page-fp")
+    body = _build_request_body(validate_request(request.model, request.duration, request.ratio), request, [{"uri": "imagex://reference", "name": "图.png"}])
+    assert body["ext"]["fp"] == "page-fp"
+    assert body["option"]["collect_id"] == body["ext"]["collection_id"]
+    assert body["option"]["collect_id"]
+    assert len(body["client_meta"]["local_conversation_id"]) == 22
+
+
+def test_code_only_rejection_is_not_reported_as_account_rate_limit():
+    payload = {"status": 200, "signed": True, "text": 'event: STREAM_ERROR\ndata: {"code":710022002}\n\n'}
+    result = asyncio.run(parse_browser_submission(payload, "session=test", None))
+    assert result["status"] == "failed"
+    assert result["error"] == "dola_upstream_rejected_710022002"
+    assert result["diagnostics"]["codes"] == ["710022002"]
+
+
 def test_ratio_contract_snaps_reduced_values_onto_supported_set():
     profile = validate_request("dola-seedance-2-5", 5, "7:3")
     assert profile.upstream_model == "seedance_v2.5"
@@ -411,11 +454,11 @@ def test_refresh_task_recovers_conversation_for_ack_only_task(monkeypatch):
     pool._tasks["task-recover"] = VideoTask(id="task-recover", model="dola-seedance-2-5", status="accepted")
     pool._task_meta["task-recover"] = {"ackReceived": True, "cookie": "sid=abc", "identity": {}}
 
-    async def recover_recent(cookie, identity, proxy_url=None):
+    async def recover_recent(cookie, identity, proxy_url=None, http_identity=None):
         assert cookie == "sid=abc"
         return "38417880090853905"
 
-    async def query(cookie, conversation_id, identity, proxy_url=None):
+    async def query(cookie, conversation_id, identity, proxy_url=None, http_identity=None):
         assert conversation_id == "38417880090853905"
         return {"url": "https://cdn.dola.com/generated.mp4", "imageUrls": [], "payload": {}}
 
@@ -441,7 +484,7 @@ def test_refresh_task_keeps_accepted_when_recovery_finds_no_conversation(monkeyp
     pool._tasks["task-recover"] = VideoTask(id="task-recover", model="dola-seedance-2-5", status="accepted")
     pool._task_meta["task-recover"] = {"ackReceived": True, "cookie": "sid=abc", "identity": {}}
 
-    async def recover_recent(cookie, identity, proxy_url=None):
+    async def recover_recent(cookie, identity, proxy_url=None, http_identity=None):
         return ""
 
     async def query(*_args, **_kwargs):
@@ -681,6 +724,24 @@ def test_quota_exhausted_message_terminates_generation_result():
     result = parse_generation_payloads([payload])
     assert result["error"] == "upstream_quota_exhausted"
     assert result["rawError"] == "今天的生成次数已经到达上限，明天再来免费生成吧"
+
+
+def test_unverified_face_refusal_terminates_task_with_original_reason():
+    import json
+    reply = "出于肖像保护考虑，未认证人脸暂不支持用 Dreamina Seedance 2.5 生成视频。你可以尝试换其它参考图或文生视频。"
+    payload = {"messages": [{"sender_type": 2, "content": json.dumps([{"block_type": 10000, "content": {"text_block": {"text": reply}}}])}]}
+    result = parse_generation_payloads([payload])
+    assert result["error"] == "content_policy_violation"
+    assert result["rawError"] == reply
+
+
+def test_user_quoting_face_restriction_does_not_fail_active_generation():
+    import json
+    payload = {"messages": [
+        {"sender_type": 1, "content": json.dumps([{"block_type": 10000, "content": {"text_block": {"text": "未认证人脸不支持生成视频，请仅生成房间。"}}}])},
+        {"sender_type": 2, "content": json.dumps([{"block_type": 10000, "content": {"text_block": {"text": "正在生成房间视频。"}}}])},
+    ]}
+    assert parse_generation_payloads([payload]) == {}
 
 
 def test_conversational_refusal_without_creation_terminates_with_exact_text():

@@ -9,16 +9,17 @@ const magic = vi.hoisted(() => {
             super(message);
         }
     }
-    return { ensure: vi.fn(), syncMihomoChainedProxy: vi.fn(), MagicProxyError: FixtureMagicProxyError };
+    return { ensure: vi.fn(), uploadUrl: vi.fn(async () => ""), syncMihomoChainedProxy: vi.fn(), MagicProxyError: FixtureMagicProxyError };
 });
-vi.mock("@/lib/server/magic-proxy-service", () => ({ ensureMagicProxyProvider: magic.ensure, syncMihomoChainedProxy: magic.syncMihomoChainedProxy, MagicProxyError: magic.MagicProxyError }));
-import { chatGptRuntimeJson, chatGptRuntimeRequest, readChatGptSignedMedia, rewriteChatGptMedia, rewriteChatGptStream, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection } from "./chatgpt-api-service";
+vi.mock("@/lib/server/magic-proxy-service", () => ({ ensureMagicProxyProvider: magic.ensure, chatGptSignedUploadMagicProxyUrl: magic.uploadUrl, syncMihomoChainedProxy: magic.syncMihomoChainedProxy, MagicProxyError: magic.MagicProxyError }));
+import { chatGptRuntimeJson, chatGptRuntimeRequest, readChatGptSignedMedia, rewriteChatGptMedia, rewriteChatGptStream, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection, updateChatGptUploadProxySelection } from "./chatgpt-api-service";
 import { resolveSafeOutboundTarget } from "./outbound-url-security";
 
 let server: Server | undefined;
 afterEach(async () => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();
+    magic.uploadUrl.mockResolvedValue("");
     if (server) {
         server.closeAllConnections();
         await new Promise<void>((resolve) => server!.close(() => resolve()));
@@ -27,6 +28,7 @@ afterEach(async () => {
 });
 async function fixture() {
     const seen: Array<{ url: string; key: string; authorization: string; body: string }> = [];
+    let uploadMagicConfigured = false;
     server = createServer((request, response) => {
         const chunks: Buffer[] = [];
         request.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
@@ -43,6 +45,13 @@ async function fixture() {
             } else if (request.url === "/failure") {
                 response.writeHead(403, { "content-type": "application/json" });
                 response.end('{"detail":{"error":"Bearer leakedcredential denied"}}');
+            } else if (request.url === "/integration/upload-proxy") {
+                response.writeHead(200, { "content-type": "application/json" });
+                response.end(JSON.stringify({ mode: request.method === "PATCH" ? JSON.parse(Buffer.concat(chunks).toString("utf8")).mode : "auto", magicNode: "", magicConfigured: uploadMagicConfigured }));
+            } else if (request.url === "/integration/upload-proxy-address") {
+                uploadMagicConfigured = Boolean(JSON.parse(Buffer.concat(chunks).toString("utf8")).proxyUrl);
+                response.writeHead(200, { "content-type": "application/json" });
+                response.end(JSON.stringify({ configured: uploadMagicConfigured }));
             } else {
                 response.writeHead(200, { "content-type": "application/json" });
                 response.end('{"ok":true}');
@@ -88,10 +97,10 @@ describe("ChatGPT internal transport", () => {
         await expect(updateChatGptProxySelection({ enabled: true, mode: "magic", native_source: "manual", extra: true })).rejects.toMatchObject({ status: 400 });
         await expect(updateChatGptProxySelection({ enabled: true, mode: "invalid", native_source: "manual" })).rejects.toMatchObject({ status: 400 });
         expect(magic.ensure).not.toHaveBeenCalled();
-        expect(seen).toHaveLength(1);
+        expect(seen).toHaveLength(2);
         await updateChatGptProxySelection({ enabled: true, mode: "magic", native_source: "manual" });
         expect(magic.ensure).toHaveBeenCalledTimes(1);
-        expect(seen.slice(1).map((item) => [item.url, item.body])).toEqual([
+        expect(seen.slice(2).map((item) => [item.url, item.body])).toEqual([
             ["/integration/proxy", '{"proxyUrl":"http://magic-listener.test:17892"}'],
             ["/integration/proxy-selection", '{"enabled":true,"mode":"magic","native_source":"manual"}'],
         ]);
@@ -102,6 +111,14 @@ describe("ChatGPT internal transport", () => {
         await expect(updateChatGptProxySelection({ enabled: true, mode: "magic", native_source: "manual" })).rejects.toMatchObject({ status: 409, message: expect.stringContaining("保存魔法节点") });
         expect(magic.ensure).toHaveBeenCalledTimes(1);
         expect(seen.filter((item) => item.url === "/integration/proxy")).toHaveLength(0);
+    });
+    it("saves an independent signed upload mode only after the Magic listener is available", async () => {
+        const seen = await fixture();
+        await expect(updateChatGptUploadProxySelection({ mode: "magic" })).rejects.toMatchObject({ status: 409 });
+        magic.uploadUrl.mockResolvedValue("http://magic-listener.test:17895/");
+        expect(await updateChatGptUploadProxySelection({ mode: "magic" })).toMatchObject({ mode: "magic", magicConfigured: true });
+        expect(seen.some((item) => item.url === "/integration/upload-proxy-address" && item.body.includes("17895"))).toBe(true);
+        expect(seen.some((item) => item.url === "/integration/upload-proxy" && item.body === '{"mode":"magic","magic_node":""}')).toBe(true);
     });
     it("rewrites internal media into signed bounded links, rejects tampering and expires links", async () => {
         const seen = await fixture();

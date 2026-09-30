@@ -575,6 +575,21 @@ describe("video generation candidate failover", () => {
         expect(upstreamBody.images).toEqual(["https://cdn.example.com/reference.jpg"]);
     });
 
+    it.each([false, true])("uses saved reference policy enabled=%s in the upstream video request", async (enabled) => {
+        const settings = publicUrlCompatibleSettings();
+        const { DEFAULT_GENERATION_PROMPT_RULES } = await import("@/lib/generation-prompt-rules");
+        const promptRules = structuredClone(DEFAULT_GENERATION_PROMPT_RULES);
+        promptRules.videoReference = { enabled, content: "仅保留{{referenceSource}}的人脸，允许按需换装" };
+        mocks.getAuthSettings.mockResolvedValue({ ...settings, generationDefaults: { ...settings.generationDefaults, promptRules } });
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: "upstream-rule-video", status: "queued" }));
+        const response = await POST(request({ model: "video" }, [{ type: "image", url: "https://cdn.example.com/reference.jpg" }]));
+        expect(response.status).toBe(200);
+        const body = JSON.parse(String(mocks.fetchInternalApi.mock.calls[0]?.[1]?.body));
+        expect(body.prompt).toBe(enabled ? "A test video\n\n仅保留参考图的人脸，允许按需换装" : "A test video");
+        expect(body.images).toEqual(["https://cdn.example.com/reference.jpg"]);
+        expect(body.prompt).not.toContain("禁止替换主体");
+    });
+
     it("sends a compatible text-to-video request without empty reference fields", async () => {
         mocks.getAuthSettings.mockResolvedValue(publicUrlCompatibleSettings());
         mocks.fetchInternalApi.mockResolvedValue(json({ id: "upstream-text-video", status: "queued" }));

@@ -117,9 +117,15 @@ async function handleFixtureRequest({ request, response, url, body, tasks, googl
             return sendJson(response, 200, { status: "ready", loginProbe, protocol: { ready: true, login: true, signerReady: true, requestObserved: true, signed: true, httpStatus: 200, identitySource: "/alice/user/launch" }, quota: [{ bucket: "video", remaining: 5, limit: 100, unit: "count", source: "upstream" }] });
         }
         if (request.method === "POST" && path === "/internal/runtime/v1/videos") {
+            if (cookie.includes("quota-exhausted")) return sendJson(response, 200, { id: nextTaskId("dola-quota"), status: "accepted", model: payload.model, accountId: payload.accountId, conversationId: "quota-conversation", conversationReply: "今天的生成次数已经达到上限，明天再来免费生成吧" });
             if (String(payload.model || "").includes("fail")) return sendJson(response, 500, { error: "upstream_error" });
             if (cookie.includes("limited")) return sendJson(response, 200, { id: `dola-limited-${Date.now()}`, taskId: `dola-limited-${Date.now()}`, status: "failed", error: "rate_limited", accountId: String(payload.accountId || "") });
             const taskId = nextTaskId("dola-video");
+            if (cookie.includes("quota-reply")) {
+                const conversationReply = "本次使用 Dreamina Seedance 2.5 生成，将消耗 2 个视频生成额度，预计等待 30 分钟。视频生成好后，我会主动发送给你，今日剩余 2 个视频生成额度。";
+                tasks.set(taskId, { status: "accepted", accountId: payload.accountId, model: payload.model, conversationReply });
+                return sendJson(response, 200, { id: taskId, status: "accepted", model: payload.model, accountId: payload.accountId, conversationId: "quota-accepted", conversationReply });
+            }
             tasks.set(taskId, { status: "completed", videoUrl: `${url.origin}/media/fixture.mp4`, accountId: String(payload.accountId || "") });
             return sendJson(response, 200, { id: taskId, taskId, status: "submitted", accountId: String(payload.accountId || "") });
         }
@@ -130,7 +136,7 @@ async function handleFixtureRequest({ request, response, url, body, tasks, googl
         if (videoQuery) {
             const task = tasks.get(decodeURIComponent(videoQuery[1]));
             if (!task) return sendJson(response, 404, { error: "task_not_found" });
-            return sendJson(response, 200, { status: task.status, taskId: decodeURIComponent(videoQuery[1]), videoUrl: task.videoUrl, diagnostics: { upstreamResponseText: "你的视频生成好了。" } });
+            return sendJson(response, 200, { ...task, taskId: decodeURIComponent(videoQuery[1]), diagnostics: { upstreamResponseText: task.conversationReply || "你的视频生成好了。" } });
         }
     }
     if (request.method === "GET" && ["/models", "/api/v3/models"].includes(path)) {

@@ -129,6 +129,11 @@ class AccountRotator:
                 available.append((account, stats))
         return available
 
+    def is_account_available(self, account_id: str) -> bool:
+        """账号是否可用：无统计（从未使用）视为可用，否则看冷却期。"""
+        stats = self._stats.get(account_id)
+        return stats is None or stats.is_available()
+
     def _pick_round_robin(self, available: list[tuple[AccountMeta, AccountStats]]) -> tuple[AccountMeta, AccountStats] | None:
         """Round-robin 选择，基于全量账号索引，避免 available 变化导致跳过或重复。"""
         if not available:

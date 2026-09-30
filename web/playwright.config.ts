@@ -33,7 +33,7 @@ export default defineConfig({
         {
             name: "chromium",
             testMatch: [
-                /(?:admin-brand-visual|admin-commerce-visual|admin-entry-matrix|admin-sections-matrix|all-pages|canvas|canvas-bugfix-repro|commerce|content-account-visual|core|creative-video-result|dola-admin|drama-visual|home|image-video-workbench|responsive|static-brand-visual|ui-rebuild|user-pages-matrix)\.spec\.ts/,
+                /(?:admin-brand-visual|admin-commerce-visual|admin-entry-matrix|admin-sections-matrix|all-pages|canvas|canvas-bugfix-repro|chatgpt-upload-proxy|commerce|content-account-visual|core|creative-video-result|dola-admin|drama-visual|home|image-video-workbench|responsive|static-brand-visual|ui-rebuild|user-pages-matrix)\.spec\.ts/,
             ],
             dependencies: ["setup"],
             use: { ...devices["Desktop Chrome"], storageState },

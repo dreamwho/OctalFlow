@@ -126,6 +126,7 @@ async def try_switch_account() -> bool:
     if not all([account_service, client]):
         return False
 
+    switch_started = time.monotonic()
     result = await account_service.activate_account(
         next_account.id,
         client._session,
@@ -136,6 +137,7 @@ async def try_switch_account() -> bool:
     if result is not None:
         _remember_request_account(result)
         note_rotation()
+        logger.info("账号切换完成: -> %s, 耗时=%.1fs", result.name, time.monotonic() - switch_started)
     return result is not None
 
 
@@ -162,6 +164,11 @@ def require_busy_lock():
 async def ensure_active_account(attempt: int):
     """Select an account for the first attempt of every request.
 
+    Sticky policy: keep the active account while it is not in cooldown; the
+    rotation modes (round_robin/lru/least_rl) only pick the next account when
+    no account is active or the active one is cooling down.  Switching on
+    every request restarted the browser and forced a template re-capture per
+    call, which roughly doubled image latency and quota use.
     Retry attempts keep the account selected for that request unless the
     provider explicitly asks us to switch after a rate-limit/auth failure.
     """
@@ -169,25 +176,26 @@ async def ensure_active_account(attempt: int):
     if account_svc is None:
         return None
 
+    current_account = account_svc.get_active_account()
     if attempt != 0:
-        selected = account_svc.get_active_account()
-        _remember_request_account(selected)
-        return selected
+        _remember_request_account(current_account)
+        return current_account
 
     rotator = runtime_state.rotator
     client = runtime_state.client
     if rotator is None or client is None:
-        selected = account_svc.get_active_account()
-        _remember_request_account(selected)
-        return selected
+        _remember_request_account(current_account)
+        return current_account
+
+    if current_account is not None and rotator.is_account_available(current_account.id):
+        _remember_request_account(current_account)
+        return current_account
 
     next_account = await rotator.get_next_account()
     if next_account is None:
-        selected = account_svc.get_active_account()
-        _remember_request_account(selected)
-        return selected
+        _remember_request_account(current_account)
+        return current_account
 
-    current_account = account_svc.get_active_account()
     if current_account is not None and current_account.id == next_account.id:
         _remember_request_account(current_account)
         return current_account

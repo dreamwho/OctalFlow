@@ -20,12 +20,11 @@ import { buildNodeGenerationContext, buildNodeGenerationInputs, buildNodeRespons
 import { type CanvasNodeGenerationMode } from "../components/canvas-node-prompt-panel";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "../constants";
 import { CanvasNodeType, isCanvasImageNodeType, type CanvasAssistantImage, type CanvasNodeData } from "../types";
-import { getGenerationResourceNodes } from "../utils/canvas-resource-references";
+import { getRegenerationSourceNodes, isGeneratedResultNode } from "../utils/canvas-resource-references";
 import { applyCameraPrompt } from "../utils/canvas-camera";
 import { applyCameraMotionPrompt } from "../utils/canvas-camera-motion";
 import { fitCanvasImageNodeSize, fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
 import { isInteriorDesignModel, isInteriorDesignNode } from "../utils/canvas-interior-design";
-import { buildPanoramaPrompt } from "../utils/canvas-panorama";
 import { CANVAS_NODE_GAP, resolveCanvasNodePlacement } from "../utils/canvas-surface-geometry";
 import { canvasVideoReferenceMetadata, resolveCanvasVideoGenerationReferences, restoreCanvasVideoGenerationReferences } from "../utils/canvas-video-references";
 
@@ -224,14 +223,10 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 // 已生成完成的图片节点再生成：新输出节点改为继承该节点索引过的参考图节点连线，
                 // 与当前节点之间不再建立连线，否则参考图会被当前节点的结果图顶掉。
                 // 生成完成节点都带 model/generationType 元数据（上传图节点没有），以此区分两类节点。
-                const inheritReferenceSources = isImageNode && Boolean(sourceNode?.metadata?.model || sourceNode?.metadata?.generationType);
-                const inheritedResourceNodes = inheritReferenceSources ? getGenerationResourceNodes(nodeId, nodesRef.current, connectionsRef.current) : [];
+                const inheritReferenceSources = Boolean(sourceNode && isImageNode && isGeneratedResultNode(sourceNode));
+                const inheritedResourceNodes = sourceNode ? getRegenerationSourceNodes(sourceNode, nodesRef.current, connectionsRef.current) : [];
                 const batchConnections = [
-                    ...(isEmptyImageNode
-                        ? []
-                        : inheritReferenceSources
-                          ? inheritedResourceNodes.map((node) => ({ id: nanoid(), fromNodeId: node.id, toNodeId: rootId }))
-                          : [{ id: nanoid(), fromNodeId: nodeId, toNodeId: rootId }]),
+                    ...(isEmptyImageNode ? [] : inheritedResourceNodes.map((node) => ({ id: nanoid(), fromNodeId: node.id, toNodeId: rootId }))),
                     ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: rootId, toNodeId: childId })),
                 ];
                 setNodes((prev) => [
@@ -306,8 +301,9 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             }
             const sourceTextContent = sourceNode?.type === CanvasNodeType.Text ? sourceNode.metadata?.content?.trim() || "" : "";
             const editingTextNode = mode === "text" && Boolean(sourceTextContent);
+            const regenerateTextFromSources = Boolean(editingTextNode && sourceNode && isGeneratedResultNode(sourceNode));
             const generationContext = await hydrateNodeGenerationContext(
-                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${plannedPrompt}` : plannedPrompt),
+                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode && !regenerateTextFromSources ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${plannedPrompt}` : plannedPrompt),
             );
             if (mode === "video" && generationContext.continuityPending) {
                 discardCreatedNodes();
@@ -317,7 +313,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 return;
             }
             const resolvedExecutionPrompt = generationContext.prompt.trim();
-            const panoramaPrompt = sourceNode?.type === CanvasNodeType.Panorama ? buildPanoramaPrompt(resolvedExecutionPrompt, generationContext.referenceImages.length > 0) : resolvedExecutionPrompt;
+            const panoramaPrompt = resolvedExecutionPrompt;
             const cameraPrompt = applyCameraPrompt(panoramaPrompt, sourceNode?.type === CanvasNodeType.Panorama ? undefined : sourceNode?.metadata?.cameraControl);
             const effectivePrompt = cameraPrompt;
             if (runController.signal.aborted) {
@@ -357,7 +353,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         ...generationConfig,
                         size: resolveImageRequestSize({
                             prompt: userPrompt,
-                            selectedSize: sourceNode?.metadata?.sizeUserSelected ? sourceNode.metadata.size : undefined,
+                selectedSize: generationSourceNode?.metadata?.sizeUserSelected || (isImageNode && sourceNode?.metadata?.content) ? generationSourceNode?.metadata?.size : undefined,
                             configuredSize: generationConfig.size,
                             referenceWidth: referenceImages[0]?.width,
                             referenceHeight: referenceImages[0]?.height,
@@ -402,6 +398,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                             try {
                                 await startAndCompleteImageTask(targetId, { ...imageGenerationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, controller, userPrompt, {
                                     runningHubAppId: interiorDesignConfig ? sourceNode?.metadata?.runningHubAppId : undefined,
+                                    panorama: isPanoramaNode,
                                 });
                                 hasSuccess = true;
                                 if (isConfigNode) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
@@ -477,7 +474,10 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                                 : node,
                         ),
                     );
-                    if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
+                    if (!isEmptyVideoNode && sourceNode) {
+                        const inputs = getRegenerationSourceNodes(sourceNode, nodesRef.current, connectionsRef.current);
+                        setConnections((prev) => [...prev, ...inputs.map((input) => ({ id: nanoid(), fromNodeId: input.id, toNodeId: videoId }))]);
+                    }
                     const controller = startGenerationRequest(videoId, nodeId, targetRunningId, runController);
 
                     try {
@@ -515,7 +515,10 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                             ? prev.map((node) => (node.id === nodeId ? { ...node, ...audioNode } : node))
                             : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), audioNode],
                     );
-                    if (!isEmptyAudioNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: audioId }]);
+                    if (!isEmptyAudioNode && sourceNode) {
+                        const inputs = getRegenerationSourceNodes(sourceNode, nodesRef.current, connectionsRef.current);
+                        setConnections((prev) => [...prev, ...inputs.map((input) => ({ id: nanoid(), fromNodeId: input.id, toNodeId: audioId }))]);
+                    }
                     const controller = startGenerationRequest(audioId, nodeId, targetRunningId, runController);
                     try {
                         const task = await createAudioGenerationTask(generationConfig, effectivePrompt, {
@@ -556,7 +559,8 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                         metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, fontSize: 14 },
                     }));
                     setNodes((prev) => [...prev.map((node) => (node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, prompt: effectivePrompt, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)), ...childNodes]);
-                    setConnections((prev) => [...prev, ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: nodeId, toNodeId: childId }))]);
+                    const inputs = sourceNode && regenerateTextFromSources ? getRegenerationSourceNodes(sourceNode, nodesRef.current, connectionsRef.current) : sourceNode ? [sourceNode] : [];
+                    setConnections((prev) => [...prev, ...childIds.flatMap((childId) => inputs.map((input) => ({ id: nanoid(), fromNodeId: input.id, toNodeId: childId })))]);
                 }
 
                 const controller = runController;
@@ -781,7 +785,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             const context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, retryPromptSource));
             const executionPrompt = (savedImageMetadata?.executionPrompt || sourceNode.metadata?.executionPrompt || context?.prompt || savedImageMetadata?.prompt || sourceNode.metadata?.prompt || node.metadata?.prompt || "").trim();
             const sourcePrompt = (savedImageMetadata?.sourcePrompt || sourceNode.metadata?.sourcePrompt || node.metadata?.sourcePrompt || (interiorDesignRetry ? "SU直出摄影级照片" : executionPrompt)).trim();
-            const panoramaPrompt = node.type === CanvasNodeType.Panorama ? buildPanoramaPrompt(executionPrompt, Boolean(savedImageMetadata?.references?.length || context?.referenceImages.length)) : executionPrompt;
+            const panoramaPrompt = executionPrompt;
             const cameraPrompt = applyCameraPrompt(panoramaPrompt, node.type === CanvasNodeType.Text || node.type === CanvasNodeType.Panorama ? undefined : savedImageMetadata?.cameraControl || sourceNode.metadata?.cameraControl);
             const prompt = isVideoRetry ? applyCameraMotionPrompt(cameraPrompt, node.metadata?.cameraMotions || sourceNode.metadata?.cameraMotions) : cameraPrompt;
             if (!prompt) {
@@ -876,6 +880,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                 );
                 await startAndCompleteImageTask(node.id, generationConfig, prompt, retryImages, undefined, controller, sourcePrompt, {
                     runningHubAppId: runningHubInteriorRetry ? sourceNode.metadata?.runningHubAppId : undefined,
+                    panorama: node.type === CanvasNodeType.Panorama,
                 });
             } catch (error) {
                 if (isGenerationCanceled(error)) return;

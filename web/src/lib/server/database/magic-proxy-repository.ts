@@ -1,6 +1,6 @@
 import type { QueryExecutor } from "./postgres";
 
-export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi" | "dola";
+export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi" | "dola" | "dolaUpload";
 
 export type MagicProxyChainedConfig = {
     hop_node: string;
@@ -24,6 +24,7 @@ export type MagicProxyBindings = {
     chatgptApi: MagicProxyBinding;
     /** Dola is optional in legacy file snapshots; new saves always materialize it. */
     dola?: MagicProxyBinding;
+    dolaUpload?: MagicProxyBinding;
 };
 
 export type MagicProxySubscriptionGroup = {
@@ -78,8 +79,9 @@ export class MagicProxyRepository {
                 gemini_tools_enabled,gemini_tools_node,gemini_tools_mode,gemini_tools_fallback_node,gemini_tools_chained_config,
                 chatgpt_api_enabled,chatgpt_api_node,chatgpt_api_mode,chatgpt_api_fallback_node,chatgpt_api_chained_config,
                 dola_enabled,dola_node,dola_mode,dola_fallback_node,dola_chained_config,
+                dola_upload_enabled,dola_upload_node,dola_upload_mode,dola_upload_fallback_node,dola_upload_chained_config,
                 updated_at
-             ) VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+             ) VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
              ON CONFLICT (id) DO UPDATE SET
                 subscription_url_ciphertext=EXCLUDED.subscription_url_ciphertext,
                 nodes_ciphertext=EXCLUDED.nodes_ciphertext,
@@ -105,6 +107,11 @@ export class MagicProxyRepository {
                 dola_mode=EXCLUDED.dola_mode,
                 dola_fallback_node=EXCLUDED.dola_fallback_node,
                 dola_chained_config=EXCLUDED.dola_chained_config,
+                dola_upload_enabled=EXCLUDED.dola_upload_enabled,
+                dola_upload_node=EXCLUDED.dola_upload_node,
+                dola_upload_mode=EXCLUDED.dola_upload_mode,
+                dola_upload_fallback_node=EXCLUDED.dola_upload_fallback_node,
+                dola_upload_chained_config=EXCLUDED.dola_upload_chained_config,
                 updated_at=EXCLUDED.updated_at
              RETURNING *`,
             [
@@ -132,6 +139,11 @@ export class MagicProxyRepository {
                 settings.bindings.dola?.mode || "magic",
                 settings.bindings.dola?.fallback_node || null,
                 settings.bindings.dola?.chained_config ? JSON.stringify(settings.bindings.dola.chained_config) : null,
+                settings.bindings.dolaUpload?.enabled === true,
+                settings.bindings.dolaUpload?.node || null,
+                settings.bindings.dolaUpload?.mode || "magic",
+                settings.bindings.dolaUpload?.fallback_node || null,
+                settings.bindings.dolaUpload?.chained_config ? JSON.stringify(settings.bindings.dolaUpload.chained_config) : null,
                 new Date(settings.updatedAt),
             ],
         );
@@ -151,6 +163,7 @@ function mapSettings(row: Record<string, unknown>): MagicProxySettings {
             geminiTools: binding(row.gemini_tools_enabled, row.gemini_tools_node, row.gemini_tools_mode, row.gemini_tools_fallback_node, row.gemini_tools_chained_config),
             chatgptApi: binding(row.chatgpt_api_enabled, row.chatgpt_api_node, row.chatgpt_api_mode, row.chatgpt_api_fallback_node, row.chatgpt_api_chained_config),
             dola: binding(row.dola_enabled, row.dola_node, row.dola_mode, row.dola_fallback_node, row.dola_chained_config),
+            dolaUpload: binding(row.dola_upload_enabled, row.dola_upload_node, row.dola_upload_mode, row.dola_upload_fallback_node, row.dola_upload_chained_config),
         },
         updatedAt,
     };

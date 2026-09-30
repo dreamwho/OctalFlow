@@ -30,7 +30,9 @@ the existing GeminiAIStudio-style proxy
 manager is enabled, Next.js resolves the selected magic node, generic
 node/group, or chained hop/landing egress for each request and passes the
 short-lived proxy URL to this provider; it is encrypted in durable task state
-and never returned to the web app or written to request logs. No
+and never returned to the browser or written to request logs. The private
+Google authorization finalization passes its session egress back only to the
+Next.js service so the saved Cookie can be verified through that same exit. No
 provider-specific regional proxy environment variable is required.
 
 The Next.js application uses `DREAMYO_DOLA_PROVIDER_URL` and
@@ -45,3 +47,11 @@ from the signed URL supplied by Next.js, uploaded through Dola's
 `prepare_upload` → ImageX Apply/Commit flow, and only the returned Dola URI is
 placed in the attachment block; raw URLs are never sent to the page as if they
 were uploaded assets.
+
+ImageX Apply, binary upload, and Commit use a separate per-request egress from
+Camoufox/Dola submission. In the admin Dola proxy tab, the independent upload
+binding defaults to direct and can select a Magic Proxy node or chained exit;
+it uses Mihomo port 17894, while Dola submission keeps port 17893. The older
+`DOLA_IMAGEX_UPLOAD_EGRESS` environment variable is only a fallback for
+clients that do not send `imagexProxyMode`. A GET of the ImageX site root does
+not validate the signed upload flow.

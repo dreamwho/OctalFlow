@@ -33,6 +33,7 @@ export function serializeAdminSettingsForUser(settings: AuthSettings, user: { ro
         serialized.dataLifecycle = { ...DEFAULT_SETTINGS.dataLifecycle };
     }
     if (!hasAdminPermission(user, "upstream.manage")) {
+        serialized.generationDefaults = { ...serialized.generationDefaults, promptRules: undefined };
         serialized.generationCostControl = { ...DEFAULT_SETTINGS.generationCostControl };
         serialized.agentSkills = [];
         serialized.systemChannels = serialized.systemChannels.map(channelSummaryWithoutConfiguration);

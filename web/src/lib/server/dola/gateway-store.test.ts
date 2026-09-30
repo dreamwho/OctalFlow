@@ -60,9 +60,13 @@ describe("Dola gateway store", () => {
 
     it("manages gateway settings", async () => {
         const initial = await getDolaGatewaySettings();
-        expect(initial).toMatchObject({ enabled: false, rotationLimit: 2, pollIntervalMs: 2_500, captureFailureScreenshot: false });
+        expect(initial).toMatchObject({ enabled: false, rotationLimit: 2, pollIntervalMs: 2_500, captureFailureScreenshot: false, randomFingerprint: false });
 
-        const updated = await updateDolaGatewaySettings({ enabled: true, rotationLimit: 3, pollIntervalMs: 30_000, captureFailureScreenshot: true, dispatchGroups: ["分组A"] });
-        expect(updated).toMatchObject({ enabled: true, rotationLimit: 3, pollIntervalMs: 30_000, captureFailureScreenshot: true, dispatchGroups: ["分组A"] });
+        const updated = await updateDolaGatewaySettings({ enabled: true, rotationLimit: 3, pollIntervalMs: 30_000, captureFailureScreenshot: true, randomFingerprint: true, dispatchGroups: ["分组A"] });
+        expect(updated).toMatchObject({ enabled: true, rotationLimit: 3, pollIntervalMs: 30_000, captureFailureScreenshot: true, randomFingerprint: true, dispatchGroups: ["分组A"] });
+        const disabled = await updateDolaGatewaySettings({ randomFingerprint: false });
+        expect(disabled.randomFingerprint).toBe(false);
+        const persisted = await getDolaGatewaySettings();
+        expect(persisted.randomFingerprint).toBe(false);
     });
 });

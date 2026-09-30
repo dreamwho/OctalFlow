@@ -21,9 +21,30 @@ class VideoRequest(BaseModel):
     proxySource: Literal["direct", "magic", "generic", "chained"] | None = None
     proxyTarget: str | None = None
     proxyUrl: str | None = None
+    imagexProxyMode: Literal["direct", "managed"] | None = None
+    imagexProxyUrl: str | None = None
     cookie: str | None = None
     requestId: str | None = None
     headless: bool | None = None
+    randomFingerprint: bool = False
+    userAgent: str | None = None
+    acceptLanguage: str | None = None
+
+
+class BrowserSubmitPrepareRequest(VideoRequest):
+    uploadConfig: dict | None = None
+
+
+class BrowserSubmitResultRequest(BaseModel):
+    payload: dict
+    cookie: str
+    proxyUrl: str | None = None
+
+
+class BrowserQueryResultRequest(BaseModel):
+    accountId: str
+    conversationId: str = Field(pattern=r"^\d{12,32}$")
+    payload: dict
 
 
 class VideoTask(BaseModel):
@@ -44,6 +65,7 @@ class VideoTask(BaseModel):
     vodPayload: dict | list | None = None
     screenshotBase64: str | None = None
     diagnostics: dict | None = None
+    httpIdentity: dict | None = None
 
 
 class AccountInspectRequest(BaseModel):
@@ -56,6 +78,16 @@ class AccountInspectRequest(BaseModel):
     cookie: str
     headless: bool | None = None
     authOnly: bool = False
+    randomFingerprint: bool = False
+    userAgent: str | None = None
+    acceptLanguage: str | None = None
+
+
+class AdoptBrowserTaskRequest(AccountInspectRequest):
+    taskId: str = Field(pattern=r"^dola-[0-9a-f-]{36}$")
+    conversationId: str = Field(pattern=r"^\d{12,32}$")
+    model: Literal["dola-seedance-2-5", "dola-seedance-2-0-fast", "dola-seedream-4-5"]
+    identity: dict[str, str] = Field(default_factory=dict)
 
 
 class AccountQuota(BaseModel):

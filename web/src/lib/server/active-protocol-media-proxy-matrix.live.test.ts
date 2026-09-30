@@ -71,7 +71,9 @@ vi.mock("@/lib/server/dola/account-service", () => ({
 }));
 vi.mock("@/lib/server/dola/proxy", () => ({
     dolaProviderProxyMode: () => "direct",
+    dolaRequestHasReferences: (payload: { references?: unknown[] }) => Boolean(payload.references?.length),
     resolveDolaProxyEgress: async () => ({ egress: { mode: "direct" } }),
+    resolveDolaImagexUploadEgress: async () => ({ mode: "direct", source: "direct" }),
 }));
 
 import { runCustomImageTask, pollCustomImageTask } from "@/app/api/image-tasks/image-task-custom";

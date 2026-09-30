@@ -17,6 +17,7 @@ export function DramaShotFrameEditor({ projectId, episodeId, shot }: { projectId
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [uploadTarget, setUploadTarget] = useState<FrameKind>("start");
     const [uploading, setUploading] = useState<FrameKind | "">("");
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
     const frameMode = shot.storyboardFrameMode || "single";
     const generationActive = [shot.storyboardStatus, shot.storyboardEndStatus, shot.generationStatus].some((status) => status === "queued" || status === "running");
 
@@ -27,8 +28,9 @@ export function DramaShotFrameEditor({ projectId, episodeId, shot }: { projectId
     const uploadFrame = async (file?: File) => {
         if (!file) return;
         setUploading(uploadTarget);
+        setUploadProgress(null);
         try {
-            const stored = await uploadImage(file);
+            const stored = await uploadImage(file, { onProgress: setUploadProgress });
             const url = stored.serverUrl || stored.url;
             updateShot(projectId, episodeId, shot.id, {
                 ...(uploadTarget === "start"
@@ -49,6 +51,7 @@ export function DramaShotFrameEditor({ projectId, episodeId, shot }: { projectId
             message.error(error instanceof Error ? error.message : "分镜图片上传失败");
         } finally {
             setUploading("");
+            setUploadProgress(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
     };
@@ -80,15 +83,15 @@ export function DramaShotFrameEditor({ projectId, episodeId, shot }: { projectId
                 />
             </div>
             <div className="mt-3 grid min-w-0 gap-2.5 sm:grid-cols-2">
-                <FrameSlot title="起始帧" url={shot.storyboardImageUrl} loading={uploading === "start"} disabled={generationActive} onUpload={() => chooseFile("start")} onRemove={() => removeFrame("start")} />
-                {frameMode === "first_last" ? <FrameSlot title="结束帧" url={shot.storyboardEndImageUrl} loading={uploading === "end"} disabled={generationActive} onUpload={() => chooseFile("end")} onRemove={() => removeFrame("end")} /> : null}
+                <FrameSlot title="起始帧" url={shot.storyboardImageUrl} loading={uploading === "start"} progress={uploadProgress} disabled={generationActive || Boolean(uploading)} onUpload={() => chooseFile("start")} onRemove={() => removeFrame("start")} />
+                {frameMode === "first_last" ? <FrameSlot title="结束帧" url={shot.storyboardEndImageUrl} loading={uploading === "end"} progress={uploadProgress} disabled={generationActive || Boolean(uploading)} onUpload={() => chooseFile("end")} onRemove={() => removeFrame("end")} /> : null}
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void uploadFrame(event.target.files?.[0])} />
         </div>
     );
 }
 
-function FrameSlot({ title, url, loading, disabled, onUpload, onRemove }: { title: string; url?: string; loading: boolean; disabled: boolean; onUpload: () => void; onRemove: () => void }) {
+function FrameSlot({ title, url, loading, progress, disabled, onUpload, onRemove }: { title: string; url?: string; loading: boolean; progress: number | null; disabled: boolean; onUpload: () => void; onRemove: () => void }) {
     return (
         <div className="flex min-w-0 items-center gap-2.5 rounded-md border border-border/80 bg-muted/15 p-2">
             <div className="relative aspect-video w-24 shrink-0 overflow-hidden rounded border border-border/70 bg-background">
@@ -110,7 +113,7 @@ function FrameSlot({ title, url, loading, disabled, onUpload, onRemove }: { titl
                 <span className="block truncate text-xs font-medium">{title}</span>
                 <div className="mt-1 flex items-center gap-0.5">
                     <Button type="text" size="small" className="!h-7 !px-1.5" loading={loading} disabled={disabled} icon={<Upload className="size-3.5" />} onClick={onUpload}>
-                        {url ? "替换" : "上传"}
+                        {loading ? progress === null ? "处理中…" : `上传 ${progress}%` : url ? "替换" : "上传"}
                     </Button>
                     {url ? <Button type="text" size="small" danger disabled={disabled} className="!size-7 !min-w-0 !p-0" aria-label={`移除${title}`} icon={<Trash2 className="size-3.5" />} onClick={onRemove} /> : null}
                 </div>

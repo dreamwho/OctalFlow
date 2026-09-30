@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
-import { Layers, Link2, Maximize2, Minimize2, Square } from "lucide-react";
-import { Button, Modal, Popover, Tooltip } from "antd";
+import { Copy, Layers, Link2, Maximize2, Minimize2, Square } from "lucide-react";
+import { App, Button, Modal, Popover, Tooltip } from "antd";
 
 import { GenerationActionButton } from "@/components/generation-action-button";
 import { ModelPicker } from "@/components/model-picker";
@@ -29,6 +29,7 @@ import { PANORAMA_IMAGE_SIZE } from "../utils/canvas-panorama";
 import { cameraMotionPromptToken, type CanvasCameraMotionDefinitions, type CanvasCameraMotionSelection } from "../utils/canvas-camera-motion";
 import { agentSkillSupportsMode, listNodeAgentSkills, type AgentSkillSummary } from "@/services/api/agent-skills";
 import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
+import { useCopyText } from "@/hooks/use-copy-text";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -75,6 +76,8 @@ type CanvasNodePromptPanelProps = {
 };
 
 export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], onConnectReference, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
+    const { message } = App.useApp();
+    const copyText = useCopyText();
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -98,6 +101,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const isEditingExistingContent = hasTextContent || hasImageContent || hasVideoContent || hasAudioContent;
     const activeMentionReferences = mentionReferences.filter((reference) => reference.active);
     const [prompt, setPrompt] = useState(publicNodePrompt(node));
+    const copyPrompt = () => prompt.trim() ? copyText(prompt, "提示词已复制") : message.warning("暂无可复制的提示词");
     const [expanded, setExpanded] = useState(false);
     const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
     const [skillsLoading, setSkillsLoading] = useState(false);
@@ -455,6 +459,11 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     </>
                 ) : null}
                 <span className="min-w-0 flex-1" />
+                <Tooltip title="复制提示词" placement="top">
+                    <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" onClick={copyPrompt} aria-label="复制提示词">
+                        <Copy className="size-4" />
+                    </button>
+                </Tooltip>
                 <Tooltip title="放大编辑" placement="top">
                     <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" onClick={() => setExpanded(true)} aria-label="放大提示词输入">
                         <Maximize2 className="size-4" />
@@ -569,16 +578,19 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     </div>
                     <div className="mt-3 flex items-center justify-between border-t pt-2 text-xs opacity-50" style={{ borderColor: `${theme.toolbar.border}44` }}>
                         <span>支持使用 @ 引用素材，使用 / 插入技能</span>
-                        <Button
-                            type="text"
-                            size="small"
-                            icon={<Minimize2 className="size-3.5" />}
-                            onClick={() => setExpanded(false)}
-                            aria-label="收起提示词输入"
-                            className="text-xs"
-                        >
-                            收起
-                        </Button>
+                        <div className="flex items-center gap-1">
+                            <Button type="text" size="small" icon={<Copy className="size-3.5" />} onClick={copyPrompt} aria-label="复制提示词">复制</Button>
+                            <Button
+                                type="text"
+                                size="small"
+                                icon={<Minimize2 className="size-3.5" />}
+                                onClick={() => setExpanded(false)}
+                                aria-label="收起提示词输入"
+                                className="text-xs"
+                            >
+                                收起
+                            </Button>
+                        </div>
                     </div>
                 </Modal>
             </div>

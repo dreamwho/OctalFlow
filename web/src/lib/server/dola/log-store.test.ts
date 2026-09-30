@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { advanceDolaTaskLog, appendDolaRequestLog, clearDolaRequestLogs, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, listDolaRequestLogs, markDolaRequestLogRunning, openDolaRequestLog, settleDolaRequestLog } from "./log-store";
+import { advanceDolaTaskLog, appendDolaRequestLog, cancelDolaTaskLogs, clearDolaRequestLogs, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, listDolaRequestLogs, markDolaRequestLogRunning, openDolaRequestLog, settleDolaRequestLog } from "./log-store";
 
 describe("Dola request log store", () => {
     let directory = "";
@@ -17,6 +17,32 @@ describe("Dola request log store", () => {
     afterEach(async () => {
         vi.unstubAllEnvs();
         await rm(directory, { recursive: true, force: true });
+    });
+
+    it("keeps cancellation terminal across late polls, settlement and running updates", async () => {
+        const id = await openDolaRequestLog({ source: "runtime", capability: "video", method: "POST", model: "dola-seedance-2-5", path: "/v1/videos", taskId: "cancelled-task" });
+        await advanceDolaTaskLog(id, { phase: "cancelled", message: "管理员取消", error: "admin_cancel" });
+        await advanceDolaTaskLog(id, { phase: "generating", message: "迟到的受理响应", statusCode: 200 });
+        await settleDolaRequestLog(id, { phase: "success", statusCode: 200, durationMs: 10 });
+        await markDolaRequestLogRunning(id);
+        const page = await listDolaRequestLogs({ status: "cancelled" });
+        expect(page.items).toHaveLength(1);
+        expect(page.items[0]).toMatchObject({ phase: "cancelled", error: "admin_cancel" });
+        expect(page.items[0].lifecycle?.at(-1)?.message).toBe("管理员取消");
+        expect(page.stats.pending).toBe(0);
+        expect(dolaTaskLogPhase("cancelled")).toBe("cancelled");
+    });
+
+    it("reuses the create row across query surfaces and cancels every existing row for the task", async () => {
+        const taskId = "cross-surface-task";
+        const create = await appendDolaRequestLog({ source: "runtime", taskId, method: "POST", model: "dola-seedance-2-5", path: "/v1/videos", statusCode: 200, durationMs: 1, phase: "generating" });
+        const query = await appendDolaRequestLog({ source: "admin-test", taskId, method: "GET", model: "dola-seedance-2-5", path: `/v1/videos/${taskId}`, statusCode: 200, durationMs: 1, phase: "generating" });
+        expect(await findDolaTaskLogIdByTaskId(taskId, "admin-test")).toBe(create.id);
+        await cancelDolaTaskLogs(taskId);
+        await advanceDolaTaskLog(query.id, { phase: "generating", message: "迟到的管理员查询" });
+        const rows = (await listDolaRequestLogs({ keyword: taskId })).items;
+        expect(rows).toHaveLength(2);
+        expect(rows.every((row) => row.phase === "cancelled" && row.statusCode === 200)).toBe(true);
     });
 
     it("keeps lifecycle, safe previews, filters and aggregate counters", async () => {
@@ -45,7 +71,7 @@ describe("Dola request log store", () => {
         const logId = await openDolaRequestLog({ source: "runtime", capability: "image", method: "POST", path: "/v1/images", model: "dola-seedream-4-5", requestedDuration: 0, ratio: "9:16" });
         await settleDolaRequestLog(logId, { statusCode: 200, durationMs: 800, phase: dolaTaskLogPhase("queued"), taskId: "dola-task-lifecycle", responsePreview: JSON.stringify({ taskId: "dola-task-lifecycle", status: "queued" }), lifecycle: [{ time: new Date().toISOString(), phase: "queued", message: "等待执行" }, { time: new Date().toISOString(), phase: "submitted", message: "已提交到 Dola 上游，任务排队中" }] });
         await expect(findDolaTaskLogIdByTaskId("dola-task-lifecycle", "runtime")).resolves.toBe(logId);
-        await expect(findDolaTaskLogIdByTaskId("dola-task-lifecycle", "external")).resolves.toBe("");
+        await expect(findDolaTaskLogIdByTaskId("dola-task-lifecycle", "external")).resolves.toBe(logId);
         await expect(findDolaTaskLogIdByTaskId("", "runtime")).resolves.toBe("");
 
         // Repeated queued polls must not append lifecycle entries.
@@ -64,6 +90,15 @@ describe("Dola request log store", () => {
         expect(log.responsePreview).toContain("https://lf-email-ic.byteintlapi.com/ok.png");
         expect(log.lifecycle?.map((entry) => entry.phase)).toEqual(["queued", "submitted", "generating", "success"]);
         expect(log.lifecycle?.[3]?.detail).toContain("byteintlapi.com");
+    });
+
+    it("retains the submitted Canvas prompt while redacting credentials", async () => {
+        const prompt = "客厅改造".repeat(1_500);
+        const id = await openDolaRequestLog({ source: "runtime", capability: "video", method: "POST", path: "/v1/videos", model: "dola-seedance-2-5", requestPreview: JSON.stringify({ prompt, cookie: "session-secret" }) });
+        await settleDolaRequestLog(id, { statusCode: 200, durationMs: 1, phase: "submitted", requestPreview: JSON.stringify({ prompt, cookie: "session-secret" }) });
+        const log = (await listDolaRequestLogs({ keyword: "客厅改造" })).items[0];
+        expect(log?.requestPreview).toContain(prompt);
+        expect(log?.requestPreview).not.toContain("session-secret");
     });
 
     it("closes a failed task with total duration and keeps pending counters for in-flight tasks", async () => {

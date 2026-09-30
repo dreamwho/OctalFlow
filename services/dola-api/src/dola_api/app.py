@@ -230,7 +230,7 @@ async def google_login(request: GoogleLoginRequest) -> dict:
 @app.post("/internal/runtime/v1/accounts/google-login/session", dependencies=[Depends(require_internal)])
 async def start_google_login_session(request: GoogleLoginSessionRequest) -> dict:
     try:
-        return await pool.start_google_login_session(request.ownerId, proxy_mode=request.proxyMode, proxy_url=request.proxyUrl, timeout_seconds=request.timeoutSeconds, headless=request.headless)
+        return await pool.start_google_login_session(request.ownerId, proxy_mode=request.proxyMode, proxy_source=request.proxySource, proxy_target=request.proxyTarget, proxy_url=request.proxyUrl, timeout_seconds=request.timeoutSeconds, headless=request.headless)
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:

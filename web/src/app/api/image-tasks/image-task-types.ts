@@ -21,6 +21,7 @@ import { createSignedReferenceAssetUrl, signReferenceAssetInputUrl } from "@/lib
 import { assertCapabilityConstraints } from "@/lib/server/capability-constraints";
 
 export type CreateImageTaskBody = {
+    panorama?: boolean;
     kind?: "generation" | "edit" | "upscale";
     config?: ImageTaskConfig;
     prompt?: string;

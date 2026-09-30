@@ -332,7 +332,7 @@ function requestBodySummary(body: RequestInit["body"]) {
     if (body instanceof FormData) {
         const model = textValue(body.get("model"));
         const prompt = textValue(body.get("prompt"));
-        return { model, preview: prompt ? truncate(prompt) : undefined, googleSearch: false };
+        return { model, preview: prompt || undefined, googleSearch: false };
     }
     if (typeof body !== "string") {
         // The system-proxy route forwards JSON bodies as ArrayBuffer/Uint8Array.
@@ -350,7 +350,7 @@ function requestBodySummary(body: RequestInit["body"]) {
         const value = JSON.parse(body) as Record<string, unknown>;
         const text = collectText(value);
         const tools = JSON.stringify(value.tools || value.generationConfig || "").toLowerCase();
-        return { model: textValue(value.model), preview: text ? truncate(text) : undefined, googleSearch: tools.includes("google_search") || tools.includes("googlesearch") };
+        return { model: textValue(value.model), preview: text || undefined, googleSearch: tools.includes("google_search") || tools.includes("googlesearch") };
     } catch {
         return { model: "", preview: undefined, googleSearch: false };
     }

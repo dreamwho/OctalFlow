@@ -1,3 +1,4 @@
+import { applyGenerationPromptRule, DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
@@ -88,7 +89,7 @@ export function buildDreaminaCliSeedreamImageSubmission(task: Pick<ImageTask, "c
     const input: DreaminaCliSubmissionInput = {
         command,
         modelId: task.config.model,
-        prompt: task.prompt.trim(),
+        prompt: applyGenerationPromptRule(task.prompt, task.config.promptRules?.image || DEFAULT_GENERATION_PROMPT_RULES.image),
         resolutionType: seedreamResolutionType(model.upstreamModel, task.config.quality),
         ...(images.length ? { images } : {}),
         ...seedreamSizing(task.config.size),

@@ -1,3 +1,4 @@
+import { dolaQuotaLogFields } from "@/lib/server/dola/quota-observation";
 import { createHash, randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
@@ -33,7 +34,7 @@ import { getDolaAccount, getDolaAccountCookie, markDolaAccountQuotaExhausted, ma
 import { describeDolaFailure, isDolaPreparingTask, isDolaQuotaExhaustedError, isDolaRateLimitError } from "@/lib/dola-errors";
 import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
 import { advanceDolaTaskLog, dolaTaskLogPhase, findDolaTaskLogIdByTaskId, openDolaRequestLog, markDolaRequestLogRunning, settleDolaRequestLog, type DolaRequestLifecycleEntry, type DolaRequestLogPhase } from "@/lib/server/dola/log-store";
-import { dolaProviderProxyMode, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
+import { dolaProviderProxyMode, dolaRequestHasReferences, resolveDolaImagexUploadEgress, resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
 import { appendGenerationLogProtocolTrace } from "@/lib/server/generation-log-task-service";
 import type { GenerationLogProtocolTrace } from "@/lib/generation-log-snapshot";
 
@@ -358,9 +359,9 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
             } else {
                 await markDolaAccountRateLimited(dolaAccountId, snapshot.error || `HTTP ${upstream.status}`).catch(() => undefined);
             }
-            await markDolaAccountUsed(dolaAccountId, false, true).catch(() => undefined);
             const nextBody = await rotateDolaRuntimeBody(dolaRuntimeBody, upstreamModel);
             if (!nextBody) break;
+            await markDolaAccountUsed(dolaAccountId, false, true).catch(() => undefined);
             dolaRuntimeBody = nextBody;
             dolaAccountId = readDolaAccountId(dolaRuntimeBody);
             dolaProxyEgress = readDolaProxyEgress(dolaRuntimeBody);
@@ -383,7 +384,9 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     }
     if (upstream.ok) pointsSettled = true;
     if (isDolaChannel && dolaAccountId && request.method === "POST" && ["/v1/videos", "/v1/images"].includes(geminiAiPath.split("?", 1)[0])) {
-        await markDolaAccountUsed(dolaAccountId, upstream.ok, !dolaHold).catch(() => undefined);
+        const snapshot = await snapshotDolaResponse(upstream);
+        const accepted = upstream.ok && snapshot.value?.status !== "failed";
+        await markDolaAccountUsed(dolaAccountId, accepted, !dolaHold || !accepted).catch(() => undefined);
     }
     if (isDolaChannel) {
         const responseSnapshot = await snapshotDolaResponse(upstream);
@@ -408,6 +411,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                     detail: `${dolaResultMediaDetail(responseSnapshot.value) || `上游任务状态: ${providerStatus || "unknown"}`}${dolaConversationScreenshotNote(responseSnapshot.value)}`,
                     statusCode: upstream.status,
                     responsePreview: responseSnapshot.preview,
+                    ...dolaQuotaLogFields(responseSnapshot.value),
                     responseBytes: responseSnapshot.bytes,
                     ...(phase === "failed" ? { error: errorText ? describeDolaFailure(errorText) : "上游未返回错误原因 (no error detail from upstream)" } : {}),
                     ...(responseSnapshot.verificationId ? { verificationId: responseSnapshot.verificationId } : {}),
@@ -440,7 +444,8 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
                           ? "Dola Provider 已返回响应"
                           : "Dola Provider 返回失败";
             dolaLifecycle.push({ time: new Date().toISOString(), phase: responsePhase, message: lifecycleMessage, durationMs: Date.now() - upstreamStartedAt, detail: `HTTP ${upstream.status}${responseSnapshot.taskId ? `, Provider 任务: ${responseSnapshot.taskId}` : ""}` });
-            await safeSettleDolaLog(dolaLogId, { statusCode: upstream.status, durationMs: Date.now() - upstreamStartedAt, phase: responsePhase, ...(settledError ? { error: settledError } : {}), responsePreview: responseSnapshot.preview, responseBytes: responseSnapshot.bytes, contentType: upstream.headers.get("content-type") || undefined, accountId: dolaAccountId || undefined, accountName: await dolaAccountDisplayName(dolaAccountId), taskId: responseSnapshot.taskId || undefined, verificationId: responseSnapshot.verificationId || undefined, screenshotBase64: responseSnapshot.screenshotBase64 || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
+            await safeSettleDolaLog(dolaLogId, { statusCode: upstream.status, durationMs: Date.now() - upstreamStartedAt, phase: responsePhase, ...(settledError ? { error: settledError } : {}), responsePreview: responseSnapshot.preview,
+                    ...dolaQuotaLogFields(responseSnapshot.value), responseBytes: responseSnapshot.bytes, contentType: upstream.headers.get("content-type") || undefined, accountId: dolaAccountId || undefined, accountName: await dolaAccountDisplayName(dolaAccountId), taskId: responseSnapshot.taskId || undefined, verificationId: responseSnapshot.verificationId || undefined, screenshotBase64: responseSnapshot.screenshotBase64 || undefined, proxyEgress: dolaProxyEgress, lifecycle: dolaLifecycle });
         }
     }
     if (isChatGptApiChannel) return chatGptApiRuntimeResponse(upstream, request, pointsResult, refundedPointsRemaining);
@@ -469,14 +474,14 @@ async function prepareDolaRuntimeBody(contentType: string | null, body: BodyInit
     } catch {
         return body;
     }
-    const proxy = await resolveDolaProxyEgress();
+    const [proxy, imagex] = await Promise.all([resolveDolaProxyEgress(), resolveDolaImagexUploadEgress(dolaRequestHasReferences(payload))]);
     const proxyFields = {
         proxyMode: dolaProviderProxyMode(proxy.egress),
         proxySource: proxy.egress.mode,
         proxyTarget: proxy.egress.target,
         proxyNodeName: proxy.egress.nodeName,
         proxyAddress: proxy.egress.address || proxy.egress.target,
-        ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+        proxyUrl: proxy.proxyUrl || null,
     };
     // User-facing system requests may never choose a Dola Cookie/account or a
     // provider proxy. Those fields are injected from the server-side account
@@ -490,7 +495,7 @@ async function prepareDolaRuntimeBody(contentType: string | null, body: BodyInit
         await releaseDolaAccountAttempt(account.id);
         throw new Error("Dola 账号 Cookie 无法解密");
     }
-    return JSON.stringify({ ...payload, accountId: account.id, credentialVersion: account.credentialVersion, cookie, transport: "camoufox-page", ...proxyFields, ...(holdAttempt ? { dolaHold: true } : {}) });
+    return JSON.stringify({ ...payload, accountId: account.id, credentialVersion: account.credentialVersion, cookie, transport: "camoufox-page", ...proxyFields, imagexProxyMode: imagex.mode, imagexProxyUrl: imagex.proxyUrl || null, ...(holdAttempt ? { dolaHold: true } : {}) });
 }
 
 /** 账号级限额换号：为已注入账号的 Dola 请求体换下一个可用账号，Cookie、凭据版本与代理快照同步更新 */
@@ -1174,14 +1179,14 @@ function safeProtocolResponseHeaders(response: Response) {
     }));
 }
 
-function summarizeProtocolRequest(body: BodyInit | undefined, contentType: string | null) {
+export function summarizeProtocolRequest(body: BodyInit | undefined, contentType: string | null) {
     if (!body) return undefined;
     if (/multipart\/form-data|application\/octet-stream|image\/|video\/|audio\//i.test(contentType || "")) return "媒体或二进制请求体已省略";
     if (body instanceof FormData) return "multipart/form-data（媒体内容已省略）";
     const text = typeof body === "string" ? body : body instanceof ArrayBuffer ? new TextDecoder().decode(body) : "";
     if (!text) return "二进制请求体已省略";
     try {
-        return compactProtocolPreview(JSON.stringify(redactProtocolValue(JSON.parse(text))));
+        return JSON.stringify(redactProtocolValue(JSON.parse(text)));
     } catch {
         return contentType?.toLowerCase().includes("json") ? "请求体无法解析为 JSON" : compactProtocolPreview(redactProtocolText(text));
     }
@@ -1238,7 +1243,7 @@ function redactProtocolValue(value: unknown, key = "", depth = 0): unknown {
     if (/authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|password|secret|credential|signature|proxyurl/i.test(key)) return "[已脱敏]";
     if (typeof value === "string") {
         if (/^(?:inline[_-]?data|b64[_-]?json|base64)$/i.test(key) || (/^(?:image|audio|video|file|data)$/i.test(key) && !/^https?:\/\//i.test(value))) return "[媒体内容已省略]";
-        if (/^data:/i.test(value) || value.length > 1600) return "[媒体或长内容已省略]";
+        if (/^data:/i.test(value) || (value.length > 1600 && (/^[a-z0-9+/=_-]+$/i.test(value.replace(/\s/g, "")) || !/^(?:prompt|text|content|input|instruction|user_input_content)$/i.test(key)))) return "[媒体或长内容已省略]";
         return redactProtocolText(value);
     }
     if (Array.isArray(value)) return value.map((item) => redactProtocolValue(item, key, depth + 1));
@@ -1268,7 +1273,7 @@ function summarizeDolaSystemRequest(body: BodyInit | undefined, contentType: str
     if (typeof body !== "string" && !(body instanceof ArrayBuffer)) return "";
     try {
         const parsed = JSON.parse(typeof body === "string" ? body : new TextDecoder().decode(body)) as Record<string, unknown>;
-        return JSON.stringify({ model: typeof parsed.model === "string" ? parsed.model : undefined, duration: numberValue(parsed.duration ?? parsed.seconds), ratio: typeof parsed.ratio === "string" ? parsed.ratio : undefined, referenceCount: Array.isArray(parsed.references) ? parsed.references.length : 0, promptLength: typeof parsed.prompt === "string" ? parsed.prompt.length : 0, contentType: contentType || undefined });
+        return JSON.stringify({ model: typeof parsed.model === "string" ? parsed.model : undefined, duration: numberValue(parsed.duration ?? parsed.seconds), ratio: typeof parsed.ratio === "string" ? parsed.ratio : undefined, referenceCount: Array.isArray(parsed.references) ? parsed.references.length : 0, prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined, contentType: contentType || undefined });
     } catch { return contentType?.includes("json") ? "请求体无法解析为 JSON 摘要" : "请求体已接收（非 JSON 摘要）"; }
 }
 function readDolaRequestParameters(body: BodyInit | undefined) {

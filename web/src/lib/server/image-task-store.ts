@@ -26,6 +26,7 @@ export type ImageTaskConfig = {
     quality?: string;
     size?: string;
     systemPrompt?: string;
+    promptRules?: import("@/lib/generation-prompt-rules").GenerationPromptRules;
     advancedConfig?: SystemChannelAdvancedConfig;
 };
 

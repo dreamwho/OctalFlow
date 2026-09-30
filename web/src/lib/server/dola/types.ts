@@ -10,6 +10,12 @@ export type DolaQuotaSnapshot = {
     observedAt: string;
     source: "upstream" | "local" | "unknown";
     version: number;
+    /** Only charges explicitly observed in replies; not an assumed daily allowance. */
+    consumed?: number;
+    taskCost?: number;
+    observedTotal?: number;
+    costs?: Record<string, number>;
+    observations?: { taskId: string; consumed: number }[];
 };
 
 export type DolaAccountValidation = {

@@ -171,3 +171,94 @@ def test_hooked_request_reads_large_response_body_immediately(monkeypatch) -> No
 
     assert session._submit_hooked_body_sync(page, "rewritten", 1_000) == (200, b"large-4k-response")
     assert route.fulfilled is True
+
+
+class _StopPage:
+    def __init__(self, stop_button) -> None:
+        self._stop_button = stop_button
+
+    def query_selector(self, selector: str):
+        return self._stop_button if selector == "button:has-text('Stop')" else None
+
+
+def test_stop_generation_clicks_ai_studio_stop_button() -> None:
+    stop = _Button()
+    session = BrowserSession.__new__(BrowserSession)
+
+    assert session._stop_running_generation_sync(_StopPage(stop)) is True
+    assert stop.clicked is True
+
+
+def test_stop_generation_without_a_stop_button_is_a_noop() -> None:
+    session = BrowserSession.__new__(BrowserSession)
+
+    assert session._stop_running_generation_sync(_StopPage(None)) is False
+
+
+def _bare_session(auth_file: str | None = None) -> BrowserSession:
+    session = BrowserSession.__new__(BrowserSession)
+    session._auth_file = auth_file
+    session._profile_dir = None
+    session._templates = {}
+    session._account_template_stash = {}
+    session._bootstrap_template = None
+    session._close_sync = lambda: None
+    return session
+
+
+def test_switch_auth_stashes_and_restores_templates_per_account() -> None:
+    session = _bare_session("/accounts/a.json")
+    session._templates = {"gemini-3-pro-image": {"body": "a-template"}}
+
+    session._switch_auth_sync("/accounts/b.json")
+    assert session._templates == {}
+    assert session._account_template_stash["/accounts/a.json"] == {"gemini-3-pro-image": {"body": "a-template"}}
+
+    session._templates = {"gemini-3-pro-image": {"body": "b-template"}}
+    session._switch_auth_sync("/accounts/a.json")
+    assert session._templates == {"gemini-3-pro-image": {"body": "a-template"}}
+    assert session._account_template_stash["/accounts/b.json"] == {"gemini-3-pro-image": {"body": "b-template"}}
+
+
+def test_switch_auth_keeps_a_default_bucket_for_shared_sessions() -> None:
+    session = _bare_session(None)
+    session._templates = {"gemma-4-31b-it": {"body": "default-template"}}
+
+    session._switch_auth_sync("/accounts/a.json")
+
+    assert session._account_template_stash["default"] == {"gemma-4-31b-it": {"body": "default-template"}}
+
+
+def test_invalidate_template_drops_active_and_stashed_copies() -> None:
+    session = _bare_session("/accounts/a.json")
+    session._templates = {"gemini-3-pro-image": {"body": "stale"}}
+    session._account_template_stash["/accounts/a.json"] = {"gemini-3-pro-image": {"body": "stale"}}
+    session._bootstrap_template = {"body": "stale"}
+
+    session._invalidate_template_sync("gemini-3-pro-image")
+
+    assert "gemini-3-pro-image" not in session._templates
+    assert "gemini-3-pro-image" not in session._account_template_stash["/accounts/a.json"]
+    assert session._bootstrap_template is None
+
+
+def test_warmup_drives_full_cold_start_not_just_browser_context() -> None:
+    import asyncio
+
+    from aistudio_api.infrastructure.gateway.client import AIStudioClient
+
+    calls: list[str] = []
+
+    class _Session:
+        async def ensure_botguard_service(self):
+            calls.append("botguard")
+
+        async def ensure_context(self):
+            calls.append("context")
+
+    client = AIStudioClient.__new__(AIStudioClient)
+    client._session = _Session()
+
+    asyncio.run(client.warmup())
+
+    assert calls == ["botguard"]

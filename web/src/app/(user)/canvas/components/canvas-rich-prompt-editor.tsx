@@ -795,6 +795,7 @@ export const CanvasRichPromptEditor = forwardRef<CanvasPromptEditorHandle, Props
                 class: `canvas-resource-editor-content cursor-text ${className || ""}`,
                 role: "textbox",
                 "aria-multiline": "true",
+                ...(props.id ? { id: props.id } : {}),
                 ...(props["aria-label"] ? { "aria-label": props["aria-label"] } : { "aria-label": "提示词编辑器" }),
                 ...((props as Record<string, unknown>)["data-testid"] ? { "data-testid": String((props as Record<string, unknown>)["data-testid"]) } : {}),
                 style: `cursor:text!important;${styleToString(style) || ""}`,

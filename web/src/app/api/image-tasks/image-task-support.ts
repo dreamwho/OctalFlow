@@ -1,4 +1,5 @@
 import { providerUploadReferenceRequestUrl, rawReferenceRequestUrlCandidates } from "./image-task-reference-urls";
+import { applyGenerationPromptRule, DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
 import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
@@ -76,6 +77,7 @@ export function sanitizeConfigs(config: ImageTaskConfig | undefined, settings: A
             channelId: resolved.channelId,
             ...resolveImageTaskOptions(config || {}, settings.generationDefaults),
             systemPrompt: "",
+            promptRules: settings.generationDefaults.promptRules,
             // Multi-capability channels carry per-model operations (e.g. Dola
             // image uses /images while the channel default stays /v1/videos).
             advancedConfig: sanitizeModelAdvancedConfig(channel.advancedConfig, channel.model),
@@ -322,6 +324,7 @@ export function geminiApiUrl(config: ImageTaskConfig, action: "generateContent",
 }
 
 export function withSystemPrompt(config: ImageTaskConfig, prompt: string) {
+    prompt = applyGenerationPromptRule(prompt, config.promptRules?.image || DEFAULT_GENERATION_PROMPT_RULES.image);
     const systemPrompt = (config.systemPrompt || "").trim();
     return systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 }
@@ -698,7 +701,7 @@ export function toGeminiImagePart(dataUrl: string, fallbackType?: string): Gemin
 export async function buildImageEditFormData(task: ImageTask, quality: string | undefined, requestSize: string | undefined, origin: string, cookie: string, responseFormat: (typeof IMAGE_RESPONSE_FORMATS)[number], includeCompatibilityFields = true) {
     const formData = new FormData();
     formData.set("model", task.config.model);
-    formData.set("prompt", withSystemPrompt(task.config, buildImageReferencePromptText(task.prompt, task.references)));
+    formData.set("prompt", withSystemPrompt(task.config, buildImageReferencePromptText(task.prompt, task.references, task.config.promptRules?.imageReference)));
     formData.set("n", "1");
     if (includeCompatibilityFields) {
         formData.set("response_format", responseFormat);

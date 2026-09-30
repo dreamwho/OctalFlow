@@ -92,3 +92,33 @@ describe("MiniMax H3 prompt compiler", () => {
         ).toThrow("无法安全绑定");
     });
 });
+
+
+describe("administrator H3 packaging rules", () => {
+    it("disables generated packaging while preserving real reference bindings", async () => {
+        const { DEFAULT_GENERATION_PROMPT_RULES } = await import("@/lib/generation-prompt-rules");
+        const promptRules = structuredClone(DEFAULT_GENERATION_PROMPT_RULES);
+        promptRules.minimaxH3Base.enabled = false;
+        promptRules.minimaxH3Reference.enabled = false;
+        const reference = { type: "image" as const, role: "reference" as const, url: "https://example.com/ref.png" };
+        const result = compileMinimaxH3Prompt({ protocol: "minimax-h3", prompt: "重新设计服装", references: [reference], promptRules });
+        expect(result.prompt).toBe("重新设计服装");
+        expect(result.referenceBindings[0]).toMatchObject({ url: reference.url, label: "<Picture 1>" });
+        expect(compileMinimaxH3Prompt({ protocol: "minimax-h3", prompt: "城市", references: [], promptRules }).prompt).toBe("城市");
+    });
+    it("uses administrator packaging content and retains an omitted user request", async () => {
+        const { DEFAULT_GENERATION_PROMPT_RULES } = await import("@/lib/generation-prompt-rules");
+        const promptRules = structuredClone(DEFAULT_GENERATION_PROMPT_RULES);
+        promptRules.minimaxH3Base = { enabled: true, content: "允许改变服装。用户需求：{{prompt}}" };
+        expect(compileMinimaxH3Prompt({ protocol: "minimax-h3", prompt: "换装", references: [], promptRules }).prompt).toBe("允许改变服装。用户需求：换装");
+        promptRules.minimaxH3Base.content = "不要添加音乐";
+        expect(compileMinimaxH3Prompt({ protocol: "minimax-h3", prompt: "城市", references: [], promptRules }).prompt).toBe("不要添加音乐\n\n城市");
+    });
+    it("turns off the automatic lock in an already structured prompt", async () => {
+        const { DEFAULT_GENERATION_PROMPT_RULES } = await import("@/lib/generation-prompt-rules");
+        const promptRules = structuredClone(DEFAULT_GENERATION_PROMPT_RULES);
+        promptRules.minimaxH3Bindings.enabled = false;
+        const prompt = "subject_definitions:\n人物可换装\noverall_soundscape:\n环境音";
+        expect(compileMinimaxH3Prompt({ protocol: "minimax-h3", prompt, references: [{ type: "image", url: "https://example.com/ref.png" }], promptRules }).prompt).toBe(prompt);
+    });
+});

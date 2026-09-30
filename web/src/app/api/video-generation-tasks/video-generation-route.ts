@@ -1,3 +1,4 @@
+import { applyGenerationPromptRule, DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
 import { after, NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
         for (let index = 0; index < channels.length; index += 1) {
             const channel = channels[index];
             const geminiVideo = isGeminiVideoChannel(channel);
-            let providerPrompt = withVideoReferenceFidelity(prompt, references);
+            let providerPrompt = applyGenerationPromptRule(withVideoReferenceFidelity(prompt, references, settings.generationDefaults.promptRules), settings.generationDefaults.promptRules?.video || DEFAULT_GENERATION_PROMPT_RULES.video);
             const parameters = {
                 ...requestedParameters,
                 videoSeconds: geminiVideo
@@ -142,6 +143,7 @@ export async function POST(request: Request) {
                     const bindings = rebindMinimaxH3ReferenceUrls(createMinimaxH3ReferenceBindings(unsignedReferences, body.references), references);
                     providerPrompt = compileMinimaxH3Prompt({
                         protocol: channel.advancedConfig?.protocol,
+                        promptRules: settings.generationDefaults.promptRules,
                         prompt: providerPrompt,
                         durationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds,
                         references,

@@ -257,7 +257,7 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
     }, []);
 
     const startAndCompleteImageTask = useCallback(
-        async (nodeId: string, generationConfig: AiConfig, prompt: string, references: ReferenceImage[] = [], mask: ReferenceImage | undefined, controller: AbortController, publicPrompt = prompt, provider?: { runningHubAppId?: string }) => {
+        async (nodeId: string, generationConfig: AiConfig, prompt: string, references: ReferenceImage[] = [], mask: ReferenceImage | undefined, controller: AbortController, publicPrompt = prompt, provider?: { runningHubAppId?: string; panorama?: boolean }) => {
             const task = await createImageGenerationTask(generationConfig, prompt, references, mask, {
                 signal: controller.signal,
                 logSource: "canvas",
@@ -267,6 +267,7 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
                 surface: "canvas",
                 projectId,
                 runningHubAppId: provider?.runningHubAppId,
+                panorama: provider?.panorama,
                 ...createFreshGenerationTaskContext("canvas-image", [projectId, nodeId]),
             });
             setNodes((prev) =>

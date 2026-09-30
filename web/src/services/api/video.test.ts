@@ -18,7 +18,7 @@ import { cancelServerVideoGenerationTask, createServerVideoGenerationTask, creat
 import { createUpstreamVideoGenerationTask, isUsableReferenceUrl, publishReferenceMedia } from "./video-core";
 import { buildCompatibleVideoPayloadVariants, compatibleVideoCreatePaths, compatibleVideoPollPaths, isGlobalAiOpcVideoConfig } from "./video-providers";
 import { normalizeCompatibleVideoDuration, normalizeGlobalAiOpcVideoDuration } from "./video-payloads";
-import { normalizeVideoSeconds } from "./video-support";
+import { delay, normalizeVideoSeconds } from "./video-support";
 import { GLOBAL_AIOPC_VIDEO_CREATE_PATH } from "./video-types";
 
 const config = {
@@ -35,6 +35,30 @@ describe("video API service", () => {
     afterEach(() => {
         vi.unstubAllGlobals();
         vi.clearAllMocks();
+    });
+
+    it("wakes a pending status poll when the canvas tab becomes visible", async () => {
+        const browserWindow = new EventTarget();
+        const browserDocument = new EventTarget();
+        Object.defineProperty(browserDocument, "visibilityState", { value: "hidden", configurable: true });
+        vi.stubGlobal("window", browserWindow);
+        vi.stubGlobal("document", browserDocument);
+        const waiting = delay(60_000);
+        Object.defineProperty(browserDocument, "visibilityState", { value: "visible", configurable: true });
+        browserDocument.dispatchEvent(new Event("visibilitychange"));
+        await expect(waiting).resolves.toBeUndefined();
+    });
+
+    it("bounds each server status request and preserves cancellation", async () => {
+        const fetchMock = vi.fn().mockResolvedValue(json({ task: { status: "running" } }));
+        vi.stubGlobal("fetch", fetchMock);
+        const controller = new AbortController();
+        await expect(pollVideoGenerationTask(config, { id: "video-poll", model: "video-v1", provider: "generation", pollPath: "server" }, { signal: controller.signal })).resolves.toEqual({ status: "pending" });
+        const requestSignal = (fetchMock.mock.calls[0]?.[1] as RequestInit).signal;
+        expect(requestSignal).toBeInstanceOf(AbortSignal);
+        expect(requestSignal).not.toBe(controller.signal);
+        controller.abort();
+        expect(requestSignal?.aborted).toBe(true);
     });
 
     it("submits the original public image source instead of the local asset preview", async () => {

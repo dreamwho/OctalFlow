@@ -45,12 +45,7 @@ export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: stri
         if (claimed.config.advancedConfig?.protocol === "dola" && shouldRotateAccountForError(step.error)) {
             const rotated = await rotateDolaRateLimitedVideoTask(claimed, origin, cookie, "", step.error);
             if (rotated) return rotated;
-            if (isDolaRateLimitError(step.error)) {
-                // 限流只是账号级瞬时状态，上游任务可能仍在生成：保持轮询等待真实终态。
-                await scheduleGenerationTask("video", claimed.id, { executionPhase: "polling", lastUpstreamStatus: "rate_limited_polling", nextPollAt: Date.now() + taskPollingPolicy(claimed).intervalMs });
-                return getVideoTask(claimed.id);
-            }
-            // 其余基础设施错误（如浏览器导航中断）上游任务通常已终止且换号配额用尽：判失败。
+            // Provider 已明确返回终态 failed，换号不可行时同步结束本地任务。
         }
         return failVideoTask(claimed, step.error);
     }
@@ -60,6 +55,7 @@ export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: stri
 
 /** 账号级错误允许换号；只有真实账号状态错误才写回账号池，浏览器/代理故障不污染账号。 */
 export async function rotateDolaRateLimitedVideoTask(task: VideoTask, origin: string, cookie: string, workerUserId: string, error: string) {
+    if (/^uploading_references\s*:/i.test(error)) return null;
     if (task.upstream.accountId) {
         if (isDolaQuotaExhaustedError(error)) await markDolaAccountQuotaExhausted(task.upstream.accountId, error.slice(0, 300)).catch(() => undefined);
         else if (isDolaRateLimitError(error)) await markDolaAccountRateLimited(task.upstream.accountId, error.slice(0, 300)).catch(() => undefined);
@@ -104,18 +100,20 @@ export async function rotateDolaRateLimitedVideoTask(task: VideoTask, origin: st
     // 把换号事件写回原任务的请求日志：请求日志详情的生命周期会显示 生成失败 → 已自动切换账号 → 继续生成
     const originalLogId = await safeFindDolaRuntimeTaskLog(task.upstream.id);
     const isQuota = isDolaQuotaExhaustedError(error);
-    const switchReason = isQuota ? "今日生成次数已达上限 (daily quota reached limit)" : "上游账号触发限额（rate_limited） (upstream account rate-limited)";
+    const isRateLimited = isDolaRateLimitError(error);
+    const switchReason = isQuota ? "今日生成次数已达上限 (daily quota reached limit)" : isRateLimited ? "触发限流 (upstream account rate-limited)" : `提交环境异常：${error.slice(0, 120)}`;
+    const previousAccountName = task.upstream.accountId ? (await getDolaAccount(task.upstream.accountId).catch(() => null))?.name || "未识别账号" : "未识别账号";
+    const nextAccountName = nextAccountId ? (await getDolaAccount(nextAccountId).catch(() => null))?.name || "未识别账号" : "未识别账号";
     if (originalLogId) {
         await safeAdvanceDolaRotateLog(originalLogId, {
             phase: "generating",
-            message: `账号 ${task.upstream.accountId || "未识别"} ${isQuota ? "今日生成次数已达上限" : "触发限额"}，已自动切换账号重试 (${switchReason}; auto-switched to another account)`,
-            detail: `原账号 ${task.upstream.accountId || "未识别"} 已${isQuota ? "标记为额度已用完" : "按真实错误分类处理"}；新账号 ${nextAccountId || "未识别"}，新任务 ${newTaskId}，第 ${upstream.rotations as number} 次轮换。后续进度转由新账号接续执行。`,
+            message: `账号 ${previousAccountName} ${isQuota ? "今日生成次数已达上限" : isRateLimited ? "触发限流" : "发生提交环境异常"}，已自动切换账号重试 (${switchReason}; auto-switched to another account)`,
+            detail: `原账号 ${previousAccountName} 已${isQuota ? "标记为额度已用完" : "按真实错误分类处理"}；新账号 ${nextAccountName}，新任务 ${newTaskId}，第 ${upstream.rotations as number} 次轮换。后续进度转由新账号接续执行。`,
             statusCode: 200,
         });
     }
-    console.log(`[dola-rotate] 视频任务 ${task.id} ${isQuota ? "账号额度已用完" : "上游账号限额"}（${error.slice(0, 120)}），已自动切换账号重试：新任务 ${newTaskId}，账号 ${nextAccountId || "未识别"}`);
+    console.log(`[dola-rotate] 视频任务 ${task.id} ${switchReason}，已自动切换账号重试：新任务 ${newTaskId}，账号 ${nextAccountName}`);
     // 轮换叠加日志：原请求日志转接到新任务 ID，账号名同步为新账号，后续轮询与结果继续写同一份日志。
-    const nextAccountName = nextAccountId ? (await getDolaAccount(nextAccountId).catch(() => null))?.name : undefined;
     await retargetDolaRequestLogTask(task.upstream.id, newTaskId, nextAccountName).catch(() => undefined);
     return getVideoTask(task.id);
 }

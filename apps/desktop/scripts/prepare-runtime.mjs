@@ -98,6 +98,18 @@ async function pruneUnreferencedAdminPageChunks(standaloneRoot, distDir) {
     const appBuildManifest = await readFile(path.join(distRoot, "build-manifest.json"), "utf8").catch(() => "");
     if (appBuildManifest) collectStaticAssets(JSON.parse(appBuildManifest), retainedAssets);
     if (!retainedAssets.size) throw new Error("管理员本地版未找到保留页面的静态资源引用，拒绝清理构建文件");
+    const pending = [...retainedAssets];
+    for (let index = 0; index < pending.length; index++) {
+        const asset = pending[index];
+        if (!asset.endsWith(".js")) continue;
+        const source = await readFile(path.join(distRoot, asset), "utf8");
+        for (const match of source.matchAll(/static\/chunks\/[\w./-]+\.(?:m?js|css)/g)) {
+            if (!retainedAssets.has(match[0])) {
+                retainedAssets.add(match[0]);
+                pending.push(match[0]);
+            }
+        }
+    }
     for (const asset of retainedAssets) {
         const assetPath = path.resolve(distRoot, asset);
         const staticPath = `${path.resolve(staticRoot)}${path.sep}`;

@@ -1,3 +1,4 @@
+import { DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
 import { CHARACTER_THREE_VIEW_PROMPT } from "@/lib/canvas-quick-actions";
 import { DEFAULT_USER_ROLE } from "@/lib/user-roles";
 import { ECOMMERCE_IMAGE_SKILL } from "@/lib/server/agent-skills/ecommerce-image";
@@ -171,6 +172,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
     entitlements: DEFAULT_ENTITLEMENT_SETTINGS,
     generationConcurrency: { agent: 2, image: 4, video: 1, audio: 2, text: 4, render: 1, workerLanes: 4 },
     generationDefaults: {
+        promptRules: DEFAULT_GENERATION_PROMPT_RULES,
         // 生成媒体从上游下载时的出网方式：默认跟随服务器代理，可切换为强制直连以节省代理流量。
         mediaDownloadEgress: "server-proxy",
         canvasImageCount: 1,

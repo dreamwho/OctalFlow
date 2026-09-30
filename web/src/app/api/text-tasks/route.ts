@@ -1,3 +1,4 @@
+import { generationPromptRuleContent, DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
 import { after, NextResponse } from "next/server";
 
 import { readJsonBody } from "@/lib/auth/request";
@@ -60,7 +61,7 @@ function publicTask(task: TextTask) {
 
 function sanitizeConfigs(config: TextTaskConfig | undefined, settings: Awaited<ReturnType<typeof getAuthSettings>>): TextTaskConfig[] {
     const requestedModel = config?.model || settings.defaultModels.textModel;
-    return resolveLogicalModelCandidates(settings, "text", requestedModel).map((resolved) => ({ ...toSystemGenerationChannel(resolved), channelId: resolved.channelId, systemPrompt: "" }));
+    return resolveLogicalModelCandidates(settings, "text", requestedModel).map((resolved) => ({ ...toSystemGenerationChannel(resolved), channelId: resolved.channelId, systemPrompt: generationPromptRuleContent(settings.generationDefaults.promptRules?.text || DEFAULT_GENERATION_PROMPT_RULES.text) }));
 }
 
 function sanitizeMessages(messages?: AiTextMessage[]) {

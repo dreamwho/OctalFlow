@@ -49,8 +49,13 @@ export class DolaRequestLogRepository {
 
     async findByTaskId(taskId: string, source: string) {
         // Prefer the original create row; legacy poll-created rows are only a fallback for pre-lifecycle data.
-        const result = await this.db.query("SELECT id FROM dola_request_logs WHERE task_id=$1 AND source=$2 ORDER BY (CASE WHEN method='POST' THEN 0 ELSE 1 END), created_at DESC LIMIT 1", [taskId, source]);
+        const result = await this.db.query("SELECT id FROM dola_request_logs WHERE task_id=$1 ORDER BY (CASE WHEN method='POST' THEN 0 ELSE 1 END), (CASE WHEN source=$2 THEN 0 ELSE 1 END), created_at DESC LIMIT 1", [taskId, source]);
         return String(result.rows[0]?.id || "");
+    }
+
+    async findIdsByTaskId(taskId: string) {
+        const result = await this.db.query("SELECT id FROM dola_request_logs WHERE task_id=$1", [taskId]);
+        return result.rows.map((row) => String(row.id));
     }
 
     async append(log: DolaRequestLog, maxLogs: number) {
@@ -71,7 +76,7 @@ export class DolaRequestLogRepository {
                 status_code=$2,duration_ms=$3,phase=$4,error=$5,request_preview=$6,response_preview=$7,proxy_egress=$8::jsonb,lifecycle=$9::jsonb,
                 model=$10,account_id=$11,account_name=$12,task_id=$13,verification_id=$14,requested_duration=$15,ratio=$16,request_bytes=$17,response_bytes=$18,content_type=$19,
                 quota_remaining=$20::numeric,quota_limit=$21::numeric,screenshot_base64=$22
-             WHERE id=$1`,
+             WHERE id=$1 AND phase<>'cancelled'`,
             [
                 log.id,
                 log.statusCode,
@@ -108,6 +113,7 @@ export class DolaRequestLogRepository {
         const where: string[] = [];
         const values: unknown[] = [];
         if (input.status === "success") where.push("phase='success'");
+        if (input.status === "cancelled") where.push("phase='cancelled'");
         if (input.status === "failed") where.push("(phase='failed' OR (phase NOT IN ('needs_review','queued','running','routing','auth','upstream','response','submitted','generating') AND status_code>=400))");
         if (input.status === "needs_review") where.push("phase='needs_review'");
         if (input.status === "pending") where.push("phase IN ('queued','running','routing','auth','upstream','response','submitted','generating')");

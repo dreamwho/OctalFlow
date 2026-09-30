@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 from aistudio_api.config import DEFAULT_TEXT_MODEL
@@ -44,11 +45,15 @@ class RequestCaptureService:
         contents: list[AistudioContent] | None = None,
         force_refresh: bool = False,
     ) -> CapturedRequest | None:
+        template_started = time.monotonic()
         template = await self._ensure_template(model, force_refresh=force_refresh)
+        template_elapsed = time.monotonic() - template_started
         # 先只走 inlineData 路径，避免 fileData/Drive 上传链路干扰主流程。
         rewritten_contents = contents
         snapshot_contents = rewritten_contents or [self._build_capture_content(prompt=prompt, images=images)]
+        snapshot_started = time.monotonic()
         snapshot = await self._session.generate_snapshot(snapshot_contents)
+        snapshot_elapsed = time.monotonic() - snapshot_started
         body = modify_body(
             template.body,
             model=model,
@@ -58,10 +63,12 @@ class RequestCaptureService:
         )
         captured = CapturedRequest(url=template.url, headers=template.headers, body=body)
         logger.info(
-            "Hook 拦截成功: model=%s, snapshot=%s chars, body=%s chars",
+            "Hook 拦截成功: model=%s, snapshot=%s chars, body=%s chars, template=%.1fs, snapshot=%.1fs",
             captured.model,
             len(captured.snapshot),
             len(captured.body),
+            template_elapsed,
+            snapshot_elapsed,
         )
         return captured
 

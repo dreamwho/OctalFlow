@@ -71,6 +71,15 @@ describe("generation log asset normalization", () => {
         expect(log.requestSnapshot?.slots[0]?.prompt).toBe(executionPrompt);
     });
 
+    it("persists a full protocol request preview after redaction", () => {
+        const prompt = "完整提示词".repeat(1200);
+        const log = normalizeStoredLog({
+            ...storedLogWithAssets(0),
+            requestSnapshot: { version: 1, parameters: {}, references: [], slots: [{ id: "slot-1", index: 0, status: "success", requestTraces: [{ createdAt: "2026-09-30T00:00:00.000Z", channel: "GPTAPI", protocol: "openai", method: "POST", path: "/v1/images/generations", durationMs: 100, requestPreview: JSON.stringify({ prompt }) }] }] },
+        });
+        expect(log.requestSnapshot?.slots[0]?.requestTraces?.[0]?.requestPreview).toContain(prompt);
+    });
+
     it("keeps every explicit reference in the request snapshot", () => {
         const references = Array.from({ length: 40 }, (_, index) => ({
             id: `reference-${index}`,

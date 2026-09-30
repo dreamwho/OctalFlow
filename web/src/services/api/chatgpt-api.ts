@@ -132,6 +132,7 @@ export type ChatGptProxyRuntime = {
     };
 };
 export type ChatGptProxyRuntimePatch = Partial<ChatGptProxyRuntime>;
+export type ChatGptUploadProxySelection = { mode: "auto" | "magic" | "submit" | "direct"; magicNode: string; magicConfigured: boolean };
 export type ChatGptProxyProbe = {
     id: string;
     name: string;
@@ -247,6 +248,8 @@ export const getChatGptLogs = (params: { limit?: number; offset?: number; search
 export const getChatGptProxyRuntime = (init?: RequestInit) => chatGptApiRequest<ChatGptProxyRuntime>("proxy-selection", init);
 
 export const updateChatGptProxyRuntime = (input: ChatGptProxyRuntimePatch, init?: RequestInit) => chatGptApiRequest<ChatGptProxyRuntime>("proxy-selection", { ...init, method: "PATCH", body: JSON.stringify(input) });
+export const getChatGptUploadProxySelection = () => chatGptApiRequest<ChatGptUploadProxySelection>("upload-proxy");
+export const updateChatGptUploadProxySelection = (mode: ChatGptUploadProxySelection["mode"], magicNode: string) => chatGptApiRequest<ChatGptUploadProxySelection>("upload-proxy", { method: "PATCH", body: JSON.stringify({ mode, magicNode }) });
 
 export const getChatGptProxies = (init?: RequestInit) => chatGptApiRequest<ChatGptProxyView>("proxies", init);
 

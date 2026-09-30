@@ -75,6 +75,12 @@ class ProxySelectionPatch(BaseModel):
     chained_config: ProxyChainedConfig | None = None
 
 
+class SignedUploadSelectionPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["auto", "magic", "submit", "direct"]
+    magic_node: str = Field(default="", max_length=160)
+
+
 class SafeProxyReference(BaseModel):
     """A proxy reference that permits a blank custom URL for credential-safe edits."""
 
@@ -361,6 +367,34 @@ async def post_proxy(
     body: ProxyPatch, authorization: str | None = Header(default=None)
 ) -> dict[str, bool]:
     return await _set_proxy(body, authorization)
+
+
+@router.get("/integration/upload-proxy")
+async def get_upload_proxy(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    _require_admin(authorization)
+    return await run_in_threadpool(proxy_management_service.signed_upload_selection)
+
+
+@router.patch("/integration/upload-proxy")
+async def patch_upload_proxy(
+    body: SignedUploadSelectionPatch, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    _require_admin(authorization)
+    return await run_in_threadpool(proxy_management_service.save_signed_upload_selection, body.mode, body.magic_node)
+
+
+@router.patch("/integration/upload-proxy-address")
+async def patch_upload_proxy_address(
+    body: ProxyPatch, authorization: str | None = Header(default=None)
+) -> dict[str, bool]:
+    _require_admin(authorization)
+    try:
+        configured = await run_in_threadpool(
+            proxy_management_service.save_signed_upload_proxy_override, body.proxy_url
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": "upload proxy URL is invalid"}) from exc
+    return {"configured": configured}
 
 
 @router.get("/integration/proxy/resolve-node/{node_id}")

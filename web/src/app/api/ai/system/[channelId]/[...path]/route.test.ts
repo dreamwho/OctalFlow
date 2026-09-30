@@ -79,7 +79,15 @@ vi.mock("@/lib/server/security", () => ({
     rateLimitHeaders: vi.fn(() => ({ "Retry-After": "60" })),
 }));
 
-import { GET, maxDuration, POST, PUT, readBoundedProtocolResponse } from "./route";
+import { GET, maxDuration, POST, PUT, readBoundedProtocolResponse, summarizeProtocolRequest } from "./route";
+
+it("retains the complete long Canvas prompt in the admin protocol trace while redacting credentials and image data", () => {
+    const prompt = "装修客厅".repeat(1200);
+    const preview = summarizeProtocolRequest(JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: `data:image/png;base64,${"A".repeat(8000)}` } }] }], api_key: "private-key" }), "application/json");
+    expect(preview).toContain(prompt);
+    expect(preview).not.toContain("private-key");
+    expect(preview).not.toContain("A".repeat(100));
+});
 
 it("reads a bounded image JSON preview without blocking delivery of the original response", async () => {
     const response = Response.json({ data: [{ b64_json: "A".repeat(16_000) }] });

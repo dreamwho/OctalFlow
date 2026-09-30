@@ -26,12 +26,14 @@ const FILE_NAME = "magic-proxy.json";
 const PROVIDER_NAME = "dreamyo-Subscription";
 const PROVIDER_FILE_NAME = "subscription.yaml";
 const PROVIDER_ENDPOINT = `/providers/proxies/${encodeURIComponent(PROVIDER_NAME)}`;
+const CHATGPT_UPLOAD_GROUP = "dreamyo-ChatGPTUpload";
 const LOCAL_FILE_SUBSCRIPTION_URL = "local://file-import";
 const GROUP_NAMES: Record<MagicProxyProvider, string> = {
     geminiai: "dreamyo-GeminiAIStudio",
     geminiTools: "dreamyo-GeminiTools",
     chatgptApi: "dreamyo-ChatGPTAPI",
     dola: "dreamyo-DolaAPI",
+    dolaUpload: "dreamyo-DolaUpload",
 };
 const DEFAULT_MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES = 4 * 1024 * 1024;
 const MAGIC_PROXY_SUBSCRIPTION_MAX_BYTES_ENV = "DREAMYO_MAGIC_PROXY_MAX_SUBSCRIPTION_BYTES";
@@ -43,6 +45,7 @@ const EMPTY_BINDINGS: MagicProxyBindings = {
     geminiTools: { enabled: false },
     chatgptApi: { enabled: false },
     dola: { enabled: false },
+    dolaUpload: { enabled: false },
 };
 
 type MagicProxyNode = Record<string, unknown> & { name: string; type: string };
@@ -63,6 +66,7 @@ type MihomoRuntimeConfig = {
     secret: string;
     providerFile: string;
     proxyUrls: Partial<Record<MagicProxyProvider, string>>;
+    chatgptUploadProxyUrl: string;
 };
 
 export type MagicProxyPublicSubscription = {
@@ -507,6 +511,7 @@ const SERVICE_TITLES: Record<MagicProxyProvider, string> = {
     geminiTools: "GeminiTools (OAuth 代理)",
     chatgptApi: "ChatGPTAPI (逆向 API 代理)",
     dola: "Dola API (Camoufox 代理)",
+    dolaUpload: "Dola 参考图 ImageX 上传",
 };
 
 async function persistNodeDelays(results: MagicProxyDelayResult[]) {
@@ -911,7 +916,10 @@ export async function updateMagicProxyBinding(input: { provider?: unknown; enabl
 
     return withRuntimeLock(async () => {
         const settings = await readSettings();
-        if (!settings) throw new MagicProxyError("请先导入魔法代理订阅", 409);
+        if (!settings) {
+            if (provider === "dolaUpload" && !input.enabled) return { provider, binding: { enabled: false } };
+            throw new MagicProxyError("请先导入魔法代理订阅", 409);
+        }
         const nodeNames = new Set(settings.nodes.map((node) => node.name));
         // 订阅策略组（如「自动选择」url-test）与节点一样可以作为服务出口。
         const selectableNames = new Set([...nodeNames, ...policyGroupNameSet(settings.subscriptions)]);
@@ -964,7 +972,11 @@ export async function updateMagicProxyBinding(input: { provider?: unknown; enabl
             updatedAt: new Date().toISOString(),
         };
 
-        const runtime = requireRuntimeConfig();
+        const runtime = provider === "dolaUpload" && !input.enabled ? readRuntimeConfig() : requireRuntimeConfig();
+        if (!runtime) {
+            await saveSettings(encodeSettings(next));
+            return { provider, binding: cloneBinding(next.bindings[provider]) };
+        }
         if (input.enabled) runtimeProxyUrl(runtime, provider);
         try {
             if (mode === "chained") {
@@ -1028,6 +1040,24 @@ export async function ensureMagicProxyProvider(provider: MagicProxyProvider): Pr
     const repaired = await tryWithRuntimeLock(() => resolveProviderEgress(provider));
     if (repaired) return repaired;
     return readProviderEgress(provider);
+}
+
+export async function chatGptSignedUploadMagicProxyUrl(preferredNode = ""): Promise<string> {
+    const runtime = readRuntimeConfig();
+    const settings = await readSettings();
+    if (!runtime?.chatgptUploadProxyUrl || !settings) return "";
+    const binding = settings.bindings.chatgptApi;
+    const node = preferredNode || (binding?.mode === "chained" ? binding.chained_config?.hop_node : binding?.node);
+    if (!node) return "";
+    if (!settings.nodes.some((item) => item.name === node) && !policyGroupNameSet(settings.subscriptions).has(node)) {
+        if (preferredNode) throw new MagicProxyError("上传专用魔法节点不存在，请重新选择", 409);
+        return "";
+    }
+    await selectMihomoProxy(runtime, CHATGPT_UPLOAD_GROUP, node).catch(async () => {
+        await syncMihomoProvider(settings, runtime);
+        await selectMihomoProxy(runtime, CHATGPT_UPLOAD_GROUP, node);
+    });
+    return runtime.chatgptUploadProxyUrl;
 }
 
 /** 纯读解析出口：不改动内核与 sidecar 状态，只按已保存的绑定计算本次请求该走哪个出口。 */
@@ -1148,21 +1178,30 @@ async function ensureGenericProxyEgress(provider: MagicProxyProvider): Promise<{
         const payload = await chatGptRuntimeJson<{ bindings?: Record<string, { enabled?: boolean; target?: string }> }>("/api/proxy/generic-bindings");
         binding = payload?.bindings?.[provider];
     } catch {
+        if (provider === "dolaUpload") throw new MagicProxyError("Dola 上传出口配置暂时不可读取", 503);
         // ChatGPT runtime unavailable → no generic egress can be configured at all.
         return { enabled: false };
     }
-    if (!binding?.enabled || !binding.target) return { enabled: false };
+    if (!binding?.enabled) return { enabled: false };
+    if (!binding.target) {
+        if (provider === "dolaUpload") throw new MagicProxyError("Dola 上传通用代理缺少节点或代理组", 409);
+        return { enabled: false };
+    }
     if (provider === "geminiai" && binding.target.startsWith("group:")) {
         throw new MagicProxyError("GeminiAIStudio 通用代理仅支持选择单个节点", 400);
     }
     if (binding.target.startsWith("group:")) {
         const resolved = await chatGptRuntimeJson<{ proxy_url?: string; node_name?: string; node_id?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ group_id: binding.target.slice("group:".length) }) });
         const nodeName = resolved.node_name || resolved.node_id || binding.target.slice("group:".length);
+        if (!resolved.proxy_url && provider === "dolaUpload") throw new MagicProxyError("Dola 上传通用代理组当前没有可用节点", 503);
         return resolved.proxy_url ? { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url), node_name: nodeName } } : { enabled: false };
     }
     if (binding.target.startsWith("node:")) {
         const resolved = await chatGptRuntimeJson<{ proxy_url?: string; node_name?: string; node_id?: string }>("/api/proxy/resolve-url", { method: "POST", body: JSON.stringify({ node_id: binding.target.slice("node:".length) }) });
-        if (!resolved.proxy_url) return { enabled: false };
+        if (!resolved.proxy_url) {
+            if (provider === "dolaUpload") throw new MagicProxyError("Dola 上传通用代理节点不可用", 503);
+            return { enabled: false };
+        }
         if (provider === "geminiai") {
             const { syncGeminiAiRuntimeProxy } = await import("./geminiai-provider");
             await syncGeminiAiRuntimeProxy(resolved.proxy_url);
@@ -1170,6 +1209,7 @@ async function ensureGenericProxyEgress(provider: MagicProxyProvider): Promise<{
         const nodeName = resolved.node_name || resolved.node_id || binding.target.slice("node:".length);
         return { enabled: true, proxyUrl: resolved.proxy_url, egress: { mode: "generic", address: proxyAddressFromUrl(resolved.proxy_url), node_name: nodeName } };
     }
+    if (provider === "dolaUpload") throw new MagicProxyError("Dola 上传通用代理引用无效", 409);
     return { enabled: false };
 }
 
@@ -1871,6 +1911,7 @@ function normalizeBindings(value: MagicProxyBindings | undefined, names: Set<str
         geminiTools: normalizedBinding(value?.geminiTools, names, allNodes),
         chatgptApi: normalizedBinding(value?.chatgptApi, names, allNodes),
         dola: normalizedBinding(value?.dola, names, allNodes),
+        dolaUpload: normalizedBinding(value?.dolaUpload, names, allNodes),
     };
 }
 
@@ -2243,18 +2284,19 @@ export function generateDynamicMihomoConfig(runtime: MihomoRuntimeConfig, settin
     // 服务组与跳板组必须把订阅策略组（如「自动选择」url-test）与 failover 兜底组列进 proxies，
     // 控制器才允许把组选中为服务出口——实现 Clash 同款的自动选优与兜底切换。
     const proxyGroups: Array<Record<string, unknown>> = [
-        ...(["geminiai", "geminiTools", "chatgptApi", "dola"] as MagicProxyProvider[]).map((provider) => ({
+        ...(["geminiai", "geminiTools", "chatgptApi", "dola", "dolaUpload"] as MagicProxyProvider[]).map((provider) => ({
             name: GROUP_NAMES[provider],
             type: "select",
             use: [PROVIDER_NAME],
             proxies: ["DIRECT", ...policyGroupNames, ...failoverGroupNames],
         })),
-        ...(["geminiai", "geminiTools", "chatgptApi", "dola"] as MagicProxyProvider[]).map((provider) => ({
+        ...(["geminiai", "geminiTools", "chatgptApi", "dola", "dolaUpload"] as MagicProxyProvider[]).map((provider) => ({
             name: getChainedHopGroupName(provider),
             type: "select",
             use: [PROVIDER_NAME],
             proxies: ["DIRECT", ...policyGroupNames, ...(hopFailoverProviders.includes(provider) ? [getChainedHopFailoverGroupName(provider)] : [])],
         })),
+        { name: CHATGPT_UPLOAD_GROUP, type: "select", use: [PROVIDER_NAME], proxies: ["DIRECT", ...policyGroupNames] },
     ];
 
     // 跳板兜底组：成员经独立 provider 文件引入，保证「跳板优先、兜底接管」的顺序。
@@ -2287,6 +2329,8 @@ export function generateDynamicMihomoConfig(runtime: MihomoRuntimeConfig, settin
         { name: "dreamyo-GeminiTools", type: "mixed", listen: "0.0.0.0", port: 17891, proxy: "dreamyo-GeminiTools" },
         { name: "dreamyo-ChatGPTAPI", type: "mixed", listen: "0.0.0.0", port: 17892, proxy: "dreamyo-ChatGPTAPI" },
         { name: "dreamyo-DolaAPI", type: "mixed", listen: "0.0.0.0", port: 17893, proxy: "dreamyo-DolaAPI" },
+        { name: "dreamyo-DolaUpload", type: "mixed", listen: "0.0.0.0", port: 17894, proxy: "dreamyo-DolaUpload" },
+        { name: CHATGPT_UPLOAD_GROUP, type: "mixed", listen: "0.0.0.0", port: 17895, proxy: CHATGPT_UPLOAD_GROUP },
     ];
 
     const configDoc = {
@@ -2373,13 +2417,16 @@ async function syncMihomoProvider(settings: MihomoProviderState, runtime: Mihomo
  * override 用于强制指定某个 Provider 的分组目标（保存链式时磁盘绑定尚未更新，以本次调用意图为准）。
  */
 async function alignMihomoGroupSelections(runtime: MihomoRuntimeConfig, settings: MihomoProviderState, chainedNodes: MagicProxyNode[], override?: { provider: MagicProxyProvider; target: string }) {
+    const uploadBinding = settings.bindings.chatgptApi;
+    const uploadNode = uploadBinding?.mode === "chained" ? uploadBinding.chained_config?.hop_node : uploadBinding?.node;
+    if (runtime.chatgptUploadProxyUrl) await selectMihomoProxy(runtime, CHATGPT_UPLOAD_GROUP, uploadNode || "DIRECT").catch(() => undefined);
     for (const provider of Object.keys(GROUP_NAMES) as MagicProxyProvider[]) {
         if (override && provider === override.provider) {
             await selectMihomoProxy(runtime, GROUP_NAMES[provider], override.target);
             continue;
         }
         const binding = settings.bindings[provider] || { enabled: false };
-        if ((provider === "chatgptApi" || provider === "dola") && !runtime.proxyUrls[provider]) {
+        if ((provider === "chatgptApi" || provider === "dola" || provider === "dolaUpload") && !runtime.proxyUrls[provider]) {
             if (binding.enabled) runtimeProxyUrl(runtime, provider);
             continue;
         }
@@ -2442,6 +2489,7 @@ const CHAINED_HOP_GROUP_NAMES: Record<MagicProxyProvider, string> = {
     geminiTools: "dreamyo-Chained-Hop-GeminiTools",
     chatgptApi: "dreamyo-Chained-Hop-ChatGPTAPI",
     dola: "dreamyo-Chained-Hop-DolaAPI",
+    dolaUpload: "dreamyo-Chained-Hop-DolaUpload",
 };
 
 function getChainedHopGroupName(provider: MagicProxyProvider) {
@@ -2453,6 +2501,7 @@ const CHAINED_HOP_FAILOVER_GROUP_NAMES: Record<MagicProxyProvider, string> = {
     geminiTools: "dreamyo-Chained-Hop-Failover-GeminiTools",
     chatgptApi: "dreamyo-Chained-Hop-Failover-ChatGPTAPI",
     dola: "dreamyo-Chained-Hop-Failover-DolaAPI",
+    dolaUpload: "dreamyo-Chained-Hop-Failover-DolaUpload",
 };
 
 function getChainedHopFailoverGroupName(provider: MagicProxyProvider) {
@@ -2474,6 +2523,7 @@ const FAILOVER_GROUP_NAMES: Record<MagicProxyProvider, string> = {
     geminiTools: "dreamyo-Failover-GeminiTools",
     chatgptApi: "dreamyo-Failover-ChatGPTAPI",
     dola: "dreamyo-Failover-DolaAPI",
+    dolaUpload: "dreamyo-Failover-DolaUpload",
 };
 
 function getFailoverGroupName(provider: MagicProxyProvider) {
@@ -2754,6 +2804,8 @@ function readRuntimeConfig(): MihomoRuntimeConfig | null {
     const geminiToolsPort = port(process.env.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_PORT);
     const chatgptApiPort = port(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_PORT);
     const dolaPort = port(process.env.DREAMYO_MAGIC_PROXY_DOLA_PORT);
+    const dolaUploadPort = port(process.env.DREAMYO_MAGIC_PROXY_DOLA_UPLOAD_PORT);
+    const chatgptUploadPort = port(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_UPLOAD_PORT) || (chatgptApiPort === 17892 ? 17895 : 0);
     const geminiaiUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_GEMINIAI_URL, geminiaiPort);
     const geminiToolsUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_GEMINI_TOOLS_URL, geminiToolsPort);
     if (!controllerValue || secret.length < 32 || !isMagicProxyProviderFile(providerFile) || !isMagicProxyListenHost(listenHost) || !geminiaiPort || !geminiToolsPort || geminiaiPort === geminiToolsPort || !geminiaiUrl || !geminiToolsUrl) return null;
@@ -2763,17 +2815,25 @@ function readRuntimeConfig(): MihomoRuntimeConfig | null {
         if (!["http:", "https:"].includes(controllerUrl.protocol) || !controllerPort || controllerUrl.username || controllerUrl.password || controllerUrl.pathname !== "/" || controllerUrl.search || controllerUrl.hash) return null;
         const chatgptApiUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_API_URL, chatgptApiPort);
         const dolaUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_DOLA_URL, dolaPort);
+        const dolaUploadUrl = proxyUrl(process.env.DREAMYO_MAGIC_PROXY_DOLA_UPLOAD_URL, dolaUploadPort);
         const chatgptApiProxyUrl = chatgptApiPort && chatgptApiPort !== controllerPort && chatgptApiPort !== geminiaiPort && chatgptApiPort !== geminiToolsPort ? chatgptApiUrl : "";
         const dolaProxyUrl = dolaPort && dolaPort !== controllerPort && dolaPort !== geminiaiPort && dolaPort !== geminiToolsPort && dolaPort !== chatgptApiPort ? dolaUrl : "";
+        const dolaUploadProxyUrl = dolaUploadPort && ![controllerPort, geminiaiPort, geminiToolsPort, chatgptApiPort, dolaPort].includes(dolaUploadPort) ? dolaUploadUrl : "";
+        const implicitChatgptUploadUrl = chatgptApiProxyUrl ? new URL(chatgptApiProxyUrl) : null;
+        if (implicitChatgptUploadUrl) implicitChatgptUploadUrl.port = String(chatgptUploadPort);
+        const chatgptUploadProxyUrl = chatgptUploadPort && ![controllerPort, geminiaiPort, geminiToolsPort, chatgptApiPort, dolaPort, dolaUploadPort].includes(chatgptUploadPort)
+            ? proxyUrl(process.env.DREAMYO_MAGIC_PROXY_CHATGPT_UPLOAD_URL || implicitChatgptUploadUrl?.toString(), chatgptUploadPort) : "";
         return {
             controllerUrl,
             secret,
             providerFile,
+            chatgptUploadProxyUrl,
             proxyUrls: {
                 geminiai: geminiaiUrl,
                 geminiTools: geminiToolsUrl,
                 ...(chatgptApiProxyUrl ? { chatgptApi: chatgptApiProxyUrl } : {}),
                 ...(dolaProxyUrl ? { dola: dolaProxyUrl } : {}),
+                ...(dolaUploadProxyUrl ? { dolaUpload: dolaUploadProxyUrl } : {}),
             },
         };
     } catch {
@@ -2795,6 +2855,9 @@ function runtimeProxyUrl(runtime: MihomoRuntimeConfig, provider: MagicProxyProvi
     }
     if (provider === "dola") {
         throw new MagicProxyError("Dola API 魔法代理监听未配置，请同时设置 DREAMYO_MAGIC_PROXY_DOLA_PORT 和 DREAMYO_MAGIC_PROXY_DOLA_URL，并使用独立端口", 503);
+    }
+    if (provider === "dolaUpload") {
+        throw new MagicProxyError("Dola 上传代理监听未配置，请同时设置 DREAMYO_MAGIC_PROXY_DOLA_UPLOAD_PORT 和 DREAMYO_MAGIC_PROXY_DOLA_UPLOAD_URL", 503);
     }
     throw new MagicProxyError("魔法代理运行环境未配置，请检查服务器上的 Mihomo 配置", 503);
 }
@@ -2975,6 +3038,7 @@ function storedBindings(value: unknown): MagicProxyBindings {
         geminiTools: storedBinding(bindings.geminiTools),
         chatgptApi: storedBinding(bindings.chatgptApi),
         dola: storedBinding(bindings.dola),
+        dolaUpload: storedBinding(bindings.dolaUpload),
     };
 }
 
@@ -3035,7 +3099,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function magicProxyProvider(value: unknown): MagicProxyProvider | null {
-    return value === "geminiai" || value === "geminiTools" || value === "chatgptApi" || value === "dola" ? value : null;
+    return value === "geminiai" || value === "geminiTools" || value === "chatgptApi" || value === "dola" || value === "dolaUpload" ? value : null;
 }
 
 function cloneBinding(value: MagicProxyBinding | undefined): MagicProxyBinding {
@@ -3056,7 +3120,7 @@ function cloneBinding(value: MagicProxyBinding | undefined): MagicProxyBinding {
 }
 
 function cloneBindings(value: MagicProxyBindings): MagicProxyBindings {
-    return { geminiai: cloneBinding(value.geminiai), geminiTools: cloneBinding(value.geminiTools), chatgptApi: cloneBinding(value.chatgptApi), dola: cloneBinding(value.dola) };
+    return { geminiai: cloneBinding(value.geminiai), geminiTools: cloneBinding(value.geminiTools), chatgptApi: cloneBinding(value.chatgptApi), dola: cloneBinding(value.dola), dolaUpload: cloneBinding(value.dolaUpload) };
 }
 
 const runtimeState = globalThis as typeof globalThis & { __dreamyoMagicProxyRuntimeQueue?: Promise<void> };

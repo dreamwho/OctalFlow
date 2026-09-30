@@ -7,7 +7,7 @@ const cards = Array.from({ length: 9 }, (_, index) => ({
     title: `测试图片 ${index + 1}`,
     prompt: `测试图片 ${index + 1}`,
     model: "e2e-image",
-    assets: index === 8 ? [] : [{ type: "image", url: "/design/home/latest-gallery-1.webp", mimeType: "image/webp", width: 1200, height: 800 }],
+    assets: index === 8 ? [] : [{ type: "image", url: "/design/home/aurora-background.webp", mimeType: "image/webp", width: 4096, height: 2313 }],
     requestSnapshot: { version: 1, userPrompt: `测试图片 ${index + 1}`, parameters: { model: "e2e-image", size: "16:9" }, references: [], slots: [{ id: `slot-${index}`, index: 0, status: index === 8 ? "pending" : "success", assetIndex: index === 8 ? undefined : 0, startedAt: Date.now() - 12_000 }] },
     createdAt: "2026-09-24T04:00:00.000Z",
     durationMs: 12_000,
@@ -44,6 +44,7 @@ test("unified generation page keeps nine cards, theme, parameter menus and refer
     await page.getByRole("button", { name: /添加参考图片/ }).click();
     const referenceDialog = page.getByRole("dialog", { name: "添加参考图片" });
     await expect(referenceDialog).toBeVisible();
+    await expect(referenceDialog.getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
     const sidebarRect = await workbench.locator("aside").boundingBox();
     const resultsRect = await workbench.getByRole("region", { name: "生成结果" }).boundingBox();
     await expect.poll(async () => (await referenceDialog.boundingBox())?.x).toBeCloseTo(resultsRect!.x, 0);
@@ -194,4 +195,65 @@ test("unified generation page keeps nine cards, theme, parameter menus and refer
     expect(mobileImage!.x + mobileImage!.width).toBeLessThanOrEqual(390);
     await expect(mobileLightbox.getByRole("button", { name: "关闭预览" })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("image-preview-dark-390.png") });
+});
+
+test("reference selection stays local until submission", async ({ page }) => {
+    let uploadRequests = 0;
+    await page.route("**/api/reference-assets", (route) => { uploadRequests += 1; return route.abort(); });
+    await page.goto("/create?mode=image");
+    await page.getByRole("button", { name: "添加参考图片" }).click();
+    await expect(page.getByRole("dialog", { name: "添加参考图片" }).getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
+    await page.locator("#workbench-reference-file").setInputFiles({ name: "reference.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lJkAAAAASUVORK5CYII=", "base64") });
+    await expect(page.getByRole("img", { name: "reference.png" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /继续添加参考图/ })).toBeVisible();
+    await page.locator("#workbench-prompt").fill("@");
+    await page.locator("[data-canvas-resource-mention-menu] button").filter({ hasText: "图片1" }).first().click();
+    await expect(page.locator('#workbench-prompt [data-canvas-token="reference"]')).toHaveCount(1);
+    await expect(page.locator('#workbench-prompt [data-canvas-token="reference"] img')).toBeVisible();
+    await expect(page.locator("#workbench-prompt")).not.toContainText("@图片1");
+    await page.getByRole("button", { name: "展开提示词" }).click();
+    const expandedPrompt = page.getByRole("textbox", { name: "展开的提示词" });
+    await expect(expandedPrompt.locator('[data-canvas-token="reference"]')).toHaveCount(1);
+    await page.getByRole("dialog", { name: "编辑提示词" }).getByRole("button", { name: "Close" }).click();
+    await page.getByRole("button", { name: "继续添加参考图" }).click();
+    const dialog = page.getByRole("dialog", { name: "添加参考图片" });
+    await expect(dialog.getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
+    await dialog.getByRole("button", { name: "我的素材库" }).click();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.getByRole("button", { name: "继续添加参考图" }).click();
+    await expect(page.getByRole("dialog", { name: "添加参考图片" }).getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
+    expect(uploadRequests).toBe(0);
+});
+
+test("reference upload picker opens first on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/create?mode=video");
+    await page.getByRole("button", { name: "添加参考图片" }).click();
+    const dialog = page.getByRole("dialog", { name: "添加参考图片" });
+    await expect(dialog.getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByText("拖拽、粘贴或选择图片")).toBeVisible();
+    const rect = await dialog.boundingBox();
+    expect(rect!.x).toBeGreaterThanOrEqual(0);
+    expect(rect!.x + rect!.width).toBeLessThanOrEqual(390);
+});
+
+test("asset cover upload shows waiting state and blocks saving", async ({ page }) => {
+    let releaseUpload: (() => void) | undefined;
+    const uploadGate = new Promise<void>((resolve) => { releaseUpload = resolve; });
+    await page.route("**/api/reference-assets", async (route) => {
+        await uploadGate;
+        await route.fulfill({ status: 400, json: { error: "测试上传失败" } });
+    });
+    try {
+        await page.goto("/assets");
+        await page.getByRole("button", { name: "新增素材" }).click();
+        const dialog = page.getByRole("dialog", { name: "新增素材" });
+        await dialog.locator('input[type="file"][accept="image/*"]').first().setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lJkAAAAASUVORK5CYII=", "base64") });
+        await expect(dialog.getByRole("button", { name: /处理中|上传 \d+%/ })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: /保\s*存/ })).toBeDisabled();
+        releaseUpload?.();
+        await expect(dialog.getByRole("button", { name: "上传", exact: true })).toBeEnabled();
+    } finally {
+        releaseUpload?.();
+    }
 });

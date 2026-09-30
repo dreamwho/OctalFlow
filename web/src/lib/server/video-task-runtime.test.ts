@@ -14,6 +14,13 @@ const mocks = vi.hoisted(() => ({
     writeLog: vi.fn(),
     dreaminaQuery: vi.fn(),
     schedule: vi.fn(),
+    getDolaAccount: vi.fn(),
+    getDolaGatewaySettings: vi.fn(),
+    findDolaLog: vi.fn(),
+    advanceDolaLog: vi.fn(),
+    retargetDolaLog: vi.fn(),
+    releaseDolaAccount: vi.fn(),
+    markDolaRateLimited: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/store", () => ({ refundUserPoints: mocks.refund }));
@@ -37,8 +44,22 @@ vi.mock("@/lib/server/dreamina-cli-video-task", () => ({
     queryDreaminaCliVideoTask: mocks.dreaminaQuery,
 }));
 vi.mock("@/lib/server/generation-task-scheduler", () => ({ scheduleGenerationTask: mocks.schedule }));
+vi.mock("@/lib/server/dola/account-service", () => ({
+    getDolaAccount: mocks.getDolaAccount,
+    releaseDolaAccountAttempt: mocks.releaseDolaAccount,
+    markDolaAccountQuotaExhausted: vi.fn(),
+    markDolaAccountRateLimited: mocks.markDolaRateLimited,
+    markDolaAccountRestricted: vi.fn(),
+    setDolaAccountStatus: vi.fn(),
+}));
+vi.mock("@/lib/server/dola/gateway-store", () => ({ getDolaGatewaySettings: mocks.getDolaGatewaySettings }));
+vi.mock("@/lib/server/dola/log-store", () => ({
+    findDolaTaskLogIdByTaskId: mocks.findDolaLog,
+    advanceDolaTaskLog: mocks.advanceDolaLog,
+    retargetDolaRequestLogTask: mocks.retargetDolaLog,
+}));
 
-import { isDolaVideoTask, queryVideoTaskUpstream, refreshVideoTaskFromUpstream } from "./video-task-runtime";
+import { isDolaVideoTask, queryVideoTaskUpstream, refreshVideoTaskFromUpstream, rotateDolaRateLimitedVideoTask } from "./video-task-runtime";
 import type { VideoTask } from "./video-task-store";
 import { createProtocolFixtureServer } from "../../../scripts/protocol-fixture-server.mjs";
 
@@ -49,6 +70,12 @@ describe("video task upstream reconciliation", () => {
         mocks.register.mockResolvedValue(undefined);
         mocks.update.mockResolvedValue(undefined);
         mocks.writeLog.mockResolvedValue({});
+        mocks.getDolaGatewaySettings.mockResolvedValue({ rotationLimit: 2 });
+        mocks.findDolaLog.mockResolvedValue("log-one");
+        mocks.getDolaAccount.mockImplementation(async (id: string) => ({ name: id === "old-account" ? "原账号名称" : "新账号名称" }));
+        mocks.releaseDolaAccount.mockResolvedValue(undefined);
+        mocks.markDolaRateLimited.mockResolvedValue(undefined);
+        mocks.retargetDolaLog.mockResolvedValue(undefined);
     });
 
     afterEach(() => {
@@ -209,6 +236,66 @@ describe("video task upstream reconciliation", () => {
         expect(mocks.fail).toHaveBeenCalledWith(task.id, failed.error, true);
         expect(mocks.refund).toHaveBeenCalledOnce();
         expect(mocks.normalize).not.toHaveBeenCalled();
+    });
+
+    it("does not rotate accounts after a reference upload timeout before Dola submission", async () => {
+        const error = "uploading_references: reference_2_of_9: imagex_upload_WriteTimeout";
+        const task = videoTask({
+            config: { ...videoTask().config, advancedConfig: { ...videoTask().config.advancedConfig, protocol: "dola", queryPath: "/v1/videos/:task_id" } as NonNullable<VideoTask["config"]["advancedConfig"]> },
+            upstream: { ...videoTask().upstream, accountId: "old-account", rotationPayload: { model: "dola-seedance-2-5" } },
+        });
+        const failed = { ...task, status: "error", error };
+        mocks.claim.mockResolvedValue(task);
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: task.upstream.id, status: "failed", error }));
+        mocks.fail.mockResolvedValue(failed);
+
+        await expect(refreshVideoTaskFromUpstream(task, "http://localhost", "session=test")).resolves.toEqual(failed);
+        expect(mocks.fetchInternalApi).toHaveBeenCalledOnce();
+        expect(mocks.getDolaGatewaySettings).not.toHaveBeenCalled();
+        expect(mocks.markDolaRateLimited).not.toHaveBeenCalled();
+        expect(mocks.fail).toHaveBeenCalledWith(task.id, error, true);
+        expect(mocks.releaseDolaAccount).toHaveBeenCalledOnce(); // 终态清理原任务占用，不是换号。
+        mocks.releaseDolaAccount.mockClear();
+        await expect(rotateDolaRateLimitedVideoTask(task, "http://localhost", "session=test", "", error)).resolves.toBeNull();
+        expect(mocks.releaseDolaAccount).not.toHaveBeenCalled();
+    });
+
+    it("settles a terminal Dola rate limit failure after account rotation is exhausted", async () => {
+        const error = "submitting_to_dola: rate_limited";
+        const task = videoTask({
+            config: { ...videoTask().config, advancedConfig: { protocol: "dola", queryPath: "/v1/videos/:task_id" } as NonNullable<VideoTask["config"]["advancedConfig"]> },
+            upstream: { ...videoTask().upstream, accountId: "limited-account", rotations: 2, rotationPayload: { model: "dola-seedance-2-5" } },
+        });
+        const failed = { ...task, status: "error" as const, error };
+        mocks.claim.mockResolvedValue(task);
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: task.upstream.id, status: "failed", error }));
+        mocks.fail.mockResolvedValue(failed);
+
+        await expect(refreshVideoTaskFromUpstream(task, "http://localhost", "session=test")).resolves.toEqual(failed);
+        expect(mocks.fail).toHaveBeenCalledWith(task.id, error, true);
+        expect(mocks.schedule).not.toHaveBeenCalled();
+        expect(mocks.releaseDolaAccount).toHaveBeenCalledWith("limited-account");
+        expect(mocks.refund).toHaveBeenCalledOnce();
+    });
+
+    it("writes account names rather than account IDs in the Dola rotation lifecycle", async () => {
+        const task = videoTask({
+            config: { ...videoTask().config, advancedConfig: { ...videoTask().config.advancedConfig, protocol: "dola", createPath: "/v1/videos" } as NonNullable<VideoTask["config"]["advancedConfig"]> },
+            upstream: { ...videoTask().upstream, accountId: "old-account", rotationPayload: { model: "dola-seedance-2-5" } },
+        });
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: "next-task", accountId: "next-account" }));
+        mocks.get.mockResolvedValue({ ...task, upstream: { ...task.upstream, id: "next-task", accountId: "next-account" } });
+
+        await rotateDolaRateLimitedVideoTask(task, "http://localhost", "session=test", "", "rate_limited");
+
+        expect(mocks.advanceDolaLog).toHaveBeenCalledWith("log-one", expect.objectContaining({
+            message: expect.stringContaining("原账号名称"),
+            detail: expect.stringContaining("新账号 新账号名称"),
+        }));
+        const lifecycle = mocks.advanceDolaLog.mock.calls[0]?.[1] as { message: string; detail: string };
+        expect(`${lifecycle.message} ${lifecycle.detail}`).not.toContain("old-account");
+        expect(`${lifecycle.message} ${lifecycle.detail}`).not.toContain("next-account");
+        expect(mocks.retargetDolaLog).toHaveBeenCalledWith(task.upstream.id, "next-task", "新账号名称");
     });
 
     it("keeps a queued provider task pending without settling or refunding it", async () => {

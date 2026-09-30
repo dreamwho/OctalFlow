@@ -1,3 +1,4 @@
+import { DEFAULT_GENERATION_PROMPT_RULES, generationPromptRuleContent, type GenerationPromptRule, type GenerationPromptRules } from "@/lib/generation-prompt-rules";
 import type { VideoGenerationReference, VideoReferenceRole } from "@/lib/video-reference-contract";
 
 export const minimaxH3Protocols = ["minimax-h3", "minimax-h3-official"] as const;
@@ -74,24 +75,25 @@ export function rebindMinimaxH3ReferenceUrls(bindings: readonly MinimaxH3Referen
     return bindings.map((binding, referenceIndex) => ({ ...binding, url: references[referenceIndex].url }));
 }
 
-export function compileMinimaxH3Prompt(input: { protocol: unknown; prompt: string; durationSeconds?: number; references: readonly VideoGenerationReference[]; referenceBindings?: readonly MinimaxH3ReferenceBinding[] }): MinimaxH3PromptCompilation {
+export function compileMinimaxH3Prompt(input: { protocol: unknown; prompt: string; durationSeconds?: number; references: readonly VideoGenerationReference[]; referenceBindings?: readonly MinimaxH3ReferenceBinding[]; promptRules?: GenerationPromptRules }): MinimaxH3PromptCompilation {
     const originalPrompt = input.prompt;
     const prompt = originalPrompt.trim();
     const bindings = input.referenceBindings ? cloneAndAssertBindings(input.references, input.referenceBindings) : createMinimaxH3ReferenceBindings(input.references);
     if (!isMinimaxH3Protocol(input.protocol)) return { applied: false, prompt: originalPrompt, referenceBindings: bindings };
 
+    const rules = input.promptRules || DEFAULT_GENERATION_PROMPT_RULES;
     const mode = promptMode(input.references);
     if (isMinimaxH3StructuredPrompt(prompt)) {
-        const bindingLock = referenceBindingLock(bindings);
+        const bindingLock = referenceBindingLock(bindings, rules.minimaxH3Bindings);
         return { applied: true, mode, prompt: bindingLock ? injectBindingLock(prompt, bindingLock) : prompt, referenceBindings: bindings };
     }
 
-    const bindingLock = referenceBindingLock(bindings);
+    const bindingLock = referenceBindingLock(bindings, rules.minimaxH3Bindings);
     const duration = formattedDuration(input.durationSeconds);
     return {
         applied: true,
         mode,
-        prompt: mode === "ref2va" ? compileReferencePrompt(prompt, bindings, duration) : compileBasePrompt(prompt, mode, bindingLock, duration),
+        prompt: mode === "ref2va" ? compileReferencePrompt(prompt, bindings, duration, rules.minimaxH3Reference) : compileBasePrompt(prompt, mode, bindingLock, duration, rules.minimaxH3Base),
         referenceBindings: bindings,
     };
 }
@@ -100,7 +102,7 @@ export function isMinimaxH3StructuredPrompt(prompt: string) {
     return /^(?:subject_definitions|integrated_multimodal_description)\s*:/im.test(prompt) && /^(?:detailed_description|overall_soundscape)\s*:/im.test(prompt);
 }
 
-function compileBasePrompt(prompt: string, mode: Exclude<MinimaxH3PromptMode, "ref2va">, bindingLock: string, duration: string) {
+function compileBasePrompt(prompt: string, mode: Exclude<MinimaxH3PromptMode, "ref2va">, bindingLock: string, duration: string, rule: GenerationPromptRule) {
     const alignment =
         mode === "i2va"
             ? "The first generated frame must align with <Picture 1>; preserve its supplied subject identity, scene anchor, composition, and visual continuity only as provided."
@@ -109,20 +111,10 @@ function compileBasePrompt(prompt: string, mode: Exclude<MinimaxH3PromptMode, "r
               : mode === "l2va"
                 ? `The final generated frame must align with <Picture 1>${duration ? ` at ${duration}` : ""}; do not invent a first-frame reference.`
                 : "Create the requested video directly from the user brief without inventing unprovided reference media.";
-    return [
-        "integrated_multimodal_description:",
-        alignment,
-        ...(bindingLock ? [bindingLock] : []),
-        "Original user brief (preserve its stated names, dialogue, lyrics, and visible text verbatim):",
-        prompt,
-        "overall_soundscape:",
-        "Use only sound, ambience, dialogue, and synchronized actions requested by the original user brief; otherwise use an appropriate coherent soundscape.",
-        "non_diegetic_music:",
-        "N/A unless the original user brief explicitly requests music.",
-    ].join("\n\n");
+    return renderH3Rule(prompt, rule, { frameAlignment: alignment, referenceBindings: bindingLock });
 }
 
-function compileReferencePrompt(prompt: string, bindings: readonly MinimaxH3ReferenceBinding[], duration: string) {
+function compileReferencePrompt(prompt: string, bindings: readonly MinimaxH3ReferenceBinding[], duration: string, rule: GenerationPromptRule) {
     const definitions = bindings.map((binding) => `${binding.label} is the ${bindingDescription(binding)}.`).join("\n");
     const retention = bindings
         .map(
@@ -130,29 +122,19 @@ function compileReferencePrompt(prompt: string, bindings: readonly MinimaxH3Refe
                 `${binding.label} (${bindingDescription(binding)}): fully_preserved - preserve only the identity, appearance, motion, audio, or scene information explicitly supplied by this exact reference; do not swap it with another reference.`,
         )
         .join("\n");
-    return [
-        "subject_definitions:",
-        definitions,
-        "summary:",
-        "[reference generation] Create the requested video while preserving the independently submitted reference bindings below.",
-        "retention_analysis:",
-        retention,
-        "detailed_description:",
-        `${duration ? `Plan the audiovisual sequence for the resolved ${duration}. ` : ""}Original user brief (preserve its stated names, dialogue, lyrics, and visible text verbatim):\n${prompt}`,
-        "overall_soundscape:",
-        "Use only audio information explicitly supplied by the bound references or requested by the original user brief; otherwise use an appropriate coherent soundscape.",
-        "non_diegetic_music:",
-        "N/A unless the original user brief explicitly requests music.",
-    ].join("\n\n");
+    return renderH3Rule(prompt, rule, { referenceDefinitions: definitions, retentionAnalysis: retention, durationDirection: duration ? `Plan the audiovisual sequence for the resolved ${duration}. ` : "" });
 }
 
-function referenceBindingLock(bindings: readonly MinimaxH3ReferenceBinding[]) {
+function referenceBindingLock(bindings: readonly MinimaxH3ReferenceBinding[], rule: GenerationPromptRule) {
     if (!bindings.length) return "";
-    return [
-        "Reference binding lock:",
-        ...bindings.map((binding) => `${binding.label} = ${bindingDescription(binding)}.`),
-        "Each label is bound only to the independently submitted reference at its original array position. Do not swap, merge, substitute, renumber, reinterpret, or invent references.",
-    ].join("\n");
+    return generationPromptRuleContent(rule, { referenceDefinitions: bindings.map((binding) => `${binding.label} = ${bindingDescription(binding)}.`).join("\n") });
+}
+
+function renderH3Rule(prompt: string, rule: GenerationPromptRule, values: Record<string, string>) {
+    const content = generationPromptRuleContent(rule, { ...values, prompt });
+    if (!content) return prompt;
+    // Preserve the original request even when an administrator omits its placeholder.
+    return rule.content.includes("{{prompt}}") ? content : `${content}\n\n${prompt}`;
 }
 
 function injectBindingLock(prompt: string, bindingLock: string) {

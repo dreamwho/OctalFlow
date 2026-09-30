@@ -50,10 +50,20 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
         imageInputRef.current?.click();
     }, []);
 
+    const uploadReplacement = useCallback(async <T,>(nodeId: string, task: (onProgress: (percent: number) => void) => Promise<T>) => {
+        const key = `canvas-replace-${nodeId}`;
+        message.open({ key, type: "loading", content: "正在处理文件…", duration: 0 });
+        try {
+            return await task((percent) => message.open({ key, type: "loading", content: `上传素材 ${percent}%`, duration: 0 }));
+        } finally {
+            message.destroy(key);
+        }
+    }, [message]);
+
     const replaceAudioNodeFile = useCallback(
         async (nodeId: string, file: File) => {
             if (!isAudioFile(file)) throw new Error("请选择 MP3、WAV、M4A、AAC、FLAC 或 OGG 音频文件");
-            const audio = await uploadMediaFile(file, "audio");
+            const audio = await uploadReplacement(nodeId, (onProgress) => uploadMediaFile(file, "audio", { onProgress }));
             const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
             setNodes((prev) =>
                 prev.map((node) =>
@@ -73,7 +83,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
             setSelectedNodeIds(new Set([nodeId]));
             setSelectedConnectionId(null);
         },
-        [setNodes, setSelectedConnectionId, setSelectedNodeIds],
+        [setNodes, setSelectedConnectionId, setSelectedNodeIds, uploadReplacement],
     );
 
     const handleImageInputChange = useCallback(
@@ -94,7 +104,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
                         return;
                     }
                     if (file.type.startsWith("video/")) {
-                        const video = await uploadMediaFile(file, "video");
+                        const video = await uploadReplacement(target.nodeId, (onProgress) => uploadMediaFile(file, "video", { onProgress }));
                         const nextSize = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
                         setNodes((prev) =>
                             prev.map((node) =>
@@ -126,7 +136,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
                             return;
                         }
                     }
-                    const image = await uploadCanvasImage(file);
+                    const image = await uploadReplacement(target.nodeId, (onProgress) => uploadCanvasImage(file, { onProgress }));
                     const imageSize = isPanorama ? NODE_DEFAULT_SIZE[CanvasNodeType.Panorama] : fitCanvasImageNodeSize(image.width, image.height);
                     setNodes((prev) =>
                         prev.map((node) =>
@@ -187,7 +197,7 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
                 event.target.value = "";
             }
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, nodesRef, replaceAudioNodeFile, screenToCanvas, size.height, size.width],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, nodesRef, replaceAudioNodeFile, screenToCanvas, size.height, size.width, uploadReplacement],
     );
 
     const handleDrop = useCallback(

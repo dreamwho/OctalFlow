@@ -1074,8 +1074,7 @@ function previewRequest(body: Record<string, unknown> | null) {
     return messages
         .map((item) => messageText(record(item).content))
         .filter(Boolean)
-        .join("\n")
-        .slice(0, 500);
+        .join("\n");
 }
 
 function normalizeRuntimePath(value: string) {

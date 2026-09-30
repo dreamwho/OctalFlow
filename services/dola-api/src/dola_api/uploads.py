@@ -112,6 +112,19 @@ def _proxy_options(proxy_url: str | None) -> dict[str, Any]:
     return {"proxy": proxy_url} if proxy_url else {}
 
 
+def _imagex_upload_proxy(proxy_url: str | None, mode: str | None = None) -> str | None:
+    # Browser submission keeps its configured egress. ImageX's signed Apply,
+    # binary upload and Commit share the independently selected upload egress.
+    egress = mode or os.getenv("DOLA_IMAGEX_UPLOAD_EGRESS", "direct").strip().lower()
+    if egress == "managed":
+        if not proxy_url or urlsplit(proxy_url).scheme not in {"http", "https", "socks5", "socks5h"}:
+            raise RuntimeError("imagex_upload_proxy_unavailable")
+        return proxy_url
+    if egress not in {"direct", "proxy"}:
+        raise RuntimeError("imagex_upload_egress_invalid")
+    return proxy_url if egress == "proxy" else None
+
+
 def _signed_reference_url(url: str) -> bool:
     parsed = urlsplit(url)
     query = dict(parse_qsl(parsed.query))
@@ -199,7 +212,7 @@ async def _prepare_upload(page: Any) -> dict[str, Any]:
     return data["data"]
 
 
-async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | None = None) -> dict[str, Any]:
+async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | None = None, imagex_proxy_mode: str | None = None, imagex_proxy_url: str | None = None) -> dict[str, Any]:
     existing_uri = str(item.get("uri") or "").strip()
     if existing_uri:
         return {"uri": existing_uri, "name": str(item.get("name") or "image.png"), "width": int(item.get("width") or 0), "height": int(item.get("height") or 0), "mime": str(item.get("mime") or "image/png")}
@@ -215,7 +228,7 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
         raise RuntimeError("prepare_upload_config_incomplete")
     ext = PurePosixPath(file_name).suffix.lower() or mimetypes.guess_extension(mime) or ".png"
     timeout = httpx.Timeout(90.0, connect=30.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(proxy_url)) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(_imagex_upload_proxy(imagex_proxy_url if imagex_proxy_mode else proxy_url, imagex_proxy_mode))) as client:
         apply_params = {"Action": "ApplyImageUpload", "Version": IMAGEX_API_VERSION, "ServiceId": service_id, "FileSize": str(len(content)), "FileExtension": ext, "s": _random_base36()}
         apply_url = f"https://{imagex_host}/?{urlencode(apply_params)}"
         try:
@@ -263,11 +276,11 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
     return {"uri": uri, "name": str(plugin.get("FileName") or PurePosixPath(uri).name or file_name), "width": int(plugin.get("ImageWidth") or item.get("width") or 0), "height": int(plugin.get("ImageHeight") or item.get("height") or 0), "size": int(plugin.get("ImageSize") or len(content)), "mime": mime}
 
 
-async def resolve_references(page: Any, references: list[dict[str, Any]], proxy_url: str | None = None) -> list[dict[str, Any]]:
+async def resolve_references(page: Any, references: list[dict[str, Any]], proxy_url: str | None = None, imagex_proxy_mode: str | None = None, imagex_proxy_url: str | None = None) -> list[dict[str, Any]]:
     resolved: list[dict[str, Any]] = []
     for index, item in enumerate(references, 1):
         try:
-            resolved.append(await upload_reference(page, item, proxy_url))
+            resolved.append(await upload_reference(page, item, proxy_url, imagex_proxy_mode, imagex_proxy_url))
         except Exception as error:
             raise RuntimeError(f"reference_{index}_of_{len(references)}: {str(error).strip() or type(error).__name__}") from error
     return resolved

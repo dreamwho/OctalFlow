@@ -20,12 +20,15 @@ test("packaging copies only compiled runtime and never imports account data or e
             "/api/admin/users/route": "app/api/admin/users/route.js",
             "/api/desktop/cloud-bootstrap/route": "app/api/desktop/cloud-bootstrap/route.js",
             "/api/admin/dola/accounts/route": "app/api/admin/dola/accounts/route.js",
+            "/api/canvas/projects/[id]/route": "app/api/canvas/projects/[id]/route.js",
+            "/api/video-tasks/[id]/route": "app/api/video-tasks/[id]/route.js",
             "/api/desktop/runtime/route": "app/api/desktop/runtime/route.js",
             "/api/desktop/bootstrap/route": "app/api/desktop/bootstrap/route.js",
             "/(user)/billing/page": "app/(user)/billing/page.js",
             "/(user)/community/page": "app/(user)/community/page.js",
             "/login/page": "app/login/page.js",
             "/canvas/page": "app/canvas/page.js",
+            "/(user)/canvas/[id]/page": "app/(user)/canvas/[id]/page.js",
         };
         await mkdir(path.join(standalone, ".next-audit/server/app"), { recursive: true });
         for (const modulePath of Object.values(manifest)) {
@@ -51,7 +54,9 @@ test("packaging copies only compiled runtime and never imports account data or e
         await mkdir(path.join(source, "web/.next-audit/static"), { recursive: true });
         await writeFile(path.join(source, "web/.next-audit/static/app.js"), "hydrate");
         await mkdir(path.join(source, "web/.next-audit/static/chunks"), { recursive: true });
-        for (const chunk of ["billing.js", "canvas.js", "shared.js"]) await writeFile(path.join(source, `web/.next-audit/static/chunks/${chunk}`), chunk);
+        for (const chunk of ["billing.js", "canvas.js", "shared.js", "canvas-lazy.js", "canvas-deep.js"]) await writeFile(path.join(source, `web/.next-audit/static/chunks/${chunk}`), chunk);
+        await writeFile(path.join(source, "web/.next-audit/static/chunks/canvas.js"), 'load("static/chunks/canvas-lazy.js")');
+        await writeFile(path.join(source, "web/.next-audit/static/chunks/canvas-lazy.js"), 'load("static/chunks/canvas-deep.js")');
         await writeFile(path.join(standalone, ".next-audit/build-manifest.json"), JSON.stringify({ rootMainFiles: ["static/chunks/shared.js"] }));
         await mkdir(path.join(source, "web/public"), { recursive: true });
         await mkdir(path.join(source, "web/scripts"), { recursive: true });
@@ -94,7 +99,7 @@ test("packaging copies only compiled runtime and never imports account data or e
         assert.ok((await stat(path.join(output, "web/.next-audit/standalone/.next-audit"))).isDirectory());
         assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/app.js"), "utf8"), "hydrate");
         const packagedRoutes = JSON.parse(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/app-paths-manifest.json"), "utf8"));
-        assert.deepEqual(Object.keys(packagedRoutes), ["/api/admin/dola/accounts/route", "/api/desktop/runtime/route", "/api/desktop/bootstrap/route", "/canvas/page"]);
+        assert.deepEqual(Object.keys(packagedRoutes), ["/api/admin/dola/accounts/route", "/api/canvas/projects/[id]/route", "/api/video-tasks/[id]/route", "/api/desktop/runtime/route", "/api/desktop/bootstrap/route", "/canvas/page", "/(user)/canvas/[id]/page"]);
         assert.equal(await stat(path.join(output, "web/.next-audit/standalone/.next-audit/server/app/api/billing/orders/route.js")).catch(() => null), null);
         assert.match(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/app/api/admin/dola/accounts/route.js"), "utf8"), /server\/chunks\/local-shared\.js/);
         assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/chunks/cloud-only.js"), "utf8"), "cloud-only.js");
@@ -102,7 +107,9 @@ test("packaging copies only compiled runtime and never imports account data or e
         assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/chunks/orphan.js"), "utf8"), "orphan.js");
         assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/server/chunks/local-shared.js"), "utf8"), "local-shared.js");
         assert.equal(await stat(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/billing.js")).catch(() => null), null);
-        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/canvas.js"), "utf8"), "canvas.js");
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/canvas.js"), "utf8"), 'load("static/chunks/canvas-lazy.js")');
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/canvas-lazy.js"), "utf8"), 'load("static/chunks/canvas-deep.js")');
+        assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/canvas-deep.js"), "utf8"), "canvas-deep.js");
         assert.equal(await readFile(path.join(output, "web/.next-audit/standalone/.next-audit/static/chunks/shared.js"), "utf8"), "shared.js");
         const commercialOutput = path.join(directory, "commercial-output");
         await prepareRuntime({ ...options, edition: "commercial", outputRoot: commercialOutput });

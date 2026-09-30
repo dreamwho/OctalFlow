@@ -4,6 +4,14 @@ import type { QueryExecutor } from "./postgres";
 import { DolaRequestLogRepository } from "./dola-request-log-repository";
 
 describe("DolaRequestLogRepository", () => {
+    it("rejects a concurrent stale update after cancellation at the SQL boundary", async () => {
+        const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
+        const repository = new DolaRequestLogRepository({ query } as unknown as QueryExecutor);
+        await repository.update({ id: "cancel-race", createdAt: new Date().toISOString(), source: "runtime", capability: "video", method: "POST", path: "/v1/videos", model: "dola-seedance-2-5", phase: "generating", statusCode: 200, durationMs: 10, quotaRemaining: 0.5 });
+        expect(query.mock.calls[0]?.[0]).toContain("WHERE id=$1 AND phase<>'cancelled'");
+        expect(query.mock.calls[0]?.[0]).toContain("quota_remaining=$20::numeric");
+        expect(query.mock.calls[0]?.[1]?.[19]).toBe(0.5);
+    });
     it("uses targeted status, proxy and keyword filters with pagination", async () => {
         const query = vi.fn()
             .mockResolvedValueOnce({ rows: [{ total: 2 }], rowCount: 1 })

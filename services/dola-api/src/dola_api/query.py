@@ -274,7 +274,7 @@ def parse_account_login_state(value: Any) -> str:
     return "unknown"
 
 
-async def probe_account_login(cookie: str, proxy_url: str | None = None) -> dict[str, Any]:
+async def probe_account_login(cookie: str, proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
     """Check the Cookie login state through Dola's read-only launch protocol."""
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options: dict[str, Any] = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
@@ -284,7 +284,7 @@ async def probe_account_login(cookie: str, proxy_url: str | None = None) -> dict
         async with httpx.AsyncClient(**client_options) as client:
             response = await client.post(
                 f"https://www.dola.com/alice/user/launch?{_launch_query(cookie)}",
-                headers=_headers(cookie),
+                headers=_headers(cookie, http_identity=http_identity),
                 json={"select": {"launch_config": True, "assistant_bot_info": True, "landing_config": True, "user_info": True}},
             )
         try:
@@ -301,34 +301,43 @@ async def probe_account_login(cookie: str, proxy_url: str | None = None) -> dict
         return {"state": "unknown", "transport": "http-launch", "error": type(error).__name__}
 
 
-def _headers(cookie: str, conversation_id: str = "") -> dict[str, str]:
+def _headers(cookie: str, conversation_id: str = "", http_identity: dict[str, str] | None = None) -> dict[str, str]:
+    # http_identity 携带账号级 UA/语言/客户端提示覆盖（随机指纹身份或桌面端透传的真实身份），
+    # 未提供时保持全站统一的固定 Chrome/Windows 头，行为与历史版本一致。
+    overrides = {
+        "userAgent": "user-agent",
+        "acceptLanguage": "accept-language",
+        "secCHUA": "sec-ch-ua",
+        "secCHUAPlatform": "sec-ch-ua-platform",
+    }
+    identity = {header: http_identity[key] for key, header in overrides.items() if isinstance(http_identity, dict) and isinstance(http_identity.get(key), str) and http_identity.get(key)}
     return {
         "accept": "application/json, text/plain, */*",
-        "accept-language": "zh-CN,zh;q=0.9",
+        "accept-language": identity.get("accept-language", "zh-CN,zh;q=0.9"),
         "content-type": "application/json; encoding=utf-8",
         "agw-js-conv": "str",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/146.0.0.0 Safari/537.36",
+        "user-agent": identity.get("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/146.0.0.0 Safari/537.36"),
         "cookie": cookie,
         "origin": "https://www.dola.com",
         "referer": f"https://www.dola.com/chat/{conversation_id}" if conversation_id else "https://www.dola.com/chat/",
-        "sec-ch-ua": '"Not-A.Brand";v="24", "Chromium";v="146"',
+        "sec-ch-ua": identity.get("sec-ch-ua", '"Not-A.Brand";v="24", "Chromium";v="146"'),
         "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
+        "sec-ch-ua-platform": identity.get("sec-ch-ua-platform", '"Windows"'),
     }
 
 
-async def fetch_video_url(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None) -> str:
-    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url)
+async def fetch_video_url(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> str:
+    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity)
     return str(result.get("url") or "")
 
 
-async def fetch_video_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None) -> dict[str, Any]:
+async def fetch_video_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
     """Backward-compatible alias returning only the video result fields."""
-    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url)
+    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity)
     return {"url": result.get("url") or "", "payload": result.get("payload")}
 
 
-async def fetch_generation_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None) -> dict[str, Any]:
+async def fetch_generation_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
     query = _identity_query(identity, cookie)
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
@@ -341,7 +350,7 @@ async def fetch_generation_result(cookie: str, conversation_id: str, identity: d
     async with httpx.AsyncClient(**client_options) as client:
         for path, request_payload in generation_query_payloads(conversation_id):
             try:
-                response = await client.post(f"https://www.dola.com{path}?{query}", headers=_headers(cookie, conversation_id), json=request_payload)
+                response = await client.post(f"https://www.dola.com{path}?{query}", headers=_headers(cookie, conversation_id, http_identity), json=request_payload)
                 if response.status_code < 200 or response.status_code >= 300:
                     continue
                 body = response.json()
@@ -401,8 +410,9 @@ def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
     if refusal:
         return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": refusal, "rawError": latest_reply}
 
-    # A stale active creation may remain in the chain after a final failure
-    # reply. The latest assistant message above takes precedence.
+    # An explicit latest failure can supersede a stale active creation. A
+    # conversational duration claim is not such a failure: 30-second media
+    # has been observed after a reply that spoke about the first 15 seconds.
     if _has_creation_block(payloads):
         return {}
 
@@ -606,8 +616,8 @@ def _classify_refusal_code(text: str) -> str:
         return "upstream_quota_insufficient"
     if "服务访问频繁" in text or "710022002" in text or ("频繁" in text and "稍后" in text):
         return "rate_limited"
-    if "视频" in text and ("无法直接生成" in text or "不支持该时长" in text):
-        return "upstream_unsupported_duration"
+    # Duration claims in conversational replies are not terminal protocol
+    # errors: observed 30-second media can follow a "15-second" reply.
     if any(k in text for k in ("视频生成失败", "图片生成失败", "出了点问题", "生成失败", "无法生成")):
         return "upstream_generation_failed"
     return ""
@@ -626,7 +636,7 @@ def match_recent_conversation_id(value: Any, local_conversation_id: str) -> str:
     return ""
 
 
-async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], local_conversation_id: str, proxy_url: str | None = None) -> str:
+async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], local_conversation_id: str, proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> str:
     """Recover only a recent conversation correlated with this submit request."""
     query = _identity_query(identity, cookie)
     payload = {
@@ -656,7 +666,7 @@ async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], lo
         client_options["proxy"] = proxy_url
     try:
         async with httpx.AsyncClient(**client_options) as client:
-            response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie), json=payload)
+            response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie, http_identity=http_identity), json=payload)
             if response.status_code < 200 or response.status_code >= 300:
                 return ""
             return match_recent_conversation_id(response.json(), local_conversation_id)

@@ -1,7 +1,7 @@
 import { runCustomImageTask, pollCustomImageTask } from "@/app/api/image-tasks/image-task-custom";
 import { runGeminiImageTask } from "@/app/api/image-tasks/image-task-gemini";
 import { runOpenAiImageTask } from "@/app/api/image-tasks/image-task-openai";
-import { directRemoteImageResult, imageReferenceToFile, imageUnits, ImageQueryContractError, ImageUpstreamTerminalError, inlineRemoteImageResult, pollOpenAiImageTask, resolveProxiedMediaSource } from "@/app/api/image-tasks/image-task-support";
+import { withSystemPrompt, directRemoteImageResult, imageReferenceToFile, imageUnits, ImageQueryContractError, ImageUpstreamTerminalError, inlineRemoteImageResult, pollOpenAiImageTask, resolveProxiedMediaSource } from "@/app/api/image-tasks/image-task-support";
 import type { ImageTaskMediaResult, ImageTaskResult, ImageTaskRunResult } from "@/app/api/image-tasks/image-task-types";
 import { stableMediaUrl, writeImageGenerationLog } from "@/app/api/image-tasks/image-task-runner";
 import { getAuthSettings, refundUserPoints } from "@/lib/auth/store";
@@ -49,7 +49,7 @@ export async function createImageTaskUpstreamStep(task: ImageTask, origin: strin
                 imageTaskId: candidate.id,
                 userId: candidate.userId,
                 appId: runningHub.appId,
-                prompt: candidate.prompt,
+                prompt: withSystemPrompt(candidate.config, candidate.prompt),
                 files,
                 size: candidate.config.size,
                 quality: candidate.config.quality,

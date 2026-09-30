@@ -32,6 +32,12 @@ proxy-groups:
       - dreamyo-Subscription
     proxies:
       - DIRECT
+  - name: dreamyo-ChatGPTUpload
+    type: select
+    use:
+      - dreamyo-Subscription
+    proxies:
+      - DIRECT
   - name: dreamyo-DolaAPI
     type: select
     use:
@@ -80,6 +86,11 @@ listeners:
     listen: 127.0.0.1
     port: 17892
     proxy: dreamyo-ChatGPTAPI
+  - name: dreamyo-ChatGPTUpload
+    type: mixed
+    listen: 127.0.0.1
+    port: 17895
+    proxy: dreamyo-ChatGPTUpload
   - name: dreamyo-DolaAPI
     type: mixed
     listen: 127.0.0.1

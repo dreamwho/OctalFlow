@@ -62,10 +62,10 @@ class AIStudioClient:
         self._streaming_gateway = StreamingGateway(session=self._session)
 
     async def warmup(self) -> None:
-        """预热浏览器后端并加载 AI Studio 页面。"""
+        """预热浏览器、AI Studio 页面与默认请求模板，首个请求跳过约 20s 冷启动。"""
         if self._session is not None:
-            await self._session.ensure_context()
-            logger.info("浏览器预热完成")
+            await self._session.ensure_botguard_service()
+            logger.info("浏览器预热完成（页面与默认模板已就绪）")
 
     async def close(self) -> None:
         """释放浏览器进程及其专用执行线程。"""
@@ -375,6 +375,12 @@ class AIStudioClient:
             raw_response=raw_text,
         )
         if status != 200:
+            # A replayed wire shape can go stale (page deploys, session-bound
+            # fields); drop the cached template so the next capture rebuilds it.
+            try:
+                await self._session.invalidate_template(normalized_model)
+            except Exception:
+                pass
             raise classify_error(status, raw_text)
         output = parse_image_output(raw_text)
         output.model = normalized_model

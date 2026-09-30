@@ -28,6 +28,10 @@ FlareSolverrRequestMethod = Callable[[str, bytes, dict[str, str], float], bytes]
 DEFAULT_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT = 30
 MAX_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT = 10000
 MAGIC_PROXY_OVERRIDE_KEY = "dreamyo_magic_proxy_override"
+SIGNED_UPLOAD_PROXY_OVERRIDE_KEY = "dreamyo_signed_upload_proxy_override"
+SIGNED_UPLOAD_MODE_KEY = "dreamyo_signed_upload_mode"
+SIGNED_UPLOAD_MAGIC_NODE_KEY = "dreamyo_signed_upload_magic_node"
+SIGNED_UPLOAD_MODES = {"auto", "magic", "submit", "direct"}
 PROXY_SELECTION_KEY = "dreamyo_proxy_selection"
 PROXY_SELECTION_MODES = {"native", "magic", "chained"}
 PROXY_SELECTION_NATIVE_SOURCES = {"manual", "ipwo"}
@@ -295,6 +299,27 @@ class ProxySettingsStore:
         self._egress_inflight: dict[str, int] = {}
         self._lock = threading.RLock()
         self._egress_condition = threading.Condition(self._lock)
+
+    def signed_upload_profile(self, submit_profile: ProxyRuntimeProfile) -> ProxyRuntimeProfile:
+        """Route only the signed binary PUT; ChatGPT file APIs keep submit egress."""
+        configuration = self._proxy_configuration()
+        mode = _clean(configuration.get(SIGNED_UPLOAD_MODE_KEY)) or "auto"
+        if mode not in SIGNED_UPLOAD_MODES:
+            raise ProxyReferenceUnavailableError("图片上传代理模式无效")
+        magic_url = _clean(configuration.get(SIGNED_UPLOAD_PROXY_OVERRIDE_KEY))
+        if mode == "submit" or (mode == "auto" and not magic_url):
+            return submit_profile
+        if mode == "direct":
+            return ProxyRuntimeProfile()
+        if not magic_url:
+            raise ProxyReferenceUnavailableError("图片上传魔法代理未配置，请选择节点或改为跟随提交")
+        return ProxyRuntimeProfile(
+            proxy_url=normalize_proxy_url(magic_url),
+            proxy_source="magic_upload",
+            egress_key="magic_upload",
+            egress_label="ChatGPT 图片上传魔法代理",
+            egress_mode="magic",
+        )
 
     def get_profile(
         self,

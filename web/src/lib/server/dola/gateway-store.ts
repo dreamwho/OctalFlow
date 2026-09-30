@@ -4,11 +4,11 @@ import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib
 import { decryptSecretValue, encryptSecretValue, isEncryptionKeyReady } from "@/lib/server/secret-crypto";
 
 const FILE_NAME = "dola/gateway.json";
-export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; pollIntervalMs: number; captureFailureScreenshot: boolean; dispatchGroups: string[] };
+export type DolaGatewaySettings = { enabled: boolean; autoWatermark: boolean; rotationLimit: number; pollIntervalMs: number; captureFailureScreenshot: boolean; randomFingerprint: boolean; dispatchGroups: string[] };
 export type DolaApiKey = { id: string; name: string; prefix: string; key?: string; status: "active" | "disabled"; expiresAt?: string; allowedIps: string[]; requestCount: number; lastUsedAt?: string; createdAt: string };
 type StoredKey = DolaApiKey & { hash: string; keyCiphertext?: string };
 type Database = { gateway: DolaGatewaySettings; apiKeys: StoredKey[] };
-const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, pollIntervalMs: 2_500, captureFailureScreenshot: false, dispatchGroups: [] }, apiKeys: [] };
+const EMPTY: Database = { gateway: { enabled: false, autoWatermark: true, rotationLimit: 2, pollIntervalMs: 2_500, captureFailureScreenshot: false, randomFingerprint: false, dispatchGroups: [] }, apiKeys: [] };
 
 export async function getDolaGatewaySettings() {
     const db = await readDatabase();
@@ -18,6 +18,7 @@ export async function getDolaGatewaySettings() {
         rotationLimit: db.gateway?.rotationLimit ?? 2,
         pollIntervalMs: db.gateway?.pollIntervalMs ?? 2_500,
         captureFailureScreenshot: db.gateway?.captureFailureScreenshot ?? false,
+        randomFingerprint: db.gateway?.randomFingerprint ?? false,
         dispatchGroups: Array.isArray(db.gateway?.dispatchGroups) ? [...db.gateway.dispatchGroups] : [],
     };
 }
@@ -30,6 +31,7 @@ export async function updateDolaGatewaySettings(patch: Partial<Omit<DolaGatewayS
         if (typeof patch.rotationLimit === "number" && Number.isSafeInteger(patch.rotationLimit) && patch.rotationLimit >= 0) db.gateway.rotationLimit = patch.rotationLimit;
         if (typeof patch.pollIntervalMs === "number" && Number.isSafeInteger(patch.pollIntervalMs) && patch.pollIntervalMs > 0) db.gateway.pollIntervalMs = patch.pollIntervalMs;
         if (typeof patch.captureFailureScreenshot === "boolean") db.gateway.captureFailureScreenshot = patch.captureFailureScreenshot;
+        if (typeof patch.randomFingerprint === "boolean") db.gateway.randomFingerprint = patch.randomFingerprint;
         if (patch.dispatchGroups === null || Array.isArray(patch.dispatchGroups)) db.gateway.dispatchGroups = normalizeGroups(patch.dispatchGroups);
         value = { ...db.gateway };
     });
@@ -123,6 +125,7 @@ async function readDatabase(): Promise<Database> {
             rotationLimit: Number.isSafeInteger(rotationLimit) && (rotationLimit ?? 0) >= 0 ? rotationLimit as number : 2,
             pollIntervalMs: Number.isSafeInteger(pollIntervalMs) && (pollIntervalMs ?? 0) > 0 ? pollIntervalMs as number : 2_500,
             captureFailureScreenshot: value.gateway?.captureFailureScreenshot === true,
+            randomFingerprint: value.gateway?.randomFingerprint === true,
             dispatchGroups: normalizeGroups(value.gateway?.dispatchGroups),
         },
         apiKeys: Array.isArray(value.apiKeys) ? structuredClone(value.apiKeys) : [],

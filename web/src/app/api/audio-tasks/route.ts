@@ -1,3 +1,4 @@
+import { applyGenerationPromptRule, DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
 import { after, NextResponse } from "next/server";
 
 import { readJsonBody } from "@/lib/auth/request";
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
         if (resolvedChannels.length && !channels.length) return NextResponse.json({ error: "当前用户角色无权使用该音频模型" }, { status: 403 });
         if (!supportedChannels.length || !prompt) return NextResponse.json({ error: "音频任务参数不完整或渠道不支持" }, { status: 400 });
         const configs: AudioTaskConfig[] = supportedChannels
-            .map((channel) => ({ ...channel, ...resolveAudioTaskOptions(body.config, settings.generationDefaults), instructions: clean(body.config?.instructions, 2_000) }))
+            .map((channel) => ({ ...channel, ...resolveAudioTaskOptions(body.config, settings.generationDefaults), instructions: applyGenerationPromptRule(clean(body.config?.instructions, 2_000), settings.generationDefaults.promptRules?.audio || DEFAULT_GENERATION_PROMPT_RULES.audio) }))
             .filter((config) => isMiniMaxVoiceFeatureEnabled(config, config.audioMode));
         if (!configs.length) return NextResponse.json({ error: "音频渠道不可用或未启用" }, { status: 403 });
         const requestId = body.context?.clientRequestId?.trim();

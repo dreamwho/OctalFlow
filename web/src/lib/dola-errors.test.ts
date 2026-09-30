@@ -25,6 +25,8 @@ describe("dola-errors", () => {
         expect(shouldRotateAccountForError("HTTP 429")).toBe(true);
         expect(shouldRotateAccountForError("protocol_validation_failed:page_identity_unavailable")).toBe(true);
         expect(shouldRotateAccountForError("submission_transport_result_timeout")).toBe(true);
+        expect(shouldRotateAccountForError("uploading_references: reference_2_of_9: imagex_upload_WriteTimeout")).toBe(false);
+        expect(shouldRotateAccountForError("uploading_references: reference_1_of_9: imagex_apply_ConnectError")).toBe(false);
         expect(shouldRotateAccountForError("sensitive content blocked")).toBe(false);
         expect(shouldRotateAccountForError("invalid request: 缺少参数")).toBe(false);
         expect(shouldRotateAccountForError("")).toBe(false);
@@ -45,6 +47,7 @@ describe("dola-errors", () => {
         expect(isDolaPreparingTask({ status: "running", conversationId: "38418080062463249", diagnostics: { submitStage: "uploading_references" } })).toBe(false);
         expect(describeDolaFailure("uploading_references: reference_3_of_9: reference_fetch_ConnectError")).toContain("尚未向 Dola 提交");
         expect(describeDolaFailure("uploading_references: reference_3_of_9: imagex_apply_ConnectError")).toContain("上传服务连接失败");
+        expect(describeDolaFailure("uploading_references: reference_2_of_9: imagex_upload_WriteTimeout")).toContain("尚未向 Dola 提交");
     });
 
     it("网关描述拼接错误码与注释，未知错误给兜底说明", () => {

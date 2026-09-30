@@ -60,8 +60,8 @@ describe("Docker Compose contracts", () => {
 
     it("keeps static providers and listeners in secret-free bootstraps", () => {
         expect(validateMihomoBootstrapContracts({ repoRoot })).toEqual([
-            { file: "docker/mihomo/bootstrap.yaml", listenHost: "0.0.0.0", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892, 17893] },
-            { file: "docker/mihomo/bootstrap-host.yaml", listenHost: "127.0.0.1", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892, 17893] },
+            { file: "docker/mihomo/bootstrap.yaml", listenHost: "0.0.0.0", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892, 17895, 17893] },
+            { file: "docker/mihomo/bootstrap-host.yaml", listenHost: "127.0.0.1", providerPath: "/root/.config/mihomo/runtime/subscription.yaml", listenerPorts: [17890, 17891, 17892, 17895, 17893] },
         ]);
     });
 

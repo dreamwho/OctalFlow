@@ -472,3 +472,93 @@ async function postSignedWebhook(request: APIRequestContext, rawBody: string) {
     const signature = createHmac("sha256", E2E_PAYMENT_WEBHOOK_SECRET).update(rawBody).digest("hex");
     return request.post("/api/billing/webhooks/payply", { data: rawBody, headers: { "content-type": "application/json", "x-dreamyo-signature": signature } });
 }
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 430, height: 932 }]) {
+    for (const theme of ["light", "dark"]) {
+        test(`prompt rules save, reload and fit ${viewport.width}px ${theme}`, async ({ page, request }, testInfo) => {
+            const response = await request.get("/api/admin/settings");
+            expect(response.ok()).toBe(true);
+            const before = (await response.json()).settings;
+            try {
+                await request.patch("/api/admin/settings", { data: { site: { ...before.site, adminTheme: theme } } });
+                await page.setViewportSize(viewport);
+                await page.goto("/admin?section=settings", { waitUntil: "domcontentloaded" });
+                await expect(page.locator(".admin-dashboard-shell")).toHaveAttribute("data-hydrated", "true");
+                await page.getByRole("tab", { name: "生成控制" }).click();
+                const toggle = page.getByRole("switch", { name: "图片参考素材约束开关", exact: true });
+                const content = page.getByRole("textbox", { name: "图片参考素材约束内容", exact: true });
+                await expect(toggle).toHaveAttribute("aria-checked", "true");
+                await toggle.click();
+                await content.fill("只保留 {{referenceLabelsZh}} 的面部身份。\n允许按用户要求修改服饰。");
+                await page.getByRole("button", { name: "保存系统设置" }).click();
+                await expect(page.getByText("系统设置已保存", { exact: true })).toBeVisible();
+                await expect(toggle).toHaveAttribute("aria-checked", "false");
+                const saved = (await (await request.get("/api/admin/settings")).json()).settings;
+                expect(saved.generationDefaults.promptRules.imageReference).toEqual({ enabled: false, content: "只保留 {{referenceLabelsZh}} 的面部身份。\n允许按用户要求修改服饰。" });
+                expect(JSON.stringify((await (await request.get("/api/auth/session")).json()).settings)).not.toContain("promptRules");
+                await page.reload({ waitUntil: "domcontentloaded" });
+                await page.getByRole("tab", { name: "生成控制" }).click();
+                await expect(toggle).toHaveAttribute("aria-checked", "false");
+                await expect(content).toHaveValue(saved.generationDefaults.promptRules.imageReference.content);
+                await toggle.click();
+                await page.getByRole("button", { name: "保存系统设置" }).click();
+                await expect(page.getByText("系统设置已保存", { exact: true })).toBeVisible();
+                expect((await (await request.get("/api/admin/settings")).json()).settings.generationDefaults.promptRules.imageReference.enabled).toBe(true);
+                await content.scrollIntoViewIfNeeded();
+                const geometry = await page.locator("[data-prompt-rule=imageReference]").evaluate((element) => {
+                    const rect = element.getBoundingClientRect();
+                    const input = element.querySelector("textarea")!.getBoundingClientRect();
+                    return { left: rect.left, right: rect.right, inputLeft: input.left, inputRight: input.right, viewport: innerWidth, display: getComputedStyle(element.parentElement!).display, overflow: document.documentElement.scrollWidth - innerWidth };
+                });
+                expect(geometry.display).toBe("grid");
+                expect(geometry.left).toBeGreaterThanOrEqual(0);
+                expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+                expect(geometry.inputLeft).toBeGreaterThanOrEqual(geometry.left);
+                expect(geometry.inputRight).toBeLessThanOrEqual(geometry.right);
+                expect(geometry.overflow).toBeLessThanOrEqual(0);
+                await page.screenshot({ path: testInfo.outputPath(`prompt-rules-${viewport.width}-${theme}.png`) });
+            } finally {
+                const restored = await request.patch("/api/admin/settings", { data: { site: before.site, generationDefaults: before.generationDefaults } });
+                expect(restored.ok()).toBe(true);
+            }
+        });
+    }
+}
+
+test("all prompt rule switches and contents persist independently", async ({ page, request }) => {
+    const before = (await (await request.get("/api/admin/settings")).json()).settings.generationDefaults;
+    const labels = {
+        imageReference: "图片参考素材约束", sub2ApiImageReference: "Sub2API 图片编辑约束", panorama: "全景节点输出约束",
+        videoReference: "视频参考素材约束", videoFirstFrame: "视频首帧约束", videoFirstLastFrame: "视频首尾帧约束",
+        minimaxH3Base: "MiniMax H3 文生 / 首尾帧包装", minimaxH3Reference: "MiniMax H3 多模态参考包装", minimaxH3Bindings: "MiniMax H3 素材绑定说明",
+        image: "图片通用优化规则", video: "视频通用优化规则", text: "文本通用优化规则", audio: "音频通用优化规则",
+    };
+    try {
+        await page.goto("/admin?section=settings", { waitUntil: "domcontentloaded" });
+        await expect(page.locator(".admin-dashboard-shell")).toHaveAttribute("data-hydrated", "true");
+        await page.getByRole("tab", { name: "生成控制" }).click();
+        for (const [key, label] of Object.entries(labels)) {
+            const toggle = page.getByRole("switch", { name: `${label}开关`, exact: true });
+            if (await toggle.getAttribute("aria-checked") === "true") await toggle.click();
+            await page.getByRole("textbox", { name: `${label}内容`, exact: true }).fill(key === "panorama" ? "" : `${label} 自定义内容\n第二行`);
+        }
+        await page.getByRole("button", { name: "保存系统设置" }).click();
+        await expect(page.getByText("系统设置已保存", { exact: true })).toBeVisible();
+        const saved = (await (await request.get("/api/admin/settings")).json()).settings.generationDefaults.promptRules;
+        for (const [key, label] of Object.entries(labels)) expect(saved[key]).toEqual({ enabled: false, content: key === "panorama" ? "" : `${label} 自定义内容\n第二行` });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.getByRole("tab", { name: "生成控制" }).click();
+        for (const [key, label] of Object.entries(labels)) {
+            const toggle = page.getByRole("switch", { name: `${label}开关`, exact: true });
+            await expect(toggle).toHaveAttribute("aria-checked", "false");
+            await expect(page.getByRole("textbox", { name: `${label}内容`, exact: true })).toHaveValue(saved[key].content);
+            await toggle.click();
+        }
+        await page.getByRole("button", { name: "保存系统设置" }).click();
+        await expect(page.getByText("系统设置已保存", { exact: true })).toBeVisible();
+        const enabled = (await (await request.get("/api/admin/settings")).json()).settings.generationDefaults.promptRules;
+        for (const key of Object.keys(labels)) expect(enabled[key]).toEqual({ ...saved[key], enabled: true });
+    } finally {
+        expect((await request.patch("/api/admin/settings", { data: { generationDefaults: before } })).ok()).toBe(true);
+    }
+});

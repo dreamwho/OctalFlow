@@ -50,7 +50,8 @@ COPY src ./src
 RUN pip install --no-cache-dir '.[browser]' \
     && ok=""; \
     for attempt in 1 2 3 4 5; do \
-        if python -m camoufox fetch; then ok=1; break; fi; \
+        if python -m camoufox fetch \
+           && python -c "from camoufox.pkgman import camoufox_path; camoufox_path(download_if_missing=False)"; then ok=1; break; fi; \
         echo "camoufox fetch attempt $attempt failed, retrying in 15s"; sleep 15; \
     done; \
     [ -n "$ok" ] || { echo "camoufox fetch failed" >&2; exit 1; }

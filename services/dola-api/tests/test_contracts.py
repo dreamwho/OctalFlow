@@ -1,3 +1,4 @@
+import httpx
 from dola_api.protocol import canonical_ratio, sanitize_video_prompt_duration, validate_request
 from dola_api.page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from dola_api.query import decode_main_url, extract_conversation_id, extract_image_urls, extract_main_url, extract_video_url, extract_vod_payload, generation_query_payloads, match_recent_conversation_id, parse_generation_payloads
@@ -104,7 +105,7 @@ def test_camoufox_browser_selection_keeps_binary_and_fingerprint_versions_aligne
     monkeypatch.setenv("DOLA_CAMOUFOX_BROWSER", "135.0.1-beta.24")
     monkeypatch.setenv("DOLA_CAMOUFOX_OS", "macos")
     monkeypatch.setenv("DOLA_PROFILE_DIR", str(tmp_path))
-    options = _camoufox_browser_options(True, "http://proxy.example:8080", "account-1")
+    options = _camoufox_browser_options(True, "http://proxy.example:8080", "account-1", "203.0.113.7")
     assert options["headless"] is True
     assert options["enable_cache"] is False
     assert options["browser"] == "135.0.1-beta.24"
@@ -113,8 +114,9 @@ def test_camoufox_browser_selection_keeps_binary_and_fingerprint_versions_aligne
     assert options["i_know_what_im_doing"] is True
     assert options["os"] == "macos"
     assert options["locale"] == "zh-CN"
-    assert options["geoip"] is True
+    assert options["geoip"] == "203.0.113.7"
     assert options["proxy"] == {"server": "http://proxy.example:8080"}
+    assert _camoufox_browser_options(True, "http://proxy.example:8080", "account-1")["geoip"] is False
     assert isinstance(options["fingerprint_preset"], dict)
     assert options["config"] == _camoufox_browser_options(True, None, "account-1")["config"]
     assert (tmp_path / "account-1" / "fingerprint-preset.json").exists()
@@ -270,6 +272,33 @@ def test_page_submit_persists_ack_conversation_without_real_browser(monkeypatch)
     assert pool._task_meta["task-1"]["conversationId"] == "12345678901234567"
 
 
+def test_page_submit_keeps_30s_task_pending_despite_partial_15s_reply(monkeypatch):
+    import asyncio
+
+    pool = CamoufoxSessionPool()
+    request = VideoRequest(model="dola-seedance-2-5", prompt="手持生活流", duration=30)
+    key = ("account-1", 1, "direct")
+    pool._sessions[key] = PageSession("account-1", 1, "direct", "", "", "sid=abc")
+    pool._tasks["task-partial"] = VideoTask(id="task-partial", model=request.model, status="queued", accountId="account-1")
+    pool._task_meta["task-partial"] = {"accountId": "account-1", "cookie": "sid=abc"}
+    reply = "当前单条视频支持到 15 秒，所以先做前 15 秒段落。后续可以继续生成第 2 段来接完整 30 秒。"
+
+    async def submit(*_args, **_kwargs):
+        return {"status": 200, "ackReceived": True, "conversationId": "12345678901234567", "diagnostics": {"upstreamResponseText": reply}}
+
+    async def persist():
+        return None
+
+    monkeypatch.setattr(pool, "_submit_in_camoufox", submit)
+    monkeypatch.setattr(pool, "_persist", persist)
+    asyncio.run(pool._run_page_submit("task-partial", request, key))
+
+    task = pool._tasks["task-partial"]
+    assert task.status == "accepted"
+    assert task.conversationId == "12345678901234567"
+    assert task.diagnostics["upstreamResponseText"] == reply
+
+
 def test_video_task_screenshot_base64_and_contract():
     task = VideoTask(
         id="task-screenshot-1",
@@ -414,21 +443,52 @@ def test_refresh_task_respects_configured_protocol_poll_interval(monkeypatch):
     assert len(calls) == 2
 
 
+def test_refresh_task_can_complete_after_misleading_15s_reply(monkeypatch):
+    import asyncio
+    import dola_api.session as session_module
+
+    pool = CamoufoxSessionPool()
+    pool._tasks["task-30s"] = VideoTask(id="task-30s", model="dola-seedance-2-5", status="accepted", conversationId="38418045496287761")
+    pool._task_meta["task-30s"] = {"conversationId": "38418045496287761", "cookie": "sid=abc", "identity": {}}
+    reply = "当前单条视频支持到 15 秒，所以先做前 15 秒段落。"
+    results = iter([
+        {"pending": True, "assistantText": reply},
+        {"url": "https://cdn.dola.com/actual-30s.mp4", "assistantText": reply},
+    ])
+
+    async def query(*_args):
+        return next(results)
+
+    async def persist():
+        return None
+
+    monkeypatch.setattr(session_module, "fetch_generation_result", query)
+    monkeypatch.setattr(pool, "_persist", persist)
+    asyncio.run(pool._refresh_task("task-30s"))
+    assert pool._tasks["task-30s"].status == "accepted"
+    pool._task_meta["task-30s"]["lastResultPollAt"] = 0
+    asyncio.run(pool._refresh_task("task-30s"))
+    assert pool._tasks["task-30s"].status == "completed"
+    assert pool._tasks["task-30s"].videoUrl == "https://cdn.dola.com/actual-30s.mp4"
+
+
 def test_refresh_task_recovers_conversation_for_ack_only_task(monkeypatch):
     import asyncio
     import dola_api.session as session_module
 
     pool = CamoufoxSessionPool()
     pool._tasks["task-recover"] = VideoTask(id="task-recover", model="dola-seedance-2-5", status="accepted")
-    pool._task_meta["task-recover"] = {"ackReceived": True, "cookie": "sid=abc", "identity": {}, "localConversationId": "local_this_task"}
+    pool._task_meta["task-recover"] = {"ackReceived": True, "cookie": "sid=abc", "identity": {}, "localConversationId": "local_this_task", "httpIdentity": {"userAgent": "UA-Account"}}
 
-    async def recover_recent(cookie, identity, local_conversation_id, proxy_url=None):
+    async def recover_recent(cookie, identity, local_conversation_id, proxy_url=None, http_identity=None):
         assert cookie == "sid=abc"
         assert local_conversation_id == "local_this_task"
+        assert http_identity == {"userAgent": "UA-Account"}
         return "38417880090853905"
 
-    async def query(cookie, conversation_id, identity, proxy_url=None):
+    async def query(cookie, conversation_id, identity, proxy_url=None, http_identity=None):
         assert conversation_id == "38417880090853905"
+        assert http_identity == {"userAgent": "UA-Account"}
         return {"url": "https://cdn.dola.com/generated.mp4", "imageUrls": [], "payload": {}}
 
     async def persist():
@@ -832,6 +892,9 @@ def test_sanitize_video_prompt_duration_removes_conversational_triggers():
     assert sanitize_video_prompt_duration("一只猫咪在草地上玩耍 30s") == "一只猫咪在草地上玩耍"
     assert sanitize_video_prompt_duration("A futuristic city at night, duration: 30s, cinematic lighting") == "A futuristic city at night，cinematic lighting"
     assert sanitize_video_prompt_duration("30秒") == ""
+    assert sanitize_video_prompt_duration("按 30 秒完整分镜生成：门外吐槽，进门，客厅被惊艳") == "按 完整分镜生成：门外吐槽，进门，客厅被惊艳"
+    assert sanitize_video_prompt_duration("我的 30 秒脚本：妈妈迎接，餐厅问答") == "我的 脚本：妈妈迎接，餐厅问答"
+    assert "30 秒" not in sanitize_video_prompt_duration("完整 30 秒的手持生活流脚本：门外吐槽，进门")
 
 
 def test_build_request_body_for_30s_video_passes_structured_ability_and_clean_prompt():
@@ -850,6 +913,14 @@ def test_build_request_body_for_30s_video_passes_structured_ability_and_clean_pr
     visible_text = body["messages"][0]["content_block"][0]["content"]["text_block"]["text"]
     assert "30秒" not in visible_text
     assert "海边日落" in visible_text
+
+    storyboard = VideoRequest(model="dola-seedance-2-5", prompt="按 30 秒完整分镜生成：门外吐槽，进门，客厅被惊艳", duration=30, ratio="9:16")
+    storyboard_body = _build_request_body(profile, storyboard, [])
+    storyboard_ability = json.loads(storyboard_body["chat_ability"]["ability_param"])
+    assert storyboard_ability["duration"] == 30
+    assert "30 秒" not in storyboard_ability["input_box_content"]["user_input_content"]
+    assert "完整分镜" in storyboard_ability["input_box_content"]["user_input_content"]
+    assert "30 秒" not in storyboard_body["messages"][0]["content_block"][0]["content"]["text_block"]["text"]
 
 
 def test_dola_30s_unlocker_script_contains_required_hooks():
@@ -879,9 +950,8 @@ def test_tts_content_is_kept_as_conversation_reply():
     assert query_module._extract_assistant_text([payload]) == "你的视频生成好了。"
 
 
-def test_conversational_refusal_without_creation_terminates_with_exact_text():
-    # When Dola assistant replies with conversational refusal (e.g. 30s limitation or policy)
-    # without a creation block, parse_generation_payloads must fail the task and preserve the full original text.
+def test_conversational_duration_claim_without_creation_does_not_preempt_video():
+    # Dola can produce a 30-second video after a 15-second conversational claim.
     refusal_text = (
         "视频生成目前支持 4–15 秒。你要求的 30 秒无法直接生成，我建议按完整脚本拆为 3 段各 10 秒竖屏视频，"
         "这样故事更有节奏感，细节也更丰富。我们可以这样安排：A. 生成 3 段 9:16、10 秒视频，分别对应 0–10s / 10–20s / 20–30s..."
@@ -903,9 +973,14 @@ def test_conversational_refusal_without_creation_terminates_with_exact_text():
         }
     }
     result = parse_generation_payloads([downlink_payload])
-    assert result.get("error") == "upstream_unsupported_duration"
-    assert result.get("rawError") == refusal_text
-    assert result.get("url") == ""
+    assert result == {}
+
+
+def test_partial_15s_offer_for_30s_request_keeps_polling():
+    reply = "我会按你给的手持生活流脚本生成，当前单条视频支持到 15 秒，所以先做前 15 秒段落。后续可以继续生成第 2 段来接完整 30 秒。"
+    payload = {"messages": [{"user_type": 2, "content": f'[{{"block_type":10000,"content":{{"text_block":{{"text":"{reply}"}}}}}}]'}]}
+    result = parse_generation_payloads([payload])
+    assert result == {}
 
 
 def test_user_message_only_continues_polling_until_assistant_replies():
@@ -1063,3 +1138,88 @@ def test_normalize_request_references():
     assert refs[2]["url"] == "https://example.com/img2.png"
     assert refs[3]["role"] == "last_frame"
     assert refs[3]["url"] == "https://example.com/last.png"
+
+
+class _FakeIpResponse:
+    def __init__(self, status_code: int, text: str) -> None:
+        self.status_code = status_code
+        self.text = text
+
+
+class _FakeIpClient:
+    instances = 0
+
+    def __init__(self, *, responses: dict) -> None:
+        type(self).instances += 1
+        self._responses = responses
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return False
+
+    async def get(self, url: str, timeout=None):
+        if url not in self._responses:
+            raise httpx.ConnectError(f"blocked {url}")
+        result = self._responses[url]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def _install_fake_ip_client(monkeypatch, responses: dict) -> type[_FakeIpClient]:
+    from dola_api import session as session_module
+
+    _FakeIpClient.instances = 0
+    monkeypatch.setattr(session_module.httpx, "AsyncClient", lambda *args, **kwargs: _FakeIpClient(responses=responses))
+    monkeypatch.setattr(session_module, "_egress_ip_cache", {})
+    return _FakeIpClient
+
+
+def test_resolve_proxy_egress_ip_prefers_https_and_caches_per_proxy(monkeypatch):
+    import asyncio
+
+    from dola_api import session as session_module
+
+    client_type = _install_fake_ip_client(monkeypatch, {"https://api.ipify.org": _FakeIpResponse(200, "203.0.113.7\n")})
+
+    first = asyncio.run(session_module._resolve_proxy_egress_ip("http://proxy.example:8080"))
+    second = asyncio.run(session_module._resolve_proxy_egress_ip("http://proxy.example:8080"))
+
+    assert first == "203.0.113.7"
+    assert second == "203.0.113.7"
+    assert client_type.instances == 1
+
+
+def test_resolve_proxy_egress_ip_falls_back_to_plain_http(monkeypatch):
+    import asyncio
+
+    from dola_api import session as session_module
+
+    _install_fake_ip_client(
+        monkeypatch,
+        {
+            "https://api.ipify.org": httpx.ConnectError("tls cut by sni filter"),
+            "http://checkip.amazonaws.com": _FakeIpResponse(200, "198.51.100.9"),
+        },
+    )
+
+    ip = asyncio.run(session_module._resolve_proxy_egress_ip("http://proxy.example:8080"))
+
+    assert ip == "198.51.100.9"
+
+
+def test_resolve_proxy_egress_ip_returns_none_and_retries_after_failure(monkeypatch):
+    import asyncio
+
+    from dola_api import session as session_module
+
+    client_type = _install_fake_ip_client(monkeypatch, {})
+
+    first = asyncio.run(session_module._resolve_proxy_egress_ip("http://proxy.example:8080"))
+    second = asyncio.run(session_module._resolve_proxy_egress_ip("http://proxy.example:8080"))
+
+    assert first is None
+    assert second is None
+    assert client_type.instances == 2

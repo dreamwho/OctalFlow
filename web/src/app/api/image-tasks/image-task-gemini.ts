@@ -124,7 +124,7 @@ import {
 export async function runGeminiImageTask(task: ImageTask, origin: string, cookie: string): Promise<ImageTaskRunResult> {
     if (task.mask) throw new GenerationSubmissionSafeFailure("Gemini 暂不支持蒙版编辑");
     const config = task.config;
-    const parts: GeminiPart[] = [{ text: withSystemPrompt(config, buildImageReferencePromptText(task.prompt, task.references)) }];
+    const parts: GeminiPart[] = [{ text: withSystemPrompt(config, buildImageReferencePromptText(task.prompt, task.references, task.config.promptRules?.imageReference)) }];
     task.references.forEach((reference) => parts.push(toGeminiImagePart(referenceRequestUrl(reference, origin), reference.type)));
     const response = await imageSubmissionFetch(config, `${geminiApiUrl(config, "generateContent", origin)}`, {
         method: "POST",

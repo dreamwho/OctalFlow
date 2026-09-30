@@ -6,24 +6,51 @@ export type UploadedFile = { url: string; storageKey: string; bytes: number; mim
 
 export async function uploadMediaFile(input: string | Blob, prefix = "file", options?: { onProgress?: (percent: number) => void }): Promise<UploadedFile> {
     const type = mediaType(input, prefix);
-    const stored = await uploadServerMedia(input, type, undefined, options);
-    return withMediaMeta(stored, type);
+    const probe = probeLocalMediaMeta(input, type);
+    try {
+        const stored = await uploadServerMedia(input, type, undefined, options);
+        return { ...stored, serverUrl: stored.url, ...probe.metadata() };
+    } finally {
+        probe.close();
+    }
 }
 
 export async function uploadGeneratedMediaFile(input: string | Blob, type: Exclude<ServerMediaType, "image">): Promise<UploadedFile> {
     const stored = await uploadServerMedia(input, type, type === "video" ? 200 * 1024 * 1024 : 30 * 1024 * 1024);
-    return withMediaMeta(stored, type);
+    return withMediaMeta(stored);
 }
 
-export async function readStoredMediaFile(url: string, type: Exclude<ServerMediaType, "image">, mimeType: string): Promise<UploadedFile | null> {
+export async function readStoredMediaFile(url: string, _type: Exclude<ServerMediaType, "image">, mimeType: string): Promise<UploadedFile | null> {
     const reference = parseServerMediaUrl(url);
     if (!reference) return null;
-    return { url: reference.url, serverUrl: reference.url, storageKey: reference.storageKey, bytes: 0, mimeType, ...(type === "video" ? await readVideoMeta(reference.url) : await readAudioMeta(reference.url)) };
+    return { url: reference.url, serverUrl: reference.url, storageKey: reference.storageKey, bytes: 0, mimeType };
 }
 
-async function withMediaMeta(stored: Awaited<ReturnType<typeof uploadServerMedia>>, type: Exclude<ServerMediaType, "image">) {
-    const meta = type === "video" ? await readVideoMeta(stored.url) : await readAudioMeta(stored.url);
-    return { ...stored, serverUrl: stored.url, ...meta };
+async function withMediaMeta(stored: Awaited<ReturnType<typeof uploadServerMedia>>) {
+    return { ...stored, serverUrl: stored.url };
+}
+
+function probeLocalMediaMeta(input: string | Blob, type: Exclude<ServerMediaType, "image">) {
+    let metadata: Pick<UploadedFile, "width" | "height" | "durationMs"> = {};
+    if (typeof input === "string" && !input.startsWith("data:")) return { metadata: () => metadata, close: () => {} };
+    const url = input instanceof Blob ? URL.createObjectURL(input) : input;
+    const media = document.createElement(type);
+    media.onloadedmetadata = () => {
+        metadata = {
+            ...(type === "video" ? { width: (media as HTMLVideoElement).videoWidth || 1280, height: (media as HTMLVideoElement).videoHeight || 720 } : {}),
+            ...(Number.isFinite(media.duration) ? { durationMs: Math.round(media.duration * 1000) } : {}),
+        };
+    };
+    media.onerror = () => {};
+    media.src = url;
+    return {
+        metadata: () => metadata,
+        close: () => {
+            media.onloadedmetadata = null;
+            media.onerror = null;
+            if (input instanceof Blob) URL.revokeObjectURL(url);
+        },
+    };
 }
 
 export async function resolveMediaUrl(storageKey?: string, fallback = "") {
@@ -51,24 +78,4 @@ export async function deleteStoredMedia(keys: Iterable<string>) {
 function mediaType(input: string | Blob, prefix: string): Exclude<ServerMediaType, "image"> {
     const mimeType = input instanceof Blob ? input.type : input.match(/^data:([^;,]+)/)?.[1] || "";
     return mimeType.startsWith("audio/") || prefix.startsWith("audio") ? "audio" : "video";
-}
-
-function readVideoMeta(url: string) {
-    return new Promise<{ width: number; height: number; durationMs?: number }>((resolve) => {
-        const video = document.createElement("video");
-        const done = () => resolve({ width: video.videoWidth || 1280, height: video.videoHeight || 720, durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined });
-        video.onloadedmetadata = done;
-        video.onerror = done;
-        video.src = url;
-    });
-}
-
-function readAudioMeta(url: string) {
-    return new Promise<{ durationMs?: number }>((resolve) => {
-        const audio = document.createElement("audio");
-        const done = () => resolve({ durationMs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : undefined });
-        audio.onloadedmetadata = done;
-        audio.onerror = done;
-        audio.src = url;
-    });
 }

@@ -33,6 +33,10 @@ from services.config import config
 from services.proxy_service import (
     DEFAULT_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT,
     MAGIC_PROXY_OVERRIDE_KEY,
+    SIGNED_UPLOAD_MODE_KEY,
+    SIGNED_UPLOAD_MAGIC_NODE_KEY,
+    SIGNED_UPLOAD_MODES,
+    SIGNED_UPLOAD_PROXY_OVERRIDE_KEY,
     MAX_PROXY_NODE_IMAGE_CONCURRENCY_LIMIT,
     PROXY_SELECTION_KEY,
     PROXY_SELECTION_MODES,
@@ -46,7 +50,7 @@ from services.storage.configuration_repository import proxy_configuration_reposi
 
 
 PROXY_SCHEMA_VERSION = 1
-_GENERIC_PROXY_BINDING_PROVIDERS = {"geminiai", "geminiTools", "chatgptApi", "dola"}
+_GENERIC_PROXY_BINDING_PROVIDERS = {"geminiai", "geminiTools", "chatgptApi", "dola", "dolaUpload"}
 _GENERIC_PROXY_BINDING_TARGET_PATTERN = re.compile(r"^(?:node|group):[\w-]+$")
 _PROXY_GROUP_STRATEGIES = {"request_random", "time_window", "round_robin"}
 _PROXY_URL_SCHEMES = {"http", "https", "socks5", "socks5h"}
@@ -318,6 +322,30 @@ class ProxyManagementService:
         normalized = "" if proxy_url is None else normalize_proxy_node_url(proxy_url)
         with self._mutation_lock:
             self._config.update({MAGIC_PROXY_OVERRIDE_KEY: normalized})
+        return bool(normalized)
+
+    def signed_upload_selection(self) -> dict[str, object]:
+        snapshot = self._snapshot()
+        mode = _clean_text(snapshot.get(SIGNED_UPLOAD_MODE_KEY)) or "auto"
+        return {
+            "mode": mode,
+            "magicNode": _clean_text(snapshot.get(SIGNED_UPLOAD_MAGIC_NODE_KEY)),
+            "magicConfigured": bool(_clean_text(snapshot.get(SIGNED_UPLOAD_PROXY_OVERRIDE_KEY))),
+        }
+
+    def save_signed_upload_selection(self, mode: str, magic_node: str = "") -> dict[str, object]:
+        if mode not in SIGNED_UPLOAD_MODES:
+            raise ValueError("图片上传代理模式无效")
+        if not isinstance(magic_node, str) or len(magic_node) > 160:
+            raise ValueError("图片上传魔法节点无效")
+        with self._mutation_lock:
+            self._config.update({SIGNED_UPLOAD_MODE_KEY: mode, SIGNED_UPLOAD_MAGIC_NODE_KEY: magic_node.strip()})
+        return self.signed_upload_selection()
+
+    def save_signed_upload_proxy_override(self, proxy_url: object | None) -> bool:
+        normalized = "" if proxy_url is None else normalize_proxy_node_url(proxy_url)
+        with self._mutation_lock:
+            self._config.update({SIGNED_UPLOAD_PROXY_OVERRIDE_KEY: normalized})
         return bool(normalized)
 
     def proxy_selection(self) -> dict[str, object]:

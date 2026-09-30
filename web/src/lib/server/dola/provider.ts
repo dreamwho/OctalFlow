@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { getDolaGatewaySettings } from "./gateway-store";
 import { dolaModelProfile } from "./types";
+import { observeDolaTaskQuota } from "./account-service";
+import { readDolaQuotaReply } from "./quota-observation";
 
 export const DOLA_PROTOCOL = "dola" as const;
 export const DOLA_CHANNEL_ID = "dola";
@@ -231,11 +233,23 @@ export async function dolaRuntimeRequest(path: string, init: RequestInit = {}) {
             try { payload = JSON.parse(body); } catch { payload = null; }
             if (payload && typeof payload === "object" && !Array.isArray(payload)) {
                 const gateway = await getDolaGatewaySettings();
-                body = JSON.stringify({ ...payload, captureFailureScreenshot: gateway.captureFailureScreenshot, pollIntervalMs: gateway.pollIntervalMs });
+                body = JSON.stringify({ ...payload, captureFailureScreenshot: gateway.captureFailureScreenshot, pollIntervalMs: gateway.pollIntervalMs, randomFingerprint: gateway.randomFingerprint });
             }
         }
         const response = await fetch(targetUrl, { ...init, body, headers, cache: "no-store" });
-        return response;
+        if (!/^\/v1\/(?:videos|images)(?:\/[^/?]+)?(?:\?.*)?$/.test(path) || !response.headers.get("content-type")?.includes("application/json")) return response;
+        const value = await response.clone().json().catch(() => null) as Record<string, unknown> | null;
+        if (!value || !readDolaQuotaReply(value)) return response;
+        const submitted = typeof body === "string" ? JSON.parse(body) as Record<string, unknown> : {};
+        const accountId = String(value.accountId || submitted.accountId || "");
+        const model = String(value.model || submitted.model || "");
+        const quota = accountId ? await observeDolaTaskQuota(accountId, value, model) : null;
+        const exhausted = readDolaQuotaReply(value)?.exhausted;
+        const result = { ...value, ...(quota ? { quota: [{ ...quota, taskCost: readDolaQuotaReply(value)?.consumed, observations: undefined }] } : {}), ...(exhausted ? { status: "failed", error: "upstream_quota_exhausted" } : {}) };
+        const resultHeaders = new Headers(response.headers);
+        resultHeaders.delete("content-length");
+        resultHeaders.delete("content-encoding");
+        return new Response(JSON.stringify(result), { status: response.status, headers: resultHeaders });
     } catch (error) {
         throw formatProviderFetchError(error, targetUrl, base);
     }

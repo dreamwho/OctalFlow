@@ -1,17 +1,25 @@
-import { app, BrowserWindow, WebContentsView, dialog, ipcMain, nativeImage, safeStorage, session, shell } from "electron";
+import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, nativeImage, safeStorage, session, shell } from "electron";
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createTcpServer } from "node:net";
-import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { WorkspaceStore, matchApiKey, newApiKey, parseCookie } from "./store.mjs";
-import { MihomoManager, fetchMagicSubscriptionUsing, genericMihomoNode, normalizeGenericProxyUrl, parseGenericProxyGroups, parseMagicSubscription } from "./proxy-runtime.mjs";
+import { MihomoManager, accountProxyId, configuredProxyId, fetchMagicSubscriptionUsing, genericMihomoNode, normalizeGenericProxyUrl, parseGenericProxyGroups, parseMagicSubscription } from "./proxy-runtime.mjs";
 import { resolveDolaWatermarkUrlRemote } from "./watermark.mjs";
+import { restoreTaskDraft } from "./task-draft.mjs";
+import { fetchTrustedMedia, trustedMediaUrl } from "./media-url.mjs";
+import { cookieImportItems } from "./cookie-batch.mjs";
+import { credentialImportItems } from "./credential-batch.mjs";
+import { isAllowedLoginUrl } from "./login-url.mjs";
+import { completionRequestShape, parseManualSubmit } from "./manual-task.mjs";
+import { registrationAction, registrationStepDelay, registrationTargetScript } from "./registration-flow.mjs";
+import { baseUserAgent, defaultFingerprintParams, mergeMissingFingerprint } from "./browser-fingerprint.mjs";
 
 const sourceRoot = path.dirname(fileURLToPath(import.meta.url));
 const dolaUrl = "https://www.dola.com/chat";
@@ -30,13 +38,47 @@ let observedTaskId = "";
 const taskPolls = new Map();
 const loginChecks = new Map();
 let activeCookieListener;
+let workspaceSubmissionView;
+let registration;
+let registrationNudgeTimer;
+const loginPopups = new Set();
+const pendingBrowserSubmits = new Map();
+const registrationPageScript = `(() => {
+  const buttons = [...document.querySelectorAll('button')].filter((button) => !button.disabled).map((button) => (button.innerText || button.getAttribute('aria-label') || '').trim());
+  const has = (...labels) => buttons.some((button) => labels.includes(button));
+  const text = document.body?.innerText || '';
+  const visibleInput = (selector) => [...document.querySelectorAll(selector)].some((input) => {
+    const rect = input.getBoundingClientRect();
+    const style = getComputedStyle(input);
+    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && !input.disabled;
+  });
+  return {
+    origin: location.origin, path: location.pathname,
+    blank: !text.trim() && performance.now() > 10000,
+    pageUnavailable: text.includes('This page is temporarily unavailable') || text.includes('页面暂时不可用') || text.includes('页面暂时无法访问'),
+    login: has('登录', 'Log in', 'Sign in'),
+    googleLogin: buttons.some((button) => /(Google\\s*登录|Sign in with Google|Continue with Google)/i.test(button)),
+    ageConfirm: (text.includes('已满18周岁') || /over 18|18\\+|18 years/i.test(text)) && has('确认', 'Confirm'),
+    email: visibleInput('input[type="email"], #identifierId'),
+    password: visibleInput('input[type="password"]'),
+    notice: has('我了解', 'I understand'),
+    allow: has('Allow', '允许', 'Cho phép'),
+    oauthForDola: /dola\\.com|Dola Studio/i.test(text),
+    deleted: text.includes('账号已被删除') || /account (?:was|has been) deleted/i.test(text),
+    invalidAccount: text.includes('找不到您的 Google 账号') || text.includes("Couldn't find your Google Account"),
+    invalidPassword: text.includes('密码错误') || text.includes('密码不正确') || text.includes('Wrong password'),
+    serverError: text.includes('500.') && (text.includes('出现了错误') || /That.s an error/.test(text)),
+    insecureBrowser: text.includes('此浏览器或应用可能不安全') || text.includes('This browser or app may not be secure'),
+    challenge: text.includes('验证您的身份') || text.includes('验证您是人类') || text.includes("Verify it's you") || Boolean(document.querySelector('iframe[src*="recaptcha"]')),
+  };
+})()`;
 const browserActionsScript = `(() => {
   if (document.getElementById('dola-studio-browser-actions')) return;
   const style = document.createElement('style');
   style.textContent = '#dola-studio-browser-actions{position:fixed;right:3px;top:50%;transform:translateY(-50%);z-index:2147483646;display:flex;flex-direction:column;gap:5px;pointer-events:none}#dola-studio-browser-actions button{width:27px;height:27px;padding:0;border:1px solid rgba(140,155,180,.4);border-radius:9px;background:rgba(20,29,48,.42);color:white;font:18px system-ui;cursor:pointer;opacity:.7;pointer-events:auto;transition:opacity .15s,background .15s}#dola-studio-browser-actions button:hover,#dola-studio-browser-actions button:focus-visible{opacity:.95;background:rgba(20,29,48,.75);outline:1px solid rgba(255,255,255,.5)}';
   const actions = document.createElement('div');
   actions.id = 'dola-studio-browser-actions';
-  for (const [label, symbol, action] of [['返回上一页','←',() => history.back()],['刷新网页','↻',() => location.reload()]]) {
+  for (const [label, symbol, action] of [['返回上一页','←',() => history.back()],['刷新网页','↻',() => location.reload()],['下载当前无水印视频','↓',() => { location.href = 'dola-studio://download-video'; }],['关闭当前浏览器','×',() => { location.href = 'dola-studio://close'; }]]) {
     const button = document.createElement('button');
     button.type = 'button'; button.title = label; button.setAttribute('aria-label', label); button.textContent = symbol;
     button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); action(); });
@@ -45,13 +87,24 @@ const browserActionsScript = `(() => {
   document.documentElement.append(style, actions);
 })()`;
 
-app.whenReady().then(start).catch((error) => {
+// WebRTC 默认可能绕过代理直连暴露真实 IP；强制只走代理转发，避免账号代理被 ICE 候选泄漏。
+app.commandLine.appendSwitch("force-webrtc-ip-handling-policy", "disable_non_proxied_udp");
+
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+else app.whenReady().then(start).catch((error) => {
   dialog.showErrorBox("Dola Studio 启动失败", String(error?.message || error));
   app.quit();
+});
+app.on("second-instance", () => {
+  if (window?.isMinimized()) window.restore();
+  window?.show();
+  window?.focus();
 });
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", () => {
   for (const timer of taskPolls.values()) clearTimeout(timer);
+  clearInterval(registrationNudgeTimer);
   apiServer?.close();
   provider?.kill();
   void mihomo?.close();
@@ -64,7 +117,15 @@ async function start() {
   if (!process.env.DOLA_WORKSPACE_DIR) try { root = JSON.parse(await readFile(configPath, "utf8")).root || root; } catch {}
   store = new WorkspaceStore(root, (value) => safeStorage.encryptString(value).toString("base64"), (value) => safeStorage.decryptString(Buffer.from(value, "base64")));
   await store.load();
-  const mihomoBinary = process.env.DOLA_MIHOMO_BINARY || (app.isPackaged ? path.join(process.resourcesPath, "sidecars", process.platform, process.arch, process.platform === "win32" ? "mihomo.exe" : "mihomo") : "");
+  let interruptedSubmission = false;
+  for (const task of store.state.tasks) if (task.source === "workspace-browser" && !task.conversationId && ["queued", "running", "accepted"].includes(task.status)) {
+    task.status = "failed";
+    task.error = "desktop_submission_interrupted";
+    task.updatedAt = new Date().toISOString();
+    interruptedSubmission = true;
+  }
+  if (interruptedSubmission) await store.save();
+  const mihomoBinary = process.env.DOLA_MIHOMO_BINARY || path.join(app.isPackaged ? process.resourcesPath : path.resolve(sourceRoot, "../resources"), "sidecars", process.platform, process.arch, process.platform === "win32" ? "mihomo.exe" : "mihomo");
   mihomo = new MihomoManager(store.root, mihomoBinary);
   window = new BrowserWindow({
     width: 1500, height: 940, minWidth: 1100, minHeight: 680, title: "Dola Studio", backgroundColor: "#0b1022",
@@ -78,6 +139,48 @@ async function start() {
   try { await startProvider(); window.webContents.send("dola:task", { type: "provider-ready" }); } catch (error) { window.webContents.send("dola:task", { type: "provider-error", message: String(error?.message || error) }); }
   await startApi();
   for (const task of store.state.tasks.filter((item) => ["queued", "running", "accepted"].includes(item.status) || item.error === "task_state_cookie_unavailable")) scheduleTaskPoll(task.id);
+  if (process.env.DOLA_DESKTOP_REGISTRATION_TEST) {
+    try {
+      const [email, password] = String(process.env.DOLA_DESKTOP_REGISTRATION_TEST).split("|");
+      if (!email || !password) throw new Error("DOLA_DESKTOP_REGISTRATION_TEST 需要 邮箱|密码");
+      if (!providerOrigin) throw new Error("协议服务未就绪，无法保存登录态");
+      window.setTitle("Dola Studio 批量注册测试");
+      const fingerprintParams = process.env.DOLA_DESKTOP_REGISTRATION_FINGERPRINT ? process.env.DOLA_DESKTOP_REGISTRATION_FINGERPRINT.split(",").filter(Boolean) : defaultFingerprintParams();
+      const proxyId = String(process.env.DOLA_DESKTOP_REGISTRATION_PROXY || "");
+      const existing = store.state.accounts.find((item) => item.email?.toLowerCase() === email.toLowerCase());
+      const account = existing?.email && store.password(existing.id) === password
+        ? await store.updateAccount(existing.id, existing.proxyId === proxyId ? {} : { proxyId })
+        : (await store.addCredentialAccounts(credentialImportItems({ text: `${email}|${password}` }), { group: "未分组", proxyId, fingerprintParams }))[0];
+      console.log(`DOLA_REGISTRATION ${JSON.stringify({ event: "imported", email: account.email, fingerprint: account.fingerprint })}`);
+      await startRegistration([account.id]);
+      const shotDir = process.env.DOLA_DESKTOP_REGISTRATION_SHOTS;
+      if (shotDir) await mkdir(shotDir, { recursive: true });
+      let lastKey = "";
+      const deadline = Date.now() + Number(process.env.DOLA_DESKTOP_REGISTRATION_TIMEOUT_MS || 30 * 60_000);
+      while (Date.now() < deadline && registration) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const summary = registrationSummary();
+        if (!summary) break;
+        const key = `${summary.status}:${summary.index}:${summary.message}`;
+        if (key !== lastKey) {
+          lastKey = key;
+          if (shotDir && !window.isDestroyed()) await writeFile(path.join(shotDir, `${Date.now()}.png`), (await window.webContents.capturePage()).toPNG()).catch(() => {});
+          const targets = [...loginPopups, ...(browserView && !browserView.webContents.isDestroyed() ? [{ webContents: browserView.webContents }] : [])];
+          for (const [index, entry] of targets.entries()) {
+            if (entry.webContents.isDestroyed()) continue;
+            const diagnostic = await entry.webContents.executeJavaScript(registrationPageScript, true).catch(() => null);
+            const bodyText = await entry.webContents.executeJavaScript("document.body?.innerText?.slice(0, 200) || ''", true).catch(() => "");
+            console.log(`DOLA_REGISTRATION_PAGE ${JSON.stringify({ window: entry.webContents.getURL(), page: diagnostic, bodyText })}`);
+          }
+          console.log(`DOLA_REGISTRATION ${JSON.stringify(summary)}`);
+        }
+        if (["completed", "failed"].includes(summary.status)) break;
+      }
+      console.log(`DOLA_REGISTRATION_FINAL ${JSON.stringify(registrationSummary() || { event: "stopped" })}`);
+    } catch (error) { console.log(`DOLA_REGISTRATION_FINAL ${JSON.stringify({ error: String(error?.message || error) })}`); }
+    app.quit();
+    return;
+  }
   if (process.env.DOLA_DESKTOP_SMOKE_SCREENSHOT) {
     if (["proxy", "api", "settings"].includes(process.env.DOLA_DESKTOP_SMOKE_PAGE || "")) await window.webContents.executeJavaScript(`document.querySelector('[data-page=${process.env.DOLA_DESKTOP_SMOKE_PAGE}]')?.click()`);
     await window.webContents.executeJavaScript("document.fonts.ready");
@@ -92,6 +195,22 @@ function trusted(event) {
 }
 
 function registerIpc() {
+  ipcMain.on("dola:registration-dom", (event) => {
+    if (event.sender === browserView?.webContents || [...loginPopups].some((popup) => popup.webContents === event.sender)) void driveRegistration(event.sender);
+  });
+  ipcMain.on("dola:browser-submit", (event, payload) => {
+    if (event.sender !== browserView?.webContents || activeAccountId === "" || !/^https:\/\/www\.dola\.com\//.test(event.sender.getURL())) return;
+    if (browserView === workspaceSubmissionView) return;
+    const parsed = parseManualSubmit(payload?.url, payload?.body);
+    if (parsed && typeof payload.key === "string") pendingBrowserSubmits.set(payload.key, { ...parsed, accountId: activeAccountId });
+  });
+  ipcMain.on("dola:browser-submit-ack", (event, payload) => {
+    if (event.sender !== browserView?.webContents || !/^\d{12,32}$/.test(payload?.conversationId || "")) return;
+    const pending = pendingBrowserSubmits.get(payload.key);
+    pendingBrowserSubmits.delete(payload.key);
+    if (pending && pending.accountId === activeAccountId) void adoptBrowserTask(pending, payload.conversationId).catch((error) => window?.webContents.send("dola:task", { type: "browser-error", message: `浏览器任务登记失败：${String(error?.message || error)}` }));
+  });
+  ipcMain.on("dola:browser-submit-end", (event, key) => { if (event.sender === browserView?.webContents) pendingBrowserSubmits.delete(key); });
   ipcMain.on("dola:browser-bounds", (event, value) => {
     trusted(event);
     if (!value || ![value.x, value.y, value.width, value.height].every(Number.isFinite)) return;
@@ -101,11 +220,20 @@ function registerIpc() {
   ipcMain.handle("dola:call", async (event, action, input = {}) => {
     trusted(event);
     switch (action) {
-      case "state": return { accounts: store.listAccounts(), accountGroups: store.state.accountGroups, tasks: store.state.tasks, assets: store.state.assets, proxies: publicProxies(), settings: store.state.settings, workspace: store.root, downloadDir: downloadDirectory(), apiOrigin, providerReady: Boolean(providerOrigin) };
-      case "account:add": return store.addAccount(input);
-      case "account:group-add": return store.addGroup(input.name);
-      case "account:update": return store.updateAccount(input.id, input.patch || {});
+      case "state": return { accounts: store.listAccounts(), accountGroups: store.state.accountGroups, accountGroupProxies: store.state.accountGroupProxies, tasks: store.state.tasks, assets: store.state.assets, proxies: publicProxies(), settings: store.state.settings, workspace: store.root, downloadDir: downloadDirectory(), apiOrigin, providerReady: Boolean(providerOrigin), registration: registrationSummary() };
+      case "account:add": validateAccountProxyId(input.proxyId); return store.addAccount(input);
+      case "account:group-add": validateAccountProxyId(input.proxyId); return store.addGroup(input.name, input.proxyId);
+      case "account:group-proxy": validateAccountProxyId(input.proxyId); await store.setGroupProxy(input.name, input.proxyId); if (store.state.accounts.some((item) => item.id === activeAccountId && item.group === input.name && !item.proxyId)) await refreshActiveAccountProxy(); return store.state.accountGroupProxies;
+      case "account:update": {
+        validateAccountProxyId(input.patch?.proxyId);
+        const previous = store.state.accounts.find((item) => item.id === input.id);
+        const route = previous && accountProxyId(previous, store.state);
+        const updated = await store.updateAccount(input.id, input.patch || {});
+        if (activeAccountId === input.id && route !== accountProxyId(updated, store.state)) await refreshActiveAccountProxy();
+        return updated;
+      }
       case "account:delete": {
+        if (registration?.status === "running" && registration.ids.includes(input.id)) throw new Error("请先停止当前批量登录");
         if (activeAccountId === input.id) await hideBrowser();
         const removed = await store.deleteAccount(input.id);
         if (removed) {
@@ -114,17 +242,37 @@ function registerIpc() {
         }
         return removed;
       }
-      case "account:open": return openAccount(input.id);
+      case "account:open": if (registration?.status === "running" && registration.ids[registration.index] !== input.id) throw new Error("请先停止当前批量登录"); return openAccount(input.id);
       case "account:capture": return captureAccount(input.id);
       case "account:verify": return verifyAccount(input.id);
       case "account:import": return importAccounts(input);
       case "account:import-file": return chooseAccountImportFile();
+      case "registration:import": return importRegistrationAccounts(input);
+      case "registration:start": return startRegistration(input.ids);
+      case "registration:stop": browserView?.webContents.send("dola:registration-observe", false); for (const popup of loginPopups) popup.webContents.send("dola:registration-observe", false); registration = undefined; window?.webContents.send("dola:task", { type: "registration", registration: null }); return true;
+      case "registration:copy-password": {
+        const id = registration?.ids[registration.index];
+        if (registration?.status !== "running" || id !== input.id) throw new Error("当前账号不在批量登录中");
+        const password = store.password(id);
+        if (!password) throw new Error("未保存此账号的密码");
+        clipboard.writeText(password);
+        return true;
+      }
+      case "registration:copy-email": {
+        const id = registration?.ids[registration.index];
+        if (registration?.status !== "running" || id !== input.id) throw new Error("当前账号不在批量登录中");
+        clipboard.writeText(store.state.accounts.find((item) => item.id === id)?.email || "");
+        return true;
+      }
       case "account:export": return exportAccounts(input.ids);
+      case "account:export-group": return exportAccounts(store.state.accounts.filter((item) => item.group === input.group).map((item) => item.id), input.group);
       case "browser:reload": browserView?.webContents.reload(); return true;
       case "browser:back": if (browserView?.webContents.canGoBack()) browserView.webContents.goBack(); return true;
-      case "task:create": return submitTask(input);
+      case "browser:close": if (registration?.status === "running") { browserView?.webContents.send("dola:registration-observe", false); registration = undefined; window?.webContents.send("dola:task", { type: "registration", registration: null }); } await hideBrowser(); return true;
+      case "task:create": return submitTask(input, true);
+      case "task:replay": return replayTask(input.id);
       case "task:refresh": return refreshTask(input.id, true);
-      case "task:open": return openTask(input.id);
+      case "task:open": if (registration?.status === "running") throw new Error("请先停止当前批量登录"); return openTask(input.id);
       case "task:unwatermark": return removeTaskWatermark(input.id);
       case "asset:choose": return chooseAssets();
       case "asset:ingest": return ingestAsset(input);
@@ -159,16 +307,29 @@ function registerIpc() {
   });
 }
 
+// 账号身份首次使用时随机一次并随账号持久化；老账号只补缺失参数，不改动已保存取值。
+async function accountIdentity(account) {
+  const merged = mergeMissingFingerprint(account.fingerprint);
+  if (JSON.stringify(merged) !== JSON.stringify(account.fingerprint || {})) {
+    account.fingerprint = merged;
+    await store.save();
+  }
+  return { userAgent: merged.userAgent || baseUserAgent(), acceptLanguage: merged.languages || undefined };
+}
+
 async function openAccount(id) {
   const account = store.state.accounts.find((item) => item.id === id);
   if (!account) throw new Error("账号不存在");
   await hideBrowser();
   const partition = session.fromPartition(`persist:dola-${id}`);
   partition.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "media"));
-  if (account.proxyId) {
-    const proxy = await resolveProxy(account.proxyId, id);
-    if (proxy.url) await partition.setProxy({ proxyRules: proxy.url });
-  } else await partition.setProxy({ mode: "direct" });
+  await accountIdentity(account);
+  const fingerprint = account.fingerprint;
+  // 默认 UA 去掉 Electron/应用名 token，与随机 UA 一样保持「真实平台 + 真实 Chromium 版本」；
+  // Accept-Language 同时生效，避免 HTTP 头与 navigator.languages 脱钩。
+  partition.setUserAgent(fingerprint?.userAgent || baseUserAgent(), fingerprint?.languages || undefined);
+  const fingerprintArguments = fingerprint ? ["--dola-fingerprint", JSON.stringify(fingerprint)] : [];
+  await applyAccountProxy(account, partition);
   await partition.closeAllConnections();
   if (account.cookieCiphertext && !(await partition.cookies.get({ url: "https://www.dola.com" })).length) {
     for (const item of parseCookie(store.cookie(id)).split("; ")) {
@@ -176,36 +337,60 @@ async function openAccount(id) {
       await partition.cookies.set({ url: "https://www.dola.com", name: item.slice(0, separator), value: item.slice(separator + 1), secure: true });
     }
   }
-  const view = new WebContentsView({ webPreferences: { session: partition, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } });
-  const browserId = randomUUID();
-  const notifyLoading = (loading) => window?.webContents.send("dola:task", { type: "browser-loading", browserId, loading });
-  view.webContents.on("did-start-loading", () => notifyLoading(true));
-  view.webContents.on("did-stop-loading", () => notifyLoading(false));
-  view.webContents.once("destroyed", () => notifyLoading(false));
-  view.webContents.setWindowOpenHandler(({ url }) => url.startsWith("https://accounts.google.com/") || url.startsWith("https://www.dola.com/") ? { action: "allow", overrideBrowserWindowOptions: { webPreferences: { session: partition, sandbox: true, nodeIntegration: false } } } : { action: "deny" });
-  view.webContents.on("will-navigate", (event, url) => { if (!isAllowedLoginUrl(url)) event.preventDefault(); });
-  view.webContents.on("did-finish-load", () => { void showBrowserActions(view); void captureAccountIfReady(id); });
-  view.webContents.on("did-navigate-in-page", () => { void showBrowserActions(view); void captureAccountIfReady(id); });
+  const view = new WebContentsView({ webPreferences: { session: partition, preload: path.join(sourceRoot, "browser-duration-unlocker.cjs"), sandbox: true, contextIsolation: false, nodeIntegration: false, webSecurity: true, additionalArguments: fingerprintArguments } });
+  view.webContents.setWindowOpenHandler(({ url }) => url === "about:blank" || isAllowedLoginUrl(url) ? { action: "allow", overrideBrowserWindowOptions: { webPreferences: { session: partition, preload: path.join(sourceRoot, "browser-duration-unlocker.cjs"), sandbox: true, contextIsolation: false, nodeIntegration: false, webSecurity: true, additionalArguments: fingerprintArguments } } } : { action: "deny" });
+  view.webContents.on("did-create-window", (popup) => {
+    loginPopups.add(popup);
+    popup.on("closed", () => loginPopups.delete(popup));
+    const checkLoginNavigation = (event, url) => {
+      if (url === "about:blank" || isAllowedLoginUrl(url)) return;
+      event.preventDefault();
+      const host = (() => { try { return new URL(url).hostname; } catch { return "未知地址"; } })();
+      window?.webContents.send("dola:task", { type: "browser-error", message: `第三方登录跳转到未允许的域名：${host}` });
+    };
+    popup.webContents.on("will-navigate", checkLoginNavigation);
+    popup.webContents.on("will-redirect", checkLoginNavigation);
+    popup.webContents.on("did-fail-load", (_event, code, description) => {
+      if (code !== -3) window?.webContents.send("dola:task", { type: "browser-error", message: `第三方登录页面加载失败：${description}` });
+    });
+    popup.webContents.on("did-finish-load", async () => {
+      if (registration?.status === "running" && registration.ids[registration.index] === id) { popup.webContents.send("dola:registration-observe", true); void driveRegistration(popup.webContents); }
+      if (!/^https:\/\/(?:[^/]+\.)?facebook\.com\//i.test(popup.webContents.getURL())) return;
+      const error = await popup.webContents.executeJavaScript("document.querySelector('#error_box, .login_error_box, [role=alert]')?.innerText?.trim().slice(0, 300) || ''", true).catch(() => "");
+      if (error) window?.webContents.send("dola:task", { type: "browser-error", message: `Facebook 登录反馈：${error}` });
+    });
+  });
+  view.webContents.on("will-navigate", (event, url) => {
+    if (url === "dola-studio://close") { event.preventDefault(); void hideBrowser().then(() => window?.webContents.send("dola:task", { type: "browser-closed" })); }
+    else if (url === "dola-studio://download-video") { event.preventDefault(); void downloadCurrentBrowserVideo().catch((error) => window?.webContents.send("dola:task", { type: "browser-error", message: String(error?.message || error) })); }
+    else if (!isAllowedLoginUrl(url)) event.preventDefault();
+  });
+  view.webContents.on("did-fail-load", (_event, code, description) => { if (code !== -3) window?.webContents.send("dola:task", { type: "browser-error", message: `网页加载失败：${description}` }); });
+  view.webContents.on("preload-error", (_event, _preloadPath, error) => window?.webContents.send("dola:task", { type: "browser-error", message: `浏览器时长选项加载失败：${error.message}` }));
+  view.webContents.on("did-finish-load", () => { void showBrowserActions(view); void captureAccountIfReady(id); if (registration?.status === "running" && registration.ids[registration.index] === id) { view.webContents.send("dola:registration-observe", true); void driveRegistration(view.webContents); } });
+  view.webContents.on("did-navigate-in-page", () => { void showBrowserActions(view); void captureAccountIfReady(id); if (registration?.status === "running" && registration.ids[registration.index] === id) void driveRegistration(view.webContents); });
   activeCookieListener = () => { if (activeAccountId === id) void captureAccountIfReady(id); };
   partition.cookies.on("changed", activeCookieListener);
   window.contentView.addChildView(view);
   view.setBounds(browserBounds);
   browserView = view;
   activeAccountId = id;
-  await view.webContents.loadURL(dolaUrl);
-  return { accountId: id, url: view.webContents.getURL() };
+  const contents = view.webContents;
+  void contents.loadURL(dolaUrl).catch((error) => {
+    if (!contents.isDestroyed() && activeAccountId === id) window?.webContents.send("dola:task", { type: "browser-error", message: `Dola 页面加载失败：${String(error?.message || error)}，请检查代理后点击刷新` });
+  });
+  return { accountId: id, url: dolaUrl };
 }
 
 async function showBrowserActions(view) {
-  if (!view || !isAllowedLoginUrl(view.webContents.getURL()) || !new URL(view.webContents.getURL()).hostname.endsWith("dola.com")) return;
+  if (!view || !/^https:\/\/www\.dola\.com\//.test(view.webContents.getURL())) return;
   await view.webContents.executeJavaScript(browserActionsScript, true).catch(() => {});
 }
 
-function isAllowedLoginUrl(value) {
-  try { const host = new URL(value).hostname.toLowerCase(); return new URL(value).protocol === "https:" && (host === "dola.com" || host.endsWith(".dola.com") || host === "accounts.google.com" || host.endsWith(".google.com") || host.endsWith(".apple.com") || host.endsWith(".facebook.com")); } catch { return false; }
-}
-
 async function hideBrowser() {
+  pendingBrowserSubmits.clear();
+  for (const popup of loginPopups) if (!popup.isDestroyed()) popup.close();
+  loginPopups.clear();
   if (browserView) {
     browserView.webContents.stop();
     if (activeCookieListener) browserView.webContents.session.cookies.removeListener("changed", activeCookieListener);
@@ -213,6 +398,37 @@ async function hideBrowser() {
     window.contentView.removeChildView(browserView); browserView.webContents.close(); browserView = undefined;
   }
   activeAccountId = "";
+}
+
+async function adoptBrowserTask(input, conversationId) {
+  if (store.state.tasks.some((item) => item.accountId === input.accountId && item.conversationId === conversationId)) return;
+  const account = store.state.accounts.find((item) => item.id === input.accountId);
+  if (!account || activeAccountId !== account.id || !browserView) return;
+  const cookies = await browserView.webContents.session.cookies.get({ url: "https://www.dola.com" });
+  const cookie = cookies.filter((item) => item.value).map((item) => `${item.name}=${item.value}`).join("; ");
+  if (!cookie) throw new Error("浏览器账号尚未登录 Dola，无法跟踪任务");
+  const proxy = await resolveAccountProxy(account);
+  const identity = await accountIdentity(account);
+  const id = `dola-${randomUUID()}`;
+  const registered = await providerJson("/internal/runtime/v1/tasks/adopt-browser", { method: "POST", body: JSON.stringify({ taskId: id, conversationId, model: input.model, identity: input.identity, accountId: account.id, credentialVersion: account.credentialVersion, cookie, proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name, ...identity }) });
+  if (store.state.tasks.some((item) => item.id === registered.id)) return;
+  const now = new Date().toISOString();
+  const task = { id: registered.id || id, accountId: account.id, credentialVersion: account.credentialVersion, model: input.model, prompt: input.prompt || "浏览器内提交的生成任务", duration: input.duration, ratio: input.ratio, status: registered.status || "accepted", references: input.references, conversationId, createdAt: now, updatedAt: now, resultUrls: [], source: "browser", requestShape: input.requestShape };
+  store.state.tasks.unshift(task);
+  await store.save();
+  window?.webContents.send("dola:task", { type: "task", task });
+  scheduleTaskPoll(task.id);
+}
+
+async function downloadCurrentBrowserVideo() {
+  const conversationId = browserView?.webContents.getURL().match(/^https:\/\/www\.dola\.com\/chat\/(\d{12,32})(?:[/?#]|$)/)?.[1];
+  const task = store.state.tasks.find((item) => item.accountId === activeAccountId && item.conversationId === conversationId && item.model !== "dola-seedream-4-5");
+  if (!task) throw new Error("当前会话尚未登记为视频任务，请从右侧任务栏选择已识别的任务");
+  const current = await refreshTask(task.id, true);
+  if (current.status !== "completed" || !current.resultUrls.length) throw new Error("当前视频尚未生成完成");
+  if (!current.unwatermarkedUrl) await removeTaskWatermark(task.id);
+  const saved = await downloadTaskAssets(task.id, 0);
+  window?.webContents.send("dola:task", { type: "download-complete", message: `无水印视频已保存：${saved.files[0] || downloadDirectory()}` });
 }
 
 async function captureAccount(id) {
@@ -232,11 +448,13 @@ async function captureAccountIfReady(id) {
     const header = cookies.filter((cookie) => cookie.value).map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
     if (!header || store.state.accounts.find((item) => item.id === id)?.cookieFingerprint === store.fingerprint(header)) return;
     const account = store.state.accounts.find((item) => item.id === id);
-    const proxy = await resolveProxy(account.proxyId, id);
-    const result = await providerJson("/internal/runtime/v1/accounts/inspect", { method: "POST", body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, cookie: header, proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name, authOnly: true }) });
+    const proxy = await resolveAccountProxy(account);
+    const identity = await accountIdentity(account);
+    const result = await providerJson("/internal/runtime/v1/accounts/inspect", { method: "POST", body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, cookie: header, proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name, authOnly: true, ...identity }) });
     if ((result.loginState || result.login_state || result.status) !== "ready") return;
     await store.updateAccount(id, { cookie: header, status: "ready" });
     window?.webContents.send("dola:task", { type: "account-saved" });
+    if (registration?.status === "running" && registration.ids[registration.index] === id) void advanceRegistration();
   } catch { /* Login can still be in progress. */ }
   finally {
     const again = loginChecks.get(id) === "again";
@@ -248,41 +466,185 @@ async function captureAccountIfReady(id) {
 async function verifyAccount(id) {
   const account = store.state.accounts.find((item) => item.id === id);
   if (!account || !store.cookie(id)) throw new Error("账号还没有登录信息");
-  const proxy = await resolveProxy(account.proxyId, id);
-  const result = await providerJson("/internal/runtime/v1/accounts/inspect", { method: "POST", body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, cookie: store.cookie(id), proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name, authOnly: true }) });
+  const proxy = await resolveAccountProxy(account);
+  const identity = await accountIdentity(account);
+  const result = await providerJson("/internal/runtime/v1/accounts/inspect", { method: "POST", body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, cookie: store.cookie(id), proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name, authOnly: false, ...identity }) });
   const state = result.loginState || result.login_state || result.status || "需检查";
-  await store.updateAccount(id, { status: state });
+  await store.updateAccount(id, { status: state, quota: result.quota || [] });
   return result;
 }
 
 async function importAccounts(input) {
-  const lines = String(input.text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const outcomes = [];
-  for (const [index, line] of lines.entries()) {
-    try { outcomes.push({ line: index + 1, account: await store.addAccount({ name: input.name ? `${input.name} ${index + 1}` : "", group: input.group || "未分组", cookie: line }) }); }
-    catch (error) { outcomes.push({ line: index + 1, error: String(error?.message || error) }); }
+  for (const item of cookieImportItems(input)) {
+    try { outcomes.push({ file: item.file, line: item.line, account: await store.addAccount({ name: input.name ? `${input.name} ${outcomes.length + 1}` : "", group: input.group || "未分组", cookie: item.cookie }) }); }
+    catch (error) { outcomes.push({ file: item.file, line: item.line, error: String(error?.message || error) }); }
   }
   return outcomes;
 }
 
-async function chooseAccountImportFile() {
-  const selected = await dialog.showOpenDialog(window, { properties: ["openFile"], filters: [{ name: "Cookie 文本", extensions: ["txt"] }] });
-  if (selected.canceled || !selected.filePaths[0]) return null;
-  const text = await readFile(selected.filePaths[0], "utf8");
-  return { name: path.basename(selected.filePaths[0]), text };
+function registrationSummary() {
+  if (!registration) return null;
+  const account = store.state.accounts.find((item) => item.id === registration.ids[registration.index]);
+  return { status: registration.status, accountId: account?.id || "", email: account?.email || "", index: registration.index + 1, total: registration.ids.length, message: registration.message || "", error: registration.error || "" };
 }
 
-async function exportAccounts(ids) {
+function updateRegistrationMessage(batch, message) {
+  if (registration !== batch || batch.message === message) return;
+  batch.message = message;
+  window?.webContents.send("dola:task", { type: "registration", registration: registrationSummary() });
+}
+
+async function clickRegistrationTarget(contents, origin, selector, labels = []) {
+  let point = await contents.executeJavaScript(registrationTargetScript(origin, selector, labels), true);
+  if (!point || new URL(contents.getURL()).origin !== origin) return false;
+  contents.getOwnerBrowserWindow()?.focus();
+  contents.focus();
+  if (point.y < 0 || point.y >= point.height || point.x < 0 || point.x >= point.width) point = await contents.executeJavaScript(registrationTargetScript(origin, selector, labels, true), true);
+  if (!point || point.y < 0 || point.y >= point.height || point.x < 0 || point.x >= point.width || new URL(contents.getURL()).origin !== origin) return false;
+  for (const event of [{ type: "mouseMove" }, { type: "mouseDown", button: "left", clickCount: 1 }, { type: "mouseUp", button: "left", clickCount: 1 }]) contents.sendInputEvent({ ...event, x: point.x, y: point.y });
+  return true;
+}
+
+async function typeGoogleCredential(contents, kind, value) {
+  if (new URL(contents.getURL()).origin !== "https://accounts.google.com") return false;
+  const selector = kind === "email" ? 'input[type="email"], #identifierId' : 'input[type="password"]';
+  if (!(await clickRegistrationTarget(contents, "https://accounts.google.com", selector))) return false;
+  if (new URL(contents.getURL()).origin !== "https://accounts.google.com") return false;
+  await contents.insertText(value);
+  return clickRegistrationTarget(contents, "https://accounts.google.com", "button", ["下一步", "Next"]);
+}
+
+async function driveRegistration(contents) {
+  const batch = registration;
+  if (!batch || batch.status !== "running" || !contents || contents.isDestroyed()) return;
+  if (batch.driving) { batch.pendingContents = contents; return; }
+  batch.driving = true;
+  try {
+    const id = batch.ids[batch.index];
+    if (activeAccountId !== id) return;
+    const page = await contents.executeJavaScript(registrationPageScript, true);
+    if (registration !== batch || batch.status !== "running" || activeAccountId !== id) return;
+    const action = registrationAction(page);
+    if (action.type === "error") {
+      batch.status = "failed";
+      batch.error = action.message;
+      contents.send("dola:registration-observe", false);
+      window?.webContents.send("dola:task", { type: "registration", registration: registrationSummary() });
+      return;
+    }
+    updateRegistrationMessage(batch, action.message);
+    if (["approval", "wait"].includes(action.type)) return;
+    const actionKey = `${contents.id}:${page.origin}:${page.path}:${action.type}`;
+    if (batch.lastAction === actionKey && Date.now() - (batch.lastActionAt || 0) < 5000) return;
+    await new Promise((resolve) => setTimeout(resolve, registrationStepDelay()));
+    if (registration !== batch || batch.status !== "running" || contents.isDestroyed() || activeAccountId !== id) return;
+    batch.lastAction = actionKey;
+    batch.lastActionAt = Date.now();
+    let acted = false;
+    if (action.type === "email" || action.type === "password") {
+      const account = store.state.accounts.find((item) => item.id === id);
+      acted = await typeGoogleCredential(contents, action.type, action.type === "email" ? account.email : store.password(id));
+    } else if (action.type === "reload") {
+      contents.reload();
+      acted = true;
+    } else {
+      const targets = {
+        "click-reload": ["https://www.dola.com", ["Refresh", "刷新", "重新加载", "重试"]],
+        "click-login": ["https://www.dola.com", ["登录", "Log in", "Sign in"]],
+        "click-google": ["https://www.dola.com", ["Google 登录", "Sign in with Google", "Continue with Google"]],
+        "click-notice": ["https://accounts.google.com", ["我了解", "I understand"]],
+        "click-allow": ["https://accounts.google.com", ["Allow", "允许", "Cho phép"]],
+        "click-age": ["https://www.dola.com", ["确认"]],
+      };
+      const target = targets[action.type];
+      acted = target ? await clickRegistrationTarget(contents, target[0], "button", target[1]) : false;
+    }
+    if (registration === batch) {
+      if (acted) {
+        batch.pendingContents = contents;
+        setTimeout(() => { if (registration === batch && batch.status === "running" && !contents.isDestroyed()) void driveRegistration(contents); }, 5200);
+      } else batch.lastAction = "";
+    }
+  } catch {
+    if (registration === batch) { batch.lastAction = ""; updateRegistrationMessage(batch, "页面操作未完成，请检查当前登录页面"); }
+  } finally {
+    batch.driving = false;
+    const pending = batch.pendingContents;
+    batch.pendingContents = undefined;
+    if (pending && registration === batch && batch.status === "running") void driveRegistration(pending);
+  }
+}
+
+async function importRegistrationAccounts(input) {
+  const items = credentialImportItems(input);
+  const proxyId = String(input.proxyId || "");
+  validateAccountProxyId(proxyId);
+  const fingerprintParams = Array.isArray(input.fingerprintParams) ? input.fingerprintParams : defaultFingerprintParams();
+  const accounts = await store.addCredentialAccounts(items, { group: String(input.group || ""), proxyId, fingerprintParams });
+  return accounts.map((account, index) => ({ id: account.id, email: account.email, file: items[index].file, line: items[index].line }));
+}
+
+function startRegistrationNudge() {
+  clearInterval(registrationNudgeTimer);
+  registrationNudgeTimer = setInterval(() => {
+    if (!registration || registration.status !== "running") { clearInterval(registrationNudgeTimer); return; }
+    if (browserView && !browserView.webContents.isDestroyed()) void driveRegistration(browserView.webContents);
+    for (const popup of loginPopups) if (!popup.isDestroyed()) void driveRegistration(popup.webContents);
+  }, 10_000);
+}
+
+async function startRegistration(ids) {
+  if (registration?.status === "running") throw new Error("已有批量登录正在执行");
+  if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length || ids.some((id) => !store.state.accounts.some((item) => item.id === id && item.email && item.passwordCiphertext && item.status !== "ready"))) throw new Error("请选择本次导入且尚未登录的账号");
+  registration = { ids, index: 0, status: "running", message: "正在打开 Dola 页面…", error: "", lastAction: "" };
+  try { await openAccount(ids[0]); }
+  catch (error) { registration = undefined; throw error; }
+  startRegistrationNudge();
+  window?.webContents.send("dola:task", { type: "registration", registration: registrationSummary() });
+  return registrationSummary();
+}
+
+async function advanceRegistration() {
+  if (!registration || registration.status !== "running") return;
+  const batch = registration;
+  batch.index += 1;
+  if (batch.index >= batch.ids.length) {
+    batch.index = batch.ids.length - 1;
+    batch.status = "completed";
+    batch.message = "所有账号已通过 Dola 登录态验证并独立保存";
+    clearInterval(registrationNudgeTimer);
+    browserView?.webContents.send("dola:registration-observe", false);
+    window?.webContents.send("dola:task", { type: "registration", registration: registrationSummary() });
+    return;
+  }
+  batch.lastAction = "";
+  batch.lastActionAt = 0;
+  batch.message = "正在打开下一个 Dola 页面…";
+  try { await openAccount(batch.ids[batch.index]); }
+  catch (error) { if (registration === batch) { batch.status = "failed"; batch.error = String(error?.message || error); } }
+  if (registration !== batch) return;
+  window?.webContents.send("dola:task", { type: "registration", registration: registrationSummary() });
+}
+
+async function chooseAccountImportFile() {
+  const selected = await dialog.showOpenDialog(window, { properties: ["openFile", "multiSelections"], filters: [{ name: "Cookie 文本", extensions: ["txt"] }] });
+  if (selected.canceled || !selected.filePaths.length) return [];
+  return Promise.all(selected.filePaths.map(async (file) => ({ name: path.basename(file), text: await readFile(file, "utf8") })));
+}
+
+async function exportAccounts(ids, group = "") {
   const selected = store.state.accounts.filter((item) => Array.isArray(ids) && ids.includes(item.id) && item.cookieCiphertext);
   if (!selected.length) throw new Error("没有可导出的账号");
-  const result = await dialog.showSaveDialog(window, { defaultPath: "dola-cookies.txt", filters: [{ name: "文本文件", extensions: ["txt"] }] });
+  const result = await dialog.showSaveDialog(window, { defaultPath: group ? `dola-cookies-${String(group).replace(/[^\p{L}\p{N}_-]/gu, "_")}.txt` : "dola-cookies.txt", filters: [{ name: "文本文件", extensions: ["txt"] }] });
   if (result.canceled || !result.filePath) return { cancelled: true };
   await writeFile(result.filePath, selected.map((item) => store.cookie(item.id)).join("\n") + "\n", { mode: 0o600 });
+  await chmod(result.filePath, 0o600);
   return { count: selected.length, path: result.filePath };
 }
 
 async function resolveProxy(id, accountId) {
-  if (!id) return { source: "direct", url: "", name: "直连" };
+  if (!id) { await mihomo.stop(accountId); return { source: "direct", url: "", name: "直连" }; }
   const generic = store.state.proxies.generic.find((item) => item.id === id);
   if (generic) return { source: "generic", url: await mihomo.ensure(accountId, null, genericMihomoNode({ ...generic, url: store.decrypt(generic.urlCiphertext) }, generic.name)), name: generic.name };
   const magic = magicNode(id);
@@ -295,6 +657,36 @@ async function resolveProxy(id, accountId) {
     return { source: "chained", url: await mihomo.ensure(accountId, hop.config, landing.config), name: chain.name };
   }
   throw new Error("该代理节点不存在");
+}
+
+async function resolveAccountProxy(account) {
+  return resolveProxy(configuredProxyId(accountProxyId(account, store.state), store.state), account.id);
+}
+
+async function applyAccountProxy(account, partition) {
+  const proxy = await resolveAccountProxy(account);
+  await partition.setProxy(proxy.url ? { proxyRules: proxy.url, proxyBypassRules: store.state.settings.browserStaticDirect !== false ? "sf-flow-web-cdn.ciciai.com,sf16-website-login.neutral.ttwstatic.com,lf-flow-web-cdn.doubao.com" : "" } : { mode: "direct" });
+  await partition.closeAllConnections();
+}
+
+async function refreshActiveAccountProxy() {
+  if (!browserView || !activeAccountId) return;
+  const account = store.state.accounts.find((item) => item.id === activeAccountId);
+  try {
+    await applyAccountProxy(account, browserView.webContents.session);
+    const media = await mediaSession(account);
+    await media.closeAllConnections();
+    browserView.webContents.reload();
+  } catch (error) {
+    await hideBrowser();
+    window?.webContents.send("dola:task", { type: "browser-closed" });
+    window?.webContents.send("dola:task", { type: "browser-error", message: `代理设置已保存，当前网页已关闭：${error.message}` });
+  }
+}
+
+function validateAccountProxyId(id) {
+  if ([undefined, "", "direct", "magic", "chained"].includes(id)) return;
+  if (!store.state.proxies.generic.some((item) => item.id === id)) throw new Error("请选择有效的通用代理节点");
 }
 
 async function saveProxies(input) {
@@ -396,25 +788,45 @@ async function deleteChain(id) {
   return publicProxies();
 }
 
-async function submitTask(input) {
-  const account = store.state.accounts.find((item) => item.id === input.accountId) || store.state.accounts.find((item) => item.cookieCiphertext);
-  if (!account?.cookieCiphertext) throw new Error("请先添加并登录 Dola 账号");
+async function submitTask(input, fromWorkspace = false) {
+  const account = store.state.accounts.find((item) => item.id === input.accountId);
+  if (!account || (!fromWorkspace && !account.cookieCiphertext)) throw new Error("请先从左侧选择已登录的 Dola 账号");
+  let cookie = store.cookie(account.id);
+  if (fromWorkspace) {
+    if (activeAccountId !== account.id || !browserView || browserView.webContents.isDestroyed() || !/^https:\/\/www\.dola\.com\//.test(browserView.webContents.getURL())) throw new Error("请先在中间浏览器打开此账号的 Dola 页面");
+    const current = await browserView.webContents.session.cookies.get({ url: "https://www.dola.com" });
+    cookie = current.filter((item) => item.name && item.value).map((item) => `${item.name}=${item.value}`).join("; ");
+    if (!cookie) throw new Error("当前浏览器没有 Dola 登录 Cookie，请先完成登录");
+    if (store.fingerprint(cookie) !== account.cookieFingerprint) await store.updateAccount(account.id, { cookie, status: "ready" });
+  }
   const model = String(input.model || "");
   const isImage = model === "dola-seedream-4-5";
   if (!["dola-seedance-2-5", "dola-seedance-2-0-fast", "dola-seedream-4-5"].includes(model)) throw new Error("模型不受支持");
   const prompt = String(input.prompt || "").trim();
   if (!prompt || prompt.length > 20_000) throw new Error("提示词为空或过长");
-  const references = Array.isArray(input.references) ? input.references.map((item) => ({ dataUrl: String(item.dataUrl || ""), name: String(item.name || ""), role: item.role === "first_frame" || item.role === "last_frame" ? item.role : "reference", type: "image" })).filter((item) => item.dataUrl) : [];
+  const references = Array.isArray(input.references) ? input.references.map((item) => ({ id: String(item.id || ""), dataUrl: String(item.dataUrl || ""), name: String(item.name || ""), role: item.role === "first_frame" || item.role === "last_frame" ? item.role : "reference", type: "image" })).filter((item) => item.dataUrl) : [];
   if (references.some((item) => item.dataUrl.length > 35_000_000)) throw new Error("参考素材过大");
   if (references.some((item) => item.role === "last_frame") !== references.some((item) => item.role === "first_frame")) throw new Error("首尾帧必须同时提供");
-  const proxy = await resolveProxy(account.proxyId, account.id);
+  const proxy = await resolveAccountProxy(account);
+  const uploadProxy = references.length ? await resolveProxy(store.state.settings.imagexUploadProxyId, "imagex-upload") : { url: "" };
+  const identity = await accountIdentity(account);
   const requestId = String(input.requestId || randomUUID());
-  const body = { accountId: account.id, credentialVersion: account.credentialVersion, cookie: store.cookie(account.id), model, prompt, duration: isImage ? 0 : Number(input.duration || 5), ratio: String(input.ratio || "16:9"), references, requestId, proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyTarget: proxy.name, proxyUrl: proxy.url };
+  const body = { accountId: account.id, credentialVersion: account.credentialVersion, cookie, model, prompt, duration: isImage ? 0 : Number(input.duration || 5), ratio: String(input.ratio || "16:9"), references: references.map(({ id: _id, ...item }) => item), requestId, proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyTarget: proxy.name, proxyUrl: proxy.url, imagexProxyMode: uploadProxy.url ? "managed" : "direct", imagexProxyUrl: uploadProxy.url, ...identity };
+  if (fromWorkspace) {
+    if (workspaceSubmissionView) throw new Error("当前浏览器已有任务正在提交，请等待它取得 Dola 会话");
+    const task = { id: `dola-${randomUUID()}`, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: "running", references: references.map((item) => ({ id: item.id, name: item.name, role: item.role })), conversationId: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [], source: "workspace-browser", diagnostics: { submitStage: references.length ? "uploading_references" : "submitting_to_dola", referenceCount: references.length } };
+    store.state.tasks.unshift(task);
+    await store.save();
+    const view = browserView;
+    workspaceSubmissionView = view;
+    void submitThroughWorkspaceBrowser(task, body, view).finally(() => { if (workspaceSubmissionView === view) workspaceSubmissionView = undefined; });
+    return task;
+  }
   const endpoint = isImage ? "/internal/runtime/v1/images" : "/internal/runtime/v1/videos";
   const created = await providerJson(endpoint, { method: "POST", body: JSON.stringify(body) });
   const id = created.taskId || created.id;
   if (!id) throw new Error("Dola 未返回任务 ID，请检查上游响应，避免重复提交");
-  const task = { id, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: created.status || "queued", references: references.map((item) => ({ name: item.name, role: item.role })), conversationId: created.conversationId || "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [] };
+  const task = { id, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: created.status || "queued", references: references.map((item) => ({ id: item.id, name: item.name, role: item.role })), conversationId: created.conversationId || "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [] };
   store.state.tasks.unshift(task);
   await store.save();
   observedTaskId = id;
@@ -423,24 +835,167 @@ async function submitTask(input) {
   return task;
 }
 
+async function submitThroughWorkspaceBrowser(task, request, view) {
+  const ensurePage = () => {
+    if (activeAccountId !== task.accountId || browserView !== view || view.webContents.isDestroyed() || !/^https:\/\/www\.dola\.com\//.test(view.webContents.getURL())) throw new Error("提交期间账号浏览器已关闭或切换；尚未向 Dola 提交");
+  };
+  const liveCookie = async () => {
+    const cookies = await view.webContents.session.cookies.get({ url: "https://www.dola.com" });
+    return cookies.filter((item) => item.name && item.value).map((item) => `${item.name}=${item.value}`).join("; ");
+  };
+  try {
+    ensurePage();
+    const resolvedReferences = [];
+    if (request.references.length) {
+      const upload = await providerJson("/internal/runtime/v1/browser-submit/upload-script");
+      for (const [index, reference] of request.references.entries()) {
+        ensurePage();
+        const result = await view.webContents.executeJavaScript(`(${upload.script})(${JSON.stringify({ body: upload.body })})`);
+        if (!result?.ok || result?.json?.code !== 0 || !result.json?.data) throw new Error(`第 ${index + 1} 张素材的 Dola 上传授权失败：${result?.json?.code ?? result?.status ?? "unknown"}`);
+        let uploaded;
+        try {
+          uploaded = await providerJson("/internal/runtime/v1/browser-submit/prepare", { method: "POST", body: JSON.stringify({ ...request, references: [reference], uploadConfig: result.json.data }) });
+        } catch (error) {
+          throw new Error(`第 ${index + 1}/${request.references.length} 张素材“${reference.name}”上传失败：${String(error?.message || error).replace(/^reference_1_of_1:\s*/, "")}`);
+        }
+        resolvedReferences.push(uploaded.resolvedReferences[0]);
+        task.diagnostics = { submitStage: "uploading_references", referenceCount: request.references.length, uploadedCount: index + 1 };
+        task.updatedAt = new Date().toISOString();
+        await store.save();
+        window?.webContents.send("dola:task", { type: "task", task });
+      }
+    }
+    const prepared = await providerJson("/internal/runtime/v1/browser-submit/prepare", { method: "POST", body: JSON.stringify({ ...request, references: resolvedReferences }) });
+    task.requestShape = completionRequestShape(prepared.body);
+    ensurePage();
+    task.diagnostics = { submitStage: "submitting_to_dola", referenceCount: prepared.referenceCount };
+    task.updatedAt = new Date().toISOString();
+    await store.save();
+    window?.webContents.send("dola:task", { type: "task", task });
+    const config = { body: JSON.stringify(prepared.body), fallbackQuery: "", timeoutMs: 60_000, hookDeadline: Date.now() + 40_000 };
+    await view.webContents.executeJavaScript(`window.__DOLA_SUBMIT_CONFIG__ = ${JSON.stringify(config)}; ${prepared.script}`);
+    let raw = "";
+    const deadline = Date.now() + 70_000;
+    while (!raw && Date.now() < deadline) {
+      ensurePage();
+      raw = await view.webContents.executeJavaScript("document.getElementById('__dola_submit_result__')?.value || ''");
+      if (!raw) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!raw) throw new Error("Dola 页面协议提交未返回结果");
+    const cookie = await liveCookie();
+    const parsed = await providerJson("/internal/runtime/v1/browser-submit/parse", { method: "POST", body: JSON.stringify({ payload: JSON.parse(raw), cookie, proxyUrl: request.proxyUrl }) });
+    task.diagnostics = parsed.diagnostics || {};
+    if (parsed.status !== "accepted" || !parsed.conversationId) throw new Error(parsed.error || "Dola 未创建会话");
+    const registered = await providerJson("/internal/runtime/v1/tasks/adopt-browser", { method: "POST", body: JSON.stringify({ taskId: task.id, conversationId: parsed.conversationId, model: task.model, identity: parsed.identity, accountId: task.accountId, credentialVersion: task.credentialVersion, cookie, proxyMode: request.proxyMode, proxySource: request.proxySource, proxyUrl: request.proxyUrl, proxyTarget: request.proxyTarget }) });
+    task.status = registered.status || "accepted";
+    task.conversationId = parsed.conversationId;
+    task.error = "";
+    task.updatedAt = new Date().toISOString();
+    await store.save();
+    window?.webContents.send("dola:task", { type: "task", task });
+    scheduleTaskPoll(task.id);
+    void observeTaskInBrowser(task).catch((error) => window?.webContents.send("dola:task", { type: "browser-error", message: String(error) }));
+  } catch (error) {
+    task.status = "failed";
+    task.error = String(error?.message || error).slice(0, 500);
+    task.updatedAt = new Date().toISOString();
+    await store.save();
+    window?.webContents.send("dola:task", { type: "task", task });
+  }
+}
+
+async function replayTask(id) {
+  const task = store.state.tasks.find((item) => item.id === id);
+  if (task?.source === "browser" && !task.prompt) await refreshTask(id, true);
+  if (task?.source === "browser" && task.references?.some((item) => !item.id && item.url)) {
+    const account = store.state.accounts.find((item) => item.id === task.accountId);
+    if (!account) throw new Error("任务账号不存在");
+    const partition = await mediaSession(account);
+    for (const reference of task.references) {
+      if (reference.id || !reference.url) continue;
+      const response = await fetchTrustedMedia(partition.fetch.bind(partition), reference.url);
+      if (!response.ok) throw new Error(`参考素材“${reference.name}”下载失败：HTTP ${response.status}`);
+      const mime = response.headers.get("content-type")?.split(";", 1)[0] || "";
+      if (!["image/png", "image/jpeg", "image/webp"].includes(mime)) throw new Error(`参考素材“${reference.name}”格式不受支持`);
+      const bytes = await readBrowserReference(response);
+      const saved = await ingestAsset({ name: reference.name, dataUrl: `data:${mime};base64,${bytes.toString("base64")}` });
+      reference.id = saved.id;
+    }
+    await store.save();
+  }
+  return restoreTaskDraft(task, readAsset, store.state.assets);
+}
+
+async function readBrowserReference(response) {
+  const maxBytes = 20 * 1024 * 1024; // Same limit as ingestAsset.
+  if (Number(response.headers.get("content-length") || 0) > maxBytes || !response.body) throw new Error("参考素材超过 20 MB");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) { await reader.cancel(); throw new Error("参考素材超过 20 MB"); }
+      chunks.push(Buffer.from(value));
+    }
+  } finally { reader.releaseLock(); }
+  return Buffer.concat(chunks, total);
+}
+
+async function queryTaskInBrowser(task) {
+  if (registration?.status === "running") throw new Error("请先停止当前批量登录");
+  await openTask(task.id);
+  const view = browserView;
+  const prepared = await providerJson(`/internal/runtime/v1/tasks/${encodeURIComponent(task.id)}/browser-query`);
+  const expectedUrl = `https://www.dola.com/chat/${task.conversationId}`;
+  const ensurePage = () => {
+    if (browserView !== view || activeAccountId !== task.accountId || view.webContents.isDestroyed() || view.webContents.getURL() !== expectedUrl) throw new Error("查询期间任务账号浏览器已关闭、切换或离开原会话");
+  };
+  ensurePage();
+  const config = { path: prepared.path, body: JSON.stringify(prepared.body), resultId: `__dola_query_${randomUUID()}`, timeoutMs: 30_000, hookDeadline: Date.now() + 30_000 };
+  const result = await view.webContents.executeJavaScript(`new Promise(resolve => {
+    const handler = (event) => { if (event.target.id === ${JSON.stringify(config.resultId)}) { document.removeEventListener('dola-json-result', handler); resolve(JSON.parse(event.target.value)); event.target.remove(); } };
+    document.addEventListener('dola-json-result', handler);
+    window.__DOLA_JSON_REQUEST_CONFIG__ = ${JSON.stringify(config)};
+    ${prepared.script}
+  })`);
+  ensurePage();
+  if (result.fatal || result.status !== 200) throw new Error(`当前 Dola 页面查询失败：${result.fatal || `HTTP ${result.status}`}`);
+  return providerJson(`/internal/runtime/v1/tasks/${encodeURIComponent(task.id)}/browser-result`, { method: "POST", body: JSON.stringify({ accountId: task.accountId, conversationId: task.conversationId, payload: JSON.parse(result.text) }) });
+}
+
+async function mediaSession(account) {
+  const partition = session.fromPartition(`dola-media-${account.id}`);
+  const proxy = store.state.settings.browserStaticDirect === false ? await resolveAccountProxy(account) : { url: "" };
+  await partition.setProxy(proxy.url ? { proxyRules: proxy.url } : { mode: "direct" });
+  return partition;
+}
+
 async function refreshTask(id, force = false) {
   const task = store.state.tasks.find((item) => item.id === id);
   if (!task) throw new Error("任务不存在");
+  if (task.source === "workspace-browser" && !task.conversationId) return task;
   const endpoint = task.model === "dola-seedream-4-5" ? "images" : "videos";
-  let result = await providerJson(`/internal/runtime/v1/${endpoint}/${encodeURIComponent(id)}${force ? "?refresh=1" : ""}`);
+  let result = force && task.conversationId ? await queryTaskInBrowser(task) : await providerJson(`/internal/runtime/v1/${endpoint}/${encodeURIComponent(id)}`);
   if (result.error === "task_state_cookie_unavailable" && task.conversationId) {
     const account = store.state.accounts.find((item) => item.id === task.accountId && item.cookieCiphertext);
     if (account) {
-      const proxy = await resolveProxy(account.proxyId, account.id);
-      result = await providerJson(`/internal/runtime/v1/tasks/${encodeURIComponent(id)}/rebind`, { method: "POST", body: JSON.stringify({ accountId: account.id, credentialVersion: task.credentialVersion || account.credentialVersion, cookie: store.cookie(account.id), proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name }) });
+      const proxy = await resolveAccountProxy(account);
+      result = await providerJson(`/internal/runtime/v1/tasks/${encodeURIComponent(id)}/rebind`, { method: "POST", body: JSON.stringify({ accountId: account.id, credentialVersion: task.credentialVersion || account.credentialVersion, cookie: store.cookie(account.id), proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyUrl: proxy.url, proxyTarget: proxy.name, ...(await accountIdentity(account)) }) });
     }
   }
   task.status = result.status || task.status;
   task.error = result.error || "";
+  task.rawError = result.rawError || result.raw_error || "";
+  task.diagnostics = result.diagnostics || {};
   task.conversationId = result.conversationId || result.conversation_id || task.conversationId;
+  if (result.input) for (const key of ["prompt", "duration", "ratio", "createdAt", "references"]) if (task[key] === undefined && result.input[key] !== undefined) task[key] = result.input[key];
   const nextResultUrls = [...new Set([...(result.imageUrls || []), ...(result.videoUrl ? [result.videoUrl] : [])])];
-  store.state.assets = store.state.assets.filter((item) => item.taskId !== id || item.kind !== "generated" || item.ordinal < nextResultUrls.length);
-  task.resultUrls = nextResultUrls;
+  if (nextResultUrls.length || task.status !== "completed") store.state.assets = store.state.assets.filter((item) => item.taskId !== id || item.kind !== "generated" || item.ordinal < nextResultUrls.length);
+  if (nextResultUrls.length || task.status !== "completed") task.resultUrls = nextResultUrls;
+  if (result.vodPayload) task.vodPayload = result.vodPayload;
   if (task.status === "completed" && task.model !== "dola-seedream-4-5" && result.vodPayload && store.state.settings.autoRemoveWatermark !== false && !task.unwatermarkedUrl) {
     try { await resolveTaskWatermark(task, result.vodPayload); }
     catch (error) { task.watermarkError = String(error?.message || error); }
@@ -456,17 +1011,13 @@ async function refreshTask(id, force = false) {
 async function resolveTaskWatermark(task, payload) {
   const account = store.state.accounts.find((item) => item.id === task.accountId);
   if (!account) throw new Error("任务账号不存在");
-  const partition = session.fromPartition(`persist:dola-${account.id}`);
-  const proxy = await resolveProxy(account.proxyId, account.id);
-  await partition.setProxy(proxy.url ? { proxyRules: proxy.url } : { mode: "direct" });
+  const partition = await mediaSession(account);
   const result = await resolveDolaWatermarkUrlRemote(payload, { fetchJson: async (url) => {
-    const response = await partition.fetch(url, { redirect: "follow" });
-    const host = new URL(response.url).hostname.toLowerCase();
-    if (!["dola.com", "byteintlapi.com"].some((suffix) => host === suffix || host.endsWith(`.${suffix}`))) throw new Error("无水印查询跳转到不受信任的地址");
+    const response = await fetchTrustedMedia(partition.fetch.bind(partition), url);
     if (!response.ok) throw new Error(`无水印地址查询失败：HTTP ${response.status}`);
     return response.json();
   } });
-  task.unwatermarkedUrl = result.downloadUrl;
+  task.unwatermarkedUrl = trustedMediaUrl(result.downloadUrl);
   task.watermarkError = "";
   return result.downloadUrl;
 }
@@ -474,9 +1025,13 @@ async function resolveTaskWatermark(task, payload) {
 async function removeTaskWatermark(id) {
   const task = store.state.tasks.find((item) => item.id === id);
   if (!task || task.model === "dola-seedream-4-5") throw new Error("请选择视频任务");
-  const result = await providerJson(`/internal/runtime/v1/videos/${encodeURIComponent(id)}?refresh=1`);
-  if (!result.vodPayload) throw new Error("上游尚未返回可解析的原始视频信息");
-  const url = await resolveTaskWatermark(task, result.vodPayload);
+  if (task.unwatermarkedUrl) return { ready: true, url: task.unwatermarkedUrl };
+  if (!task.vodPayload) {
+    const result = await providerJson(`/internal/runtime/v1/videos/${encodeURIComponent(id)}`);
+    task.vodPayload = result.vodPayload;
+  }
+  if (!task.vodPayload) throw new Error("上游尚未返回可解析的原始视频信息，请先查询状态");
+  const url = await resolveTaskWatermark(task, task.vodPayload);
   await store.save();
   window?.webContents.send("dola:task", { type: "task", task });
   return { ready: true, url };
@@ -487,7 +1042,8 @@ async function openTask(id) {
   if (!task) throw new Error("任务不存在");
   if (!/^\d{8,}$/.test(task.conversationId || "")) throw new Error("该任务还没有可打开的 Dola 会话");
   if (activeAccountId !== task.accountId) await openAccount(task.accountId);
-  await browserView.webContents.loadURL(`https://www.dola.com/chat/${task.conversationId}`);
+  const url = `https://www.dola.com/chat/${task.conversationId}`;
+  if (browserView.webContents.getURL() !== url) await browserView.webContents.loadURL(url);
   return { accountId: task.accountId, conversationId: task.conversationId };
 }
 
@@ -572,9 +1128,7 @@ async function downloadTaskAssets(id, ordinal) {
   await mkdir(downloads, { recursive: true });
   const account = store.state.accounts.find((item) => item.id === task.accountId);
   if (!account) throw new Error("任务账号不存在");
-  const partition = session.fromPartition(`persist:dola-${account.id}`);
-  const proxy = await resolveProxy(account.proxyId, account.id);
-  await partition.setProxy(proxy.url ? { proxyRules: proxy.url } : { mode: "direct" });
+  const partition = await mediaSession(account);
   const files = [];
   for (const [index, originalUrl] of task.resultUrls.entries()) {
     if (ordinal !== undefined && index !== Number(ordinal)) continue;
@@ -586,11 +1140,7 @@ async function downloadTaskAssets(id, ordinal) {
       files.push(target);
       continue;
     }
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:" || !parsed.hostname || !/\.(?:dola\.com|byteintlapi\.com|ibyteimg\.com)$/.test(`.${parsed.hostname.toLowerCase()}`)) throw new Error("生成结果地址不在允许的 Dola/CDN 域名内");
-    const response = await partition.fetch(url, { redirect: "follow" });
-    const finalHost = new URL(response.url).hostname.toLowerCase();
-    if (!["dola.com", "byteintlapi.com", "ibyteimg.com"].some((suffix) => finalHost === suffix || finalHost.endsWith(`.${suffix}`))) throw new Error("素材下载跳转到不受信任的地址");
+    const response = await fetchTrustedMedia(partition.fetch.bind(partition), url);
     if (!response.ok) throw new Error(`素材下载失败：HTTP ${response.status}`);
     const mime = response.headers.get("content-type")?.split(";", 1)[0] || "";
     if (!mime.startsWith("image/") && !mime.startsWith("video/")) throw new Error("生成结果不是图片或视频");
@@ -641,8 +1191,25 @@ async function chooseWorkspace() {
 async function saveSettings(input) {
   if (input.theme === "light" || input.theme === "dark") store.state.settings.theme = input.theme;
   if (typeof input.autoDownload === "boolean") store.state.settings.autoDownload = input.autoDownload;
+  if (typeof input.browserStaticDirect === "boolean") store.state.settings.browserStaticDirect = input.browserStaticDirect;
   if (typeof input.autoRemoveWatermark === "boolean") store.state.settings.autoRemoveWatermark = input.autoRemoveWatermark;
   if (typeof input.apiEnabled === "boolean") store.state.settings.apiEnabled = input.apiEnabled;
+  if (input.imagexUploadProxyId !== undefined) {
+    const selected = String(input.imagexUploadProxyId || "");
+    if (selected && !store.state.proxies.generic.some((item) => item.id === selected) && !store.state.proxies.chained.some((item) => item.id === selected) && !magicNode(selected)) throw new Error("参考图上传代理节点不存在");
+    if (selected !== store.state.settings.imagexUploadProxyId) await mihomo.stop("imagex-upload");
+    store.state.settings.imagexUploadProxyId = selected;
+  }
+  if (input.magicProxyId !== undefined) {
+    const id = String(input.magicProxyId || "");
+    if (id && !magicNode(id)) throw new Error("魔法代理节点不存在");
+    store.state.settings.magicProxyId = id;
+  }
+  if (input.chainedProxyId !== undefined) {
+    const id = String(input.chainedProxyId || "");
+    if (id && !store.state.proxies.chained.some((item) => item.id === id)) throw new Error("链式代理不存在");
+    store.state.settings.chainedProxyId = id;
+  }
   const previousPort = store.state.settings.apiPort;
   if (input.apiPort !== undefined) {
     const port = Number(input.apiPort);
@@ -656,6 +1223,7 @@ async function saveSettings(input) {
     apiOrigin = "";
     await startApi();
   }
+  if (input.magicProxyId !== undefined || input.chainedProxyId !== undefined) await refreshActiveAccountProxy();
   return store.state.settings;
 }
 

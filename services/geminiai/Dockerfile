@@ -65,12 +65,16 @@ RUN groupadd --gid 10001 geminiai \
 WORKDIR /app
 
 COPY requirements.txt ./
-# 浏览器束体积大且来源跨国，瞬断常见：最多重试 5 次
+# 浏览器束体积大且来源跨国，瞬断常见：最多重试 5 次。
+# camoufox fetch 在 GitHub 目录同步失败（限流/断网）时会以退出码 0 结束且不落任何浏览器，
+# 因此必须显式验证浏览器束真实存在，不能只信退出码。
 RUN pip install --no-cache-dir -r requirements.txt \
     && ok=""; \
     for attempt in 1 2 3 4 5; do \
         if python -m cloakbrowser install \
-           && HOME=/home/geminiai python -m camoufox fetch; then ok=1; break; fi; \
+           && HOME=/home/geminiai python -m camoufox fetch \
+           && HOME=/home/geminiai python -c "from camoufox.pkgman import camoufox_path; camoufox_path(download_if_missing=False)" \
+           && ls -d /opt/cloakbrowser/chromium-* >/dev/null; then ok=1; break; fi; \
         echo "browser bundle attempt $attempt failed, retrying in 20s"; sleep 20; \
     done; \
     [ -n "$ok" ] || { echo "browser bundle download failed" >&2; exit 1; }; \

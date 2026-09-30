@@ -5,8 +5,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from .contracts import AccountInspectRequest, GoogleLoginRequest, GoogleLoginSessionRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest
-from .session import CamoufoxSessionPool
+from .contracts import AccountInspectRequest, AdoptBrowserTaskRequest, BrowserQueryResultRequest, BrowserSubmitPrepareRequest, BrowserSubmitResultRequest, GoogleLoginRequest, GoogleLoginSessionRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest
+from .page_scripts import PREPARE_UPLOAD_SCRIPT
+from .query import extract_generation_input
+from .session import CamoufoxSessionPool, parse_browser_submission, prepare_browser_submission
+from .uploads import PREPARE_UPLOAD_BODY
 
 pool = CamoufoxSessionPool()
 
@@ -39,6 +42,43 @@ async def models() -> dict:
         {"id": "dola-seedance-2-0-fast", "object": "model", "capability": "video"},
         {"id": "dola-seedream-4-5", "object": "model", "capability": "image"},
     ]}
+
+
+@app.get("/internal/runtime/v1/browser-submit/upload-script", dependencies=[Depends(require_internal)])
+async def browser_upload_script() -> dict:
+    return {"script": PREPARE_UPLOAD_SCRIPT, "body": PREPARE_UPLOAD_BODY}
+
+
+@app.post("/internal/runtime/v1/browser-submit/prepare", dependencies=[Depends(require_internal)])
+async def browser_submit_prepare(request: BrowserSubmitPrepareRequest) -> dict:
+    try:
+        return await prepare_browser_submission(request, request.uploadConfig)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/internal/runtime/v1/browser-submit/parse", dependencies=[Depends(require_internal)])
+async def browser_submit_parse(request: BrowserSubmitResultRequest) -> dict:
+    return await parse_browser_submission(request.payload, request.cookie, request.proxyUrl)
+
+
+@app.get("/internal/runtime/v1/tasks/{task_id}/browser-query", dependencies=[Depends(require_internal)])
+async def prepare_browser_query(task_id: str) -> dict:
+    try:
+        return await pool.prepare_browser_query(task_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/internal/runtime/v1/tasks/{task_id}/browser-result", dependencies=[Depends(require_internal)])
+async def apply_browser_result(task_id: str, request: BrowserQueryResultRequest) -> dict:
+    try:
+        task = await pool.apply_browser_result(task_id, request)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {**task.model_dump(by_alias=True, exclude_none=True), "input": extract_generation_input(request.payload)}
 
 
 @app.post("/internal/runtime/v1/accounts/inspect", dependencies=[Depends(require_internal)])
@@ -138,6 +178,15 @@ async def rebind_task(task_id: str, request: AccountInspectRequest) -> dict:
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return await query(task_id)
+
+
+@app.post("/internal/runtime/v1/tasks/adopt-browser", dependencies=[Depends(require_internal)])
+async def adopt_browser_task(request: AdoptBrowserTaskRequest) -> dict:
+    try:
+        task = await pool.adopt_browser_task(request)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return task.model_dump(by_alias=True, exclude_none=True)
 
 
 @app.post("/internal/runtime/v1/verifications/{verification_id}/open", dependencies=[Depends(require_internal)])

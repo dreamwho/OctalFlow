@@ -3,6 +3,7 @@ import { DolaProviderError } from "./provider";
 
 export type DolaProxyEgress = { mode: "direct" | "magic" | "generic" | "chained"; target?: string; nodeName?: string; address?: string };
 export type DolaProxyBinding = { enabled: boolean; mode: DolaProxyEgress["mode"]; target: string };
+export type DolaLoginProxySelection = { mode: "default" | DolaProxyEgress["mode"]; target?: string };
 /** Provider contract uses `managed` for any server-managed Dola egress mode. */
 export function dolaProviderProxyMode(egress: DolaProxyEgress): "direct" | "managed" {
     return egress.mode === "direct" ? "direct" : "managed";
@@ -55,4 +56,44 @@ export async function resolveDolaProxyEgress(): Promise<{ proxyUrl?: string; egr
         const message = error instanceof Error ? error.message : "Dola 代理出口不可用";
         throw new DolaProviderError(message, 503, "proxy_unavailable");
     }
+}
+
+/** ImageX gets its own Mihomo listener/binding; it never inherits the browser submission route. */
+export async function resolveDolaImagexUploadEgress(hasReferences = true): Promise<{ mode: "direct" | "managed"; proxyUrl?: string; source: DolaProxyEgress["mode"] }> {
+    if (!hasReferences) return { mode: "direct", source: "direct" };
+    const { ensureMagicProxyProvider } = await import("@/lib/server/magic-proxy-service");
+    const resolved = await ensureMagicProxyProvider("dolaUpload");
+    if (!resolved.enabled) return { mode: "direct", source: "direct" };
+    if (!resolved.proxyUrl || !["magic", "generic", "chained"].includes(resolved.egress?.mode || "")) {
+        throw new DolaProviderError("Dola 参考图上传代理未就绪，请检查独立上传出口", 503, "proxy_unavailable");
+    }
+    return { mode: "managed", proxyUrl: resolved.proxyUrl, source: resolved.egress!.mode };
+}
+
+export function dolaRequestHasReferences(payload: Record<string, unknown>) {
+    return Boolean((Array.isArray(payload.references) && payload.references.length)
+        || (Array.isArray(payload.images) && payload.images.length)
+        || (typeof payload.image === "string" && payload.image.trim())
+        || (typeof payload.first_frame === "string" && payload.first_frame.trim())
+        || (typeof payload.last_frame === "string" && payload.last_frame.trim()));
+}
+
+/** A Google authorization selection changes only this browser, never the saved Dola binding. */
+export async function resolveDolaLoginProxySelection(selection: DolaLoginProxySelection = { mode: "default" }): Promise<{ proxyUrl?: string; egress: DolaProxyEgress }> {
+    if (selection.mode === "default") return resolveDolaProxyEgress();
+    if (selection.mode === "direct") return { egress: { mode: "direct" } };
+    if (selection.mode === "generic") {
+        if (!selection.target?.startsWith("node:") || !selection.target.slice(5)) throw new DolaProviderError("请选择通用代理节点", 400);
+        const { resolveGenericProxyNodeUrl } = await import("@/lib/server/chatgpt-api-service");
+        const proxyUrl = await resolveGenericProxyNodeUrl(selection.target.slice(5));
+        if (!proxyUrl) throw new DolaProviderError("所选通用代理节点不可用", 409);
+        return { proxyUrl, egress: { mode: "generic", target: selection.target } };
+    }
+    const binding = await getDolaProxyBinding();
+    if (!binding.enabled || binding.mode !== selection.mode || !binding.target || binding.target !== selection.target) {
+        throw new DolaProviderError("所选代理节点与 Dola 当前绑定不一致，请先在代理管理保存该出口", 409);
+    }
+    const proxy = await resolveDolaProxyEgress();
+    if (proxy.egress.mode !== selection.mode || !proxy.proxyUrl) throw new DolaProviderError("所选 Dola 代理出口尚未就绪", 503);
+    return proxy;
 }

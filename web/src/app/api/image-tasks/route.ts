@@ -1,3 +1,4 @@
+import { buildPanoramaPrompt } from "@/app/(user)/canvas/utils/canvas-panorama";
 import { requestPublicOrigin } from "./image-task-reference-urls";
 import { after, NextResponse } from "next/server";
 
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
         if (kind === "upscale" && !isDreaminaUpscale) return NextResponse.json({ error: "图片超清当前仅支持即梦 CLI 图片超清模型" }, { status: 400 });
         if (isDreaminaUpscale && !dreaminaCliOperationEnabled(settings, "dreamina-image-upscale")) return NextResponse.json({ error: "即梦 CLI 图片超清模型尚未在管理后台启用" }, { status: 422 });
         const requestedConfigs = runningHubApp ? [runningHubImageConfig(resolvedBody.config, runningHubApp.id, runningHubApp.name)] : isDreaminaUpscale ? [dreaminaUpscaleConfig(resolvedBody.config, settings)] : sanitizeConfigs(resolvedBody.config, settings);
-        const configs = requestedConfigs.filter((config) => roleModelAccessAllows(settings.userRoles, currentUser.role, config.logicalModel || config.model, "image"));
+        const configs = requestedConfigs.map((config) => ({ ...config, promptRules: settings.generationDefaults.promptRules })).filter((config) => roleModelAccessAllows(settings.userRoles, currentUser.role, config.logicalModel || config.model, "image"));
         if (requestedConfigs.length && !configs.length) return NextResponse.json({ error: "当前用户角色无权使用该图片模型" }, { status: 403 });
         if (!configs.length || (kind !== "upscale" && !prompt)) return NextResponse.json({ error: "任务参数不完整" }, { status: 400 });
         const references = Array.isArray(resolvedBody.references) ? resolvedBody.references.filter((item) => Boolean(item?.dataUrl || item?.url || item?.remoteUrl || item?.serverUrl)) : [];
@@ -207,7 +208,7 @@ export async function POST(request: Request) {
             title: typeof resolvedBody.title === "string" ? resolvedBody.title : "",
             config,
             candidateConfigs: compatibleConfigs.slice(1),
-            prompt,
+            prompt: resolvedBody.panorama === true ? buildPanoramaPrompt(prompt, references.length > 0, settings.generationDefaults.promptRules?.panorama) : prompt,
             publicPrompt: publicPrompt || undefined,
             references,
             mask: resolvedBody.mask?.dataUrl || resolvedBody.mask?.url || resolvedBody.mask?.remoteUrl || resolvedBody.mask?.serverUrl ? resolvedBody.mask : undefined,

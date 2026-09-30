@@ -18,6 +18,7 @@ export type ImageUpscaleTaskInput = {
     sourceNodeId?: string;
 };
 export type RequestOptions = {
+    panorama?: boolean;
     signal?: AbortSignal;
     logSource?: GenerationLogSource;
     logTitle?: string;
@@ -114,6 +115,7 @@ export async function createImageGenerationTask(config: AiConfig, prompt: string
                 size: requestConfig.size,
             },
             prompt,
+            panorama: options?.panorama,
             publicPrompt: options?.publicPrompt,
             references: taskReferences,
             mask: taskMask,

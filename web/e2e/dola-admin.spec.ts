@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { e2eSettingsPatch } from "./support";
+import { protocolModelConfig } from "../src/lib/channel-protocol-registry";
 
 test.describe.configure({ mode: "serial" });
 
@@ -7,6 +9,66 @@ const READY_COOKIE = "session=e2e-ready-cookie; uid=101";
 const EXPIRED_COOKIE = "session=e2e-expired-cookie; uid=102";
 const BOOM_COOKIE = "session=e2e-boom-cookie; uid=103";
 const REFRESH_ROUTE = /\/api\/admin\/dola\/accounts\/[^/]+\/refresh$/;
+
+test("DOLA accepted 额度拒绝会换号，记录消耗，并保持管理员取消终态", async ({ page, request }) => {
+    const defaults = e2eSettingsPatch();
+    const upstreamModel = "dola-seedance-2-5";
+    const logicalModel = "e2e-dola-video";
+    const patch = {
+        systemChannels: [...defaults.systemChannels, { id: "dola", name: "Dola API", baseUrl: "", apiKey: "", enabled: true, apiFormat: "openai", models: [upstreamModel], advancedConfig: { protocol: "dola", authMode: "provider-managed", modelCapabilities: { [upstreamModel]: "video" }, modelConfigs: { [upstreamModel]: protocolModelConfig("dola", "video", upstreamModel) } } }],
+        logicalModels: [...defaults.logicalModels, { id: logicalModel, name: logicalModel, capability: "video", enabled: true, bindings: [{ id: `dola:${upstreamModel}`, channelId: "dola", upstreamModel, enabled: true, priority: 1 }] }],
+        modelPointCosts: { ...defaults.modelPointCosts, [logicalModel]: 0 },
+    };
+    const saved = await request.patch("/api/admin/settings", { data: patch });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    const group = "额度回归专用";
+    const imported = await request.post("/api/admin/dola/accounts", { data: { items: [{ cookie: "session=quota-exhausted", name: "额度耗尽夹具", group }, { cookie: "session=quota-reply", name: "额度可用夹具", group }] } });
+    expect(imported.ok(), await imported.text()).toBe(true);
+    const gateway = await request.patch("/api/admin/dola/gateway", { data: { rotationLimit: 2, dispatchGroups: [group] } });
+    expect(gateway.ok(), await gateway.text()).toBe(true);
+    try {
+        const headers = { "x-dreamyo-logical-model": logicalModel, "x-dreamyo-upstream-model": upstreamModel };
+        const submitted = await request.post("/api/ai/system/dola/v1/videos", { headers, data: { model: upstreamModel, prompt: "本地额度回归", duration: 15, ratio: "16:9" } });
+        expect(submitted.ok(), await submitted.text()).toBe(true);
+        const first = await submitted.json();
+        expect(first.status).toBe("accepted");
+        expect(first.quota[0]).toMatchObject({ remaining: 2, taskCost: 2, consumed: 2, observedTotal: 4, limit: null });
+        const overview = await request.get("/api/admin/dola");
+        const accounts = (await overview.json()).data.accounts;
+        expect(accounts.find((item: { name: string }) => item.name === "额度耗尽夹具")).toMatchObject({ status: "quota_exhausted" });
+        const created = await request.post("/api/video-generation-tasks", { data: { config: { model: logicalModel, size: "16:9", vquality: "720", videoSeconds: 15 }, prompt: "取消状态回归", source: "canvas" } });
+        expect(created.ok(), await created.text()).toBe(true);
+        const logs = async () => ((await (await request.get("/api/admin/dola/logs?source=runtime")).json()).data.items as Array<{ taskId?: string; phase: string; statusCode: number; lifecycle?: Array<{ message: string }> }>);
+        let taskId = "";
+        await expect.poll(async () => { taskId = (await logs()).find((item) => item.taskId && item.taskId !== first.id)?.taskId || ""; return taskId; }).not.toBe("");
+        await openDolaAccounts(page);
+        await page.getByRole("tab", { name: "请求日志" }).click();
+        await page.getByRole("button").filter({ hasText: taskId }).first().click();
+        await page.getByRole("button", { name: "取消任务", exact: true }).click();
+        await page.locator(".ant-popconfirm").getByRole("button", { name: "取消任务", exact: true }).click();
+        await expect(page.locator(".ant-drawer").getByText(/已取消 ·/)).toBeVisible();
+        // A late successful transport response must not resurrect the cancelled row.
+        await request.get(`/api/ai/system/dola/v1/videos/${taskId}`, { headers });
+        expect((await logs()).find((item) => item.taskId === taskId)).toMatchObject({ phase: "cancelled", statusCode: 200 });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.getByRole("tab", { name: "请求日志" }).click();
+        const row = page.getByRole("button").filter({ hasText: taskId }).first();
+        await expect(row.getByText("已取消", { exact: true }).first()).toBeVisible();
+        await row.click();
+        for (const width of [1280, 390, 430]) {
+            await page.setViewportSize({ width, height: 900 });
+            const drawer = page.locator(".ant-drawer-content-wrapper:visible");
+            await expect.poll(async () => { const bounds = await drawer.boundingBox(); return Boolean(bounds && bounds.x >= -1 && bounds.x + bounds.width <= width + 1); }).toBe(true);
+            const content = await drawer.locator(".ant-drawer-body").evaluate((element) => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
+            expect(content.scrollWidth).toBeLessThanOrEqual(content.width + 1);
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+            await page.screenshot({ path: `.e2e-artifacts/dola-cancelled-${width}.png` });
+        }
+    } finally {
+        await request.patch("/api/admin/settings", { data: defaults });
+        await request.patch("/api/admin/dola/gateway", { data: { dispatchGroups: [] } });
+    }
+});
 
 async function openDolaAccounts(page: Page) {
     // 本地手动实例的 RSC 再校验会误判匿名并跳转登录页（与被测改动无关）；阻断 RSC 请求保持初始渲染
@@ -19,6 +81,42 @@ async function openDolaAccounts(page: Page) {
 function accountRow(page: Page, name: string) {
     return page.getByRole("row", { name: new RegExp(`${name}(?:\\s|$)`) });
 }
+
+test("参考图上传出口与 Dola 提交代理独立展示四种方式", async ({ page }) => {
+    let binding = { enabled: false, target: "" };
+    await page.route("**/api/admin/generic-proxy/proxy/generic-bindings", async (route) => {
+        if (route.request().method() === "POST") {
+            const body = route.request().postDataJSON() as { provider: string; enabled: boolean; target?: string };
+            if (body.provider === "dolaUpload") binding = { enabled: body.enabled, target: body.target || "" };
+        }
+        await route.fulfill({ json: { code: 0, data: { bindings: { dolaUpload: binding }, revision: "fixture" }, msg: "" } });
+    });
+    await page.route("**/api/admin/generic-proxy/proxies", (route) => route.fulfill({ json: { code: 0, data: { groups: [{ id: "residential", name: "住宅代理", nodes: [{ id: "node-1", name: "台湾节点" }] }] }, msg: "" } }));
+    await openDolaAccounts(page);
+    await page.getByRole("tab", { name: "代理管理" }).click();
+    await expect(page.getByText("Dola API · 代理管理")).toBeVisible();
+    await expect(page.getByText("Dola 参考图上传 · 代理管理")).toBeVisible();
+    const upload = page.getByText("Dola 参考图上传 · 代理管理").locator("xpath=ancestor::section[1]");
+    await expect(upload.getByText("直连", { exact: true }).first()).toBeVisible();
+    await expect(upload.getByText("魔法代理", { exact: true })).toBeVisible();
+    await expect(upload.getByText("通用代理", { exact: true })).toBeVisible();
+    await expect(upload.getByText("链式代理", { exact: true })).toBeVisible();
+    await upload.getByText("通用代理", { exact: true }).click();
+    const generic = upload.getByRole("combobox", { name: "通用代理出口" });
+    await expect(generic).toBeVisible();
+    await generic.click();
+    await page.getByText("节点 · 台湾节点（住宅代理）", { exact: true }).click();
+    await expect.poll(() => binding).toEqual({ enabled: true, target: "node:node-1" });
+    await upload.getByText("直连", { exact: true }).last().click();
+    await expect(upload.getByText(/参考图通过服务器网络直连 ImageX/)).toBeVisible();
+    await expect.poll(() => binding).toEqual({ enabled: false, target: "" });
+    for (const width of [390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        const bounds = await upload.getByRole("radiogroup", { name: "代理方式" }).boundingBox();
+        expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+});
 
 test("导入的账号进入账号池并展示中文状态", async ({ page, request }) => {
     const existing = await request.get("/api/admin/dola");
@@ -71,7 +169,7 @@ test("服务器账号测试使用远程浏览器并可关闭回收", async ({ pa
     const logsBefore = ((await logsBeforeResponse.json()) as { data: { total: number } }).data.total;
     await openDolaAccounts(page);
     await accountRow(page, "e2e-ready").getByRole("button", { name: "有头测试" }).click();
-    const options = page.getByRole("dialog", { name: /有头测试 · e2e-ready/ });
+    const options = page.getByRole("dialog", { name: "有头测试 · e2e-ready", exact: true });
     await expect(options.getByText("远程窗口最长空闲时间（秒）")).toBeVisible();
     await options.getByRole("radio", { name: "魔法代理" }).click();
     await expect(options.getByText("请配置 Dola 魔法代理节点")).toBeVisible();
@@ -100,6 +198,52 @@ test("服务器账号测试使用远程浏览器并可关闭回收", async ({ pa
     await expect(remote).toBeHidden();
     const logsAfterResponse = await request.get("/api/admin/dola/logs?pageSize=1");
     expect(((await logsAfterResponse.json()) as { data: { total: number } }).data.total).toBe(logsBefore);
+});
+
+test("本地账号有头测试直接使用原生浏览器确认弹层", async ({ page, request }) => {
+    const overview = await request.get("/api/admin/dola");
+    const accounts = ((await overview.json()) as { data: { accounts: Array<{ name: string }> } }).data.accounts;
+    if (!accounts.some((item) => item.name === "e2e-ready")) {
+        const imported = await request.post("/api/admin/dola/accounts", { data: { items: [{ cookie: READY_COOKIE, name: "e2e-ready", sourceFileName: "e2e.txt", sourceOrdinal: 1 }] } });
+        expect(imported.ok(), await imported.text()).toBe(true);
+    }
+    const leaseToken = "native-headed-test-lease-token";
+    await page.route("**/api/admin/dola/accounts/*/headed-test", (route) => route.fulfill({ json: { code: 0, data: { verificationId: "native-headed-fixture", leaseToken, headless: false }, msg: "" } }));
+    await page.route("**/api/admin/dola/verifications/native-headed-fixture/finalize", (route) => route.fulfill({ json: { code: 0, data: { status: "saved", changed: true, windowClosed: true }, msg: "" } }));
+    await openDolaAccounts(page);
+    await accountRow(page, "e2e-ready").getByRole("button", { name: "有头测试" }).click();
+    const options = page.getByRole("dialog", { name: "有头测试 · e2e-ready", exact: true });
+    await options.getByRole("button", { name: "打开独立窗口" }).click();
+    await expect(options).toBeHidden();
+    const native = page.getByRole("dialog", { name: /Dola 本机有头测试/ });
+    await expect(native.getByText("请直接在本机 Camoufox 窗口操作")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Dola 有头测试", exact: true })).toHaveCount(0);
+    for (const width of [390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        const bounds = await native.boundingBox();
+        expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width).toBe(true);
+    }
+    await native.getByRole("button", { name: "检测登录并保存 Cookie" }).click();
+    await expect(native).toBeHidden();
+});
+
+test("返回进行中的本机测试仍使用原生窗口而非远程截图", async ({ page, request }) => {
+    const accountsResponse = await request.get("/api/admin/dola");
+    const accountsPayload = await accountsResponse.json() as { data: { accounts: Array<{ id: string; name: string }> } };
+    const accountId = accountsPayload.data.accounts.find((item) => item.name === "e2e-ready")?.id;
+    expect(accountId).toBeTruthy();
+    let active = true;
+    await page.route("**/api/admin/dola/verifications/active", (route) => route.fulfill({ json: { code: 0, data: active ? [{ verificationId: "native-return-fixture", accountId, createdAt: new Date().toISOString(), headless: false }] : [], msg: "" } }));
+    await page.route("**/api/admin/dola/verifications/native-return-fixture/open", (route) => route.fulfill({ json: { code: 0, data: { leaseToken: "native-return-lease-token" }, msg: "" } }));
+    await page.route("**/api/admin/dola/verifications/native-return-fixture/close", (route) => { active = false; return route.fulfill({ json: { code: 0, data: { status: "closed" }, msg: "" } }); });
+    await openDolaAccounts(page);
+    await accountRow(page, "e2e-ready").getByRole("button", { name: "返回有头测试" }).click();
+    const native = page.getByRole("dialog", { name: /Dola 本机有头测试/ });
+    await expect(native).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Dola 有头测试", exact: true })).toHaveCount(0);
+    await native.getByRole("button", { name: "不保存，关闭浏览器" }).click();
+    await expect(native).toBeHidden();
+    await expect(accountRow(page, "e2e-ready").getByRole("button", { name: "有头测试" })).toBeVisible();
 });
 
 test("检测 Cookie 有效的账号展示等待动画、可用状态与额度", async ({ page }) => {
@@ -208,6 +352,25 @@ test("请求日志详情展示错误分类说明", async ({ page }) => {
     await expect(page.getByText("错误分类")).toBeVisible();
     await expect(page.getByText(/上游账号触发生成频率\/数量限制/)).toBeVisible();
     await expect(page.getByText("upstream_rate_limited").last()).toBeVisible();
+});
+
+test("成功日志自动展示两种视频链接并可复制无水印地址", async ({ page, context }) => {
+    const taskId = "dola-11111111-1111-4111-8111-111111111111";
+    const videoUrl = "https://v16-dola.dola.com/playback.mp4";
+    const downloadUrl = "https://v16-dola.dola.com/original.mp4";
+    await page.route("**/api/admin/dola/logs?*", (route) => route.fulfill({ json: { code: 0, data: { items: [{ id: "success-log", createdAt: new Date().toISOString(), source: "runtime", capability: "video", method: "POST", path: "/v1/videos", model: "dola-seedance-2-5", statusCode: 200, durationMs: 1000, phase: "success", taskId, requestPreview: JSON.stringify({ prompt: "原始测试提示词" }), responsePreview: JSON.stringify({ videoUrl }) }], total: 1, page: 1, pageSize: 20, stats: { total: 1, success: 1, failed: 0, needsReview: 0, pending: 0, averageDurationMs: 1000 } } } }));
+    await page.route("**/api/admin/dola/logs/unwatermark", (route) => route.fulfill({ json: { code: 0, data: { taskId, videoUrl, downloadUrl, definition: "", codecType: "" } } }));
+    await openDolaAccounts(page);
+    await page.getByRole("tab", { name: "请求日志" }).click();
+    await page.getByRole("button", { name: /生成完成.*站内调用/ }).first().click();
+    const drawer = page.getByRole("dialog", { name: "Dola 请求详情" });
+    await expect(drawer.getByText(videoUrl, { exact: true })).toBeVisible();
+    await expect(drawer.getByText(downloadUrl, { exact: true })).toBeVisible();
+    await expect(drawer.getByText("原始测试提示词")).toBeVisible();
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await drawer.getByText(downloadUrl, { exact: true }).locator("..").getByRole("button", { name: "复制" }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(downloadUrl);
+    await expect(drawer.getByRole("link", { name: "下载无水印 MP4" })).toHaveAttribute("download", `${taskId}.mp4`);
 });
 
 test("通信测试经 Provider 提交并可查询到完成状态", async ({ page }) => {
@@ -386,7 +549,9 @@ test("本机授权入口显示独立浏览器操作并在取消时释放会话",
     const verificationId = "e2e-native-google-session";
     const leaseToken = "e2e-native-google-lease-token";
     let closeCalls = 0;
+    let requestedSelection: unknown;
     await page.route("**/api/admin/dola/accounts/google-login/session", async (route) => {
+        requestedSelection = route.request().postDataJSON()?.proxySelection;
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: 0, data: { mode: "native", verificationId, leaseToken }, msg: "已打开本机授权浏览器" }) });
     });
     await page.route(`**/api/admin/dola/verifications/${verificationId}/close`, async (route) => {
@@ -395,7 +560,18 @@ test("本机授权入口显示独立浏览器操作并在取消时释放会话",
     });
     await openDolaAccounts(page);
     await page.getByRole("button", { name: "Google 授权登录" }).click();
-    await page.getByRole("dialog", { name: "添加 Dola Google 授权账号" }).getByRole("button", { name: "启动 Google 授权" }).click();
+    const setup = page.getByRole("dialog", { name: "添加 Dola Google 授权账号" });
+    await expect(setup.getByText("跟随 Dola 当前配置")).toBeVisible();
+    for (const width of [390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect.poll(async () => {
+            const bounds = await setup.boundingBox();
+            return Boolean(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width);
+        }, { message: `Google 授权弹窗应完整位于 ${width}px 视口内` }).toBe(true);
+    }
+    await setup.getByText("直连", { exact: true }).click();
+    await setup.getByRole("button", { name: "启动 Google 授权" }).click();
+    expect(requestedSelection).toEqual({ mode: "direct" });
     const native = page.getByRole("dialog", { name: "Dola Google 本机授权" });
     await expect(native.getByText("请直接在本机 Camoufox 窗口登录")).toBeVisible();
     await native.getByRole("button", { name: "不保存，关闭浏览器" }).click();

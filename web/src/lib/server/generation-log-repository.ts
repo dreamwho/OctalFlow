@@ -624,7 +624,7 @@ function normalizeGenerationLogProtocolTrace(value: unknown): GenerationLogProto
         responseContentType: normalizeOptionalText(source.responseContentType, undefined, 160),
         requestHeaders: normalizeProtocolTraceHeaders(source.requestHeaders),
         responseHeaders: normalizeProtocolTraceHeaders(source.responseHeaders),
-        requestPreview: normalizeOptionalText(source.requestPreview, undefined, 5000),
+        requestPreview: typeof source.requestPreview === "string" ? source.requestPreview.trim() || undefined : undefined,
         responsePreview: normalizeOptionalText(source.responsePreview, undefined, 5000),
         error: normalizeOptionalText(source.error, undefined, 1000),
     }];

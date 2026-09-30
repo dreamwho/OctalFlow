@@ -10,8 +10,8 @@ const MAX_LOGS = 10_000;
 export type DolaRequestLogSource = "runtime" | "admin-test" | "external";
 export type DolaRequestLogCapability = "video" | "image";
 /** Task-level phases: submitted（已提交排队）→ generating（生成中）→ success/failed/needs_review。 */
-export type DolaRequestLogPhase = "queued" | "routing" | "auth" | "upstream" | "response" | "running" | "submitted" | "generating" | "success" | "failed" | "needs_review";
-export type DolaRequestLogStatus = "success" | "failed" | "needs_review" | "pending";
+export type DolaRequestLogPhase = "queued" | "routing" | "auth" | "upstream" | "response" | "running" | "submitted" | "generating" | "success" | "failed" | "needs_review" | "cancelled";
+export type DolaRequestLogStatus = "success" | "failed" | "needs_review" | "pending" | "cancelled";
 /** Phases that mean the underlying Dola task is still in flight. */
 export const DOLA_TASK_PENDING_PHASES = ["queued", "routing", "auth", "upstream", "response", "running", "submitted", "generating"] as const;
 export type DolaRequestLifecycleEntry = {
@@ -108,6 +108,7 @@ export async function markDolaRequestLogRunning(id: string, entry: Omit<DolaRequ
 /** Map a Provider task status (queued/running/accepted/completed/failed/needs_review) onto the task lifecycle log phase. */
 export function dolaTaskLogPhase(status: string, hasVerification = false): DolaRequestLogPhase {
     const value = (status || "").toLowerCase();
+    if (value === "cancelled" || value === "canceled") return "cancelled";
     if (hasVerification) return "needs_review";
     if (value === "completed" || value === "succeeded") return "success";
     if (value === "failed" || value === "submission_unknown") return "failed";
@@ -121,9 +122,17 @@ export async function findDolaTaskLogIdByTaskId(taskId: string, source: DolaRequ
     const target = (taskId || "").trim();
     if (!target) return "";
     if (isPostgresDatabaseEnabled()) return (await postgresRepository()).findByTaskId(target, source);
-    const candidates = (await readDatabase()).logs.filter((item) => item.taskId === target && item.source === source);
+    const candidates = (await readDatabase()).logs.filter((item) => item.taskId === target);
     // Prefer the original create row; legacy poll-created rows are only a fallback for pre-lifecycle data.
-    return (candidates.find((item) => item.method === "POST") || candidates[0])?.id || "";
+    return (candidates.find((item) => item.method === "POST") || candidates.find((item) => item.source === source) || candidates[0])?.id || "";
+}
+
+/** Queries from any surface share the task's create row; cancel all rows already owned by the task. */
+export async function cancelDolaTaskLogs(taskId: string, detail?: string) {
+    const ids = isPostgresDatabaseEnabled()
+        ? await (await postgresRepository()).findIdsByTaskId(taskId)
+        : (await readDatabase()).logs.filter((log) => log.taskId === taskId).map((log) => log.id);
+    await Promise.all(ids.map((id) => advanceDolaTaskLog(id, { phase: "cancelled", message: "任务已被管理员取消", error: "admin_cancel", detail })));
 }
 
 /**
@@ -164,7 +173,7 @@ export async function advanceDolaTaskLog(
         if (advance.quotaRemaining !== undefined) log.quotaRemaining = advance.quotaRemaining;
         if (advance.quotaLimit !== undefined) log.quotaLimit = advance.quotaLimit;
         log.phase = advance.phase;
-        const final = advance.phase === "success" || advance.phase === "failed" || advance.phase === "needs_review";
+        const final = advance.phase === "success" || advance.phase === "failed" || advance.phase === "needs_review" || advance.phase === "cancelled";
         if (final && previous !== advance.phase) {
             const startedAt = Date.parse(log.createdAt);
             if (Number.isFinite(startedAt)) log.durationMs = Math.max(0, Date.now() - startedAt);
@@ -207,7 +216,7 @@ export async function settleDolaRequestLog(
         if (settle.phase) log.phase = settle.phase;
         else log.phase = settle.error || log.statusCode >= 400 ? "failed" : "success";
         if (settle.error) log.error = truncate(settle.error, 1_000);
-        if (settle.requestPreview) log.requestPreview = truncate(settle.requestPreview, 4_000);
+        if (settle.requestPreview) log.requestPreview = sanitizePreview(settle.requestPreview);
         if (settle.responsePreview) log.responsePreview = sanitizePreview(settle.responsePreview);
         if (settle.requestBytes !== undefined) log.requestBytes = Math.max(0, Math.floor(settle.requestBytes));
         if (settle.responseBytes !== undefined) log.responseBytes = Math.max(0, Math.floor(settle.responseBytes));
@@ -244,14 +253,14 @@ async function patchDolaRequestLog(id: string, mutate: (log: DolaRequestLog) => 
     if (isPostgresDatabaseEnabled()) {
         const repository = await postgresRepository();
         const existing = await repository.findById(id);
-        if (!existing) return;
+        if (!existing || existing.phase === "cancelled") return;
         mutate(existing);
         await repository.update(existing);
         return;
     }
     await mutateDatabase((database) => {
         const target = database.logs.find((log) => log.id === id);
-        if (target) mutate(target);
+        if (target && target.phase !== "cancelled") mutate(target);
     });
 }
 
@@ -300,6 +309,7 @@ export function requestStats(logs: DolaRequestLog[]): DolaRequestStats {
 
 function matches(log: DolaRequestLog, input: { keyword: string; status?: DolaRequestLogStatus; phase?: DolaRequestLogPhase; source?: DolaRequestLogSource; model?: string; accountId?: string; proxyMode?: string }) {
     if (input.status === "success" && log.phase !== "success") return false;
+    if (input.status === "cancelled" && log.phase !== "cancelled") return false;
     if (input.status === "failed" && log.phase !== "failed" && log.statusCode < 400) return false;
     if (input.status === "needs_review" && log.phase !== "needs_review") return false;
     if (input.status === "pending" && !(DOLA_TASK_PENDING_PHASES as readonly string[]).includes(log.phase)) return false;
@@ -344,7 +354,7 @@ function sanitizePreview(value: string) {
     try {
         const parsed = JSON.parse(value) as unknown;
         const rendered = JSON.stringify(redactValue(parsed), null, 2);
-        return typeof parsed === "object" && parsed !== null && "conversationReply" in parsed ? rendered : truncate(rendered, 4_000);
+        return typeof parsed === "object" && parsed !== null && ("conversationReply" in parsed || "prompt" in parsed) ? rendered : truncate(rendered, 4_000);
     } catch {
         return truncate(value.replace(/(?:cookie|authorization|x-api-key|token|secret|password)\s*[:=]\s*[^,;\s]+/gi, "$1:〔已脱敏〕"), 4_000);
     }
@@ -355,7 +365,7 @@ function redactValue(value: unknown, key = ""): unknown {
     if (key && /cookie|authorization|api[-_]?key|token|secret|password|base64|dataurl/i.test(key)) return "〔已脱敏〕";
     if (typeof value === "string") {
         if (/^data:(?:image|video)\//i.test(value) || value.length > 512 && /^[a-z0-9+/=_-]+$/i.test(value.replace(/\s/g, ""))) return "〔媒体或编码数据已脱敏〕";
-        return key === "conversationReply" ? value : value.length > 600 ? `${value.slice(0, 600)}…` : value;
+        return key === "conversationReply" || key === "prompt" ? value : value.length > 600 ? `${value.slice(0, 600)}…` : value;
     }
     if (Array.isArray(value)) return value.slice(0, 32).map((item) => redactValue(item));
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).slice(0, 64).map(([entryKey, item]) => [entryKey, redactValue(item, entryKey)]));
@@ -363,7 +373,7 @@ function redactValue(value: unknown, key = ""): unknown {
 }
 
 function phaseLabel(phase: DolaRequestLogPhase) {
-    const labels: Record<DolaRequestLogPhase, string> = {
+    const labels: Record<DolaRequestLogPhase, string> = { cancelled: "已取消",
         queued: "等待执行",
         routing: "代理路由",
         auth: "账号鉴权",

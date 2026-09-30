@@ -401,15 +401,28 @@ export function delay(ms: number, signal?: AbortSignal) {
             reject(new DOMException("Aborted", "AbortError"));
             return;
         }
-        const timer = setTimeout(resolve, ms);
-        signal?.addEventListener(
-            "abort",
-            () => {
-                clearTimeout(timer);
-                reject(new DOMException("Aborted", "AbortError"));
-            },
-            { once: true },
-        );
+        let settled = false;
+        const cleanup = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", onAbort);
+            if (typeof window !== "undefined") window.removeEventListener("focus", onVisible);
+            if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
+        };
+        const finish = (aborted = false) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            if (aborted) reject(new DOMException("Aborted", "AbortError"));
+            else resolve();
+        };
+        const onAbort = () => finish(true);
+        const onVisible = () => {
+            if (typeof document === "undefined" || document.visibilityState === "visible") finish();
+        };
+        const timer = setTimeout(() => finish(), ms);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (typeof window !== "undefined") window.addEventListener("focus", onVisible);
+        if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
     });
 }
 

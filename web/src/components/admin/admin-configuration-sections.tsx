@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { DataLifecyclePanel } from "@/components/admin/admin-data-lifecycle-settings";
-import { GenerationConcurrencyPanel, GenerationCostControlPanel, GenerationDefaultsPanel } from "@/components/admin/admin-generation-settings";
+import { GenerationConcurrencyPanel, GenerationCostControlPanel, GenerationDefaultsPanel, GenerationPromptRulesPanel } from "@/components/admin/admin-generation-settings";
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { buildAdminSettingsPatch, resolveAdminSettingsAccess } from "@/components/admin/admin-settings-access";
 import { LabeledControl, SectionTitle, SettingInlineToggle, SettingToggle } from "@/components/admin/admin-settings-controls";
@@ -431,6 +431,7 @@ export function AdminSettingsSection({ controller, desktopEdition }: { controlle
                                   <GenerationCostControlPanel settings={settings} onChange={updateGenerationCostControl} />
                               </div>
                               <GenerationDefaultsPanel settings={settings} onChange={updateGenerationDefaults} />
+                              <GenerationPromptRulesPanel settings={settings} onChange={updateGenerationDefaults} />
                           </section>
                       ),
                   },

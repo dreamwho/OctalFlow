@@ -11,6 +11,7 @@ import { chatGptApiRequest, type ChatGptAccountPage, type ChatGptGateway, type C
 import { accountFilePayload, readAccountFiles, submitAccountImport, type AccountFileImport, type AccountImportPayload, type ImportProgress } from "../account-import";
 import { accountOperationOutcome, type AccountOperationResult } from "../account-operation-result";
 import { MagicProxyBindingCard } from "@/components/admin/magic-proxy-binding-card";
+import { ChatGptUploadProxyPanel } from "./chatgpt-upload-proxy-panel";
 import { ChatGptStatisticsPanel } from "./chatgpt-statistics";
 import { accountOperationCompletionNotice, accountOperationProgressPercent, type AccountOperationProgress, useAccountOperationProgress } from "./use-account-operation-progress";
 import { ChatGptRequestLogPanel } from "./chatgpt-request-log-panel";
@@ -601,6 +602,7 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
             {tab === "proxy" ? (
                 <div data-chatgpt-api-tab-panel="proxy" className="space-y-4">
                     <MagicProxyBindingCard provider="chatgptApi" />
+                    <ChatGptUploadProxyPanel />
                 </div>
             ) : null}
 

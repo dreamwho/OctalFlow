@@ -16,7 +16,8 @@ vi.mock("@/lib/server/data-adapter", () => ({
     }),
 }));
 
-import { DEFAULT_SITE_SETTINGS } from "./store-foundation";
+import { DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
+import { DEFAULT_SETTINGS, DEFAULT_SITE_SETTINGS } from "./store-foundation";
 import { getAuthSettings, setAuthSettings } from "./store";
 
 /** 回归：站点资料保存曾被历史乱码修复规则改写（含 dreamyo+AI 的标题被整体替换为默认标语）。 */
@@ -27,6 +28,15 @@ describe("admin site settings save pipeline", () => {
 
     afterEach(() => {
         vi.unstubAllEnvs();
+    });
+
+    it("persists disabled rules and edited or empty contents across a fresh settings read", async () => {
+        const rules = structuredClone(DEFAULT_GENERATION_PROMPT_RULES);
+        rules.imageReference = { enabled: false, content: "不要保持服饰，只沿用面部。\n第二行" };
+        rules.panorama = { enabled: true, content: "" };
+        const saved = await setAuthSettings({ generationDefaults: { ...DEFAULT_SETTINGS.generationDefaults, promptRules: rules } });
+        expect(saved.generationDefaults.promptRules).toEqual(rules);
+        expect((await getAuthSettings()).generationDefaults.promptRules).toEqual(rules);
     });
 
     it("persists administrator-entered site copy verbatim", async () => {

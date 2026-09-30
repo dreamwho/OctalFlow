@@ -3,6 +3,7 @@
 const DOLA_ERROR_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
     [/uploading_references.*reference_\d+_of_\d+.*reference_fetch_ConnectError/i, "站内参考图读取连接失败，尚未向 Dola 提交生成请求 (reference fetch failed before submission)"],
     [/uploading_references.*reference_\d+_of_\d+.*imagex_(?:apply|upload|commit)_ConnectError/i, "参考图上传服务连接失败，尚未向 Dola 提交生成请求 (image upload connection failed before submission)"],
+    [/uploading_references.*reference_\d+_of_\d+.*imagex_(?:apply|upload|commit)_WriteTimeout/i, "参考图上传写入超时，尚未向 Dola 提交生成请求 (image upload write timeout before submission)"],
     [/uploading_references.*ConnectError/i, "参考图准备阶段连接失败，尚未向 Dola 提交生成请求 (reference transfer failed before submission)"],
     [/quota[_ ]?exhausted|upstream_quota_exhausted|生成次数.*(?:上限|已达|到达)|额度.*用完|免费生成次数.*用完|明天再来免费生成|今日额度已用完/i, "上游账号今日生成次数已达上限 (upstream account daily quota exhausted)"],
     [/rate[_ ]?limited|rate limit|too many requests|429|710022002|服务访问频繁|频繁/i, "上游账号触发生成频率/数量限制 (upstream account rate-limited)"],
@@ -49,6 +50,8 @@ export function isContentClassGenerationError(text: string) {
 /** 反代账号池协议统一的失败判定：账号类错误且非内容类错误才允许换号重试 */
 export function shouldRotateAccountForError(text: string) {
     const value = text || "";
+    // Provider 仍在准备参考图，尚未提交生成；换 Cookie 不会修复传输超时。
+    if (/^uploading_references\s*:/i.test(value)) return false;
     return isAccountClassGenerationError(value) && !isContentClassGenerationError(value);
 }
 

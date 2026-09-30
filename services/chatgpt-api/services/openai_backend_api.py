@@ -1248,7 +1248,7 @@ class OpenAIBackendAPI:
         )
         ensure_ok(response, path)
         upload_meta = response.json()
-        response = self.session.put(
+        response = self._signed_upload_put(
             upload_meta["upload_url"],
             headers={
                 "Content-Type": mime_type,
@@ -1660,7 +1660,7 @@ class OpenAIBackendAPI:
         file_id = str(payload.get("file_id") or "")
         if not upload_url or not file_id:
             raise RuntimeError(f"invalid upload response: {payload}")
-        response = self.session.put(
+        response = self._signed_upload_put(
             upload_url,
             headers=self._signed_asset_headers({
                 "Content-Type": mime_type,
@@ -1693,6 +1693,19 @@ class OpenAIBackendAPI:
             "width": width,
             "height": height,
         }
+
+    def _signed_upload_put(self, url: str, *, headers: dict[str, str], data: bytes, timeout: float):
+        profile = proxy_settings.signed_upload_profile(self.proxy_profile)
+        if profile is self.proxy_profile:
+            return self.session.put(url, headers=headers, data=data, timeout=timeout)
+        session = requests.Session(**proxy_settings.build_session_kwargs_from_profile(
+            profile, impersonate=self.fp["impersonate"], verify=True,
+            curl_infos=list(HTTP_TIMING_INFOS),
+        ))
+        try:
+            return session.put(url, headers=headers, data=data, timeout=timeout)
+        finally:
+            session.close()
 
     def _decode_editable_base64_image(self, base64_image: str, index: int) -> tuple[bytes, str, str, int, int]:
         raw = str(base64_image or "").strip()

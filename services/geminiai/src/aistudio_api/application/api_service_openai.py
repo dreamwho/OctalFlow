@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -166,6 +168,7 @@ async def handle_image_generation(req: ImageRequest, client: AIStudioClient):
             await ensure_active_account(attempt)
             try:
                 logger.info("Image: model=%s, prompt=%s..., attempt=%d", req.model, req.prompt[:50], attempt + 1)
+                started = time.monotonic()
                 output = await client.generate_image(
                     prompt=req.prompt,
                     model=req.model,
@@ -178,6 +181,7 @@ async def handle_image_generation(req: ImageRequest, client: AIStudioClient):
                 )
                 record_rotator_event("success")
                 runtime_state.record(req.model, "success", output.usage)
+                logger.info("Image 完成: model=%s, 耗时=%.1fs, 尝试=%d/%d", req.model, time.monotonic() - started, attempt + 1, attempts)
                 return image_response(output)
             except UsageLimitExceeded as exc:
                 runtime_state.record(req.model, "rate_limited")
@@ -256,6 +260,7 @@ async def handle_image_edit(
                     len(image_parts),
                     attempt + 1,
                 )
+                started = time.monotonic()
                 output = await client.generate_image(
                     prompt=prompt,
                     model=model,
@@ -266,6 +271,7 @@ async def handle_image_edit(
                 )
                 record_rotator_event("success")
                 runtime_state.record(model, "success", output.usage)
+                logger.info("Image Edit 完成: model=%s, 耗时=%.1fs, 尝试=%d/%d, images=%d", model, time.monotonic() - started, attempt + 1, attempts, len(image_parts))
                 return image_response(output)
             except UsageLimitExceeded as exc:
                 runtime_state.record(model, "rate_limited")

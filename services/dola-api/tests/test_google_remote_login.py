@@ -14,6 +14,7 @@ def test_remote_google_login_replaces_previous_browser_and_closes_after_use(monk
 
     closed = []
     modes = []
+    browser_options = []
     native_closed = asyncio.Event()
 
     class Page:
@@ -77,6 +78,7 @@ def test_remote_google_login_replaces_previous_browser_and_closes_after_use(monk
 
         def __init__(self, **options):
             modes.append(options["headless"])
+            browser_options.append(options)
             Camoufox.next_index += 1
             self.index = Camoufox.next_index
 
@@ -107,7 +109,7 @@ def test_remote_google_login_replaces_previous_browser_and_closes_after_use(monk
         with pytest.raises(RuntimeError, match="并发上限"):
             await pool.start_headed_test(AccountInspectRequest(accountId="account-2", cookie="sid=fixture"))
         assert list(pool._verifications) == [first_id]
-        second = await pool.start_google_login_session("admin-1")
+        second = await pool.start_google_login_session("admin-1", proxy_mode="managed", proxy_source="chained", proxy_target="Taiwan", proxy_url="http://127.0.0.1:17893")
         second_id = second["verificationId"]
         assert ("browser", 1) in closed
         assert first_id not in pool._verifications
@@ -119,7 +121,12 @@ def test_remote_google_login_replaces_previous_browser_and_closes_after_use(monk
         popup.is_closed = lambda: True
         assert (await pool.open_verification(second_id))["pageUrl"] == "https://www.dola.com/login"
         lease = VerificationLease(leaseToken=snapshot["leaseToken"])
-        assert (await pool.finalize_google_login_session(second_id, lease))["cookie"] == "dola_session=authorized"
+        finalized = await pool.finalize_google_login_session(second_id, lease)
+        assert finalized["cookie"] == "dola_session=authorized"
+        assert finalized["proxySource"] == "chained"
+        assert finalized["proxyTarget"] == "Taiwan"
+        assert finalized["proxyUrl"] == "http://127.0.0.1:17893"
+        assert browser_options[1]["proxy"]["server"] == "http://127.0.0.1:17893"
         assert ("browser", 2) not in closed
         await pool.close_verification(second_id, lease)
         assert (await pool.close_verification(second_id, lease))["status"] == "closed"
@@ -134,6 +141,66 @@ def test_remote_google_login_replaces_previous_browser_and_closes_after_use(monk
         pool._verifications[native["verificationId"]].page.close()
         await asyncio.wait_for(native_closed.wait(), 1)
         assert native["verificationId"] not in pool._verifications
+
+    asyncio.run(scenario())
+
+
+def test_local_headed_account_test_uses_native_browser_and_returns_lease(monkeypatch):
+    import camoufox.async_api as camoufox_api
+    import dola_api.session as session_module
+
+    modes = []
+    closed = []
+
+    class Page:
+        url = "https://www.dola.com/chat/create-image"
+
+        def on(self, *_args):
+            pass
+
+    class Context:
+        pages = []
+
+        async def add_cookies(self, _cookies):
+            pass
+
+        async def new_page(self):
+            page = Page()
+            self.pages = [page]
+            return page
+
+        async def close(self):
+            closed.append("context")
+
+    class Browser:
+        async def new_context(self, **_kwargs):
+            return Context()
+
+    class Camoufox:
+        def __init__(self, **options):
+            modes.append(options["headless"])
+
+        async def __aenter__(self):
+            return Browser()
+
+        async def __aexit__(self, *_args):
+            closed.append("browser")
+
+    async def navigate(_page, _url):
+        return "ready"
+
+    monkeypatch.setenv("DOLA_ENABLE_BROWSER", "1")
+    monkeypatch.setattr(camoufox_api, "AsyncCamoufox", Camoufox)
+    monkeypatch.setattr(session_module, "_goto_dola_page", navigate)
+
+    async def scenario():
+        pool = CamoufoxSessionPool()
+        result = await pool.start_headed_test(AccountInspectRequest(accountId="account-native", cookie="sid=fixture", headless=False))
+        assert modes == [False]
+        assert len(result["leaseToken"]) >= 16
+        assert pool.list_headed_tests()[0]["headless"] is False
+        await pool.close_verification(result["verificationId"], VerificationLease(leaseToken=result["leaseToken"]))
+        assert closed == ["context", "browser"]
 
     asyncio.run(scenario())
 

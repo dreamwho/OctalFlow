@@ -20,6 +20,8 @@ const row = {
     chatgpt_api_chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-1", hop_fallback_node: "Osaka-02" },
     dola_enabled: false,
     dola_node: null,
+    dola_upload_enabled: true,
+    dola_upload_node: "Upload-01",
     updated_at: new Date(updatedAt),
 };
 
@@ -43,6 +45,7 @@ describe("MagicProxyRepository", () => {
                 // 链式跳板兜底必须从 JSONB 读回，缺字段会让保存后界面为空
                 chatgptApi: { enabled: false, mode: "chained", chained_config: { hop_node: "Tokyo-01", landing_node_id: "landing-1", hop_fallback_node: "Osaka-02" } },
                 dola: { enabled: false },
+                dolaUpload: { enabled: true, node: "Upload-01" },
             },
             updatedAt,
         });
@@ -57,13 +60,13 @@ describe("MagicProxyRepository", () => {
             nodesCiphertext: "cipher:nodes",
             subscriptionsCiphertext: "cipher:subscriptions",
             nodeDelaysCiphertext: "cipher:delays",
-            bindings: { geminiai: { enabled: false }, geminiTools: { enabled: true, node: "Tokyo-01", fallback_node: "Osaka-02" }, chatgptApi: { enabled: false }, dola: { enabled: false } },
+            bindings: { geminiai: { enabled: false }, geminiTools: { enabled: true, node: "Tokyo-01", fallback_node: "Osaka-02" }, chatgptApi: { enabled: false }, dola: { enabled: false }, dolaUpload: { enabled: true, node: "Upload-01" } },
             updatedAt,
         });
 
         expect(query.mock.calls[0]?.[0]).toContain("INSERT INTO magic_proxy_settings");
         expect(query.mock.calls[0]?.[0]).toContain("ON CONFLICT (id) DO UPDATE");
         expect(query.mock.calls[0]?.[0]).toContain("gemini_tools_fallback_node=EXCLUDED.gemini_tools_fallback_node");
-        expect(query.mock.calls[0]?.[1]).toEqual(["cipher:subscription", "cipher:nodes", "cipher:subscriptions", "cipher:delays", false, null, "magic", null, null, true, "Tokyo-01", "magic", "Osaka-02", null, false, null, "magic", null, null, false, null, "magic", null, null, new Date(updatedAt)]);
+        expect(query.mock.calls[0]?.[1]).toEqual(["cipher:subscription", "cipher:nodes", "cipher:subscriptions", "cipher:delays", false, null, "magic", null, null, true, "Tokyo-01", "magic", "Osaka-02", null, false, null, "magic", null, null, false, null, "magic", null, null, true, "Upload-01", "magic", null, null, new Date(updatedAt)]);
     });
 });

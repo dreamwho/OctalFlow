@@ -1,4 +1,4 @@
-export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi" | "dola";
+export type MagicProxyProvider = "geminiai" | "geminiTools" | "chatgptApi" | "dola" | "dolaUpload";
 
 export type MagicProxyNode = {
     name: string;
@@ -58,7 +58,7 @@ export type MagicProxyState = {
     groups: MagicProxyGroup[];
     subscriptionGroups?: MagicProxySubscriptionGroupView[];
     subscriptions?: MagicProxyPublicSubscription[];
-    bindings: Partial<Record<MagicProxyProvider, MagicProxyBinding>> & Record<Exclude<MagicProxyProvider, "dola">, MagicProxyBinding>;
+    bindings: Partial<Record<MagicProxyProvider, MagicProxyBinding>> & Record<Exclude<MagicProxyProvider, "dola" | "dolaUpload">, MagicProxyBinding>;
 };
 
 export type MagicProxySubscriptionGroupView = {

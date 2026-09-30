@@ -4,6 +4,7 @@ import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib
 import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
 import { dolaCookieFingerprint, parseDolaCookieHeader, parseDolaImportInputs } from "./account-import";
 import { getDolaGatewaySettings } from "./gateway-store";
+import { readDolaQuotaReply } from "./quota-observation";
 import { dolaModelProfile, type DolaAccount, type DolaAccountImportItem, type DolaAccountImportResult, type DolaAccountStatus, type DolaAccountValidation, type DolaQuotaSnapshot } from "./types";
 
 const FILE_NAME = "dola/accounts.json";
@@ -23,6 +24,35 @@ export async function getDolaAccount(id: string) {
 export async function getDolaAccountCookie(id: string) {
     const account = (await readDatabase()).accounts.find((item) => item.id === id);
     return account ? decryptSecretValue(account.cookieCiphertext) : null;
+}
+
+export async function observeDolaTaskQuota(accountId: string, value: Record<string, unknown>, model: string) {
+    const observation = readDolaQuotaReply(value);
+    if (!observation || !await getDolaAccount(accountId)) return null;
+    const taskId = typeof value.id === "string" ? value.id : typeof value.taskId === "string" ? value.taskId : "";
+    const bucket = `${dolaModelProfile(model)?.capability || observation.capability}-credit`;
+    const now = new Date().toISOString();
+    const account = await mutateAccount(accountId, (account) => {
+        const stored = account.quota?.find((quota) => quota.bucket === bucket);
+        // Polling yesterday's task must not re-apply yesterday's charge/refusal today.
+        if (stored && isDateBeforeToday(stored.observedAt) && stored.observations?.some((item) => item.taskId === taskId)) return account;
+        const previous = stored && !isDateBeforeToday(stored.observedAt) ? stored : undefined;
+        const observations = previous?.observations || [];
+        const alreadyObserved = Boolean(taskId && observations.some((item) => item.taskId === taskId));
+        if (!alreadyObserved && taskId) observations.push({ taskId, consumed: observation.exhausted ? 0 : observation.consumed || 0 });
+        const consumed = observations.reduce((sum, item) => sum + item.consumed, 0);
+        const remaining = observation.exhausted ? 0 : alreadyObserved ? previous?.remaining ?? null : observation.remaining ?? previous?.remaining ?? null;
+        const quota: DolaQuotaSnapshot = {
+            bucket, unit: "credit", remaining, limit: previous?.limit ?? null,
+            observedAt: alreadyObserved && !observation.exhausted ? previous!.observedAt : now, source: "upstream", version: (previous?.version || 0) + (alreadyObserved ? 0 : 1),
+            consumed, taskCost: observation.consumed ?? previous?.taskCost,
+            observedTotal: Math.max(previous?.observedTotal || 0, consumed + (remaining ?? 0)),
+            costs: { ...previous?.costs, ...(model && observation.consumed !== undefined ? { [model]: observation.consumed } : {}) }, observations,
+        };
+        return { ...account, quota: [...(account.quota || []).filter((item) => item.bucket !== bucket), quota],
+            ...(observation.exhausted ? { status: "quota_exhausted" as const, quotaExhaustedAt: now, quotaExhaustedReason: observation.reason.slice(0, 300) } : {}) };
+    });
+    return account?.quota?.find((quota) => quota.bucket === bucket) || null;
 }
 
 export async function exportDolaGoogleAccountCookies(accountIds?: string[]) {
@@ -220,7 +250,17 @@ export async function deleteDolaAccounts(ids: string[]) {
 }
 
 export async function updateDolaAccountQuota(id: string, quota: DolaQuotaSnapshot[]) {
-    return mutateAccount(id, (account) => ({ ...account, quota: quota.slice(0, 32), lastVerifiedAt: new Date().toISOString() }));
+    return mutateAccount(id, (account) => ({ ...account, quota: mergeObservedQuota(account.quota, quota), lastVerifiedAt: new Date().toISOString() }));
+}
+
+function mergeObservedQuota(previous: DolaQuotaSnapshot[] = [], incoming: DolaQuotaSnapshot[]) {
+    const observations = previous.filter((quota) => quota.observations?.length && !isDateBeforeToday(quota.observedAt));
+    const merged = new Map(incoming.map((quota) => [quota.bucket, quota]));
+    for (const quota of observations) {
+        const next = merged.get(quota.bucket);
+        merged.set(quota.bucket, next?.remaining !== null && next?.remaining !== undefined ? { ...quota, ...next, consumed: quota.consumed, taskCost: quota.taskCost, costs: quota.costs, observations: quota.observations, observedTotal: quota.observedTotal } : quota);
+    }
+    return [...merged.values()].slice(0, 32);
 }
 
 export async function updateDolaAccountValidation(id: string, validation: DolaAccountValidation) {
@@ -284,7 +324,7 @@ export async function markDolaAccountReady(id: string, quota?: DolaQuotaSnapshot
     return mutateAccount(id, (account) => ({
         ...account,
         status: "ready",
-        ...(quota ? { quota: quota.slice(0, 32) } : {}),
+        ...(quota ? { quota: mergeObservedQuota(account.quota, quota) } : {}),
         lastVerifiedAt: new Date().toISOString(),
         restrictedReason: undefined,
     }));
@@ -316,6 +356,7 @@ export async function resetDolaAccountQuota(id: string) {
         ...account,
         status: account.loginState === "needs_login" ? "needs_login" : "ready",
         quotaExhaustedAt: undefined,
+        quota: [],
         quotaExhaustedReason: undefined,
         lastVerifiedAt: new Date().toISOString(),
     }));
@@ -386,13 +427,15 @@ function publicAccount(account: StoredDolaAccount): DolaAccount {
     return structuredClone(publicValue);
 }
 
-async function mutateAccount(id: string, patch: (account: StoredDolaAccount) => StoredDolaAccount) {
+async function mutateAccount(id: string, patch: (account: StoredDolaAccount) => StoredDolaAccount): Promise<DolaAccount | null> {
     let result: DolaAccount | null = null;
     await withJsonDataFileLock(FILE_NAME, async () => {
         const db = await readDatabase();
         const index = db.accounts.findIndex((item) => item.id === id);
         if (index < 0) throw new Error("Dola 账号不存在");
-        db.accounts[index] = { ...patch(db.accounts[index]), updatedAt: new Date().toISOString() };
+        const next = patch(db.accounts[index]);
+        if (next.status === "ready" && next.quotaExhaustedAt && !isDateBeforeToday(next.quotaExhaustedAt)) next.status = "quota_exhausted";
+        db.accounts[index] = { ...next, updatedAt: new Date().toISOString() };
         result = publicAccount(db.accounts[index]);
         await writeJsonDataFile(FILE_NAME, db);
     });
@@ -416,18 +459,13 @@ export function isDateBeforeToday(isoString?: string): boolean {
 async function readDatabase() {
     const stored = await readJsonDataFile<Partial<DolaDatabase>>(FILE_NAME, EMPTY_DB);
     const accounts = Array.isArray(stored.accounts) ? structuredClone(stored.accounts) : [];
-    let refreshed = false;
     for (const account of accounts) {
         if (account.status === "quota_exhausted" && isDateBeforeToday(account.quotaExhaustedAt)) {
             account.status = account.loginState === "needs_login" ? "needs_login" : "ready";
             account.quotaExhaustedAt = undefined;
             account.quotaExhaustedReason = undefined;
             account.updatedAt = new Date().toISOString();
-            refreshed = true;
         }
-    }
-    if (refreshed) {
-        writeJsonDataFile(FILE_NAME, { accounts }).catch(() => undefined);
     }
     return { accounts };
 }
@@ -455,10 +493,11 @@ export function availableForModel(account: StoredDolaAccount, model?: string, di
     const profile = dolaModelProfile(requested);
     const modelIds = new Set([requested, profile?.id, profile?.upstreamModelId].filter((value): value is string => Boolean(value)).map((value) => value.toLowerCase()));
     const modelQuotas = account.quota.filter((item) => {
+        if (item.resetAt ? Date.parse(item.resetAt) <= Date.now() : isDateBeforeToday(item.observedAt)) return false;
         const quotaModel = item.model?.trim().toLowerCase();
-        return !quotaModel || [...modelIds].some((candidate) => candidate === quotaModel || candidate.includes(quotaModel) || quotaModel.includes(candidate));
+        return (!item.model && (!item.bucket.endsWith("-credit") || item.bucket === `${profile?.capability}-credit`)) || Boolean(quotaModel && [...modelIds].some((candidate) => candidate === quotaModel || candidate.includes(quotaModel) || quotaModel.includes(candidate)));
     });
-    return !modelQuotas.length || modelQuotas.some((item) => item.remaining === null || item.remaining > 0);
+    return !modelQuotas.length || modelQuotas.every((item) => item.remaining === null || (item.remaining > 0 && item.remaining >= (item.costs?.[requested] || 0)));
 }
 
 export function normalizeDolaAccountStatus(value: unknown): DolaAccountStatus {

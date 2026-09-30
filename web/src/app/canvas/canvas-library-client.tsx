@@ -32,6 +32,8 @@ export function CanvasLibraryClient({ adminLocal = false }: { adminLocal?: boole
     const [projectName, setProjectName] = useState("");
     const desktopNewRef = useRef(false);
     const [exporting, setExporting] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [importProgress, setImportProgress] = useState<number | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const [keyword, setKeyword] = useState("");
     const [cloudBackupEnabled, setCloudBackupEnabled] = useState(false);
@@ -79,34 +81,45 @@ export function CanvasLibraryClient({ adminLocal = false }: { adminLocal?: boole
         }
     };
     const importCanvas = async (file?: Blob) => {
-        if (!file) return false;
+        if (!file || importing) return false;
+        setImporting(true);
         try {
             const zip = await readZip(file);
             const projectFile = zip.get("projects.json");
             if (!projectFile) throw new Error("missing projects.json");
             const data = JSON.parse(await projectFile.text()) as CanvasExportFile;
             if (data.app !== APP_EXPORT_ID || data.version !== 3 || !Array.isArray(data.projects) || !data.projects.length) throw new Error("画布包格式无效");
-            await Promise.all(
-                data.projects.map(async (item) => {
-                    const uploaded = new Map<string, { storageKey: string; url: string }>();
-                    await Promise.all(
-                        item.files.map(async (file) => {
-                            const blob = zip.get(file.path);
-                            if (!blob) throw new Error(`画布包缺少素材：${file.path}`);
-                            const typedBlob = blob.type ? blob : blob.slice(0, blob.size, file.mimeType);
-                            const media = file.mimeType.startsWith("image/") ? await uploadImage(typedBlob) : await uploadMediaFile(typedBlob, file.mimeType.startsWith("audio/") ? "audio" : "video");
-                            uploaded.set(file.storageKey, media);
-                        }),
-                    );
-                    await importProject(remapImportedProjectMedia(item.project, uploaded));
-                }),
-            );
+            const totalBytes = data.projects.reduce((total, item) => total + item.files.reduce((sum, media) => sum + (zip.get(media.path)?.size || 0), 0), 0);
+            let uploadedBytes = 0;
+            const loadedByFile = new Map<string, number>();
+            if (totalBytes) setImportProgress(0);
+            await Promise.all(data.projects.map(async (item, projectIndex) => {
+                const uploaded = new Map<string, { storageKey: string; url: string }>();
+                await Promise.all(item.files.map(async (mediaFile, fileIndex) => {
+                    const blob = zip.get(mediaFile.path);
+                    if (!blob) throw new Error(`画布包缺少素材：${mediaFile.path}`);
+                    const key = `${projectIndex}:${fileIndex}`;
+                    const updateProgress = (percent: number) => {
+                        const loaded = Math.max(loadedByFile.get(key) || 0, blob.size * percent / 100);
+                        uploadedBytes += loaded - (loadedByFile.get(key) || 0);
+                        loadedByFile.set(key, loaded);
+                        setImportProgress(Math.round((uploadedBytes / totalBytes) * 100));
+                    };
+                    const typedBlob = blob.type ? blob : blob.slice(0, blob.size, mediaFile.mimeType);
+                    const media = mediaFile.mimeType.startsWith("image/") ? await uploadImage(typedBlob, { onProgress: updateProgress }) : await uploadMediaFile(typedBlob, mediaFile.mimeType.startsWith("audio/") ? "audio" : "video", { onProgress: updateProgress });
+                    uploaded.set(mediaFile.storageKey, media);
+                    updateProgress(100);
+                }));
+                await importProject(remapImportedProjectMedia(item.project, uploaded));
+            }));
             message.success(`已导入 ${data.projects.length} 个画布`);
             return true;
         } catch (error) {
             message.error(error instanceof Error ? error.message : "导入失败，请选择有效的画布压缩包");
             return false;
         } finally {
+            setImporting(false);
+            setImportProgress(null);
             if (inputRef.current) inputRef.current.value = "";
         }
     };
@@ -194,7 +207,7 @@ export function CanvasLibraryClient({ adminLocal = false }: { adminLocal?: boole
                     <div><p className="text-[11px] font-semibold tracking-[.12em] text-[#514db5] dark:text-[#b9b6ff]">本地工作区</p><h1 className="mt-2 text-[27px] font-bold tracking-tight">项目库</h1><p className="mt-2 text-sm text-[#666d88] dark:text-[#abaacb]">整理画布与素材，继续你的创作。</p></div>
                     <div className="flex flex-wrap items-center gap-2 pt-4">
                         {selectedIds.length ? <><Button loading={exporting} icon={<Download className="size-4" />} onClick={() => void exportSelectedProjects()}>导出选中</Button><Button onClick={() => setDeleteIds(selectedIds)}>删除选中</Button></> : null}
-                        <Button icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>导入画布</Button>
+                        <Button icon={<FileUp className="size-4" />} loading={importing} onClick={() => inputRef.current?.click()}>{importing ? importProgress === null ? "正在读取画布…" : `导入中 ${importProgress}%` : "导入画布"}</Button>
                         <Button type="primary" icon={<Plus className="size-4" />} onClick={() => setNewProjectOpen(true)} disabled={!ready} aria-label="新建项目">新建项目</Button>
                     </div>
                 </header>
@@ -235,8 +248,8 @@ export function CanvasLibraryClient({ adminLocal = false }: { adminLocal?: boole
                                 </Button>
                             </>
                         ) : null}
-                        <Button disabled={!ready} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
-                            导入画布
+                        <Button disabled={!ready || importing} loading={importing} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
+                            {importing ? importProgress === null ? "正在读取画布…" : `导入中 ${importProgress}%` : "导入画布"}
                         </Button>
                         {cloudBackupEnabled ? <Button disabled={!ready} icon={<Cloud className="size-4" />} onClick={() => { setBackupsOpen(true); void loadBackups(1); void getCloudStorageUsage().then(setBackupUsage).catch(() => setBackupUsage(null)); }}>
                             云端备份

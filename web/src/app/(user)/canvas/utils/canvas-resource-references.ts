@@ -52,20 +52,41 @@ export function buildNodeMentionReferences(node: CanvasNodeData, nodes: CanvasNo
 }
 
 function getMentionResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const node = nodes.find((item) => item.id === nodeId);
+    if (node && isGeneratedResultNode(node)) return getGenerationResourceNodes(nodeId, nodes, connections);
     const configInputs = getConnectedConfigResourceNodes(nodeId, nodes, connections);
     if (configInputs.length) return configInputs;
     const ownInputs = getContextResourceNodes(nodeId, nodes, connections);
     if (ownInputs.length) return ownInputs;
-    const node = nodes.find((item) => item.id === nodeId);
     return node && isResourceNode(node) ? [node] : [];
 }
 
 export function getGenerationResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const source = nodes.find((node) => node.id === nodeId);
+    const ownInputs = getContextResourceNodes(nodeId, nodes, connections);
+    if (source && isGeneratedResultNode(source)) {
+        if (ownInputs.length) return ownInputs;
+        const configParent = connections
+            .filter((connection) => connection.toNodeId === nodeId)
+            .map((connection) => nodes.find((node) => node.id === connection.fromNodeId))
+            .find((node) => node?.type === CanvasNodeType.Config);
+        return configParent ? getContextResourceNodes(configParent.id, nodes, connections) : [];
+    }
     const configInputs = getConnectedConfigResourceNodes(nodeId, nodes, connections);
     if (configInputs.length) return configInputs;
-    const ownInputs = getContextResourceNodes(nodeId, nodes, connections);
     if (ownInputs.length) return ownInputs;
     return [];
+}
+
+export function getRegenerationSourceNodes(node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    return isGeneratedResultNode(node) ? getGenerationResourceNodes(node.id, nodes, connections) : [node];
+}
+
+export function isGeneratedResultNode(node: CanvasNodeData) {
+    return Boolean(
+        node.metadata?.content?.trim() &&
+            (node.metadata.model || node.metadata.generationType || node.metadata.derivedVideoOperation || (node.type === CanvasNodeType.Text && node.metadata.status === "success" && node.metadata.prompt)),
+    );
 }
 
 function getContextResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {

@@ -9,7 +9,7 @@ import { advanceDolaTaskLog, appendDolaRequestLog, dolaTaskLogPhase, findDolaTas
 import { getStoredGenerationTaskRecord } from "@/lib/server/generation-task-store";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import type { VideoTask } from "@/lib/server/video-task-store";
-import { dolaProviderProxyMode, getDolaProxyBinding, resolveDolaProxyEgress, type DolaProxyEgress } from "./proxy";
+import { dolaProviderProxyMode, getDolaProxyBinding, resolveDolaImagexUploadEgress, resolveDolaLoginProxySelection, resolveDolaProxyEgress, type DolaLoginProxySelection, type DolaProxyEgress } from "./proxy";
 import { DolaProviderError, dolaHealth, dolaProviderConfigured, dolaRuntimeRequest, validateDolaVideoRequest } from "./provider";
 import { describeDolaFailure, isDolaPreparingTask } from "@/lib/dola-errors";
 import { dolaPublicModels, type DolaAccountValidation, type DolaQuotaSnapshot } from "./types";
@@ -139,15 +139,16 @@ export async function testDolaVideo(input: {
     const logId = await safeOpenDolaRequestLog({ source: "admin-test", capability: profile.capability === "image" ? "image" : "video", method: "POST", path: "/v1/videos", model: profile.id, accountId: account.id, accountName: account.name, requestedDuration: input.duration, ratio: input.ratio || "16:9", requestPreview: summarizeVideoRequest(input), headers: { "content-type": "application/json" } }, lifecycle);
 
     let proxy: Awaited<ReturnType<typeof resolveDolaProxyEgress>>;
+    let imagex: Awaited<ReturnType<typeof resolveDolaImagexUploadEgress>>;
     try {
-        proxy = await resolveDolaProxyEgress();
+        [proxy, imagex] = await Promise.all([resolveDolaProxyEgress(), resolveDolaImagexUploadEgress(Boolean(input.references?.length))]);
     } catch (error) {
         if (!isTemporaryAccount) await releaseDolaAccountAttempt(account.id);
         const message = error instanceof Error ? error.message : "Dola 代理出口不可用";
         await safeSettleDolaRequestLog(logId, { statusCode: 503, durationMs: Date.now() - started, phase: "failed", error: message, accountId: account.id, accountName: account.name, proxyEgress: { mode: "direct" }, lifecycle: [...lifecycle, lifecycleEntry("failed", message, started)] });
         throw error;
     }
-    lifecycle.push({ time: new Date().toISOString(), phase: "routing", message: "代理出口路由绑定完成", durationMs: Date.now() - started, detail: proxy.egress.mode === "direct" ? "直连" : `模式: ${proxy.egress.mode}, 节点: ${proxy.egress.nodeName || proxy.egress.target || "已配置"}` });
+    lifecycle.push({ time: new Date().toISOString(), phase: "routing", message: "代理出口路由绑定完成", durationMs: Date.now() - started, detail: `生成提交: ${proxy.egress.mode}；ImageX 上传: ${imagex.source}` });
     const payload = {
         model: profile.id,
         prompt: input.prompt.trim(),
@@ -161,6 +162,8 @@ export async function testDolaVideo(input: {
         proxySource: proxy.egress.mode,
         proxyTarget: proxy.egress.target,
         ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
+        imagexProxyMode: imagex.mode,
+        ...(imagex.proxyUrl ? { imagexProxyUrl: imagex.proxyUrl } : {}),
         cookie,
         requestId: randomUUID(),
         headless: isHeadless,
@@ -288,8 +291,8 @@ export async function startDolaGoogleLogin(input?: { manualCookie?: string; emai
     return { account: saved, status: "success" };
 }
 
-export async function startDolaGoogleLoginSession(ownerId: string, timeoutSeconds: number, mode: "native" | "remote") {
-    const proxy = await resolveDolaProxyEgress();
+export async function startDolaGoogleLoginSession(ownerId: string, timeoutSeconds: number, mode: "native" | "remote", selection: DolaLoginProxySelection = { mode: "default" }) {
+    const proxy = await resolveDolaLoginProxySelection(selection);
     const response = await dolaRuntimeRequest("/v1/accounts/google-login/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -312,7 +315,11 @@ export async function completeDolaGoogleLoginSession(verificationId: string, lea
     if (payload?.status !== "ready" || !cookie) return { status: stringValue(payload?.status) || "unknown" };
 
     const account = await addOrUpdateGoogleDolaAccount({ cookie, name });
-    const verification = await refreshDolaAccount(account.id);
+    const source = payload?.proxySource;
+    const proxyOverride: Awaited<ReturnType<typeof resolveDolaProxyEgress>> | undefined = (source === "direct" || source === "magic" || source === "generic" || source === "chained")
+        ? { egress: { mode: source, target: stringValue(payload?.proxyTarget) || undefined }, ...(source !== "direct" && typeof payload?.proxyUrl === "string" ? { proxyUrl: payload.proxyUrl } : {}) }
+        : undefined;
+    const verification = await refreshDolaAccount(account.id, { proxyOverride });
     if (verification.account?.loginState !== "ready") return { status: "needs_login" };
     const closed = await dolaRuntimeRequest(`/v1/verifications/${encodeURIComponent(verificationId)}/close`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leaseToken }),
@@ -401,7 +408,7 @@ export async function queryDolaTask(taskId: string) {
     }
 }
 
-export async function refreshDolaAccount(id: string, options: { loginOnly?: boolean } = {}) {
+export async function refreshDolaAccount(id: string, options: { loginOnly?: boolean; proxyOverride?: Awaited<ReturnType<typeof resolveDolaProxyEgress>> } = {}) {
     const account = await getDolaAccount(id);
     if (!account) throw new Error("Dola 账号不存在");
     const loginOnly = options.loginOnly === true;
@@ -416,7 +423,7 @@ export async function refreshDolaAccount(id: string, options: { loginOnly?: bool
     }
     let proxy: Awaited<ReturnType<typeof resolveDolaProxyEgress>>;
     try {
-        proxy = await resolveDolaProxyEgress();
+        proxy = options.proxyOverride || await resolveDolaProxyEgress();
     } catch (error) {
         const message = error instanceof Error ? error.message : "Dola 代理出口不可用";
         await safeSettleDolaRequestLog(logId, { statusCode: 503, durationMs: Date.now() - started, phase: "failed", error: message, accountId: id, accountName: account.name, lifecycle: [...lifecycle, lifecycleEntry("failed", message, started)] });
@@ -427,7 +434,8 @@ export async function refreshDolaAccount(id: string, options: { loginOnly?: bool
     await safeMarkDolaRequestLogRunning(logId, { phase: "upstream", message: upstreamMessage });
     let response: Response;
     try {
-        response = await dolaRuntimeRequest("/v1/accounts/inspect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, authOnly: loginOnly, proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), cookie }) });
+        const gatewaySettings = await getDolaGatewaySettings();
+        response = await dolaRuntimeRequest("/v1/accounts/inspect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, authOnly: loginOnly, proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), cookie, randomFingerprint: gatewaySettings.randomFingerprint }) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Dola 账号额度查询失败";
         await safeSettleDolaRequestLog(logId, { statusCode: 502, durationMs: Date.now() - started, phase: "failed", error: message, accountId: id, accountName: account.name, proxyEgress: proxyEgress(proxy.egress), lifecycle: [...lifecycle, lifecycleEntry("failed", message, started)] });
@@ -572,9 +580,9 @@ export async function startDolaHeadedAccountTest(id: string, selection: { mode: 
             proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target,
             ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), headless: selection.headless, timeoutSeconds: selection.timeoutSeconds }),
     });
-    const payload = await response.json().catch(() => null) as { verificationId?: string; pageUrl?: string; detail?: string } | null;
+    const payload = await response.json().catch(() => null) as { verificationId?: string; leaseToken?: string; pageUrl?: string; detail?: string } | null;
     if (!response.ok || !payload?.verificationId) throw new DolaProviderError(payload?.detail?.startsWith("camoufox_launch_failed") ? `Camoufox 浏览器启动失败（${payload.detail}），请检查服务器浏览器运行环境` : payload?.detail || "Dola 测试浏览器未能打开", response.status || 502);
-    return { verificationId: payload.verificationId, pageUrl: payload.pageUrl, proxyMode: proxy.egress.mode, proxyTarget: proxy.egress.target || "" };
+    return { verificationId: payload.verificationId, leaseToken: payload.leaseToken, pageUrl: payload.pageUrl, proxyMode: proxy.egress.mode, proxyTarget: proxy.egress.target || "" };
 }
 
 export async function resolveDolaTaskVerification(task: VideoTask): Promise<string | undefined> {
@@ -658,7 +666,7 @@ function lifecycleEntry(phase: DolaRequestLogPhase, message: string, startedAt: 
     return { time: new Date().toISOString(), phase, message, durationMs: Date.now() - startedAt };
 }
 function summarizeVideoRequest(input: { model: string; prompt: string; duration: number; ratio: string; references?: Array<unknown> }) {
-    return JSON.stringify({ model: input.model, duration: input.duration, ratio: input.ratio || "16:9", referenceCount: input.references?.length || 0, promptLength: input.prompt.trim().length });
+    return JSON.stringify({ model: input.model, duration: input.duration, ratio: input.ratio || "16:9", referenceCount: input.references?.length || 0, prompt: input.prompt });
 }
 function parseRecord(bytes: Uint8Array) {
     try {
@@ -729,7 +737,7 @@ async function safeAdvanceDolaTaskLog(id: string, advance: Parameters<typeof adv
     }
 }
 function stringValue(value: unknown) { return typeof value === "string" ? value.slice(0, 400) : ""; }
-function numberOrNull(value: unknown) { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : null; }
+function numberOrNull(value: unknown) { if (value === null || value === undefined || value === "") return null; const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : null; }
 function quotaObservation(value: Record<string, unknown> | null | undefined) {
     const item = Array.isArray(value?.quota) ? value.quota.find((candidate): candidate is Record<string, unknown> => Boolean(candidate && typeof candidate === "object")) : value;
     if (!item || typeof item !== "object") return {};

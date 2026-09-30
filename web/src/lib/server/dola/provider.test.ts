@@ -88,3 +88,37 @@ describe("Dola provider paths", () => {
         vi.unstubAllEnvs();
     });
 });
+
+describe("Dola provider runtime request fingerprint flag", () => {
+    it("injects the admin randomFingerprint toggle into submit payloads", async () => {
+        const { mkdtemp, rm } = await import("node:fs/promises");
+        const { tmpdir } = await import("node:os");
+        const { join } = await import("node:path");
+        const directory = await mkdtemp(join(tmpdir(), "dreamyo-dola-provider-"));
+        vi.stubEnv("DREAMYO_DATABASE_PROVIDER", "file");
+        vi.stubEnv("DREAMYO_DATA_DIR", directory);
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "c".repeat(64));
+        vi.stubEnv("DREAMYO_DOLA_PROVIDER_URL", "https://provider.example.com");
+        vi.stubEnv("DREAMYO_DOLA_PROVIDER_KEY", "test-key");
+        const { updateDolaGatewaySettings } = await import("./gateway-store");
+        await updateDolaGatewaySettings({ randomFingerprint: true });
+        const bodies: string[] = [];
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+            bodies.push(String(init?.body));
+            return new Response(JSON.stringify({ taskId: "dola-1", status: "queued" }), { status: 200, headers: { "content-type": "application/json" } });
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            await dolaRuntimeRequest("/v1/videos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "dola-seedance-2-5", prompt: "p", cookie: "sid=1" }) });
+            const payload = JSON.parse(bodies[0] || "{}");
+            expect(payload.randomFingerprint).toBe(true);
+            await updateDolaGatewaySettings({ randomFingerprint: false });
+            await dolaRuntimeRequest("/v1/images", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "dola-seedream-4-5", prompt: "p", cookie: "sid=1" }) });
+            expect(JSON.parse(bodies[1] || "{}").randomFingerprint).toBe(false);
+        } finally {
+            vi.unstubAllEnvs();
+            vi.unstubAllGlobals();
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+});

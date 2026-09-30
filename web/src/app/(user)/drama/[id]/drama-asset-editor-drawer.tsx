@@ -41,6 +41,7 @@ export function DramaAssetEditorDrawer({ project, kind, assetId, open, onClose }
     const editorKeyRef = useRef("");
     const [draft, setDraft] = useState<AssetDraft>(emptyDraft);
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
     const [generating, setGenerating] = useState(false);
     const definition = DRAMA_ASSET_DEFINITIONS[kind];
     const asset = project[kind].find((item) => item.id === assetId);
@@ -154,8 +155,9 @@ export function DramaAssetEditorDrawer({ project, kind, assetId, open, onClose }
     const uploadReference = async (file?: File) => {
         if (!file || !asset) return;
         setUploading(true);
+        setUploadProgress(null);
         try {
-            const stored = await uploadImage(file);
+            const stored = await uploadImage(file, { onProgress: setUploadProgress });
             appendReferences(asset, [
                 {
                     id: `reference-${nanoid()}`,
@@ -173,6 +175,7 @@ export function DramaAssetEditorDrawer({ project, kind, assetId, open, onClose }
             message.error(error instanceof Error ? error.message : "参考图上传失败");
         } finally {
             setUploading(false);
+            setUploadProgress(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
     };
@@ -293,7 +296,7 @@ export function DramaAssetEditorDrawer({ project, kind, assetId, open, onClose }
                             <div className="flex flex-wrap items-center justify-end gap-2">
                                 <DramaSourceImagePicker project={project} onSelect={appendSourceReference} />
                                 <Button icon={<Upload className="size-3.5" />} loading={uploading} onClick={() => fileInputRef.current?.click()}>
-                                    上传候选
+                                    {uploading ? uploadProgress === null ? "处理中…" : `上传 ${uploadProgress}%` : "上传候选"}
                                 </Button>
                                 {kind !== "clues" ? (
                                     <GenerationActionButton appearance="soft" loading={generating} onClick={() => void generateReference()}>

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from .contracts import AccountInspectRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
+from .contracts import AccountInspectRequest, AdoptBrowserTaskRequest, BrowserQueryResultRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
 from .page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
 from .protocol import PROFILES, canonical_ratio, sanitize_video_prompt_duration, validate_request
 from .query import _classify_refusal_code, _extract_assistant_text, decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_account_login_state, parse_generation_payloads, probe_account_login
@@ -191,7 +191,8 @@ class CamoufoxSessionPool:
             self._sessions.setdefault(key, PageSession(account_id, credential_version, proxy_mode, proxy_target, proxy_url or "", request.cookie))
             task_id = f"dola-{uuid.uuid4()}"
             task = VideoTask(id=task_id, model=profile.model, status="queued", accountId=account_id, credentialVersion=credential_version, proxyMode=proxy_mode, proxyTarget=proxy_target or None)
-            self._task_meta[task_id] = {"accountId": account_id, "credentialVersion": credential_version, "proxyMode": proxy_mode, "proxyTarget": proxy_target, "proxyUrl": proxy_url or "", "cookie": request.cookie}
+            http_identity = _request_http_identity(request.userAgent, request.acceptLanguage)
+            self._task_meta[task_id] = {"accountId": account_id, "credentialVersion": credential_version, "proxyMode": proxy_mode, "proxyTarget": proxy_target, "proxyUrl": proxy_url or "", "cookie": request.cookie, **({"httpIdentity": http_identity} if http_identity else {})}
             self._tasks[task_id] = task
             await self._persist()
         asyncio.create_task(self._run_page_submit(task_id, request, key))
@@ -201,7 +202,7 @@ class CamoufoxSessionPool:
         if not request.cookie:
             raise ValueError("missing_cookie")
         proxy_url = _proxy_url_for_request(request.proxyMode, request.proxyUrl)
-        login_probe = await probe_account_login(request.cookie, proxy_url or None)
+        login_probe = await probe_account_login(request.cookie, proxy_url or None, _request_http_identity(request.userAgent, request.acceptLanguage))
         if login_probe.get("state") == "needs_login":
             return {"status": "needs_login", "quota": [], "loginProbe": login_probe}
         if request.authOnly:
@@ -468,9 +469,72 @@ class CamoufoxSessionPool:
             raise ValueError("task_account_mismatch")
         if task.status != "accepted" and not (task.status == "failed" and task.error == "task_state_cookie_unavailable"):
             raise ValueError("task_not_recoverable")
-        meta.update({"cookie": request.cookie, "proxyMode": request.proxyMode, "proxyTarget": request.proxyTarget or "", "proxyUrl": _proxy_url_for_request(request.proxyMode, request.proxyUrl)})
+        http_identity = _request_http_identity(request.userAgent, request.acceptLanguage)
+        meta.update({"cookie": request.cookie, "proxyMode": request.proxyMode, "proxyTarget": request.proxyTarget or "", "proxyUrl": _proxy_url_for_request(request.proxyMode, request.proxyUrl), **({"httpIdentity": http_identity} if http_identity else {})})
         self._tasks[task_id] = task.model_copy(update={"status": "accepted", "error": None})
         await self._persist()
+
+    async def adopt_browser_task(self, request: AdoptBrowserTaskRequest) -> VideoTask:
+        await self._ensure_loaded()
+        if not request.cookie:
+            raise ValueError("missing_cookie")
+        proxy_url = _proxy_url_for_request(request.proxyMode, request.proxyUrl) or ""
+        async with self._lock:
+            for task in self._tasks.values():
+                if task.accountId == request.accountId and task.conversationId == request.conversationId:
+                    return task
+            task = VideoTask(id=request.taskId, model=request.model, status="accepted", accountId=request.accountId,
+                             credentialVersion=request.credentialVersion, proxyMode=request.proxyMode,
+                             proxyTarget=request.proxyTarget, conversationId=request.conversationId)
+            self._tasks[task.id] = task
+            http_identity = _request_http_identity(request.userAgent, request.acceptLanguage)
+            self._task_meta[task.id] = {"accountId": request.accountId, "credentialVersion": request.credentialVersion,
+                                        "proxyMode": request.proxyMode, "proxyTarget": request.proxyTarget or "",
+                                        "proxyUrl": proxy_url, "cookie": request.cookie,
+                                        "conversationId": request.conversationId, "identity": request.identity,
+                                        **({"httpIdentity": http_identity} if http_identity else {})}
+            await self._persist()
+            return task
+
+    async def apply_browser_result(self, task_id: str, request: BrowserQueryResultRequest) -> VideoTask:
+        await self._ensure_loaded()
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if not task or task.accountId != request.accountId or task.conversationId != request.conversationId:
+                raise ValueError("task_account_or_conversation_mismatch")
+            if request.payload.get("code") not in (None, 0, "0"):
+                raise ValueError(f"Dola 状态查询被拒绝：{request.payload.get('code')}")
+            chain = request.payload.get("downlink_body", {}).get("pull_singe_chain_downlink_body")
+            if not isinstance(chain, dict):
+                raise ValueError("Dola 状态查询未返回会话内容")
+            if chain.get("conversation_id") and str(chain["conversation_id"]) != task.conversationId:
+                raise ValueError("task_account_or_conversation_mismatch")
+            result = parse_generation_payloads([request.payload])
+            update: dict[str, Any] = {}
+            media = result.get("imageUrls") if task.model == "dola-seedream-4-5" else result.get("url")
+            if media:
+                update = {"status": "completed", "error": None, "rawError": None, "vodPayload": _sanitize_vod_payload(result.get("payload"))}
+                if task.model == "dola-seedream-4-5":
+                    update["imageUrls"] = result.get("imageUrls") or []
+                else:
+                    update["videoUrl"] = result.get("url")
+            elif result.get("error") and task.status != "completed":
+                update = {"status": "failed", "error": result["error"], "rawError": result.get("rawError")}
+            assistant = _extract_assistant_text([request.payload])
+            if assistant:
+                update["diagnostics"] = {**(task.diagnostics or {}), "upstreamResponseText": assistant}
+            task = task.model_copy(update=update)
+            self._tasks[task_id] = task
+            await self._persist()
+            return task
+
+    async def prepare_browser_query(self, task_id: str) -> dict[str, Any]:
+        await self._ensure_loaded()
+        task = self._tasks.get(task_id)
+        if not task or not task.conversationId:
+            raise ValueError("task conversation not found")
+        path, body = generation_query_payloads(task.conversationId)[0]
+        return {"path": path, "body": body, "script": MAIN_WORLD_JSON_REQUEST_SCRIPT}
 
     async def open_verification(self, verification_id: str) -> dict[str, Any]:
         await self._ensure_loaded()
@@ -639,7 +703,7 @@ class CamoufoxSessionPool:
                 "protocol": protocol,
             }
 
-        references = await resolve_references(verification.page, verification.references, verification.page_session.proxy_url)
+        references = await resolve_references(verification.page, verification.references, verification.page_session.proxy_url, verification.request.imagexProxyMode if verification.request else None, verification.request.imagexProxyUrl if verification.request else None)
         verification.references = references
         try:
             await verification.page.wait_for_load_state("load", timeout=45_000)
@@ -652,7 +716,7 @@ class CamoufoxSessionPool:
         if result.get("restricted"):
             raise RuntimeError("proxy_region_blocked")
         if result.get("serviceFrequent"):
-            raise RuntimeError("rate_limited")
+            raise RuntimeError("dola_upstream_rejected_710022002" if result.get("serviceFrequentAmbiguous") else "rate_limited")
         if result.get("signatureRejected"):
             raise RuntimeError("signature_rejected")
         if int(result.get("status") or 0) >= 400:
@@ -939,7 +1003,7 @@ class CamoufoxSessionPool:
                 # The ACK proves this submit created a conversation, so the
                 # newest recent conversation belongs to this task even when the
                 # stream itself did not echo the id.
-                conversation_id = await fetch_recent_conversation_id(cookie, identity, self._sessions[key].proxy_url or None)
+                conversation_id = await fetch_recent_conversation_id(cookie, identity, self._sessions[key].proxy_url or None, self._task_meta.get(task_id, {}).get("httpIdentity"))
             video_url = _result_video_url(result)
             image_urls = _result_image_urls(result)
             diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
@@ -981,7 +1045,7 @@ class CamoufoxSessionPool:
             if result.get("needsLogin"):
                 raise RuntimeError("needs_login")
             if result.get("serviceFrequent"):
-                raise RuntimeError("rate_limited")
+                raise RuntimeError("dola_upstream_rejected_710022002" if result.get("serviceFrequentAmbiguous") else "rate_limited")
             if result.get("signatureRejected"):
                 raise RuntimeError("signature_rejected")
             if int(result.get("status") or 0) >= 400:
@@ -1106,7 +1170,11 @@ class CamoufoxSessionPool:
                     "diagnostics": {"pageState": "needs_login", "pageUrl": str(page.url)[:500]},
                 }
             references = _normalize_request_references(request)
-            resolved_references = await resolve_references(page, references, proxy_url)
+            self._task_meta[task_id]["diagnostics"] = {"submitStage": "uploading_references", "referenceCount": len(references), "imagexProxyMode": request.imagexProxyMode or "direct"}
+            await self._persist()
+            resolved_references = await resolve_references(page, references, proxy_url, request.imagexProxyMode, request.imagexProxyUrl)
+            self._task_meta[task_id]["diagnostics"] = {"submitStage": "submitting_to_dola", "referenceCount": len(references)}
+            await self._persist()
             result = await _execute_completion_submit(page, request, resolved_references, session.cookie)
             cookies = await context.cookies()
             cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name")) or session.cookie
@@ -1213,7 +1281,7 @@ class CamoufoxSessionPool:
         if not conversation_id and meta.get("ackReceived") and cookie:
             # Submit streams sometimes acknowledge without echoing the
             # conversation id; the ACK proves we created the newest one.
-            conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None) or ""
+            conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None, meta.get("httpIdentity")) or ""
             if conversation_id:
                 meta["conversationId"] = conversation_id
                 self._tasks[task_id] = task.model_copy(update={"conversationId": conversation_id})
@@ -1231,7 +1299,7 @@ class CamoufoxSessionPool:
             self._tasks[task_id] = task.model_copy(update={"status": "failed", "error": "task_state_proxy_unavailable"})
             await self._persist()
             return
-        result = await fetch_generation_result(cookie, conversation_id, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None)
+        result = await fetch_generation_result(cookie, conversation_id, dict(meta.get("identity") or {}), str(meta.get("proxyUrl") or "") or None, meta.get("httpIdentity"))
         assistant_text = str(result.get("assistantText") or "")
         if assistant_text:
             diagnostics = task.diagnostics if isinstance(task.diagnostics, dict) else {}
@@ -1476,6 +1544,12 @@ async def _goto_dola_page(page: Any, url: str) -> str:
             page.remove_listener("response", observe_response)
         except Exception:
             pass
+
+
+def _request_http_identity(user_agent: str | None, accept_language: str | None) -> dict[str, str] | None:
+    """桌面端透传的真实 UA/语言：协议轮询与内嵌浏览器保持同一身份。"""
+    explicit = {key: value for key, value in {"userAgent": user_agent, "acceptLanguage": accept_language}.items() if value}
+    return explicit or None
 
 
 def _camoufox_proxy_options(proxy_url: str) -> dict[str, str]:
@@ -1943,6 +2017,10 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
     payload["signed"] = bool(payload.get("signed")) or bool(payload["requestSigned"])
     if payload.get("fatal"):
         raise RuntimeError(f"submission_transport_{str(payload.get('fatal'))[:60]}")
+    return parse_completion_transport(payload)
+
+
+def parse_completion_transport(payload: dict[str, Any]) -> dict[str, Any]:
     text = str(payload.get("text") or "")
     events = _parse_sse_text(text)
     event_names = [name.upper() for name, _ in events]
@@ -1961,6 +2039,7 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
         "restricted": "country restricted" in text.lower() or "region-restricted" in text.lower(),
         "signatureRejected": "710022004" in text,
         "serviceFrequent": "710022002" in text or "当前需求量较大" in text or "服务访问频繁" in text or "high demand" in text.lower(),
+        "serviceFrequentAmbiguous": "710022002" in text and int(payload.get("status") or 0) != 429,
         "verificationRequired": decision is not None,
         "verificationDecision": decision,
         "timedOut": not text and not payload.get("status"),
@@ -1971,6 +2050,38 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
         "identitySource": str(payload.get("identitySource") or "")[:200],
         **{key: str(identity.get(key) or "") for key in ("device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name")},
     }
+
+
+async def prepare_browser_submission(request: VideoRequest, upload_config: dict[str, Any] | None) -> dict[str, Any]:
+    profile = validate_request(request.model, request.duration, request.ratio)
+    references = _normalize_request_references(request)
+    if any(not str(item.get("uri") or "").strip() for item in references) and not upload_config:
+        raise ValueError("browser_upload_config_missing")
+    resolved = await resolve_references(None, references, _proxy_url_for_request(request.proxyMode, request.proxyUrl), request.imagexProxyMode, request.imagexProxyUrl, upload_config)
+    return {"body": _build_request_body(profile, request, resolved), "script": MAIN_WORLD_SUBMIT_SCRIPT, "referenceCount": len(resolved), "resolvedReferences": resolved}
+
+
+async def parse_browser_submission(payload: dict[str, Any], cookie: str, proxy_url: str | None) -> dict[str, Any]:
+    if payload.get("fatal"):
+        return {"status": "failed", "error": f"submission_transport_{str(payload['fatal'])[:60]}"}
+    result = parse_completion_transport({**payload, "requestObserved": True, "requestSigned": bool(payload.get("signed"))})
+    conversation_id = result.get("conversationId") or ""
+    if not conversation_id and result.get("ackReceived"):
+        conversation_id = await fetch_recent_conversation_id(cookie, _identity_from_result(result), proxy_url)
+    if result.get("restricted"):
+        error = "proxy_region_blocked"
+    elif result.get("signatureRejected"):
+        error = "signature_rejected"
+    elif result.get("serviceFrequent"):
+        error = "dola_upstream_rejected_710022002" if result.get("serviceFrequentAmbiguous") else "rate_limited"
+    elif int(result.get("status") or 0) >= 400:
+        error = f"dola_submit_http_{result['status']}"
+    elif not conversation_id:
+        error = "conversation_id_missing_after_ack" if result.get("ackReceived") else "submission_unknown"
+    else:
+        error = ""
+    return {"status": "failed" if error else "accepted", "conversationId": conversation_id, "error": error,
+            "diagnostics": result.get("diagnostics") or {}, "identity": _identity_from_result(result)}
 
 
 def _build_completion_query(cookie: str) -> tuple[str, dict[str, str]]:
@@ -2063,6 +2174,7 @@ def _attachment_messages(references: list[dict[str, Any]]) -> list[dict[str, Any
 
 def _build_request_body(profile: Any, request: VideoRequest, references: list[dict[str, Any]]) -> dict[str, Any]:
     now_ms = int(time.time() * 1000)
+    collection_id = str(uuid.uuid4()) if references else ""
     ratio = canonical_ratio(request.ratio, profile.ratios) or "16:9"
     if profile.capability == "image" and not request.ratio:
         ratio = _ratio_from_size(request.size or "", profile.ratios) or ratio
@@ -2090,7 +2202,7 @@ def _build_request_body(profile: Any, request: VideoRequest, references: list[di
         chat_ability = {"ability_type": 17, "ability_param": json.dumps(ability_param, ensure_ascii=False, separators=(",", ":"))}
     body: dict[str, Any] = {
         "client_meta": {
-            "local_conversation_id": f"local_{now_ms}",
+            "local_conversation_id": f"local_{secrets.randbelow(9 * 10**15) + 10**15}",
             "conversation_id": "",
             "bot_id": DOLA_BOT_ID,
             "last_section_id": "",
@@ -2119,7 +2231,7 @@ def _build_request_body(profile: Any, request: VideoRequest, references: list[di
         "option": {
             "send_message_scene": "",
             "create_time_ms": now_ms,
-            "collect_id": "",
+            "collect_id": collection_id,
             "is_audio": False,
             "answer_with_suggest": False,
             "tts_switch": False,
@@ -2162,7 +2274,8 @@ def _build_request_body(profile: Any, request: VideoRequest, references: list[di
         "ext": {
             "answer_with_suggest": "0",
             "sub_conv_firstmet_type": "1",
-            "collection_id": "",
+            "collection_id": collection_id,
+            "fp": _cookie_value(request.cookie or "", "s_v_web_id"),
             "conversation_init_option": json.dumps({"need_ack_conversation": True}, separators=(",", ":")),
             "commerce_credit_config_enable": "0",
             "is_finish": "1",

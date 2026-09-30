@@ -1,7 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import YAML from "yaml";
-import { buildMihomoConfig, fetchMagicSubscription, fetchMagicSubscriptionUsing, genericMihomoNode, normalizeGenericProxyUrl, parseGenericProxyGroups, parseMagicSubscription, subscriptionUrls } from "./proxy-runtime.mjs";
+import { accountProxyId, configuredProxyId, buildMihomoConfig, fetchMagicSubscription, fetchMagicSubscriptionUsing, genericMihomoNode, normalizeGenericProxyUrl, parseGenericProxyGroups, parseMagicSubscription, subscriptionUrls } from "./proxy-runtime.mjs";
+
+test("account overrides, group inheritance and direct default resolve independently", () => {
+  const state = { accountGroupProxies: { 团队: "magic", 另一组: "chained" } };
+  assert.equal(accountProxyId({ group: "未分组" }, state), "direct");
+  assert.equal(accountProxyId({ group: "团队", proxyId: "" }, state), "magic");
+  assert.equal(accountProxyId({ group: "团队", proxyId: "direct" }, state), "direct");
+  assert.equal(accountProxyId({ group: "团队", proxyId: "generic-node" }, state), "generic-node");
+  assert.equal(accountProxyId({ group: "另一组", proxyId: "" }, state), "chained");
+  state.accountGroupProxies.团队 = "generic-node";
+  assert.equal(accountProxyId({ group: "团队", proxyId: "" }, state), "generic-node");
+  assert.equal(accountProxyId({ group: "toString" }, state), "direct");
+});
+
+test("managed modes use backend defaults and never silently fall back to direct", () => {
+  const state = { settings: { magicProxyId: "magic:sub:0", chainedProxyId: "chain" }, proxies: { magicSubscriptions: [{ nodes: [{ id: "magic:sub:0" }] }], chained: [{ id: "chain" }] } };
+  assert.equal(configuredProxyId("direct", state), "");
+  assert.equal(configuredProxyId("magic", state), "magic:sub:0");
+  assert.equal(configuredProxyId("chained", state), "chain");
+  assert.equal(configuredProxyId("generic-node", state), "generic-node");
+  state.settings.magicProxyId = "";
+  assert.throws(() => configuredProxyId("magic", state), /默认节点/);
+  state.proxies.chained = [];
+  assert.throws(() => configuredProxyId("chained", state), /默认链式代理/);
+});
 
 test("imports enabled generic groups and preserves node credentials for encryption", () => {
   const nodes = parseGenericProxyGroups(JSON.stringify({ proxy_groups: [

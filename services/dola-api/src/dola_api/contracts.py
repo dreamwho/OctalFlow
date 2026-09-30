@@ -21,11 +21,16 @@ class VideoRequest(BaseModel):
     proxySource: Literal["direct", "magic", "generic", "chained"] | None = None
     proxyTarget: str | None = None
     proxyUrl: str | None = None
+    imagexProxyMode: Literal["direct", "managed"] | None = None
+    imagexProxyUrl: str | None = None
     cookie: str | None = None
     requestId: str | None = None
     headless: bool | None = None
     captureFailureScreenshot: bool = False
     pollIntervalMs: int = Field(default=2_500, gt=0)
+    randomFingerprint: bool = False
+    userAgent: str | None = None
+    acceptLanguage: str | None = None
 
 
 class VideoTask(BaseModel):
@@ -46,6 +51,7 @@ class VideoTask(BaseModel):
     vodPayload: dict | list | None = None
     screenshotBase64: str | None = None
     diagnostics: dict | None = None
+    httpIdentity: dict | None = None
 
 
 class AccountInspectRequest(BaseModel):
@@ -59,6 +65,9 @@ class AccountInspectRequest(BaseModel):
     headless: bool | None = None
     timeoutSeconds: int | None = None
     authOnly: bool = False
+    randomFingerprint: bool = False
+    userAgent: str | None = None
+    acceptLanguage: str | None = None
 
 
 class AccountQuota(BaseModel):

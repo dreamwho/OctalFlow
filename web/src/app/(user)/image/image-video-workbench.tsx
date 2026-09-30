@@ -21,6 +21,8 @@ import { generationLogPublicPrompt } from "@/lib/generation-log-snapshot";
 import { mediaDownloadFileName } from "@/lib/media-file";
 import { imagePreviewUrl, originalImageDownloadUrl, originalMediaDownloadUrl } from "@/lib/media-image-url";
 import { canvasSelectionBorderStyle, canvasThemes } from "@/lib/canvas-theme";
+import { CanvasRichPromptEditor, type CanvasPromptTokenSnapshot } from "@/app/(user)/canvas/components/canvas-rich-prompt-editor";
+import type { CanvasResourceReference } from "@/app/(user)/canvas/utils/canvas-resource-references";
 import { useConfigStore, type AiConfig } from "@/stores/use-config-store";
 import { useMediaWorkbenchDraftStore } from "@/stores/use-media-workbench-draft-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -34,6 +36,7 @@ import { estimateCanvasProgress } from "@/app/(user)/canvas/utils/canvas-generat
 import type { ReferenceImage } from "@/types/image";
 import type { GenerationLogRequestSnapshot, GenerationLogSlotSnapshot } from "@/lib/generation-log-snapshot";
 import { createWorkbenchCanvasNode } from "./image-video-workbench-utils";
+import { reconcileWorkbenchReferenceTokens } from "./image-video-workbench-prompt";
 import { ImageVideoInteriorDesignPanel } from "./image-video-interior-design-panel";
 import styles from "./image-video-workbench.module.css";
 
@@ -72,7 +75,7 @@ export function ImageVideoWorkbench() {
     const [interiorApp, setInteriorApp] = useState<{ id: string; name: string }>();
     const [referencePlacement, setReferencePlacement] = useState({ left: 12, top: 60, width: 600, height: 650 });
     const [interiorPlacement, setInteriorPlacement] = useState({ left: 12, top: 60, width: 780, height: 650 });
-    const [assetTab, setAssetTab] = useState<"library" | "upload">("library");
+    const [assetTab, setAssetTab] = useState<"library" | "upload">("upload");
     const [libraryAssets, setLibraryAssets] = useState<Asset[]>([]);
     const [libraryLoading, setLibraryLoading] = useState(false);
     const [dragging, setDragging] = useState(false);
@@ -80,17 +83,15 @@ export function ImageVideoWorkbench() {
     const [now, setNow] = useState(Date.now());
     const [durationStats, setDurationStats] = useState<Record<string, { avgDurationMs: number; samples: number }>>({});
     const [submitting, setSubmitting] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
     const [statusFilter, setStatusFilter] = useState("all");
     const [logs, setLogs] = useState<GenerationLog[]>([]);
     const [logsLoading, setLogsLoading] = useState(false);
     const [lightbox, setLightbox] = useState<LightboxItem>();
     const [autoSubmit, setAutoSubmit] = useState(false);
     const [promptExpanded, setPromptExpanded] = useState(false);
-    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-    const promptInputRef = useRef<HTMLTextAreaElement>(null);
+    const [promptTokenSnapshot, setPromptTokenSnapshot] = useState<CanvasPromptTokenSnapshot[]>([]);
     const promptPanelRef = useRef<HTMLElement>(null);
-    const activePromptInput = useRef<HTMLTextAreaElement | null>(null);
-    const composing = useRef(false);
     const mounted = useRef(false);
     const autoSubmitted = useRef(false);
 
@@ -112,8 +113,7 @@ export function ImageVideoWorkbench() {
     const videoQualityLabels = Object.fromEntries(currentVideoQualities.map((option) => [option.value, option.shortLabel || option.label]));
     const durationRange = videoProfile?.durationRange || { min: 5, max: 15 };
     const durationSnapPoints = dolaVideo?.durations.map((option) => option.value);
-    const referenceMentions = [...referenceAssets.filter((asset) => asset.kind === "image").map((asset) => ({ id: asset.id, name: asset.title, url: imagePreviewUrl(asset.coverUrl || asset.data.serverUrl || asset.data.dataUrl, 200) })), ...referencePreviews.map((preview) => ({ id: preview.key, name: preview.name, url: preview.url }))];
-    const mentionOptions = referenceMentions.map((item, index) => ({ ...item, label: `图片${index + 1}` })).filter((item) => mentionQuery !== null && (`${item.label} ${item.name}`).toLowerCase().includes(mentionQuery.toLowerCase()));
+    const promptReferences = useMemo<CanvasResourceReference[]>(() => [...referenceAssets.filter((asset) => asset.kind === "image").map((asset) => ({ id: asset.id, title: asset.title, previewUrl: imagePreviewUrl(asset.coverUrl || asset.data.serverUrl || asset.data.dataUrl, 200) })), ...referencePreviews.map((preview) => ({ id: preview.key, title: preview.name, previewUrl: preview.url }))].map((item, index) => ({ ...item, nodeId: item.id, kind: "image", label: `图片${index + 1}`, active: true })), [referenceAssets, referencePreviews]);
     const maxCount = Math.max(1, config.imageMaxCount);
     const credits = requestCreditCost({ apiSource: config.apiSource, modelPointCosts: config.modelPointCosts, generationPointMultipliers: config.generationPointMultipliers, kind: currentKind, model: selectedModel, count: currentKind === "image" ? count : 1, quality, videoQuality, videoSeconds: seconds });
     const addReferenceFiles = useCallback((files: File[]) => {
@@ -172,10 +172,10 @@ export function ImageVideoWorkbench() {
     }, [referenceFiles]);
 
     useEffect(() => {
-        if (!referenceModalOpen) return;
+        if (!referenceModalOpen || assetTab !== "library") return;
         setLibraryLoading(true);
         void listLibraryAssetPage({ page: 1, pageSize: 100, kind: "image" }).then((page) => setLibraryAssets(page.assets)).catch((error) => message.error(error instanceof Error ? error.message : "素材加载失败")).finally(() => setLibraryLoading(false));
-    }, [referenceModalOpen, message]);
+    }, [referenceModalOpen, assetTab, message]);
 
     useEffect(() => {
         if (!referenceModalOpen || assetTab !== "upload") return;
@@ -211,24 +211,15 @@ export function ImageVideoWorkbench() {
     }, [currentKind, currentQualityOptions.join("|"), currentVideoQualityOptions.join("|"), durationRange.min, durationRange.max, durationSnapPoints?.join("|"), quality, ratio, ratioOptions.join("|"), seconds, videoQuality]);
     useEffect(() => setCount((previous) => Math.min(previous, maxCount)), [maxCount]);
 
-    const updatePrompt = (value: string, input: HTMLTextAreaElement) => {
-        setPrompt(value);
-        activePromptInput.current = input;
-        if (composing.current) return;
-        const match = value.slice(0, input.selectionStart).match(/@([^@\s]*)$/);
-        setMentionQuery(referenceMentions.length && match ? match[1] : null);
+    const removeReference = (id: string) => {
+        const remaining = promptReferences.filter((item) => item.id !== id).map((item, index) => ({ ...item, label: `图片${index + 1}` }));
+        const next = reconcileWorkbenchReferenceTokens(prompt, promptTokenSnapshot, remaining);
+        setPrompt(next.value);
+        setPromptTokenSnapshot(next.tokens);
+        setReferenceAssets((items) => items.filter((item) => item.id !== id));
+        setReferenceFiles((items) => items.filter((item) => `${item.name}:${item.lastModified}:${item.size}` !== id));
     };
-    const insertMention = (label: string) => {
-        const input = activePromptInput.current || promptInputRef.current;
-        if (!input) return;
-        const before = prompt.slice(0, input.selectionStart);
-        const from = before.lastIndexOf("@");
-        if (from < 0) return;
-        const next = `${prompt.slice(0, from)}@${label} ${prompt.slice(input.selectionStart)}`;
-        setPrompt(next);
-        setMentionQuery(null);
-        requestAnimationFrame(() => { input.focus(); input.setSelectionRange(from + label.length + 2, from + label.length + 2); });
-    };
+    const updatePromptText = (value: string) => setPrompt(value.slice(0, 5000));
 
     const loadLogs = useCallback(async (kind: "image" | "video" = resultKind) => {
         setLogsLoading(true);
@@ -307,10 +298,17 @@ export function ImageVideoWorkbench() {
         const logId = `${nextSource}:${nanoid()}`;
         try {
             const uploadedImages: ReferenceImage[] = regenerate ? (regenerate.log.requestSnapshot?.references || []).filter((item) => item.kind === "image" && item.url).map((item) => ({ id: item.id, name: item.name, type: item.mimeType, dataUrl: item.url!, url: item.url!, serverUrl: item.serverUrl || item.url, storageKey: item.storageKey, width: item.width, height: item.height })) : referenceAssets.filter((asset) => asset.kind === "image").map((asset) => ({ id: asset.id, name: asset.title, type: asset.data.mimeType, dataUrl: asset.data.serverUrl || asset.data.dataUrl, url: asset.data.serverUrl || asset.data.dataUrl, serverUrl: asset.data.serverUrl || asset.data.dataUrl, storageKey: asset.data.storageKey, width: asset.data.width, height: asset.data.height }));
-            for (const file of regenerate ? [] : referenceFiles) {
-                const uploaded = await uploadImage(file);
+            const files = regenerate ? [] : referenceFiles;
+            const totalBytes = files.reduce((total, file) => total + file.size, 0);
+            let completedBytes = 0;
+            if (files.length) setUploadProgress(0);
+            for (const file of files) {
+                const uploaded = await uploadImage(file, { onProgress: (percent) => setUploadProgress(Math.round(((completedBytes + file.size * percent / 100) / totalBytes) * 100)) });
                 uploadedImages.push({ id: nanoid(), name: file.name, type: file.type, dataUrl: uploaded.url, url: uploaded.url, serverUrl: uploaded.url, storageKey: uploaded.storageKey, width: uploaded.width, height: uploaded.height });
+                completedBytes += file.size;
+                setUploadProgress(Math.round((completedBytes / totalBytes) * 100));
             }
+            setUploadProgress(null);
             const taskCount = nextCount;
             const slots = Array.from({ length: taskCount }, (_, index) => ({
                 id: nanoid(), index, status: "pending" as const, clientRequestId: `${nextSource}:${logId}:${index}:${nanoid()}`,
@@ -352,10 +350,11 @@ export function ImageVideoWorkbench() {
             await Promise.all(watchers);
             setResultKind(kind);
             await loadLogs(kind);
-            if (!regenerate) { setPrompt(""); setReferenceFiles([]); setReferenceAssets([]); }
+            if (!regenerate) { setPrompt(""); setPromptTokenSnapshot([]); setReferenceFiles([]); setReferenceAssets([]); }
         } catch (error) {
             message.error(error instanceof Error ? error.message : "生成任务创建失败");
         } finally {
+            setUploadProgress(null);
             setSubmitting(false);
         }
     }, [config, count, currentKind, interiorApp, interiorSettings, loadLogs, maxCount, message, openConfigDialog, prompt, quality, qualityLabels, ratio, seconds, selectedModel, videoQuality, referenceFiles, referenceAssets]);
@@ -446,17 +445,16 @@ export function ImageVideoWorkbench() {
                         <button type="button" aria-pressed={mode === "video"} className={mode === "video" ? styles.activeTab : ""} onClick={() => changeMode("video")}>视频</button>
                     </div>
                     {mode === "image" ? <div className={styles.interiorEntryRow}><button type="button" className={styles.interiorEntry} onClick={() => { placeReferenceModal(); setInteriorModalOpen(true); }}><House /><span><strong>{interiorSettings ? interiorApp?.name || "SU直出摄影级照片" : "室内设计"}</strong><small>{interiorSettings ? "已配置 · 点击调整参数" : "SU 直出与摄影级空间渲染"}</small></span><ChevronDown /></button>{interiorSettings ? <button type="button" className={styles.interiorEntryClear} aria-label="移除室内设计配置" title="移除室内设计配置" onClick={() => { setInteriorSettings(undefined); setInteriorApp(undefined); }}><X /></button> : null}</div> : null}
-                    <div className={styles.referenceRow}>
+                    <div className={styles.referenceRow} aria-busy={uploadProgress !== null}>
                         <div className={styles.referenceItems}>
-                            {referenceAssets.map((asset) => asset.kind === "image" ? <div className={styles.referencePreview} key={asset.id}><img src={imagePreviewUrl(asset.coverUrl || asset.data.serverUrl || asset.data.dataUrl, 200)} alt={asset.title} /><button type="button" onClick={() => setReferenceAssets((items) => items.filter((item) => item.id !== asset.id))} aria-label={`移除参考素材 ${asset.title}`}><X /></button></div> : null)}
-                            {referencePreviews.map((preview) => <div className={styles.referencePreview} key={preview.key}><img src={preview.url} alt={preview.name} /><button type="button" onClick={() => setReferenceFiles((items) => items.filter((item) => `${item.name}:${item.lastModified}:${item.size}` !== preview.key))} aria-label={`移除参考素材 ${preview.name}`}><X /></button></div>)}
-                            <button type="button" className={styles.referenceButton} onClick={() => { placeReferenceModal(); setReferenceModalOpen(true); }}><span className={styles.referenceButtonIcons}><FileImage /><ImagePlus /></span><strong>{referenceAssets.length || referenceFiles.length ? "继续添加参考图" : "添加参考图片"}</strong><small>可添加多张图片</small></button>
+                            {referenceAssets.map((asset) => asset.kind === "image" ? <div className={styles.referencePreview} key={asset.id}><img src={imagePreviewUrl(asset.coverUrl || asset.data.serverUrl || asset.data.dataUrl, 200)} alt={asset.title} /><button type="button" onClick={() => removeReference(asset.id)} aria-label={`移除参考素材 ${asset.title}`}><X /></button></div> : null)}
+                            {referencePreviews.map((preview) => <div className={styles.referencePreview} key={preview.key}><img src={preview.url} alt={preview.name} /><button type="button" onClick={() => removeReference(preview.key)} aria-label={`移除参考素材 ${preview.name}`}><X /></button></div>)}
+                            <button type="button" className={styles.referenceButton} disabled={submitting} onClick={() => { placeReferenceModal(); setAssetTab("upload"); setReferenceModalOpen(true); }}><span className={styles.referenceButtonIcons}>{uploadProgress !== null ? <LoaderCircle className={styles.spin} /> : <><FileImage /><ImagePlus /></>}</span><strong>{uploadProgress !== null ? `上传参考图 ${uploadProgress}%` : referenceAssets.length || referenceFiles.length ? "继续添加参考图" : "添加参考图片"}</strong><small>{uploadProgress !== null ? "正在保存素材" : "可添加多张图片"}</small></button>
                         </div>
                     </div>
                     <div className={styles.promptEditor}>
-                        <textarea ref={promptInputRef} id="workbench-prompt" aria-label="提示词" className={styles.promptInput} value={prompt} maxLength={5000} onFocus={(event) => { activePromptInput.current = event.currentTarget; }} onChange={(event) => updatePrompt(event.target.value, event.target)} onCompositionStart={() => { composing.current = true; setMentionQuery(null); }} onCompositionEnd={(event) => { composing.current = false; updatePrompt(event.currentTarget.value, event.currentTarget); }} onKeyDown={(event) => { if (event.key === "Escape") setMentionQuery(null); }} placeholder={mode === "image" && interiorSettings ? "可选：补充室内设计要求… 输入 @ 引用参考图" : "描述你想创作的画面、风格、光线或镜头… 输入 @ 引用参考图"} />
-                        <button type="button" className={styles.expandPrompt} aria-label="展开提示词" title="展开提示词" onClick={() => { setPromptExpanded(true); setMentionQuery(null); }}><Maximize2 /></button>
-                        {mentionQuery !== null && mentionOptions.length ? <div className={styles.mentionMenu} role="listbox" aria-label="引用参考图片">{mentionOptions.map((item) => <button key={item.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(item.label)}><img src={item.url} alt="" /><span><strong>@{item.label}</strong><small>{item.name}</small></span></button>)}</div> : null}
+                        <CanvasRichPromptEditor id="workbench-prompt" aria-label="提示词" containerClassName={styles.promptInputHost} className={styles.promptInput} value={prompt} references={promptReferences} tokenSnapshot={promptTokenSnapshot} onTokenSnapshotChange={setPromptTokenSnapshot} onChange={updatePromptText} placeholder={mode === "image" && interiorSettings ? "可选：补充室内设计要求… 输入 @ 引用参考图" : "描述你想创作的画面、风格、光线或镜头… 输入 @ 引用参考图"} />
+                        <button type="button" className={styles.expandPrompt} aria-label="展开提示词" title="展开提示词" onClick={() => setPromptExpanded(true)}><Maximize2 /></button>
                     </div>
                     <div className={styles.fieldBlock}>
                         <ModelPicker headerLabel="模型选择" popupTheme={themeName} popupPlacement="rightTop" config={modelPickerConfig} value={selectedModel} capability={capability} fullWidth className={styles.modelTrigger} onChange={setModel} onMissingConfig={() => openConfigDialog(true)} />
@@ -473,7 +471,7 @@ export function ImageVideoWorkbench() {
                     </div>
                     <div className={styles.submitArea}>
                         <button type="button" className={styles.generateButton} onClick={() => void submit()} disabled={submitting}>
-                            {submitting ? <LoaderCircle className={styles.spin} /> : <Sparkles />}{submitting ? "正在提交…" : "立即生成"}<span className={styles.creditCost}>{formatCreditAmount(credits)} 积分</span>
+                            {submitting ? <LoaderCircle className={styles.spin} /> : <Sparkles />}{uploadProgress !== null ? `上传参考图 ${uploadProgress}%` : submitting ? "正在提交…" : "立即生成"}<span className={styles.creditCost}>{formatCreditAmount(credits)} 积分</span>
                         </button>
                     </div>
                 </aside>
@@ -495,8 +493,8 @@ export function ImageVideoWorkbench() {
             </div>
 
             <WorkbenchSideModal open={referenceModalOpen} onCancel={() => setReferenceModalOpen(false)} title="添加参考图片" themeName={themeName} placement={referencePlacement}>
-                <div className={styles.assetTabs}><button type="button" aria-pressed={assetTab === "library"} onClick={() => setAssetTab("library")}>我的素材库</button><button type="button" aria-pressed={assetTab === "upload"} onClick={() => setAssetTab("upload")}>本机上传</button></div>
-                {assetTab === "library" ? <div className={styles.assetGrid}>{libraryLoading ? <p>正在读取素材…</p> : libraryAssets.length ? libraryAssets.map((asset) => asset.kind === "image" ? <button key={asset.id} type="button" aria-pressed={referenceAssets.some((item) => item.id === asset.id)} onClick={() => setReferenceAssets((items) => items.some((item) => item.id === asset.id) ? items.filter((item) => item.id !== asset.id) : [...items, asset])}><img src={imagePreviewUrl(asset.coverUrl || asset.data.serverUrl || asset.data.dataUrl, 300)} alt={asset.title} /><span>{asset.title}</span></button> : null) : <p>素材库暂无图片，可切换到本机上传</p>}</div> : <div className={`${styles.uploadZone} ${dragging ? styles.uploadZoneActive : ""}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addReferenceFiles(Array.from(event.dataTransfer.files)); }} onPaste={(event) => { addReferenceFiles(Array.from(event.clipboardData.files)); }} tabIndex={0}><Upload /><strong>拖拽、粘贴或选择图片</strong><span>支持 PNG、JPEG、WebP</span><label htmlFor="workbench-reference-file">选择文件</label><input id="workbench-reference-file" type="file" accept="image/*" multiple onChange={(event) => addReferenceFiles(Array.from(event.target.files || []))} hidden /></div>}
+                <div className={styles.assetTabs}><button type="button" aria-pressed={assetTab === "upload"} onClick={() => setAssetTab("upload")}>本机上传</button><button type="button" aria-pressed={assetTab === "library"} onClick={() => setAssetTab("library")}>我的素材库</button></div>
+                {assetTab === "library" ? <div className={styles.assetGrid}>{libraryLoading ? <p>正在读取素材…</p> : libraryAssets.length ? libraryAssets.map((asset) => asset.kind === "image" ? <button key={asset.id} type="button" aria-pressed={referenceAssets.some((item) => item.id === asset.id)} onClick={() => referenceAssets.some((item) => item.id === asset.id) ? removeReference(asset.id) : setReferenceAssets((items) => [...items, asset])}><img src={imagePreviewUrl(asset.coverUrl || asset.data.serverUrl || asset.data.dataUrl, 300)} alt={asset.title} /><span>{asset.title}</span></button> : null) : <p>素材库暂无图片，可切换到本机上传</p>}</div> : <div className={`${styles.uploadZone} ${dragging ? styles.uploadZoneActive : ""}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addReferenceFiles(Array.from(event.dataTransfer.files)); }} onPaste={(event) => { addReferenceFiles(Array.from(event.clipboardData.files)); }} tabIndex={0}><Upload /><strong>拖拽、粘贴或选择图片</strong><span>支持 PNG、JPEG、WebP</span><label htmlFor="workbench-reference-file">选择文件</label><input id="workbench-reference-file" type="file" accept="image/*" multiple onChange={(event) => addReferenceFiles(Array.from(event.target.files || []))} hidden /></div>}
                 {assetTab === "library" && referenceAssets.length ? <button type="button" className={styles.assetDone} onClick={() => setReferenceModalOpen(false)}>使用所选图片（{referenceAssets.length}）</button> : null}
             </WorkbenchSideModal>
             <WorkbenchSideModal open={interiorModalOpen} onCancel={() => setInteriorModalOpen(false)} title={<span className={styles.interiorModalTitle}><House />室内设计</span>} themeName={themeName} placement={interiorPlacement}>
@@ -509,10 +507,9 @@ export function ImageVideoWorkbench() {
                     setInteriorModalOpen(false);
                 }} />
             </WorkbenchSideModal>
-            <Modal open={promptExpanded} onCancel={() => { setPromptExpanded(false); setMentionQuery(null); }} footer={null} title="编辑提示词" width="min(760px, calc(100vw - 24px))" centered destroyOnHidden className={`${styles.referenceModal} ${themeName === "dark" ? styles.lightboxModalDark : ""}`}>
+            <Modal open={promptExpanded} onCancel={() => setPromptExpanded(false)} footer={null} title="编辑提示词" width="min(760px, calc(100vw - 24px))" centered destroyOnHidden className={`${styles.referenceModal} ${themeName === "dark" ? styles.lightboxModalDark : ""}`}>
                 <div className={styles.expandedPromptWrap}>
-                    <textarea aria-label="展开的提示词" className={styles.expandedPrompt} value={prompt} maxLength={5000} onFocus={(event) => { activePromptInput.current = event.currentTarget; }} onChange={(event) => updatePrompt(event.target.value, event.target)} onCompositionStart={() => { composing.current = true; setMentionQuery(null); }} onCompositionEnd={(event) => { composing.current = false; updatePrompt(event.currentTarget.value, event.currentTarget); }} placeholder="描述画面与镜头；输入 @ 引用参考图片" />
-                    {mentionQuery !== null && mentionOptions.length ? <div className={styles.mentionMenu} role="listbox" aria-label="引用参考图片">{mentionOptions.map((item) => <button key={item.id} type="button" role="option" aria-selected={false} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(item.label)}><img src={item.url} alt="" /><span><strong>@{item.label}</strong><small>{item.name}</small></span></button>)}</div> : null}
+                    <CanvasRichPromptEditor aria-label="展开的提示词" containerClassName={styles.expandedPromptHost} className={styles.expandedPrompt} value={prompt} references={promptReferences} tokenSnapshot={promptTokenSnapshot} onTokenSnapshotChange={setPromptTokenSnapshot} onChange={updatePromptText} placeholder="描述画面与镜头；输入 @ 引用参考图片" />
                 </div>
             </Modal>
             <Modal

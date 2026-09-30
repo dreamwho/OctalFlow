@@ -2,7 +2,7 @@ import { apiCompatError, apiSuccess } from "@/app/api/_shared/api-response";
 import { hasAdminPermission } from "@/lib/admin-permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { auditActorFromRequest, safeRecordAuditLog } from "@/lib/server/audit-log-store";
-import { ChatGptApiError, chatGptRuntimeJson, chatGptRuntimeRequest, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection } from "@/lib/server/chatgpt-api-service";
+import { ChatGptApiError, chatGptRuntimeJson, chatGptRuntimeRequest, getChatGptUploadProxySelection, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection, updateChatGptUploadProxySelection } from "@/lib/server/chatgpt-api-service";
 import { getChatGptSavedModels, saveChatGptModels } from "@/lib/server/chatgpt-api-models";
 import { readRequestBodyText, RequestBodyTooLargeError } from "@/lib/server/request-body-limit";
 
@@ -26,6 +26,7 @@ const routes: Record<string, { path: string; methods: string[] }> = {
     "proxies/groups/test": { path: "/api/proxy/groups/test", methods: ["POST"] },
     "proxies/nodes/import": { path: "/api/proxy/nodes/import", methods: ["POST"] },
     "proxy-selection": { path: "/integration/proxy-selection", methods: ["GET", "PATCH"] },
+    "upload-proxy": { path: "/integration/upload-proxy", methods: ["GET", "PATCH"] },
     ipwo: { path: "/integration/ipwo", methods: ["GET", "PATCH"] },
     gateway: { path: "/integration/gateway", methods: ["GET", "PATCH"] },
 };
@@ -108,7 +109,9 @@ async function handle(request: Request, context: Context) {
             const parsedBody = body ? JSON.parse(body) : undefined;
             if (path === "accounts/refresh") await syncChatGptMagicProxy();
             const search = new URL(request.url).search;
-            data = path === "proxy-selection" && request.method === "PATCH" ? await updateChatGptProxySelection(parsedBody) : await chatGptRuntimeJson(route.path + search, { method: request.method, ...(body ? { body } : {}), signal: request.signal });
+            data = path === "proxy-selection" && request.method === "PATCH" ? await updateChatGptProxySelection(parsedBody)
+                : path === "upload-proxy" ? request.method === "PATCH" ? await updateChatGptUploadProxySelection(parsedBody) : await getChatGptUploadProxySelection()
+                : await chatGptRuntimeJson(route.path + search, { method: request.method, ...(body ? { body } : {}), signal: request.signal });
             data = sanitizeChatGptAdminResult(data, path === "keys" && request.method === "POST");
         }
         await safeRecordAuditLog({ action: `admin.chatgpt_api.${request.method.toLowerCase()}`, actor: auditActorFromRequest(request, user), target: { type: "chatgpt_api", id: path } });

@@ -160,6 +160,11 @@ class BrowserSession:
         self._playwright = None
         self._snap_key: str | None = None
         self._templates: dict[str, dict[str, Any]] = {}
+        # Templates are account-bound wire shapes.  Rotation ping-pong
+        # (A→B→A after cooldown) re-enters an account whose templates were
+        # captured minutes ago; stashing them per account avoids a model-select
+        # page reload plus a dummy capture on every re-entry.
+        self._account_template_stash: dict[str, dict[str, dict[str, Any]]] = {}
         self._bootstrap_template: dict[str, Any] | None = None
         self._executor = ThreadPoolExecutor(
             max_workers=1,
@@ -257,6 +262,10 @@ class BrowserSession:
 
     async def capture_template(self, model: str, *, force_refresh: bool = False) -> dict[str, Any]:
         return await self._run_sync(self._capture_template_sync, model, force_refresh)
+
+    async def invalidate_template(self, model: str) -> None:
+        """Drop a (possibly stale) template so the next capture rebuilds it."""
+        return await self._run_sync(self._invalidate_template_sync, model)
 
     async def upload_images(self, image_paths: list[str]) -> list[str]:
         return await self._run_sync(self._upload_images_sync, image_paths)
@@ -560,9 +569,10 @@ class BrowserSession:
         return page, url, headers
 
     def _switch_auth_sync(self, auth_file: str | None) -> None:
+        self._account_template_stash[self._auth_file or "default"] = dict(self._templates)
         self._auth_file = auth_file
         self._profile_dir = self._derive_profile_dir(auth_file)
-        self._templates.clear()
+        self._templates = dict(self._account_template_stash.get(self._auth_file or "default", {}))
         self._bootstrap_template = None
         self._close_sync()
 
@@ -791,6 +801,7 @@ class BrowserSession:
             for i in range(45):
                 page.wait_for_timeout(1000)
                 if page.evaluate("mw:!!window.__bg_service"):
+                    self._stop_running_generation_sync(page)
                     self._wait_until_idle_sync(page)
                     if captured and self._bootstrap_template is None:
                         self._bootstrap_template = dict(captured)
@@ -877,6 +888,7 @@ class BrowserSession:
                     )
                 raise RuntimeError(f"template capture timeout for model={model}")
 
+            self._stop_running_generation_sync(page)
             self._wait_until_idle_sync(page)
             if last_generate_response is not None:
                 log.info(
@@ -893,6 +905,13 @@ class BrowserSession:
             page.remove_listener("response", on_response)
             if 'textarea' in locals() and textarea is not None and 'original_text' in locals():
                 self._restore_textarea_value_sync(textarea, original_text)
+
+    def _invalidate_template_sync(self, model: str) -> None:
+        self._templates.pop(model, None)
+        stash = self._account_template_stash.get(self._auth_file or "default")
+        if stash is not None:
+            stash.pop(model, None)
+        self._bootstrap_template = None
 
     def _select_model_sync(self, page, model: str) -> None:
         """Select the real AI Studio model before capturing its request template."""
@@ -1199,7 +1218,10 @@ mw:((hash) => {
         body on the next native Run request, preserving Google's request
         headers, browser TLS state and BotGuard context.
         """
+        import time as _t
+        _t_idle0 = _t.time()
         self._wait_until_idle_sync(page)
+        _t_idle = _t.time() - _t_idle0
         responses: list[tuple[int, bytes] | Exception] = []
         rewritten = False
         route_pattern = "**/*GenerateContent*"
@@ -1245,6 +1267,12 @@ mw:((hash) => {
             result = responses[-1]
             if isinstance(result, Exception):
                 raise result
+            log.info(
+                "[timing] replay total=%.1fs (page-idle wait=%.1fs), status=%d",
+                _t.time() - _t_idle0,
+                _t_idle,
+                result[0],
+            )
             return result
         finally:
             page.unroute(route_pattern, on_route)
@@ -1409,6 +1437,19 @@ mw:((hash) => {
             if page.query_selector("button:has-text('Stop')") is not None:
                 return False
             return page.query_selector("button.ctrl-enter-submits") is not None
+        except Exception:
+            return False
+
+    def _stop_running_generation_sync(self, page) -> bool:
+        # The capture template is complete the moment the signed request is
+        # intercepted; abort the capture prompt's generation so the page turns
+        # idle in ~1s instead of after a full (quota-consuming) generation.
+        try:
+            stop = page.query_selector("button:has-text('Stop')")
+            if stop is None:
+                return False
+            stop.click()
+            return True
         except Exception:
             return False
 

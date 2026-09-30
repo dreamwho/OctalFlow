@@ -13,13 +13,14 @@ const providerLabels: Record<MagicProxyProvider, string> = {
     geminiTools: "GeminiTools",
     chatgptApi: "GPTAPI",
     dola: "Dola API",
+    dolaUpload: "Dola 参考图上传",
 };
 
 export function magicProxyBindingValidationMessage(enabled: boolean, node?: string) {
     return enabled && !node?.trim() ? "启用魔法代理前请选择代理节点" : "";
 }
 
-type ProxySource = "magic" | "generic" | "chained";
+type ProxySource = "direct" | "magic" | "generic" | "chained";
 
 export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvider }) {
     const { message } = App.useApp();
@@ -45,7 +46,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         setLoading(true);
         setError("");
         try {
-            const [nextState, nextGeneric, nextGenericView] = await Promise.all([getMagicProxy(), getGenericProxyBindings().catch(() => null), genericProxyRequest<ChatGptProxyView>("proxies").catch(() => null)]);
+            const [nextState, nextGeneric, nextGenericView] = await Promise.all([getMagicProxy(), provider === "dolaUpload" ? getGenericProxyBindings() : getGenericProxyBindings().catch(() => null), genericProxyRequest<ChatGptProxyView>("proxies").catch(() => null)]);
             setState(nextState);
             setGenericBindings(nextGeneric);
             setGenericView(nextGenericView);
@@ -66,7 +67,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                 setSource("chained");
                 setEnabled(false);
             } else {
-                setSource("magic");
+                setSource(provider === "dolaUpload" ? "direct" : "magic");
                 setEnabled(false);
             }
 
@@ -130,6 +131,10 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
     }, [hopNode, hopSelectGroups]);
 
     const persistSourceSwitch = (nextSource: ProxySource) => {
+        if (provider === "dolaUpload" && nextSource === "direct") {
+            void persist(false, "direct");
+            return;
+        }
         // 允许直接切入对应视图进行配置，不作前置报错阻断
         setSource(nextSource);
     };
@@ -172,11 +177,14 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
         setError("");
         try {
             if (!nextEnabled) {
-                await updateMagicProxyBinding({ provider, enabled: false }).catch(() => undefined);
-                await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
+                if (provider === "dolaUpload") await updateMagicProxyBinding({ provider, enabled: false });
+                else await updateMagicProxyBinding({ provider, enabled: false }).catch(() => undefined);
+                if (provider === "dolaUpload") await saveGenericProxyBinding({ provider, enabled: false });
+                else await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
             } else if (nextSource === "magic") {
                 await updateMagicProxyBinding({ provider, enabled: true, mode: "magic", node: effectiveNode, fallback_node: effectiveFallback || "" });
-                await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
+                if (provider === "dolaUpload") await saveGenericProxyBinding({ provider, enabled: false });
+                else await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
             } else if (nextSource === "chained") {
                 await updateMagicProxyBinding({
                     provider,
@@ -188,9 +196,11 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                         ...(effectiveHopFallback ? { hop_fallback_node: effectiveHopFallback } : {}),
                     },
                 });
-                await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
+                if (provider === "dolaUpload") await saveGenericProxyBinding({ provider, enabled: false });
+                else await saveGenericProxyBinding({ provider, enabled: false }).catch(() => undefined);
             } else {
-                await updateMagicProxyBinding({ provider, enabled: false }).catch(() => undefined);
+                if (provider === "dolaUpload") await updateMagicProxyBinding({ provider, enabled: false });
+                else await updateMagicProxyBinding({ provider, enabled: false }).catch(() => undefined);
                 await saveGenericProxyBinding({ provider, enabled: true, target: effectiveTarget });
             }
             await load();
@@ -266,7 +276,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
     const runtimeAvailable = state?.runtimeAvailable === true;
     const magicUnavailableReason = !configured ? "请先在魔法代理页面导入订阅" : !runtimeAvailable ? "魔法代理运行时当前不可用" : !nodes.length ? "暂无可用代理节点" : "";
     const genericUnavailableReason = !(genericView?.groups || []).length ? "请先在通用代理页面添加分组或节点" : "";
-    const description = provider === "geminiTools" ? "仅控制当前 Provider 是否使用代理及其出口来源；GeminiTools 账号列表中的账号启用开关仍保持原有含义。" : "仅控制当前 Provider 是否使用代理及其出口来源。";
+    const description = provider === "dolaUpload" ? "独立选择 ImageX 的 Apply、二进制上传与 Commit 出口；生成提交继续使用上方 Dola API 出口。" : provider === "geminiTools" ? "仅控制当前 Provider 是否使用代理及其出口来源；GeminiTools 账号列表中的账号启用开关仍保持原有含义。" : "仅控制当前 Provider 是否使用代理及其出口来源。";
 
     const magicActive = enabled && source === "magic";
     const chainedActive = enabled && source === "chained";
@@ -287,14 +297,14 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                 <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-medium text-zinc-950 dark:text-zinc-100">启用代理</span>
+                            <span className="text-sm font-medium text-zinc-950 dark:text-zinc-100">{provider === "dolaUpload" ? "上传出口" : "启用代理"}</span>
                             <Tag color={enabled ? "success" : "default"} className="m-0">
-                                {enabled ? "已启用" : "未启用"}
+                                {enabled ? "已启用" : provider === "dolaUpload" ? "直连" : "未启用"}
                             </Tag>
                         </div>
-                        <p className="mt-1.5 text-xs leading-5 text-zinc-500 dark:text-zinc-400">选择代理方式后仅显示所选方式的配置内容；配置并保存后立即生效。</p>
+                        <p className="mt-1.5 text-xs leading-5 text-zinc-500 dark:text-zinc-400">选择{provider === "dolaUpload" ? "上传出口" : "代理方式"}后仅显示对应配置；保存后立即生效。</p>
                     </div>
-                    <div className="shrink-0 pt-0.5">
+                    {provider !== "dolaUpload" ? <div className="shrink-0 pt-0.5">
                         <Switch
                             aria-label="启用代理"
                             checked={enabled}
@@ -321,7 +331,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                 void persist(false, source);
                             }}
                         />
-                    </div>
+                    </div> : null}
                 </div>
 
                 <div className="min-w-0">
@@ -335,6 +345,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                         disabled={saving}
                         onChange={(value) => persistSourceSwitch(value as ProxySource)}
                         options={[
+                            ...(provider === "dolaUpload" ? [{ value: "direct", label: "直连" }] : []),
                             { value: "magic", label: "魔法代理" },
                             { value: "generic", label: "通用代理" },
                             { value: "chained", label: "链式代理" },
@@ -342,7 +353,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                     />
                 </div>
 
-                {source === "magic" ? (
+                {source === "direct" ? <p className="text-xs text-zinc-500 dark:text-zinc-400">参考图通过服务器网络直连 ImageX，Dola 生成提交仍使用独立设置的出口。</p> : source === "magic" ? (
                     <div className="min-w-0">
                         <label htmlFor={`magic-proxy-node-${provider}`} className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-200">
                             魔法节点
@@ -462,7 +473,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     落地: {landingOptions.find((o) => o.value === landingNodeId)?.label.split(" · ")[0] || "未选择通用落地节点"}
                                 </span>
                                 <ArrowRight className="size-3 text-sky-500 shrink-0" />
-                                <span className="rounded bg-purple-100 px-2 py-0.5 font-medium text-purple-800 dark:bg-purple-900/60 dark:text-purple-200">{provider === "chatgptApi" ? "ChatGPT 官方服务" : provider === "dola" ? "Dola 官方服务" : "Google 官方服务"}</span>
+                                <span className="rounded bg-purple-100 px-2 py-0.5 font-medium text-purple-800 dark:bg-purple-900/60 dark:text-purple-200">{provider === "chatgptApi" ? "ChatGPT 官方服务" : provider === "dolaUpload" ? "ImageX 上传服务" : provider === "dola" ? "Dola 官方服务" : "Google 官方服务"}</span>
                             </div>
                             <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
                                 💡 <strong>工作原理</strong>：国内服务器经由 Clash 加密隧道出海连接至境外跳板节点，跳板节点在境外直连 IPWO 等住宅代理落地并鉴权，彻底规避运营商防火墙重置阻断 (curl 56)，获得纯净住宅出口。
@@ -529,7 +540,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     disabled={loading || saving || !landingOptions.length}
                                     onChange={(value: string) => setLandingNodeId(value)}
                                 />
-                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">流量终点站：由境外跳板连接此节点，最终以该纯净住宅 IP 访问 {provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"}。</div>
+                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">流量终点站：由境外跳板连接此节点，最终以该纯净住宅 IP 访问 {provider === "chatgptApi" ? "ChatGPT" : provider === "dolaUpload" ? "ImageX" : provider === "dola" ? "Dola" : "Google"}。</div>
                             </div>
                         </div>
 
@@ -547,7 +558,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                 ) : null}
                             </div>
                             <div className="flex items-center gap-2.5">
-                                <Button
+                                {provider !== "dolaUpload" ? <Button
                                     icon={<Zap className="size-3.5 text-amber-500" />}
                                     loading={testing}
                                     disabled={saving || !hopNode || !landingNodeId}
@@ -555,7 +566,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                                     className="h-9 px-3.5 rounded-lg border-purple-200/80 bg-white text-zinc-800 hover:!border-purple-400 hover:!text-purple-700 hover:bg-purple-50/50 dark:border-purple-900/60 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:!border-purple-500 dark:hover:!text-purple-300 font-medium text-xs sm:text-sm shadow-sm transition-all"
                                 >
                                     测试 {provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"} 连通性
-                                </Button>
+                                </Button> : null}
                                 <Button
                                     type="primary"
                                     icon={<CheckCircle2 className="size-3.5" />}
@@ -579,7 +590,7 @@ export function MagicProxyBindingCard({ provider }: { provider: MagicProxyProvid
                         </div>
 
                         {/* 连通性测试结果面板 */}
-                        {testReport ? (
+                        {provider !== "dolaUpload" && testReport ? (
                             <div className="mt-2 rounded-lg border border-zinc-200/80 bg-white/80 p-2.5 text-xs dark:border-zinc-800 dark:bg-zinc-900/80">
                                 <div className="font-medium text-zinc-800 dark:text-zinc-200">
                                     {provider === "chatgptApi" ? "ChatGPT" : provider === "dola" ? "Dola" : "Google"} 连通性测试报告 ({testReport.testedAt}):

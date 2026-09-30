@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { generationTaskNextPollAt, claimDueGenerationTasks, releaseGenerationTaskLease, renewGenerationTaskLeases, scheduleGenerationTask, type GenerationTaskLease } from "@/lib/server/generation-task-scheduler";
 import { failVideoTaskFromWorker, persistVideoTaskResult, queryVideoTaskUpstream, rotateDolaRateLimitedVideoTask } from "@/lib/server/video-task-runtime";
-import { isDolaRateLimitError, shouldRotateAccountForError } from "@/lib/dola-errors";
+import { shouldRotateAccountForError } from "@/lib/dola-errors";
 import { getVideoTask, type VideoTask } from "@/lib/server/video-task-store";
 import { createAudioTaskUpstreamStep, markAudioTaskFailed, persistAudioTaskResult, queryAudioTaskUpstreamStep } from "@/lib/server/audio-task-runtime";
 import { getAudioTask, updateAudioTask, type AudioTask } from "@/lib/server/audio-task-store";
@@ -690,19 +690,7 @@ async function processVideoLease(lease: GenerationTaskLease, workerId: string, o
                     });
                     return "pending";
                 }
-                if (isDolaRateLimitError(step.error)) {
-                    // 换号配额用尽时上游任务可能仍在生成：保持轮询等待，不提前判失败。
-                    await releaseGenerationTaskLease("video", task.id, workerId, {
-                        executionPhase: "polling",
-                        upstreamTaskId: task.upstream.id || lease.upstreamTaskId,
-                        queryPath: task.upstream.queryPath || task.config?.advancedConfig?.queryPath,
-                        nextPollAt: generationTaskNextPollAt({ submittedAt: lease.submittedAt, now }),
-                        lastPollAt: now,
-                        lastUpstreamStatus: "rate_limited_polling",
-                    });
-                    return "pending";
-                }
-                // 其余基础设施错误（如浏览器导航中断）上游任务通常已终止且换号配额用尽：判失败。
+                // Provider 已明确返回终态 failed，换号不可行时同步结束本地任务。
             }
             await failVideoTaskFromWorker(task, step.error, true);
             await releaseGenerationTaskLease("video", task.id, workerId, { executionPhase: "completed", nextPollAt: undefined, lastPollAt: now, lastUpstreamStatus: step.status });

@@ -282,7 +282,11 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
 }
 
 export async function pollServerVideoTask(task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
-    const response = await fetch(`/api/video-tasks/${encodeURIComponent(task.serverTaskId || task.id)}`, { cache: "no-store", signal: options?.signal });
+    // A stalled HTTP poll must not freeze the canvas indefinitely. Keep the
+    // user cancellation signal while bounding each individual status request.
+    const requestTimeout = AbortSignal.timeout(20_000);
+    const signal = options?.signal ? AbortSignal.any([options.signal, requestTimeout]) : requestTimeout;
+    const response = await fetch(`/api/video-tasks/${encodeURIComponent(task.serverTaskId || task.id)}`, { cache: "no-store", signal });
     throwIfClientSessionExpired(response);
     syncUserPointsFromHeaders(response.headers, "system");
     const payload = (await response.json().catch(() => ({}))) as { task?: GenerationTaskExecutionState & { status?: string; result?: VideoGenerationResult; error?: string; canRetry?: boolean }; error?: string };
@@ -321,12 +325,12 @@ export async function pollUpstreamVideoGenerationTask(config: AiConfig, task: Vi
 }
 
 export async function storeGeneratedVideo(result: VideoGenerationResult): Promise<UploadedFile> {
-    if (result.blob) return { ...(await uploadGeneratedMediaFile(result.blob, "video")), remoteUrl: result.remoteUrl, dolaVodPayload: result.dolaVodPayload };
+    if (result.blob) return { ...(await uploadGeneratedMediaFile(result.blob, "video")), durationMs: result.durationMs, remoteUrl: result.remoteUrl, dolaVodPayload: result.dolaVodPayload };
     if (result.url) {
         const existing = await readStoredMediaFile(result.url, "video", result.mimeType || "video/mp4");
-        if (existing) return { ...existing, remoteUrl: result.remoteUrl, dolaVodPayload: result.dolaVodPayload };
+        if (existing) return { ...existing, durationMs: result.durationMs, remoteUrl: result.remoteUrl, dolaVodPayload: result.dolaVodPayload };
         const stored = await uploadGeneratedMediaFile(result.url, "video");
-        return { ...stored, remoteUrl: result.remoteUrl || (/^https?:\/\//i.test(result.url) ? result.url : undefined), dolaVodPayload: result.dolaVodPayload };
+        return { ...stored, durationMs: result.durationMs, remoteUrl: result.remoteUrl || (/^https?:\/\//i.test(result.url) ? result.url : undefined), dolaVodPayload: result.dolaVodPayload };
     }
     throw new Error("视频接口没有返回可播放的视频");
 }

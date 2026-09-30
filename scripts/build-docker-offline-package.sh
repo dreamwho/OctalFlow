@@ -449,7 +449,7 @@ $ACCESS_URL_BLOCK
 
 - 镜像归档已经包含 Node.js、Next.js standalone、Sharp/libvips、FFmpeg、PostgreSQL 客户端、Python、Camoufox/Playwright、GeminiAI sidecar 和 Mihomo v1.19.30 运行依赖；Mihomo 镜像由构建机拉取并原样保存，不在脚本中重建。
 - 应用还内置 CPU PyTorch、Transformers、Depth Anything V2 Small 模型权重，以及官方 Linux amd64 Dreamina CLI；深度推理无需启动后下载模型。CLI 登录目录保存在应用数据卷的 dreamina/ 下，可执行 \`docker exec -it dreamyo dreamina login\` 登录。二进制及模型遵循各自厂商条款，本包用于自有服务器部署。
-- Mihomo 只提供两个静态内部 mixed 监听：GeminiAIStudio 与 GeminiTools 共用这一份镜像，但通过独立端口和代理分组隔离；动态订阅通过私有 runtime 文件 provider 刷新。
+- Mihomo 为 GeminiAIStudio、GeminiTools、GPTAPI、Dola 提交和 Dola 参考图上传提供独立的内部 mixed 监听与代理分组；Dola 提交使用 17893，参考图上传使用 17894（关闭上传代理则直连）。动态订阅通过私有 runtime 文件 provider 刷新。
 - Mihomo 的只读入口脚本随配置文件一同打包，启动时校验 Controller 密钥和监听地址，并初始化共享 provider 文件权限。
 - 应用媒体和 GeminiAI 账号分别保存在独立卷中；embedded 模式下 PostgreSQL 数据另保存在 \`dreamyo-postgres\` 卷中，external 模式下不管理 PostgreSQL 数据卷。
 $PRIVATE_CONTENT_NOTICE

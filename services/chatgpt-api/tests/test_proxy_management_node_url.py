@@ -184,7 +184,8 @@ def test_call_egress_registry_scopes_by_call_id() -> None:
     assert pop_call_egress("call-2") == {}
 
 
-def test_generic_proxy_bindings_accept_dola_provider() -> None:
+@pytest.mark.parametrize(("provider", "target"), [("dola", "node:node-1"), ("dolaUpload", "node:node-1"), ("dolaUpload", "group:ipwo-group")])
+def test_generic_proxy_bindings_accept_dola_provider(provider: str, target: str) -> None:
     service = _service_with_group()
-    result = service.save_generic_proxy_binding(provider="dola", enabled=True, target="node:node-1")
-    assert result["bindings"]["dola"] == {"enabled": True, "target": "node:node-1"}
+    result = service.save_generic_proxy_binding(provider=provider, enabled=True, target=target)
+    assert result["bindings"][provider] == {"enabled": True, "target": target}
