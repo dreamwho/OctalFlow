@@ -176,6 +176,7 @@ export function formatProviderFetchError(error: unknown, targetUrl: string, base
 export function isDolaRuntimePath(path: string) {
     const normalized = path.split("?", 1)[0].replace(/\/+$/, "") || "/";
     return (
+        normalized === "/v1/traffic" ||
         normalized === "/v1/models" ||
         normalized === "/v1/videos" ||
         /^\/v1\/videos\/[^/]+$/.test(normalized) ||

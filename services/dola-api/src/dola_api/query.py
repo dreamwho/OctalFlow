@@ -10,6 +10,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from .traffic import metered_proxy
+
 
 def _walk(value: Any, depth: int = 0):
     if depth > 32:
@@ -278,8 +280,9 @@ async def probe_account_login(cookie: str, proxy_url: str | None = None, http_id
     """Check the Cookie login state through Dola's read-only launch protocol."""
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options: dict[str, Any] = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
-    if proxy_url:
-        client_options["proxy"] = proxy_url
+    counted_proxy = await metered_proxy(proxy_url, "submit")
+    if counted_proxy:
+        client_options["proxy"] = counted_proxy
     try:
         async with httpx.AsyncClient(**client_options) as client:
             response = await client.post(
@@ -341,8 +344,9 @@ async def fetch_generation_result(cookie: str, conversation_id: str, identity: d
     query = _identity_query(identity, cookie)
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
-    if proxy_url:
-        client_options["proxy"] = proxy_url
+    counted_proxy = await metered_proxy(proxy_url, "submit")
+    if counted_proxy:
+        client_options["proxy"] = counted_proxy
     payloads: list[Any] = []
     chain_loaded = False
     # A real completed Dola video is carried by chain/single. Query that once
@@ -662,8 +666,9 @@ async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], lo
     }
     timeout = httpx.Timeout(30.0, connect=15.0)
     client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
-    if proxy_url:
-        client_options["proxy"] = proxy_url
+    counted_proxy = await metered_proxy(proxy_url, "submit")
+    if counted_proxy:
+        client_options["proxy"] = counted_proxy
     try:
         async with httpx.AsyncClient(**client_options) as client:
             response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie, http_identity=http_identity), json=payload)

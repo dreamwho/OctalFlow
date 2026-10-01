@@ -19,6 +19,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from .traffic import metered_proxy
+
 from .contracts import AccountInspectRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest, VideoTask
 from .fingerprint_identity import http_headers, load_or_create_http_identity, remember_egress_ip, stored_egress_ip
 from .page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MAIN_WORLD_JSON_REQUEST_SCRIPT, MAIN_WORLD_SUBMIT_SCRIPT
@@ -223,7 +225,7 @@ class CamoufoxSessionPool:
             raise RuntimeError("camoufox_not_installed") from error
         is_headless = True if request.headless is None else bool(request.headless)
         egress_ip = await _egress_ip_for(request.accountId, request.randomFingerprint, proxy_url)
-        browser_options = _camoufox_browser_options(is_headless, proxy_url, request.accountId, egress_ip, _random_identity_for(request.accountId, request.randomFingerprint))
+        browser_options = _camoufox_browser_options(is_headless, await metered_proxy(proxy_url, "submit"), request.accountId, egress_ip, _random_identity_for(request.accountId, request.randomFingerprint))
         async with AsyncCamoufox(**browser_options) as browser:
             context = await browser.new_context(**_camoufox_context_options(_random_identity_for(request.accountId, request.randomFingerprint)))
             if hasattr(context, "add_init_script"):
@@ -265,7 +267,7 @@ class CamoufoxSessionPool:
         except ImportError as error:
             raise RuntimeError("camoufox_not_installed") from error
         is_headless = True if request.headless is None else bool(request.headless)
-        browser_options = _camoufox_browser_options(is_headless, proxy_url, request.accountId, None, _random_identity_for(request.accountId, request.randomFingerprint))
+        browser_options = _camoufox_browser_options(is_headless, await metered_proxy(proxy_url, "submit"), request.accountId, None, _random_identity_for(request.accountId, request.randomFingerprint))
         browser_manager = AsyncCamoufox(**browser_options)
         browser = await browser_manager.__aenter__()
         keep_open = False
@@ -391,7 +393,7 @@ class CamoufoxSessionPool:
         await self._reserve_interactive_browser(request.accountId, "headed_test")
         try:
             egress_ip = await _egress_ip_for(request.accountId, request.randomFingerprint, proxy_url)
-            manager = AsyncCamoufox(**_camoufox_browser_options(headless, proxy_url, request.accountId, egress_ip, _random_identity_for(request.accountId, request.randomFingerprint)))
+            manager = AsyncCamoufox(**_camoufox_browser_options(headless, await metered_proxy(proxy_url, "submit"), request.accountId, egress_ip, _random_identity_for(request.accountId, request.randomFingerprint)))
             browser = await manager.__aenter__()
         except BaseException as error:
             await self._release_interactive_browser_slot()
@@ -440,7 +442,7 @@ class CamoufoxSessionPool:
         resolved_proxy = _proxy_url_for_request(proxy_mode, proxy_url)
         await self._reserve_interactive_browser(owner_id, "google_login")
         try:
-            manager = AsyncCamoufox(**_camoufox_browser_options(headless, resolved_proxy))
+            manager = AsyncCamoufox(**_camoufox_browser_options(headless, await metered_proxy(resolved_proxy, "submit")))
             browser = await manager.__aenter__()
         except BaseException:
             await self._release_interactive_browser_slot()
@@ -756,7 +758,7 @@ class CamoufoxSessionPool:
             raise RuntimeError("camoufox_not_installed") from error
 
         resolved_proxy = _proxy_url_for_request(proxy_mode, proxy_url)
-        browser_options = _camoufox_browser_options(False, resolved_proxy)
+        browser_options = _camoufox_browser_options(False, await metered_proxy(resolved_proxy, "submit"))
 
         browser_manager = AsyncCamoufox(**browser_options)
         browser = await browser_manager.__aenter__()
@@ -1118,7 +1120,7 @@ class CamoufoxSessionPool:
         proxy_url = session.proxy_url or None
         is_headless = True if request.headless is None else bool(request.headless)
         egress_ip = await _egress_ip_for(session.account_id, request.randomFingerprint, proxy_url)
-        browser_options = _camoufox_browser_options(is_headless, proxy_url, session.account_id, egress_ip, _random_identity_for(session.account_id, request.randomFingerprint))
+        browser_options = _camoufox_browser_options(is_headless, await metered_proxy(proxy_url, "submit"), session.account_id, egress_ip, _random_identity_for(session.account_id, request.randomFingerprint))
         browser_manager = AsyncCamoufox(**browser_options)
         browser = await browser_manager.__aenter__()
         keep_open = False
@@ -1402,7 +1404,7 @@ class CamoufoxSessionPool:
         if not cookie:
             raise RuntimeError("task_state_cookie_unavailable")
         proxy_url = str(meta.get("proxyUrl") or "") or None
-        browser_options = _camoufox_browser_options(True, proxy_url, str(meta.get("accountId") or ""))
+        browser_options = _camoufox_browser_options(True, await metered_proxy(proxy_url, "submit"), str(meta.get("accountId") or ""))
         async with AsyncCamoufox(**browser_options) as browser:
             context = await browser.new_context(**_camoufox_context_options())
             if hasattr(context, "add_init_script"):
@@ -1725,7 +1727,7 @@ async def _resolve_proxy_egress_ip(proxy_url: str) -> str | None:
     if cached:
         return cached
     deadline = time.monotonic() + _PROXY_EGRESS_IP_BUDGET_S
-    async with httpx.AsyncClient(proxy=proxy_url, follow_redirects=True, trust_env=False) as client:
+    async with httpx.AsyncClient(proxy=await metered_proxy(proxy_url, "submit"), follow_redirects=True, trust_env=False) as client:
         for url in _PROXY_EGRESS_IP_URLS:
             remaining = deadline - time.monotonic()
             if remaining <= 0:

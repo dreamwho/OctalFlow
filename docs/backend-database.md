@@ -59,3 +59,9 @@ IPWO 源设置使用独立 Tab 与 `/integration/ipwo` 契约；来源开关通�
 ## MiniMax 音频
 
 `dreamyo_minimax_voices` 保存用户创建的 MiniMax 或阿里云百炼音色本地映射（系统音色不落用户表）；`provider` 区分供应商，`user_id` 为空的记录仅供后台同步使用，前台个人音色查询必须按当前用户过滤。音色表同时保存供应商 `voice_name`、`description` 和 `provider_created_time`，分类由名称与介绍实时派生，不把分类规则固化成供应商字段。`dreamyo_minimax_music_records` 保存音乐生成的用户记录，`dreamyo_minimax_request_logs` 通过 `provider` 区分 MiniMax、阿里云百炼与腾讯云 TokenHub，并保存从提交、上游响应到完成/失败的请求过程日志。API Key 继续只存于系统模型渠道的加密字段，音色和音乐结果不在浏览器本地持久化。
+
+### DOLA Provider 出口流量
+
+Provider 在任务状态文件同目录持久化 `traffic.sqlite3`（可用 `DOLA_TRAFFIC_STATE_PATH` 指定），SQLite WAL 表 `traffic(time_us, role, address, port, upload, download)` 按每次 TCP 写入/接收保存 UTC 微秒时间、提交/上传用途、脱敏主机与端口和整数 B。`traffic_time` 索引支持 `[start,end)` 范围聚合，不从请求日志估算、不读取全表快照；端口筛选作用于行与总计。重启保留记录，短连接、失败及重试均按实际字节累计。代理密码和 Cookie 不保存。
+
+HTTP、HTTPS、SOCKS5 出口通过仅本机可访问的 pproxy 中继连接原始配置；浏览器与 HTTPX 共用计量入口。直连记端口 0；来源素材下载、ImageX Apply/二进制/Commit 采用独立上传配置，多图复用一个 HTTPX 客户端，站内签名素材仍在内部直连读取。计数包含代理握手及 TLS 记录，不含 TCP/IP 包头、重传、DNS UDP、Provider 外的结果下载和链式代理后续跳点，不等同供应商账单。只读内部 `/internal/runtime/v1/traffic` 需要 Provider 密钥；后台 `/api/admin/dola/traffic` 需要既有 DOLA 管理员权限，公共网关不开放该接口。

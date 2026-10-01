@@ -9,9 +9,40 @@ from dola_api.uploads import _fetch_source_bytes, _imagex_upload_proxy, _prepare
 class FakePage:
     def __init__(self, result):
         self.result = result
+        self.request = self
 
-    async def evaluate(self, *_args):
-        return self.result
+    async def route(self, _pattern, callback):
+        self.callback = callback
+
+    async def unroute(self, *_args):
+        pass
+
+    async def fetch(self, *_args, **_kwargs):
+        return self
+
+    @property
+    def method(self):
+        return "POST"
+
+    @property
+    def ok(self):
+        return self.result["ok"]
+
+    @property
+    def status(self):
+        return self.result["status"]
+
+    async def abort(self):
+        pass
+
+    async def dispose(self):
+        pass
+
+    async def json(self):
+        return self.result["json"]
+
+    async def add_script_tag(self, **_kwargs):
+        await self.callback(self)
 
 
 def test_imagex_signature_contains_only_expected_signed_headers() -> None:
@@ -91,7 +122,7 @@ async def test_signed_reference_reads_internal_origin_without_paid_proxy(monkeyp
 
 @pytest.mark.anyio
 async def test_reference_failure_identifies_image_position(monkeypatch) -> None:
-    async def fail_on_second(_page, item, _proxy, _imagex_mode, _imagex_url):
+    async def fail_on_second(_page, item, _proxy, _imagex_mode, _imagex_url, **_kwargs):
         if item["name"] == "second":
             raise RuntimeError("imagex_apply_ConnectError")
         return {"uri": "imagex://first"}
@@ -154,3 +185,80 @@ async def test_imagex_transfer_egress_is_independent_of_browser_proxy(monkeypatc
     assert calls[0].startswith("https://imagex.example/")
     assert calls[1] == "https://upload.example/upload/v1/image.png"
     assert calls[2].startswith("https://imagex.example/")
+
+
+@pytest.mark.anyio
+async def test_multimage_real_tls_source_and_upload_share_selected_proxy_client(tmp_path, monkeypatch):
+    import json
+    import ssl
+    from datetime import datetime, timedelta, timezone
+    from ipaddress import ip_address
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    import httpx
+    import pproxy
+    import dola_api.uploads as uploads
+    import dola_api.traffic as traffic
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "fixture")])
+    now = datetime.now(timezone.utc)
+    cert = x509.CertificateBuilder().subject_name(subject).issuer_name(subject).public_key(key.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now-timedelta(days=1)).not_valid_after(now+timedelta(days=1)).add_extension(x509.SubjectAlternativeName([x509.IPAddress(ip_address("127.0.0.1"))]), False).sign(key, hashes.SHA256())
+    certfile, keyfile = tmp_path/"cert.pem", tmp_path/"key.pem"
+    certfile.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    keyfile.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL, serialization.NoEncryption()))
+    sslserver = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); sslserver.load_cert_chain(certfile, keyfile)
+    requests, uploaded, connections = [], [], []
+    image = b"image-fixture-" * 65536
+    async def serve(reader, writer):
+        connections.append(1)
+        try:
+            while True:
+                headers = await reader.readuntil(b"\r\n\r\n")
+                first = headers.split(b"\r\n", 1)[0].decode(); requests.append(first)
+                length = next((int(line.split(b":", 1)[1]) for line in headers.split(b"\r\n") if line.lower().startswith(b"content-length:")), 0)
+                body = await reader.readexactly(length)
+                if "/source.png" in first:
+                    reply, mime = image, "image/png"
+                else:
+                    mime = "application/json"
+                    if "ApplyImageUpload" in first:
+                        data = {"Result": {"UploadAddress": {"StoreInfos": [{"StoreUri": "image.png", "Auth": "fixture-auth"}], "UploadHosts": [f"127.0.0.1:{port}"], "SessionKey": "fixture-session"}}}
+                    elif "/upload/v1/" in first:
+                        uploaded.append(body); data = {"code": 2000}
+                    else:
+                        data = {"Result": {"Results": [{"Uri": "fixture/stored.png"}]}}
+                    reply = json.dumps(data).encode()
+                writer.write(f"HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {len(reply)}\r\n\r\n".encode()+reply)
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close(); await writer.wait_closed()
+    origin = await asyncio.start_server(serve, "127.0.0.1", 0, ssl=sslserver)
+    port = origin.sockets[0].getsockname()[1]
+    proxy = await pproxy.Server("http://127.0.0.1:0").start_server({"rserver": []})
+    proxy_port = proxy.sockets[0].getsockname()[1]
+    created = []
+    original_client = httpx.AsyncClient
+    def client(**options):
+        created.append(options)
+        return original_client(**options, verify=ssl.create_default_context(cafile=certfile))
+    monkeypatch.setattr(uploads.httpx, "AsyncClient", client)
+    monkeypatch.setenv("DOLA_TRAFFIC_STATE_PATH", str(tmp_path/"traffic.sqlite3"))
+    traffic.start_meter()
+    page = FakePage({"ok": True, "status": 200, "json": {"code": 0, "data": {"service_id": "fixture", "upload_host": f"127.0.0.1:{port}", "upload_auth_token": {"access_key": "fixture", "secret_key": "fixture", "session_token": "fixture"}}}})
+    try:
+        result = await resolve_references(page, [{"url": f"https://127.0.0.1:{port}/source.png"}]*2, "http://127.0.0.1:1", "managed", f"http://127.0.0.1:{proxy_port}")
+        assert len(result) == 2 and all(item["uri"] == "fixture/stored.png" for item in result)
+        assert len(created) == 1 and len(connections) == 1
+        assert uploaded == [image, image]
+        assert len(requests) == 8
+        data = traffic.query_traffic("2000-01-01T00:00:00Z", "2100-01-01T00:00:00Z")
+        assert len(data["items"]) == 1 and data["items"][0]["port"] == proxy_port
+        assert data["items"][0]["role"] == "upload"
+        assert data["uploadBytes"] > len(image)*2 and data["downloadBytes"] > len(image)*2
+    finally:
+        await traffic.close_meter()
+        proxy.close(); await proxy.wait_closed()
+        origin.close(); await origin.wait_closed()

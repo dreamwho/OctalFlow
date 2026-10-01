@@ -7,15 +7,18 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 
 from .contracts import AccountInspectRequest, GoogleLoginRequest, GoogleLoginSessionRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest
 from .session import CamoufoxSessionPool
+from .traffic import start_meter, close_meter, query_traffic
 
 pool = CamoufoxSessionPool()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    start_meter()
     try:
         yield
     finally:
         await pool.close_all_verifications()
+        await close_meter()
 
 app = FastAPI(title="dreamyo Dola Camoufox Provider", lifespan=lifespan)
 
@@ -241,3 +244,11 @@ def main() -> None:
     import uvicorn
 
     uvicorn.run("dola_api.app:app", host="127.0.0.1", port=int(os.getenv("DOLA_PROVIDER_PORT", "18082")))
+
+
+@app.get("/internal/runtime/v1/traffic", dependencies=[Depends(require_internal)])
+async def traffic(start: str, end: str, port: int | None = None) -> dict:
+    try:
+        return query_traffic(start, end, port)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

@@ -70,7 +70,7 @@ export function DolaRequestLogPanel({ active, models, accounts, captureFailureSc
     }, [models, page?.items]);
     const accountOptions = useMemo(() => {
         const values = new Map<string, string>();
-        accounts.forEach((item) => values.set(item.id, item.name || item.email || "未命名账号"));
+        accounts.forEach((item) => values.set(item.id, displayAccountName({ accountId: item.id }, accounts)));
         page?.items.forEach((item) => item.accountId && values.set(item.accountId, values.get(item.accountId) || item.accountName || "已删除账号"));
         return [{ value: "", label: "全部账号" }, ...Array.from(values.entries()).map(([value, label]) => ({ value, label }))];
     }, [accounts, page?.items]);
@@ -133,7 +133,7 @@ export function DolaRequestLogPanel({ active, models, accounts, captureFailureSc
                     <Select value={source} onChange={(value: SourceFilter) => { resetPage(); setSource(value); }} options={[{ value: "", label: "全部来源" }, { value: "runtime", label: "站内调用" }, { value: "admin-test", label: "后台实测" }, { value: "external", label: "外部 API" }]} />
                     <Select value={proxyMode} onChange={(value: ProxyFilter) => { resetPage(); setProxyMode(value); }} options={[{ value: "", label: "全部代理" }, { value: "direct", label: "直连" }, { value: "magic", label: "魔法代理" }, { value: "generic", label: "通用代理" }, { value: "chained", label: "链式代理" }]} />
                     <Select value={model} onChange={(value) => { resetPage(); setModel(value); }} options={modelOptions} showSearch placeholder="筛选模型" />
-                    <Select value={accountId} onChange={(value) => { resetPage(); setAccountId(value); }} options={accountOptions} showSearch placeholder="筛选账号" />
+                    <Select value={accountId} onChange={(value) => { resetPage(); setAccountId(value); }} options={accountOptions} showSearch optionFilterProp="label" placeholder="筛选账号" />
                     <Button type="primary" onClick={() => { resetPage(); setKeyword(keywordDraft.trim()); }}>
                         查询
                     </Button>
@@ -173,8 +173,11 @@ const phaseOptions: Array<{ value: DolaRequestLogPhase; label: string }> = [
     { value: "cancelled", label: "已取消" },
 ];
 
-function displayAccountName(log: DolaRequestLog, accounts: DolaAccount[]) {
-    return accounts.find((account) => account.id === log.accountId)?.name || log.accountName || (log.accountId ? "已删除账号" : "未识别账号");
+function displayAccountName(log: Pick<DolaRequestLog, "accountId" | "accountName">, accounts: DolaAccount[]) {
+    const account = accounts.find((item) => item.id === log.accountId);
+    return account
+        ? `${account.group?.trim() || "未分组"} · ${account.name || log.accountName || account.email || "未命名账号"}`
+        : log.accountName || (log.accountId ? "已删除账号" : "未识别账号");
 }
 
 function DolaRequestLogRow({ log, accountName, onClick, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog; accountName: string; onClick: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {

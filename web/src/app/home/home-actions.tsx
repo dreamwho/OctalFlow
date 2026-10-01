@@ -37,10 +37,11 @@ type HomeActions = {
 
 const HomeActionsContext = createContext<HomeActions | null>(null);
 
-export function HomeActionsProvider({ initialSite, children }: { initialSite: HomeSiteSettings; children: ReactNode }) {
+export function HomeActionsProvider({ initialSite, initialLogin, children }: { initialSite: HomeSiteSettings; initialLogin?: { nextPath: string; authError: string }; children: ReactNode }) {
     const router = useRouter();
-    const [authOpen, setAuthOpen] = useState(false);
-    const [authNextPath, setAuthNextPath] = useState("/canvas");
+    const [authOpen, setAuthOpen] = useState(Boolean(initialLogin));
+    const [authNextPath, setAuthNextPath] = useState(initialLogin?.nextPath || "/canvas");
+    const [authError, setAuthError] = useState(initialLogin?.authError || "");
     const [methodOverride, setMethodOverride] = useState<"password" | "wechat" | null>(null);
     const [billingPlansOpen, setBillingPlansOpen] = useState(false);
     const user = useUserStore((state) => state.user);
@@ -64,11 +65,24 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
         [initialSite, sessionSite],
     );
     const authenticated = sessionReady && Boolean(user);
+    useEffect(() => {
+        if (initialLogin) {
+            setAuthNextPath(initialLogin.nextPath);
+            setAuthError(initialLogin.authError);
+            setAuthOpen(true);
+        }
+    }, [initialLogin]);
+    useEffect(() => { if (authenticated) setAuthOpen(false); }, [authenticated]);
 
     const openLogin = (nextPath = "/canvas") => {
+        setAuthError("");
         setAuthNextPath(nextPath);
         setMethodOverride(null);
         setAuthOpen(true);
+    };
+    const closeLogin = () => {
+        setAuthOpen(false);
+        if (initialLogin) router.replace("/", { scroll: false });
     };
     const openProtectedPath = (path: string) => {
         if (authenticated) router.push(path);
@@ -101,12 +115,12 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
                 title={null}
                 closable={false}
                 destroyOnHidden
-                onCancel={() => setAuthOpen(false)}
+                onCancel={closeLogin}
                 className="landing-auth-modal landing-auth-jiaotu"
                 styles={{ body: { padding: 0 } }}
             >
                 <div className="landing-auth-jiaotu-hero">
-                    <button type="button" className="landing-auth-jiaotu-close" aria-label="关闭登录弹窗" onClick={() => setAuthOpen(false)}>
+                    <button type="button" className="landing-auth-jiaotu-close" aria-label="关闭登录弹窗" onClick={closeLogin}>
                         <X aria-hidden="true" className="size-4" />
                     </button>
                     <img src="/brand/dreamyo/pure-mark.png" alt="" className="landing-auth-jiaotu-mark" />
@@ -115,7 +129,7 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
                 <div className="landing-auth-jiaotu-body">
                     {passwordEnabled && (methodOverride || loginMethods.defaultMethod) !== "wechat" ? (
                         <>
-                            <AuthForm mode="login" variant="embedded" submitLabel="登录" nextPath={authNextPath} className="min-h-0 bg-transparent p-0 shadow-none" />
+                            <AuthForm mode="login" variant="embedded" submitLabel="登录" nextPath={authNextPath} authError={authError} className="min-h-0 bg-transparent p-0 shadow-none" />
                             {wechatEnabled ? (
                                 <button type="button" className="landing-auth-wechat-pill" onClick={() => setMethodOverride("wechat")}>
                                     <WechatGlyph className="size-4.5" />
@@ -126,7 +140,7 @@ export function HomeActionsProvider({ initialSite, children }: { initialSite: Ho
                     ) : wechatEnabled ? (
                         <WechatLoginPanel onBack={passwordEnabled ? () => setMethodOverride("password") : undefined} />
                     ) : passwordEnabled ? (
-                        <AuthForm mode="login" variant="embedded" submitLabel="登录" nextPath={authNextPath} className="min-h-0 bg-transparent p-0 shadow-none" />
+                        <AuthForm mode="login" variant="embedded" submitLabel="登录" nextPath={authNextPath} authError={authError} className="min-h-0 bg-transparent p-0 shadow-none" />
                     ) : null}
                     <p className="landing-auth-jiaotu-legal">
                         登录即代表同意

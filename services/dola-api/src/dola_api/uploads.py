@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import asyncio
 import binascii
 import hashlib
 import hmac
@@ -15,6 +16,8 @@ from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import httpx
+
+from .traffic import metered_proxy
 
 from .page_scripts import PREPARE_UPLOAD_SCRIPT
 
@@ -159,7 +162,7 @@ async def _read_response_json(response: httpx.Response, label: str) -> dict[str,
     return value
 
 
-async def _fetch_source_bytes(url: str, proxy_url: str | None) -> tuple[bytes, str, str]:
+async def _fetch_source_bytes(url: str, proxy_url: str | None, client: httpx.AsyncClient | None = None) -> tuple[bytes, str, str]:
     parsed = urlsplit(url)
     if parsed.scheme == "data":
         header, separator, encoded = url.partition(",")
@@ -175,18 +178,23 @@ async def _fetch_source_bytes(url: str, proxy_url: str | None) -> tuple[bytes, s
         raise RuntimeError("reference_url_invalid")
     fetch_url, fetch_proxy = _reference_fetch_route(url, proxy_url)
     timeout = httpx.Timeout(45.0, connect=15.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(fetch_proxy)) as client:
-        try:
-            response = await client.get(fetch_url, headers={"accept": "image/*,*/*;q=0.8"})
-        except httpx.RequestError as error:
-            raise RuntimeError(f"reference_fetch_{type(error).__name__}") from error
-        if response.status_code < 200 or response.status_code >= 300:
-            raise RuntimeError(f"reference_fetch_http_{response.status_code}")
-        content = _check_source_size(response.content)
-        mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower() or "image/png"
-        name = PurePosixPath(parsed.path).name or "reference.png"
-        return content, mime, name
+    if client is None or _signed_reference_url(url):
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(await metered_proxy(fetch_proxy, "upload"))) as fetch_client:
+            return await _fetch_remote_source(fetch_client, fetch_url, parsed.path)
+    return await _fetch_remote_source(client, fetch_url, parsed.path)
 
+
+async def _fetch_remote_source(client: httpx.AsyncClient, fetch_url: str, path: str) -> tuple[bytes, str, str]:
+    try:
+        response = await client.get(fetch_url, headers={"accept": "image/*,*/*;q=0.8"})
+    except httpx.RequestError as error:
+        raise RuntimeError(f"reference_fetch_{type(error).__name__}") from error
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError(f"reference_fetch_http_{response.status_code}")
+    content = _check_source_size(response.content)
+    mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower() or "image/png"
+    name = PurePosixPath(path).name or "reference.png"
+    return content, mime, name
 
 def _check_source_size(content: bytes) -> bytes:
     if not content or len(content) > _max_reference_bytes():
@@ -195,13 +203,36 @@ def _check_source_size(content: bytes) -> bytes:
 
 
 async def _prepare_upload(page: Any) -> dict[str, Any]:
-    result = await page.evaluate(PREPARE_UPLOAD_SCRIPT, {"body": PREPARE_UPLOAD_BODY})
-    if not isinstance(result, dict):
-        raise RuntimeError("prepare_upload_invalid_result")
-    if not result.get("ok"):
-        status = result.get("status", "unknown")
-        raise RuntimeError(f"prepare_upload_http_{status}")
-    data = result.get("json")
+    pattern = "**/alice/resource/prepare_upload?*"
+    captured = asyncio.get_running_loop().create_future()
+
+    async def capture(route):
+        if route.request.method != "POST":
+            await route.continue_()
+            return
+        request = route.request
+        await route.abort()  # Do not also send the page's original request.
+        if not captured.done():
+            captured.set_result(request)
+
+    await page.route(pattern, capture)
+    try:
+        await page.add_script_tag(content=f"({PREPARE_UPLOAD_SCRIPT})({json.dumps({'body': PREPARE_UPLOAD_BODY})});")
+        request = await asyncio.wait_for(captured, timeout=90.0)
+    finally:
+        await page.unroute(pattern, capture)
+    # Preserve SDK signature, body, headers, cookies and the submission proxy.
+    # The existing upload transport timeout also bounds this credential request.
+    response = await page.request.fetch(request, timeout=90_000, max_redirects=0)
+    try:
+        if not response.ok:
+            raise RuntimeError(f"prepare_upload_http_{response.status}")
+        try:
+            data = await response.json()
+        except ValueError as error:
+            raise RuntimeError("prepare_upload_invalid_json") from error
+    finally:
+        await response.dispose()
     if not isinstance(data, dict):
         raise RuntimeError("prepare_upload_invalid_json")
     if data.get("code") != 0:
@@ -212,14 +243,18 @@ async def _prepare_upload(page: Any) -> dict[str, Any]:
     return data["data"]
 
 
-async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | None = None, imagex_proxy_mode: str | None = None, imagex_proxy_url: str | None = None) -> dict[str, Any]:
+async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | None = None, imagex_proxy_mode: str | None = None, imagex_proxy_url: str | None = None, *, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
     existing_uri = str(item.get("uri") or "").strip()
     if existing_uri:
         return {"uri": existing_uri, "name": str(item.get("name") or "image.png"), "width": int(item.get("width") or 0), "height": int(item.get("height") or 0), "mime": str(item.get("mime") or "image/png")}
     source_url = str(item.get("url") or item.get("dataUrl") or "").strip()
     if not source_url:
         raise RuntimeError("reference_url_missing")
-    content, mime, file_name = await _fetch_source_bytes(source_url, proxy_url)
+    upload_proxy = _imagex_upload_proxy(imagex_proxy_url if imagex_proxy_mode else proxy_url, imagex_proxy_mode)
+    if client is None:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0), follow_redirects=False, trust_env=False, **_proxy_options(await metered_proxy(upload_proxy, "upload"))) as shared:
+            return await upload_reference(page, item, proxy_url, imagex_proxy_mode, imagex_proxy_url, client=shared)
+    content, mime, file_name = await _fetch_source_bytes(source_url, upload_proxy, client)
     upload_config = await _prepare_upload(page)
     credentials = _normalize_upload_credentials(upload_config.get("upload_auth_token"))
     service_id = str(upload_config.get("service_id") or "")
@@ -227,44 +262,42 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
     if not service_id or not imagex_host:
         raise RuntimeError("prepare_upload_config_incomplete")
     ext = PurePosixPath(file_name).suffix.lower() or mimetypes.guess_extension(mime) or ".png"
-    timeout = httpx.Timeout(90.0, connect=30.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(_imagex_upload_proxy(imagex_proxy_url if imagex_proxy_mode else proxy_url, imagex_proxy_mode))) as client:
-        apply_params = {"Action": "ApplyImageUpload", "Version": IMAGEX_API_VERSION, "ServiceId": service_id, "FileSize": str(len(content)), "FileExtension": ext, "s": _random_base36()}
-        apply_url = f"https://{imagex_host}/?{urlencode(apply_params)}"
-        try:
-            apply_response = await client.get(apply_url, headers={"Accept": "*/*", **_sign_imagex_request(method="GET", raw_url=apply_url, credentials=credentials)})
-        except httpx.RequestError as error:
-            raise RuntimeError(f"imagex_apply_{type(error).__name__}") from error
-        apply_data = await _read_response_json(apply_response, "apply_image_upload")
-        upload_address = (apply_data.get("Result") or {}).get("UploadAddress") or {}
-        store_infos = upload_address.get("StoreInfos") or []
-        upload_hosts = upload_address.get("UploadHosts") or []
-        store_info = store_infos[0] if isinstance(store_infos, list) and store_infos and isinstance(store_infos[0], dict) else {}
-        upload_host = str(upload_hosts[0]) if isinstance(upload_hosts, list) and upload_hosts else ""
-        session_key = str(upload_address.get("SessionKey") or "")
-        store_uri = str(store_info.get("StoreUri") or "")
-        store_auth = str(store_info.get("Auth") or "")
-        if not upload_host or not session_key or not store_uri or not store_auth:
-            raise RuntimeError("apply_image_upload_incomplete")
-        upload_headers = {"Authorization": store_auth, "Content-CRC32": f"{binascii.crc32(content) & 0xFFFFFFFF:08x}", "Content-Disposition": f'attachment; filename="{file_name.replace(chr(34), "")}"', "Content-Type": "application/octet-stream"}
-        if isinstance(upload_address.get("UploadHeader"), dict):
-            upload_headers.update({str(key): str(value) for key, value in upload_address["UploadHeader"].items()})
-        upload_url = f"https://{upload_host}/upload/v1/{store_uri}"
-        try:
-            upload_response = await client.post(upload_url, headers=upload_headers, content=content)
-        except httpx.RequestError as error:
-            raise RuntimeError(f"imagex_upload_{type(error).__name__}") from error
-        upload_data = await _read_response_json(upload_response, "image_upload")
-        if upload_data.get("code") != 2000:
-            raise RuntimeError("image_upload_rejected")
-        commit_url = f"https://{imagex_host}/?{urlencode({'Action': 'CommitImageUpload', 'Version': IMAGEX_API_VERSION, 'ServiceId': service_id})}"
-        commit_body = json.dumps({"SessionKey": session_key}, separators=(",", ":"))
-        commit_headers = {"Accept": "*/*", "Content-Type": "application/json", **_sign_imagex_request(method="POST", raw_url=commit_url, credentials=credentials, body=commit_body, include_payload_hash=True)}
-        try:
-            commit_response = await client.post(commit_url, headers=commit_headers, content=commit_body)
-        except httpx.RequestError as error:
-            raise RuntimeError(f"imagex_commit_{type(error).__name__}") from error
-        commit_data = await _read_response_json(commit_response, "commit_image_upload")
+    apply_params = {"Action": "ApplyImageUpload", "Version": IMAGEX_API_VERSION, "ServiceId": service_id, "FileSize": str(len(content)), "FileExtension": ext, "s": _random_base36()}
+    apply_url = f"https://{imagex_host}/?{urlencode(apply_params)}"
+    try:
+        apply_response = await client.get(apply_url, headers={"Accept": "*/*", **_sign_imagex_request(method="GET", raw_url=apply_url, credentials=credentials)})
+    except httpx.RequestError as error:
+        raise RuntimeError(f"imagex_apply_{type(error).__name__}") from error
+    apply_data = await _read_response_json(apply_response, "apply_image_upload")
+    upload_address = (apply_data.get("Result") or {}).get("UploadAddress") or {}
+    store_infos = upload_address.get("StoreInfos") or []
+    upload_hosts = upload_address.get("UploadHosts") or []
+    store_info = store_infos[0] if isinstance(store_infos, list) and store_infos and isinstance(store_infos[0], dict) else {}
+    upload_host = str(upload_hosts[0]) if isinstance(upload_hosts, list) and upload_hosts else ""
+    session_key = str(upload_address.get("SessionKey") or "")
+    store_uri = str(store_info.get("StoreUri") or "")
+    store_auth = str(store_info.get("Auth") or "")
+    if not upload_host or not session_key or not store_uri or not store_auth:
+        raise RuntimeError("apply_image_upload_incomplete")
+    upload_headers = {"Authorization": store_auth, "Content-CRC32": f"{binascii.crc32(content) & 0xFFFFFFFF:08x}", "Content-Disposition": f'attachment; filename="{file_name.replace(chr(34), "")}"', "Content-Type": "application/octet-stream"}
+    if isinstance(upload_address.get("UploadHeader"), dict):
+        upload_headers.update({str(key): str(value) for key, value in upload_address["UploadHeader"].items()})
+    upload_url = f"https://{upload_host}/upload/v1/{store_uri}"
+    try:
+        upload_response = await client.post(upload_url, headers=upload_headers, content=content)
+    except httpx.RequestError as error:
+        raise RuntimeError(f"imagex_upload_{type(error).__name__}") from error
+    upload_data = await _read_response_json(upload_response, "image_upload")
+    if upload_data.get("code") != 2000:
+        raise RuntimeError("image_upload_rejected")
+    commit_url = f"https://{imagex_host}/?{urlencode({'Action': 'CommitImageUpload', 'Version': IMAGEX_API_VERSION, 'ServiceId': service_id})}"
+    commit_body = json.dumps({"SessionKey": session_key}, separators=(",", ":"))
+    commit_headers = {"Accept": "*/*", "Content-Type": "application/json", **_sign_imagex_request(method="POST", raw_url=commit_url, credentials=credentials, body=commit_body, include_payload_hash=True)}
+    try:
+        commit_response = await client.post(commit_url, headers=commit_headers, content=commit_body)
+    except httpx.RequestError as error:
+        raise RuntimeError(f"imagex_commit_{type(error).__name__}") from error
+    commit_data = await _read_response_json(commit_response, "commit_image_upload")
     result = commit_data.get("Result") or {}
     results = result.get("Results") if isinstance(result, dict) else []
     plugins = result.get("PluginResult") if isinstance(result, dict) else []
@@ -277,12 +310,16 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
 
 
 async def resolve_references(page: Any, references: list[dict[str, Any]], proxy_url: str | None = None, imagex_proxy_mode: str | None = None, imagex_proxy_url: str | None = None) -> list[dict[str, Any]]:
+    if not references:
+        return []
+    upload_proxy = _imagex_upload_proxy(imagex_proxy_url if imagex_proxy_mode else proxy_url, imagex_proxy_mode)
     resolved: list[dict[str, Any]] = []
-    for index, item in enumerate(references, 1):
-        try:
-            resolved.append(await upload_reference(page, item, proxy_url, imagex_proxy_mode, imagex_proxy_url))
-        except Exception as error:
-            raise RuntimeError(f"reference_{index}_of_{len(references)}: {str(error).strip() or type(error).__name__}") from error
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0), follow_redirects=False, trust_env=False, **_proxy_options(await metered_proxy(upload_proxy, "upload"))) as client:
+        for index, item in enumerate(references, 1):
+            try:
+                resolved.append(await upload_reference(page, item, proxy_url, imagex_proxy_mode, imagex_proxy_url, client=client))
+            except Exception as error:
+                raise RuntimeError(f"reference_{index}_of_{len(references)}: {str(error).strip() or type(error).__name__}") from error
     return resolved
 
 

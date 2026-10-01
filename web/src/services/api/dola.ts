@@ -121,3 +121,10 @@ export function getDolaLogs(input: { page?: number; pageSize?: number; keyword?:
     return request<DolaLogPage>(`/api/admin/dola/logs${search.size ? `?${search}` : ""}`);
 }
 export function clearDolaLogs() { return request<{ deletedCount: number }>("/api/admin/dola/logs", { method: "DELETE" }); }
+
+export type DolaTraffic = { start: string; end: string; uploadBytes: number; downloadBytes: number; totalBytes: number; boundary: string; items: Array<{ role: "submit" | "upload"; address: string; port: number; uploadBytes: number; downloadBytes: number; totalBytes: number }> };
+export function getDolaTraffic(start: string, end: string, port?: number) {
+    const query = new URLSearchParams({ start, end });
+    if (port !== undefined) query.set("port", String(port));
+    return request<DolaTraffic>(`/api/admin/dola/traffic?${query}`);
+}

@@ -23,7 +23,7 @@ BROWSER_INIT_SCRIPT = r"""
 
 
 PREPARE_UPLOAD_SCRIPT = r"""
-async ({body}) => {
+({body}) => {
   function uuid() {
     return crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
       const r = Math.random() * 16 | 0; const v = c === "x" ? r : (r & 0x3 | 0x8); return v.toString(16);
@@ -68,9 +68,9 @@ async ({body}) => {
   const params = query();
   let url = `${location.origin}/alice/resource/prepare_upload?${params.toString()}`;
   const aBogus = sign(url); if (aBogus) { params.set("a_bogus", aBogus); url = `${location.origin}/alice/resource/prepare_upload?${params.toString()}`; }
-  const response = await fetch(url, { method: "POST", credentials: "include", headers: { accept: "application/json, text/plain, */*", "accept-language": "zh-CN,zh;q=0.9", "agw-js-conv": "str", "content-type": "application/json", "x-flow-trace": `04-${hex(32)}-${hex(16)}-01` }, body: JSON.stringify(body) });
-  const text = await response.text(); let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
-  return { ok: response.ok, status: response.status, contentType: response.headers.get("content-type") || "", responseBytes: text.length, json };
+  // Python captures the final SDK-signed request and sends it through the
+  // browser context's request client, which survives document replacement.
+  fetch(url, { method: "POST", credentials: "include", headers: { accept: "application/json, text/plain, */*", "accept-language": "zh-CN,zh;q=0.9", "agw-js-conv": "str", "content-type": "application/json", "x-flow-trace": `04-${hex(32)}-${hex(16)}-01` }, body: JSON.stringify(body) }).catch(() => {});
 }
 """
 

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { AuthForm } from "@/components/auth/auth-form";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getInstallStatus } from "@/lib/server/install-status";
+import { readHomeLogin } from "@/app/home/home-login";
 
 export const metadata: Metadata = { title: "登录 | dreamyo" };
 
@@ -13,30 +13,14 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
     const params = searchParams ? await searchParams : {};
-    const nextPath = safeNextPath(firstValue(params.next));
-    const authError = authErrorMessage(firstValue(params.error));
+    const { nextPath, authError } = readHomeLogin(params);
     const install = await getInstallStatus();
     if (!install.ready) redirect("/install");
 
     const user = await getCurrentUser();
     if (user) redirect(nextPath);
 
-    return <AuthForm mode="login" nextPath={nextPath} authError={authError} />;
-}
-
-function firstValue(value: string | string[] | undefined) {
-    return Array.isArray(value) ? value[0] : value;
-}
-
-function safeNextPath(value: string | undefined) {
-    return value?.startsWith("/") && !value.startsWith("//") ? value : "/create";
-}
-
-function authErrorMessage(value: string | undefined) {
-    if (!value) return "";
-    try {
-        return decodeURIComponent(value);
-    } catch {
-        return value;
-    }
+    const query = new URLSearchParams({ login: "1", next: nextPath });
+    if (authError) query.set("error", authError);
+    redirect(`/?${query}`);
 }
