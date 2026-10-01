@@ -287,7 +287,10 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
   el.id = "__dola_submit_result__";
   el.style.display = "none";
   document.documentElement.appendChild(el);
-  const done = (info) => { try { el.value = JSON.stringify(info); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); } };
+  const done = (info) => {
+    if (cfg.resultCallback) document.dispatchEvent(new CustomEvent(cfg.resultCallback, { detail: JSON.stringify(info) }));
+    try { el.value = JSON.stringify(info); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); }
+  };
   try {
     const completionKeys = new Set([
       "aid", "device_id", "device_platform", "doubao_device_platform",

@@ -678,7 +678,7 @@ class CamoufoxSessionPool:
             await verification.page.wait_for_load_state("load", timeout=45_000)
         except Exception:
             pass
-        result = await _execute_completion_submit(verification.page, verification.request, references, verification.page_session.cookie)
+        result = await _execute_completion_submit(verification.page, verification.request, references, verification.page_session.cookie, verification.page_session.proxy_url)
         if result.get("verificationRequired"):
             verification.decision = _verification_decision(result.get("verificationDecision"))
             return await self._verification_snapshot(verification)
@@ -1013,6 +1013,7 @@ class CamoufoxSessionPool:
                 "captureFailureScreenshot": request.captureFailureScreenshot,
                 "pollIntervalMs": request.pollIntervalMs,
                 **({"ackReceived": True} if result.get("ackReceived") else {}),
+                **({"submissionUncertain": True} if result.get("submissionUncertain") else {}),
                 **({"localConversationId": local_conversation_id} if local_conversation_id else {}),
                 **({"diagnostics": diagnostics} if diagnostics else {}),
                 **({"screenshotBase64": result.get("screenshotBase64")} if result.get("screenshotBase64") else {}),
@@ -1071,9 +1072,9 @@ class CamoufoxSessionPool:
                 await self._persist()
                 return
             if not conversation_id:
-                if result.get("ackReceived"):
-                    # The submit stream carried SSE_ACK but no conversation id;
-                    # keep the task accepted so the refresh path can recover it.
+                if result.get("ackReceived") or result.get("submissionUncertain"):
+                    # ACK or an interrupted transmission can precede the ID;
+                    # recover this request instead of risking another submit.
                     self._tasks[task_id] = self._tasks[task_id].model_copy(update={"status": "accepted", "error": None, "diagnostics": {**diagnostics, "conversationResolution": "pending_correlated_id"}})
                     await self._persist()
                     return
@@ -1195,7 +1196,7 @@ class CamoufoxSessionPool:
             await self._set_submit_stage(task_id, "uploading_references", referenceCount=len(references))
             resolved_references = await resolve_references(page, references, proxy_url, request.imagexProxyMode, request.imagexProxyUrl)
             await self._set_submit_stage(task_id, "submitting_to_dola")
-            result = await _execute_completion_submit(page, request, resolved_references, session.cookie)
+            result = await _execute_completion_submit(page, request, resolved_references, session.cookie, session.proxy_url)
             cookies = await context.cookies()
             cookie = "; ".join(f"{item['name']}={item['value']}" for item in cookies if item.get("name")) or session.cookie
             if result.get("serviceFrequent"):
@@ -1301,7 +1302,7 @@ class CamoufoxSessionPool:
             return
         conversation_id = str(task.conversationId or meta.get("conversationId") or "")
         cookie = str(meta.get("cookie") or "")
-        if not conversation_id and meta.get("ackReceived") and cookie and meta.get("localConversationId"):
+        if not conversation_id and (meta.get("ackReceived") or meta.get("submissionUncertain")) and cookie and meta.get("localConversationId"):
             conversation_id = await fetch_recent_conversation_id(cookie, dict(meta.get("identity") or {}), str(meta["localConversationId"]), str(meta.get("proxyUrl") or "") or None, meta.get("httpIdentity")) or ""
             if conversation_id:
                 meta["conversationId"] = conversation_id
@@ -2092,76 +2093,68 @@ def _normalize_request_references(request: VideoRequest) -> list[dict[str, Any]]
     return [item for item in ref_list if isinstance(item, dict) and (item.get("uri") or item.get("url") or item.get("dataUrl"))]
 
 
-async def _execute_completion_submit(page: Any, request: VideoRequest, references: list[dict[str, Any]], cookie: str = "") -> dict[str, Any]:
+async def _execute_completion_submit(page: Any, request: VideoRequest, references: list[dict[str, Any]], cookie: str = "", proxy_url: str | None = None) -> dict[str, Any]:
     """Send one signed request with the identity created by the loaded page.
 
     Retrying a submission with a fabricated device identity made an ordinary
     account look like several new devices and could also duplicate a request
     whose ACK was delayed. The main-world script now waits for both Dola's
-    signer and a real page-generated identity before transmitting exactly once.
+    signer and a real page-generated identity. Capture the final signed request
+    before transmission, then receive its response independently of navigation.
     """
     profile = validate_request(request.model, request.duration, request.ratio)
     body = _build_request_body(profile, request, references)
     local_conversation_id = str(body["client_meta"]["local_conversation_id"])
-    observed_urls: list[str] = []
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 70.0
+    captured = loop.create_future()
+    callback_name = f"__dola_submit_{uuid.uuid4().hex}"
 
-    def observe_request(browser_request: Any) -> None:
-        try:
-            from urllib.parse import urlsplit
+    def receive_result(_source, value):
+        if isinstance(value, dict) and value.get("fatal") and not captured.done():
+            captured.set_result(value)
 
-            parsed = urlsplit(str(browser_request.url))
-            if parsed.netloc.endswith("dola.com") and parsed.path == "/chat/completion":
-                observed_urls.append(str(browser_request.url))
-        except Exception:
+    async def capture(route):
+        browser_request = route.request
+        if browser_request.method != "POST" or (browser_request.post_data_json or {}).get("client_meta", {}).get("local_conversation_id") != local_conversation_id:
+            await route.continue_()
             return
+        # Capture the SDK's final signed request before any generation is sent.
+        await route.abort()
+        if not captured.done():
+            captured.set_result(browser_request)
 
-    try:
-        page.on("request", observe_request)
-    except Exception:
-        pass
+    await page.expose_binding(callback_name, receive_result)
+    # Camoufox keeps exposed bindings in an isolated world; string-valued DOM
+    # events carry pre-transmission SDK errors across the world boundary.
+    await page.evaluate("""name => document.addEventListener(name, event => {
+        window[name](JSON.parse(event.detail)).catch(() => {});
+    }, { once: true })""", callback_name)
+    pattern = "**/chat/completion?*"
+    await page.route(pattern, capture)
     fallback_query, _ = _build_completion_query(cookie)
-    config = json.dumps({"body": json.dumps(body, ensure_ascii=False, separators=(",", ":")), "fallbackQuery": fallback_query, "timeoutMs": 60_000, "hookDeadline": int(time.time() * 1000) + 40_000}, ensure_ascii=True).replace("</", "<\\/")
+    config = json.dumps({"body": json.dumps(body, ensure_ascii=False, separators=(",", ":")), "fallbackQuery": fallback_query, "timeoutMs": 60_000, "hookDeadline": int(time.time() * 1000) + 40_000, "resultCallback": callback_name}, ensure_ascii=True).replace("</", "<\\/")
     script = f"(window.__DOLA_SUBMIT_CONFIG__ = {config});\n{MAIN_WORLD_SUBMIT_SCRIPT}"
-    raw = ""
     try:
-        await page.add_script_tag(content=script)
-        deadline = time.monotonic() + 70.0
-        while time.monotonic() < deadline:
-            raw = await page.evaluate("() => { const el = document.getElementById('__dola_submit_result__'); return el ? el.value : ''; }")
-            if raw:
-                break
-            await asyncio.sleep(0.25)
+        try:
+            await page.add_script_tag(content=script)
+        except Exception:
+            if not captured.done():
+                raise
+        browser_request = await asyncio.wait_for(captured, timeout=max(0.0, deadline - loop.time()))
     finally:
-        try:
-            page.remove_listener("request", observe_request)
-        except Exception:
-            pass
-        try:
-            await page.evaluate("() => { const el = document.getElementById('__dola_submit_result__'); if (el) el.remove(); }")
-        except Exception:
-            pass
-    payload: dict[str, Any] = {}
-    if raw:
-        try:
-            value = json.loads(raw)
-            if isinstance(value, dict):
-                payload = value
-        except ValueError:
-            payload = {"fatal": "result_unparseable"}
-    if not raw:
-        payload = {"fatal": "result_timeout"}
-    observed_url = observed_urls[-1] if observed_urls else ""
-    payload["requestObserved"] = bool(observed_url)
-    payload["requestSigned"] = "a_bogus=" in observed_url
-    payload["signed"] = bool(payload.get("signed")) or bool(payload["requestSigned"])
-    if payload.get("fatal"):
-        raise RuntimeError(f"submission_transport_{str(payload.get('fatal'))[:60]}")
+        await page.unroute(pattern, capture)
+    if isinstance(browser_request, dict):
+        raise RuntimeError(f"submission_transport_{str(browser_request['fatal'])[:60]}")
+    payload = await _send_completion_stream(browser_request, proxy_url, min(60.0, max(0.0, deadline - loop.time())))
     text = str(payload.get("text") or "")
     events = _parse_sse_text(text)
     event_names = [name.upper() for name, _ in events]
     conversation_id = extract_conversation_id(events) or ""
     decision = _sse_verification_decision(events)
     diagnostics = _submission_diagnostics(events, text, payload)
+    if payload.get("transportError"):
+        diagnostics["transportError"] = payload["transportError"]
     assistant_reply = _extract_assistant_text(events)
     if assistant_reply:
         diagnostics["upstreamResponseText"] = assistant_reply[:2000]
@@ -2175,6 +2168,7 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
         "videoUrl": decode_main_url(extract_video_url(events) or ""),
         "imageUrls": extract_image_urls(events),
         "ackReceived": "SSE_ACK" in event_names or bool(conversation_id),
+        "submissionUncertain": bool(payload.get("transportError")) and not conversation_id,
         "restricted": "country restricted" in text.lower() or "region-restricted" in text.lower(),
         "signatureRejected": "710022004" in text,
         "serviceFrequent": "710022002" in text or "当前需求量较大" in text or "服务访问频繁" in text or "high demand" in text.lower(),
@@ -2188,6 +2182,43 @@ async def _execute_completion_submit(page: Any, request: VideoRequest, reference
         "identitySource": str(payload.get("identitySource") or "")[:200],
         **{key: str(identity.get(key) or "") for key in ("device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name", "pc_version", "doubao_pc_version")},
     }
+
+
+async def _send_completion_stream(browser_request: Any, proxy_url: str | None, timeout: float) -> dict[str, Any]:
+    """One signed transmission; SSE reception lives outside the page document."""
+    from urllib.parse import parse_qs, urlsplit
+
+    url = str(browser_request.url)
+    query = parse_qs(urlsplit(url).query)
+    identity = {key: query.get(key, [""])[0] for key in ("device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name", "pc_version", "doubao_pc_version")}
+    payload: dict[str, Any] = {"status": 0, "contentType": "", "requestObserved": True, "requestSigned": "a_bogus" in query, "signed": "a_bogus" in query, "identity": identity, "identitySource": "browser_signed_request"}
+    lines, frame = [], []
+    headers = await browser_request.all_headers()
+    headers.pop("accept-encoding", None)  # Negotiate HTTPX-supported decoding.
+    headers.pop("proxy-authorization", None)  # Authenticate only to this client's proxy.
+    headers.pop("proxy-connection", None)
+    counted_proxy = await metered_proxy(proxy_url, "submit")
+    async with httpx.AsyncClient(proxy=counted_proxy, timeout=timeout, follow_redirects=False, trust_env=False) as client:
+        try:
+            async with asyncio.timeout(timeout):
+                async with client.stream("POST", url, headers=headers, content=browser_request.post_data_buffer) as response:
+                    payload.update(status=response.status_code, contentType=response.headers.get("content-type", ""))
+                    async for line in response.aiter_lines():
+                        lines.append(line)
+                        frame.append(line)
+                        if not line:
+                            events = _parse_sse_text("\n".join(frame))
+                            frame.clear()
+                            if any(name.upper() == "SSE_REPLY_END" for name, _data in events):
+                                break
+        except (httpx.TransportError, TimeoutError) as error:
+            if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.ProxyError)):
+                raise  # No upstream request was transmitted.
+            # A partial ACK must survive a broken stream; never submit again.
+            payload["transportError"] = type(error).__name__
+    text = "\n".join(lines)
+    payload.update(text=text, responseBytes=len(text.encode("utf-8")))
+    return payload
 
 
 def _build_completion_query(cookie: str) -> tuple[str, dict[str, str]]:
