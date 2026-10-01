@@ -5,6 +5,9 @@ import { Music2, Pencil, RefreshCw, Save, Trash2, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
+import { AdminRequestTrafficDetail, AdminRequestTrafficSummary, collectRequestIds, getRequestTrafficSummary, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import { applyChannelProtocol } from "@/lib/channel-protocol-registry";
 import { MINIMAX_MUSIC_MODELS, MINIMAX_SPEECH_MODELS, MINIMAX_VOICE_CATEGORIES, normalizeMiniMaxBaseUrl } from "@/lib/minimax-audio";
 import { synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
@@ -12,7 +15,7 @@ import type { LogicalModel, SystemModelChannel } from "@/lib/auth/store";
 import type { AdminDashboardController } from "./use-admin-dashboard-controller";
 import { getMiniMaxAdminState, syncMiniMaxVoices, type MiniMaxAdminState } from "@/services/api/minimax";
 
-type MiniMaxTab = "voices" | "music" | "logs";
+type MiniMaxTab = "voices" | "music" | "statistics" | "logs";
 type MiniMaxVoiceGroup = "system" | "personal";
 
 export function AdminMiniMaxSection({ controller }: { controller: AdminDashboardController }) {
@@ -23,6 +26,9 @@ export function AdminMiniMaxSection({ controller }: { controller: AdminDashboard
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [selectedLog, setSelectedLog] = useState<MiniMaxAdminState["logs"]["items"][number] | null>(null);
+    const trafficRequestIds = useMemo(() => collectRequestIds([...(state?.logs.items || []), selectedLog]), [state?.logs.items, selectedLog]);
+    const trafficRefreshKey = useMemo(() => [...(state?.logs.items || []), selectedLog].map((item) => item ? `${item.id}:${item.phase}:${item.statusCode}:${item.durationMs}` : "").join("|"), [state?.logs.items, selectedLog]);
+    const traffic = useAdminRequestTraffic(trafficRequestIds, [], trafficRefreshKey);
     const channel = useMemo(() => {
         const current = settings.systemChannels.find((item) => item.id === "minimax-audio" || item.advancedConfig?.protocol === "minimax-audio");
         return current ? { ...current, baseUrl: normalizeMiniMaxBaseUrl(current.baseUrl) } : createMiniMaxChannel();
@@ -174,12 +180,14 @@ export function AdminMiniMaxSection({ controller }: { controller: AdminDashboard
                         items={[
                             { key: "voices", label: "音色管理" },
                             { key: "music", label: "音乐管理" },
+                            { key: "statistics", label: "流量统计" },
                             { key: "logs", label: "请求日志" },
                         ]}
                     />
                     {tab === "voices" ? <VoiceManagement state={state} onSync={() => void syncVoices()} /> : null}
                     {tab === "music" ? <MusicManagement state={state} onRefresh={() => void load()} /> : null}
-                    {tab === "logs" ? <RequestLogs state={state} onSelect={setSelectedLog} onPageChange={(page) => void load(page)} /> : null}
+                    {tab === "statistics" ? <AdminTrafficPanel channelId={channel.id} protocol="minimax-audio" title="MiniMax 音频流量统计" /> : null}
+                    {tab === "logs" ? <RequestLogs state={state} trafficItems={traffic.report?.items || []} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} onSelect={setSelectedLog} onPageChange={(page) => void load(page)} /> : null}
                 </div>
             </Panel>
             <Modal open={Boolean(selectedLog)} title="MiniMax 请求详情" footer={null} onCancel={() => setSelectedLog(null)} width={760}>
@@ -218,6 +226,7 @@ export function AdminMiniMaxSection({ controller }: { controller: AdminDashboard
                             <LogPayload title="请求" value={selectedLog.requestPreview} />
                             <LogPayload title="响应" value={selectedLog.responsePreview || selectedLog.error} />
                         </div>
+                        <AdminRequestTrafficDetail summary={getRequestTrafficSummary(traffic.report?.items || [], selectedLog ? trafficRequestId(selectedLog) : undefined)} displayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} loading={traffic.loading} error={traffic.error} />
                     </div>
                 ) : null}
             </Modal>
@@ -409,7 +418,7 @@ function MusicManagement({ state, onRefresh }: { state: MiniMaxAdminState | null
     );
 }
 
-function RequestLogs({ state, onSelect, onPageChange }: { state: MiniMaxAdminState | null; onSelect: (log: MiniMaxAdminState["logs"]["items"][number]) => void; onPageChange: (page: number) => void }) {
+function RequestLogs({ state, trafficItems, trafficDisplayUnit, trafficLoading, onSelect, onPageChange }: { state: MiniMaxAdminState | null; trafficItems: import("@/lib/admin-traffic-types").RequestTrafficSummary[]; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading: boolean; onSelect: (log: MiniMaxAdminState["logs"]["items"][number]) => void; onPageChange: (page: number) => void }) {
     const logs = state?.logs.items || [];
     return (
         <Table
@@ -425,6 +434,7 @@ function RequestLogs({ state, onSelect, onPageChange }: { state: MiniMaxAdminSta
                 { title: "路径", dataIndex: "path" },
                 { title: "状态", dataIndex: "phase" },
                 { title: "耗时", dataIndex: "durationMs", render: (value) => `${value} ms` },
+                { title: "中心流量", key: "traffic", width: 220, render: (_: unknown, log: MiniMaxAdminState["logs"]["items"][number]) => <AdminRequestTrafficSummary summary={getRequestTrafficSummary(trafficItems, trafficRequestId(log))} displayUnit={trafficDisplayUnit} loading={trafficLoading} /> },
                 { title: "结果", dataIndex: "statusCode" },
             ]}
             locale={{ emptyText: "暂无 MiniMax 请求日志" }}

@@ -138,6 +138,9 @@ export async function releaseDreaminaCliSubmitLease(owner: string) {
 
 export async function appendDreaminaCliRequestLog(
     input: Omit<DreaminaCliRequestLog, "id" | "createdAt" | "updatedAt" | "requestSummary" | "submissionSummary" | "resultSummary"> & {
+        id?: string;
+        createdAt?: string;
+        updatedAt?: string;
         requestSummary?: Record<string, unknown>;
         submissionSummary?: Record<string, unknown>;
         resultSummary?: Record<string, unknown>;
@@ -146,9 +149,9 @@ export async function appendDreaminaCliRequestLog(
     const now = new Date().toISOString();
     const log: DreaminaCliRequestLog = {
         ...input,
-        id: `dreamina-cli-log-${randomUUID()}`,
-        createdAt: now,
-        updatedAt: now,
+        id: input.id || `dreamina-cli-log-${randomUUID()}`,
+        createdAt: input.createdAt || now,
+        updatedAt: input.updatedAt || now,
         requestSummary: sanitizeSummary(input.requestSummary),
         submissionSummary: sanitizeSummary(input.submissionSummary),
         resultSummary: sanitizeSummary(input.resultSummary),

@@ -15,8 +15,8 @@ const magicProxyProviderFile = "/app/web/.magic-proxy-runtime/subscription.yaml"
 const mihomoProviderPath = "/root/.config/mihomo/runtime/subscription.yaml";
 
 export const composeProfiles = [
-    { file: "docker-compose.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
-    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-dreamyo-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "dola-api", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-dreamyo-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "chatgpt-api", "dola-api", "postgres", "app", "generation-worker"] },
     {
         file: "docker-compose.offline-external-db.yml",
         embeddedPostgres: false,
@@ -26,19 +26,19 @@ export const composeProfiles = [
         internalOrigin: "http://127.0.0.1:${PORT:-8866}",
         trustedProxyHops: "${DREAMYO_TRUSTED_PROXY_HOPS:-0}",
         workerOrigin: "http://127.0.0.1:${PORT:-8866}",
-        expectedServices: ["magic-proxy", "geminiai", "chatgpt-api", "dola-api", "app", "generation-worker"],
+        expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "chatgpt-api", "dola-api", "app", "generation-worker"],
     },
-    { file: "docker-compose.local.yml", embeddedPostgres: true, image: "dreamyo:local", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.local.yml", embeddedPostgres: true, image: "dreamyo:local", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "postgres", "app", "generation-worker"] },
     {
         file: "docker-compose.baota.yml",
         embeddedPostgres: false,
         hostNetwork: true,
         image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}",
         workerOrigin: "http://127.0.0.1:3000",
-        expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"],
+        expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "app", "generation-worker"],
     },
-    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"] },
-    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "geminiai", "app", "generation-worker"] },
+    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "app", "generation-worker"] },
+    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "app", "generation-worker"] },
 ];
 
 export const docsComposeProfiles = [
@@ -51,6 +51,7 @@ const workerToken = "${DREAMYO_WORKER_TOKEN:?请在 .env 中配置独立的至�
 const installToken = "${DREAMYO_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}";
 const geminiAiToken = "${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}";
 const dolaToken = "${DREAMYO_DOLA_PROVIDER_KEY:?请在 .env 中配置至少 32 位 Dola Provider 内部服务密钥}";
+const trafficMeterKey = "${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}";
 
 export function validateComposeContracts({ repoRoot }) {
     return composeProfiles.map((profile) => {
@@ -150,10 +151,12 @@ export function validateComposeContract(source, profile) {
     };
     const services = compose?.services || {};
     const magicProxy = services["magic-proxy"] || {};
+    const trafficMeter = services["traffic-meter"] || {};
     const geminiAi = services.geminiai || {};
     const app = services.app || {};
     const worker = services["generation-worker"] || {};
     const magicProxyEnvironment = magicProxy.environment || {};
+    const trafficMeterEnvironment = trafficMeter.environment || {};
     const geminiAiEnvironment = geminiAi.environment || {};
     const appEnvironment = app.environment || {};
     const workerEnvironment = worker.environment || {};
@@ -167,13 +170,45 @@ export function validateComposeContract(source, profile) {
         dola: `http://${proxyHost}:17893`,
     };
     const proxyListenHost = profile.hostNetwork ? "127.0.0.1" : "0.0.0.0";
+    const trafficMeterHost = profile.hostNetwork ? "127.0.0.1" : "traffic-meter";
+    const trafficMeterImage = profile.file.startsWith("docker-compose.offline")
+        ? "${DREAMYO_TRAFFIC_METER_IMAGE:-dreamyo-traffic-meter:offline}"
+        : profile.file === "docker-compose.local.yml"
+            ? "dreamyo-traffic-meter:local"
+            : "${DREAMYO_TRAFFIC_METER_IMAGE:-dreamyo-traffic-meter:local}";
     ensure(magicProxyListenHosts.has(proxyListenHost), "Mihomo 监听地址必须是受限的桥接或回环地址");
 
     ensure(Object.keys(services).filter((name) => name === "magic-proxy").length === 1, "必须且只能声明一个 magic-proxy 服务");
     ensure(Boolean(services.geminiai), "缺少 geminiai 服务");
+    ensure(Boolean(services["traffic-meter"]), "缺少 traffic-meter 服务");
     ensure(Boolean(services.app), "缺少 app 服务");
     ensure(Boolean(services["generation-worker"]), "缺少 generation-worker 服务");
     ensure(JSON.stringify(Object.keys(services)) === JSON.stringify(profile.expectedServices), "Compose 服务声明顺序不正确");
+    ensure(trafficMeter.image === trafficMeterImage, "traffic-meter 必须使用当前拓扑的明确镜像");
+    ensure(
+        JSON.stringify(trafficMeter.command) === JSON.stringify(["uvicorn", "traffic_meter.main:app", "--host", proxyListenHost, "--port", "${TRAFFIC_METER_PORT:-18083}"]),
+        "traffic-meter 必须通过 uvicorn traffic_meter.main:app 启动",
+    );
+    ensure(trafficMeterEnvironment.TRAFFIC_METER_KEY === trafficMeterKey, "traffic-meter 未声明统一的内部服务密钥");
+    ensure(String(trafficMeterEnvironment.TRAFFIC_METER_PORT) === "${TRAFFIC_METER_PORT:-18083}", "traffic-meter 端口必须默认使用 18083");
+    ensure(trafficMeterEnvironment.TRAFFIC_METER_BIND_HOST === proxyListenHost, "traffic-meter 监听地址不符合当前拓扑");
+    ensure(trafficMeterEnvironment.TRAFFIC_METER_PUBLIC_HOST === trafficMeterHost, "traffic-meter 公共主机名不符合当前拓扑");
+    ensure(trafficMeterEnvironment.TRAFFIC_METER_STATE_PATH === (profile.hostNetwork ? "/data/traffic.sqlite3" : "/data/traffic.sqlite3"), "traffic-meter 状态路径必须位于独立数据卷");
+    ensure(trafficMeter.volumes?.includes("dreamyo-traffic-meter:/data"), "traffic-meter 缺少独立持久数据卷");
+    ensure(Object.hasOwn(compose?.volumes || {}, "dreamyo-traffic-meter"), "缺少 traffic-meter 数据卷");
+    ensure(!trafficMeter.ports, "traffic-meter 不得向宿主机发布控制端口");
+    ensure(
+        trafficMeter.healthcheck?.test?.some((value) => String(value).includes("/health")),
+        "traffic-meter 健康检查必须调用 /health",
+    );
+    ensure(trafficMeter.restart === "unless-stopped", "traffic-meter 必须使用 unless-stopped 重启策略");
+    if (profile.hostNetwork) {
+        ensure(trafficMeter.network_mode === "host", "host 网络拓扑的 traffic-meter 必须使用 host 网络");
+        ensure(!trafficMeter.expose, "host 网络拓扑不得声明 traffic-meter 的 expose");
+    } else {
+        ensure(!trafficMeter.network_mode, "桥接拓扑不得使用 traffic-meter host 网络");
+        ensure(trafficMeter.expose?.includes("${TRAFFIC_METER_PORT:-18083}"), "traffic-meter 必须只在 Compose 内网暴露控制端口");
+    }
     ensure(magicProxy.image === magicProxyImage, "magic-proxy 必须使用固定的 Mihomo v1.19.30 镜像表达式");
     ensure(JSON.stringify(magicProxy.entrypoint) === JSON.stringify(magicProxyEntrypoint), "magic-proxy 必须通过只读入口脚本启动 Mihomo");
     ensure(!magicProxy.ports, "magic-proxy 不得发布 Controller 或代理端口");
@@ -202,6 +237,8 @@ export function validateComposeContract(source, profile) {
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_CHATGPT_API_URL === proxyUrls.chatgptApi, "app 的 ChatGPTAPI 代理地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_CHATGPT_UPLOAD_URL === proxyUrls.chatgptUpload, "app 的 ChatGPT 图片上传代理地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_DOLA_URL === proxyUrls.dola, "app 的 Dola API 代理地址不正确");
+    ensure(appEnvironment.DREAMYO_TRAFFIC_METER_URL === `http://${trafficMeterHost}:${"${TRAFFIC_METER_PORT:-18083}"}`, "app 的 traffic-meter 地址不正确");
+    ensure(appEnvironment.DREAMYO_TRAFFIC_METER_KEY === trafficMeterKey, "app 未声明同一 traffic-meter 内部服务密钥");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_LISTEN_HOST === proxyListenHost, "app 的 Mihomo 监听地址不正确");
     ensure(appEnvironment.DREAMYO_MAGIC_PROXY_PROVIDER_FILE === magicProxyProviderFile, "app 的 Mihomo provider 文件路径不正确");
     ensure(String(appEnvironment.DREAMYO_MAGIC_PROXY_GEMINIAI_PORT) === "17890", "app 的 GeminiAIStudio 代理端口不正确");
@@ -227,6 +264,11 @@ export function validateComposeContract(source, profile) {
     ensure("GEMINI_TOOLS_OAUTH_CLIENT_SECRET" in appEnvironment, "app 未声明 GeminiTools OAuth Client Secret");
     ensure("GEMINI_TOOLS_OAUTH_REDIRECT_URI" in appEnvironment, "app 未声明 GeminiTools OAuth 回调地址");
     ensure(geminiAiEnvironment.AISTUDIO_API_KEY === geminiAiToken, "geminiai 未使用与 app 相同的内部密钥");
+    ensure(geminiAiEnvironment.DREAMYO_TRAFFIC_METER_URL === `http://${trafficMeterHost}:${"${TRAFFIC_METER_PORT:-18083}"}`, "geminiai 的 traffic-meter 地址不正确");
+    ensure(geminiAiEnvironment.DREAMYO_TRAFFIC_METER_KEY === trafficMeterKey, "geminiai 未声明同一 traffic-meter 内部服务密钥");
+    if (geminiAi.build) {
+        ensure(geminiAi.build.additional_contexts?.["traffic-meter"] === "./services/traffic-meter", "geminiai 构建必须通过 traffic-meter named context 注入客户端源码");
+    }
     ensure(geminiAiEnvironment.AISTUDIO_ACCOUNTS_DIR === "/data/accounts", "geminiai 账号目录必须固定在私有数据卷");
     ensure(String(geminiAiEnvironment.AISTUDIO_DUMP_RAW_RESPONSE) === "0", "geminiai 不得默认落盘原始响应");
     ensure(!geminiAi.env_file, "geminiai 不得读取包含其他业务密钥的 .env");
@@ -239,6 +281,8 @@ export function validateComposeContract(source, profile) {
     );
     ensure(geminiAi.restart === "unless-stopped", "geminiai 必须使用 unless-stopped 重启策略");
     ensure(app.depends_on?.geminiai?.condition === "service_healthy", "app 必须等待 geminiai 健康");
+    ensure(app.depends_on?.["traffic-meter"]?.condition === "service_healthy", "app 必须等待 traffic-meter 健康");
+    ensure(geminiAi.depends_on?.["traffic-meter"]?.condition === "service_healthy", "geminiai 必须等待 traffic-meter 健康");
 
     const dolaApi = services["dola-api"];
     if (dolaApi) {
@@ -263,6 +307,17 @@ export function validateComposeContract(source, profile) {
             ensure(dolaApi.expose?.includes("18082"), "dola-api 必须在 Compose 内网暴露 18082");
             ensure(appEnvironment.DREAMYO_DOLA_PROVIDER_URL === "http://dola-api:18082", "app 必须通过 Compose 内网访问 dola-api");
         }
+        ensure(dolaEnvironment.DREAMYO_TRAFFIC_METER_URL === `http://${trafficMeterHost}:${"${TRAFFIC_METER_PORT:-18083}"}`, "dola-api 的 traffic-meter 地址不正确");
+        ensure(dolaEnvironment.DREAMYO_TRAFFIC_METER_KEY === trafficMeterKey, "dola-api 未声明同一 traffic-meter 内部服务密钥");
+        ensure(dolaApi.depends_on?.["traffic-meter"]?.condition === "service_healthy", "dola-api 必须等待 traffic-meter 健康");
+    }
+
+    const chatgptApi = services["chatgpt-api"];
+    if (chatgptApi) {
+        const chatgptEnvironment = chatgptApi.environment || {};
+        ensure(chatgptEnvironment.DREAMYO_TRAFFIC_METER_URL === `http://${trafficMeterHost}:${"${TRAFFIC_METER_PORT:-18083}"}`, "chatgpt-api 的 traffic-meter 地址不正确");
+        ensure(chatgptEnvironment.DREAMYO_TRAFFIC_METER_KEY === trafficMeterKey, "chatgpt-api 未声明同一 traffic-meter 内部服务密钥");
+        ensure(chatgptApi.depends_on?.["traffic-meter"]?.condition === "service_healthy", "chatgpt-api 必须等待 traffic-meter 健康");
     }
 
     ensure(workerEnvironment.DREAMYO_WORKER_TOKEN === workerToken, "generation-worker 未声明同一强制 Worker 令牌");

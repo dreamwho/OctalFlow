@@ -62,6 +62,7 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV TZ=Asia/Shanghai
 ENV DREAMYO_DATA_DIR=/app/web/.data
+ENV PYTHONPATH=/app/services/traffic-meter/src:/app/services/chatgpt-api
 ENV DREAMYO_INTERNAL_ORIGIN=http://127.0.0.1:3000
 ENV NODE_OPTIONS=--max-old-space-size=384
 ENV UV_THREADPOOL_SIZE=2
@@ -78,6 +79,7 @@ RUN mkdir -p /app/web/scripts
 COPY --from=depth-build /opt/video-depth /opt/video-depth
 COPY --from=depth-build /opt/video-depth-model /opt/video-depth-model
 COPY services/video-depth/infer_depth_frames.py services/video-depth/NOTICE.md /app/services/video-depth/
+COPY services/traffic-meter/src /app/services/traffic-meter/src
 COPY --from=dreamina-build /usr/local/bin/dreamina /usr/local/bin/dreamina
 COPY --from=chatgpt-build /usr/local/bin/python3.13 /usr/local/bin/python3.13
 COPY --from=chatgpt-build /usr/local/lib/libpython3.13.so.1.0 /usr/local/lib/libpython3.13.so.1.0

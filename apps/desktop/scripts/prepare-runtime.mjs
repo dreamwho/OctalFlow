@@ -36,12 +36,12 @@ export async function prepareRuntime({ edition, platform = process.platform, arc
     await cp(path.join(sourceBuild, "static"), path.join(targetStandalone, distDir, "static"), { recursive: true });
     if (edition === "admin") await pruneAdminCloudRoutes(targetStandalone, distDir, path.join(sourceWeb, "src/lib/desktop-cloud-routes.json"), path.join(sourceWeb, "src/lib/desktop-admin-cloud-pages.json"));
     await cp(path.join(sourceWeb, "scripts"), path.join(targetWeb, "scripts"), { recursive: true, filter: (entry) => !entry.endsWith(".test.mjs") && !entry.includes("local-data-migration") });
-    for (const service of ["geminiai", "dola-api", "chatgpt-api"]) {
+    for (const service of ["geminiai", "dola-api", "traffic-meter", "chatgpt-api"]) {
         const serviceRoot = path.join(sourceRoot, "services", service);
         const target = path.join(outputRoot, "services", service);
         await mkdir(target, { recursive: true });
         if (service === "geminiai") await cp(path.join(serviceRoot, "config.yaml"), path.join(target, "config.yaml"));
-        if (service === "geminiai" || service === "dola-api") await cp(path.join(serviceRoot, "src"), path.join(target, "src"), { recursive: true });
+        if (service === "geminiai" || service === "dola-api" || service === "traffic-meter") await cp(path.join(serviceRoot, "src"), path.join(target, "src"), { recursive: true });
         if (service === "chatgpt-api") {
             await cp(path.join(serviceRoot, "LICENSE.upstream"), path.join(target, "LICENSE.upstream"));
             await cp(path.join(serviceRoot, "NOTICE.upstream"), path.join(target, "NOTICE.upstream"));

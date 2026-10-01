@@ -611,6 +611,7 @@ function normalizeGenerationLogProtocolTrace(value: unknown): GenerationLogProto
     if (!method || !path) return [];
     return [{
         createdAt: normalizeTime(source.createdAt, new Date().toISOString()),
+        requestId: normalizeOptionalText(source.requestId, undefined, 200),
         channel: normalizeText(source.channel, "内置协议渠道", 160),
         protocol: normalizeText(source.protocol, "unknown", 80),
         method,

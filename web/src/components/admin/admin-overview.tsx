@@ -6,6 +6,7 @@ import { CircleDollarSign, Database, PlugZap, RefreshCw, UsersRound } from "luci
 import { generationKindLabel, generationSourceLabel } from "@/components/admin/admin-generation-log";
 import { AdminCommerceConversionPanel } from "@/components/admin/admin-commerce-conversion-panel";
 import { AdminOverviewOperations } from "@/components/admin/admin-overview-operations";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
 import { Metric, Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { formatAdminMoney } from "@/components/admin/admin-values";
 import type { AdminBillingSummary } from "@/lib/admin-billing-types";
@@ -42,6 +43,7 @@ export function AdminOverview({ stats, settingsSummary, walletSummary, billingSu
                 <Metric label="实收金额" value={formatAdminMoney(billingSummary?.orders.paidAmountCents || 0)} detail={(billingSummary?.orders.paid || 0) + " 笔已支付订单"} icon={<CircleDollarSign className="size-5" />} tone="slate" />
                 <Metric label="今日调用" value={operationsSummary.dailyCalls.at(-1)?.value || 0} detail={`近 ${operationsSummary.windowDays} 日 ${operationsSummary.totalCalls} 次调用`} icon={<Database className="size-5" />} tone="slate" />
             </section>
+            <AdminTrafficPanel />
             <AdminCommerceConversionPanel billingSummary={billingSummary} billingLoading={billingLoading} onRefreshBilling={onRefreshBilling} />
             <AdminOverviewOperations />
             <Panel>

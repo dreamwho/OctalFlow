@@ -127,6 +127,7 @@ export type AppSettingsRecord = {
     generationPointMultipliers: JsonValue;
     generationCostControl: JsonValue;
     dataLifecycle: JsonValue;
+    trafficUnit: string;
     entitlementsEnabled: boolean;
     defaultPlanId: string;
     generationConcurrency: JsonValue;

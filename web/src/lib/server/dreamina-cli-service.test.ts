@@ -8,6 +8,7 @@ import { getAuthSettings } from "@/lib/auth/store";
 
 import { getDreaminaCliOverview, getDreaminaCliPublicStatus, refreshDreaminaCliRuntime, saveDreaminaCliModelSelection, submitDreaminaCliTaskWithCreditObservation } from "./dreamina-cli-service";
 import { acquireDreaminaCliSubmitLease, listDreaminaCliRequestLogs, releaseDreaminaCliSubmitLease, updateDreaminaCliAccountState } from "./dreamina-cli-store";
+import { currentTrafficContext } from "./traffic-context";
 
 describe("Dreamina CLI service", () => {
     let directory = "";
@@ -68,9 +69,13 @@ describe("Dreamina CLI service", () => {
 
     it("records the official submit credit_count without querying account balance per task", async () => {
         await updateDreaminaCliAccountState({ status: "authorized", userId: "account", vipLevel: "maestro", totalCredit: 100 });
-        const runner = vi.fn().mockResolvedValue({ stdout: '{"submit_id":"official-task","credit_count":6}', stderr: "", exitCode: 0 });
+        let submittedContext: ReturnType<typeof currentTrafficContext>;
+        const runner = vi.fn().mockImplementation(async () => {
+            submittedContext = currentTrafficContext();
+            return { stdout: '{"submit_id":"official-task","credit_count":6}', stderr: "", exitCode: 0 };
+        });
 
-        await expect(submitDreaminaCliTaskWithCreditObservation({ command: "text2image", modelId: "dreamina-seedream-5-0", prompt: "测试", resolutionType: "2k" }, { taskId: "task", runner })).resolves.toMatchObject({
+        await expect(submitDreaminaCliTaskWithCreditObservation({ command: "text2image", modelId: "dreamina-seedream-5-0", prompt: "测试", resolutionType: "2k" }, { taskId: "task", attemptNo: 2, runner })).resolves.toMatchObject({
             submitId: "official-task",
             creditCost: 6,
             creditObservation: { kind: "official", delta: 6 },
@@ -80,6 +85,8 @@ describe("Dreamina CLI service", () => {
         await expect(listDreaminaCliRequestLogs()).resolves.toMatchObject({
             items: [expect.objectContaining({ status: "started", creditObservation: "official", observedCreditDelta: 6, submissionSummary: { accepted: true, submitId: "official-task", officialCreditCost: 6 }, resultSummary: {} })],
         });
+        const logs = await listDreaminaCliRequestLogs();
+        expect(submittedContext).toMatchObject({ requestId: logs.items[0]?.id, taskId: "task", attemptId: "task:2" });
     });
 
     it("marks a confirmed account submit lease collision as safely deferred", async () => {

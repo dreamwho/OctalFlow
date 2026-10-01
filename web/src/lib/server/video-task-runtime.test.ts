@@ -238,6 +238,26 @@ describe("video task upstream reconciliation", () => {
         expect(mocks.normalize).not.toHaveBeenCalled();
     });
 
+    it("settles a portrait protection refusal with a public reason without resubmitting", async () => {
+        const error = "参考图中的人脸未通过肖像保护审核，请更换参考图或改用文生视频。";
+        const task = videoTask({
+            config: { ...videoTask().config, advancedConfig: { protocol: "dola", queryPath: "/v1/videos/:task_id" } as NonNullable<VideoTask["config"]["advancedConfig"]> },
+            upstream: { ...videoTask().upstream, accountId: "old-account", rotationPayload: { model: "dola-seedance-2-5" } },
+        });
+        const failed = { ...task, status: "error", error };
+        mocks.claim.mockResolvedValue(task);
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: task.upstream.id, status: "failed", error: "portrait_protection_failed", rawError: "出于肖像保护考虑，未认证人脸暂不支持用 Dreamina Seedance 2.5 生成视频。" }));
+        mocks.fail.mockResolvedValue(failed);
+        await expect(refreshVideoTaskFromUpstream(task, "http://localhost", "session=test")).resolves.toEqual(failed);
+        expect(mocks.fail).toHaveBeenCalledWith(task.id, error, true);
+        expect(mocks.fetchInternalApi).toHaveBeenCalledOnce();
+        expect(mocks.getDolaGatewaySettings).not.toHaveBeenCalled();
+        expect(mocks.schedule).not.toHaveBeenCalled();
+        expect(mocks.releaseDolaAccount).toHaveBeenCalledWith("old-account");
+        expect(mocks.refund).toHaveBeenCalledOnce();
+        expect(mocks.writeLog).toHaveBeenCalledWith(expect.anything(), "failed", error, true);
+    });
+
     it("does not rotate accounts after a reference upload timeout before Dola submission", async () => {
         const error = "uploading_references: reference_2_of_9: imagex_upload_WriteTimeout";
         const task = videoTask({

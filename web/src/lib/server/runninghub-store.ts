@@ -182,8 +182,14 @@ export async function listRunningHubTasks(limit = 100) {
     return (await readDatabase()).tasks.slice(0, bounded);
 }
 
-export async function appendRunningHubRequestLog(input: Omit<RunningHubRequestLog, "id" | "createdAt">) {
-    const log: RunningHubRequestLog = { id: `rh-log-${randomUUID()}`, createdAt: new Date().toISOString(), ...input };
+export async function appendRunningHubRequestLog(
+    input: Omit<RunningHubRequestLog, "id" | "createdAt"> & Partial<Pick<RunningHubRequestLog, "id" | "createdAt">>,
+) {
+    const log: RunningHubRequestLog = {
+        ...input,
+        id: input.id || `rh-log-${randomUUID()}`,
+        createdAt: input.createdAt || new Date().toISOString(),
+    };
     if (isPostgresDatabaseEnabled()) await (await postgresRepository()).appendLog(log, MAX_LOGS);
     else
         await mutateDatabase((db) => {

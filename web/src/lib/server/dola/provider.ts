@@ -1,3 +1,4 @@
+import { providerTrafficHeaders, trafficBodyModel } from "@/lib/server/traffic-context";
 import type { ChildProcess } from "node:child_process";
 import path from "node:path";
 
@@ -226,6 +227,7 @@ export async function dolaRuntimeRequest(path: string, init: RequestInit = {}) {
     headers.set("x-dreamyo-internal-dispatch", "1");
     const key = process.env.DREAMYO_DOLA_PROVIDER_KEY?.trim();
     if (key) headers.set("x-api-key", key);
+    providerTrafficHeaders(headers, { channelId: DOLA_CHANNEL_ID, channelName: "Dola API", model: trafficBodyModel(init.body), protocol: DOLA_PROTOCOL });
     const targetUrl = `${base}/internal/runtime${path.startsWith("/") ? path : `/${path}`}`;
     try {
         let body = init.body;

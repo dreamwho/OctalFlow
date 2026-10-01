@@ -4,10 +4,16 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createTrafficLease } from "./traffic-meter-client";
+
 import {
     DreaminaCliSubmissionUncertainError,
     assertDreaminaCliRegularFile,
+    buildDreaminaCliProxyEnvironment,
     dreaminaCliTaskDirectory,
+    dreaminaCliTrafficContext,
+    dreaminaCliSourceProxyUrl,
+    dreaminaCliProxyCoverageUnavailable,
     parseDreaminaCliCredit,
     parseDreaminaCliQueryResult,
     parseDreaminaCliVersion,
@@ -17,15 +23,49 @@ import {
     submitDreaminaCliTask,
     withDreaminaCliTempDirectory,
 } from "./dreamina-cli-provider";
+import { withTrafficContext } from "./traffic-context";
+
+vi.mock("./traffic-meter-client", () => ({ createTrafficLease: vi.fn() }));
 
 describe("Dreamina CLI provider", () => {
     afterEach(() => {
         vi.unstubAllEnvs();
+        vi.mocked(createTrafficLease).mockReset();
     });
 
     it("parses only structured version and account snapshots", () => {
         expect(parseDreaminaCliVersion('{"version":"673dd28-dirty","commit":"673dd28","build_time":"2026-08-17T16:06:28Z"}')).toEqual({ version: "673dd28-dirty", commit: "673dd28", buildTime: "2026-08-17T16:06:28Z" });
         expect(parseDreaminaCliCredit('{"total_credit":5401,"user_id":109589671187480,"user_name":"","vip_level":"maestro"}')).toEqual({ totalCredit: 5401, userId: "109589671187480", vipLevel: "maestro" });
+    });
+
+    it("passes only the verified HTTP proxy environment to the CLI child", () => {
+        const child = buildDreaminaCliProxyEnvironment({
+            NODE_ENV: "test",
+            PATH: "/bin",
+            HTTP_PROXY: "http://source.example:8080",
+            ALL_PROXY: "socks5://source.example:1080",
+            NO_PROXY: "localhost",
+        }, "http://meter.example:3128");
+
+        expect(child.PATH).toBe("/bin");
+        expect(child.HTTP_PROXY).toBe("http://meter.example:3128");
+        expect(child.HTTPS_PROXY).toBe("http://meter.example:3128");
+        expect(child.ALL_PROXY).toBeUndefined();
+        expect(child.NO_PROXY).toBe("");
+        expect(dreaminaCliSourceProxyUrl({ NODE_ENV: "test", HTTPS_PROXY: "http://source.example:8080" })).toBe("http://source.example:8080");
+        expect(dreaminaCliSourceProxyUrl({ NODE_ENV: "test", ALL_PROXY: "socks5://source.example:1080" })).toBeUndefined();
+        expect(dreaminaCliProxyCoverageUnavailable({ NODE_ENV: "test", ALL_PROXY: "socks5://source.example:1080" })).toBe("all_proxy_unverified");
+        expect(dreaminaCliProxyCoverageUnavailable({ NODE_ENV: "test", HTTPS_PROXY: "socks5://source.example:1080" })).toBe("http_proxy_unverified");
+    });
+
+    it("inherits the server-owned channel and model context for CLI attribution", () => {
+        const context = withTrafficContext({ channelId: "dreamina-channel", channelName: "Dreamina", model: "seedream-5", protocol: "dreamina-cli", role: "submit" }, () => dreaminaCliTrafficContext("fallback-model"));
+        expect(context).toMatchObject({ channelId: "dreamina-channel", model: "seedream-5", protocol: "dreamina-cli", role: "submit" });
+    });
+
+    it("does not infer a proxy mode from an HTTP proxy URL alone", () => {
+        vi.stubEnv("HTTP_PROXY", "http://source.example:8080");
+        expect(dreaminaCliTrafficContext("seedream-5").connectionMode).toBe("unknown");
     });
 
     it("uses an argv-only injected runner and never requires a real CLI in tests", async () => {
@@ -35,6 +75,37 @@ describe("Dreamina CLI provider", () => {
         await expect(submitDreaminaCliTask({ command: "image_upscale", images: ["/sandbox/source.png"], resolutionType: "2k" }, { runner })).resolves.toEqual({ submitId: "task_123", creditCost: 6 });
 
         expect(runner).toHaveBeenCalledWith(process.execPath, ["image_upscale", "--image=/sandbox/source.png", "--resolution_type=2k", "--poll=0"], {});
+    });
+
+    it("surfaces configured traffic-meter failures before spawning the CLI", async () => {
+        vi.stubEnv("DREAMYO_DREAMINA_CLI_PATH", process.execPath);
+        vi.stubEnv("DREAMYO_TRAFFIC_METER_URL", "http://meter.example");
+        vi.stubEnv("DREAMYO_TRAFFIC_METER_KEY", "fixture-meter-key");
+        vi.mocked(createTrafficLease).mockRejectedValue(new Error("全局流量计量服务尚未配置"));
+        const runner = vi.fn();
+
+        await expect(submitDreaminaCliTask({ command: "image_upscale", images: ["/sandbox/source.png"], resolutionType: "2k" }, { runner })).rejects.toMatchObject({
+            message: "全局流量计量服务尚未配置",
+            status: 503,
+            submissionState: "not_started",
+        });
+        expect(runner).not.toHaveBeenCalled();
+    });
+
+    it("rejects an unverified ALL_PROXY route when metering is configured", async () => {
+        vi.stubEnv("DREAMYO_DREAMINA_CLI_PATH", process.execPath);
+        vi.stubEnv("DREAMYO_TRAFFIC_METER_URL", "http://meter.example");
+        vi.stubEnv("DREAMYO_TRAFFIC_METER_KEY", "fixture-meter-key");
+        vi.stubEnv("ALL_PROXY", "socks5://source.example:1080");
+        const runner = vi.fn();
+
+        await expect(submitDreaminaCliTask({ command: "image_upscale", images: ["/sandbox/source.png"], resolutionType: "2k" }, { runner })).rejects.toMatchObject({
+            message: "即梦 CLI 当前代理类型未验证，流量计量覆盖不可用",
+            status: 503,
+            submissionState: "not_started",
+        });
+        expect(runner).not.toHaveBeenCalled();
+        expect(createTrafficLease).not.toHaveBeenCalled();
     });
 
     it("never treats unparseable post-spawn output as safe to resubmit", async () => {

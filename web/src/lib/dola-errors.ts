@@ -1,6 +1,8 @@
 /** Dola 协议错误码识别与双语说明，外部网关与后台界面共用。 */
 
+const DOLA_PORTRAIT_PROTECTION = /portrait_protection_failed|出于肖像保护|未认证人脸.*(?:暂不支持|不支持|无法|不能)|(?:人脸|肖像).*(?:未通过|认证失败)/i;
 const DOLA_ERROR_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
+    [DOLA_PORTRAIT_PROTECTION, "参考图中的人脸未通过肖像保护审核，请更换参考图或改用文生视频。"],
     [/uploading_references.*reference_\d+_of_\d+.*reference_fetch_ConnectError/i, "站内参考图读取连接失败，尚未向 Dola 提交生成请求 (reference fetch failed before submission)"],
     [/uploading_references.*reference_\d+_of_\d+.*imagex_(?:apply|upload|commit)_ConnectError/i, "参考图上传服务连接失败，尚未向 Dola 提交生成请求 (image upload connection failed before submission)"],
     [/uploading_references.*reference_\d+_of_\d+.*imagex_(?:apply|upload|commit)_WriteTimeout/i, "参考图上传写入超时，尚未向 Dola 提交生成请求 (image upload write timeout before submission)"],
@@ -44,7 +46,11 @@ export function isAccountClassGenerationError(text: string) {
 
 /** 内容风控/参数错误：换号无意义，立即失败 */
 export function isContentClassGenerationError(text: string) {
-    return /content_policy_violation|sensitive|moderation|inappropriate|policy|content.*(blocked|violation|flagged)|invalid (request|parameter|prompt)|unsupported/i.test(text || "");
+    return isDolaPortraitProtectionError(text) || /content_policy_violation|sensitive|moderation|inappropriate|policy|content.*(blocked|violation|flagged)|invalid (request|parameter|prompt)|unsupported/i.test(text || "");
+}
+
+export function isDolaPortraitProtectionError(text: string) {
+    return DOLA_PORTRAIT_PROTECTION.test(text || "");
 }
 
 /** 反代账号池协议统一的失败判定：账号类错误且非内容类错误才允许换号重试 */
@@ -64,6 +70,7 @@ export function dolaErrorHint(text: string) {
 export function describeDolaFailure(code: string) {
     const raw = (code || "").trim() || "unknown";
     const hint = dolaErrorHint(raw);
+    if (hint && isDolaPortraitProtectionError(raw)) return hint;
     if (hint) return `${raw}（${hint}）`;
     if (/[\u4e00-\u9fa5]/.test(raw) && raw.length > 15) {
         return raw;

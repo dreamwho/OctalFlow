@@ -6,6 +6,7 @@ import { getAuthSettings } from "@/lib/auth/store";
 import { classifyMiniMaxVoice, normalizeMiniMaxBaseUrl, type MiniMaxVoiceCategory } from "@/lib/minimax-audio";
 import { ensurePostgresSchema, isPostgresDatabaseEnabled, postgresQuery } from "@/lib/server/database";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { currentTrafficContext, trafficBodyModel } from "@/lib/server/traffic-context";
 
 export type MiniMaxVoice = {
     id: string;
@@ -88,7 +89,7 @@ export type BailianAudioRecord = {
 export type BailianAudioRecordInput = Omit<BailianAudioRecord, "id" | "createdAt" | "updatedAt">;
 
 type MiniMaxLocalState = { voices: MiniMaxVoice[]; logs: MiniMaxRequestLog[]; music: MiniMaxMusicRecord[]; audio: BailianAudioRecord[] };
-type MiniMaxChannel = { baseUrl: string; apiKey: string };
+type MiniMaxChannel = { id: string; name: string; baseUrl: string; apiKey: string };
 
 const localStatePath = path.join(process.env.DREAMYO_DATA_DIR?.trim() || path.join(process.cwd(), ".data"), "minimax-audio.json");
 let localStatePromise: Promise<MiniMaxLocalState> | undefined;
@@ -98,7 +99,7 @@ export async function getMiniMaxChannel(): Promise<MiniMaxChannel> {
     const settings = await getAuthSettings();
     const channel = settings.systemChannels.find((item) => item.enabled && (item.id === "minimax-audio" || item.advancedConfig?.protocol === "minimax-audio"));
     if (!channel?.apiKey?.trim()) throw new Error("尚未配置启用的 MiniMax 音频渠道或 API Key");
-    return { baseUrl: normalizeMiniMaxBaseUrl(channel.baseUrl), apiKey: channel.apiKey.trim() };
+    return { id: channel.id, name: channel.name, baseUrl: normalizeMiniMaxBaseUrl(channel.baseUrl), apiKey: channel.apiKey.trim() };
 }
 
 export async function isMiniMaxVoiceFeatureEnabled(mode: "voice-clone" | "voice-design") {
@@ -113,7 +114,7 @@ export async function requestMiniMax(pathname: string, init: RequestInit = {}) {
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${channel.apiKey}`);
     if (!(init.body instanceof FormData)) headers.set("content-type", headers.get("content-type") || "application/json");
-    return fetchSafeOutbound(url, { ...init, headers }, { allowProxyFakeIpSpace: true });
+    return fetchSafeOutbound(url, { ...init, headers }, { allowProxyFakeIpSpace: true, trafficContext: { channelId: channel.id, channelName: channel.name, model: trafficBodyModel(init.body), protocol: "minimax-audio", ...currentTrafficContext() } });
 }
 
 export async function fetchMiniMaxVoiceCatalog(userId = "") {

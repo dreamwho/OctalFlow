@@ -4,12 +4,14 @@ import { Button, Drawer, Empty, Space, Tabs, Tag } from "antd";
 import { RefreshCw } from "lucide-react";
 
 import { SystemChannelEditor } from "@/components/admin/admin-system-channel-editor";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
 import type { SystemModelChannel } from "@/lib/auth/store";
 import { channelProtocolDefinition, channelRequiresApiKey, channelSupportsModelCatalog } from "@/lib/channel-protocol-registry";
 import { capabilityLabel, channelModelCapability } from "@/lib/model-routing-config";
 
 import { ChannelStatusBadge } from "./admin-channel-status-badge";
 import { channelBindingCount, channelCapabilityLabels, channelProtocolLabel, channelWorkspaceStatus, type ChannelWorkspaceSettings } from "./admin-channel-workspace-model";
+import { useEffect, useState } from "react";
 
 type Props = {
     open: boolean;
@@ -23,11 +25,17 @@ type Props = {
 };
 
 export function AdminChannelDetailDrawer({ open, channel, settings, fetching, onClose, onChange, onDelete, onFetchModels }: Props) {
+    const [activeTab, setActiveTab] = useState("overview");
+    useEffect(() => {
+        if (open) setActiveTab("overview");
+    }, [channel?.id, open]);
     if (!channel) return null;
     const status = channelWorkspaceStatus(channel);
     return (
         <Drawer title={channel.name || "渠道详情"} size={720} styles={{ wrapper: { maxWidth: "100vw" } }} open={open} destroyOnHidden onClose={onClose}>
             <Tabs
+                activeKey={activeTab}
+                onChange={setActiveTab}
                 items={[
                     {
                         key: "overview",
@@ -50,6 +58,11 @@ export function AdminChannelDetailDrawer({ open, channel, settings, fetching, on
                         ),
                     },
                     { key: "models", label: `上游模型 ${channel.models.length}`, children: <ChannelModels channel={channel} /> },
+                    {
+                        key: "traffic",
+                        label: "流量统计",
+                        children: activeTab === "traffic" ? <AdminTrafficPanel channelId={channel.id} protocol={channel.advancedConfig?.protocol} title="流量统计" /> : null,
+                    },
                 ]}
             />
         </Drawer>

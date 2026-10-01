@@ -5,6 +5,9 @@ import { Activity, BarChart3, Bot, Check, ChevronRight, CircleDollarSign, Film, 
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Metric, Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
+import { AdminRequestTrafficDetail, AdminRequestTrafficSummary, collectRequestIds, getRequestTrafficSummary, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import {
     clearDreaminaLogs,
     getDreaminaLogs,
@@ -36,13 +39,16 @@ export function AdminDreaminaSection() {
     const [loadError, setLoadError] = useState("");
     const [savingModels, setSavingModels] = useState(false);
     const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState<"overview" | "logs">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "statistics" | "logs">("overview");
     const [logPage, setLogPage] = useState(1);
     const [logPageData, setLogPageData] = useState<{ items: DreaminaLog[]; total: number; page: number; pageSize: number } | null>(null);
     const [logsLoading, setLogsLoading] = useState(false);
     const [logStatus, setLogStatus] = useState("");
     const [logCommand, setLogCommand] = useState("");
     const [selectedLog, setSelectedLog] = useState<DreaminaLog | null>(null);
+    const trafficRequestIds = useMemo(() => collectRequestIds([...(logPageData?.items || []), selectedLog]), [logPageData?.items, selectedLog]);
+    const trafficRefreshKey = useMemo(() => [...(logPageData?.items || []), selectedLog].map((item) => item ? `${item.id}:${item.status}:${item.durationMs || 0}` : "").join("|"), [logPageData?.items, selectedLog]);
+    const traffic = useAdminRequestTraffic(trafficRequestIds, [], trafficRefreshKey);
     const [statsRange, setStatsRange] = useState<DreaminaStatsRange>("all");
     const [rangeStats, setRangeStats] = useState<DreaminaStats | null>(null);
     const [statsLoading, setStatsLoading] = useState(false);
@@ -182,13 +188,15 @@ export function AdminDreaminaSection() {
 
             <Tabs
                 activeKey={activeTab}
-                onChange={(key) => setActiveTab(key as "overview" | "logs")}
+                onChange={(key) => setActiveTab(key as "overview" | "statistics" | "logs")}
                 items={[
                     { key: "overview", label: "账号与模型" },
+                    { key: "statistics", label: "流量统计" },
                     { key: "logs", label: "请求日志" },
                 ]}
             />
 
+            {activeTab === "statistics" ? <AdminTrafficPanel protocol="dreamina-cli" title="即梦 CLI 流量统计" /> : null}
             {activeTab === "overview" ? (
                 <div className="space-y-4">
                     <Panel>
@@ -335,7 +343,7 @@ export function AdminDreaminaSection() {
                         </div>
                     </Panel>
                 </div>
-            ) : (
+            ) : activeTab === "logs" ? (
                 <Panel>
                     <PanelHeader
                         title="请求日志"
@@ -379,7 +387,7 @@ export function AdminDreaminaSection() {
                         <>
                             <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                                 {logPageData.items.map((log) => (
-                                    <DreaminaLogRow key={log.id} log={log} onClick={() => setSelectedLog(log)} />
+                                    <DreaminaLogRow key={log.id} log={log} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], trafficRequestId(log))} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} onClick={() => setSelectedLog(log)} />
                                 ))}
                             </div>
                             <div className="flex justify-end border-t border-zinc-200 p-3 dark:border-zinc-800">
@@ -388,9 +396,9 @@ export function AdminDreaminaSection() {
                         </>
                     )}
                 </Panel>
-            )}
+            ) : null}
 
-            <DreaminaLogDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
+            <DreaminaLogDrawer log={selectedLog} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], selectedLog ? trafficRequestId(selectedLog) : undefined)} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} trafficError={traffic.error} onClose={() => setSelectedLog(null)} />
         </div>
     );
 }
@@ -413,14 +421,14 @@ function InfoItem({ label, value, mono = false }: { label: string; value: string
     );
 }
 
-function DreaminaLogRow({ log, onClick }: { log: DreaminaLog; onClick: () => void }) {
+function DreaminaLogRow({ log, trafficSummary, trafficDisplayUnit, trafficLoading, onClick }: { log: DreaminaLog; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; onClick: () => void }) {
     return (
         <button
             type="button"
             data-dreamina-log-id={log.id}
             aria-label={`查看即梦 CLI 请求日志：${log.model}`}
             onClick={onClick}
-            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[126px_150px_minmax(0,1fr)_minmax(180px,1.2fr)_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
+            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[126px_150px_minmax(0,1fr)_minmax(180px,1.2fr)_minmax(180px,0.8fr)_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
         >
             <div className="text-zinc-500">
                 <div>{formatDate(log.createdAt)}</div>
@@ -445,12 +453,13 @@ function DreaminaLogRow({ log, onClick }: { log: DreaminaLog; onClick: () => voi
             <div className="min-w-0 truncate text-zinc-500" title={creditSummary(log)}>
                 {creditSummary(log)}
             </div>
+            <AdminRequestTrafficSummary summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} />
             <ChevronRight className="hidden size-4 justify-self-end text-zinc-400 sm:block" aria-hidden="true" />
         </button>
     );
 }
 
-function DreaminaLogDrawer({ log, onClose }: { log: DreaminaLog | null; onClose: () => void }) {
+function DreaminaLogDrawer({ log, trafficSummary, trafficDisplayUnit, trafficLoading, trafficError, onClose }: { log: DreaminaLog | null; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; trafficError?: string; onClose: () => void }) {
     return (
         <Drawer title="请求日志详情" open={Boolean(log)} onClose={onClose} width="min(640px, 100vw)" styles={{ body: { padding: 20 } }}>
             {log ? (
@@ -483,6 +492,7 @@ function DreaminaLogDrawer({ log, onClose }: { log: DreaminaLog | null; onClose:
                         <dt className="text-zinc-500">耗时</dt>
                         <dd>{log.durationMs === undefined ? "—" : formatDuration(log.durationMs)}</dd>
                     </dl>
+                    <AdminRequestTrafficDetail summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} error={trafficError} />
                     <Alert
                         type="info"
                         showIcon

@@ -8,19 +8,26 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from aistudio_api.infrastructure.gateway.client import AIStudioClient
 
 from .routes_anthropic import router as anthropic_router
-from .dependencies import require_api_key
+from .dependencies import _extract_request_token, require_api_key
 from .routes_accounts import router as accounts_router
 from .routes_gemini import router as gemini_router
 from .routes_openai import router as openai_router
 from .routes_system import protected_router as system_protected_router
 from .routes_system import public_router as system_public_router
 from .state import runtime_state
+from aistudio_api.traffic_context import (
+    TRAFFIC_CONTEXT_HEADER,
+    TrafficContextError,
+    TrafficMeterIntegrationError,
+    bind_traffic_context,
+    decode_traffic_context,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger("aistudio.server")
@@ -87,6 +94,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("浏览器预热失败（首个请求将自行冷启动）: %s", e)
     if account_count and settings.browser_preheat:
+        await client.ensure_traffic_lease()
         warmup_task = asyncio.create_task(_warmup())
 
     try:
@@ -120,6 +128,42 @@ async def _capture_rotation_limit(request: Request, call_next):
 
     set_request_rotation_limit(request.headers.get("x-aistudio-rotation-limit"))
     return await call_next(request)
+
+
+@app.middleware("http")
+async def _capture_traffic_context(request: Request, call_next):
+    path = request.url.path
+    uses_provider_browser = (
+        path.startswith("/v1/")
+        or path.startswith("/v1beta/")
+        or path == "/rotation/next"
+        or path == "/accounts/import-cookies"
+        or (path.startswith("/accounts/") and path.endswith("/activate"))
+    )
+    if not uses_provider_browser:
+        return await call_next(request)
+    from aistudio_api.config import settings
+
+    token = _extract_request_token(request)
+    if settings.auth_enabled and token not in settings.api_keys:
+        # Let the router dependency produce the canonical 401 response before
+        # opening a browser relay for an unauthenticated caller.
+        return await call_next(request)
+    raw = request.headers.get(TRAFFIC_CONTEXT_HEADER, "")
+    try:
+        context = decode_traffic_context(raw)
+    except TrafficContextError:
+        return JSONResponse(status_code=400, content={"detail": {"message": "traffic context is invalid"}})
+    client = runtime_state.client
+    if client is not None:
+        try:
+            await client.ensure_traffic_lease(context)
+        except TrafficMeterIntegrationError:
+            return JSONResponse(status_code=503, content={"detail": {"message": "traffic meter is unavailable"}})
+    if context is None:
+        return await call_next(request)
+    with bind_traffic_context(context):
+        return await call_next(request)
 
 
 @app.exception_handler(HTTPException)

@@ -6,12 +6,14 @@ import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { buildDreaminaCliSubmitArgs, type DreaminaCliSubmissionInput } from "./dreamina-cli-catalog";
+import { createTrafficLease } from "./traffic-meter-client";
+import { currentTrafficContext, type TrafficContext } from "./traffic-context";
 
 const execFile = promisify(execFileCallback);
 const SAFE_SUBMIT_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/;
 
 export type DreaminaCliExecResult = { stdout: string; stderr: string; exitCode: number };
-export type DreaminaCliRunner = (executable: string, args: readonly string[], options: { cwd?: string; timeoutMs?: number }) => Promise<DreaminaCliExecResult>;
+export type DreaminaCliRunner = (executable: string, args: readonly string[], options: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv }) => Promise<DreaminaCliExecResult>;
 export type DreaminaCliVersion = { version: string; commit?: string; buildTime?: string };
 export type DreaminaCliCredit = { totalCredit: number; userId: string; userName?: string; vipLevel?: string };
 export type DreaminaCliQueryResult = { state: "pending" | "succeeded" | "failed"; status: string; files: string[]; creditCost?: number; error?: string };
@@ -63,7 +65,7 @@ export async function readDreaminaCliCredit(options: { runner?: DreaminaCliRunne
 export async function submitDreaminaCliTask(input: DreaminaCliSubmissionInput, options: { runner?: DreaminaCliRunner; timeoutMs?: number; cwd?: string } = {}) {
     const args = buildDreaminaCliSubmitArgs(input);
     try {
-        const result = await runDreaminaCli(args, options);
+        const result = await runDreaminaCli(args, { ...options, trafficContext: dreaminaCliTrafficContext(input.modelId || input.command) });
         if (result.exitCode !== 0) throw new DreaminaCliSubmissionUncertainError("即梦 CLI 已执行但未确认任务是否提交");
         const rejected = parseDreaminaCliSubmitFailure(result.stdout);
         if (rejected) throw new DreaminaCliProviderError(rejected, 503, "safe_failure");
@@ -81,7 +83,11 @@ export async function submitDreaminaCliTask(input: DreaminaCliSubmissionInput, o
 export async function queryDreaminaCliTask(input: { submitId: string; downloadDir: string }, options: { runner?: DreaminaCliRunner; timeoutMs?: number; cwd?: string } = {}) {
     const submitId = normalizeSubmitId(input.submitId);
     const downloadDir = await resolveDreaminaCliOutputDirectory(input.downloadDir);
-    const result = await runDreaminaCli(["query_result", `--submit_id=${submitId}`, `--download_dir=${downloadDir}`], { ...options, cwd: options.cwd || downloadDir });
+    const result = await runDreaminaCli(["query_result", `--submit_id=${submitId}`, `--download_dir=${downloadDir}`], {
+        ...options,
+        cwd: options.cwd || downloadDir,
+        trafficContext: dreaminaCliTrafficContext("__unattributed__", "query"),
+    });
     return parseDreaminaCliQueryResult(result.stdout, downloadDir);
 }
 
@@ -189,12 +195,16 @@ export function safeDreaminaCliMessage(value: unknown) {
     return safeMessage(value);
 }
 
-async function runDreaminaCli(args: readonly string[], options: { runner?: DreaminaCliRunner; timeoutMs?: number; cwd?: string }) {
+async function runDreaminaCli(
+    args: readonly string[],
+    options: { runner?: DreaminaCliRunner; timeoutMs?: number; cwd?: string; trafficContext?: TrafficContext },
+) {
     const executable = await resolveDreaminaCliExecutable();
     let result: DreaminaCliExecResult;
     try {
-        result = await (options.runner || nativeRunner)(executable, args, { ...(options.cwd ? { cwd: options.cwd } : {}), ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}) });
+        result = await runWithDreaminaCliTrafficLease(executable, args, options);
     } catch (error) {
+        if (error instanceof DreaminaCliProviderError) throw error;
         if (isSpawnFailure(error)) throw new DreaminaCliProviderError("即梦 CLI 无法启动", 503, "not_started");
         throw new DreaminaCliProviderError("即梦 CLI 执行失败", 502, "unknown");
     }
@@ -207,6 +217,7 @@ const nativeRunner: DreaminaCliRunner = async (executable, args, options) => {
         const result = await execFile(executable, [...args], {
             ...(options.cwd ? { cwd: options.cwd } : {}),
             ...(options.timeoutMs ? { timeout: options.timeoutMs } : {}),
+            ...(options.env ? { env: options.env } : {}),
             shell: false,
             windowsHide: true,
             encoding: "utf8",
@@ -218,6 +229,114 @@ const nativeRunner: DreaminaCliRunner = async (executable, args, options) => {
         return { stdout: String(item.stdout || ""), stderr: String(item.stderr || ""), exitCode: typeof item.code === "number" ? item.code : 1 };
     }
 };
+
+const DREAMINA_PROXY_ENVIRONMENT_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy"] as const;
+
+/**
+ * The installed official CLI is a Go binary. Its help has no proxy flag, but
+ * the binary exposes net/http.ProxyFromEnvironment and HTTP_PROXY/HTTPS_PROXY
+ * support. We therefore pass only those verified variables to the child;
+ * ALL_PROXY is removed because the binary does not expose evidence that it
+ * honors it.
+ */
+export function buildDreaminaCliProxyEnvironment(environment: NodeJS.ProcessEnv, relayProxyUrl: string): NodeJS.ProcessEnv {
+    const childEnvironment = Object.fromEntries(
+        Object.entries(environment).filter(([key]) => !DREAMINA_PROXY_ENVIRONMENT_KEYS.includes(key as (typeof DREAMINA_PROXY_ENVIRONMENT_KEYS)[number])),
+    ) as NodeJS.ProcessEnv;
+    childEnvironment.HTTP_PROXY = relayProxyUrl;
+    childEnvironment.HTTPS_PROXY = relayProxyUrl;
+    childEnvironment.http_proxy = relayProxyUrl;
+    childEnvironment.https_proxy = relayProxyUrl;
+    childEnvironment.NO_PROXY = "";
+    childEnvironment.no_proxy = "";
+    return childEnvironment;
+}
+
+export function dreaminaCliSourceProxyUrl(environment: NodeJS.ProcessEnv = process.env): string | undefined {
+    for (const key of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"] as const) {
+        const value = environment[key]?.trim();
+        if (!value) continue;
+        try {
+            const url = new URL(value);
+            if (["http:", "https:"].includes(url.protocol) && url.hostname && !url.search && !url.hash) return value;
+        } catch {
+            // Preserve the existing CLI behavior when the meter is disabled;
+            // configured meter runs reject this unverified route below.
+        }
+    }
+    return undefined;
+}
+
+export function dreaminaCliProxyCoverageUnavailable(environment: NodeJS.ProcessEnv = process.env): string | undefined {
+    const httpProxyValues = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"]
+        .map((key) => environment[key]?.trim() || "")
+        .filter(Boolean);
+    for (const value of httpProxyValues) {
+        try {
+            const url = new URL(value);
+            if (!url.hostname || !["http:", "https:"].includes(url.protocol) || url.search || url.hash) return "http_proxy_unverified";
+        } catch {
+            return "http_proxy_unverified";
+        }
+    }
+    if (!httpProxyValues.length && ["ALL_PROXY", "all_proxy"].some((key) => Boolean(environment[key]?.trim()))) return "all_proxy_unverified";
+    return undefined;
+}
+
+export function dreaminaCliTrafficContext(model: string, role = "provider"): TrafficContext {
+    const inherited = currentTrafficContext();
+    return {
+        channelId: inherited?.channelId || "dreamina-cli",
+        channelName: inherited?.channelName || "Dreamina CLI",
+        model: inherited?.model || model.trim() || "__unattributed__",
+        protocol: inherited?.protocol || "dreamina-cli",
+        // HTTP(S)_PROXY support is verified, but the inherited URL alone does
+        // not identify whether the route is generic, magic, or chained.
+        connectionMode: inherited?.connectionMode || (dreaminaCliSourceProxyUrl() ? "unknown" : "direct"),
+        role: inherited?.role || role,
+        attributionScope: inherited?.attributionScope || "exact",
+        ...(inherited?.taskId ? { taskId: inherited.taskId } : {}),
+        ...(inherited?.requestId ? { requestId: inherited.requestId } : {}),
+        ...(inherited?.attemptId ? { attemptId: inherited.attemptId } : {}),
+    };
+}
+
+async function runWithDreaminaCliTrafficLease(
+    executable: string,
+    args: readonly string[],
+    options: { runner?: DreaminaCliRunner; timeoutMs?: number; cwd?: string; trafficContext?: TrafficContext },
+) {
+    const runner = options.runner || nativeRunner;
+    const runnerOptions = {
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+    };
+    if (process.env.DREAMYO_TRAFFIC_METER_URL?.trim()) {
+        const unsupportedProxy = dreaminaCliProxyCoverageUnavailable();
+        if (unsupportedProxy) {
+            throw new DreaminaCliProviderError("即梦 CLI 当前代理类型未验证，流量计量覆盖不可用", 503, "not_started");
+        }
+    }
+    let lease;
+    try {
+        lease = await createTrafficLease(dreaminaCliSourceProxyUrl(), options.trafficContext || dreaminaCliTrafficContext(args[0] || "__unattributed__"), []);
+    } catch (error) {
+        throw new DreaminaCliProviderError(
+            safeMessage(error) || "即梦流量计量服务不可用",
+            503,
+            "not_started",
+        );
+    }
+    if (!lease) return runner(executable, args, runnerOptions);
+    try {
+        return await runner(executable, args, {
+            ...runnerOptions,
+            env: buildDreaminaCliProxyEnvironment(process.env, lease.proxyUrl),
+        });
+    } finally {
+        await lease.release();
+    }
+}
 
 async function dreaminaCliTempRoot() {
     const configured = process.env.DREAMYO_DREAMINA_CLI_TEMP_ROOT?.trim();

@@ -7,6 +7,9 @@ import { BarChart3, ChevronRight, CircleUserRound, Clock, Copy, Download, Eye, E
 import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
+import { AdminRequestTrafficDetail, AdminRequestTrafficSummary, collectRequestIds, getRequestTrafficSummary, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import { imagePreviewUrl, originalImageDownloadUrl } from "@/lib/media-image-url";
 import {
     activateGeminiAiAccount,
@@ -44,7 +47,7 @@ import { MagicProxyBindingCard } from "./magic-proxy-binding-card";
 
 type GeminiAiCookieImportValues = { name?: string; email?: string; cookies: string };
 type GeminiAiKeyDraft = { name: string; expiresAt: string; allowedIps: string };
-type GeminiAiTab = "overview" | "gateway" | "logs" | "proxy";
+type GeminiAiTab = "overview" | "statistics" | "gateway" | "logs" | "proxy";
 const GEMINIAI_IMAGE_TEST_RATIOS = ["auto", "1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9"] as const;
 const GEMINIAI_IMAGE_TEST_QUALITIES = [
     { value: "4K", label: "高（4K）" },
@@ -80,6 +83,12 @@ export function AdminGeminiAiSection() {
     const [logModel, setLogModel] = useState<string>("");
     const [logAccountId, setLogAccountId] = useState<string>("");
     const [selectedLog, setSelectedLog] = useState<GeminiAiRequestLog | null>(null);
+    const trafficRequestIds = useMemo(() => {
+        const ids = collectRequestIds([...(logPage?.items || []), selectedLog]);
+        return ids;
+    }, [logPage?.items, selectedLog]);
+    const trafficRefreshKey = useMemo(() => [...(logPage?.items || []), selectedLog].map((item) => item ? `${item.id}:${item.phase}:${item.statusCode}:${item.durationMs}` : "").join("|"), [logPage?.items, selectedLog]);
+    const traffic = useAdminRequestTraffic(trafficRequestIds, [], trafficRefreshKey);
 
     const loadState = useCallback(async () => {
         setLoading(true);
@@ -260,11 +269,13 @@ export function AdminGeminiAiSection() {
                 onChange={(key) => setActiveTab(key as GeminiAiTab)}
                 items={[
                     { key: "overview", label: <GeminiAiTabLabel label="账号与渠道" compact="账号" /> },
+                    { key: "statistics", label: <GeminiAiTabLabel label="流量统计" compact="流量" /> },
                     { key: "gateway", label: <GeminiAiTabLabel label="反代网关与 API 密钥" compact="网关与密钥" /> },
                     { key: "logs", label: <GeminiAiTabLabel label="请求日志" compact="日志" /> },
                     { key: "proxy", label: <GeminiAiTabLabel label="代理管理" compact="代理" /> },
                 ]}
             />
+            {activeTab === "statistics" ? <AdminTrafficPanel protocol="geminiai" title="GeminiAIStudio 流量统计" /> : null}
             <div className={activeTab === "overview" ? "space-y-4" : "hidden"}>
                 <Panel>
                     <PanelHeader
@@ -537,6 +548,9 @@ export function AdminGeminiAiSection() {
                         message.success("GeminiAIStudio 请求日志已清空");
                     }}
                     onSelect={setSelectedLog}
+                    trafficItems={traffic.report?.items || []}
+                    trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT}
+                    trafficLoading={traffic.loading}
                 />
             ) : null}
 
@@ -614,7 +628,7 @@ export function AdminGeminiAiSection() {
                     </Button>
                 </div>
             </Modal>
-            <GeminiAiRequestLogDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
+            <GeminiAiRequestLogDrawer log={selectedLog} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], selectedLog ? trafficRequestId(selectedLog) : undefined)} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} trafficError={traffic.error} onClose={() => setSelectedLog(null)} />
         </div>
     );
 }
@@ -641,6 +655,9 @@ function GeminiAiRequestLogs({
     onRefresh,
     onClear,
     onSelect,
+    trafficItems,
+    trafficDisplayUnit,
+    trafficLoading,
 }: {
     page: GeminiAiLogPage | null;
     loading: boolean;
@@ -663,6 +680,9 @@ function GeminiAiRequestLogs({
     onRefresh: () => void;
     onClear: () => Promise<void>;
     onSelect: (log: GeminiAiRequestLog) => void;
+    trafficItems: import("@/lib/admin-traffic-types").RequestTrafficSummary[];
+    trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit;
+    trafficLoading: boolean;
 }) {
     const stats = page?.stats || { total: 0, success: 0, failed: 0, averageDurationMs: 0 };
     const modelOptions = useMemo(() => {
@@ -751,7 +771,7 @@ function GeminiAiRequestLogs({
                 </div>
                 <div aria-busy={loading} className="min-h-52 divide-y divide-zinc-200 dark:divide-zinc-800">
                     {page?.items.length ? (
-                        page.items.map((log) => <GeminiAiRequestLogRow key={log.id} log={log} onClick={() => onSelect(log)} />)
+                        page.items.map((log) => <GeminiAiRequestLogRow key={log.id} log={log} trafficSummary={getRequestTrafficSummary(trafficItems, trafficRequestId(log))} trafficDisplayUnit={trafficDisplayUnit} trafficLoading={trafficLoading} onClick={() => onSelect(log)} />)
                     ) : (
                         <Empty className="my-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? "正在读取请求日志" : "暂无符合条件的请求记录"} />
                     )}
@@ -795,7 +815,7 @@ function buildCurlCommand(log: GeminiAiRequestLog): string {
     return lines.join(" \\\n");
 }
 
-function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onClick: () => void }) {
+function GeminiAiRequestLogRow({ log, trafficSummary, trafficDisplayUnit, trafficLoading, onClick }: { log: GeminiAiRequestLog; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; onClick: () => void }) {
     const phase = log.phase || (log.statusCode < 400 ? "success" : "failed");
     const pending = phase === "queued" || phase === "running";
     const success = phase === "success";
@@ -803,7 +823,7 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
     return (
         <button
             type="button"
-            className="grid w-full min-w-0 gap-3 px-3 py-3 text-left transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 dark:hover:bg-zinc-900/70 sm:grid-cols-[130px_minmax(0,1fr)_minmax(160px,0.55fr)_100px_24px] sm:items-center sm:px-4"
+            className="grid w-full min-w-0 gap-3 px-3 py-3 text-left transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 dark:hover:bg-zinc-900/70 sm:grid-cols-[130px_minmax(0,1fr)_minmax(160px,0.55fr)_minmax(180px,0.8fr)_100px_24px] sm:items-center sm:px-4"
             onClick={onClick}
         >
             <div className="flex flex-wrap items-center gap-1.5">
@@ -865,12 +885,16 @@ function GeminiAiRequestLogRow({ log, onClick }: { log: GeminiAiRequestLog; onCl
                 {log.clientIp ? <div className="mt-0.5 truncate font-mono text-zinc-400">{log.clientIp}</div> : null}
             </div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400">{formatDuration(log.durationMs)}</div>
+            <div className="min-w-0 space-y-1">
+                <AdminRequestTrafficSummary summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} />
+                <div className="text-[11px] leading-4 text-amber-700 dark:text-amber-300">浏览器流量已计入共享渠道，无法精确归属本次请求；请查看共享浏览器统计。</div>
+            </div>
             <ChevronRight className="hidden size-4 text-zinc-400 sm:block" aria-hidden="true" />
         </button>
     );
 }
 
-function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | null; onClose: () => void }) {
+function GeminiAiRequestLogDrawer({ log, trafficSummary, trafficDisplayUnit, trafficLoading, trafficError, onClose }: { log: GeminiAiRequestLog | null; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; trafficError?: string; onClose: () => void }) {
     const { message } = App.useApp();
     const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 440 });
     const [imageResults, setImageResults] = useState<string[] | null>(null);
@@ -1002,6 +1026,12 @@ function GeminiAiRequestLogDrawer({ log, onClose }: { log: GeminiAiRequestLog | 
                             {log.totalTokens ? <DetailItem label="Token 消耗" value={`总计 ${log.totalTokens.toLocaleString()} (输入 ${log.promptTokens || 0} / 输出 ${log.completionTokens || 0})`} /> : null}
                             {log.imageRequestedCount ? <DetailItem label="生图张数" value={`请求 ${log.imageRequestedCount} 张 / 成功 ${log.imageSucceededCount || 0} 张 / 失败 ${log.imageFailedCount || 0} 张`} /> : null}
                         </div>
+                    </section>
+
+                    <section>
+                        <h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">中心流量</h3>
+                        <Alert type="info" showIcon message="浏览器流量已计入共享渠道，无法精确归属本次请求；请查看共享浏览器统计。" className="mb-3" />
+                        <AdminRequestTrafficDetail summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} error={trafficError} />
                     </section>
 
                     {/* Rich Chronological Lifecycle Process Log Timeline */}

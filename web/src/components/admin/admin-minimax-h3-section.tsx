@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
 import type { SystemModelChannel } from "@/lib/auth/store-types";
 import { applyChannelProtocol } from "@/lib/channel-protocol-registry";
 import {
@@ -399,12 +400,21 @@ export function AdminMinimaxH3Section({ controller }: { controller: AdminDashboa
                                     </span>
                                 ),
                             },
+                            {
+                                key: "statistics",
+                                label: (
+                                    <span className="flex items-center gap-1.5">
+                                        <Activity className="size-4" />
+                                        流量统计
+                                    </span>
+                                ),
+                            },
                         ]}
                     />
 
                     {tab === "models" ? (
                         <ModelSpecsPanel metas={MINIMAX_H3_MODEL_METAS} logicalModels={state?.logicalModels || []} />
-                    ) : (
+                    ) : tab === "tasks" ? (
                         <VideoTasksTable
                             tasks={state?.videoTasks.items || []}
                             total={state?.videoTasks.total || 0}
@@ -414,6 +424,8 @@ export function AdminMinimaxH3Section({ controller }: { controller: AdminDashboa
                             onPreviewVideo={(url, prompt, model) => setSelectedVideo({ url, prompt, model })}
                             onViewTask={(task) => setSelectedTask(task)}
                         />
+                    ) : (
+                        <AdminTrafficPanel channelId={channel.id} protocol="minimax-h3" title="MiniMax H3 流量统计" />
                     )}
                 </div>
             </Panel>

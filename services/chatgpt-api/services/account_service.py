@@ -6,6 +6,7 @@ import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Condition, Lock, Thread
@@ -39,8 +40,16 @@ from services.storage.base import (
     StorageMutation,
     StorageRevisionConflictError,
 )
+from services.traffic_context import (
+    TrafficMeterIntegrationError,
+    connection_mode_for_profile,
+    context_for_call,
+    create_traffic_lease_sync,
+    release_traffic_lease_sync,
+)
 from utils.diagnostics import sanitize_diagnostic_text
 from utils.helper import anonymize_token
+from utils.log import logger
 
 _RemoteCheckMarker = tuple[str, str, str, str, bool | None, str, str]
 _CredentialGeneration = tuple[str, str, str]
@@ -1315,8 +1324,37 @@ class AccountService:
         from curl_cffi import requests
         from services.proxy_service import proxy_settings
 
-        session = requests.Session(**proxy_settings.build_session_kwargs(account=account, impersonate="chrome110", verify=True))
+        # Refresh is an account-maintenance request that can run immediately
+        # before a generation request.  Keep it visible to the same channel,
+        # but never attribute it to the user's concrete generation model.
+        profile = proxy_settings.get_profile(account=account)
+        traffic_context = context_for_call(
+            model="__account_probe__",
+            protocol="chatgpt-api",
+            connection_mode=connection_mode_for_profile(profile),
+        )
+        traffic_context.update({
+            "model": "__account_probe__",
+            "connectionMode": connection_mode_for_profile(profile),
+            "role": "account_maintenance",
+            "attributionScope": "exact",
+        })
+        traffic_lease = create_traffic_lease_sync(
+            profile.proxy_url or None,
+            traffic_context,
+        )
+        session_profile = (
+            replace(profile, proxy_url=traffic_lease.proxy_url)
+            if traffic_lease is not None
+            else profile
+        )
+        session = None
         try:
+            session = requests.Session(**proxy_settings.build_session_kwargs_from_profile(
+                session_profile,
+                impersonate="chrome110",
+                verify=True,
+            ))
             with account_processing_slot():
                 response = session.post(
                     self._OAUTH_TOKEN_URL,
@@ -1353,7 +1391,19 @@ class AccountService:
                 "id_token": str(data.get("id_token") or "").strip(),
             }
         finally:
-            session.close()
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
+            if traffic_lease is not None:
+                try:
+                    release_traffic_lease_sync(traffic_lease)
+                except TrafficMeterIntegrationError as error:
+                    logger.warning({
+                        "event": "traffic_meter_lease_release_failed",
+                        "error": str(error),
+                    })
 
     def _move_account_runtime_token_locked(
         self,

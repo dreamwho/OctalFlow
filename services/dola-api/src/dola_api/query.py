@@ -5,12 +5,12 @@ import json
 import re
 import time
 import uuid
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlencode
 
 import httpx
 
-from .traffic import metered_proxy
+from .traffic import metered_proxy, traffic_context
 
 
 def _walk(value: Any, depth: int = 0):
@@ -276,20 +276,20 @@ def parse_account_login_state(value: Any) -> str:
     return "unknown"
 
 
-async def probe_account_login(cookie: str, proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
+async def probe_account_login(cookie: str, proxy_url: str | None = None, http_identity: dict[str, str] | None = None, traffic_metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Check the Cookie login state through Dola's read-only launch protocol."""
     timeout = httpx.Timeout(30.0, connect=15.0)
-    client_options: dict[str, Any] = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
-    counted_proxy = await metered_proxy(proxy_url, "submit")
-    if counted_proxy:
-        client_options["proxy"] = counted_proxy
     try:
-        async with httpx.AsyncClient(**client_options) as client:
-            response = await client.post(
-                f"https://www.dola.com/alice/user/launch?{_launch_query(cookie)}",
-                headers=_headers(cookie, http_identity=http_identity),
-                json={"select": {"launch_config": True, "assistant_bot_info": True, "landing_config": True, "user_info": True}},
-            )
+        async with metered_proxy(proxy_url, traffic_context(traffic_metadata, role="control")) as counted_proxy:
+            client_options: dict[str, Any] = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
+            if counted_proxy:
+                client_options["proxy"] = counted_proxy
+            async with httpx.AsyncClient(**client_options) as client:
+                response = await client.post(
+                    f"https://www.dola.com/alice/user/launch?{_launch_query(cookie)}",
+                    headers=_headers(cookie, http_identity=http_identity),
+                    json={"select": {"launch_config": True, "assistant_bot_info": True, "landing_config": True, "user_info": True}},
+                )
         try:
             payload = response.json()
         except (ValueError, json.JSONDecodeError):
@@ -329,43 +329,43 @@ def _headers(cookie: str, conversation_id: str = "", http_identity: dict[str, st
     }
 
 
-async def fetch_video_url(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> str:
-    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity)
+async def fetch_video_url(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None, traffic_metadata: Mapping[str, Any] | None = None) -> str:
+    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity, traffic_metadata)
     return str(result.get("url") or "")
 
 
-async def fetch_video_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
+async def fetch_video_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None, traffic_metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Backward-compatible alias returning only the video result fields."""
-    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity)
+    result = await fetch_generation_result(cookie, conversation_id, identity, proxy_url, http_identity, traffic_metadata)
     return {"url": result.get("url") or "", "payload": result.get("payload")}
 
 
-async def fetch_generation_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> dict[str, Any]:
+async def fetch_generation_result(cookie: str, conversation_id: str, identity: dict[str, str], proxy_url: str | None = None, http_identity: dict[str, str] | None = None, traffic_metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
     query = _identity_query(identity, cookie)
     timeout = httpx.Timeout(30.0, connect=15.0)
-    client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
-    counted_proxy = await metered_proxy(proxy_url, "submit")
-    if counted_proxy:
-        client_options["proxy"] = counted_proxy
     payloads: list[Any] = []
     chain_loaded = False
     # A real completed Dola video is carried by chain/single. Query that once
     # per poll; conversation/info is only useful if the chain response failed.
-    async with httpx.AsyncClient(**client_options) as client:
-        for path, request_payload in generation_query_payloads(conversation_id):
-            try:
-                response = await client.post(f"https://www.dola.com{path}?{query}", headers=_headers(cookie, conversation_id, http_identity), json=request_payload)
-                if response.status_code < 200 or response.status_code >= 300:
+    async with metered_proxy(proxy_url, traffic_context(traffic_metadata, role="query")) as counted_proxy:
+        client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
+        if counted_proxy:
+            client_options["proxy"] = counted_proxy
+        async with httpx.AsyncClient(**client_options) as client:
+            for path, request_payload in generation_query_payloads(conversation_id):
+                try:
+                    response = await client.post(f"https://www.dola.com{path}?{query}", headers=_headers(cookie, conversation_id, http_identity), json=request_payload)
+                    if response.status_code < 200 or response.status_code >= 300:
+                        continue
+                    body = response.json()
+                    payloads.append(body)
+                    if path == "/im/chain/single" and isinstance(body, dict):
+                        downlink = body.get("downlink_body")
+                        chain_loaded = isinstance(downlink, dict) and isinstance(downlink.get("pull_singe_chain_downlink_body"), dict)
+                        if chain_loaded and body.get("code") in (None, 0, "0"):
+                            break
+                except (httpx.HTTPError, ValueError, json.JSONDecodeError):
                     continue
-                body = response.json()
-                payloads.append(body)
-                if path == "/im/chain/single" and isinstance(body, dict):
-                    downlink = body.get("downlink_body")
-                    chain_loaded = isinstance(downlink, dict) and isinstance(downlink.get("pull_singe_chain_downlink_body"), dict)
-                    if chain_loaded and body.get("code") in (None, 0, "0"):
-                        break
-            except (httpx.HTTPError, ValueError, json.JSONDecodeError):
-                continue
     parsed = parse_generation_payloads(payloads)
     assistant_text = _extract_assistant_text(payloads) if chain_loaded else ""
     if assistant_text:
@@ -393,6 +393,11 @@ def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
         for url in extract_image_urls(body):
             if url not in image_urls:
                 image_urls.append(url)
+    latest_reply = _latest_assistant_text(payloads)
+    refusal = _classify_refusal_code(latest_reply)
+    # Reference images/cover thumbnails do not make a refused video successful.
+    if refusal == "portrait_protection_failed" and not video_url:
+        return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": refusal, "rawError": latest_reply}
     if video_url or image_urls:
         return {"url": video_url, "imageUrls": image_urls, "payload": extract_vod_payload(payloads)}
 
@@ -409,8 +414,6 @@ def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
             "rawError": err_msg,
         }
 
-    latest_reply = _latest_assistant_text(payloads)
-    refusal = _classify_refusal_code(latest_reply)
     if refusal:
         return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": refusal, "rawError": latest_reply}
 
@@ -598,6 +601,8 @@ def _classify_refusal_code(text: str) -> str:
     """Classify known refusal/failure categories or return empty if unknown."""
     if not text:
         return ""
+    if re.search(r"portrait_protection_failed|出于肖像保护|未认证人脸.*(?:暂不支持|不支持|无法|不能)|(?:人脸|肖像).*(?:未通过|认证失败)", text):
+        return "portrait_protection_failed"
     if any(k in text for k in ("违规", "社区规范", "内容安全", "涉及敏感", "无法通过审核", "未通过审核", "敏感内容")):
         return "content_policy_violation"
     if (
@@ -640,7 +645,7 @@ def match_recent_conversation_id(value: Any, local_conversation_id: str) -> str:
     return ""
 
 
-async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], local_conversation_id: str, proxy_url: str | None = None, http_identity: dict[str, str] | None = None) -> str:
+async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], local_conversation_id: str, proxy_url: str | None = None, http_identity: dict[str, str] | None = None, traffic_metadata: Mapping[str, Any] | None = None) -> str:
     """Recover only a recent conversation correlated with this submit request."""
     query = _identity_query(identity, cookie)
     payload = {
@@ -665,15 +670,15 @@ async def fetch_recent_conversation_id(cookie: str, identity: dict[str, str], lo
         "version": "1",
     }
     timeout = httpx.Timeout(30.0, connect=15.0)
-    client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
-    counted_proxy = await metered_proxy(proxy_url, "submit")
-    if counted_proxy:
-        client_options["proxy"] = counted_proxy
     try:
-        async with httpx.AsyncClient(**client_options) as client:
-            response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie, http_identity=http_identity), json=payload)
-            if response.status_code < 200 or response.status_code >= 300:
-                return ""
-            return match_recent_conversation_id(response.json(), local_conversation_id)
+        async with metered_proxy(proxy_url, traffic_context(traffic_metadata, role="query")) as counted_proxy:
+            client_options = {"timeout": timeout, "follow_redirects": False, "trust_env": False}
+            if counted_proxy:
+                client_options["proxy"] = counted_proxy
+            async with httpx.AsyncClient(**client_options) as client:
+                response = await client.post(f"https://www.dola.com/im/chain/recent_conv?{query}", headers=_headers(cookie, http_identity=http_identity), json=payload)
+                if response.status_code < 200 or response.status_code >= 300:
+                    return ""
+                return match_recent_conversation_id(response.json(), local_conversation_id)
     except (httpx.HTTPError, ValueError, json.JSONDecodeError):
         return ""

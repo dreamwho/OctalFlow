@@ -1,3 +1,4 @@
+import { withTrafficContext, updateTrafficContext } from "@/lib/server/traffic-context";
 import { dolaQuotaLogFields } from "@/lib/server/dola/quota-observation";
 import { NextResponse } from "next/server";
 
@@ -61,6 +62,7 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
         proxyAddress: proxy.egress.address || proxy.egress.target,
         proxyUrl: proxy.proxyUrl || null,
         imagexProxyMode: imagex.mode,
+        imagexProxySource: imagex.source,
         imagexProxyUrl: imagex.proxyUrl || null,
         dolaHold: true,
     });
@@ -102,6 +104,10 @@ async function rotateDolaRateLimitedTask(input: { taskId: string; principalId: s
 }
 
 async function proxy(request: Request, context: Context) {
+    return withTrafficContext({}, () => proxyInternal(request, context));
+}
+
+async function proxyInternal(request: Request, context: Context) {
     const gateway = await getDolaGatewaySettings();
     if (!gateway.enabled) return NextResponse.json({ error: "Dola API 网关未启用" }, { status: 503 });
     const key = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || request.headers.get("x-api-key")?.trim() || "";
@@ -138,6 +144,7 @@ async function proxy(request: Request, context: Context) {
     const attachedTaskLogId = queryMatch ? await safeFindTaskLog(decodeURIComponent(queryMatch[1])) : "";
     const capability = runtimePath.split("?", 1)[0] === "/v1/images" ? ("image" as const) : ("video" as const);
     const logId = attachedTaskLogId ? "" : await safeOpenLog({ source: "external", capability, method: request.method, path: normalizedPath, model: "", clientIp, userAgent: request.headers.get("user-agent") || undefined, headers: { accept: request.headers.get("accept") || "", "content-type": request.headers.get("content-type") || "" } }, lifecycle);
+    updateTrafficContext({ requestId: logId || attachedTaskLogId });
     const headers = new Headers(request.headers);
     headers.delete("authorization");
     headers.delete("x-api-key");
@@ -221,6 +228,7 @@ async function proxy(request: Request, context: Context) {
                 proxyAddress: proxy.egress.address || proxy.egress.target,
                 proxyUrl: proxy.proxyUrl || null,
                 imagexProxyMode: imagex.mode,
+        imagexProxySource: imagex.source,
                 imagexProxyUrl: imagex.proxyUrl || null,
                 dolaHold: true,
             });
@@ -348,6 +356,7 @@ async function serveDolaVideoContent(request: Request, taskId: string, apiKeyId:
     const started = Date.now();
     const lifecycle: DolaRequestLifecycleEntry[] = [{ time: new Date(started).toISOString(), phase: "queued", message: "读取 Dola 视频内容", durationMs: 0, detail: `任务: ${taskId}` }];
     const logId = await safeOpenLog({ source: "external", capability: "video", method: request.method, path: `/v1/videos/${encodeURIComponent(taskId)}/content`, model: "", accountId, taskId }, lifecycle);
+    updateTrafficContext({ requestId: logId, taskId, channelId: "dola-api", channelName: "DOLA", protocol: "dola", role: "download" });
     lifecycle.push({ time: new Date().toISOString(), phase: "upstream", message: "查询 Provider 视频地址", durationMs: Date.now() - started });
     await safeMarkLog(logId, { phase: "upstream", message: "查询 Provider 视频地址" });
     let upstream: Response;

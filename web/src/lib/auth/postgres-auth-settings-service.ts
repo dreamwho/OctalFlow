@@ -68,6 +68,7 @@ function postgresSettingsPatch(patch: Partial<AuthSettings>, settings: AuthSetti
     if (patch.generationPointMultipliers !== undefined) result.generationPointMultipliers = asJson(settings.generationPointMultipliers);
     if (patch.generationCostControl !== undefined) result.generationCostControl = asJson(settings.generationCostControl);
     if (patch.dataLifecycle !== undefined) result.dataLifecycle = asJson(settings.dataLifecycle);
+    if (patch.trafficUnit !== undefined) result.trafficUnit = settings.trafficUnit;
     if (patch.entitlements !== undefined) {
         result.entitlementsEnabled = settings.entitlements.enabled;
         result.defaultPlanId = settings.entitlements.defaultPlanId;

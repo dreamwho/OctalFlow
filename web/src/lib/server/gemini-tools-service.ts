@@ -9,6 +9,7 @@ import { normalizeDefaultModelsConfig, synchronizeLogicalModelsWithChannels } fr
 import { resolvePublicRequestOrigin } from "@/lib/server/public-request-origin";
 import { ensureMagicProxyProvider, type MagicProxyEgressInfo } from "@/lib/server/magic-proxy-service";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { withTrafficContext, currentTrafficContext, updateTrafficContext, trafficBodyModel } from "@/lib/server/traffic-context";
 import {
     appendGeminiToolsRequestLog,
     appendGeminiToolsRequestLifecycle,
@@ -246,7 +247,9 @@ export async function testGeminiToolsText(input: { model?: unknown; prompt?: unk
 }
 
 export async function geminiToolsRuntimeRequest(path: string, init: RequestInit, context: { protocol?: "openai" | "gemini" | "anthropic" | "admin-test"; keyPrefix?: string } = {}) {
-    return withGeminiToolsMagicProxy(() => geminiToolsRuntimeRequestInternal(path, init, context));
+    return withTrafficContext({ channelId: GEMINI_TOOLS_CHANNEL_ID, channelName: GEMINI_TOOLS_CHANNEL_NAME, protocol: GEMINI_TOOLS_PROTOCOL, model: trafficBodyModel(init.body), ...currentTrafficContext() }, () =>
+        withGeminiToolsMagicProxy(() => geminiToolsRuntimeRequestInternal(path, init, context)),
+    );
 }
 
 async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit, context: { protocol?: "openai" | "gemini" | "anthropic" | "admin-test"; keyPrefix?: string } = {}) {
@@ -284,6 +287,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
         ...(userAgent ? { userAgent } : {}),
         ...(headers ? { headers } : {}),
     }).catch(() => "");
+    if (openLogId) updateTrafficContext({ requestId: openLogId, attemptId: openLogId });
     if (openLogId) await markGeminiToolsRequestLogRunning(openLogId).catch(() => undefined);
     // 每个阶段即时落库：请求可能耗时数分钟，否则后台在结束前只能看到「排队中」。
     const pushPhase = async (entry: GeminiToolsLifecycleEntry) => {
@@ -648,7 +652,24 @@ async function googleJson<T>(url: string, init: RequestInit, fallbackMessage: st
     let response: Response;
     try {
         const proxyUrl = await geminiToolsMagicProxyUrl();
-        response = await fetchSafeOutbound(url, { ...init, cache: "no-store", redirect: "error" }, { allowProxyFakeIpSpace: true, ...(proxyUrl ? { proxyUrl } : {}) });
+        const egress = await geminiToolsProxyEgress();
+        const channel = geminiToolsChannel(await getAuthSettings());
+        response = await fetchSafeOutbound(
+            url,
+            { ...init, cache: "no-store", redirect: "error" },
+            {
+                allowProxyFakeIpSpace: true,
+                ...(proxyUrl ? { proxyUrl } : {}),
+                trafficContext: {
+                    channelId: channel?.id || GEMINI_TOOLS_CHANNEL_ID,
+                    channelName: channel?.name || GEMINI_TOOLS_CHANNEL_NAME,
+                    model: trafficBodyModel(init.body),
+                    protocol: GEMINI_TOOLS_PROTOCOL,
+                    ...currentTrafficContext(),
+                    connectionMode: egress?.mode || (proxyUrl ? "generic" : "direct"),
+                },
+            },
+        );
     } catch (error) {
         const isTimeout = error instanceof Error && (error.name === "TimeoutError" || error.message.toLowerCase().includes("timeout") || (error as { code?: string }).code === "UND_ERR_CONNECT_TIMEOUT");
         const cause = error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : "";
@@ -799,13 +820,7 @@ function protocolResponse(protocol: "openai" | "gemini" | "anthropic" | "admin-t
         },
     }));
 
-    const openAiFinishReason = openAiToolCalls.length > 0
-        ? "tool_calls"
-        : finishReason === "MAX_TOKENS"
-          ? "length"
-          : finishReason === "SAFETY"
-            ? "content_filter"
-            : "stop";
+    const openAiFinishReason = openAiToolCalls.length > 0 ? "tool_calls" : finishReason === "MAX_TOKENS" ? "length" : finishReason === "SAFETY" ? "content_filter" : "stop";
 
     return {
         id: `chatcmpl-${randomUUID()}`,
@@ -880,7 +895,7 @@ function openAiSseResponse(payload: OpenAiResponse, totalTokens: number) {
             headers: {
                 "content-type": "text/event-stream; charset=utf-8",
                 "cache-control": "no-cache, no-transform",
-                "connection": "keep-alive",
+                connection: "keep-alive",
                 "x-accel-buffering": "no",
                 "x-gemini-tools-total-tokens": String(totalTokens),
             },
@@ -981,7 +996,7 @@ function anthropicSseResponse(payload: Record<string, unknown>, totalTokens: num
             headers: {
                 "content-type": "text/event-stream; charset=utf-8",
                 "cache-control": "no-cache, no-transform",
-                "connection": "keep-alive",
+                connection: "keep-alive",
                 "x-accel-buffering": "no",
                 "x-gemini-tools-total-tokens": String(totalTokens),
             },
@@ -1205,7 +1220,7 @@ function safeJson(value: string): unknown {
 function safeGoogleError(value: unknown) {
     const root = record(value);
     const error = record(root.error);
-    const code = text(typeof root.error === "string" ? root.error : error.code ?? error.status, 100);
+    const code = text(typeof root.error === "string" ? root.error : (error.code ?? error.status), 100);
     const desc = text(error.message ?? root.error_description ?? root.message, 500);
     if (code && desc && code !== desc) return `${code}: ${desc}`;
     return desc || code || text(root.error, 500);

@@ -95,3 +95,28 @@ export function readSystemAiBilling(headers: Headers): SystemAiBilling {
 export function hasSystemAiCharge(billing: SystemAiBilling): billing is Required<SystemAiBilling> {
     return billing.pointsCost !== undefined && Boolean(billing.pointsRecordId);
 }
+
+export function signedInternalTrafficHeaders(url: string | URL, method: string, context?: { taskId?: string; requestId?: string; attemptId?: string }): Record<string, string> {
+    const identity = Object.fromEntries((["taskId", "requestId", "attemptId"] as const).flatMap((key) => context?.[key] ? [[key, context[key]]] : []));
+    if (!Object.keys(identity).length) return {};
+    const payload = Buffer.from(JSON.stringify(identity)).toString("base64url");
+    return { "x-dreamyo-internal-traffic": payload, "x-dreamyo-internal-traffic-signature": signInternalTraffic(url, method, payload) };
+}
+
+export function readVerifiedInternalTraffic(headers: Headers, url: string | URL, method: string): { taskId?: string; requestId?: string; attemptId?: string } {
+    const payload = headers.get("x-dreamyo-internal-traffic") || "";
+    const signature = headers.get("x-dreamyo-internal-traffic-signature") || "";
+    if (!payload || !signature) return {};
+    const expected = Buffer.from(signInternalTraffic(url, method, payload));
+    const received = Buffer.from(signature);
+    if (expected.length !== received.length || !timingSafeEqual(expected, received)) return {};
+    try {
+        const identity = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+        return Object.fromEntries((["taskId", "requestId", "attemptId"] as const).flatMap((key) => typeof identity?.[key] === "string" && identity[key].trim() && identity[key].length <= 200 ? [[key, identity[key]]] : []));
+    } catch { return {}; }
+}
+
+function signInternalTraffic(url: string | URL, method: string, payload: string) {
+    const target = new URL(url);
+    return createHmac("sha256", systemAiPointsSigningSecret()).update(["traffic-v1", method.toUpperCase(), target.pathname + target.search, payload].join("\0")).digest("base64url");
+}

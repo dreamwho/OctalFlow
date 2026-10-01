@@ -7,6 +7,7 @@ import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 import { scheduleGenerationTask, type GenerationTaskExecutionPhase } from "@/lib/server/generation-task-scheduler";
 import type { GenerationTaskType } from "@/lib/server/generation-task-store";
 import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
+import { generationTrafficContext, withTrafficContext } from "@/lib/server/traffic-context";
 
 export type CancellableGenerationTaskType = Extract<GenerationTaskType, "text" | "image" | "video" | "audio">;
 
@@ -85,10 +86,10 @@ async function cancellationFetch(target: GenerationCancellationTarget, origin: s
         if (workerUserId) Object.entries(maintenanceWorkerHeaders(workerUserId)).forEach(([key, value]) => headers.set(key, value));
         else if (cookie) headers.set("cookie", cookie);
         Object.entries(systemAiBillingHeaders(target.config.logicalModel || target.config.model, undefined, target.config.model)).forEach(([key, value]) => headers.set(key, value));
-        return fetchInternalApi(url, { method, headers, cache: "no-store", signal: AbortSignal.timeout(10_000) });
+        return withTrafficContext(generationTrafficContext(target.config, "cancel", target.taskId), () => fetchInternalApi(url, { method, headers, cache: "no-store", signal: AbortSignal.timeout(10_000) }));
     }
     Object.entries(protocolAuthHeaders(target.config.apiKey, target.config.advancedConfig, target.config.apiFormat)).forEach(([key, value]) => headers.set(key, value));
-    return fetchSafeOutbound(url, { method, headers, cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(10_000) }, { allowProxyFakeIpSpace: true });
+    return fetchSafeOutbound(url, { method, headers, cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(10_000) }, { allowProxyFakeIpSpace: true, trafficContext: generationTrafficContext(target.config, "cancel", target.taskId) });
 }
 
 function cancellableUpstreamTaskId(value: string | undefined) {

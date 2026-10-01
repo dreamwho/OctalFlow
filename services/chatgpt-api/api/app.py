@@ -22,6 +22,12 @@ from api.accounts import create_router as create_accounts_router
 from api.ai import create_router as create_openai_router
 from api.integration import gateway_enabled, router as integration_router
 from api.ipwo import router as ipwo_router
+from services.traffic_context import (
+    TRAFFIC_CONTEXT_HEADER,
+    TrafficContextError,
+    bind_traffic_context,
+    decode_traffic_context,
+)
 
 
 _ALLOWED_SOURCE_ROUTES: set[tuple[str, str]] = {
@@ -52,9 +58,16 @@ def _is_trusted_internal_dispatch(request: Request, expected_runtime_key: str) -
     return (
         hmac.compare_digest(request.headers.get(_INTERNAL_DISPATCH_HEADER, ""), "1")
         and hmac.compare_digest(
-            request.headers.get("authorization", ""),
-            f"Bearer {expected_runtime_key}",
+            request.headers.get("x-dreamyo-runtime-key", ""),
+            expected_runtime_key,
         )
+    )
+
+
+def _is_admin_internal_dispatch(request: Request, expected_runtime_key: str) -> bool:
+    return _is_trusted_internal_dispatch(request, expected_runtime_key) and hmac.compare_digest(
+        request.headers.get("authorization", ""),
+        f"Bearer {expected_runtime_key}",
     )
 
 
@@ -86,11 +99,26 @@ def create_app() -> FastAPI:
                 status_code=401,
                 content={"detail": {"error": "x-dreamyo-runtime-key is required"}},
             )
+        traffic_header = request.headers.get(TRAFFIC_CONTEXT_HEADER, "")
+        traffic_context = None
+        if traffic_header:
+            if not _is_trusted_internal_dispatch(request, expected_runtime_key):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": {"error": "traffic context requires internal dispatch"}},
+                )
+            try:
+                traffic_context = decode_traffic_context(traffic_header)
+            except TrafficContextError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": {"error": "traffic context is invalid"}},
+                )
         if (
             request.url.path.startswith("/v1/")
             or request.url.path.startswith("/images/")
             or request.url.path.startswith("/image-thumbnails/")
-        ) and not gateway_enabled() and not _is_trusted_internal_dispatch(
+        ) and not gateway_enabled() and not _is_admin_internal_dispatch(
             request,
             expected_runtime_key,
         ):
@@ -98,7 +126,10 @@ def create_app() -> FastAPI:
                 status_code=503,
                 content={"detail": {"error": "ChatGPT gateway is disabled"}},
             )
-        return await call_next(request)
+        if traffic_context is None:
+            return await call_next(request)
+        with bind_traffic_context(traffic_context):
+            return await call_next(request)
 
     _add_allowlisted_source_routes(app, create_accounts_router().routes)
     _add_allowlisted_source_routes(app, create_openai_router().routes)

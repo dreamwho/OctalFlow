@@ -23,11 +23,13 @@ export function localChatGptApiRuntime({ repoRoot, webRoot, environment = proces
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("ChatGPT API 运行时端口无效");
     const apiKey = configuredKey || tokenFactory();
     const dataRoot = source.DREAMYO_DATA_DIR || path.join(webRoot, ".data");
+    const trafficMeterSource = path.join(repoRoot, "services", "traffic-meter", "src");
     const providerEnvironment = {
         ...source,
         DATABASE_URL: "",
         DREAMYO_CHATGPT_API_KEY: apiKey,
         DREAMYO_CHATGPT_DATA_DIR: source.DREAMYO_CHATGPT_DATA_DIR || path.join(dataRoot, "chatgpt-api"),
+        PYTHONPATH: [trafficMeterSource, providerRoot, source.PYTHONPATH].filter(Boolean).join(path.delimiter),
     };
     return {
         environment: { ...source, DREAMYO_CHATGPT_API_URL: `http://127.0.0.1:${port}`, DREAMYO_CHATGPT_API_KEY: apiKey },

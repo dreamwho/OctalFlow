@@ -1,3 +1,5 @@
+import { currentTrafficContext } from "@/lib/server/traffic-context";
+import { signedInternalTrafficHeaders } from "@/lib/server/system-ai-billing";
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-lifecycle";
@@ -26,8 +28,12 @@ export function isInternalApiBaseUrl(baseUrl: string) {
 }
 
 export async function fetchInternalApi(input: string | URL, init?: RequestInit): Promise<Response> {
+    const headers = new Headers(init?.headers);
+    headers.delete("x-dreamyo-internal-traffic");
+    headers.delete("x-dreamyo-internal-traffic-signature");
+    Object.entries(signedInternalTrafficHeaders(input, init?.method || "GET", currentTrafficContext())).forEach(([key, value]) => headers.set(key, value));
     const body = await toUndiciRequestBody(init?.body);
-    return undiciFetch(input, { ...init, body, dispatcher: internalDispatcher } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
+    return undiciFetch(input, { ...init, headers, body, dispatcher: internalDispatcher } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
 }
 
 function normalizeOrigin(value: string) {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { appendRunningHubRequestLog, getRunningHubApp, getRunningHubPrivateSettings, getRunningHubTask, saveRunningHubTask, upsertRunningHubApp, type RunningHubApp, type RunningHubField, type RunningHubTask } from "@/lib/server/runninghub-store";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { currentTrafficContext } from "@/lib/server/traffic-context";
 
 export class RunningHubError extends Error {
     constructor(
@@ -127,21 +128,43 @@ export function extractRunningHubResultUrls(value: unknown) {
 async function uploadRunningHubFile(settings: Awaited<ReturnType<typeof requireSettings>>, file: File, taskId: string, appId: string) {
     const startedAt = Date.now();
     const path = "/task/openapi/upload";
+    // Allocate the persisted request-log ID before opening the network
+    // connection so the meter and the eventual admin row share one stable
+    // requestId.  Never derive this from timing or payload contents.
+    const requestId = `rh-log-${randomUUID()}`;
+    let logged = false;
     try {
         const form = new FormData();
         form.set("apiKey", settings.apiKey);
         form.set("fileType", "input");
         form.set("file", file, file.name || "reference.png");
-        const response = await fetchSafeOutbound(`${settings.apiBaseUrl}${path}`, { method: "POST", body: form, signal: AbortSignal.timeout(120_000) });
+        const response = await fetchSafeOutbound(
+            `${settings.apiBaseUrl}${path}`,
+            { method: "POST", body: form, signal: AbortSignal.timeout(120_000) },
+            {
+                trafficContext: {
+                    channelId: "runninghub",
+                    channelName: "RunningHub",
+                    model: appId,
+                    protocol: "runninghub",
+                    ...currentTrafficContext(),
+                    role: "upload",
+                    requestId,
+                },
+            },
+        );
         const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        await appendRunningHubRequestLog({ taskId, appId, phase: "upload", path, statusCode: response.status, durationMs: Date.now() - startedAt, ...(response.ok ? {} : { error: safeUpstreamMessage(payload, `HTTP ${response.status}`) }) });
+        await appendRunningHubRequestLog({ id: requestId, taskId, appId, phase: "upload", path, statusCode: response.status, durationMs: Date.now() - startedAt, ...(response.ok ? {} : { error: safeUpstreamMessage(payload, `HTTP ${response.status}`) }) });
+        logged = true;
         if (!response.ok || Number(payload.code) !== 0) throw upstreamError(payload, "参考图上传到 RunningHub 失败", response.status);
         const fileName = textAt(payload, ["data", "fileName"]);
         if (!fileName) throw new RunningHubError("RunningHub 上传响应缺少文件名", 502, true);
         return fileName;
     } catch (error) {
         if (error instanceof RunningHubError) throw error;
-        await appendRunningHubRequestLog({ taskId, appId, phase: "upload", path, statusCode: 0, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message.slice(0, 500) : "请求失败" });
+        if (!logged) {
+            await appendRunningHubRequestLog({ id: requestId, taskId, appId, phase: "upload", path, statusCode: 0, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message.slice(0, 500) : "请求失败" });
+        }
         throw new RunningHubError(error instanceof Error ? error.message : "参考图上传失败", 502, true);
     }
 }
@@ -239,17 +262,36 @@ async function runningHubJson(
 ) {
     const startedAt = Date.now();
     const method = log.method || "POST";
+    // Keep one request ID from before fetch through the persisted request log
+    // for account, sync, submit, query, and cancel traffic alike.
+    const requestId = `rh-log-${randomUUID()}`;
+    let logged = false;
     try {
-        const response = await fetchSafeOutbound(`${settings.apiBaseUrl}${path}`, {
-            method,
-            headers: { Authorization: `Bearer ${settings.apiKey}`, ...(method === "POST" ? { "Content-Type": "application/json" } : {}) },
-            ...(method === "POST" ? { body: JSON.stringify(body || {}) } : {}),
-            cache: "no-store",
-            signal: AbortSignal.timeout(log.phase === "query" ? 60_000 : 120_000),
-        });
+        const response = await fetchSafeOutbound(
+            `${settings.apiBaseUrl}${path}`,
+            {
+                method,
+                headers: { Authorization: `Bearer ${settings.apiKey}`, ...(method === "POST" ? { "Content-Type": "application/json" } : {}) },
+                ...(method === "POST" ? { body: JSON.stringify(body || {}) } : {}),
+                cache: "no-store",
+                signal: AbortSignal.timeout(log.phase === "query" ? 60_000 : 120_000),
+            },
+            {
+                trafficContext: {
+                    channelId: "runninghub",
+                    channelName: "RunningHub",
+                    model: log.appId || "",
+                    protocol: "runninghub",
+                    ...currentTrafficContext(),
+                    role: log.phase,
+                    requestId,
+                },
+            },
+        );
         const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
         const businessOk = allowBusinessError || Number(payload.code) === 0;
         await appendRunningHubRequestLog({
+            id: requestId,
             taskId: log.taskId,
             appId: log.appId,
             phase: log.phase,
@@ -258,11 +300,14 @@ async function runningHubJson(
             durationMs: Date.now() - startedAt,
             ...(!response.ok || !businessOk ? { error: safeUpstreamMessage(payload, `HTTP ${response.status}`) } : {}),
         });
+        logged = true;
         if (!response.ok || !businessOk) throw upstreamError(payload, `RunningHub ${log.phase} 请求失败`, response.status);
         return payload;
     } catch (error) {
         if (error instanceof RunningHubError) throw error;
-        await appendRunningHubRequestLog({ taskId: log.taskId, appId: log.appId, phase: log.phase, path, statusCode: 0, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message.slice(0, 500) : "请求失败" });
+        if (!logged) {
+            await appendRunningHubRequestLog({ id: requestId, taskId: log.taskId, appId: log.appId, phase: log.phase, path, statusCode: 0, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message.slice(0, 500) : "请求失败" });
+        }
         throw new RunningHubError(error instanceof Error ? error.message : "RunningHub 请求失败", 502, true);
     }
 }

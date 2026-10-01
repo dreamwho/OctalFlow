@@ -29,11 +29,45 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  traffic-meter:
+    image: ${DREAMYO_TRAFFIC_METER_IMAGE:-dreamyo-traffic-meter:local}
+    build:
+      context: ./services/traffic-meter
+      dockerfile: Dockerfile
+    container_name: dreamyo-traffic-meter
+    command: ["uvicorn", "traffic_meter.main:app", "--host", "0.0.0.0", "--port", "${TRAFFIC_METER_PORT:-18083}"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      TRAFFIC_METER_KEY: ${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}
+      TRAFFIC_METER_PORT: ${TRAFFIC_METER_PORT:-18083}
+      TRAFFIC_METER_BIND_HOST: 0.0.0.0
+      TRAFFIC_METER_PUBLIC_HOST: traffic-meter
+      TRAFFIC_METER_STATE_PATH: /data/traffic.sqlite3
+    volumes:
+      - dreamyo-traffic-meter:/data
+    expose:
+      - "${TRAFFIC_METER_PORT:-18083}"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${TRAFFIC_METER_PORT:-18083}/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
   geminiai:
     image: ${DREAMYO_GEMINIAI_IMAGE:-dreamyo-geminiai:local}
     build:
       context: ./services/geminiai
       dockerfile: Dockerfile
+      additional_contexts:
+        traffic-meter: ./services/traffic-meter
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       AISTUDIO_API_KEY: ${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
@@ -44,6 +78,8 @@ services:
       AISTUDIO_PORT: "8080"
       AISTUDIO_PROXY: http://magic-proxy:17890
       AISTUDIO_STUDIO_URL: ${DREAMYO_GEMINIAI_STUDIO_URL:-https://aistudio.google.com/prompts/new_chat}
+      DREAMYO_TRAFFIC_METER_URL: http://traffic-meter:${TRAFFIC_METER_PORT:-18083}
+      DREAMYO_TRAFFIC_METER_KEY: ${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}
     volumes:
       - dreamyo-geminiai-accounts:/data/accounts
     expose:
@@ -63,6 +99,8 @@ services:
     restart: unless-stopped
     depends_on:
       magic-proxy:
+        condition: service_healthy
+      traffic-meter:
         condition: service_healthy
 
   app:
@@ -105,6 +143,8 @@ services:
       DREAMYO_MAGIC_PROXY_DOLA_PORT: "17893"
       DREAMYO_GEMINIAI_URL: http://geminiai:8080
       DREAMYO_GEMINIAI_API_KEY: ${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
+      DREAMYO_TRAFFIC_METER_URL: http://traffic-meter:${TRAFFIC_METER_PORT:-18083}
+      DREAMYO_TRAFFIC_METER_KEY: ${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}
       GEMINI_TOOLS_OAUTH_CLIENT_ID: ${GEMINI_TOOLS_OAUTH_CLIENT_ID:-}
       GEMINI_TOOLS_OAUTH_CLIENT_SECRET: ${GEMINI_TOOLS_OAUTH_CLIENT_SECRET:-}
       GEMINI_TOOLS_OAUTH_REDIRECT_URI: ${GEMINI_TOOLS_OAUTH_REDIRECT_URI:-}
@@ -125,6 +165,8 @@ services:
     restart: unless-stopped
     depends_on:
       geminiai:
+        condition: service_healthy
+      traffic-meter:
         condition: service_healthy
       magic-proxy:
         condition: service_healthy
@@ -147,4 +189,5 @@ services:
 volumes:
   dreamyo-data:
   dreamyo-geminiai-accounts:
+  dreamyo-traffic-meter:
   dreamyo-magic-proxy-runtime:

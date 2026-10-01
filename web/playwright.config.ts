@@ -33,7 +33,7 @@ export default defineConfig({
         {
             name: "chromium",
             testMatch: [
-                /(?:admin-brand-visual|admin-commerce-visual|admin-entry-matrix|admin-sections-matrix|all-pages|canvas|canvas-bugfix-repro|chatgpt-upload-proxy|commerce|content-account-visual|core|creative-video-result|dola-admin|drama-visual|home|image-video-workbench|responsive|static-brand-visual|ui-rebuild|user-pages-matrix)\.spec\.ts/,
+                /(?:admin-brand-visual|admin-commerce-visual|admin-entry-matrix|admin-sections-matrix|all-pages|canvas|canvas-bugfix-repro|chatgpt-upload-proxy|commerce|content-account-visual|core|creative-video-result|dola-admin|drama-visual|home|image-video-workbench|responsive|static-brand-visual|traffic|ui-rebuild|user-pages-matrix)\.spec\.ts/,
             ],
             dependencies: ["setup"],
             use: { ...devices["Desktop Chrome"], storageState },
@@ -43,13 +43,13 @@ export default defineConfig({
         { name: "my-prompts-430", testMatch: /my-prompts\.spec\.ts/, dependencies: ["setup"], use: { ...devices["iPhone 14 Pro Max"], browserName: "chromium", viewport: { width: 430, height: 932 } } },
         {
             name: "mobile-390",
-            testMatch: /(?:all-pages|commerce|content-account-visual|creative-video-result|drama-visual|home|responsive|static-brand-visual|ui-rebuild)\.spec\.ts/,
+            testMatch: /(?:all-pages|commerce|content-account-visual|creative-video-result|drama-visual|home|responsive|static-brand-visual|traffic|ui-rebuild)\.spec\.ts/,
             dependencies: ["setup"],
             use: { ...devices["iPhone 13"], browserName: "chromium", viewport: { width: 390, height: 844 }, storageState },
         },
         {
             name: "mobile-430",
-            testMatch: /(?:all-pages|commerce|content-account-visual|creative-video-result|drama-visual|home|responsive|static-brand-visual|ui-rebuild)\.spec\.ts/,
+            testMatch: /(?:all-pages|commerce|content-account-visual|creative-video-result|drama-visual|home|responsive|static-brand-visual|traffic|ui-rebuild)\.spec\.ts/,
             dependencies: ["setup"],
             use: { ...devices["iPhone 14 Pro Max"], browserName: "chromium", viewport: { width: 430, height: 932 }, storageState },
         },

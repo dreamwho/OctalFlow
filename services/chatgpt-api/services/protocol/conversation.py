@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import time
+from contextvars import copy_context
 from concurrent.futures import (
     ThreadPoolExecutor,
     TimeoutError as FuturesTimeoutError,
@@ -2871,7 +2872,8 @@ def stream_image_outputs_with_pool(request: ConversationRequest) -> Iterator[Ima
 
     try:
         for index in range(1, request.n + 1):
-            future = executor.submit(_generate_single_image, replace(request), index, request.n)
+            worker_context = copy_context()
+            future = executor.submit(worker_context.run, _generate_single_image, replace(request), index, request.n)
             futures[future] = index
 
         # yield 结果：按完成顺序立即输出，不再等所有图片都结束后才返回成功结果。

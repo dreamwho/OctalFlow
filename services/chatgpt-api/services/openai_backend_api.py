@@ -7,10 +7,8 @@ import re
 import threading
 import time
 
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
 from collections.abc import Callable
@@ -41,6 +39,13 @@ from services.image_failure import (
 )
 from services.protocol.reasoning import normalize_thinking_effort
 from services.proxy_service import ProxyRuntimeProfile, proxy_settings
+from services.traffic_context import (
+    TrafficMeterIntegrationError,
+    connection_mode_for_profile,
+    context_for_call,
+    create_traffic_lease_sync,
+    release_traffic_lease_sync,
+)
 from utils.file_names import sanitize_public_filename
 from utils.helper import UpstreamHTTPError, ensure_ok, iter_sse_payloads, new_uuid, split_image_model
 from utils.diagnostics import diagnostic_excerpt
@@ -238,6 +243,7 @@ class OpenAIBackendAPI:
         self._http_timings: dict[str, dict[str, Any]] = {}
         self._image_result_timing: dict[str, int] = {}
         self._closed = False
+        self._traffic_leases: list[object] = []
         explicit_proxy = str(proxy or proxy_url or "").strip()
         self.proxy_profile = proxy_profile or proxy_settings.get_profile(
             account=self.account,
@@ -246,6 +252,24 @@ class OpenAIBackendAPI:
             reserve_image_egress=reserve_image_egress,
             deadline_monotonic=deadline_monotonic,
         )
+        self._traffic_context = context_for_call(
+            connection_mode=connection_mode_for_profile(self.proxy_profile),
+        )
+        try:
+            traffic_lease = create_traffic_lease_sync(
+                self.proxy_profile.proxy_url or None,
+                self._traffic_context,
+            )
+        except TrafficMeterIntegrationError:
+            if bool(getattr(self.proxy_profile, "image_egress_reserved", False)):
+                proxy_settings.release_image_egress(self.proxy_profile)
+            raise
+        session_profile = self.proxy_profile
+        if traffic_lease is not None:
+            self._traffic_leases.append(traffic_lease)
+            # Keep the original profile for egress logs and image-capacity
+            # release; only the live curl session receives the relay URL.
+            session_profile = replace(self.proxy_profile, proxy_url=traffic_lease.proxy_url)
         try:
             from services.log_service import current_call_id, register_call_egress
 
@@ -254,7 +278,7 @@ class OpenAIBackendAPI:
             pass
         try:
             self.session = requests.Session(**proxy_settings.build_session_kwargs_from_profile(
-                self.proxy_profile,
+                session_profile,
                 impersonate=self.fp["impersonate"],
                 verify=True,
                 curl_infos=list(HTTP_TIMING_INFOS),
@@ -262,6 +286,7 @@ class OpenAIBackendAPI:
         except Exception:
             if bool(getattr(self.proxy_profile, "image_egress_reserved", False)):
                 proxy_settings.release_image_egress(self.proxy_profile)
+            self._release_traffic_leases()
             raise
         self.session.headers.update({
             "User-Agent": self.user_agent,
@@ -299,6 +324,18 @@ class OpenAIBackendAPI:
                 session.close()
             except Exception:
                 pass
+        self._release_traffic_leases()
+
+    def _release_traffic_leases(self) -> None:
+        leases = getattr(self, "_traffic_leases", None)
+        if not leases:
+            return
+        self._traffic_leases = []
+        for lease in reversed(leases):
+            try:
+                release_traffic_lease_sync(lease)
+            except TrafficMeterIntegrationError as error:
+                logger.warning({"event": "traffic_meter_lease_release_failed", "error": str(error)})
 
     def __del__(self):
         self.close()
@@ -962,7 +999,7 @@ class OpenAIBackendAPI:
     @staticmethod
     def _iter_codex_response_events(raw: Any, max_duration_secs: float | None = None) -> Iterator[Dict[str, Any]]:
         content_type = str(raw.headers.get("content-type") or "").lower()
-        status_code = getattr(raw, "status", None)
+        status_code = getattr(raw, "status", None) or getattr(raw, "status_code", None)
         timeout_secs = float(max_duration_secs or 0)
         started_at = time.monotonic()
         timed_out = False
@@ -1022,7 +1059,8 @@ class OpenAIBackendAPI:
         try:
             if "application/json" in content_type:
                 _raise_if_timeout()
-                text = raw.read().decode("utf-8", "replace")
+                body = raw.read() if hasattr(raw, "read") else getattr(raw, "content", b"")
+                text = body.decode("utf-8", "replace") if isinstance(body, bytes) else str(body or "")
                 _raise_if_timeout()
                 _append_body(text)
                 try:
@@ -1033,13 +1071,17 @@ class OpenAIBackendAPI:
                     parse_errors.append(str(exc))
             else:
                 lines: list[str] = []
-                while True:
-                    _raise_if_timeout()
-                    raw_line = raw.readline()
+                if hasattr(raw, "readline"):
+                    def _raw_lines():
+                        while True:
+                            yield raw.readline()
+                else:
+                    _raw_lines = raw.iter_lines
+                for raw_line in _raw_lines():
                     _raise_if_timeout()
                     if not raw_line:
                         break
-                    line = raw_line.decode("utf-8", "replace").rstrip("\r\n")
+                    line = raw_line.decode("utf-8", "replace").rstrip("\r\n") if isinstance(raw_line, bytes) else str(raw_line).rstrip("\r\n")
                     _append_body(line + "\n")
                     if not line:
                         if _flush_sse_event(lines):
@@ -1113,12 +1155,6 @@ class OpenAIBackendAPI:
             "tool_choice": {"type": "image_generation"},
             "stream": True,
         }
-        request = urllib.request.Request(
-            self.base_url + path,
-            json.dumps(payload).encode(),
-            self._codex_responses_headers(),
-            method="POST",
-        )
         account = account_service.get_account(self.access_token) or {}
         token_payload = account_service._decode_jwt_payload(self.access_token)
         auth_claim = token_payload.get("https://api.openai.com/auth")
@@ -1127,7 +1163,7 @@ class OpenAIBackendAPI:
         logger.info({
             "event": "codex_responses_request_debug",
             "url": self.base_url + path,
-            "transport": "urllib.request",
+            "transport": "curl_cffi",
             "timeout_secs": config.image_stream_timeout_secs,
             "account_email": str(account.get("email") or "").strip(),
             "source_type": str(account.get("source_type") or "").strip(),
@@ -1161,20 +1197,31 @@ class OpenAIBackendAPI:
             },
         })
         stream_timeout = config.image_stream_timeout_secs
-        try:
-            with urllib.request.urlopen(request, timeout=stream_timeout) as raw:
-                yield from self._iter_codex_response_events(raw, max_duration_secs=stream_timeout)
-        except urllib.error.HTTPError as error:
-            body_text = error.read().decode("utf-8", "replace")
+        response = self.session.post(
+            self.base_url + path,
+            headers=self._codex_responses_headers(),
+            data=json.dumps(payload).encode(),
+            timeout=stream_timeout,
+            stream=True,
+        )
+        if response.status_code >= 400:
+            status_code = response.status_code
+            response_headers = response.headers
+            body_text = response.text
+            response.close()
             body: Any = body_text
             try:
                 body = json.loads(body_text)
             except Exception:
                 pass
-            self._log_codex_response_failure(path, error.code, error.headers, payload, body)
-            retry_after_header = error.headers.get("Retry-After") if error.headers else None
+            self._log_codex_response_failure(path, status_code, response_headers, payload, body)
+            retry_after_header = response_headers.get("Retry-After") if response_headers else None
             retry_after = int(retry_after_header) if str(retry_after_header or "").isdigit() else None
-            raise UpstreamHTTPError(path, error.code, body, retry_after=retry_after) from error
+            raise UpstreamHTTPError(path, status_code, body, retry_after=retry_after)
+        try:
+            yield from self._iter_codex_response_events(response, max_duration_secs=stream_timeout)
+        finally:
+            response.close()
 
     def _prepare_image_conversation(self, prompt: str, requirements: ChatRequirements, model: str) -> str:
         """为图片生成准备 conduit token。"""
@@ -1698,14 +1745,31 @@ class OpenAIBackendAPI:
         profile = proxy_settings.signed_upload_profile(self.proxy_profile)
         if profile is self.proxy_profile:
             return self.session.put(url, headers=headers, data=data, timeout=timeout)
-        session = requests.Session(**proxy_settings.build_session_kwargs_from_profile(
-            profile, impersonate=self.fp["impersonate"], verify=True,
-            curl_infos=list(HTTP_TIMING_INFOS),
-        ))
+        traffic_lease = create_traffic_lease_sync(
+            profile.proxy_url or None,
+            context_for_call(
+                model=str(getattr(self, "_traffic_context", {}).get("model") or ""),
+                protocol=str(getattr(self, "_traffic_context", {}).get("protocol") or "chatgpt-api"),
+                connection_mode=connection_mode_for_profile(profile),
+            ),
+        )
+        if traffic_lease is not None:
+            profile = replace(profile, proxy_url=traffic_lease.proxy_url)
+        session = None
         try:
+            session = requests.Session(**proxy_settings.build_session_kwargs_from_profile(
+                profile, impersonate=self.fp["impersonate"], verify=True,
+                curl_infos=list(HTTP_TIMING_INFOS),
+            ))
             return session.put(url, headers=headers, data=data, timeout=timeout)
         finally:
-            session.close()
+            if session is not None:
+                session.close()
+            if traffic_lease is not None:
+                try:
+                    release_traffic_lease_sync(traffic_lease)
+                except TrafficMeterIntegrationError as error:
+                    logger.warning({"event": "traffic_meter_lease_release_failed", "error": str(error)})
 
     def _decode_editable_base64_image(self, base64_image: str, index: int) -> tuple[bytes, str, str, int, int]:
         raw = str(base64_image or "").strip()

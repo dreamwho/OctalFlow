@@ -91,6 +91,7 @@ import { currentQuotaDate, hashToken, normalizeEmail, normalizeUserBio } from ".
 import { normalizeRegistrationPolicyConsent } from "@/lib/registration-consent";
 import { normalizeUserRoleDefinitions, normalizeUserRoleId } from "@/lib/user-roles";
 import { ALL_ADMIN_PERMISSIONS, isFullAdminPermissions, normalizeAdminPermissions } from "@/lib/admin-permissions";
+import { normalizeTrafficDisplayUnit } from "@/lib/traffic-format";
 
 export { currentQuotaDate, hashToken, normalizeDisplayName, normalizeEmail, normalizeUserBio, normalizeUsername, parseSessionCookie, randomNumericCode, validateEmail, validatePassword, validateUsername } from "./store-auth-utils";
 
@@ -266,6 +267,7 @@ export function normalizeSettings(settings: AuthSettings): AuthSettings {
         generationPointMultipliers: normalizeGenerationPointMultipliers(settings.generationPointMultipliers),
         generationCostControl: normalizeGenerationCostControl(settings.generationCostControl),
         dataLifecycle: normalizeDataLifecycle(settings.dataLifecycle),
+        trafficUnit: normalizeTrafficDisplayUnit(settings.trafficUnit),
         entitlements: normalizeEntitlementSettings(settings.entitlements),
         generationConcurrency: normalizeGenerationConcurrency(settings.generationConcurrency),
         generationDefaults: normalizeGenerationDefaults(settings.generationDefaults),

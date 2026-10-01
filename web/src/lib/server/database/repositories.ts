@@ -192,6 +192,7 @@ class SettingsRepository {
         if (input.generationPointMultipliers !== undefined) add("generation_point_multipliers", jsonParam(input.generationPointMultipliers));
         if (input.generationCostControl !== undefined) add("generation_cost_control", jsonParam(input.generationCostControl));
         if (input.dataLifecycle !== undefined) add("data_lifecycle", jsonParam(input.dataLifecycle));
+        if (input.trafficUnit !== undefined) add("traffic_unit", input.trafficUnit);
         if (input.entitlementsEnabled !== undefined) add("entitlements_enabled", input.entitlementsEnabled);
         if (input.defaultPlanId !== undefined) add("default_plan_id", input.defaultPlanId);
         if (input.generationConcurrency !== undefined) add("generation_concurrency", jsonParam(input.generationConcurrency));
@@ -298,6 +299,7 @@ function mapSettings(row: Record<string, unknown>): AppSettingsRecord {
         generationPointMultipliers: jsonValue(row.generation_point_multipliers),
         generationCostControl: jsonValue(row.generation_cost_control),
         dataLifecycle: jsonValue(row.data_lifecycle),
+        trafficUnit: stringValue(row.traffic_unit),
         entitlementsEnabled: row.entitlements_enabled === true,
         defaultPlanId: stringValue(row.default_plan_id),
         generationConcurrency: jsonValue(row.generation_concurrency),

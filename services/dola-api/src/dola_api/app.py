@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 
 from .contracts import AccountInspectRequest, GoogleLoginRequest, GoogleLoginSessionRequest, VerificationInput, VerificationKeyboardInput, VerificationLease, VideoRequest
 from .session import CamoufoxSessionPool
-from .traffic import start_meter, close_meter, query_traffic
+from .traffic import bind_trusted_traffic_context, start_meter, close_meter, query_traffic_async
 
 pool = CamoufoxSessionPool()
 
@@ -45,8 +45,9 @@ async def models() -> dict:
 
 
 @app.post("/internal/runtime/v1/accounts/inspect", dependencies=[Depends(require_internal)])
-async def inspect_account(request: AccountInspectRequest) -> dict:
+async def inspect_account(request: AccountInspectRequest, x_dreamyo_traffic_context: str | None = Header(default=None)) -> dict:
     try:
+        request = bind_trusted_traffic_context(request, x_dreamyo_traffic_context)
         return await pool.inspect(request)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -55,8 +56,9 @@ async def inspect_account(request: AccountInspectRequest) -> dict:
 
 
 @app.post("/internal/runtime/v1/accounts/verify", dependencies=[Depends(require_internal)])
-async def verify_account(request: AccountInspectRequest) -> dict:
+async def verify_account(request: AccountInspectRequest, x_dreamyo_traffic_context: str | None = Header(default=None)) -> dict:
     try:
+        request = bind_trusted_traffic_context(request, x_dreamyo_traffic_context)
         return await pool.verify_account(request)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -65,8 +67,9 @@ async def verify_account(request: AccountInspectRequest) -> dict:
 
 
 @app.post("/internal/runtime/v1/accounts/headed-test", dependencies=[Depends(require_internal)])
-async def start_headed_test(request: AccountInspectRequest) -> dict:
+async def start_headed_test(request: AccountInspectRequest, x_dreamyo_traffic_context: str | None = Header(default=None)) -> dict:
     try:
+        request = bind_trusted_traffic_context(request, x_dreamyo_traffic_context)
         return await pool.start_headed_test(request)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -79,8 +82,9 @@ async def list_headed_tests() -> dict:
 
 
 @app.post("/internal/runtime/v1/videos", dependencies=[Depends(require_internal)])
-async def submit(request: VideoRequest) -> dict:
+async def submit(request: VideoRequest, x_dreamyo_traffic_context: str | None = Header(default=None)) -> dict:
     try:
+        request = bind_trusted_traffic_context(request, x_dreamyo_traffic_context)
         task = await pool.submit(request)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -93,6 +97,9 @@ async def submit(request: VideoRequest) -> dict:
         "accountId": task.accountId,
         "proxyMode": task.proxyMode,
         "proxyTarget": task.proxyTarget,
+        **({"requestId": task.requestId} if task.requestId else {}),
+        **({"trafficTaskId": task.trafficTaskId} if task.trafficTaskId else {}),
+        **({"attemptId": task.attemptId} if task.attemptId else {}),
         **({"conversationId": task.conversationId, "conversation_id": task.conversationId} if task.conversationId else {}),
         **({"verificationId": task.verificationId} if task.verificationId else {}),
         **({"screenshotBase64": task.screenshotBase64} if task.screenshotBase64 else {}),
@@ -106,8 +113,8 @@ async def submit(request: VideoRequest) -> dict:
 
 
 @app.post("/internal/runtime/v1/images", dependencies=[Depends(require_internal)])
-async def submit_image(request: VideoRequest) -> dict:
-    return await submit(request)
+async def submit_image(request: VideoRequest, x_dreamyo_traffic_context: str | None = Header(default=None)) -> dict:
+    return await submit(request, x_dreamyo_traffic_context)
 
 
 @app.get("/internal/runtime/v1/videos/{task_id}", dependencies=[Depends(require_internal)])
@@ -215,12 +222,15 @@ async def close_verification(verification_id: str, request: VerificationLease) -
 
 
 @app.post("/internal/runtime/v1/accounts/google-login", dependencies=[Depends(require_internal)])
-async def google_login(request: GoogleLoginRequest) -> dict:
+async def google_login(request: GoogleLoginRequest, x_dreamyo_traffic_context: str | None = Header(default=None)) -> dict:
     try:
+        request = bind_trusted_traffic_context(request, x_dreamyo_traffic_context)
         return await pool.start_google_login(
             proxy_mode=request.proxyMode,
             proxy_url=request.proxyUrl,
             timeout_seconds=request.timeoutSeconds,
+            traffic_metadata=request.trafficContext,
+            proxy_source=request.proxySource,
         )
     except TimeoutError as error:
         raise HTTPException(status_code=408, detail=str(error)) from error
@@ -231,9 +241,10 @@ async def google_login(request: GoogleLoginRequest) -> dict:
 
 
 @app.post("/internal/runtime/v1/accounts/google-login/session", dependencies=[Depends(require_internal)])
-async def start_google_login_session(request: GoogleLoginSessionRequest) -> dict:
+async def start_google_login_session(request: GoogleLoginSessionRequest, x_dreamyo_traffic_context: str | None = Header(default=None)) -> dict:
     try:
-        return await pool.start_google_login_session(request.ownerId, proxy_mode=request.proxyMode, proxy_source=request.proxySource, proxy_target=request.proxyTarget, proxy_url=request.proxyUrl, timeout_seconds=request.timeoutSeconds, headless=request.headless)
+        request = bind_trusted_traffic_context(request, x_dreamyo_traffic_context)
+        return await pool.start_google_login_session(request.ownerId, proxy_mode=request.proxyMode, proxy_source=request.proxySource, proxy_target=request.proxyTarget, proxy_url=request.proxyUrl, timeout_seconds=request.timeoutSeconds, headless=request.headless, traffic_metadata=request.trafficContext)
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:
@@ -249,6 +260,6 @@ def main() -> None:
 @app.get("/internal/runtime/v1/traffic", dependencies=[Depends(require_internal)])
 async def traffic(start: str, end: str, port: int | None = None) -> dict:
     try:
-        return query_traffic(start, end, port)
+        return await query_traffic_async(start, end, port)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

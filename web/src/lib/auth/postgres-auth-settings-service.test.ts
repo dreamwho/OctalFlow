@@ -115,4 +115,10 @@ describe("updatePostgresAuthSettings", () => {
             ],
         });
     });
+
+    it("persists the traffic display unit in PostgreSQL settings", async () => {
+        await updatePostgresAuthSettings({ trafficUnit: "GB" });
+
+        expect(mocks.updateSettings).toHaveBeenCalledWith({ trafficUnit: "GB" });
+    });
 });

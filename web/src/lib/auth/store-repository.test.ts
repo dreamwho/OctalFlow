@@ -41,6 +41,12 @@ describe("PostgreSQL auth read paths", () => {
         });
     });
 
+    it("normalizes the persisted traffic display unit and declares its schema column", () => {
+        expect(mapPostgresSettings({ traffic_unit: "GB" }, [], []).trafficUnit).toBe("GB");
+        expect(mapPostgresSettings({ traffic_unit: "KiB" }, [], []).trafficUnit).toBe("MB");
+        expect(POSTGRESQL_SCHEMA_SQL).toContain("traffic_unit text");
+    });
+
     it("loads persisted model picker categories", () => {
         const settings = mapPostgresSettings({ model_picker_groups: ["常用图片", "常用视频"] }, [], []);
         expect(settings.modelPickerGroups).toEqual(["常用图片", "常用视频"]);

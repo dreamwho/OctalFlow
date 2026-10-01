@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ isSafeOutboundUrl: vi.fn(async () => true), getChatGptModelCatalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ isSafeOutboundUrl: vi.fn(async () => true), getChatGptModelCatalog: vi.fn(), fetchSafeOutbound: vi.fn() }));
 vi.mock("@/lib/server/chatgpt-api-models", () => ({ getChatGptModelCatalog: mocks.getChatGptModelCatalog }));
-const savedChannel = { id: "saved", name: "已保存", baseUrl: "https://api.example.com/v1", apiKey: "test-secret-value", apiFormat: "openai", models: [], enabled: true };
+const savedChannel = { id: "saved", name: "已保存", baseUrl: "https://api.example.com/v1", apiKey: "test-secret-value", apiFormat: "openai", models: [], enabled: true, advancedConfig: { protocol: "compatible" } };
 
 vi.mock("@/lib/auth/session", () => ({ getCurrentUser: vi.fn(async () => ({ id: "admin", role: "admin", status: "active", adminPermissions: ["upstream.manage"] })) }));
 vi.mock("@/lib/auth/store", () => ({ getAuthSettings: vi.fn(async () => ({ systemChannels: [savedChannel] })) }));
 vi.mock("@/lib/server/security", () => ({ isSafeOutboundUrl: mocks.isSafeOutboundUrl }));
-vi.mock("@/lib/server/safe-outbound-fetch", () => ({ fetchSafeOutbound: (url: string | URL, init?: RequestInit) => fetch(url, init) }));
+vi.mock("@/lib/server/safe-outbound-fetch", () => ({
+    fetchSafeOutbound: (url: string | URL, init?: RequestInit, options?: unknown) => {
+        mocks.fetchSafeOutbound(url, init, options);
+        return fetch(url, init);
+    },
+}));
 vi.mock("@/lib/server/proxy-dispatcher", () => ({ configureServerProxyDispatcher: vi.fn() }));
 
 import { POST } from "./route";
@@ -34,6 +39,7 @@ describe("admin models route", () => {
         vi.restoreAllMocks();
         mocks.isSafeOutboundUrl.mockClear();
         mocks.isSafeOutboundUrl.mockResolvedValue(true);
+        mocks.fetchSafeOutbound.mockClear();
         savedChannel.apiKey = "test-secret-value";
         (globalThis as typeof globalThis & { __dreamyoProModelFetchCooldowns?: Map<string, number> }).__dreamyoProModelFetchCooldowns?.clear();
     });
@@ -44,6 +50,31 @@ describe("admin models route", () => {
         const response = await POST(request({ channelId: "saved" }));
         expect(await response.json()).toMatchObject({ models: ["gpt-test"], modelCapabilities: { "gpt-test": "text" }, discoveredCount: 1, totalCount: 1 });
         expect(fetchMock).toHaveBeenCalledWith("https://api.example.com/v1/models", expect.objectContaining({ headers: { authorization: "Bearer test-secret-value" } }));
+        expect(mocks.fetchSafeOutbound).toHaveBeenCalledWith(
+            "https://api.example.com/v1/models",
+            expect.any(Object),
+            expect.objectContaining({
+                trafficContext: {
+                    channelId: "saved",
+                    channelName: "已保存",
+                    model: "__unattributed__",
+                    protocol: "compatible",
+                    role: "catalog",
+                },
+            }),
+        );
+    });
+
+    it("does not invent a traffic identity for an unsaved catalog request", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "unsaved-model" }] }), { status: 200, headers: { "content-type": "application/json" } })),
+        );
+
+        const response = await POST(request({ baseUrl: "https://unsaved.example.com/v1", apiKey: "unsaved-secret" }));
+
+        expect(response.status).toBe(200);
+        expect(mocks.fetchSafeOutbound).toHaveBeenCalledWith("https://unsaved.example.com/v1/models", expect.any(Object), { allowProxyFakeIpSpace: true });
     });
 
     it("loads a keyless Stable Diffusion model catalog without authentication", async () => {

@@ -9,6 +9,8 @@ import copyToClipboard from "copy-to-clipboard";
 import { cancelDolaLogTask, clearDolaLogs, getDolaLogs, retrieveDolaUnwatermarkedUrl, type DolaAccount, type DolaLogPage, type DolaModel, type DolaRequestLog, type DolaRequestLogPhase, type DolaRequestLogStatus } from "@/services/api/dola";
 import { dolaErrorHint } from "@/lib/dola-errors";
 import { DolaVerificationDialog } from "@/app/(user)/canvas/components/dola-verification-dialog";
+import { AdminRequestTrafficDetail, AdminRequestTrafficSummary, collectRequestIds, getRequestTrafficSummary, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 
 type Props = {
     active: boolean;
@@ -39,6 +41,9 @@ export function DolaRequestLogPanel({ active, models, accounts, captureFailureSc
     const [selectedLog, setSelectedLog] = useState<DolaRequestLog | null>(null);
     const loadRevision = useRef(0);
     const [verificationTarget, setVerificationTarget] = useState<{ taskId: string; verificationId: string } | null>(null);
+    const trafficRequestIds = useMemo(() => collectRequestIds([...(page?.items || []), selectedLog]), [page?.items, selectedLog]);
+    const trafficRefreshKey = useMemo(() => [...(page?.items || []), selectedLog].map((item) => item ? `${item.id}:${item.phase}:${item.statusCode}:${item.durationMs}` : "").join("|"), [page?.items, selectedLog]);
+    const traffic = useAdminRequestTraffic(trafficRequestIds, [], trafficRefreshKey);
 
     const handleOpenVerification = (verificationId: string, taskId?: string) => {
         setVerificationTarget({ verificationId, taskId: taskId || "" });
@@ -139,11 +144,11 @@ export function DolaRequestLogPanel({ active, models, accounts, captureFailureSc
                     </Button>
                 </div>
                 <div aria-busy={loading} className="mt-1 divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {page?.items.length ? page.items.map((log) => <DolaRequestLogRow key={log.id} log={log} accountName={displayAccountName(log, accounts)} onClick={() => setSelectedLog(log)} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />) : <Empty className="my-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? "正在读取请求日志" : "暂无符合条件的请求记录"} />}
+                            {page?.items.length ? page.items.map((log) => <DolaRequestLogRow key={log.id} log={log} accountName={displayAccountName(log, accounts)} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], trafficRequestIdFromLog(log))} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} onClick={() => setSelectedLog(log)} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />) : <Empty className="my-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? "正在读取请求日志" : "暂无符合条件的请求记录"} />}
                 </div>
                 {page?.total ? <div className="flex justify-end border-t border-zinc-200 pt-3 dark:border-zinc-800"><Pagination current={page.page} pageSize={page.pageSize} total={page.total} showSizeChanger={false} showTotal={(total) => `共 ${total} 条`} onChange={setPageNumber} /></div> : null}
             </Card>
-            <DolaRequestLogDrawer log={selectedLog} accountName={selectedLog ? displayAccountName(selectedLog, accounts) : ""} onClose={() => setSelectedLog(null)} onTaskCancelled={() => { setSelectedLog((current) => current ? { ...current, phase: "cancelled", error: "admin_cancel" } : null); void load(); }} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />
+            <DolaRequestLogDrawer log={selectedLog} accountName={selectedLog ? displayAccountName(selectedLog, accounts) : ""} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], selectedLog ? trafficRequestIdFromLog(selectedLog) : undefined)} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} trafficError={traffic.error} onClose={() => setSelectedLog(null)} onTaskCancelled={() => { setSelectedLog((current) => current ? { ...current, phase: "cancelled", error: "admin_cancel" } : null); void load(); }} onOpenVerification={handleOpenVerification} onLaunchHeadedTest={onLaunchHeadedTest} />
             <DolaVerificationDialog
                 request={verificationTarget}
                 admin
@@ -180,12 +185,16 @@ function displayAccountName(log: Pick<DolaRequestLog, "accountId" | "accountName
         : log.accountName || (log.accountId ? "已删除账号" : "未识别账号");
 }
 
-function DolaRequestLogRow({ log, accountName, onClick, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog; accountName: string; onClick: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
+function trafficRequestIdFromLog(log: DolaRequestLog) {
+    return trafficRequestId(log as unknown as Record<string, unknown>) || log.id;
+}
+
+function DolaRequestLogRow({ log, accountName, trafficSummary, trafficDisplayUnit, trafficLoading, onClick, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog; accountName: string; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; onClick: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
     const pending = ["queued", "routing", "auth", "upstream", "response", "running", "submitted", "generating"].includes(log.phase);
     const needsReview = log.phase === "needs_review";
     const success = log.phase === "success";
     return (
-        <button type="button" className="grid w-full min-w-0 gap-3 px-2 py-3 text-left transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900/70 sm:grid-cols-[150px_minmax(0,1fr)_minmax(150px,0.6fr)_120px_24px] sm:items-center sm:px-1" onClick={onClick}>
+        <button type="button" className="grid w-full min-w-0 gap-3 px-2 py-3 text-left transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900/70 sm:grid-cols-[150px_minmax(0,1fr)_minmax(150px,0.6fr)_minmax(180px,0.8fr)_120px_24px] sm:items-center sm:px-1" onClick={onClick}>
             <div className="flex flex-wrap items-center gap-1.5">
                 <Tag color={pending ? "processing" : needsReview ? "gold" : success ? "success" : log.phase === "cancelled" ? "default" : "error"} className="m-0">{pending ? phaseLabel(log.phase) : needsReview ? "待确认" : success ? "生成完成" : log.phase === "cancelled" ? "已取消" : "生成失败"}</Tag>
                 <Tag color={sourceTagColor(log.source)} className="m-0 text-[11px]">{sourceLabel(log.source)}</Tag>
@@ -216,6 +225,7 @@ function DolaRequestLogRow({ log, accountName, onClick, onOpenVerification, onLa
                 </div>
             </div>
             <div className="min-w-0 text-xs text-zinc-500 dark:text-zinc-400"><div className="truncate" title={accountName}>{accountName}</div><div className="mt-0.5 truncate">{formatDate(log.createdAt)}</div>{log.quotaRemaining !== undefined ? <div className="mt-0.5 truncate">额度：{quotaLabel(log)}</div> : null}</div>
+            <AdminRequestTrafficSummary summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} />
             <div className="flex flex-col items-end gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                 <div>{formatDuration(log.durationMs)}</div>
                 <div className="flex flex-wrap items-center justify-end gap-1">
@@ -251,7 +261,7 @@ function DolaRequestLogRow({ log, accountName, onClick, onOpenVerification, onLa
     );
 }
 
-function DolaRequestLogDrawer({ log, accountName, onClose, onTaskCancelled, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog | null; accountName: string; onClose: () => void; onTaskCancelled?: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
+function DolaRequestLogDrawer({ log, accountName, trafficSummary, trafficDisplayUnit, trafficLoading, trafficError, onClose, onTaskCancelled, onOpenVerification, onLaunchHeadedTest }: { log: DolaRequestLog | null; accountName: string; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; trafficError?: string; onClose: () => void; onTaskCancelled?: () => void; onOpenVerification?: (verificationId: string, taskId?: string) => void; onLaunchHeadedTest?: (accountId: string, model?: string) => void }) {
     const { message } = App.useApp();
     const { width, resizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 660, minWidth: 440 });
     const [salvaging, setSalvaging] = useState(false);
@@ -352,6 +362,7 @@ function DolaRequestLogDrawer({ log, accountName, onClose, onTaskCancelled, onOp
             ) : null}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Highlight icon={<Clock className="size-3.5" />} label="耗时" value={formatDuration(log.durationMs)} /><Highlight icon={<BarChart3 className="size-3.5" />} label="响应" value={formatBytes(log.responseBytes)} /><Highlight icon={<CircleUserRound className="size-3.5" />} label="账号" value={accountName} /><Highlight icon={<Network className="size-3.5" />} label="代理" value={proxyLabel(log.proxyEgress)} /></div>
             <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">请求基本信息</h3><div className="grid gap-x-4 gap-y-3 rounded-lg border border-zinc-200 p-3.5 text-sm dark:border-zinc-800 sm:grid-cols-2"><Detail label="模型 ID" value={log.model || "未声明"} /><Detail label="能力类型" value={log.capability === "image" ? "图片" : "视频"} /><Detail label="调用来源" value={sourceLabel(log.source)} /><Detail label="请求路径" value={`${log.method} ${log.path}`} /><Detail label="状态码" value={log.statusCode ? String(log.statusCode) : "未返回"} /><Detail label="阶段" value={phaseLabel(log.phase)} /><Detail label="请求时间" value={formatDateWithMs(log.createdAt)} /><Detail label="耗时" value={formatDuration(log.durationMs)} />{log.accountId ? <Detail label="账号名称" value={accountName} /> : null}{log.proxyEgress && log.proxyEgress.mode !== "direct" ? <Detail label="代理节点名称" value={log.proxyEgress.nodeName || log.proxyEgress.address || "已配置节点"} /> : null}{log.proxyEgress?.address && log.proxyEgress.address !== log.proxyEgress.nodeName ? <Detail label="代理出口地址" value={log.proxyEgress.address} /> : null}{log.taskId ? <Detail label="上游任务 ID" value={log.taskId} /> : null}{log.verificationId ? <Detail label="验证会话 ID" value={log.verificationId} /> : null}{log.requestedDuration ? <Detail label="视频参数" value={`${log.requestedDuration} 秒 · ${log.ratio || "默认比例"}`} /> : null}{log.contentType ? <Detail label="响应类型" value={log.contentType} /> : null}{log.clientIp ? <Detail label="客户端 IP" value={log.clientIp} /> : null}</div></section>
+            <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">中心流量</h3><AdminRequestTrafficDetail summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} error={trafficError} /></section>
             {log.quotaRemaining !== undefined ? <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">额度观察</h3><div className="rounded-lg border border-zinc-200 p-3.5 text-sm dark:border-zinc-800"><div className="font-medium">{quotaLabel(log)}</div><div className="mt-1 text-xs text-zinc-500">仅记录 Provider 返回或账号快照中的额度，不把额度推断成成功结果。</div></div></section> : null}
             <section><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">过程日志与时序</h3><span className="text-xs text-zinc-500">共 {log.lifecycle?.length || 1} 个执行阶段 · 总历时 {formatDuration(log.durationMs)}</span></div>{log.lifecycle?.length ? <div className="space-y-2 rounded-lg border border-zinc-200 p-3.5 dark:border-zinc-800">{log.lifecycle.map((entry, index) => <div key={`${entry.time}-${index}`} className="flex items-start gap-3 text-xs"><span className={`mt-0.5 shrink-0 text-sm ${entry.phase === "success" ? "text-emerald-500" : entry.phase === "failed" ? "text-rose-500" : entry.phase === "needs_review" ? "text-amber-500" : "text-blue-500"}`}>{entry.phase === "success" ? "✓" : entry.phase === "failed" ? "✕" : "●"}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-zinc-400 dark:text-zinc-500">{formatDateWithMs(entry.time)}</span>{entry.durationMs !== undefined ? <Tag className="m-0 border-0 bg-zinc-100 text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">+{entry.durationMs}ms</Tag> : null}<Tag color={entry.phase === "success" ? "success" : entry.phase === "failed" ? "error" : entry.phase === "needs_review" ? "gold" : entry.phase === "cancelled" ? "default" : "processing"} className="m-0 text-[10px]">{phaseLabel(entry.phase)}</Tag><span className="font-medium text-zinc-800 dark:text-zinc-200">{entry.message}</span></div>{entry.detail ? <div className="mt-1 break-all rounded bg-zinc-50 p-2 font-mono text-[11px] leading-relaxed text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">{entry.detail}</div> : null}</div></div>)}</div> : <div className="rounded-lg border border-dashed border-zinc-200 p-4 text-center text-xs text-zinc-500 dark:border-zinc-800">未记录详细阶段日志</div>}</section>
             {log.requestPreview ? <LogPreview title="请求摘要" value={log.requestPreview} /> : null}{conversationReply ? <LogPreview title="Dola 会话回复" value={conversationReply} /> : null}{log.responsePreview ? <LogPreview title="响应摘要" value={log.responsePreview} /> : null}{errorHint && !log.error?.includes(errorHint) ? <Alert type="warning" showIcon message="错误分类" description={errorHint} /> : null}{log.error ? <LogPreview title="错误信息" value={log.error} danger /> : null}

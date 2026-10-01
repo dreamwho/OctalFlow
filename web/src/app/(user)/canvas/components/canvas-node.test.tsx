@@ -300,6 +300,13 @@ describe("CanvasNode task content", () => {
 });
 
 describe("CanvasNode error content", () => {
+    it.each(["light", "dark"] as const)("shows the portrait protection reason directly in the %s failed node", (themeName) => {
+        const markup = renderContent({ ...imageNode, metadata: { status: "error", errorDetails: "参考图中的人脸未通过肖像保护审核，请更换参考图或改用文生视频。" } }, canvasThemes[themeName]);
+        expect(markup).toContain("人脸未通过肖像保护审核");
+        expect(markup).toContain("再次生成");
+        expect(markup).not.toContain("data-canvas-node-loading");
+    });
+
     it("centers the retry action inside the node without exposing technical error copy", () => {
         const failedNode: CanvasNodeData = { ...imageNode, metadata: { status: "error", errorDetails: "生成失败，请稍后重试" } };
 

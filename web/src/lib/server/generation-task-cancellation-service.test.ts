@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/server/safe-outbound-fetch", () => ({ fetchSafeOutbound: (url: string | URL, init?: RequestInit) => fetch(url, init) }));
+const mocks = vi.hoisted(() => ({ fetchSafeOutbound: vi.fn() }));
+vi.mock("@/lib/server/safe-outbound-fetch", () => ({
+    fetchSafeOutbound: (url: string | URL, init?: RequestInit, options?: unknown) => {
+        mocks.fetchSafeOutbound(url, init, options);
+        return fetch(url, init);
+    },
+}));
 
 import { emptyAdvancedConfig } from "@/lib/channel-protocol-registry";
 import { createProtocolFixtureServer } from "../../../scripts/protocol-fixture-server.mjs";
@@ -12,6 +18,7 @@ describe("generation task upstream cancellation", () => {
     afterEach(async () => {
         await close?.();
         close = undefined;
+        mocks.fetchSafeOutbound.mockClear();
     });
 
     it("sends the configured method and task path with provider authentication", async () => {
@@ -28,6 +35,22 @@ describe("generation task upstream cancellation", () => {
         expect(fixture.requests).toHaveLength(1);
         expect(fixture.requests[0]).toMatchObject({ method: "POST", path: "/v1/videos/upstream-one/cancel" });
         expect(fixture.requests[0]?.headers.authorization).toBe("Bearer fixture-key");
+        expect(mocks.fetchSafeOutbound).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.any(Object),
+            expect.objectContaining({
+                allowProxyFakeIpSpace: true,
+                trafficContext: {
+                    channelId: "fixture-channel",
+                    channelName: "fixture-channel",
+                    model: "mock-video",
+                    protocol: "custom",
+                    role: "cancel",
+                    taskId: "video-one",
+                    requestId: "video-one",
+                },
+            }),
+        );
     });
 
     it("reports unsupported without contacting the provider when no cancel contract exists", async () => {

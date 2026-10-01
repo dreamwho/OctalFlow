@@ -7,6 +7,7 @@ import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { buildAdminSettingsPatch, resolveAdminSettingsAccess } from "@/components/admin/admin-settings-access";
 import { LabeledControl, SectionTitle, SettingInlineToggle, SettingToggle } from "@/components/admin/admin-settings-controls";
 import { SiteLogoPreview, SiteSettingStatus, siteSocialItems } from "@/components/admin/admin-site-preview";
+import type { TrafficDisplayUnit } from "@/lib/traffic-format";
 import { Button, Input, InputNumber, Radio, Switch, Tabs, Tag } from "antd";
 import { Database, Globe2, Image as ImageIcon, Mail, Megaphone, Palette, Plus, Save, Search, Send, SlidersHorizontal, Sparkles, Trash2, Upload, UserCog } from "lucide-react";
 
@@ -444,7 +445,29 @@ export function AdminSettingsSection({ controller, desktopEdition }: { controlle
                       label: "数据维护",
                       icon: <Database className="size-4" />,
                       children: (
-                          <section id="admin-settings-lifecycle">
+                          <section id="admin-settings-lifecycle" className="space-y-4">
+                              <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                                  <SectionTitle icon={<Database className="size-4" />} title="流量显示" />
+                                  <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">统一设置流量统计、请求日志和任务报告中的显示单位；底层仍保留精确字节数。</p>
+                                  <div className="mt-3 max-w-md">
+                                      <LabeledControl label="显示单位">
+                                          <Radio.Group
+                                              data-testid="admin-traffic-display-unit"
+                                              value={settings.trafficUnit}
+                                              onChange={(event) => {
+                                                  const trafficUnit = event.target.value as TrafficDisplayUnit;
+                                                  setSettings((current) => ({ ...current, trafficUnit }));
+                                                  void saveSettings({ trafficUnit }, "流量显示单位已保存");
+                                              }}
+                                              optionType="button"
+                                              buttonStyle="solid"
+                                          >
+                                              <Radio.Button value="MB">MB（十进制）</Radio.Button>
+                                              <Radio.Button value="GB">GB（十进制）</Radio.Button>
+                                          </Radio.Group>
+                                      </LabeledControl>
+                                  </div>
+                              </div>
                               <DataLifecyclePanel settings={settings} onChange={updateDataLifecycle} />
                           </section>
                       ),

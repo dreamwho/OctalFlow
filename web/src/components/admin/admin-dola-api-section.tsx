@@ -1,15 +1,15 @@
 "use client";
 
-import { Alert, App, Button, Card, Descriptions, DatePicker, Empty, Input, InputNumber, Modal, Popconfirm, Radio, Select, Space, Spin, Statistic, Switch, Table, Tabs, Tag, Upload } from "antd";
+import { Alert, App, Button, Card, Descriptions, Empty, Input, InputNumber, Modal, Popconfirm, Radio, Select, Space, Spin, Statistic, Switch, Table, Tabs, Tag, Upload } from "antd";
 import type { UploadProps } from "antd";
 import { Activity, Bot, CheckCircle2, Copy, Eye, EyeOff, FileKey2, KeyRound, Pencil, Play, RefreshCw, Search, Trash2, UploadCloud } from "lucide-react";
-import dayjs, { type Dayjs } from "dayjs";
 import { saveAs } from "file-saver";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { getDolaTraffic, type DolaTraffic, batchDeleteDolaAccounts, batchSetDolaAccountGroup, closeDolaGoogleLoginSession, closeDolaHeadedTest, completeDolaGoogleLoginSession, createDolaApiKey, deleteDolaAccount, deleteDolaApiKey, exportDolaGoogleAccountCookie, exportDolaGoogleAccountCookies, finalizeDolaHeadedTest, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, openDolaHeadedTest, refreshDolaAccount, resetDolaAccountQuota, startDolaGoogleLogin, startDolaGoogleLoginSession, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaApiKey, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
+import { batchDeleteDolaAccounts, batchSetDolaAccountGroup, closeDolaGoogleLoginSession, closeDolaHeadedTest, completeDolaGoogleLoginSession, createDolaApiKey, deleteDolaAccount, deleteDolaApiKey, exportDolaGoogleAccountCookie, exportDolaGoogleAccountCookies, finalizeDolaHeadedTest, getDolaAdminState, getDolaTestTask, importDolaAccounts, listDolaHeadedTests, openDolaHeadedTest, refreshDolaAccount, resetDolaAccountQuota, startDolaGoogleLogin, startDolaGoogleLoginSession, startDolaHeadedTest, testDolaVideo, updateDolaAccount, updateDolaApiKey, updateDolaGateway, type DolaAdminState, type DolaApiKey, type DolaAccount, type DolaTestResult } from "@/services/api/dola";
 import { genericProxyRequest, type ChatGptProxyView } from "@/services/api/generic-proxy";
 import { dolaErrorHint } from "@/lib/dola-errors";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
 import { DolaVerificationDialog } from "@/app/(user)/canvas/components/dola-verification-dialog";
 import { MagicProxyBindingCard } from "@/components/admin/magic-proxy-binding-card";
 import { DolaRequestLogPanel } from "@/components/admin/dola-request-log-panel";
@@ -133,7 +133,7 @@ export function AdminDolaApiSection() {
         ]} />
         {loading && !state ? <Card><Spin /> 读取 Dola API 状态…</Card> : null}
         {activeTab === "accounts" ? <AccountsPanel state={state} onRefresh={load} onImport={() => setImportOpen(true)} onTest={() => openTestModal()} onTestAccount={(accountId, headless) => openTestModal({ accountId, headless })} onSaveRotationLimit={saveRotationLimit} onManageProxy={() => setActiveTab("proxy")} /> : null}
-        {activeTab === "statistics" ? <div className="space-y-4"><StatisticsPanel state={state} /><TrafficPanel /></div> : null}
+        {activeTab === "statistics" ? <div className="space-y-4"><StatisticsPanel state={state} /><AdminTrafficPanel protocol="dola" title="Dola 流量统计" /></div> : null}
         {activeTab === "gateway" ? <GatewayPanel state={state} onToggle={toggleGateway} onToggleAutoWatermark={toggleAutoWatermark} onToggleCaptureScreenshot={toggleCaptureFailureScreenshot} onToggleRandomFingerprint={toggleRandomFingerprint} onSavePollInterval={savePollInterval} rawKey={rawKey} setRawKey={setRawKey} open={keyOpen} setOpen={setKeyOpen} name={keyName} setName={setKeyName} onCreated={load} /> : null}
         {activeTab === "logs" ? <DolaRequestLogPanel active models={state?.models || []} accounts={state?.accounts || []} captureFailureScreenshot={state?.gateway.captureFailureScreenshot} onToggleCaptureFailureScreenshot={toggleCaptureFailureScreenshot} onLaunchHeadedTest={(accountId, model) => openTestModal({ accountId, model, headless: false })} /> : null}
         {activeTab === "proxy" ? <div className="space-y-4"><MagicProxyBindingCard provider="dola" /><MagicProxyBindingCard provider="dolaUpload" /></div> : null}
@@ -1179,49 +1179,4 @@ function GatewayPanel({ state, onToggle, onToggleAutoWatermark, onToggleCaptureS
             </Modal>
         </div>
     );
-}
-
-function TrafficPanel() {
-    const [range, setRange] = useState<[Dayjs, Dayjs]>(() => [dayjs().startOf("day"), dayjs()]);
-    const [port, setPort] = useState<number | undefined>();
-    const [data, setData] = useState<DolaTraffic | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-    const serial = useRef(0);
-    const load = useCallback(async () => {
-        const version = ++serial.current;
-        setLoading(true); setError(""); setData(null);
-        try {
-            const result = await getDolaTraffic(range[0].toISOString(), range[1].toISOString(), port);
-            if (serial.current === version) setData(result);
-        } catch (reason) {
-            if (serial.current === version) setError(reason instanceof Error ? reason.message : "读取流量失败");
-        } finally { if (serial.current === version) setLoading(false); }
-    }, [range, port]);
-    useEffect(() => { void load(); return () => { serial.current += 1; }; }, [load]);
-    const bytes = (value: number) => `${value.toLocaleString()} B`;
-    return <Card title="DOLA 出口流量">
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-            <div className="min-w-0 max-w-full"><DatePicker.RangePicker showTime value={range} onChange={(value) => { if (value?.[0] && value[1]) setRange([value[0], value[1]]); }} allowClear={false} /></div>
-            <InputNumber aria-label="代理端口" placeholder="全部端口" min={0} max={65535} precision={0} value={port} onChange={(value) => setPort(value ?? undefined)} />
-            <Button onClick={() => setRange([dayjs().startOf("day"), dayjs()])}>今天</Button>
-            <Button onClick={() => setRange([dayjs().subtract(7, "day").startOf("day"), dayjs()])}>近 7 天</Button>
-            <Button onClick={() => void load()} loading={loading}>查询</Button>
-        </div>
-        <Alert type="info" showIcon message="按所选时间范围统计实际上行和下行" description="含图片二进制、浏览器页面和协议请求；统计 Provider 出口 TCP 字节，包含代理握手和 HTTPS 加密数据，不含 TCP/IP 包头、重传及链式代理后续跳点。直连端口记为 0；此数据不能等同于代理商账单。统计从本次功能启用后开始，时间范围含开始、不含结束。" />
-        {error ? <Alert className="mt-3" type="error" showIcon message={error} /> : null}
-        <div className="grid gap-3 sm:grid-cols-3 my-3">
-            <Statistic title="上行" value={data?.uploadBytes ?? 0} formatter={(value) => bytes(Number(value))} />
-            <Statistic title="下行" value={data?.downloadBytes ?? 0} formatter={(value) => bytes(Number(value))} />
-            <Statistic title="合计" value={data?.totalBytes ?? 0} formatter={(value) => bytes(Number(value))} />
-        </div>
-        <Table size="small" loading={loading} dataSource={data?.items ?? []} rowKey={(row) => `${row.role}:${row.address}:${row.port}`} pagination={false} scroll={{ x: 640 }} columns={[
-            { title: "用途", dataIndex: "role", render: (role: string) => role === "upload" ? "参考图传输" : "提交 / 查询 / 浏览器" },
-            { title: "出口地址", dataIndex: "address" },
-            { title: "代理端口", dataIndex: "port", render: (value: number) => value || "直连" },
-            { title: "上行", dataIndex: "uploadBytes", render: bytes },
-            { title: "下行", dataIndex: "downloadBytes", render: bytes },
-            { title: "合计", dataIndex: "totalBytes", render: bytes },
-        ]} />
-    </Card>;
 }

@@ -62,4 +62,11 @@ describe("admin site settings save pipeline", () => {
         const reloaded = (await getAuthSettings()).site;
         expect(reloaded.title).toBe("dreamyo AI 平台");
     });
+
+    it("persists the traffic display unit across a fresh settings read", async () => {
+        const saved = await setAuthSettings({ trafficUnit: "GB" });
+
+        expect(saved.trafficUnit).toBe("GB");
+        expect((await getAuthSettings()).trafficUnit).toBe("GB");
+    });
 });

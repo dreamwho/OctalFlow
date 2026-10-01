@@ -1,5 +1,6 @@
 import { resolveGlobalAiOpcPreset } from "@/lib/globalaiopc-catalog";
 import { generationModelId, systemGenerationChannelId } from "@/lib/server/generation-channel";
+import { withTrafficContext, generationTrafficContext } from "@/lib/server/traffic-context";
 import { generationMediaProxyHeaders } from "@/lib/server/generation-media-authorization";
 import { finishGenerationAttempt } from "@/lib/server/generation-attempt";
 import { fetchInternalApi } from "@/lib/server/internal-origin";
@@ -19,11 +20,15 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { getDolaAccount, releaseDolaAccountAttempt, markDolaAccountQuotaExhausted, markDolaAccountRateLimited, markDolaAccountRestricted, setDolaAccountStatus } from "@/lib/server/dola/account-service";
 import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
 import { advanceDolaTaskLog, findDolaTaskLogIdByTaskId, retargetDolaRequestLogTask } from "@/lib/server/dola/log-store";
-import { isDolaQuotaExhaustedError, isDolaRateLimitError, shouldRotateAccountForError } from "@/lib/dola-errors";
+import { describeDolaFailure, isDolaPortraitProtectionError, isDolaQuotaExhaustedError, isDolaRateLimitError, shouldRotateAccountForError } from "@/lib/dola-errors";
 import { resolveDolaWatermarkUrlRemote } from "@/lib/server/dola/watermark-url";
 import { resolveDolaProxyEgress } from "@/lib/server/dola/proxy";
 
-export type VideoUpstreamStep = { state: "pending"; status: string } | { state: "result_ready"; status: string; resultUrl: string; watermarkPayload?: unknown } | { state: "needs_review"; status: string; error: string; verificationId?: string } | { state: "failed"; status: string; error: string };
+export type VideoUpstreamStep =
+    | { state: "pending"; status: string }
+    | { state: "result_ready"; status: string; resultUrl: string; watermarkPayload?: unknown }
+    | { state: "needs_review"; status: string; error: string; verificationId?: string }
+    | { state: "failed"; status: string; error: string };
 
 export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: string, cookie: string) {
     const polling = taskPollingPolicy(task);
@@ -55,6 +60,10 @@ export async function refreshVideoTaskFromUpstream(task: VideoTask, origin: stri
 
 /** 账号级错误允许换号；只有真实账号状态错误才写回账号池，浏览器/代理故障不污染账号。 */
 export async function rotateDolaRateLimitedVideoTask(task: VideoTask, origin: string, cookie: string, workerUserId: string, error: string) {
+    return withTrafficContext(generationTrafficContext(task.config, "submit", task.id), () => rotateDolaRateLimitedVideoTaskInternal(task, origin, cookie, workerUserId, error));
+}
+
+async function rotateDolaRateLimitedVideoTaskInternal(task: VideoTask, origin: string, cookie: string, workerUserId: string, error: string) {
     if (/^uploading_references\s*:/i.test(error)) return null;
     if (task.upstream.accountId) {
         if (isDolaQuotaExhaustedError(error)) await markDolaAccountQuotaExhausted(task.upstream.accountId, error.slice(0, 300)).catch(() => undefined);
@@ -137,12 +146,16 @@ async function safeAdvanceDolaRotateLog(id: string, advance: Parameters<typeof a
 }
 
 export async function queryVideoTaskUpstream(task: VideoTask, origin: string, cookie = "", workerUserId = ""): Promise<VideoUpstreamStep> {
+    return withTrafficContext(generationTrafficContext(task.config, "query", task.id), () => queryVideoTaskUpstreamInternal(task, origin, cookie, workerUserId));
+}
+
+async function queryVideoTaskUpstreamInternal(task: VideoTask, origin: string, cookie: string, workerUserId: string): Promise<VideoUpstreamStep> {
     if (task.upstream.resultUrl) return { state: "result_ready", status: "completed", resultUrl: task.upstream.resultUrl };
     if (isDreaminaCliVideoTask(task.config)) return queryDreaminaCliVideoTask(task);
     if (isGeminiVideoTask(task)) return queryGeminiVideoUpstream(task, origin, cookie, workerUserId);
     const data = await queryVideoUpstream(task, origin, cookie, workerUserId);
     const status = readVideoProviderStatus(data, task.config.advancedConfig?.statusField);
-    const rawVerificationId = data && typeof data === "object" ? (data as Record<string, unknown>).verificationId ?? (data as Record<string, unknown>).verification_id : undefined;
+    const rawVerificationId = data && typeof data === "object" ? ((data as Record<string, unknown>).verificationId ?? (data as Record<string, unknown>).verification_id) : undefined;
     const verificationId = typeof rawVerificationId === "string" && rawVerificationId.trim() ? rawVerificationId.trim() : undefined;
     const isDola = task.config.advancedConfig?.protocol === "dola";
     if (status === "needs_review" || status === "verification_required" || (isDola && status === "submission_unknown")) {
@@ -150,20 +163,23 @@ export async function queryVideoTaskUpstream(task: VideoTask, origin: string, co
             const error = isDola ? "Dola 需要人工完成页面验证" : "上游需要人工完成验证";
             return { state: "needs_review", status, error, verificationId };
         }
-        const error = isDola
-            ? status === "submission_unknown"
-                ? "Dola 提交响应未返回任务标识，且未检测到验证页面"
-                : "Dola 返回待确认状态，但未提供验证会话"
-            : "上游返回待确认状态，但未提供验证会话";
+        const error = isDola ? (status === "submission_unknown" ? "Dola 提交响应未返回任务标识，且未检测到验证页面" : "Dola 返回待确认状态，但未提供验证会话") : "上游返回待确认状态，但未提供验证会话";
         return { state: "failed", status: status || "failed", error };
     }
     const resultUrl = readVideoProviderUrl(data, task.config.advancedConfig?.resultField) || contentEndpointResultUrl(task, status);
     if (resultUrl || VIDEO_PROVIDER_SUCCESS.has(status)) {
         return resultUrl
-            ? { state: "result_ready", status: status || "completed", resultUrl, ...(task.config.advancedConfig?.protocol === "dola" && data && typeof data === "object" && "vodPayload" in data ? { watermarkPayload: (data as Record<string, unknown>).vodPayload } : {}) }
+            ? {
+                  state: "result_ready",
+                  status: status || "completed",
+                  resultUrl,
+                  ...(task.config.advancedConfig?.protocol === "dola" && data && typeof data === "object" && "vodPayload" in data ? { watermarkPayload: (data as Record<string, unknown>).vodPayload } : {}),
+              }
             : { state: "failed", status: status || "completed", error: "视频任务已完成但没有返回视频地址" };
     }
-    if (isProviderBusinessError(data) || VIDEO_PROVIDER_FAILED.has(status)) return { state: "failed", status: status || "failed", error: readProviderError(data) || "视频生成失败" };
+    const error = readProviderError(data);
+    if (isDola && isDolaPortraitProtectionError(error)) return { state: "failed", status: "failed", error: describeDolaFailure(error) };
+    if (isProviderBusinessError(data) || VIDEO_PROVIDER_FAILED.has(status)) return { state: "failed", status: status || "failed", error: error || "视频生成失败" };
     return { state: "pending", status: status || "processing" };
 }
 
@@ -190,7 +206,7 @@ async function queryGeminiVideoUpstream(task: VideoTask, origin: string, cookie:
 }
 
 export async function persistVideoTaskResult(task: VideoTask, resultUrl: string, origin: string, cookie = "", workerUserId = "", watermarkPayload?: unknown) {
-    return completeVideoTask(task, resultUrl, origin, cookie, workerUserId, watermarkPayload);
+    return withTrafficContext(generationTrafficContext(task.config, "download", task.id), () => completeVideoTask(task, resultUrl, origin, cookie, workerUserId, watermarkPayload));
 }
 
 export async function failVideoTaskFromWorker(task: VideoTask, error: string, retryable = false) {
@@ -278,10 +294,7 @@ export function isDolaVideoTask(task: { config?: { channelId?: string; id?: stri
     }
     const upstream = task?.upstream;
     if (upstream) {
-        if (
-            (typeof upstream.id === "string" && upstream.id.startsWith("dola-")) ||
-            (typeof upstream.provider === "string" && upstream.provider === "dola")
-        ) {
+        if ((typeof upstream.id === "string" && upstream.id.startsWith("dola-")) || (typeof upstream.provider === "string" && upstream.provider === "dola")) {
             return true;
         }
     }

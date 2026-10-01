@@ -1,22 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-    agents: [] as Array<{ options: Record<string, unknown>; close: ReturnType<typeof vi.fn> }>,
+    agents: [] as Array<{ options: Record<string, unknown>; close: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }>,
     fetch: vi.fn(),
     resolve: vi.fn(),
     isPublic: vi.fn(() => true),
     isProxyFakeIp: vi.fn(() => false),
     proxyUrl: vi.fn(() => ""),
+    lease: vi.fn(),
 }));
 vi.mock("undici", () => ({
     Agent: class {
         close = vi.fn(async () => undefined);
+        destroy = vi.fn(async () => undefined);
         constructor(public options: Record<string, unknown>) {
             mocks.agents.push(this);
         }
     },
     ProxyAgent: class {
         close = vi.fn(async () => undefined);
+        destroy = vi.fn(async () => undefined);
         constructor(public options: Record<string, unknown>) {
             mocks.agents.push(this);
         }
@@ -30,6 +33,8 @@ vi.mock("@/lib/server/outbound-url-security", () => ({
 }));
 vi.mock("@/lib/server/proxy-dispatcher", () => ({ resolveServerProxyUrl: mocks.proxyUrl }));
 
+vi.mock("@/lib/server/traffic-meter-client", () => ({ createTrafficLease: mocks.lease }));
+
 import { fetchSafeOutbound, UnsafeOutboundUrlError } from "./safe-outbound-fetch";
 import { GENERATION_TRANSPORT_TIMEOUT_MS } from "./generation-http-lifecycle";
 
@@ -38,6 +43,7 @@ describe("safe outbound fetch", () => {
         vi.clearAllMocks();
         mocks.agents.length = 0;
         mocks.resolve.mockReset();
+        mocks.lease.mockReset().mockResolvedValue(null);
         mocks.isPublic.mockReturnValue(true);
         mocks.proxyUrl.mockReturnValue("");
         mocks.fetch.mockResolvedValue(Response.json({ ok: true }));
@@ -104,5 +110,48 @@ describe("safe outbound fetch", () => {
 
         expect(mocks.proxyUrl).not.toHaveBeenCalled();
         expect(mocks.agents.at(-1)?.options).toMatchObject({ uri: "http://mihomo-listener.test:17891/" });
+    });
+    it("pins metered DNS and releases the per-request lease after the response is consumed", async () => {
+        const release = vi.fn(async () => undefined);
+        mocks.resolve.mockResolvedValue({ url: new URL("https://provider.example/image"), address: "8.8.4.4", family: 4 });
+        mocks.lease.mockResolvedValue({ proxyUrl: "http://meter.test:10001", release });
+        const response = await fetchSafeOutbound(
+            "https://provider.example/image",
+            { method: "POST", body: "image" },
+            {
+                trafficContext: { channelId: "channel-a", channelName: "渠道 A", model: "image-a", protocol: "openai" },
+            },
+        );
+        expect(mocks.lease).toHaveBeenCalledWith("", expect.objectContaining({ channelId: "channel-a", model: "image-a", role: "submit", connectionMode: "direct" }), [{ hostname: "provider.example", address: "8.8.4.4" }], undefined);
+        expect(mocks.agents.at(-1)?.options).toMatchObject({ uri: "http://meter.test:10001", requestTls: { servername: "provider.example" } });
+        expect(release).not.toHaveBeenCalled();
+        await expect(response.json()).resolves.toEqual({ ok: true });
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(mocks.agents.at(-1)?.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("releases streamed leases on cancellation and failed requests without pooling model contexts", async () => {
+        const releases = [vi.fn(async () => undefined), vi.fn(async () => undefined)];
+        mocks.resolve.mockResolvedValue({ url: new URL("https://provider.example/stream"), address: "8.8.8.8", family: 4 });
+        mocks.lease.mockResolvedValueOnce({ proxyUrl: "http://meter.test:10002", release: releases[0] }).mockResolvedValueOnce({ proxyUrl: "http://meter.test:10003", release: releases[1] });
+        mocks.fetch
+            .mockResolvedValueOnce(
+                new Response(
+                    new ReadableStream({
+                        start(controller) {
+                            controller.enqueue(new Uint8Array([1]));
+                        },
+                    }),
+                ),
+            )
+            .mockRejectedValueOnce(new Error("upstream disconnected"));
+        const context = { channelId: "channel-a", channelName: "渠道 A", model: "model-a", protocol: "openai" };
+        const response = await fetchSafeOutbound("https://provider.example/stream", {}, { trafficContext: context });
+        await response.body?.cancel();
+        await expect(fetchSafeOutbound("https://provider.example/stream", {}, { trafficContext: { ...context, model: "model-b" } })).rejects.toThrow("upstream disconnected");
+        expect(releases[0]).toHaveBeenCalledTimes(1);
+        expect(releases[1]).toHaveBeenCalledTimes(1);
+        expect(mocks.agents.at(-2)).not.toBe(mocks.agents.at(-1));
+        expect(mocks.lease.mock.calls.map((call) => call[1].model)).toEqual(["model-a", "model-b"]);
     });
 });

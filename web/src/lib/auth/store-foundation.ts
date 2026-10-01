@@ -57,6 +57,7 @@ import {
     type AuthSettings,
     type AuthDatabase,
 } from "./store-types";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 
 export class AuthInputError extends Error {
     constructor(
@@ -169,6 +170,7 @@ export const DEFAULT_SETTINGS: AuthSettings = {
     generationPointMultipliers: DEFAULT_GENERATION_POINT_MULTIPLIERS,
     generationCostControl: DEFAULT_GENERATION_COST_CONTROL,
     dataLifecycle: DEFAULT_DATA_LIFECYCLE,
+    trafficUnit: DEFAULT_TRAFFIC_DISPLAY_UNIT,
     entitlements: DEFAULT_ENTITLEMENT_SETTINGS,
     generationConcurrency: { agent: 2, image: 4, video: 1, audio: 2, text: 4, render: 1, workerLanes: 4 },
     generationDefaults: {

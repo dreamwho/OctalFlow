@@ -225,6 +225,20 @@ describe("video generation candidate failover", () => {
         }
     });
 
+    it("returns a portrait refusal immediately without trying another candidate", async () => {
+        mocks.getAuthSettings.mockResolvedValue({
+            ...settings,
+            systemChannels: [{ ...channels[0], advancedConfig: { protocol: "dola", createPath: "/v1/videos" } }, channels[1]],
+        });
+        mocks.fetchInternalApi.mockResolvedValue(json({ id: "dola-refused", status: "failed", error: "portrait_protection_failed" }));
+        const response = await POST(request());
+        const error = "参考图中的人脸未通过肖像保护审核，请更换参考图或改用文生视频。";
+        expect(response.status).toBe(502);
+        expect(await response.json()).toMatchObject({ error, canRetry: true });
+        expect(mocks.fetchInternalApi).toHaveBeenCalledOnce();
+        expect(mocks.transitionVideoTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: "error", error }));
+    });
+
     it("surfaces an explicit HTTP 200 business failure after safe candidate fallback", async () => {
         mocks.fetchInternalApi.mockImplementation(async () => json({ code: "204", msg: "登录验证失败" }));
 

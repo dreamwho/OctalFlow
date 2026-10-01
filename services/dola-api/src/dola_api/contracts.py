@@ -22,7 +22,9 @@ class VideoRequest(BaseModel):
     proxyTarget: str | None = None
     proxyUrl: str | None = None
     imagexProxyMode: Literal["direct", "managed"] | None = None
+    imagexProxySource: Literal["direct", "magic", "generic", "chained"] | None = None
     imagexProxyUrl: str | None = None
+    trafficContext: dict[str, str] | None = None
     cookie: str | None = None
     requestId: str | None = None
     headless: bool | None = None
@@ -37,6 +39,9 @@ class VideoTask(BaseModel):
     id: str
     model: str
     status: Literal["queued", "running", "accepted", "completed", "failed", "needs_review"]
+    requestId: str | None = None
+    trafficTaskId: str | None = None
+    attemptId: str | None = None
     accountId: str | None = None
     credentialVersion: int | None = None
     proxyMode: Literal["direct", "managed"] = "direct"
@@ -66,6 +71,7 @@ class AccountInspectRequest(BaseModel):
     timeoutSeconds: int | None = None
     authOnly: bool = False
     randomFingerprint: bool = False
+    trafficContext: dict[str, str] | None = None
     userAgent: str | None = None
     acceptLanguage: str | None = None
 
@@ -101,6 +107,7 @@ class GoogleLoginRequest(BaseModel):
     proxyTarget: str | None = None
     proxyUrl: str | None = None
     timeoutSeconds: int = Field(default=180, gt=0)
+    trafficContext: dict[str, str] | None = None
 
 
 class GoogleLoginSessionRequest(GoogleLoginRequest):

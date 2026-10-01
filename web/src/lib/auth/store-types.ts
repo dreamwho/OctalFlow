@@ -5,6 +5,7 @@ import type { AdminPermission } from "@/lib/admin-permissions";
 import type { GlobalAiOpcPresetId } from "@/lib/globalaiopc-catalog";
 import type { RegistrationPolicyConsent } from "@/lib/registration-consent";
 import { dreamyo_QQ_GROUP_URL } from "@/constant/community";
+import type { TrafficDisplayUnit } from "@/lib/traffic-format";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type SystemChannelProtocol =
@@ -566,6 +567,7 @@ export type AuthSettings = {
     generationPointMultipliers: GenerationPointMultipliers;
     generationCostControl: GenerationCostControlSettings;
     dataLifecycle: DataLifecycleSettings;
+    trafficUnit: TrafficDisplayUnit;
     entitlements: EntitlementSettings;
     generationConcurrency: GenerationConcurrencySettings;
     generationDefaults: GenerationDefaultSettings;

@@ -134,6 +134,9 @@ resolve_expected_image_archives() {
         if grep -q '^DREAMYO_DOLA_API_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/dola-api.tar" ]]; then
             archives+=(images/dola-api.tar)
         fi
+        if grep -q '^DREAMYO_TRAFFIC_METER_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/traffic-meter.tar" ]]; then
+            archives+=(images/traffic-meter.tar)
+        fi
         if grep -q '^DREAMYO_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/magic-proxy.tar" ]]; then
             archives+=(images/magic-proxy.tar)
         fi
@@ -316,6 +319,10 @@ DOLA_API_IMAGE=""
 if grep -q '^DREAMYO_DOLA_API_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
     DOLA_API_IMAGE="$(read_manifest_value DREAMYO_DOLA_API_IMAGE)"
 fi
+TRAFFIC_METER_IMAGE=""
+if grep -q '^DREAMYO_TRAFFIC_METER_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
+    TRAFFIC_METER_IMAGE="$(read_manifest_value DREAMYO_TRAFFIC_METER_IMAGE)"
+fi
 MAGIC_PROXY_IMAGE=""
 if grep -q '^DREAMYO_MAGIC_PROXY_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
     MAGIC_PROXY_IMAGE="$(read_manifest_value DREAMYO_MAGIC_PROXY_IMAGE)"
@@ -420,6 +427,7 @@ generate_token() {
 set_env_value DREAMYO_DOCKER_PLATFORM "$PACKAGE_PLATFORM"
 set_env_value DREAMYO_IMAGE "$APP_IMAGE"
 set_env_value DREAMYO_GEMINIAI_IMAGE "$GEMINIAI_IMAGE"
+set_env_value DREAMYO_TRAFFIC_METER_IMAGE "$TRAFFIC_METER_IMAGE"
 set_env_value DREAMYO_MAGIC_PROXY_IMAGE "$MAGIC_PROXY_IMAGE"
 if [[ "$DATABASE_MODE" == embedded ]]; then
     set_env_value DREAMYO_POSTGRES_IMAGE "$POSTGRES_IMAGE"
@@ -457,6 +465,7 @@ ensure_env_value DREAMYO_TRUSTED_PROXY_HOPS "${DREAMYO_TRUSTED_PROXY_HOPS:-0}"
 ensure_env_value DREAMYO_GEMINIAI_API_KEY "${DREAMYO_GEMINIAI_API_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_CHATGPT_API_KEY "${DREAMYO_CHATGPT_API_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_DOLA_PROVIDER_KEY "${DREAMYO_DOLA_PROVIDER_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_TRAFFIC_METER_KEY "${DREAMYO_TRAFFIC_METER_KEY:-$(generate_token)}"
 # GeminiTools OAuth 凭据由打包机注入部署包 .env.example，服务器 .env 缺失时自动种子
 seed_env_from_example() {
     local key="$1" value
@@ -477,12 +486,14 @@ seed_env_from_example DREAMYO_WORKER_TOKEN
 seed_env_from_example DREAMYO_GEMINIAI_API_KEY
 seed_env_from_example DREAMYO_CHATGPT_API_KEY
 seed_env_from_example DREAMYO_DOLA_PROVIDER_KEY
+seed_env_from_example DREAMYO_TRAFFIC_METER_KEY
 seed_env_from_example DREAMYO_MAGIC_PROXY_SECRET
 seed_env_from_example DREAMYO_ALLOW_PRIVATE_UPSTREAMS
 seed_env_from_example DREAMYO_PRIVATE_UPSTREAM_HOSTS
 
 ensure_env_value DREAMYO_CHATGPT_API_KEY "${DREAMYO_CHATGPT_API_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_DOLA_PROVIDER_KEY "${DREAMYO_DOLA_PROVIDER_KEY:-$(generate_token)}"
+ensure_env_value DREAMYO_TRAFFIC_METER_KEY "${DREAMYO_TRAFFIC_METER_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_MAGIC_PROXY_SECRET "${DREAMYO_MAGIC_PROXY_SECRET:-$(generate_token)}"
 ensure_env_value DREAMYO_ENCRYPTION_KEY "${DREAMYO_ENCRYPTION_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_INSTALL_TOKEN "${DREAMYO_INSTALL_TOKEN:-$(generate_token)}"
@@ -533,7 +544,7 @@ fi
 
 encryption_key="$(read_env_value DREAMYO_ENCRYPTION_KEY)"
 [[ "${#encryption_key}" -ge 32 ]] || die "DREAMYO_ENCRYPTION_KEY 至少需要 32 个字符"
-for key in DREAMYO_INSTALL_TOKEN DREAMYO_MAINTENANCE_TOKEN DREAMYO_WORKER_TOKEN DREAMYO_GEMINIAI_API_KEY DREAMYO_CHATGPT_API_KEY DREAMYO_DOLA_PROVIDER_KEY DREAMYO_MAGIC_PROXY_SECRET; do
+for key in DREAMYO_INSTALL_TOKEN DREAMYO_MAINTENANCE_TOKEN DREAMYO_WORKER_TOKEN DREAMYO_GEMINIAI_API_KEY DREAMYO_CHATGPT_API_KEY DREAMYO_DOLA_PROVIDER_KEY DREAMYO_TRAFFIC_METER_KEY DREAMYO_MAGIC_PROXY_SECRET; do
     value="$(read_env_value "$key")"
     [[ "${#value}" -ge 32 ]] || die "$key 至少需要 32 个字符"
 done
@@ -552,6 +563,9 @@ docker image inspect "$APP_IMAGE" >/dev/null 2>&1 || die "主应用镜像未加�
 docker image inspect "$GEMINIAI_IMAGE" >/dev/null 2>&1 || die "GeminiAI 镜像未加载：$GEMINIAI_IMAGE"
 if [[ -n "$DOLA_API_IMAGE" ]]; then
     docker image inspect "$DOLA_API_IMAGE" >/dev/null 2>&1 || die "Dola Provider 镜像未加载：$DOLA_API_IMAGE"
+fi
+if [[ -n "$TRAFFIC_METER_IMAGE" ]]; then
+    docker image inspect "$TRAFFIC_METER_IMAGE" >/dev/null 2>&1 || die "Traffic meter 镜像未加载：$TRAFFIC_METER_IMAGE"
 fi
 if [[ -n "$MAGIC_PROXY_IMAGE" ]]; then
     docker image inspect "$MAGIC_PROXY_IMAGE" >/dev/null 2>&1 || die "Mihomo 镜像未加载：$MAGIC_PROXY_IMAGE"
@@ -590,7 +604,7 @@ resolve_compose_project_name() {
     elif [[ "${#configured_projects[@]}" -eq 1 ]]; then
         selected="${configured_projects[0]}"
     else
-        for candidate in dreamyo dreamyo-magic-proxy dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-dola-api dreamyo-geminiai; do
+        for candidate in dreamyo dreamyo-magic-proxy dreamyo-traffic-meter dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-dola-api dreamyo-geminiai; do
             container_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$candidate" 2>/dev/null || true)"
             [[ "$container_project" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || continue
             case " ${running_projects[*]:-} " in
@@ -612,9 +626,9 @@ printf '持久数据卷项目名：%s\n' "$COMPOSE_PROJECT_NAME"
 compose_diagnostics() {
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps >&2 || true
     if [[ "$DATABASE_MODE" == embedded ]]; then
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy app generation-worker geminiai dola-api postgres >&2 || true
+        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy traffic-meter app generation-worker geminiai dola-api postgres >&2 || true
     else
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy app generation-worker geminiai dola-api >&2 || true
+        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=120 magic-proxy traffic-meter app generation-worker geminiai dola-api >&2 || true
     fi
 }
 
@@ -699,7 +713,7 @@ fs.chmodSync(target, 0o700);
         app /app/services/chatgpt-api/.venv/bin/python /app/services/chatgpt-api/scripts/sync_private_settings.py \
         --gemini-snapshot /private-settings-sync || die "GeminiAIStudio 授权同步失败；服务保持停止，服务器回滚备份已保留"
 fi
-for obsolete_container in dreamyo dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-dola-api dreamyo-geminiai dreamyo-magic-proxy dreamyo-postgres; do
+for obsolete_container in dreamyo dreamyo-generation-worker dreamyo-chatgpt-api dreamyo-dola-api dreamyo-geminiai dreamyo-traffic-meter dreamyo-magic-proxy dreamyo-postgres; do
     obsolete_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$obsolete_container" 2>/dev/null || true)"
     if [[ -n "$obsolete_project" && "$obsolete_project" != "$COMPOSE_PROJECT_NAME" ]]; then
         docker rm -f "$obsolete_container" >/dev/null || die "无法安全切换现有容器项目名：$obsolete_container"
@@ -749,11 +763,12 @@ while (( SECONDS < deadline )); do
         postgres_health="external"
     fi
     magic_proxy_health="$(container_health dreamyo-magic-proxy)"
+    traffic_meter_health="$(container_health dreamyo-traffic-meter)"
     geminiai_health="$(container_health dreamyo-geminiai)"
     app_health="$(container_health dreamyo)"
     worker_health="$(container_health dreamyo-generation-worker)"
-    printf '\r健康检查：postgres=%s magic-proxy=%s geminiai=%s app=%s worker=%s' "$postgres_health" "$magic_proxy_health" "$geminiai_health" "$app_health" "$worker_health"
-    if [[ "$magic_proxy_health" == healthy && "$geminiai_health" == healthy && "$app_health" == healthy && "$worker_health" == running && ( "$DATABASE_MODE" == external || "$postgres_health" == healthy ) ]]; then
+    printf '\r健康检查：postgres=%s magic-proxy=%s traffic-meter=%s geminiai=%s app=%s worker=%s' "$postgres_health" "$magic_proxy_health" "$traffic_meter_health" "$geminiai_health" "$app_health" "$worker_health"
+    if [[ "$magic_proxy_health" == healthy && "$traffic_meter_health" == healthy && "$geminiai_health" == healthy && "$app_health" == healthy && "$worker_health" == running && ( "$DATABASE_MODE" == external || "$postgres_health" == healthy ) ]]; then
         services_ready=1
         printf '\n'
         break
@@ -777,4 +792,4 @@ printf '安装向导：http://服务器IP:%s/install\n' "$install_port"
 printf '首次安装令牌：%s\n' "$install_token"
 printf '令牌只用于创建首个管理员，请保密保存 .env，重复部署复用原有密钥。\n'
 fi
-printf '查看日志：docker compose --env-file .env -f %s logs -f magic-proxy app generation-worker geminiai\n' "$COMPOSE_FILE"
+printf '查看日志：docker compose --env-file .env -f %s logs -f magic-proxy traffic-meter app generation-worker geminiai\n' "$COMPOSE_FILE"

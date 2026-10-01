@@ -5,6 +5,7 @@ import { KeyRound, Plus, RefreshCw, Upload } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
 import type { AdminDashboardController } from "@/components/admin/use-admin-dashboard-controller";
 import { getAdminSettings } from "@/services/api/admin-settings";
 import { chatGptApiRequest, type ChatGptAccountPage, type ChatGptGateway, type ChatGptKey, type ChatGptModelCatalog } from "@/services/api/chatgpt-api";
@@ -506,6 +507,7 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
             {tab === "statistics" ? (
                 <div data-chatgpt-api-tab-panel="statistics" className="space-y-4">
                     <ChatGptStatisticsPanel />
+                    <AdminTrafficPanel protocol="chatgpt-api" title="GPTAPI 流量统计" />
                 </div>
             ) : null}
 

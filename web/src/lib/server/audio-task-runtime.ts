@@ -16,6 +16,7 @@ import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { GenerationSubmissionSafeFailure, GenerationSubmissionUncertainError, generationSubmissionResponseError, generationSubmissionUncertainError } from "@/lib/server/generation-submission-error";
 import { systemAiBillingHeaders } from "@/lib/server/system-ai-billing";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { withTrafficContext, updateTrafficContext, generationTrafficContext } from "@/lib/server/traffic-context";
 import { appendMiniMaxRequestLog, saveMiniMaxMusicRecord, updateMiniMaxRequestLog } from "@/lib/server/minimax-audio-store";
 import { resolveAudioSampleRate } from "@/lib/server/audio-task-config";
 
@@ -26,6 +27,10 @@ export type AudioUpstreamStep =
     | { state: "failed"; status: string; error: string };
 
 export async function createAudioTaskUpstreamStep(task: AudioTask, origin: string, cookie = "", workerUserId = ""): Promise<AudioUpstreamStep> {
+    return withTrafficContext(generationTrafficContext(task.config, "submit", task.id), () => createAudioTaskUpstreamStepInternal(task, origin, cookie, workerUserId));
+}
+
+async function createAudioTaskUpstreamStepInternal(task: AudioTask, origin: string, cookie: string, workerUserId: string): Promise<AudioUpstreamStep> {
     const current = await getAudioTask(task.id);
     if (!current || current.status === "cancelled") return { state: "failed", status: "cancelled", error: "任务已取消" };
     const running = current.status === "pending" ? await transitionAudioTask(current, ["pending"], { status: "running" }) : current;
@@ -36,6 +41,7 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
     let attempts = running.attempts || [];
     let latestError = "没有可用的音频渠道";
     for (const [index, config] of candidates.entries()) {
+        updateTrafficContext(generationTrafficContext(config, "submit"));
         const started = startGenerationAttempt(attempts, { channelId: config.channelId, model: generationModelId(config), capability: "audio" });
         attempts = started.attempts;
         const candidate = { ...running, config, candidateConfigs: candidates.slice(index + 1), attempts, attemptNo: started.attempt.attemptNo, upstream: undefined, billing: undefined };
@@ -72,6 +78,7 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
                           .catch(() => undefined)
                 : undefined;
 
+        updateTrafficContext({ requestId: minimaxLog?.id || task.id, attemptId: `${task.id}:${started.attempt.attemptNo}` });
         let minimaxResponseStatus = 0;
         try {
             const isQwen = config.advancedConfig?.protocol === "aliyun-bailian-audio";
@@ -257,6 +264,10 @@ export async function createAudioTaskUpstreamStep(task: AudioTask, origin: strin
 }
 
 export async function queryAudioTaskUpstreamStep(task: AudioTask, origin: string, cookie = "", workerUserId = ""): Promise<AudioUpstreamStep> {
+    return withTrafficContext({ ...generationTrafficContext(task.config, "query", task.id), requestId: task.miniMaxRequestLogId || task.id }, () => queryAudioTaskUpstreamStepInternal(task, origin, cookie, workerUserId));
+}
+
+async function queryAudioTaskUpstreamStepInternal(task: AudioTask, origin: string, cookie: string, workerUserId: string): Promise<AudioUpstreamStep> {
     if (!task.upstream?.id) return { state: "failed", status: "missing_upstream_id", error: "音频任务缺少上游任务 ID" };
     let lastError = "";
     for (const path of providerQueryPaths(task.config.advancedConfig, task.upstream.id, [`${task.upstream.createPath.replace(/\/+$/, "")}/${encodeURIComponent(task.upstream.id)}`])) {
@@ -283,6 +294,10 @@ export async function queryAudioTaskUpstreamStep(task: AudioTask, origin: string
 }
 
 export async function persistAudioTaskResult(task: AudioTask, origin: string, resultUrl: string, cookie = "", workerUserId = "") {
+    return withTrafficContext({ ...generationTrafficContext(task.config, "download", task.id), requestId: task.miniMaxRequestLogId || task.id }, () => persistAudioTaskResultInternal(task, origin, resultUrl, cookie, workerUserId));
+}
+
+async function persistAudioTaskResultInternal(task: AudioTask, origin: string, resultUrl: string, cookie: string, workerUserId: string) {
     if (/^data:audio\//i.test(resultUrl)) {
         const asset = await writePersistentMediaDataUrl(resultUrl, "audio", mediaContext(task));
         return completeAudioTask(task, asset.url || `/api/reference-assets/${asset.token}`, resultUrl.slice(5, resultUrl.indexOf(";")) || mimeFromFormat(task.config.format || "mp3"));

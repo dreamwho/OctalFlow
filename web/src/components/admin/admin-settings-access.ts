@@ -28,6 +28,7 @@ export function buildAdminSettingsPatch(settings: AuthSettings, access: AdminSet
                   loginMethods: settings.loginMethods,
                   mail: settings.mail,
                   dataLifecycle: settings.dataLifecycle,
+                  trafficUnit: settings.trafficUnit,
               }
             : {}),
         ...(access.upstream

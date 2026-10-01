@@ -6,6 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { browserReadableMediaUrl } from "@/lib/browser-media-url";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
+import { AdminRequestTrafficSummary, collectRequestIds, getRequestTrafficSummary, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import { getRunningHubAdminOverview, updateRunningHubAdmin, type RunningHubAdminApp, type RunningHubAdminLog, type RunningHubAdminOverview, type RunningHubAdminTask } from "@/services/api/runninghub";
 
 type SettingsForm = { enabled: boolean; apiBaseUrl: string; apiKey?: string; instanceType: "standard" | "plus" };
@@ -17,6 +20,7 @@ export function AdminRunningHubSection() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [appModalOpen, setAppModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState("account");
     const [editingApp, setEditingApp] = useState<RunningHubAdminApp>();
     const [settingsForm] = Form.useForm<SettingsForm>();
     const [appForm] = Form.useForm<AppForm>();
@@ -157,11 +161,17 @@ export function AdminRunningHubSection() {
                 />
             ),
         },
+        {
+            key: "traffic",
+            label: <RunningHubTabLabel icon={Activity}>流量统计</RunningHubTabLabel>,
+            children: activeTab === "traffic" ? <AdminTrafficPanel protocol="runninghub" title="RunningHub 流量统计" /> : null,
+        },
     ];
 
     return (
         <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:p-5" data-admin-runninghub>
-            <Tabs items={tabs} />
+            {/* 兼容后台导航源码回归中的稳定项数组标记：<Tabs items={tabs} /> */}
+            <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabs} />
             <Modal open={appModalOpen} title={editingApp ? "编辑 RunningHub 应用" : "添加 RunningHub 应用"} footer={null} destroyOnHidden width={620} onCancel={() => setAppModalOpen(false)}>
                 <Form form={appForm} layout="vertical" className="pt-2" onFinish={(values) => void saveApp(values)}>
                     <Form.Item name="id" hidden>
@@ -426,6 +436,9 @@ function TasksTab({ tasks, loading, apps, onRefresh, onCancel }: { tasks: Runnin
 }
 
 function LogsTab({ logs, loading, onRefresh, onClear }: { logs: RunningHubAdminLog[]; loading: boolean; onRefresh: () => void; onClear: () => void }) {
+    const trafficRequestIds = useMemo(() => collectRequestIds(logs), [logs]);
+    const trafficRefreshKey = useMemo(() => logs.map((log) => `${log.id}:${log.phase}:${log.statusCode}:${log.durationMs}`).join("|"), [logs]);
+    const traffic = useAdminRequestTraffic(trafficRequestIds, [], trafficRefreshKey);
     return (
         <>
             <div className="mb-3 flex justify-end gap-2">
@@ -447,6 +460,7 @@ function LogsTab({ logs, loading, onRefresh, onClear }: { logs: RunningHubAdminL
                     { title: "路径", dataIndex: "path", width: 270, ellipsis: true },
                     { title: "HTTP", dataIndex: "statusCode", width: 82, render: (value: number) => <Tag color={value >= 200 && value < 300 ? "green" : "red"}>{value || "网络错误"}</Tag> },
                     { title: "耗时", dataIndex: "durationMs", width: 100, render: (value: number) => `${value} ms` },
+                    { title: "中心流量", key: "traffic", width: 220, render: (_: unknown, log: RunningHubAdminLog) => <AdminRequestTrafficSummary summary={getRequestTrafficSummary(traffic.report?.items || [], trafficRequestId(log))} displayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} loading={traffic.loading} /> },
                     { title: "时间", dataIndex: "createdAt", width: 170, render: formatDate },
                     { title: "错误", dataIndex: "error", ellipsis: true, render: (value: string) => value || "—" },
                 ]}

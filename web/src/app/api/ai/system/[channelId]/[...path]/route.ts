@@ -1,3 +1,6 @@
+import { getVideoTask } from "@/lib/server/video-task-store";
+import { getImageTask } from "@/lib/server/image-task-store";
+import { readVerifiedInternalTraffic } from "@/lib/server/system-ai-billing";
 import { dolaQuotaLogFields } from "@/lib/server/dola/quota-observation";
 import { createHash, randomUUID } from "node:crypto";
 
@@ -14,6 +17,8 @@ import { MAX_MEDIA_PROXY_BYTES, MAX_MEDIA_PROXY_RANGE_BYTES, normalizeMediaProxy
 import { configureServerProxyDispatcher } from "@/lib/server/proxy-dispatcher";
 import { checkMediaProxyRateLimit, isSafeOutboundUrl, rateLimitHeaders } from "@/lib/server/security";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { withTrafficContext, updateTrafficContext, currentTrafficContext } from "@/lib/server/traffic-context";
+import { readGenerationMediaClaim } from "@/lib/server/generation-media-authorization";
 import { readRequestBodyBytes, RequestBodyTooLargeError } from "@/lib/server/request-body-limit";
 import { resolveGlobalAiOpcPathPreset, resolveGlobalAiOpcPreset } from "@/lib/globalaiopc-catalog";
 import { adaptGlobalAiOpcTextRequest, adaptGlobalAiOpcTextResponse, isGlobalAiOpcChannel } from "@/lib/server/globalaiopc-proxy";
@@ -79,6 +84,10 @@ export async function DELETE(request: Request, context: RouteContext) {
 }
 
 async function proxySystemRequest(request: Request, context: RouteContext) {
+    return withTrafficContext({ requestId: randomUUID(), ...readVerifiedInternalTraffic(request.headers, request.url, request.method) }, () => proxySystemRequestInternal(request, context));
+}
+
+async function proxySystemRequestInternal(request: Request, context: RouteContext) {
     const currentUser = await getCurrentUser();
     const userId = currentUser?.id || authorizedWorkerUserId(request);
     if (!userId) return NextResponse.json({ error: "请先登录" }, { status: 401 });
@@ -87,6 +96,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     const settings = await getAuthSettings();
     const channel = settings.systemChannels.find((item) => item.id === channelId && item.enabled);
     if (!channel || !channelConnectionReady(channel)) return NextResponse.json({ error: "默认接口未配置或已停用" }, { status: 404 });
+    updateTrafficContext({ channelId: channel.id, channelName: channel.name, protocol: channel.advancedConfig?.protocol || channel.apiFormat });
     if (channel.advancedConfig?.protocol === "dreamina-cli") return NextResponse.json({ error: "即梦 CLI 仅可通过已持久化的图片或视频生成任务执行" }, { status: 404 });
     const isChatGptApiChannel = channel.advancedConfig?.protocol === CHATGPT_API_PROTOCOL;
     const chatGptCatalogPath = normalizeChatGptApiRuntimePath(`/${path.join("/")}${new URL(request.url).search}`);
@@ -110,6 +120,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
         throw error;
     }
     const upstreamModel = readRequestModel(readRequestBody(contentType, requestBody.pointsPayload)) || request.headers.get(SYSTEM_AI_UPSTREAM_MODEL_HEADER)?.trim() || readPathModel(path);
+    updateTrafficContext({ model: upstreamModel });
     const modelConfig = upstreamModel ? resolveChannelModelConfig(channel.advancedConfig, upstreamModel) : undefined;
     const apiFormat = modelConfig?.apiFormat || channel.apiFormat;
     const globalChannel = isGlobalAiOpcChannel(channel.advancedConfig);
@@ -226,6 +237,7 @@ async function proxySystemRequest(request: Request, context: RouteContext) {
     const dolaLogId = isDolaChannel && !dolaAttachedTaskLogId
         ? await safeOpenDolaLog({ source: "runtime", capability: dolaCapability, method: request.method, path: dolaPathOnly, model: upstreamModel || "", ...(dolaRequestParameters.requestedDuration !== undefined ? { requestedDuration: dolaRequestParameters.requestedDuration } : {}), ...(dolaRequestParameters.ratio ? { ratio: dolaRequestParameters.ratio } : {}), requestPreview: summarizeDolaSystemRequest(requestBody.body, contentType), requestBytes: bodyByteLength(requestBody.body), clientIp: request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim() || request.headers.get("x-real-ip") || undefined, userAgent: request.headers.get("user-agent") || undefined, headers: { accept: accept || "", "content-type": contentType || "" } }, dolaLifecycle)
         : "";
+    if (dolaLogId || dolaAttachedTaskLogId) updateTrafficContext({ requestId: dolaLogId || dolaAttachedTaskLogId });
     const refundConsumedPoints = async () => {
         if (!pointsResult || pointsSettled) return;
         pointsSettled = true;
@@ -495,7 +507,7 @@ async function prepareDolaRuntimeBody(contentType: string | null, body: BodyInit
         await releaseDolaAccountAttempt(account.id);
         throw new Error("Dola 账号 Cookie 无法解密");
     }
-    return JSON.stringify({ ...payload, accountId: account.id, credentialVersion: account.credentialVersion, cookie, transport: "camoufox-page", ...proxyFields, imagexProxyMode: imagex.mode, imagexProxyUrl: imagex.proxyUrl || null, ...(holdAttempt ? { dolaHold: true } : {}) });
+    return JSON.stringify({ ...payload, accountId: account.id, credentialVersion: account.credentialVersion, cookie, transport: "camoufox-page", ...proxyFields, imagexProxyMode: imagex.mode, imagexProxySource: imagex.source, imagexProxyUrl: imagex.proxyUrl || null, ...(holdAttempt ? { dolaHold: true } : {}) });
 }
 
 /** 账号级限额换号：为已注入账号的 Dola 请求体换下一个可用账号，Cookie、凭据版本与代理快照同步更新 */
@@ -647,6 +659,13 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
     if (request.method !== "GET" && request.method !== "HEAD") return NextResponse.json({ error: "Media proxy only supports GET and HEAD" }, { status: 405 });
     const rawUrl = new URL(request.url).searchParams.get("url") || "";
     if (!(await authorizeGenerationMediaProxyRequest(request, { userId, channelId: channel.id, url: rawUrl }))) return NextResponse.json({ error: "媒体路径未获任务授权" }, { status: 403 });
+    const claim = readGenerationMediaClaim(request, { userId, channelId: channel.id, url: rawUrl });
+    updateTrafficContext({ model: claim?.upstreamModel || "", role: "download", ...(claim ? { taskId: claim.taskId, requestId: claim.taskId } : {}) });
+    if (claim && channel.advancedConfig?.protocol === DOLA_PROTOCOL) {
+        const task = claim.taskType === "video" ? await getVideoTask(claim.taskId) : claim.taskType === "image" ? await getImageTask(claim.taskId) : null;
+        const logId = task?.upstream?.id ? await safeFindDolaTaskLog(task.upstream.id) : "";
+        if (logId) updateTrafficContext({ requestId: logId });
+    }
     const target = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL ? geminiAiMediaTarget(rawUrl) : channel.advancedConfig?.protocol === DOLA_PROTOCOL ? dolaMediaTarget(rawUrl) : mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
     if (!target) return NextResponse.json({ error: "Invalid media url" }, { status: 400 });
     // 媒体地址来自上游任务结果，且本请求携带按 URL 绑定的生成媒体授权：允许代理工具 fake-IP 段（198.18/15），由本机 TUN 按 Host 路由到真实公网目标。
@@ -1141,6 +1160,7 @@ async function safeRecordSystemProtocolTrace(input: {
     try {
         const responseContentType = input.response?.headers.get("content-type") || "";
         const trace: GenerationLogProtocolTrace = {
+            requestId: currentTrafficContext()?.requestId,
             createdAt: new Date().toISOString(),
             channel: input.channelName,
             protocol: input.protocol,

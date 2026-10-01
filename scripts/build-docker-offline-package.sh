@@ -9,6 +9,7 @@ PLATFORM="${DREAMYO_DOCKER_PLATFORM:-linux/amd64}"
 APP_IMAGE="${DREAMYO_OFFLINE_APP_IMAGE:-dreamyo-app:offline}"
 GEMINIAI_IMAGE="${DREAMYO_OFFLINE_GEMINIAI_IMAGE:-dreamyo-geminiai:offline}"
 DOLA_API_IMAGE="${DREAMYO_OFFLINE_DOLA_API_IMAGE:-dreamyo-dola-api:offline}"
+TRAFFIC_METER_IMAGE="${DREAMYO_OFFLINE_TRAFFIC_METER_IMAGE:-dreamyo-traffic-meter:offline}"
 MAGIC_PROXY_IMAGE="${DREAMYO_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}"
 POSTGRES_IMAGE="${DREAMYO_OFFLINE_POSTGRES_IMAGE:-postgres:16.6-alpine}"
 BUILD_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
@@ -258,6 +259,7 @@ else
     docker buildx build \
         --platform "$PLATFORM" \
         --tag "$GEMINIAI_IMAGE" \
+        --build-context traffic-meter="$REPO_ROOT/services/traffic-meter" \
         --load \
         --progress "$BUILD_PROGRESS" \
         "$REPO_ROOT/services/geminiai"
@@ -266,9 +268,18 @@ else
     docker buildx build \
         --platform "$PLATFORM" \
         --tag "$DOLA_API_IMAGE" \
+        --build-context traffic-meter="$REPO_ROOT/services/traffic-meter" \
         --load \
         --progress "$BUILD_PROGRESS" \
         "$REPO_ROOT/services/dola-api"
+
+    printf '构建 Traffic meter 镜像：%s（平台 %s）\n' "$TRAFFIC_METER_IMAGE" "$PLATFORM"
+    docker buildx build \
+        --platform "$PLATFORM" \
+        --tag "$TRAFFIC_METER_IMAGE" \
+        --load \
+        --progress "$BUILD_PROGRESS" \
+        "$REPO_ROOT/services/traffic-meter"
 
     printf '拉取 Mihomo 镜像（不重新构建）：%s（平台 %s）\n' "$MAGIC_PROXY_IMAGE" "$PLATFORM"
     # 本地已有该镜像时跳过拉取（国际网络不可达时仍可打包）
@@ -281,9 +292,9 @@ else
     fi
 
     if [[ "$DATABASE_MODE" == embedded ]]; then
-        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$TRAFFIC_METER_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
     else
-        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$TRAFFIC_METER_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
     fi
 
     printf '导出主应用镜像归档\n'
@@ -292,6 +303,8 @@ else
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/geminiai.tar" "$GEMINIAI_IMAGE"
     printf '导出 Dola API 镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/dola-api.tar" "$DOLA_API_IMAGE"
+    printf '导出 Traffic meter 镜像归档\n'
+    docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/traffic-meter.tar" "$TRAFFIC_METER_IMAGE"
     printf '导出 Mihomo 镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/magic-proxy.tar" "$MAGIC_PROXY_IMAGE"
     if [[ "$DATABASE_MODE" == embedded ]]; then
@@ -300,7 +313,7 @@ else
     fi
 fi
 
-IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/dola-api.tar images/magic-proxy.tar)
+IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/dola-api.tar images/traffic-meter.tar images/magic-proxy.tar)
 if [[ "$DATABASE_MODE" == embedded ]]; then
     IMAGE_ARCHIVES+=(images/postgres.tar)
 fi
@@ -337,6 +350,7 @@ if [[ "${DREAMYO_SEED_LOCAL_ENV:-0}" == 1 ]]; then
     seed_env_example_from_local_env DREAMYO_GEMINIAI_API_KEY
     seed_env_example_from_local_env DREAMYO_CHATGPT_API_KEY
     seed_env_example_from_local_env DREAMYO_DOLA_PROVIDER_KEY
+    seed_env_example_from_local_env DREAMYO_TRAFFIC_METER_KEY
     seed_env_example_from_local_env DREAMYO_MAGIC_PROXY_SECRET
     seed_env_example_from_local_env DREAMYO_ALLOW_PRIVATE_UPSTREAMS
     seed_env_example_from_local_env DREAMYO_PRIVATE_UPSTREAM_HOSTS
@@ -369,6 +383,7 @@ DREAMYO_PRIVATE_SETTINGS_SYNC=$PRIVATE_SETTINGS_SYNC
 DREAMYO_IMAGE=$APP_IMAGE
 DREAMYO_GEMINIAI_IMAGE=$GEMINIAI_IMAGE
 DREAMYO_DOLA_API_IMAGE=$DOLA_API_IMAGE
+DREAMYO_TRAFFIC_METER_IMAGE=$TRAFFIC_METER_IMAGE
 DREAMYO_MAGIC_PROXY_IMAGE=$MAGIC_PROXY_IMAGE
 DREAMYO_COMPOSE_FILE=$COMPOSE_FILE
 EOF
@@ -396,17 +411,17 @@ else
 fi
 
 if [[ "$PRIVATE_MIGRATION" == 1 ]]; then
-    DEPLOYMENT_SUMMARY="脚本会自动加载 images/ 下的应用、GeminiAI 和 Mihomo 镜像，创建持久化数据卷，导入经过校验的私有迁移快照，并启动全部服务。$DATABASE_DESCRIPTION"
+    DEPLOYMENT_SUMMARY="脚本会自动加载 images/ 下的应用、GeminiAI、Traffic meter 和 Mihomo 镜像，创建持久化数据卷，导入经过校验的私有迁移快照，并启动全部服务。$DATABASE_DESCRIPTION"
     ACCESS_HEADING="私有迁移模式不提供首次管理员安装指南。"
     ACCESS_URL_BLOCK="服务启动后请使用迁移前已有的管理员身份登录；默认端口下访问 ${DEFAULT_APPLICATION_URL}。"
     PRIVATE_CONTENT_NOTICE='- 本包内含敏感私有迁移数据，绝不可上传到公共仓库、对象存储或公共下载链接。私有迁移只允许导入空的目标 PostgreSQL 一次；已有导入记录或业务数据时部署会拒绝覆盖。'
 elif [[ "$PRIVATE_SETTINGS_SYNC" == 1 ]]; then
-    DEPLOYMENT_SUMMARY="脚本会更新应用镜像，并在启动前把私有快照中的 Dola、GeminiAIStudio、GPTAPI 账号和通用代理配置同步到服务器。账号按各自身份合并，服务器独有账号保留；通用代理单例以本地配置替换。$DATABASE_DESCRIPTION"
+    DEPLOYMENT_SUMMARY="脚本会更新应用、Traffic meter 镜像，并在启动前把私有快照中的 Dola、GeminiAIStudio、GPTAPI 账号和通用代理配置同步到服务器。账号按各自身份合并，服务器独有账号保留；通用代理单例以本地配置替换。$DATABASE_DESCRIPTION"
     ACCESS_HEADING="这是包含本地账号登录态与代理配置的私有更新包。"
     ACCESS_URL_BLOCK="服务启动后继续使用服务器现有管理员身份和访问地址；部署日志只输出新增、更新数量，不输出 Cookie、Token 或代理凭据。"
     PRIVATE_CONTENT_NOTICE='- 本包含加密的 Dola Cookie、GeminiAIStudio 授权、GPTAPI 账号与通用代理配置，以及用于解密源快照的本地加密密钥。只能通过受控私有渠道上传，禁止提交 Git、放入公共对象存储或生成公共下载链接。服务器导入时会使用服务器密钥重新加密 Dola/GPTAPI 凭据；GeminiAIStudio 授权写入其私有账号卷。'
 else
-    DEPLOYMENT_SUMMARY="脚本会自动加载 images/ 下的应用、GeminiAI 和 Mihomo 镜像，创建持久化数据卷，生成首次部署所需的内部密钥，并启动全部服务。$DATABASE_DESCRIPTION"
+    DEPLOYMENT_SUMMARY="脚本会自动加载 images/ 下的应用、GeminiAI、Traffic meter 和 Mihomo 镜像，创建持久化数据卷，生成首次部署所需的内部密钥，并启动全部服务。$DATABASE_DESCRIPTION"
     ACCESS_HEADING="默认访问地址为："
     ACCESS_URL_BLOCK="\`\`\`
 $DEFAULT_APPLICATION_URL/install
@@ -447,7 +462,7 @@ $ACCESS_URL_BLOCK
 
 ## 说明
 
-- 镜像归档已经包含 Node.js、Next.js standalone、Sharp/libvips、FFmpeg、PostgreSQL 客户端、Python、Camoufox/Playwright、GeminiAI sidecar 和 Mihomo v1.19.30 运行依赖；Mihomo 镜像由构建机拉取并原样保存，不在脚本中重建。
+- 镜像归档已经包含 Node.js、Next.js standalone、Sharp/libvips、FFmpeg、PostgreSQL 客户端、Python、Camoufox/Playwright、GeminiAI、Traffic meter sidecar 和 Mihomo v1.19.30 运行依赖；Mihomo 镜像由构建机拉取并原样保存，不在脚本中重建。
 - 应用还内置 CPU PyTorch、Transformers、Depth Anything V2 Small 模型权重，以及官方 Linux amd64 Dreamina CLI；深度推理无需启动后下载模型。CLI 登录目录保存在应用数据卷的 dreamina/ 下，可执行 \`docker exec -it dreamyo dreamina login\` 登录。二进制及模型遵循各自厂商条款，本包用于自有服务器部署。
 - Mihomo 为 GeminiAIStudio、GeminiTools、GPTAPI、Dola 提交和 Dola 参考图上传提供独立的内部 mixed 监听与代理分组；Dola 提交使用 17893，参考图上传使用 17894（关闭上传代理则直连）。动态订阅通过私有 runtime 文件 provider 刷新。
 - Mihomo 的只读入口脚本随配置文件一同打包，启动时校验 Controller 密钥和监听地址，并初始化共享 provider 文件权限。
@@ -460,7 +475,7 @@ $NETWORK_EXPOSURE_GUIDANCE
 
 \`\`\`bash
 docker compose --env-file .env -f $COMPOSE_FILE ps
-docker compose --env-file .env -f $COMPOSE_FILE logs -f magic-proxy app generation-worker geminiai
+docker compose --env-file .env -f $COMPOSE_FILE logs -f magic-proxy traffic-meter app generation-worker geminiai
 \`\`\`
 
 不要执行 \`docker compose down -v\`，否则会删除应用媒体和 GeminiAI 账号数据卷；embedded 模式还会删除 PostgreSQL 数据卷。

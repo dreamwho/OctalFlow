@@ -111,6 +111,59 @@ for (const outcome of ["success-50", "success-70", "failure", "reduced"] as cons
         }
     });
 
+test("Dola portrait protection stops a restored generating node and persists the failure reason", async ({ page, request }) => {
+    const error = "参考图中的人脸未通过肖像保护审核，请更换参考图或改用文生视频。";
+    const taskId = `portrait-fixture-${randomUUID()}`;
+    const project = await createCanvasProject(request, {
+        title: "Dola 肖像保护失败回归",
+        viewport: { x: 0, y: 0, k: 1 },
+        nodes: [node("portrait-video", "video", 20, 130, 300, 180, { status: "loading", prompt: "人物参考图生成视频", generationStartedAt: Date.now(), videoTask: { id: taskId, serverTaskId: taskId, pollPath: "server", provider: "generation", model: "dola-seedance-2-5" } })],
+        connections: [],
+    });
+    let finish!: () => void;
+    const responseReady = new Promise<void>((resolve) => { finish = resolve; });
+    let polls = 0;
+    let submits = 0;
+    await page.route("**/api/video-generation-tasks", async (route) => { submits++; await route.abort(); });
+    await page.route(`**/api/video-tasks/${taskId}`, async (route) => {
+        polls++;
+        await responseReady;
+        await route.fulfill({ json: { task: { id: taskId, status: "error", error, canRetry: true } } });
+    });
+    try {
+        await page.goto(`/canvas/${project.id}`);
+        const video = page.locator('[data-node-id="portrait-video"]');
+        await expect(video.locator("[data-canvas-node-loading]")).toBeVisible();
+        finish();
+        await expect(video.locator("[data-canvas-node-error]")).toBeVisible();
+        await expect(video.locator("[data-canvas-node-loading]")).toHaveCount(0);
+        await expect(video.getByRole("button", { name: "再次生成", exact: true })).toBeVisible();
+        await expect.poll(async () => {
+            const saved = await readCanvasProject(request, `/api/canvas/projects/${project.id}`);
+            return saved.nodes.find((item) => item.id === "portrait-video")?.metadata?.errorDetails;
+        }).toBe(error);
+        expect(polls).toBe(1);
+        expect(submits).toBe(0);
+        for (const theme of ["light", "dark"]) {
+            await page.evaluate((value) => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: value }, version: 0 })), theme);
+            for (const width of [1440, 390, 430]) {
+                await page.setViewportSize({ width, height: 900 });
+                await page.reload();
+                await expect(video.locator("[data-canvas-node-error]")).toBeVisible();
+                await expect(video.locator("[data-canvas-node-loading]")).toHaveCount(0);
+                await expect(video.getByText("人脸未通过肖像保护审核", { exact: true })).toBeVisible();
+                await expectNoHorizontalOverflow(page, `肖像保护 ${theme} ${width}px`);
+                await page.screenshot({ path: `.e2e-artifacts/dola-portrait-${theme}-${width}.png` });
+            }
+        }
+        expect(polls).toBe(1);
+        expect(submits).toBe(0);
+    } finally {
+        finish();
+        await deleteCanvasProject(request, project.id);
+    }
+});
+
 test("estimated generation progress advances and survives reload without claiming completion", async ({ page, request }) => {
     const startedAt = Date.now() - 180_000;
     const project = await createCanvasProject(request, {

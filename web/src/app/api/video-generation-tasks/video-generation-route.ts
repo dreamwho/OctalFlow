@@ -1,4 +1,5 @@
 import { applyGenerationPromptRule, DEFAULT_GENERATION_PROMPT_RULES } from "@/lib/generation-prompt-rules";
+import { describeDolaFailure, isDolaPortraitProtectionError } from "@/lib/dola-errors";
 import { after, NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -6,6 +7,7 @@ import { consumeUserPoints, getAuthSettings, isAuthInputError, refundUserPoints 
 import { roleModelAccessAllows } from "@/lib/user-roles";
 import { generationModelId, toSystemGenerationChannel } from "@/lib/server/generation-channel";
 import { finishGenerationAttempt, startGenerationAttempt, type GenerationAttempt } from "@/lib/server/generation-attempt";
+import { generationTrafficContext, withTrafficContext } from "@/lib/server/traffic-context";
 import { fetchInternalApi, resolveInternalOrigin } from "@/lib/server/internal-origin";
 import { resolveLogicalModelCandidates } from "@/lib/server/logical-model-router";
 import { assertReferenceCapabilities, assertReferenceUrls, assertVideoReferenceRoles, buildVideoProviderRequest, isProviderBusinessError, readProviderError, readProviderString, resolvedProviderCreatePaths } from "@/lib/server/provider-task-config";
@@ -198,7 +200,8 @@ export async function POST(request: Request) {
                 lastUpstreamStatus: "submitting",
             });
             try {
-                const upstream = await createUpstream(
+                const submissionTask = localTask;
+                const upstream = await withTrafficContext(generationTrafficContext(channel, "submit", submissionTask.id), () => createUpstream(
                     user.id,
                     origin,
                     cookie,
@@ -210,11 +213,11 @@ export async function POST(request: Request) {
                     billingRequestId,
                     publicOrigin,
                     user.role === "admin",
-                    localTask.id,
+                    submissionTask.id,
                     started.attempt.attemptNo,
-                    localTask.generationLogId,
-                    localTask.generationSlotId,
-                );
+                    submissionTask.generationLogId,
+                    submissionTask.generationSlotId,
+                ));
                 await updateVideoTask(localTask.id, { config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts });
                 const task = { ...localTask, config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts };
                 const submittedAt = Date.now();
@@ -239,7 +242,7 @@ export async function POST(request: Request) {
                     await scheduleGenerationTask("video", localTask.id, { executionPhase: "completed", nextPollAt: undefined, lastUpstreamStatus: "submission_deferred" });
                     return NextResponse.json({ error: error.message, deferred: true }, { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } });
                 }
-                if (error instanceof SafeCandidateFailure && index < channels.length - 1) continue;
+                if (error instanceof SafeCandidateFailure && !isDolaPortraitProtectionError(error.message) && index < channels.length - 1) continue;
                 const message = toSafeGenerationErrorMessage(error, "视频任务创建失败");
                 if (!(error instanceof SafeCandidateFailure)) {
                     await scheduleGenerationTask("video", localTask.id, { executionPhase: "needs_review", nextPollAt: undefined, lastUpstreamStatus: "submission_outcome_unknown" });
@@ -467,11 +470,12 @@ export async function createUpstream(
             throw error instanceof Error ? error : new Error("视频接口返回了无效 JSON");
         }
         const providerError = readProviderError(data);
-        if (isProviderBusinessError(data)) {
+        const portraitRefusal = channel.advancedConfig?.protocol === "dola" && isDolaPortraitProtectionError(providerError);
+        if (portraitRefusal || isProviderBusinessError(data)) {
             const pointsCost = billedPointsCost(response.headers.get("x-dreamyo-points-cost"));
             const pointsRecordId = response.headers.get("x-dreamyo-points-record-id") || undefined;
             if (pointsCost !== undefined && pointsRecordId) await refundUserPoints(userId, generationModelId(channel), pointsCost, "video", videoUnits(raw, multipliers), undefined, pointsRecordId);
-            throw new SafeCandidateFailure(providerError || "视频接口请求失败");
+            throw new SafeCandidateFailure(portraitRefusal ? describeDolaFailure(providerError) : providerError || "视频接口请求失败");
         }
         const resultUrl = readVideoProviderUrl(data, channel.advancedConfig?.resultField);
         const id = readVideoProviderId(data) || (resultUrl ? `direct:${Date.now()}` : "");

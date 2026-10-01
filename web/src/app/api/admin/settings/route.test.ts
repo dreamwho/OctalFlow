@@ -113,6 +113,20 @@ describe("admin settings model routing", () => {
         expect(mocks.safeRecordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ metadata: { fields: ["dataLifecycle"] } }));
     });
 
+    it("accepts and normalizes the traffic display unit", async () => {
+        const response = await PATCH(request({ trafficUnit: "GB" }));
+
+        expect(response.status).toBe(200);
+        expect(mocks.setAuthSettings).toHaveBeenCalledWith({ trafficUnit: "GB" });
+    });
+
+    it("falls back to MB for an unsupported traffic display unit", async () => {
+        const response = await PATCH(request({ trafficUnit: "KiB" }));
+
+        expect(response.status).toBe(200);
+        expect(mocks.setAuthSettings).toHaveBeenCalledWith({ trafficUnit: "MB" });
+    });
+
     it("accepts common social address formats without silently deleting them", async () => {
         const site = {
             ...DEFAULT_SITE_SETTINGS,

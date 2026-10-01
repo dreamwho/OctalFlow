@@ -4,7 +4,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/src \
+    PYTHONPATH=/app/src:/app/traffic-meter/src \
     TZ=Asia/Shanghai \
     DOLA_PROVIDER_PORT=18082
 
@@ -46,6 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY pyproject.toml README.md NOTICE.md ./
 COPY src ./src
+COPY --from=traffic-meter src ./traffic-meter/src
 
 RUN pip install --no-cache-dir '.[browser]' \
     && ok=""; \

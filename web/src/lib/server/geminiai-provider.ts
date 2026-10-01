@@ -14,6 +14,7 @@ import {
 } from "@/lib/server/geminiai-request-log-store";
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
 import { getGeminiAiGatewaySettings } from "@/lib/server/geminiai-gateway-store";
+import { providerTrafficHeaders, trafficBodyModel } from "@/lib/server/traffic-context";
 
 const GEMINIAI_REQUEST_PATHS = new Set(["/v1/models", "/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
 const GEMINIAI_GENERATION_PATHS = new Set(["/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
@@ -53,6 +54,7 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
     headers.delete("x-api-key");
     headers.delete("cookie");
     if (!options.unauthenticated) headers.set("authorization", `Bearer ${config.apiKey}`);
+    providerTrafficHeaders(headers, { channelId: GEMINIAI_CHANNEL_ID, channelName: GEMINIAI_CHANNEL_NAME, model: trafficBodyModel(init.body), protocol: GEMINIAI_PROTOCOL });
     // 方案A：生成请求把后台配置的换号次数预算下发给 sidecar，sidecar 在限流/鉴权类错误时自动切换账号。
     if (GEMINIAI_GENERATION_PATHS.has(normalizedPath)) {
         const gateway = await getGeminiAiGatewaySettings().catch(() => ({ enabled: true, rotationLimit: 2 }));
@@ -122,9 +124,10 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
         // Image JSON contains base64 media. Read it once before logging so the
         // log preview does not hold a second streamed branch while the task
         // persists the response.
-        const delivered = metadata?.capability === "image" && (response.headers.get("content-type") || "").includes("application/json")
-            ? new Response(await response.arrayBuffer(), { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()) })
-            : response as unknown as Response;
+        const delivered =
+            metadata?.capability === "image" && (response.headers.get("content-type") || "").includes("application/json")
+                ? new Response(await response.arrayBuffer(), { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()) })
+                : (response as unknown as Response);
         if (metadata) await recordRequestLog(config, metadata, delivered, startedAt, openLogId, lifecycle);
         return delivered;
     } catch (error) {

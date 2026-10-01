@@ -6,6 +6,7 @@ import itertools
 import re
 import threading
 import time
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
@@ -34,6 +35,7 @@ from utils.diagnostics import (
 from utils.helper import anthropic_sse_stream, image_sse_stream, sse_json_stream
 from utils.log import logger
 from utils.timezone import beijing_from_timestamp, beijing_now_str
+from services.traffic_context import bind_traffic_context, context_for_call
 
 LOG_TYPE_CALL = "call"
 LOG_TYPE_ACCOUNT = "account"
@@ -536,6 +538,11 @@ class LoggedCall:
     async def run(self, handler, *args, sse: str = "openai"):
         if args and isinstance(args[0], dict):
             self.attach_trace_metadata(args[0])
+        # The provider call record is the request-level correlation ID.  Bind
+        # it before constructing the backend so every curl/upload lease made
+        # by the worker inherits the exact same requestId.  The trusted taskId
+        # and attemptId from the gateway context remain distinct fields.
+        traffic_context = context_for_call(model=self.model, request_id=self.call_id)
         self.log("等待执行", status="queued")
         image_request = self._is_image_request()
         trace_perf = self._trace_image_perf()
@@ -550,7 +557,16 @@ class LoggedCall:
             )
         handler_submitted = time.perf_counter()
 
-        def _call_handler():
+        def _run_with_traffic_context(callback):
+            def bound_callback():
+                with bind_traffic_context(traffic_context):
+                    return callback()
+
+            # ContextVars do not cross every executor boundary.  Make an
+            # explicit copy for each provider worker and stream iterator.
+            return copy_context().run(bound_callback)
+
+        def _call_handler_body():
             _CALL_EGRESS_LOCAL.call_id = self.call_id
             try:
                 self.log("执行中", status="running")
@@ -580,6 +596,9 @@ class LoggedCall:
                         self.perf_timings["handler_exec_ms"] = int((time.perf_counter() - handler_started) * 1000)
             finally:
                 _CALL_EGRESS_LOCAL.call_id = ""
+
+        def _call_handler():
+            return _run_with_traffic_context(_call_handler_body)
 
         try:
             result = await run_in_threadpool(_call_handler)
@@ -633,7 +652,7 @@ class LoggedCall:
                 sender = sse_json_stream
         first_item_submitted = time.perf_counter()
 
-        def _next_item_with_timing():
+        def _next_item_with_timing_body():
             first_item_started = time.perf_counter()
             queue_ms = int((first_item_started - first_item_submitted) * 1000)
             if trace_perf:
@@ -658,6 +677,9 @@ class LoggedCall:
             finally:
                 if trace_perf:
                     self.perf_timings["stream_first_exec_ms"] = int((time.perf_counter() - first_item_started) * 1000)
+
+        def _next_item_with_timing():
+            return _run_with_traffic_context(_next_item_with_timing_body)
 
         try:
             has_first, first = await run_in_threadpool(_next_item_with_timing)

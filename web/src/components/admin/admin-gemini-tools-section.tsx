@@ -7,6 +7,9 @@ import { BarChart3, Check, ChevronRight, CircleUserRound, Clock, Copy, Eye, EyeO
 import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
+import { AdminRequestTrafficDetail, AdminRequestTrafficSummary, collectRequestIds, getRequestTrafficSummary, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import { getAdminSettings } from "@/services/api/admin-settings";
 import {
     clearGeminiToolsLogs,
@@ -36,7 +39,7 @@ import { MagicProxyBindingCard } from "./magic-proxy-binding-card";
 
 type KeyDraft = { name: string; expiresAt: string; allowedIps: string };
 type AccountDraft = { name: string; note: string; priority: number };
-type GeminiToolsTab = "overview" | "gateway" | "magic-proxy" | "logs";
+type GeminiToolsTab = "overview" | "statistics" | "gateway" | "magic-proxy" | "logs";
 
 export function AdminGeminiToolsSection({ controller }: { controller: AdminDashboardController }) {
     const { message } = App.useApp();
@@ -63,6 +66,16 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
     const [logModel, setLogModel] = useState<string>("");
     const [logAccountId, setLogAccountId] = useState<string>("");
     const [selectedLog, setSelectedLog] = useState<GeminiToolsLog | null>(null);
+    const trafficRequestIds = useMemo(() => {
+        const ids = collectRequestIds(logs);
+        if (selectedLog) {
+            const selectedId = trafficRequestId(selectedLog);
+            if (selectedId && !ids.includes(selectedId)) ids.push(selectedId);
+        }
+        return ids;
+    }, [logs, selectedLog]);
+    const trafficRefreshKey = useMemo(() => logs.map((log) => `${log.id}:${log.phase}:${log.statusCode}:${log.durationMs}`).join("|"), [logs]);
+    const traffic = useAdminRequestTraffic(trafficRequestIds, [], trafficRefreshKey);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -221,6 +234,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                 }}
                 items={[
                     { key: "overview", label: <GeminiToolsTabLabel label="账号与渠道" compact="账号" /> },
+                    { key: "statistics", label: <GeminiToolsTabLabel label="流量统计" compact="流量" /> },
                     { key: "gateway", label: <GeminiToolsTabLabel label="反代网关与 API 密钥" compact="网关与密钥" /> },
                     { key: "magic-proxy", label: <GeminiToolsTabLabel label="代理管理" compact="代理" /> },
                     {
@@ -229,6 +243,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                     },
                 ]}
             />
+            {activeTab === "statistics" ? <AdminTrafficPanel protocol="gemini-tools" title="GeminiTools 流量统计" /> : null}
 
             <div data-gemini-tools-tab-panel="overview" className={activeTab === "overview" ? "space-y-4" : "hidden"}>
                 <Panel>
@@ -504,7 +519,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                     ) : (
                         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                             {logs.map((log) => (
-                                <LogRow key={log.id} log={log} onClick={() => setSelectedLog(log)} />
+                                <LogRow key={log.id} log={log} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], trafficRequestId(log))} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} onClick={() => setSelectedLog(log)} />
                             ))}
                         </div>
                     )}
@@ -579,7 +594,7 @@ export function AdminGeminiToolsSection({ controller }: { controller: AdminDashb
                 </div>
             </Modal>
 
-            <GeminiToolsRequestLogDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
+            <GeminiToolsRequestLogDrawer log={selectedLog} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], selectedLog ? trafficRequestId(selectedLog) : undefined)} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} trafficError={traffic.error} onClose={() => setSelectedLog(null)} />
         </div>
     );
 
@@ -818,7 +833,7 @@ function geminiToolsSourceTagColor(log: GeminiToolsLog) {
     return log.protocol === "admin-test" ? "purple" : "blue";
 }
 
-function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) {
+function LogRow({ log, trafficSummary, trafficDisplayUnit, trafficLoading, onClick }: { log: GeminiToolsLog; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; onClick: () => void }) {
     const phase = log.phase || (log.statusCode < 400 ? "success" : "failed");
     const pending = phase === "queued" || phase === "running";
     const success = phase === "success";
@@ -831,7 +846,7 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
             data-gemini-tools-log-id={log.id}
             aria-label={`查看请求日志：${log.model}`}
             onClick={onClick}
-            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[140px_160px_minmax(0,1fr)_140px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
+            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[140px_160px_minmax(0,1fr)_minmax(180px,0.8fr)_140px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
         >
             <div className="text-zinc-500">{formatTime(log.createdAt)}</div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -879,12 +894,13 @@ function LogRow({ log, onClick }: { log: GeminiToolsLog; onClick: () => void }) 
                     ) : null}
                 </div>
             </div>
+            <AdminRequestTrafficSummary summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} />
             <ChevronRight className="hidden size-4 justify-self-end text-zinc-400 sm:block" aria-hidden="true" />
         </button>
     );
 }
 
-function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | null; onClose: () => void }) {
+function GeminiToolsRequestLogDrawer({ log, trafficSummary, trafficDisplayUnit, trafficLoading, trafficError, onClose }: { log: GeminiToolsLog | null; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; trafficError?: string; onClose: () => void }) {
     const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 420 });
     const { message: messageApi } = App.useApp();
     const success = log ? log.statusCode < 400 && !log.error : false;
@@ -1062,6 +1078,8 @@ function GeminiToolsRequestLogDrawer({ log, onClose }: { log: GeminiToolsLog | n
                             <dd className="text-xs text-zinc-600 dark:text-zinc-400">{formatTimeWithMs(log.createdAt)}</dd>
                         </dl>
                     </section>
+
+                    <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">中心流量</h3><AdminRequestTrafficDetail summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} error={trafficError} /></section>
 
                     {/* Rich Chronological Lifecycle Process Log Timeline */}
                     <section>

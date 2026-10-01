@@ -27,6 +27,7 @@ import { isProviderBusinessError, readProviderError } from "@/lib/server/provide
 import { configureServerProxyDispatcher } from "@/lib/server/proxy-dispatcher";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
 import { isSafeOutboundUrl } from "@/lib/server/security";
+import { generationTrafficContext } from "@/lib/server/traffic-context";
 import { channelProtocolDefinition, protocolAuthHeaders, protocolModelConfig, resolveChannelAuthMode } from "@/lib/channel-protocol-registry";
 import type { SystemChannelAdvancedConfig, SystemChannelProtocol } from "@/lib/auth/store";
 import { GEMINIAI_PROTOCOL } from "@/lib/server/geminiai-provider";
@@ -190,6 +191,21 @@ export async function POST(request: Request) {
         let providerConfigs = {} as ReturnType<typeof parseModelConfigs>;
         let catalogSucceeded = false;
         const visited = new Set<string>();
+        const catalogTrafficContext = savedChannel
+            ? {
+                  ...generationTrafficContext(
+                      {
+                          channelId: savedChannel.id,
+                          baseUrl: savedChannel.baseUrl,
+                          model: "__unattributed__",
+                          apiFormat,
+                          advancedConfig,
+                      },
+                      "catalog",
+                  ),
+                  channelName: savedChannel.name || savedChannel.id,
+              }
+            : undefined;
 
         for (const catalogUrl of modelCatalogUrls) {
             let nextUrl = catalogUrl;
@@ -202,7 +218,7 @@ export async function POST(request: Request) {
                         cache: "no-store",
                         signal: AbortSignal.timeout(MODEL_FETCH_TIMEOUT_MS),
                     },
-                    { allowProxyFakeIpSpace: true },
+                    { allowProxyFakeIpSpace: true, ...(catalogTrafficContext ? { trafficContext: catalogTrafficContext } : {}) },
                 );
                 const payload = (await response.json().catch(() => ({}))) as ModelsResponse;
                 if (!response.ok || isProviderBusinessError(payload)) {

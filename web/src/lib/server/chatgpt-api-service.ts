@@ -4,6 +4,7 @@ import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-li
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
 import { limitMediaResponseBody, MAX_MEDIA_PROXY_BYTES } from "@/lib/server/media-response-limit";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { providerTrafficHeaders, trafficBodyModel } from "@/lib/server/traffic-context";
 import { toUndiciRequestBody } from "@/lib/server/undici-request-body";
 
 export class ChatGptApiError extends Error {
@@ -54,7 +55,9 @@ export async function chatGptRuntimeRequest(path: string, init: RequestInit = {}
         throw new ChatGptApiError("运行时请求路径无效", 400);
     const headers = new Headers(init.headers);
     headers.set("x-dreamyo-runtime-key", apiKey);
+    headers.set("x-dreamyo-internal-dispatch", "1");
     headers.set("authorization", `Bearer ${clientKey ?? apiKey}`);
+    providerTrafficHeaders(headers, { channelId: "chatgpt-api", channelName: "GPT API", model: trafficBodyModel(init.body), protocol: "chatgpt-api" });
     try {
         return (await undiciFetch(new URL(path, baseUrl), {
             method: init.method,
@@ -203,7 +206,8 @@ async function syncChatGptSignedUploadProxy(preferredNode?: string) {
     });
     if (current.magicConfigured !== Boolean(proxyUrl)) {
         await chatGptRuntimeJson("/integration/upload-proxy-address", {
-            method: "PATCH", body: JSON.stringify({ proxyUrl: proxyUrl || null }),
+            method: "PATCH",
+            body: JSON.stringify({ proxyUrl: proxyUrl || null }),
         });
     }
     return { ...current, magicNode: node, magicConfigured: Boolean(proxyUrl) };
@@ -216,16 +220,19 @@ export async function getChatGptUploadProxySelection() {
 export async function updateChatGptUploadProxySelection(input: unknown) {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new ChatGptApiError("图片上传代理设置无效", 400);
     const value = input as Record<string, unknown>;
-    if (Object.keys(value).some((key) => key !== "mode" && key !== "magicNode") || !["auto", "magic", "submit", "direct"].includes(String(value.mode))
-        || (value.magicNode !== undefined && (typeof value.magicNode !== "string" || value.magicNode.length > 160))) {
+    if (
+        Object.keys(value).some((key) => key !== "mode" && key !== "magicNode") ||
+        !["auto", "magic", "submit", "direct"].includes(String(value.mode)) ||
+        (value.magicNode !== undefined && (typeof value.magicNode !== "string" || value.magicNode.length > 160))
+    ) {
         throw new ChatGptApiError("图片上传代理设置无效", 400);
     }
-    const current = value.mode === "auto" || value.mode === "magic"
-        ? await syncChatGptSignedUploadProxy(typeof value.magicNode === "string" ? value.magicNode.trim() : undefined)
-        : await chatGptRuntimeJson<ChatGptUploadProxySelection>("/integration/upload-proxy");
+    const current =
+        value.mode === "auto" || value.mode === "magic" ? await syncChatGptSignedUploadProxy(typeof value.magicNode === "string" ? value.magicNode.trim() : undefined) : await chatGptRuntimeJson<ChatGptUploadProxySelection>("/integration/upload-proxy");
     if (value.mode === "magic" && !current.magicConfigured) throw new ChatGptApiError("请先为 GPTAPI 配置可用的魔法代理节点", 409);
     return chatGptRuntimeJson<ChatGptUploadProxySelection>("/integration/upload-proxy", {
-        method: "PATCH", body: JSON.stringify({ mode: value.mode, magic_node: typeof value.magicNode === "string" ? value.magicNode.trim() : current.magicNode }),
+        method: "PATCH",
+        body: JSON.stringify({ mode: value.mode, magic_node: typeof value.magicNode === "string" ? value.magicNode.trim() : current.magicNode }),
     });
 }
 

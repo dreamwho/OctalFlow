@@ -4,6 +4,9 @@ import { Alert, Button, Drawer, Spin, Tag } from "antd";
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
+import { AdminRequestTrafficDetail } from "@/components/admin/admin-request-traffic";
+import type { RequestTrafficSummary } from "@/lib/admin-traffic-types";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT, type TrafficDisplayUnit } from "@/lib/traffic-format";
 
 import { chatGptApiRequest, type ChatGptLogDetail, type ChatGptLogField, type ChatGptLogTimeline } from "@/services/api/chatgpt-api";
 import { ACCOUNT_OPERATION_PROGRESS_POLL_INTERVAL_MS } from "./use-account-operation-progress";
@@ -21,7 +24,7 @@ function LogDetailResizeHandle({ resizing, onPointerDown }: { resizing: boolean;
     );
 }
 
-export function ChatGptLogDetail({ id, onClose }: { id: string | null; onClose: () => void }) {
+export function ChatGptLogDetail({ id, trafficSummary, trafficDisplayUnit = DEFAULT_TRAFFIC_DISPLAY_UNIT, trafficLoading, trafficError, onClose }: { id: string | null; trafficSummary?: RequestTrafficSummary; trafficDisplayUnit?: TrafficDisplayUnit; trafficLoading?: boolean; trafficError?: string; onClose: () => void }) {
     const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 420 });
     const [detail, setDetail] = useState<ChatGptLogDetail | null>(null);
     const [error, setError] = useState("");
@@ -75,6 +78,7 @@ export function ChatGptLogDetail({ id, onClose }: { id: string | null; onClose: 
                         {current.presentation?.summary_text || current.summary ? <p className="text-sm leading-6 text-zinc-700 dark:text-zinc-300">{current.presentation?.summary_text || current.summary}</p> : null}
                         <DetailFields title="请求信息" fields={primaryFields} />
                         <DetailFields title="诊断信息" fields={diagnosticFields} />
+                        <section><h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">中心流量</h3><AdminRequestTrafficDetail summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} error={trafficError} /></section>
                         <RequestTimeline timeline={timeline} lifecycle={current.request_meta?.lifecycle} />
                         <AttemptGroups groups={current.detail_presentation?.attempt_groups} />
                         <AttemptList attempts={current.attempts} />

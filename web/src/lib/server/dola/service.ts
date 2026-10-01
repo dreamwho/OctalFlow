@@ -1,3 +1,4 @@
+import { withTrafficContext } from "@/lib/server/traffic-context";
 import { randomUUID } from "node:crypto";
 
 import { getAuthSettings, setAuthSettings, type SystemModelChannel } from "@/lib/auth/store";
@@ -163,6 +164,7 @@ export async function testDolaVideo(input: {
         proxyTarget: proxy.egress.target,
         ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}),
         imagexProxyMode: imagex.mode,
+        imagexProxySource: imagex.source,
         ...(imagex.proxyUrl ? { imagexProxyUrl: imagex.proxyUrl } : {}),
         cookie,
         requestId: randomUUID(),
@@ -178,7 +180,7 @@ export async function testDolaVideo(input: {
     await safeMarkDolaRequestLogRunning(logId, { phase: "upstream", message: isHeadless ? "向 Camoufox Provider 提交视频请求" : "向 Camoufox Provider 提交视频请求（有头模式）", detail: "请求体已脱敏" });
     let response: Response;
     try {
-        response = await dolaRuntimeRequest("/v1/videos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        response = await withTrafficContext({ requestId: logId }, () => dolaRuntimeRequest("/v1/videos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }));
     } catch (error) {
         if (!isTemporaryAccount) await markDolaAccountUsed(account.id, false);
         const message = error instanceof Error ? error.message : "Provider 请求失败";
@@ -338,7 +340,7 @@ export async function queryDolaTask(taskId: string) {
         await safeMarkDolaRequestLogRunning(logId, { phase: "upstream", message: "向 Provider 查询视频任务" });
     }
     try {
-        const response = await dolaRuntimeRequest(`/v1/videos/${encodeURIComponent(taskId)}`, { method: "GET" });
+        const response = await withTrafficContext({ requestId: logId }, () => dolaRuntimeRequest(`/v1/videos/${encodeURIComponent(taskId)}`, { method: "GET" }));
         const bytes = new Uint8Array(await response.arrayBuffer());
         const value = parseRecord(bytes) || {};
         const verificationId = stringValue(value.verificationId ?? value.verification_id);
@@ -435,7 +437,7 @@ export async function refreshDolaAccount(id: string, options: { loginOnly?: bool
     let response: Response;
     try {
         const gatewaySettings = await getDolaGatewaySettings();
-        response = await dolaRuntimeRequest("/v1/accounts/inspect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, authOnly: loginOnly, proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), cookie, randomFingerprint: gatewaySettings.randomFingerprint }) });
+        response = await withTrafficContext({ requestId: logId }, () => dolaRuntimeRequest("/v1/accounts/inspect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: id, credentialVersion: account.credentialVersion, authOnly: loginOnly, proxyMode: dolaProviderProxyMode(proxy.egress), proxySource: proxy.egress.mode, proxyTarget: proxy.egress.target, ...(proxy.proxyUrl ? { proxyUrl: proxy.proxyUrl } : {}), cookie, randomFingerprint: gatewaySettings.randomFingerprint }) }));
     } catch (error) {
         const message = error instanceof Error ? error.message : "Dola 账号额度查询失败";
         await safeSettleDolaRequestLog(logId, { statusCode: 502, durationMs: Date.now() - started, phase: "failed", error: message, accountId: id, accountName: account.name, proxyEgress: proxyEgress(proxy.egress), lifecycle: [...lifecycle, lifecycleEntry("failed", message, started)] });

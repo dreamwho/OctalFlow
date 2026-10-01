@@ -1,8 +1,9 @@
 import { getAuthSettings } from "@/lib/auth/store";
 import { QWEN_AUDIO_MODELS, isQwenVoiceCloneModel, isQwenVoiceDesignModel } from "@/lib/qwen-audio";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { currentTrafficContext } from "@/lib/server/traffic-context";
 
-type QwenChannel = { id: string; baseUrl: string; apiKey: string; models: string[] };
+type QwenChannel = { id: string; name: string; baseUrl: string; apiKey: string; models: string[] };
 
 export function isQwenAudioChannel(channel: { id?: string; advancedConfig?: { protocol?: string } }) {
     return channel.id === "aliyun-bailian-audio" || channel.advancedConfig?.protocol === "aliyun-bailian-audio";
@@ -21,6 +22,7 @@ export async function getQwenAudioChannel(model: string) {
     if (!channel?.apiKey?.trim()) throw new Error("尚未配置启用的阿里云百炼语音渠道或 API Key");
     const result: QwenChannel = {
         id: channel.id,
+        name: channel.name,
         baseUrl: (channel.baseUrl || "https://dashscope.aliyuncs.com/api/v1").trim().replace(/\/+$/, ""),
         apiKey: channel.apiKey.trim(),
         models: channel.models,
@@ -34,7 +36,7 @@ export async function requestQwenAudio(model: string, pathname: string, init: Re
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${channel.apiKey}`);
     headers.set("content-type", headers.get("content-type") || "application/json");
-    return fetchSafeOutbound(url, { ...init, headers }, { allowProxyFakeIpSpace: true });
+    return fetchSafeOutbound(url, { ...init, headers }, { allowProxyFakeIpSpace: true, trafficContext: { ...currentTrafficContext(), channelId: channel.id, channelName: channel.name, model, protocol: "aliyun-bailian-audio" } });
 }
 
 export function qwenResponseError(payload: unknown, status: number, fallback = "阿里云百炼语音请求失败") {

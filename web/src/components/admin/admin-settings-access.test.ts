@@ -15,6 +15,7 @@ describe("administrator settings access", () => {
             loginMethods: DEFAULT_SETTINGS.loginMethods,
             mail: DEFAULT_SETTINGS.mail,
             dataLifecycle: DEFAULT_SETTINGS.dataLifecycle,
+            trafficUnit: DEFAULT_SETTINGS.trafficUnit,
         });
     });
 

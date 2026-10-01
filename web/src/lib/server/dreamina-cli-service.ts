@@ -5,6 +5,7 @@ import { applyChannelProtocol } from "@/lib/channel-protocol-registry";
 import { normalizeModelId } from "@/lib/model-capability";
 import { normalizeDefaultModelsConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
 import { resolveModelRequestTimeoutMs } from "@/lib/server/model-request-policy";
+import { withTrafficContext } from "@/lib/server/traffic-context";
 
 import {
     DREAMINA_CLI_CHANNEL_ID,
@@ -231,11 +232,20 @@ export async function submitDreaminaCliTaskWithCreditObservation(input: Dreamina
         throw new DreaminaCliServiceError("即梦 CLI 正在处理其他提交，系统会在当前提交结束后自动继续", 409, retryAfterAt);
     }
     const startedAt = Date.now();
+    // Allocate the persisted request-log ID before spawning the CLI.  The
+    // provider lease and the eventual admin row must carry this same ID;
+    // taskId/attemptId remain the trusted generation identity fields.
+    const requestId = `dreamina-cli-log-${randomUUID()}`;
+    const trafficContext = {
+        requestId,
+        ...(context.taskId ? { taskId: context.taskId } : {}),
+        ...(context.taskId && context.attemptNo !== undefined ? { attemptId: `${context.taskId}:${context.attemptNo}` } : {}),
+    };
     try {
         if (dreaminaCliRequiresVip(input) && !hasDreaminaCliVip(lease.account.vipLevel)) {
             throw new DreaminaCliProviderError("所选即梦 CLI 模型或分辨率需要 VIP 会员，请先刷新账号状态", 403, "not_started");
         }
-        const submission = await submitDreaminaCliTask(input, { runner: context.runner, timeoutMs });
+        const submission = await withTrafficContext(trafficContext, () => submitDreaminaCliTask(input, { runner: context.runner, timeoutMs }));
         const officialCreditCost = submission.creditCost;
         const completedAt = new Date().toISOString();
         await updateDreaminaCliAccountState({
@@ -245,6 +255,7 @@ export async function submitDreaminaCliTaskWithCreditObservation(input: Dreamina
             lastErrorMessage: undefined,
         });
         await appendDreaminaCliRequestLog({
+            id: requestId,
             taskId: context.taskId,
             attemptNo: context.attemptNo,
             command: input.command,
@@ -272,6 +283,7 @@ export async function submitDreaminaCliTaskWithCreditObservation(input: Dreamina
             lastErrorMessage: safeServiceMessage(error),
         });
         await appendDreaminaCliRequestLog({
+            id: requestId,
             taskId: context.taskId,
             attemptNo: context.attemptNo,
             command: input.command,

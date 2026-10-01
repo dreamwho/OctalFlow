@@ -2,9 +2,11 @@
 
 import { Alert, Button, Empty, Input, Pagination, Select, Space, Tag } from "antd";
 import { ChevronRight, Search } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
+import { AdminRequestTrafficSummary, collectRequestIds, getRequestTrafficSummary, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import { getChatGptLogs, type ChatGptLogStatus, type ChatGptLogSummary } from "@/services/api/chatgpt-api";
 
 import { ChatGptLogDetail } from "./chatgpt-log-detail";
@@ -19,6 +21,14 @@ export function ChatGptRequestLogPanel() {
     const [loadingLogs, setLoadingLogs] = useState(false);
     const [logError, setLogError] = useState("");
     const loadRevisions = useRef({ logs: 0 });
+    const trafficRequestIds = useMemo(() => {
+        const ids = collectRequestIds(logs.items);
+        if (logDetailId && !ids.includes(logDetailId)) ids.push(logDetailId);
+        return ids;
+    }, [logs.items, logDetailId]);
+    const trafficRefreshKey = useMemo(() => logs.items.map((log) => `${log.id}:${log.display_status || log.outcome}:${log.status_code || 0}:${log.duration_ms || 0}`).join("|"), [logs.items]);
+    const traffic = useAdminRequestTraffic(trafficRequestIds, [], trafficRefreshKey);
+    const selectedLog = useMemo(() => logs.items.find((log) => log.id === logDetailId), [logDetailId, logs.items]);
 
     const loadLogs = useCallback(
         async (silent = false, pageOverride = logPage) => {
@@ -105,7 +115,7 @@ export function ChatGptRequestLogPanel() {
                 {logs.items.length ? (
                     <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                         {logs.items.map((log) => (
-                            <ChatGptLogRow key={log.id} log={log} onClick={() => setLogDetailId(log.id)} />
+                            <ChatGptLogRow key={log.id} log={log} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], trafficRequestId(log))} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} onClick={() => setLogDetailId(log.id)} />
                         ))}
                     </div>
                 ) : (
@@ -117,12 +127,12 @@ export function ChatGptRequestLogPanel() {
                     <Pagination current={logPage} pageSize={50} total={logs.total} showSizeChanger={false} onChange={setLogPage} />
                 </div>
             </div>
-            <ChatGptLogDetail id={logDetailId} onClose={() => setLogDetailId(null)} />
+            <ChatGptLogDetail id={logDetailId} trafficSummary={getRequestTrafficSummary(traffic.report?.items || [], selectedLog ? trafficRequestId(selectedLog) : logDetailId || undefined)} trafficDisplayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} trafficLoading={traffic.loading} trafficError={traffic.error} onClose={() => setLogDetailId(null)} />
         </Panel>
     );
 }
 
-export function ChatGptLogRow({ log, onClick }: { log: ChatGptLogSummary; onClick: () => void }) {
+export function ChatGptLogRow({ log, trafficSummary, trafficDisplayUnit, trafficLoading, onClick }: { log: ChatGptLogSummary; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; onClick: () => void }) {
     const status = chatGptLogStatus(log);
     const duration = log.presentation?.duration?.text || formatChatGptDuration(log.duration_ms);
     const attempts = log.attempt_count && log.attempt_count > 1 ? `${log.attempt_count} 次尝试` : "";
@@ -133,7 +143,7 @@ export function ChatGptLogRow({ log, onClick }: { log: ChatGptLogSummary; onClic
             data-chatgpt-log-id={log.id}
             aria-label={`查看请求日志：${log.model || "未命名模型"}`}
             onClick={onClick}
-            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[160px_122px_minmax(0,1fr)_150px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
+            className="grid w-full gap-2 p-3 text-left text-xs transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:grid-cols-[160px_122px_minmax(0,1fr)_minmax(180px,0.8fr)_150px_24px] sm:items-center sm:p-4 dark:hover:bg-zinc-900/70"
         >
             <div className="text-zinc-500">{formatChatGptTime(log.started_at || log.time)}</div>
             <div>
@@ -162,6 +172,7 @@ export function ChatGptLogRow({ log, onClick }: { log: ChatGptLogSummary; onClic
                 {attempts ? ` · ${attempts}` : ""}
                 {switches ? ` · ${switches}` : ""}
             </div>
+            <AdminRequestTrafficSummary summary={trafficSummary} displayUnit={trafficDisplayUnit} loading={trafficLoading} />
             <ChevronRight className="hidden size-4 justify-self-end text-zinc-400 sm:block" aria-hidden="true" />
         </button>
     );

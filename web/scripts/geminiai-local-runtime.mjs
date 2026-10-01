@@ -21,6 +21,7 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
     const dataRoot = source.DREAMYO_DATA_DIR || path.join(webRoot, ".data");
     const apiKey = obtainStableKey(dataRoot, tokenFactory);
     const accountsDir = source.DREAMYO_GEMINIAI_ACCOUNTS_DIR?.trim() || path.join(dataRoot, "geminiai", "accounts");
+    const trafficMeterSource = path.join(repoRoot, "services", "traffic-meter", "src");
     const providerEnvironment = {
         ...source,
         AISTUDIO_API_KEY: apiKey,
@@ -29,6 +30,7 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
         AISTUDIO_DUMP_RAW_RESPONSE: source.AISTUDIO_DUMP_RAW_RESPONSE?.trim() || "0",
         AISTUDIO_HOST: "127.0.0.1",
         AISTUDIO_PORT: String(port),
+        PYTHONPATH: [trafficMeterSource, path.join(providerRoot, "src"), source.PYTHONPATH].filter(Boolean).join(path.delimiter),
         ...(source.DREAMYO_GEMINIAI_STUDIO_URL?.trim() ? { AISTUDIO_STUDIO_URL: source.DREAMYO_GEMINIAI_STUDIO_URL.trim() } : {}),
     };
     return {

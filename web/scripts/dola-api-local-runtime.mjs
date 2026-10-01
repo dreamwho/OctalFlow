@@ -28,6 +28,7 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
     if (!port) throw new Error("Dola Provider 运行时端口无效");
     const apiKey = configuredKey || tokenFactory();
     const dataRoot = source.DREAMYO_DATA_DIR || path.join(webRoot, ".data");
+    const trafficMeterSource = path.join(repoRoot, "services", "traffic-meter", "src");
     const dotenv = source.DREAMYO_DESKTOP_EDITION ? {} : readDotenv(path.join(providerRoot, ".env"));
     const providerEnvironment = {
         ...source,
@@ -40,7 +41,7 @@ export function localDolaApiRuntime({ repoRoot, webRoot, environment = process.e
         DOLA_REFERENCE_ASSET_ORIGIN: source.DOLA_REFERENCE_ASSET_ORIGIN?.trim() || source.DREAMYO_INTERNAL_ORIGIN?.trim() || `http://127.0.0.1:${source.PORT || "3333"}`,
         DOLA_TASK_STATE_PATH: source.DOLA_TASK_STATE_PATH?.trim() || dotenv.DOLA_TASK_STATE_PATH || path.join(dataRoot, "dola", "provider-tasks.json"),
         DOLA_PROFILE_DIR: source.DOLA_PROFILE_DIR?.trim() || dotenv.DOLA_PROFILE_DIR || path.join(dataRoot, "dola", "profiles"),
-        PYTHONPATH: [path.join(providerRoot, "src"), source.PYTHONPATH].filter(Boolean).join(path.delimiter),
+        PYTHONPATH: [trafficMeterSource, path.join(providerRoot, "src"), source.PYTHONPATH].filter(Boolean).join(path.delimiter),
     };
     return {
         environment: { ...source, DREAMYO_DOLA_PROVIDER_URL: `http://127.0.0.1:${port}`, DREAMYO_DOLA_PROVIDER_KEY: apiKey },

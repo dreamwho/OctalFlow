@@ -6,6 +6,7 @@ import { Button, Dropdown, Modal } from "antd";
 import { BriefcaseBusiness, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, Clock3, Copy, Expand, Film, Globe2, Image as ImageIcon, ListChecks, Minimize2, Palette, Pencil, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles, Star } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import { isDolaPortraitProtectionError } from "@/lib/dola-errors";
 import { formatBytes } from "@/lib/image-utils";
 import { imagePreviewUrl } from "@/lib/media-image-url";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -262,6 +263,9 @@ export function ErrorContent({ node, theme, onRetry, onRegenerate, scale = 1 }: 
     const handleAction = onRegenerate || onRetry;
     return (
         <div data-canvas-node-error className="flex h-full w-full flex-col items-center justify-center p-4 text-center">
+            {isDolaPortraitProtectionError(node.metadata?.errorDetails || "") ? (
+                <p className="mb-3 text-center leading-snug" style={{ fontSize, color: theme.node.danger }}>人脸未通过肖像保护审核</p>
+            ) : null}
             <button
                 type="button"
                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border font-medium whitespace-nowrap shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"

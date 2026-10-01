@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 import { describeDolaFailure, dolaErrorHint, isDolaPreparingTask, isDolaQuotaExhaustedError, isDolaRateLimitError, shouldRotateAccountForError } from "./dola-errors";
 
 describe("dola-errors", () => {
+    it("肖像保护拒绝显示明确原因且不自动换号", () => {
+        const message = "参考图中的人脸未通过肖像保护审核，请更换参考图或改用文生视频。";
+        for (const error of ["portrait_protection_failed", "出于肖像保护考虑，未认证人脸暂不支持用 Dreamina Seedance 2.5 生成视频。", "未认证人脸暂不支持生成视频"]) {
+            expect(describeDolaFailure(error)).toBe(message);
+            expect(dolaErrorHint(error)).toBe(message);
+            expect(shouldRotateAccountForError(`${error}: authentication required`)).toBe(false);
+        }
+        expect(dolaErrorHint("人脸已通过肖像保护审核，正在生成中")).toBeNull();
+    });
+
     it("识别额度用完错误与今日生成上限", () => {
         expect(isDolaQuotaExhaustedError("upstream_quota_exhausted")).toBe(true);
         expect(isDolaQuotaExhaustedError("今天的生成次数已经到达上限，明天再来免费生成吧")).toBe(true);

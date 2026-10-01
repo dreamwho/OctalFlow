@@ -60,8 +60,14 @@ IPWO 源设置使用独立 Tab 与 `/integration/ipwo` 契约；来源开关通�
 
 `dreamyo_minimax_voices` 保存用户创建的 MiniMax 或阿里云百炼音色本地映射（系统音色不落用户表）；`provider` 区分供应商，`user_id` 为空的记录仅供后台同步使用，前台个人音色查询必须按当前用户过滤。音色表同时保存供应商 `voice_name`、`description` 和 `provider_created_time`，分类由名称与介绍实时派生，不把分类规则固化成供应商字段。`dreamyo_minimax_music_records` 保存音乐生成的用户记录，`dreamyo_minimax_request_logs` 通过 `provider` 区分 MiniMax、阿里云百炼与腾讯云 TokenHub，并保存从提交、上游响应到完成/失败的请求过程日志。API Key 继续只存于系统模型渠道的加密字段，音色和音乐结果不在浏览器本地持久化。
 
-### DOLA Provider 出口流量
+### 全局 Provider 出口流量
 
-Provider 在任务状态文件同目录持久化 `traffic.sqlite3`（可用 `DOLA_TRAFFIC_STATE_PATH` 指定），SQLite WAL 表 `traffic(time_us, role, address, port, upload, download)` 按每次 TCP 写入/接收保存 UTC 微秒时间、提交/上传用途、脱敏主机与端口和整数 B。`traffic_time` 索引支持 `[start,end)` 范围聚合，不从请求日志估算、不读取全表快照；端口筛选作用于行与总计。重启保留记录，短连接、失败及重试均按实际字节累计。代理密码和 Cookie 不保存。
+`traffic-meter` 是独立于 DOLA 开关的私有 SQLite 服务，状态文件由 `TRAFFIC_METER_STATE_PATH` 指定。它的 WAL 表 `traffic_events(time_us, channel_id, channel_name, model, protocol, connection_mode, role, attribution_scope, request_id, task_id, attempt_id, address, port, upload, download)` 按每次实际 TCP 写入或接收记录 UTC 微秒与整数 B；`request_id` 是服务端创建的 Provider 请求日志 ID，`task_id` 是稳定生成任务 ID，`attempt_id` 是一次真实上游尝试 ID。该表是本次未上线的全新状态契约，旧版本地 SQLite 文件必须先归档后重新创建，服务不提供字段迁移或旧计数回填。时间、渠道、模型、协议、连接方式、端口、请求和任务索引只支持定向 SQL 聚合，不能读取全表后在应用层筛选。记录只保留归因元数据和脱敏地址，代理 URL/密码、Cookie、请求体和响应体均不写入 SQLite。渠道、模型、协议、角色和关联 ID 等持久化文本在入口限制为 512 个字符，以防内部调用异常将无界内容写入状态库；这不是传输、重试或计费限制。
 
-HTTP、HTTPS、SOCKS5 出口通过仅本机可访问的 pproxy 中继连接原始配置；浏览器与 HTTPX 共用计量入口。直连记端口 0；来源素材下载、ImageX Apply/二进制/Commit 采用独立上传配置，多图复用一个 HTTPX 客户端，站内签名素材仍在内部直连读取。计数包含代理握手及 TLS 记录，不含 TCP/IP 包头、重传、DNS UDP、Provider 外的结果下载和链式代理后续跳点，不等同供应商账单。只读内部 `/internal/runtime/v1/traffic` 需要 Provider 密钥；后台 `/api/admin/dola/traffic` 需要既有 DOLA 管理员权限，公共网关不开放该接口。
+各 Python Provider 用 `DREAMYO_TRAFFIC_METER_URL` 与 `DREAMYO_TRAFFIC_METER_KEY` 向 `POST /internal/leases` 申请带上下文的短期中继，完成、取消或关闭浏览器后通过 `DELETE /internal/leases/{id}` 释放。中继由 `TRAFFIC_METER_BIND_HOST` 监听，向 Provider 返回 `TRAFFIC_METER_PUBLIC_HOST` 可达的带临时凭据 URL；`X-Traffic-Key` 只在私有控制面上传递。相同不可变上游/上下文/Pinned DNS 组合可以共享中继，但每个调用者拥有自己的 lease；最后一个 lease 释放后才关闭写入端和中继。直连按可信 `hostname -> address` 改写目的 IP；经 HTTP/HTTPS/SOCKS 上游时，pproxy 的原生 CONNECT/SOCKS 握手也使用该 IP，客户端隧道内原始 HTTP Host 与 TLS SNI 保持不变。
+
+`GET /internal/traffic` 保留时间窗全局汇总并可按三类稳定关联 ID 精确筛选。`GET /internal/traffic/tasks` 在 SQLite 内按 `task_id`（缺失时按 `request_id`）分页，再在同一查询内返回该任务的渠道、协议、连接方式、角色、地址、端口和尝试级收发分拆，不会把一个任务的路由行拆到不同页面。`POST /internal/traffic/requests` 接收当前日志页的 `requestIds` 和/或 `taskIds`，用 SQL `IN` 批量返回请求与任务的同类明细；它不按请求创建时间猜测流量。`shared_browser` 及没有任务/请求关联 ID 的传输只出现在全局统计，绝不归入付费任务或请求日志。
+
+PostgreSQL 的 `app_settings.traffic_unit` 是管理员选择的全局流量显示单位，只接受十进制 `MB`（默认）或 `GB`；原始计量与 API 传输始终使用整数 B，切换显示单位不会改写、换算或影响汇总数据。
+
+计量边界是计量服务到上游代理或目标站的 TCP 字节流，含代理握手和 TLS 记录，不含 Web 到 Python 的内部环回段、IP/TCP 包头、重传、DNS UDP、代理后续跳点或未经过计量连接的浏览器直取/外部下载，也不等同 ISP 或供应商账单。浏览器连接使用 `model='__shared_browser__'` 和 `attribution_scope='shared_browser'`，不能伪装归因到单一模型；无法识别模型的精确传输为 `__unattributed__`。DOLA 未配置中央服务时保留原有本地 `traffic.sqlite3`，仅供旧库调用和测试，不能作为全局后台统计来源。

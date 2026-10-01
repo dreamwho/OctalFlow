@@ -34,12 +34,12 @@ export function resolveGenerationWorkerOrigin({ environment = process.env, fallb
     return url.origin;
 }
 
-export function superviseGenerationRuntime({ app, workerScript, environment, services = [] }) {
+export function superviseGenerationRuntime({ app, workerScript, environment, services = [], spawnProcess = spawn, signalSource = process }) {
     if (!environment.DREAMYO_DESKTOP_EDITION) services.forEach((service) => freeServicePort(service?.port, service?.name));
     const definitions = [...services, { name: "web", command: app.command, args: app.args, cwd: app.cwd }, { name: "generation-worker", command: process.execPath, args: [workerScript], cwd: app.cwd }];
     const children = definitions.map((definition) => ({
         ...definition,
-        process: spawn(definition.command, definition.args, { cwd: definition.cwd, env: definition.environment || environment, stdio: "inherit" }),
+        process: spawnProcess(definition.command, definition.args, { cwd: definition.cwd, env: definition.environment || environment, stdio: "inherit" }),
     }));
 
     return new Promise((resolve) => {
@@ -47,41 +47,55 @@ export function superviseGenerationRuntime({ app, workerScript, environment, ser
         let stopping = false;
         let requestedExitCode = 0;
         let forceTimer;
+        const closedChildren = new Set();
+        const termSignaledChildren = new Set();
+        const meterChildren = children.filter((child) => child.name === "traffic-meter");
+        const nonMeterChildren = children.filter((child) => child.name !== "traffic-meter");
 
         const cleanup = () => {
-            process.off("SIGINT", stopForSignal);
-            process.off("SIGTERM", stopForSignal);
+            signalSource.off("SIGINT", stopForSignal);
+            signalSource.off("SIGTERM", stopForSignal);
             if (forceTimer) clearTimeout(forceTimer);
         };
+        const isRunning = (child) => child.process.exitCode === null && child.process.signalCode === null;
+        const stopChild = (child) => {
+            if (termSignaledChildren.has(child) || !isRunning(child)) return;
+            termSignaledChildren.add(child);
+            child.process.kill("SIGTERM");
+        };
+        const stopMeterChildren = () => meterChildren.forEach(stopChild);
+        const allNonMeterChildrenClosed = () => nonMeterChildren.every((child) => closedChildren.has(child));
         const stop = (exitCode) => {
             if (stopping) return;
             stopping = true;
             requestedExitCode = exitCode;
-            for (const child of children) {
-                if (child.process.exitCode === null && child.process.signalCode === null) child.process.kill("SIGTERM");
-            }
+            for (const child of nonMeterChildren) stopChild(child);
+            if (allNonMeterChildrenClosed()) stopMeterChildren();
             forceTimer = setTimeout(() => {
                 for (const child of children) {
-                    if (child.process.exitCode === null && child.process.signalCode === null) child.process.kill("SIGKILL");
+                    if (isRunning(child)) child.process.kill("SIGKILL");
                 }
             }, 5_000);
             forceTimer.unref();
         };
         const stopForSignal = () => stop(0);
 
-        process.once("SIGINT", stopForSignal);
-        process.once("SIGTERM", stopForSignal);
+        signalSource.once("SIGINT", stopForSignal);
+        signalSource.once("SIGTERM", stopForSignal);
         for (const child of children) {
             child.process.once("error", (error) => {
                 console.error(`${child.name} process failed to start`, error);
                 stop(1);
             });
             child.process.once("close", (code) => {
+                if (closedChildren.has(child)) return;
+                closedChildren.add(child);
                 closed += 1;
                 if (!stopping) {
                     console.error(`${child.name} process stopped unexpectedly with code ${code ?? "unknown"}`);
                     stop(code && code > 0 ? code : 1);
                 }
+                if (stopping && allNonMeterChildrenClosed()) stopMeterChildren();
                 if (closed === children.length) {
                     cleanup();
                     resolve(requestedExitCode);

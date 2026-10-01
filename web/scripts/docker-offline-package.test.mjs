@@ -36,7 +36,7 @@ describe("offline Docker package scripts", () => {
 
         expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DATABASE_MODE=external");
         expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DOCKER_PLATFORM=linux/amd64");
-        expect(readdirSync(path.join(packageDir, "images")).sort()).toEqual(["app.tar", "dola-api.tar", "geminiai.tar", "magic-proxy.tar"]);
+        expect(readdirSync(path.join(packageDir, "images")).sort()).toEqual(["app.tar", "dola-api.tar", "geminiai.tar", "magic-proxy.tar", "traffic-meter.tar"]);
         expect(readFileSync(path.join(packageDir, "SHA256SUMS"), "utf8")).toContain("images/app.tar");
         expect(readFileSync(path.join(fixture.root, "scripts", "build-docker-offline-package.sh"), "utf8")).not.toContain("rm -rf");
 
@@ -231,7 +231,7 @@ describe("offline Docker package scripts", () => {
         const dockerLog = readFileSync(fixture.dockerLog, "utf8");
         expect(dockerLog).toContain("up -d --pull never");
         expect(dockerLog).toContain(" ps");
-        expect(dockerLog).toContain("logs --tail=120 magic-proxy app generation-worker geminiai");
+        expect(dockerLog).toContain("logs --tail=120 magic-proxy traffic-meter app generation-worker geminiai");
     });
 });
 

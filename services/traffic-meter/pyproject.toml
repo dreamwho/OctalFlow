@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dreamyo-traffic-meter"
+version = "0.1.0"
+description = "Authenticated raw outbound TCP traffic meter for Dreamyo providers"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "pproxy==2.7.9",
+    "pydantic>=2.8",
+    "uvicorn>=0.34",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "anyio>=4", "cryptography>=43"]
+
+[project.scripts]
+traffic-meter = "traffic_meter.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

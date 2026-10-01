@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hasSystemAiCharge, readSystemAiBilling, readVerifiedSystemAiBusinessRequestId, systemAiBillingHeaders, systemAiIdempotencyKey, systemAiPointsIdempotencyKey, systemAiRequestFingerprint } from "./system-ai-billing";
+import { hasSystemAiCharge, readSystemAiBilling, readVerifiedSystemAiBusinessRequestId, systemAiBillingHeaders, systemAiIdempotencyKey, systemAiPointsIdempotencyKey, systemAiRequestFingerprint, signedInternalTrafficHeaders, readVerifiedInternalTraffic } from "./system-ai-billing";
 
 describe("system AI billing helpers", () => {
     it("preserves a zero-cost consumption record so its quota can be refunded", () => {
@@ -54,5 +54,18 @@ describe("system AI billing helpers", () => {
         expect(firstKey).toBe(secondKey);
         expect(firstKey).toMatch(/^system-ai:[a-f0-9]{64}$/);
         expect(firstFingerprint).not.toBe(secondFingerprint);
+    });
+});
+
+describe("trusted internal task traffic identity", () => {
+    it("rejects forged and cross-path task attribution and preserves signed IDs", () => {
+        const url = "http://127.0.0.1:3333/api/ai/system/channel/v1/images";
+        const identity = { taskId: "local-task-1", requestId: "request-1", attemptId: "attempt-1" };
+        const headers = new Headers(signedInternalTrafficHeaders(url, "POST", identity));
+        expect(readVerifiedInternalTraffic(headers, url, "POST")).toEqual(identity);
+        expect(readVerifiedInternalTraffic(headers, url, "GET")).toEqual({});
+        expect(readVerifiedInternalTraffic(headers, url + "/different", "POST")).toEqual({});
+        headers.set("x-dreamyo-internal-traffic", Buffer.from(JSON.stringify({ taskId: "other-user-task" })).toString("base64url"));
+        expect(readVerifiedInternalTraffic(headers, url, "POST")).toEqual({});
     });
 });

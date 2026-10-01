@@ -1,6 +1,7 @@
 import { refundUserPoints } from "@/lib/auth/store";
 import { configureServerProxyDispatcher } from "@/lib/server/proxy-dispatcher";
 import { fetchSafeOutbound } from "@/lib/server/safe-outbound-fetch";
+import { withTrafficContext, updateTrafficContext, generationTrafficContext } from "@/lib/server/traffic-context";
 import { scheduleGenerationTask } from "@/lib/server/generation-task-scheduler";
 import { fetchInternalApi, isInternalApiBaseUrl } from "@/lib/server/internal-origin";
 import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
@@ -58,6 +59,10 @@ type ClaudePayload = {
 };
 
 export async function runTextTaskStep(task: TextTask, origin: string, cookie: string): Promise<TextTaskStep> {
+    return withTrafficContext(generationTrafficContext(task.config, "submit", task.id), () => runTextTaskStepInternal(task, origin, cookie));
+}
+
+async function runTextTaskStepInternal(task: TextTask, origin: string, cookie: string): Promise<TextTaskStep> {
     const current = await getTextTask(task.id);
     if (!current || current.status === "success") return { state: "completed" };
     if (current.status === "error" || current.status === "cancelled") return { state: "failed", error: current.error || "文本任务已结束" };
@@ -69,6 +74,7 @@ export async function runTextTaskStep(task: TextTask, origin: string, cookie: st
     let attempts = running.attempts || [];
     let latestError: unknown;
     for (const [index, config] of candidates.entries()) {
+        updateTrafficContext(generationTrafficContext(config, "submit"));
         const started = startGenerationAttempt(attempts, { channelId: config.channelId, model: generationModelId(config), capability: "text" });
         attempts = started.attempts;
         const candidateTask = { ...running, config, candidateConfigs: candidates.slice(index + 1), attemptNo: started.attempt.attemptNo, attempts };
@@ -203,6 +209,10 @@ async function queryCustomTextTaskStep(task: TextTask, origin: string, cookie: s
 }
 
 export async function queryCancelledTextTaskUpstreamStep(task: TextTask, origin: string, cookie: string) {
+    return withTrafficContext(generationTrafficContext(task.config, "query", task.id), () => queryCancelledTextTaskUpstreamStepInternal(task, origin, cookie));
+}
+
+async function queryCancelledTextTaskUpstreamStepInternal(task: TextTask, origin: string, cookie: string) {
     const config = task.config;
     const upstream = task.upstream;
     if (!upstream?.id) return { state: "terminal" as const, status: "missing_upstream_id" };

@@ -1,7 +1,17 @@
 import { runCustomImageTask, pollCustomImageTask } from "@/app/api/image-tasks/image-task-custom";
 import { runGeminiImageTask } from "@/app/api/image-tasks/image-task-gemini";
 import { runOpenAiImageTask } from "@/app/api/image-tasks/image-task-openai";
-import { withSystemPrompt, directRemoteImageResult, imageReferenceToFile, imageUnits, ImageQueryContractError, ImageUpstreamTerminalError, inlineRemoteImageResult, pollOpenAiImageTask, resolveProxiedMediaSource } from "@/app/api/image-tasks/image-task-support";
+import {
+    withSystemPrompt,
+    directRemoteImageResult,
+    imageReferenceToFile,
+    imageUnits,
+    ImageQueryContractError,
+    ImageUpstreamTerminalError,
+    inlineRemoteImageResult,
+    pollOpenAiImageTask,
+    resolveProxiedMediaSource,
+} from "@/app/api/image-tasks/image-task-support";
 import type { ImageTaskMediaResult, ImageTaskResult, ImageTaskRunResult } from "@/app/api/image-tasks/image-task-types";
 import { stableMediaUrl, writeImageGenerationLog } from "@/app/api/image-tasks/image-task-runner";
 import { getAuthSettings, refundUserPoints } from "@/lib/auth/store";
@@ -20,6 +30,7 @@ import { isDreaminaCliConfig } from "@/lib/server/dreamina-cli-service";
 import { getDolaGatewaySettings } from "@/lib/server/dola/gateway-store";
 import { shouldRotateAccountForError } from "@/lib/dola-errors";
 import { cancelRunningHubTask, queryRunningHubImageTask, RunningHubError, submitRunningHubImageTask } from "@/lib/server/runninghub-service";
+import { withTrafficContext, updateTrafficContext, generationTrafficContext } from "@/lib/server/traffic-context";
 
 export type ImageUpstreamStep =
     | { state: "pending"; upstream: NonNullable<ImageTask["upstream"]>; status: string }
@@ -31,6 +42,10 @@ export type ImageUpstreamStep =
 const INLINE_IMAGE_RESULT_REFERENCE = "inline://image-task-result";
 
 export async function createImageTaskUpstreamStep(task: ImageTask, origin: string, publicOrigin: string, cookie = "", workerUserId = ""): Promise<ImageUpstreamStep> {
+    return withTrafficContext(generationTrafficContext(task.config, "submit", task.id), () => createImageTaskUpstreamStepInternal(task, origin, publicOrigin, cookie, workerUserId));
+}
+
+async function createImageTaskUpstreamStepInternal(task: ImageTask, origin: string, publicOrigin: string, cookie: string, workerUserId: string): Promise<ImageUpstreamStep> {
     const current = await getImageTask(task.id);
     if (!current || current.status === "cancelled") return { state: "failed", error: "任务已取消", status: "cancelled" };
     const running = current.status === "pending" ? await transitionImageTask(current, ["pending"], { status: "running" }) : current;
@@ -66,6 +81,7 @@ export async function createImageTaskUpstreamStep(task: ImageTask, origin: strin
     let attempts = running.attempts || [];
     let latestError = "没有可用的图片渠道";
     for (const [index, config] of candidates.entries()) {
+        updateTrafficContext(generationTrafficContext(config, "submit"));
         const started = startGenerationAttempt(attempts, { channelId: config.channelId, model: generationModelId(config), capability: "image" });
         attempts = started.attempts;
         const candidate = { ...running, config, candidateConfigs: candidates.slice(index + 1), attempts, attemptNo: started.attempt.attemptNo, upstream: undefined, billing: undefined };
@@ -120,6 +136,10 @@ export async function createImageTaskUpstreamStep(task: ImageTask, origin: strin
 }
 
 export async function queryImageTaskUpstreamStep(task: ImageTask, origin: string, cookie = "", workerUserId = ""): Promise<ImageUpstreamStep> {
+    return withTrafficContext(generationTrafficContext(task.config, "query", task.id), () => queryImageTaskUpstreamStepInternal(task, origin, cookie, workerUserId));
+}
+
+async function queryImageTaskUpstreamStepInternal(task: ImageTask, origin: string, cookie: string, workerUserId: string): Promise<ImageUpstreamStep> {
     const upstream = task.upstream;
     if (!upstream?.id) return { state: "failed", error: "图片任务缺少上游任务 ID", status: "missing_upstream_id" };
     const authContext = cookie || maintenanceWorkerContext(workerUserId || task.userId);
@@ -152,6 +172,10 @@ export async function queryImageTaskUpstreamStep(task: ImageTask, origin: string
 }
 
 export async function queryCancelledImageTaskUpstreamStep(task: ImageTask, origin: string, cookie = "", workerUserId = "") {
+    return withTrafficContext(generationTrafficContext(task.config, "query", task.id), () => queryCancelledImageTaskUpstreamStepInternal(task, origin, cookie, workerUserId));
+}
+
+async function queryCancelledImageTaskUpstreamStepInternal(task: ImageTask, origin: string, cookie: string, workerUserId: string) {
     const upstream = task.upstream;
     if (!upstream?.id) return { state: "terminal" as const, status: "missing_upstream_id" };
     const authContext = cookie || maintenanceWorkerContext(workerUserId || task.userId);
@@ -176,6 +200,10 @@ export async function queryCancelledImageTaskUpstreamStep(task: ImageTask, origi
 }
 
 export async function persistImageTaskResult(task: ImageTask, origin: string, resultUrl: string, cookie = "", workerUserId = "") {
+    return withTrafficContext(generationTrafficContext(task.config, "download", task.id), () => persistImageTaskResultInternal(task, origin, resultUrl, cookie, workerUserId));
+}
+
+async function persistImageTaskResultInternal(task: ImageTask, origin: string, resultUrl: string, cookie: string, workerUserId: string) {
     const authContext = cookie || maintenanceWorkerContext(workerUserId || task.userId);
     const inlineDataUrl = resultUrl === INLINE_IMAGE_RESULT_REFERENCE ? task.result?.dataUrl || "" : resultUrl;
     const remoteUrl = resultUrl === INLINE_IMAGE_RESULT_REFERENCE ? task.result?.remoteUrl : /^https?:\/\//i.test(resultUrl) ? resultUrl : undefined;

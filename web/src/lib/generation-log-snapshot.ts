@@ -26,6 +26,7 @@ export type GenerationLogReferenceSnapshot = {
 };
 
 export type GenerationLogProtocolTrace = {
+    requestId?: string;
     createdAt: string;
     channel: string;
     protocol: string;

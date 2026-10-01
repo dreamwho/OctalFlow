@@ -34,6 +34,11 @@ async function fixture() {
         request.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
         request.on("end", () => {
             seen.push({ url: request.url || "", key: String(request.headers["x-dreamyo-runtime-key"]), authorization: request.headers.authorization || "", body: Buffer.concat(chunks).toString("utf8") });
+            if (request.headers["x-dreamyo-traffic-context"] && request.headers["x-dreamyo-internal-dispatch"] !== "1") {
+                response.writeHead(401);
+                response.end("trusted traffic context requires internal dispatch");
+                return;
+            }
             if (request.url === "/images/result.png") {
                 if (request.headers["x-dreamyo-internal-dispatch"] !== "1" || request.headers.authorization !== `Bearer ${request.headers["x-dreamyo-runtime-key"]}`) {
                     response.writeHead(503);

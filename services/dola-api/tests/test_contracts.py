@@ -1021,6 +1021,68 @@ def test_latest_assistant_failure_overrides_stale_active_creation():
     assert parse_generation_payloads([payload]) == {}
 
 
+def test_portrait_protection_refusal_terminates_without_a_creation_and_overrides_pending():
+    import json
+
+    reply = "出于肖像保护考虑，未认证人脸暂不支持用 Dreamina Seedance 2.5 生成视频。你可以尝试换其它参考图或文生视频。"
+    refusal = {"user_type": 2, "content": json.dumps([{"block_type": 10000, "content": {"text_block": {"text": reply}}}], ensure_ascii=False)}
+    active = {"user_type": 2, "content_block": [{"content": {"creation_block": {"creations": [{"type": 2, "video": {"status": 1}}]}}}]}
+    for messages in ([refusal], [active, refusal]):
+        result = parse_generation_payloads([{"messages": messages}])
+        assert result["error"] == "portrait_protection_failed"
+        assert result["rawError"] == reply
+        assert not result["url"]
+    # A user's quoted refusal and an older refusal do not fail a new generation.
+    assert parse_generation_payloads([{"messages": [{**refusal, "user_type": 1}, {"user_type": 2, "tts_content": "正在生成中"}]}]) == {}
+    assert parse_generation_payloads([{"messages": [refusal, {"user_type": 2, "tts_content": "正在生成中"}]}]) == {}
+    completed = {"creation_block": {"creations": [{"type": 2, "video": {"download_url": "https://cdn.dola.com/final.mp4"}}]}}
+    assert parse_generation_payloads([{"messages": [refusal]}, completed])["url"] == "https://cdn.dola.com/final.mp4"
+    reference = {"user_type": 1, "image": {"image_ori": {"url": "https://img.dola.com/reference.jpeg"}}}
+    assert parse_generation_payloads([{"messages": [reference, refusal]}])["error"] == "portrait_protection_failed"
+
+
+def test_portrait_protection_creation_and_protocol_failures_have_the_same_category():
+    reply = "未认证人脸暂不支持生成视频"
+    for payload in (
+        {"code": 1, "message": reply},
+        {"creation_block": {"creations": [{"type": 2, "video": {"status": 5, "fail_msg": reply}}]}},
+    ):
+        result = parse_generation_payloads([payload])
+        assert result["error"] == "portrait_protection_failed"
+        assert result["rawError"] == reply
+
+
+def test_portrait_protection_query_persists_terminal_failure(monkeypatch):
+    import asyncio
+    import dola_api.query as query_module
+    import dola_api.session as session_module
+
+    reply = "出于肖像保护考虑，未认证人脸暂不支持用 Dreamina Seedance 2.5 生成视频。你可以尝试换其它参考图或文生视频。"
+    payload = {"code": 0, "downlink_body": {"pull_singe_chain_downlink_body": {"messages": [{"user_type": 2, "tts_content": reply}]}}}
+    client = httpx.AsyncClient
+    monkeypatch.setattr(query_module.httpx, "AsyncClient", lambda **kwargs: client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload)), **kwargs))
+    result = asyncio.run(query_module.fetch_generation_result("session=fixture", "38418045496287761", {}))
+    assert result["error"] == "portrait_protection_failed"
+    assert not result.get("pending")
+    pool = CamoufoxSessionPool()
+    pool._tasks["portrait-task"] = VideoTask(id="portrait-task", model="dola-seedance-2-5", status="accepted", conversationId="38418045496287761")
+    pool._task_meta["portrait-task"] = {"conversationId": "38418045496287761", "cookie": "session=fixture", "identity": {}}
+    async def query(*_args):
+        return result
+    async def persist():
+        return None
+    async def browser_fallback(*_args):
+        raise AssertionError("an explicit portrait refusal must settle via protocol")
+    monkeypatch.setattr(session_module, "fetch_generation_result", query)
+    monkeypatch.setattr(pool, "_persist", persist)
+    monkeypatch.setattr(pool, "_fetch_generation_result_in_page", browser_fallback)
+    asyncio.run(pool._refresh_task("portrait-task"))
+    task = pool._tasks["portrait-task"]
+    assert task.status == "failed"
+    assert task.error == "portrait_protection_failed"
+    assert task.rawError == reply
+
+
 def test_live_chain_user_type_does_not_turn_user_prompt_into_failure():
     payload = {"downlink_body": {"pull_singe_chain_downlink_body": {"messages": [{
         "user_type": 1,

@@ -162,12 +162,16 @@ describe("GeminiTools runtime", () => {
     });
 
     it("uses the dedicated listener only as a request-scoped proxy override", async () => {
-        mocks.ensureMagicProxy.mockResolvedValue({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/" });
+        mocks.ensureMagicProxy.mockResolvedValue({ enabled: true, proxyUrl: "http://mihomo-listener.test:17891/", egress: { mode: "magic" } });
 
         await geminiToolsRuntimeRequest("/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "你好" }] }) });
 
         expect(mocks.ensureMagicProxy).toHaveBeenCalledTimes(1);
-        expect(mocks.safeFetch).toHaveBeenCalledWith(expect.stringContaining(":generateContent"), expect.objectContaining({ method: "POST" }), { allowProxyFakeIpSpace: true, proxyUrl: "http://mihomo-listener.test:17891/" });
+        expect(mocks.safeFetch).toHaveBeenCalledWith(
+            expect.stringContaining(":generateContent"),
+            expect.objectContaining({ method: "POST" }),
+            expect.objectContaining({ allowProxyFakeIpSpace: true, proxyUrl: "http://mihomo-listener.test:17891/", trafficContext: expect.objectContaining({ model: "gemini-2.5-pro", connectionMode: "magic" }) }),
+        );
     });
 
     it("does not replay a generation through another account after an ambiguous upstream failure", async () => {
@@ -290,9 +294,7 @@ describe("GeminiTools runtime", () => {
                 projectId: "project-two",
             },
         ]);
-        mocks.safeFetch
-            .mockImplementationOnce(() => Promise.resolve(Response.json({ error: "invalid_grant", error_description: "Bad Request" }, { status: 400 })))
-            .mockImplementation((url: string | URL, init?: RequestInit) => fetch(url, init));
+        mocks.safeFetch.mockImplementationOnce(() => Promise.resolve(Response.json({ error: "invalid_grant", error_description: "Bad Request" }, { status: 400 }))).mockImplementation((url: string | URL, init?: RequestInit) => fetch(url, init));
 
         const response = await geminiToolsRuntimeRequest("/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "测试轮询换号" }] }) });
         const payload = await response.json();
@@ -408,7 +410,11 @@ describe("GeminiTools runtime", () => {
 
         await refreshGeminiToolsAccount("one");
 
-        expect(mocks.safeFetch).toHaveBeenCalledWith("https://oauth2.googleapis.com/token", expect.objectContaining({ method: "POST" }), { allowProxyFakeIpSpace: true });
+        expect(mocks.safeFetch).toHaveBeenCalledWith(
+            "https://oauth2.googleapis.com/token",
+            expect.objectContaining({ method: "POST" }),
+            expect.objectContaining({ allowProxyFakeIpSpace: true, trafficContext: expect.objectContaining({ channelId: "gemini-antigravity-tools", connectionMode: "direct" }) }),
+        );
         const modelCalls = vi
             .mocked(fetch)
             .mock.calls.filter(([url]) => String(url).includes(":fetchAvailableModels"))

@@ -2,11 +2,15 @@
 
 import { Button, Checkbox, Popconfirm, Tag } from "antd";
 import { Eye, Film, Image as ImageIcon, Trash2 } from "lucide-react";
+import { useMemo } from "react";
 
 import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
 import { browserReadableMediaUrl } from "@/lib/browser-media-url";
 import { AdminAccountId } from "@/components/admin/admin-user-identity";
+import { AdminRequestTrafficDetail, collectRequestIds, collectTaskIds, dedupeTrafficSummarySelections, selectRequestTaskTrafficSummary, trafficTaskId, trafficRequestId, useAdminRequestTraffic } from "@/components/admin/admin-request-traffic";
+import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import { imagePreviewUrl } from "@/lib/media-image-url";
+import type { GenerationLogProtocolTrace, GenerationLogSlotSnapshot } from "@/lib/generation-log-snapshot";
 import type { StoredGenerationLog } from "@/lib/server/generation-log-store";
 
 export function GenerationLogAssetPreview({ log }: { log: StoredGenerationLog }) {
@@ -94,9 +98,41 @@ export function GenerationLogDetail({ log }: { log: StoredGenerationLog }) {
 
 function GenerationLogRequestDetails({ log }: { log: StoredGenerationLog }) {
     const snapshot = log.requestSnapshot;
+    const traces = useMemo(() => snapshot?.slots.flatMap((slot) => (slot.requestTraces || []).map((trace) => ({ slot, trace }))) || [], [snapshot?.slots]);
+    const trafficEntries: Array<{ slot: GenerationLogSlotSnapshot; trace?: GenerationLogProtocolTrace }> =
+        snapshot?.slots.reduce<Array<{ slot: GenerationLogSlotSnapshot; trace?: GenerationLogProtocolTrace }>>((entries, slot) => {
+            const slotTraces = slot.requestTraces || [];
+            if (slotTraces.length) {
+                for (const trace of slotTraces) entries.push({ slot, trace });
+            } else {
+                entries.push({ slot });
+            }
+            return entries;
+        }, []) || [];
+    const requestIds = useMemo(() => collectRequestIds(traces.map(({ trace }) => trace)), [traces]);
+    const taskIds = useMemo(() => collectTaskIds(snapshot?.slots || []), [snapshot?.slots]);
+    const trafficRefreshKey = useMemo(
+        () =>
+            (snapshot?.slots || [])
+                .flatMap((slot) => (slot.requestTraces || []).map((trace) => `${trafficRequestId(trace)}:${trafficTaskId(slot)}:${trace.statusCode}:${trace.durationMs}`)).concat(
+                    (snapshot?.slots || []).filter((slot) => !(slot.requestTraces || []).length).map((slot) => `task:${trafficTaskId(slot)}:${slot.status}:${slot.serverTaskId || ""}`),
+                )
+                .join("|"),
+        [snapshot?.slots],
+    );
+    const traffic = useAdminRequestTraffic(requestIds, taskIds, trafficRefreshKey);
     if (!snapshot) return null;
     const parameters = Object.entries(snapshot.parameters).filter(([, value]) => value !== undefined && value !== "");
-    const traces = snapshot.slots.flatMap((slot) => (slot.requestTraces || []).map((trace) => ({ slot, trace })));
+    const requestTrafficItems = traffic.report?.items || [];
+    const taskTrafficItems = traffic.report?.tasks || [];
+    const detailSummaries = dedupeTrafficSummarySelections(
+        trafficEntries.map(({ slot, trace }) => {
+            const requestId = trace ? trafficRequestId(trace) : "";
+            const taskId = trafficTaskId(slot);
+            return { requestId, taskId, summary: selectRequestTaskTrafficSummary({ requestId, taskId, requestItems: requestTrafficItems, taskItems: taskTrafficItems }) };
+        }),
+    );
+    const trafficUnavailable = (requestIds.length > 0 || taskIds.length > 0) && !traffic.loading && !traffic.error && detailSummaries.length === 0;
     return (
         <section className="space-y-3 rounded-xl border border-stone-200 p-3 dark:border-stone-800">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -127,6 +163,7 @@ function GenerationLogRequestDetails({ log }: { log: StoredGenerationLog }) {
                     </div>
                 </div>
             ) : null}
+            {detailSummaries.length ? detailSummaries.map((summary) => <AdminRequestTrafficDetail key={summary.taskId || summary.requestId} summary={summary} displayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} loading={traffic.loading} error={traffic.error} />) : traffic.loading ? <AdminRequestTrafficDetail displayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} loading /> : traffic.error ? <AdminRequestTrafficDetail displayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} error={traffic.error} /> : trafficUnavailable ? <AdminRequestTrafficDetail displayUnit={traffic.report?.displayUnit || DEFAULT_TRAFFIC_DISPLAY_UNIT} error="中心流量服务未返回可归属的请求或任务记录。" /> : null}
             {snapshot.slots.map((slot) => (
                 <div key={slot.id} className="space-y-2 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950/60">
                     <div className="flex flex-wrap items-center gap-2">
@@ -151,6 +188,7 @@ function GenerationLogRequestDetails({ log }: { log: StoredGenerationLog }) {
                         <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
                                 <span>{trace.channel}</span><span>·</span><span>{trace.protocol}</span><span>·</span><span>{formatAdminLogTime(trace.createdAt)}</span>
+                                {trafficRequestId(trace) ? <><span>·</span><span>请求 {trafficRequestId(trace)}</span></> : null}
                             </div>
                             <div className="mt-1 break-all font-mono text-xs text-stone-800 dark:text-stone-200">{trace.method} {trace.path}</div>
                         </div>

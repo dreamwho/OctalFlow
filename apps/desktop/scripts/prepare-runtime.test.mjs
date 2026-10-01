@@ -63,7 +63,7 @@ test("packaging copies only compiled runtime and never imports account data or e
         await mkdir(path.join(source, "web/src/lib"), { recursive: true });
         await writeFile(path.join(source, "web/src/lib/desktop-cloud-routes.json"), JSON.stringify(["/api/billing", "/api/admin/users", "/api/desktop/cloud-bootstrap"]));
         await writeFile(path.join(source, "web/src/lib/desktop-admin-cloud-pages.json"), JSON.stringify(["/billing", "/community", "/login", "/register", "/install"]));
-        for (const service of ["geminiai", "dola-api"]) await mkdir(path.join(source, "services", service, "src"), { recursive: true });
+        for (const service of ["geminiai", "dola-api", "traffic-meter"]) await mkdir(path.join(source, "services", service, "src"), { recursive: true });
         await mkdir(path.join(source, "apps", "desktop", "assets"), { recursive: true });
         await mkdir(sidecars, { recursive: true });
         await mkdir(path.join(sidecars, "camoufox"), { recursive: true });
@@ -121,6 +121,7 @@ test("packaging copies only compiled runtime and never imports account data or e
         assert.equal(await stat(path.join(output, "web/.env.local")).catch(() => null), null);
         assert.equal(await readFile(path.join(output, "desktop/mihomo-bootstrap.yaml"), "utf8"), "mode: rule\n");
         assert.equal(await readFile(path.join(output, "services/chatgpt-api/LICENSE.upstream"), "utf8"), "upstream license");
+        assert.ok((await stat(path.join(output, "services/traffic-meter/src"))).isDirectory());
         await rm(path.join(sidecars, `mihomo${extension}`));
         await assert.rejects(() => prepareRuntime(options), /mihomo/);
         await writeFile(path.join(sidecars, `mihomo${extension}`), fakeExecutable(process.platform, process.arch));

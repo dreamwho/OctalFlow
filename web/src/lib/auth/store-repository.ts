@@ -3,6 +3,7 @@ import { formatAccountId } from "@/lib/account-id";
 import { normalizeRegistrationPolicyConsent } from "@/lib/registration-consent";
 import { normalizeUserRoleId } from "@/lib/user-roles";
 import { normalizeAdminPermissions } from "@/lib/admin-permissions";
+import { normalizeTrafficDisplayUnit } from "@/lib/traffic-format";
 import { readJsonDataFile, resolveDataPath, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { stat as statFile } from "node:fs/promises";
 import { decryptSecretValue, encryptSecretValue } from "@/lib/server/secret-crypto";
@@ -352,6 +353,7 @@ export function mapPostgresSettings(settingsRow: Record<string, unknown> | undef
         generationPointMultipliers: dbJson(settingsRow?.generation_point_multipliers, fallback.generationPointMultipliers),
         generationCostControl: dbJson(settingsRow?.generation_cost_control, fallback.generationCostControl),
         dataLifecycle: dbJson(settingsRow?.data_lifecycle, fallback.dataLifecycle),
+        trafficUnit: normalizeTrafficDisplayUnit(dbText(settingsRow?.traffic_unit) || fallback.trafficUnit),
         entitlements: {
             enabled: dbBool(settingsRow?.entitlements_enabled, fallback.entitlements.enabled),
             defaultPlanId: dbText(settingsRow?.default_plan_id) || fallback.entitlements.defaultPlanId,
@@ -547,9 +549,9 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
         INSERT INTO app_settings (
             id, site, registration_enabled, email_registration_enabled, login_methods, free_daily_points_enabled, mail, allow_user_api_config,
             model_point_costs, generation_point_multipliers, generation_cost_control, data_lifecycle, entitlements_enabled, default_plan_id, generation_concurrency, generation_defaults,
-            logical_models, model_picker_groups, default_models, agent_skills, canvas_quick_actions, user_roles, free_daily_points
+            logical_models, model_picker_groups, default_models, agent_skills, canvas_quick_actions, user_roles, free_daily_points, traffic_unit
         )
-        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
         ON CONFLICT (id) DO UPDATE SET
             site = EXCLUDED.site,
             registration_enabled = EXCLUDED.registration_enabled,
@@ -572,7 +574,8 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             agent_skills = EXCLUDED.agent_skills,
             canvas_quick_actions = EXCLUDED.canvas_quick_actions,
             user_roles = EXCLUDED.user_roles,
-            free_daily_points = EXCLUDED.free_daily_points
+            free_daily_points = EXCLUDED.free_daily_points,
+            traffic_unit = EXCLUDED.traffic_unit
         `,
         [
             dbJsonParam(settings.site),
@@ -597,6 +600,7 @@ export async function upsertPostgresSettings(db: QueryExecutor, settings: AuthSe
             dbJsonParam(settings.canvasQuickActions),
             dbJsonParam(settings.userRoles),
             settings.freeDailyPoints,
+            settings.trafficUnit,
         ],
     );
 }

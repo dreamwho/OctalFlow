@@ -4,6 +4,8 @@ import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-li
 import { resolveServerProxyUrl } from "@/lib/server/proxy-dispatcher";
 import { isProxyFakeIpAddress, isPublicIpAddress, resolveSafeOutboundTarget, type SafeOutboundOptions } from "@/lib/server/outbound-url-security";
 import { toUndiciRequestBody } from "@/lib/server/undici-request-body";
+import { currentTrafficContext, type TrafficContext } from "@/lib/server/traffic-context";
+import { createTrafficLease } from "@/lib/server/traffic-meter-client";
 
 type CachedDispatcher = { dispatcher: Dispatcher; lastUsedAt: number };
 
@@ -22,7 +24,9 @@ export class UnsafeOutboundUrlError extends Error {
     }
 }
 
-export async function fetchSafeOutbound(input: string | URL, init: RequestInit = {}, options?: SafeOutboundOptions): Promise<Response> {
+type OutboundOptions = SafeOutboundOptions & { trafficContext?: TrafficContext };
+
+export async function fetchSafeOutbound(input: string | URL, init: RequestInit = {}, options?: OutboundOptions): Promise<Response> {
     let currentUrl: URL;
     try {
         currentUrl = input instanceof URL ? new URL(input) : new URL(input);
@@ -51,14 +55,81 @@ export async function fetchSafeOutbound(input: string | URL, init: RequestInit =
     throw new UnsafeOutboundUrlError("上游重定向次数过多");
 }
 
-async function fetchPinned(input: URL, init: RequestInit, options?: SafeOutboundOptions) {
+async function fetchPinned(input: URL, init: RequestInit, options?: OutboundOptions) {
     const target = await resolveSafeOutboundTarget(input, options);
     if (!target) throw new UnsafeOutboundUrlError();
 
     const headers = new Headers(init.headers);
-    const dispatcher = dispatcherFor(target.url, target.address, target.family, options?.proxyUrl, options?.directOnly === true);
     const body = await toUndiciRequestBody(init.body);
-    return (await undiciFetch(target.url, { ...init, body, headers, dispatcher } as import("undici").RequestInit & { dispatcher: Dispatcher })) as unknown as Response;
+    const context = options?.trafficContext || currentTrafficContext();
+    const proxyUrl = requestProxyUrl(target.address, options?.proxyUrl, options?.directOnly === true);
+    const lease = context?.channelId
+        ? await createTrafficLease(
+              proxyUrl,
+              {
+                  channelId: context.channelId,
+                  channelName: context.channelName || context.channelId,
+                  model: context.model || "",
+                  protocol: context.protocol || "unknown",
+                  connectionMode: proxyUrl ? context.connectionMode || "generic" : "direct",
+                  ...(context.attributionScope ? { attributionScope: context.attributionScope } : {}),
+                  ...(context.requestId ? { requestId: context.requestId } : {}),
+                  ...(context.taskId ? { taskId: context.taskId } : {}),
+                  ...(context.attemptId ? { attemptId: context.attemptId } : {}),
+                  role: context.role || (init.method && !["GET", "HEAD"].includes(init.method.toUpperCase()) ? "submit" : "query"),
+              },
+              isProxyFakeIpAddress(target.address) ? [] : [{ hostname: target.url.hostname, address: target.address }],
+              init.signal,
+          )
+        : null;
+    if (!lease) {
+        const dispatcher = dispatcherFor(target.url, target.address, target.family, options?.proxyUrl, options?.directOnly === true);
+        return (await undiciFetch(target.url, { ...init, body, headers, dispatcher } as import("undici").RequestInit & { dispatcher: Dispatcher })) as unknown as Response;
+    }
+    // A dispatcher belongs to this immutable channel/model lease. Reusing it
+    // across requests would assign pooled connection bytes to the wrong model.
+    const servername = /^\d+(?:\.\d+){3}$/.test(target.url.hostname) || target.url.hostname.includes(":") ? undefined : target.url.hostname;
+    const dispatcher = new ProxyAgent({ uri: lease.proxyUrl, ...(servername ? { requestTls: { servername } } : {}), headersTimeout: GENERATION_TRANSPORT_TIMEOUT_MS, bodyTimeout: GENERATION_TRANSPORT_TIMEOUT_MS });
+    let released = false;
+    const release = async () => {
+        if (released) return;
+        released = true;
+        await dispatcher.destroy().catch(() => undefined);
+        await lease.release().catch(() => console.error("释放流量计量连接失败"));
+    };
+    try {
+        const response = await undiciFetch(target.url, { ...init, body, headers, dispatcher } as import("undici").RequestInit & { dispatcher: Dispatcher });
+        if (!response.body) {
+            await release();
+            return response as unknown as Response;
+        }
+        const reader = response.body.getReader();
+        const stream = new ReadableStream<Uint8Array>({
+            async pull(controller) {
+                try {
+                    const next = await reader.read();
+                    if (next.done) {
+                        controller.close();
+                        await release();
+                    } else controller.enqueue(next.value);
+                } catch (error) {
+                    controller.error(error);
+                    await release();
+                }
+            },
+            async cancel(reason) {
+                try {
+                    await reader.cancel(reason);
+                } finally {
+                    await release();
+                }
+            },
+        });
+        return new Response(stream, { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers.entries()) });
+    } catch (error) {
+        await release();
+        throw error;
+    }
 }
 
 function redirectedRequestInit(currentUrl: URL, nextUrl: URL, status: number, init: RequestInit): RequestInit {
@@ -78,7 +149,7 @@ function redirectedRequestInit(currentUrl: URL, nextUrl: URL, status: number, in
 }
 
 function dispatcherFor(url: URL, address: string, family: 4 | 6, proxyUrlOverride?: string, directOnly = false) {
-    const proxyUrl = directOnly ? "" : proxyUrlOverride ? normalizeProxyUrl(proxyUrlOverride) : isPublicIpAddress(address) || isProxyFakeIpAddress(address) ? resolveServerProxyUrl() : "";
+    const proxyUrl = requestProxyUrl(address, proxyUrlOverride, directOnly);
     const servername = /^\d+(?:\.\d+){3}$/.test(url.hostname) || url.hostname.includes(":") ? undefined : url.hostname;
     const key = [proxyUrl, url.protocol, url.host, address, family].join("|");
     const now = Date.now();
@@ -122,6 +193,10 @@ function dispatcherFor(url: URL, address: string, family: 4 | 6, proxyUrlOverrid
     dispatchers.set(key, { dispatcher, lastUsedAt: now });
     cleanupDispatchers(now);
     return dispatcher;
+}
+
+function requestProxyUrl(address: string, override?: string, directOnly = false) {
+    return directOnly ? "" : override ? normalizeProxyUrl(override) : isPublicIpAddress(address) || isProxyFakeIpAddress(address) ? resolveServerProxyUrl() : "";
 }
 
 function normalizeProxyUrl(value: string) {

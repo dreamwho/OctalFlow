@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     generation_point_multipliers jsonb NOT NULL DEFAULT '{}'::jsonb,
     generation_cost_control jsonb NOT NULL DEFAULT '{}'::jsonb,
     data_lifecycle jsonb NOT NULL DEFAULT '{}'::jsonb,
+    traffic_unit text NOT NULL DEFAULT 'MB',
     entitlements_enabled boolean NOT NULL DEFAULT false,
     default_plan_id text NOT NULL DEFAULT 'free' REFERENCES entitlement_plans(id),
     generation_concurrency jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -108,6 +109,7 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points_enabled bool
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS free_daily_points numeric(18, 2) NOT NULL DEFAULT 0;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS generation_cost_control jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS data_lifecycle jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS traffic_unit text NOT NULL DEFAULT 'MB';
 
 CREATE TABLE IF NOT EXISTS system_model_channels (
     id text PRIMARY KEY,

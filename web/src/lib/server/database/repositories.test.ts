@@ -459,6 +459,18 @@ describe("split Postgres repositories", () => {
         expect(params).toEqual([JSON.stringify(dataLifecycle)]);
     });
 
+    it("persists the traffic display unit as a scalar setting", async () => {
+        const timestamp = "2026-01-01T00:00:00.000Z";
+        const { executor, query } = mockExecutor([[{ id: "default", traffic_unit: "GB", created_at: timestamp, updated_at: timestamp }]]);
+
+        const settings = await createPostgresRepositories(executor).settings.updateSettings({ trafficUnit: "GB" });
+        const [sql, params] = queryArgs(query, 0) as [string, unknown[]];
+
+        expect(settings.trafficUnit).toBe("GB");
+        expect(sql).toContain("traffic_unit = $1");
+        expect(params).toEqual(["GB"]);
+    });
+
     it("preserves the product list boolean contract", async () => {
         const { executor, query } = mockExecutor([
             [

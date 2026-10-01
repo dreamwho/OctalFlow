@@ -4,7 +4,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/src \
+    PYTHONPATH=/app/src:/app/traffic-meter/src \
     TZ=Asia/Shanghai \
     AISTUDIO_PORT=8080 \
     AISTUDIO_HOST=0.0.0.0 \
@@ -81,6 +81,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     chown -R geminiai:geminiai /home/geminiai
 
 COPY src ./src
+COPY --from=traffic-meter src ./traffic-meter/src
 COPY config.yaml ./config.yaml
 COPY docker-entrypoint.py /usr/local/bin/geminiai-entrypoint.py
 

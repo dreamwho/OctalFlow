@@ -12,12 +12,12 @@ import secrets
 import string
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import httpx
 
-from .traffic import metered_proxy
+from .traffic import metered_proxy, traffic_context
 
 from .page_scripts import PREPARE_UPLOAD_SCRIPT
 
@@ -162,7 +162,12 @@ async def _read_response_json(response: httpx.Response, label: str) -> dict[str,
     return value
 
 
-async def _fetch_source_bytes(url: str, proxy_url: str | None, client: httpx.AsyncClient | None = None) -> tuple[bytes, str, str]:
+async def _fetch_source_bytes(
+    url: str,
+    proxy_url: str | None,
+    client: httpx.AsyncClient | None = None,
+    traffic_metadata: Mapping[str, Any] | None = None,
+) -> tuple[bytes, str, str]:
     parsed = urlsplit(url)
     if parsed.scheme == "data":
         header, separator, encoded = url.partition(",")
@@ -179,8 +184,14 @@ async def _fetch_source_bytes(url: str, proxy_url: str | None, client: httpx.Asy
     fetch_url, fetch_proxy = _reference_fetch_route(url, proxy_url)
     timeout = httpx.Timeout(45.0, connect=15.0)
     if client is None or _signed_reference_url(url):
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(await metered_proxy(fetch_proxy, "upload"))) as fetch_client:
-            return await _fetch_remote_source(fetch_client, fetch_url, parsed.path)
+        # A signed Dreamyo reference is a private app-to-provider handoff, not
+        # provider egress.  It must not create a second global traffic row.
+        if _signed_reference_url(url):
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False) as fetch_client:
+                return await _fetch_remote_source(fetch_client, fetch_url, parsed.path)
+        async with metered_proxy(fetch_proxy, traffic_context(traffic_metadata, role="upload")) as counted_proxy:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False, **_proxy_options(counted_proxy)) as fetch_client:
+                return await _fetch_remote_source(fetch_client, fetch_url, parsed.path)
     return await _fetch_remote_source(client, fetch_url, parsed.path)
 
 
@@ -243,7 +254,16 @@ async def _prepare_upload(page: Any) -> dict[str, Any]:
     return data["data"]
 
 
-async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | None = None, imagex_proxy_mode: str | None = None, imagex_proxy_url: str | None = None, *, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+async def upload_reference(
+    page: Any,
+    item: dict[str, Any],
+    proxy_url: str | None = None,
+    imagex_proxy_mode: str | None = None,
+    imagex_proxy_url: str | None = None,
+    traffic_metadata: Mapping[str, Any] | None = None,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, Any]:
     existing_uri = str(item.get("uri") or "").strip()
     if existing_uri:
         return {"uri": existing_uri, "name": str(item.get("name") or "image.png"), "width": int(item.get("width") or 0), "height": int(item.get("height") or 0), "mime": str(item.get("mime") or "image/png")}
@@ -252,9 +272,18 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
         raise RuntimeError("reference_url_missing")
     upload_proxy = _imagex_upload_proxy(imagex_proxy_url if imagex_proxy_mode else proxy_url, imagex_proxy_mode)
     if client is None:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0), follow_redirects=False, trust_env=False, **_proxy_options(await metered_proxy(upload_proxy, "upload"))) as shared:
-            return await upload_reference(page, item, proxy_url, imagex_proxy_mode, imagex_proxy_url, client=shared)
-    content, mime, file_name = await _fetch_source_bytes(source_url, upload_proxy, client)
+        async with metered_proxy(upload_proxy, traffic_context(traffic_metadata, role="upload")) as counted_proxy:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0), follow_redirects=False, trust_env=False, **_proxy_options(counted_proxy)) as shared:
+                return await upload_reference(
+                    page,
+                    item,
+                    proxy_url,
+                    imagex_proxy_mode,
+                    imagex_proxy_url,
+                    traffic_metadata=traffic_metadata,
+                    client=shared,
+                )
+    content, mime, file_name = await _fetch_source_bytes(source_url, upload_proxy, client, traffic_metadata)
     upload_config = await _prepare_upload(page)
     credentials = _normalize_upload_credentials(upload_config.get("upload_auth_token"))
     service_id = str(upload_config.get("service_id") or "")
@@ -309,17 +338,35 @@ async def upload_reference(page: Any, item: dict[str, Any], proxy_url: str | Non
     return {"uri": uri, "name": str(plugin.get("FileName") or PurePosixPath(uri).name or file_name), "width": int(plugin.get("ImageWidth") or item.get("width") or 0), "height": int(plugin.get("ImageHeight") or item.get("height") or 0), "size": int(plugin.get("ImageSize") or len(content)), "mime": mime}
 
 
-async def resolve_references(page: Any, references: list[dict[str, Any]], proxy_url: str | None = None, imagex_proxy_mode: str | None = None, imagex_proxy_url: str | None = None) -> list[dict[str, Any]]:
+async def resolve_references(
+    page: Any,
+    references: list[dict[str, Any]],
+    proxy_url: str | None = None,
+    imagex_proxy_mode: str | None = None,
+    imagex_proxy_url: str | None = None,
+    traffic_metadata: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     if not references:
         return []
     upload_proxy = _imagex_upload_proxy(imagex_proxy_url if imagex_proxy_mode else proxy_url, imagex_proxy_mode)
     resolved: list[dict[str, Any]] = []
-    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0), follow_redirects=False, trust_env=False, **_proxy_options(await metered_proxy(upload_proxy, "upload"))) as client:
-        for index, item in enumerate(references, 1):
-            try:
-                resolved.append(await upload_reference(page, item, proxy_url, imagex_proxy_mode, imagex_proxy_url, client=client))
-            except Exception as error:
-                raise RuntimeError(f"reference_{index}_of_{len(references)}: {str(error).strip() or type(error).__name__}") from error
+    async with metered_proxy(upload_proxy, traffic_context(traffic_metadata, role="upload")) as counted_proxy:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0), follow_redirects=False, trust_env=False, **_proxy_options(counted_proxy)) as client:
+            for index, item in enumerate(references, 1):
+                try:
+                    resolved.append(
+                        await upload_reference(
+                            page,
+                            item,
+                            proxy_url,
+                            imagex_proxy_mode,
+                            imagex_proxy_url,
+                            traffic_metadata=traffic_metadata,
+                            client=client,
+                        )
+                    )
+                except Exception as error:
+                    raise RuntimeError(f"reference_{index}_of_{len(references)}: {str(error).strip() or type(error).__name__}") from error
     return resolved
 
 

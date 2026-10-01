@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
 from aistudio_api.config import DEFAULT_BROWSER_PORT, DEFAULT_IMAGE_MODEL, DEFAULT_TEXT_MODEL, settings
 from aistudio_api.domain.errors import RequestError, classify_error
@@ -22,6 +24,12 @@ from aistudio_api.infrastructure.gateway.replay import RequestReplayService
 from aistudio_api.infrastructure.gateway.session import BrowserSession
 from aistudio_api.infrastructure.gateway.streaming import StreamingGateway
 from aistudio_api.infrastructure.gateway.wire_types import AistudioContent, AistudioPart
+from aistudio_api.traffic_context import (
+    TrafficMeterIntegrationError,
+    acquire_traffic_lease,
+    release_traffic_lease,
+    shared_browser_context,
+)
 
 logger = logging.getLogger("aistudio")
 
@@ -58,18 +66,55 @@ class AIStudioClient:
         self._session = BrowserSession(port=port)
         self._capture_service = RequestCaptureService(self._session, _snapshot_cache)
         self._replay_service = RequestReplayService(session=self._session)
-        
         self._streaming_gateway = StreamingGateway(session=self._session)
+        self._traffic_lease = None
+        self._traffic_source_proxy_url: str | None = settings.proxy_url
+        self._traffic_leased_proxy_url = ""
+        self._traffic_lease_lock = asyncio.Lock()
+
+    async def ensure_traffic_lease(self, request_context: Mapping[str, str] | None = None) -> None:
+        """Bind one meter relay to this browser session.
+
+        AI Studio uses one persistent browser and one account/session lock. A
+        per-model lease would falsely partition shared browser bytes, so the
+        relay uses the dedicated shared-browser attribution bucket and stays
+        alive until the browser closes or restarts.
+        """
+
+        if getattr(self, "_traffic_lease", None) is not None or not os.getenv("DREAMYO_TRAFFIC_METER_URL", "").strip():
+            return
+        lease_lock = getattr(self, "_traffic_lease_lock", None)
+        if lease_lock is None:
+            lease_lock = asyncio.Lock()
+            self._traffic_lease_lock = lease_lock
+        async with lease_lock:
+            if getattr(self, "_traffic_lease", None) is not None:
+                return
+            source_proxy_url = settings.proxy_url
+            self._traffic_source_proxy_url = source_proxy_url
+            context = shared_browser_context(request_context, source_proxy_url)
+            lease = await acquire_traffic_lease(source_proxy_url, context)
+            if lease is None:
+                return
+            self._traffic_lease = lease
+            self._traffic_leased_proxy_url = lease.proxy_url
+            settings.proxy_url = lease.proxy_url
 
     async def warmup(self) -> None:
         """预热浏览器、AI Studio 页面与默认请求模板，首个请求跳过约 20s 冷启动。"""
+        # The warmup itself launches the persistent browser and therefore must
+        # use the same relay as later provider requests.
+        await self.ensure_traffic_lease()
         if self._session is not None:
             await self._session.ensure_botguard_service()
             logger.info("浏览器预热完成（页面与默认模板已就绪）")
 
     async def close(self) -> None:
         """释放浏览器进程及其专用执行线程。"""
-        await self._session.close()
+        try:
+            await self._session.close()
+        finally:
+            await self._release_traffic_lease()
 
     async def switch_auth(self, auth_file: str | None) -> None:
         """切换账号的 auth 文件。"""
@@ -78,8 +123,38 @@ class AIStudioClient:
 
     async def restart_browser_session(self) -> None:
         """重启浏览器会话，使新的代理设置在下次启动时生效。"""
-        if self._session is not None:
-            await self._session.restart()
+        # Release before the browser is relaunched.  Runtime proxy changes
+        # update settings.proxy_url first; restarting while the old lease is
+        # still installed would launch an unmetered browser, then replace its
+        # settings after the fact without changing the live TCP route.
+        await self._release_traffic_lease()
+        await self.ensure_traffic_lease()
+        try:
+            if self._session is not None:
+                await self._session.restart()
+        except Exception:
+            # Keep the lease alive until close or the next restart; any browser
+            # retry must continue using the same relay.
+            raise
+
+    async def _release_traffic_lease(self) -> None:
+        lease_lock = getattr(self, "_traffic_lease_lock", None)
+        if lease_lock is None:
+            lease_lock = asyncio.Lock()
+            self._traffic_lease_lock = lease_lock
+        async with lease_lock:
+            lease = getattr(self, "_traffic_lease", None)
+            self._traffic_lease = None
+            leased_proxy_url = self._traffic_leased_proxy_url
+            self._traffic_leased_proxy_url = ""
+            if leased_proxy_url and settings.proxy_url == leased_proxy_url:
+                settings.proxy_url = self._traffic_source_proxy_url
+            if lease is None:
+                return
+            try:
+                await release_traffic_lease(lease)
+            except TrafficMeterIntegrationError:
+                logger.warning("Traffic meter lease release failed", exc_info=True)
 
     def clear_snapshot_cache(self) -> None:
         """清除 snapshot 缓存。"""
