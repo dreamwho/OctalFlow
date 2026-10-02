@@ -73,6 +73,7 @@
 .proxy-policy-field{margin:13px 0;font-weight:600}.proxy-policy-field>span{display:block;margin-bottom:7px}.proxy-mode-options{display:flex;flex-wrap:wrap;gap:6px}.proxy-picker .proxy-mode-choice{display:flex;flex-direction:row;align-items:center;gap:5px;margin:0;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--raised);font-size:11px;color:var(--text);font-weight:500;cursor:pointer}.proxy-mode-choice:hover{background:var(--hover)}.proxy-picker .proxy-mode-choice:has(input:checked){border-color:var(--accent);background:var(--hover)}.proxy-picker .proxy-mode-choice input{width:auto;height:auto;margin:0;padding:0;accent-color:var(--accent)}.proxy-picker .proxy-node-field{display:flex;flex-direction:column;gap:6px;margin:10px 0 0;font-size:11px}.proxy-node-field select{width:100%}.proxy-picker .help{font-size:11px;font-weight:400;line-height:1.5;color:var(--muted)}.proxy-picker .help:empty{display:none}
 
 #duration-scan{right:44px}
+#duration-control{gap:6px}.duration-slider{width:112px;height:30px;margin:0;padding:0;border:0;background:transparent;accent-color:var(--accent)}
 .duration-scan-result{display:flex;align-items:center;gap:10px;margin:0 10px 8px;font-size:11px;color:var(--muted)}
 .duration-scan-result #duration-scan-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .duration-scan-result #duration-strip{flex:none;padding:4px 11px;font-size:11px}

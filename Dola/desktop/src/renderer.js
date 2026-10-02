@@ -541,19 +541,21 @@ function renderMode() {
   const model = byId("model");
   if (state.mode === "image" && model.options.length !== 1) model.replaceChildren(new Option("Seedream 4.5", "dola-seedream-4-5"));
   if (state.mode === "video" && model.options.length !== 2) model.replaceChildren(new Option("Seedance 2.5", "dola-seedance-2-5"), new Option("Seedance 2.0 Fast", "dola-seedance-2-0-fast"));
-  if (model.value === "dola-seedance-2-0-fast" && byId("duration").dataset.value === "30") selectComposeOption("duration", "5");
+  if (model.value === "dola-seedance-2-0-fast" && !["5", "10", "15"].includes(byId("duration").dataset.value)) selectComposeOption("duration", "5");
   renderComposeOptions();
 }
 function selectComposeOption(kind, value) {
   const button = byId(kind);
   button.dataset.value = value;
   button.textContent = kind === "duration" ? `${value} 秒` : value;
+  if (kind === "duration") byId("duration-slider").value = Math.min(30, Math.max(5, Number(value) || 5));
   byId(`${kind}-menu`).classList.add("hidden");
   renderComposeOptions();
 }
 function renderComposeOptions() {
   const ratios = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
   const durations = byId("model").value === "dola-seedance-2-5" ? ["5", "10", "15", "30"] : ["5", "10", "15"];
+  byId("duration-slider").classList.toggle("hidden", byId("model").value !== "dola-seedance-2-5");
   for (const [kind, values] of [["ratio", ratios], ["duration", durations]]) {
     const menu = byId(`${kind}-menu`);
     menu.replaceChildren();
@@ -815,11 +817,13 @@ byId("mode-image").onclick = () => { state.mode = "image"; renderMode(); };
 byId("reference-mode").onchange = applyReferenceMode;
 byId("model").onchange = renderMode;
 for (const kind of ["ratio", "duration"]) byId(kind).onclick = () => {
+  if (kind === "duration" && byId("model").value === "dola-seedance-2-5") return;
   const menu = byId(`${kind}-menu`);
   for (const other of ["ratio-menu", "duration-menu"]) if (other !== `${kind}-menu`) byId(other).classList.add("hidden");
   menu.classList.toggle("hidden");
 };
 document.addEventListener("click", (event) => { if (!event.target.closest(".option-control")) for (const kind of ["ratio", "duration"]) byId(`${kind}-menu`).classList.add("hidden"); });
+byId("duration-slider").oninput = (event) => selectComposeOption("duration", event.target.value);
 byId("add-reference").onclick = async () => { try { const items = await run("asset:choose"); for (const item of items) { state.loadedAssets.set(item.id, item); if (!state.references.some((reference) => reference.id === item.id)) state.references.push({ ...item, label: nextReferenceLabel(state.references), role: "reference" }); } applyReferenceMode(); await refresh(); } catch {} };
 async function addImageFiles(files) {
   return withLoading("正在添加图片素材…", async () => {

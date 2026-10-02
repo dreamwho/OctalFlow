@@ -255,6 +255,17 @@ class AccountStore:
             return None
         return registry.accounts.get(registry.active_account_id)
 
+    def load_storage_state(self, account_id: str) -> dict | None:
+        """读取指定账号的 auth.json（storage_state）；不存在返回 None。"""
+        account_dir = self._account_dir(account_id)
+        auth_path = account_dir / "auth.json" if account_dir else None
+        if not auth_path or not auth_path.is_file():
+            return None
+        try:
+            return json.loads(auth_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
     def get_active_auth_path(self) -> Path | None:
         """获取当前活跃账号的 auth.json 路径。"""
         account = self.get_active_account()

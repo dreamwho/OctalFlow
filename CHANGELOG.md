@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [Dola Studio/2.5 时长滑块] Seedance 2.5 的时长选择改为画布同款滑块，5-30 秒逐秒自定义（徽标实时显示、提交值同步），2.0 Fast 保留 5/10/15 固定档下拉并在模型切换时自动回落合法档位；两份 Provider 的 2.5 时长校验同步放宽为 5-30 连续整数（越界原样透出 unsupported_duration），16-29 秒连续档上游行为待真实提交验证。
+
 - [Dola Studio/精简代理] 新增 0.2.0 精简版：完整移除魔法代理（订阅导入/节点测速/默认魔法节点）与链式代理（跳板落地/链路管理/默认链路）两大功能，代理方式收敛为 直连/通用代理（通用代理仍经 mihomo 内核拨号）；旧工作区遗留的 magic/chained 代理取值自动回落直连。`subscription-uri`、`proxy-batch-test` 两个仅服务于订阅功能的模块连同测试删除。变更前源码备份为 `Dola-Studio-源码备份-v1-20261002.tar.gz`；Provider（Python）零改动，Windows 便携 Python 运行时与 macOS 冻结二进制原样复用。
 
 - [Dola Studio/Windows 包] 新增 Windows x64 安装包与便携包交叉构建：`main.mjs` 打包态在 Windows 上无冻结 `dola-api.exe` 时自动改用内嵌便携 Python 运行时（embeddable 3.12 + 按 uv.lock 以 Windows 平台解析预装的锁定依赖，含 Playwright Windows 驱动）运行 provider，进程收尾沿用看门狗与 taskkill；Camoufox 与 mihomo 均为官方 Windows 产物（版本与 mac 包一致）。`pnpm pack:win` 交叉产出 NSIS 安装包与解压即用 zip（electron-builder 需显式 `--x64`，默认会跟随宿主架构）。

@@ -11,10 +11,11 @@ class DolaProfile:
     durations: tuple[int, ...]
     ratios: tuple[str, ...] = ("1:1", "3:4", "4:3", "9:16", "16:9", "21:9")
     capability: str = "video"
+    duration_range: tuple[int, int] | None = None
 
 
 PROFILES = {
-    "dola-seedance-2-5": DolaProfile("dola-seedance-2-5", "seedance_v2.5", (5, 10, 15, 30)),
+    "dola-seedance-2-5": DolaProfile("dola-seedance-2-5", "seedance_v2.5", (), duration_range=(5, 30)),
     "dola-seedance-2-0-fast": DolaProfile("dola-seedance-2-0-fast", "seedance_v2.0", (5, 10, 15)),
     "dola-seedream-4-5": DolaProfile("dola-seedream-4-5", "Seedream 4.5", (), capability="image"),
 }
@@ -53,7 +54,10 @@ def validate_request(model: str, duration: int, ratio: str) -> DolaProfile:
         raise ValueError(f"unsupported_ratio:{ratio}")
     if profile.capability == "image":
         return profile
-    if duration not in profile.durations:
+    if profile.duration_range:
+        if not isinstance(duration, int) or not profile.duration_range[0] <= duration <= profile.duration_range[1]:
+            raise ValueError(f"unsupported_duration:{duration}")
+    elif duration not in profile.durations:
         raise ValueError(f"unsupported_duration:{duration}")
     return profile
 

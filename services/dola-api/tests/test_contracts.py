@@ -17,6 +17,18 @@ def test_model_duration_contract_keeps_fast_at_15_seconds():
         raise AssertionError("Fast must reject 30 seconds")
 
 
+def test_seedance_2_5_duration_is_continuous_5_to_30():
+    for duration in (5, 12, 20, 28, 30):
+        assert validate_request("dola-seedance-2-5", duration, "16:9").upstream_model == "seedance_v2.5"
+    for duration in (4, 31):
+        try:
+            validate_request("dola-seedance-2-5", duration, "16:9")
+        except ValueError as error:
+            assert str(error) == f"unsupported_duration:{duration}"
+        else:
+            raise AssertionError("2.5 must stay inside 5-30 seconds")
+
+
 def test_sse_parser_handles_split_utf8_and_comments():
     chunks = [b": heartbeat\r\n\r\nevent: ack\r\ndata: {\"ok\":", b"true}\r\n\r\n"]
     assert list(iter_sse_events(iter(chunks))) == [{"event": "ack", "data": {"ok": True}}]

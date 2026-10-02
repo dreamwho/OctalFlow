@@ -112,6 +112,18 @@ async def list_accounts(
     ]
 
 
+@router.get("/{account_id}/storage-state")
+async def export_storage_state(
+    account_id: str,
+    account_service=Depends(get_account_service),
+):
+    """导出账号的浏览器 storage_state（同族 Provider 一键导入使用）。"""
+    state = account_service.load_storage_state(account_id)
+    if state is None:
+        raise HTTPException(404, detail={"message": "account storage state not found"})
+    return state
+
+
 @router.get("/active", response_model=AccountResponse)
 async def get_active_account(
     account_service=Depends(get_account_service),

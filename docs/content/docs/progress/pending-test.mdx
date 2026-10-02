@@ -5,6 +5,13 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### Dola Studio 2.5 时长滑块（5-30 秒自定义，2026-10-02 九轮）
+
+- 需求：Seedance 2.5 的时长选择从固定四档下拉改为画布同款的滑块方式，支持 5-30 秒逐秒自定义；Seedance 2.0 Fast 保留 5/10/15 固定档下拉。
+- 实现：①桌面提示词合成区 `#duration-control` 在 2.5 模型下显示 range 滑块（min 5 / max 30 / step 1）+ 原按钮变为纯徽标（"N 秒"），滑块拖动与徽标、提交值（`#duration` dataset.value）三方实时同步；切到 2.0 Fast 时滑块隐藏、恢复下拉，非 5/10/15 的遗留值自动回落 5 秒；任务草稿恢复沿用同一选择路径。②Provider（两份 protocol.py 同步）`DolaProfile` 新增 `duration_range` 字段，2.5 校验放宽为 5-30 连续整数（越界仍报 `unsupported_duration` 并透出），2.0 Fast 与生图契约不变。
+- 已验证：服务端 dola-api pytest 134/134（连续三轮，含新增 5/12/20/28/30 通过与 4/31 拒绝用例；首轮一次失败为既有偶发，未复现）、桌面 provider pytest 105/105、桌面 node --test 54/54；Provider 重新冻结过冒烟，darwin sidecar 重新暂存，win32 便携运行时的 `dola_api` 已同步新校验；0.2.0 双平台四产物重新打包，asar 含滑块代码、win32 sidecar 含 `duration_range`。
+- 待用户验收（消耗真实额度）：2.5 下拖动滑块选非整档值（如 12 秒、28 秒）提交，确认上游真实接受连续时长——**16-29 秒区间此前只有 30 秒档被验证过，若上游拒绝会原样透出错误**；切回 2.0 Fast 确认回落 5 秒且下拉正常。
+
 ### Dola Studio 0.2.0：移除魔法代理与链式代理（2026-10-02 八轮）
 
 - 变更前源码已备份至项目根 `Dola-Studio-源码备份-v1-20261002.tar.gz`（含 desktop 源码/配置/图标与 provider 源码/锁文件，排除 dist/build/sidecars/node_modules）。桌面版本号提升至 0.2.0，产物与 0.1.0 共存于 `dist/`。

@@ -121,18 +121,30 @@ export async function importGeminiVidsCookies(input: { cookies?: string; storage
     return sidecarJson(input.cookies ? "/accounts/import-cookies" : "/accounts/import-storage-state", { method: "POST", body: JSON.stringify(body) });
 }
 
-/** 从本机 GeminiAI 账号目录复制授权（同源 storage_state，一次点击完成导入）。 */
-export async function importGeminiVidsFromGeminiAi() {
-    const { readdir, readFile } = await import("node:fs/promises");
+/** 从本机 GeminiAI 账号目录复制授权（同源 storage_state，一次点击完成导入）。
+ * Docker 部署下账号在 geminiai sidecar 的私有卷里，app 看不到文件系统，
+ * 此时回退走 geminiai sidecar 的 storage-state 导出 API。 */
+type GeminiVidsImportResult = { imported: { account_id: string; email?: string | null }[]; failed: { email: string; error: string }[] };
+
+export async function importGeminiVidsFromGeminiAi(): Promise<GeminiVidsImportResult> {
     const path = await import("node:path");
     const dataRoot = process.env.DREAMYO_DATA_DIR?.trim() || path.join(process.cwd(), ".data");
     const dir = process.env.DREAMYO_GEMINIAI_ACCOUNTS_DIR?.trim() || path.join(dataRoot, "geminiai", "accounts");
-    let registry: { accounts?: Record<string, { email?: string | null; name?: string }> } = {};
+    let registry: { accounts?: Record<string, { email?: string | null; name?: string }> } | null = null;
     try {
-        registry = JSON.parse(await readFile(path.join(dir, "registry.json"), "utf8"));
+        registry = JSON.parse(await (await import("node:fs/promises")).readFile(path.join(dir, "registry.json"), "utf8"));
     } catch {
-        throw new GeminiVidsProviderError(`未找到 GeminiAI 账号目录（${dir}）`, 404);
+        registry = null;
     }
+    if (registry?.accounts && Object.keys(registry.accounts).length >= 0) {
+        return importFromLocalDir(dir, registry);
+    }
+    return importFromGeminiAiSidecar();
+}
+
+async function importFromLocalDir(dir: string, registry: { accounts?: Record<string, { email?: string | null; name?: string }> }): Promise<GeminiVidsImportResult> {
+    const path = await import("node:path");
+    const readFile = (await import("node:fs/promises")).readFile;
     const results: { account_id: string; email?: string | null }[] = [];
     const errors: { email: string; error: string }[] = [];
     for (const [accountId, meta] of Object.entries(registry.accounts || {})) {
@@ -146,6 +158,33 @@ export async function importGeminiVidsFromGeminiAi() {
             results.push({ account_id: imported.account_id, email: imported.email ?? meta.email ?? null });
         } catch (error) {
             errors.push({ email: meta.email || accountId, error: error instanceof Error ? error.message : String(error) });
+        }
+    }
+    return { imported: results, failed: errors };
+}
+
+async function importFromGeminiAiSidecar(): Promise<GeminiVidsImportResult> {
+    const { geminiAiSidecarRequest, geminiAiProviderConfigured } = await import("@/lib/server/geminiai-provider");
+    if (!geminiAiProviderConfigured()) throw new GeminiVidsProviderError("GeminiAI Provider 未配置，无法远程导入账号", 503);
+    const listResponse = await geminiAiSidecarRequest("/accounts", {}, { logSource: "runtime" });
+    const listPayload = (await listResponse.json().catch(() => null)) as { data?: { id: string; name?: string; email?: string | null }[] } | { id: string; name?: string; email?: string | null }[] | null;
+    const accounts = (Array.isArray(listPayload) ? listPayload : listPayload?.data) || [];
+    if (!accounts.length) throw new GeminiVidsProviderError("GeminiAI 尚无已授权账号可导入", 404);
+    const results: { account_id: string; email?: string | null }[] = [];
+    const errors: { email: string; error: string }[] = [];
+    for (const account of accounts) {
+        try {
+            const stateResponse = await geminiAiSidecarRequest(`/accounts/${encodeURIComponent(account.id)}/storage-state`, {}, { logSource: "runtime" });
+            if (!stateResponse.ok) throw new Error(`storage-state 导出失败（${stateResponse.status}）`);
+            const storageState = (await stateResponse.json()) as Record<string, unknown>;
+            const imported = (await importGeminiVidsCookies({
+                storageState,
+                name: account.name || account.email || account.id,
+                email: account.email || undefined,
+            })) as { account_id: string; email?: string | null };
+            results.push({ account_id: imported.account_id, email: imported.email ?? account.email ?? null });
+        } catch (error) {
+            errors.push({ email: account.email || account.id, error: error instanceof Error ? error.message : String(error) });
         }
     }
     return { imported: results, failed: errors };

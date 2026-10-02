@@ -30,6 +30,10 @@ class AccountService:
         """获取单个账号。"""
         return self._store.get_account(account_id)
 
+    def load_storage_state(self, account_id: str) -> dict | None:
+        """导出指定账号的浏览器 storage_state（供同族 Provider 复制授权）。"""
+        return self._store.load_storage_state(account_id)
+
     def get_active_account(self) -> AccountMeta | None:
         """获取当前活跃账号。"""
         return self._store.get_active_account()
