@@ -18,6 +18,18 @@ def test_model_duration_contract_keeps_fast_at_15_seconds():
         raise AssertionError("Fast must reject 30 seconds")
 
 
+def test_duration_policy_confirmation_refusal_terminates():
+    payload = {"messages": [{"user_type": 2, "content": '[{"block_type":10000,"content":{"text_block":{"text":"我会按你给的24秒完整脚本执行。由于单条视频目前支持4\u201315秒，我建议拆成两段连续生成：第1段0-14秒，第2段14-24秒。确认后我直接生成这两段视频。"}}}]'}]}
+    result = parse_generation_payloads([payload])
+    assert result.get("error") == "upstream_unsupported_duration"
+    assert "建议拆成两段" in result.get("rawError", "")
+
+
+def test_duration_talk_with_active_creation_block_keeps_polling():
+    payload = {"messages": [{"user_type": 2, "content": '[{"block_type":10000,"content":{"text_block":{"text":"先说明：视频目前支持4-15秒，但本次我按约定继续生成。"}}},{"block_type":2074,"content":{"creation_block":{"creations":[{"type":2,"video":{"status":1}}]}}}]'}]}
+    assert parse_generation_payloads([payload]) == {}
+
+
 def test_seedance_2_5_duration_is_continuous_5_to_30():
     for duration in (5, 12, 20, 28, 30):
         assert validate_request("dola-seedance-2-5", duration, "16:9").upstream_model == "seedance_v2.5"

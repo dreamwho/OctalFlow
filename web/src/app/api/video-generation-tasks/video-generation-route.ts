@@ -408,6 +408,7 @@ export async function createUpstream(
                         aspectRatio: values.ratio as string,
                         resolution: values.resolution as string,
                         duration: values.duration as number,
+                        images: requestImages,
                     })
                   : channel.advancedConfig?.protocol === "geminivids"
                     ? buildGeminiVidsVideoRequest({
@@ -784,11 +785,12 @@ class DeferredSubmissionFailure extends Error {
 }
 
 /** GeminiVids（docs.google.com/videos Omni 纯协议）创建请求体。 */
-export function buildGeminiAiOmniVideoRequest(input: { model: string; prompt: string; aspectRatio: string; resolution: string; duration: number }) {
+export function buildGeminiAiOmniVideoRequest(input: { model: string; prompt: string; aspectRatio: string; resolution: string; duration: number; images?: string[] }) {
     const aspectRatio = input.aspectRatio === "9:16" ? "9:16" : input.aspectRatio === "16:9" ? "16:9" : "auto";
     const resolution = ["360p", "720p", "1080p", "4k"].includes(input.resolution) ? input.resolution : "";
     const duration = Number.isFinite(input.duration) && input.duration > 0 ? Math.max(3, Math.min(10, Math.floor(input.duration))) : 10;
-    return { model: input.model, prompt: input.prompt, duration_seconds: duration, ...(resolution ? { resolution } : {}), aspect_ratio: aspectRatio };
+    const images = (input.images || []).filter((url) => /^https?:\/\//i.test(url) || /^data:/i.test(url)).slice(0, 4);
+    return { model: input.model, prompt: input.prompt, duration_seconds: duration, ...(resolution ? { resolution } : {}), aspect_ratio: aspectRatio, ...(images.length ? { images } : {}) };
 }
 
 export function buildGeminiVidsVideoRequest(input: { model: string; prompt: string; aspectRatio: string; resolution: string; duration: number; images?: string[] }) {

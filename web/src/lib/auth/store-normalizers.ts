@@ -788,7 +788,7 @@ export function normalizeSystemChannel(channel: Partial<SystemModelChannel>): Sy
         advancedConfig: normalizeSystemChannelAdvancedConfig(channel.advancedConfig),
     };
     if (normalized.advancedConfig?.protocol === "yumeng") return applyChannelProtocol(normalized, "yumeng");
-    if (normalized.advancedConfig?.protocol === "geminiai") return { ...normalized, name: "Gemini AI Studio" };
+    if (normalized.advancedConfig?.protocol === "geminiai") return { ...applyChannelProtocol(normalized, "geminiai"), name: "Gemini AI Studio" };
     if (normalized.id === "geminivids" || normalized.advancedConfig?.protocol === "geminivids") return { ...applyChannelProtocol(normalized, "geminivids"), name: "GeminiVids" };
     if (normalized.id === "dola" || normalized.advancedConfig?.protocol === "dola") return { ...applyChannelProtocol(normalized, "dola"), name: "Dola API" };
     if (normalized.advancedConfig?.protocol === "gemini-tools") return { ...applyChannelProtocol(normalized, "gemini-tools"), name: "Gemini Antigravity Tools" };

@@ -381,7 +381,7 @@ function overviewData(input: {
     };
 }
 
-function configuredGeminiAiModels(channel: SystemModelChannel | undefined) {
+export function configuredGeminiAiModels(channel: SystemModelChannel | undefined) {
     if (!channel) return [] as GeminiAiCatalogModel[];
     return channel.models.flatMap((id) => {
         const capability = channelModelCapability(channel, id);
@@ -389,7 +389,9 @@ function configuredGeminiAiModels(channel: SystemModelChannel | undefined) {
             ? [{ id, name: id, capabilities: ["text", "search"] as GeminiAiCatalogCapability[], enabled: true, source: "geminiai" as const }]
             : capability === "image"
               ? [{ id, name: id, capabilities: ["image"] as GeminiAiCatalogCapability[], enabled: true, source: "geminiai" as const }]
-              : [];
+              : capability === "video"
+                ? [{ id, name: id, capabilities: ["video"] as GeminiAiCatalogCapability[], enabled: true, source: "geminiai" as const }]
+                : [];
     });
 }
 

@@ -18,6 +18,7 @@ class VideoCreateRequest(BaseModel):
     duration_seconds: int = Field(default=10, ge=3, le=10)
     resolution: str = ""
     aspect_ratio: str = "auto"
+    images: list[str] = Field(default_factory=list, max_length=4)
 
 
 def _service():
@@ -36,6 +37,7 @@ def create_video(payload: VideoCreateRequest):
             duration=payload.duration_seconds,
             resolution=payload.resolution,
             aspect=payload.aspect_ratio,
+            reference_images=payload.images,
         )
     except ValueError as exc:
         raise HTTPException(400, detail={"message": str(exc)}) from None

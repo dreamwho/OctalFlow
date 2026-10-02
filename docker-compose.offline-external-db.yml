@@ -81,6 +81,7 @@ services:
       AISTUDIO_PORT: "8080"
       AISTUDIO_PROXY: http://127.0.0.1:17890
       AISTUDIO_STUDIO_URL: ${DREAMYO_GEMINIAI_STUDIO_URL:-https://aistudio.google.com/prompts/new_chat}
+      GEMINIAI_REFERENCE_ASSET_ORIGIN: http://127.0.0.1:3333
       DREAMYO_TRAFFIC_METER_URL: http://127.0.0.1:${TRAFFIC_METER_PORT:-18083}
       DREAMYO_TRAFFIC_METER_KEY: ${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}
     volumes:

@@ -422,6 +422,15 @@ def parse_generation_payloads(payloads: list[Any]) -> dict[str, Any]:
     # has been observed after a reply that spoke about the first 15 seconds.
     if _has_creation_block(payloads):
         return {}
+    # 时长策略追问（"建议拆成两段""确认后我直接生成""最长单条时长为 15 秒"）是
+    # 等待用户确认的终态：上游不会在该会话继续生成，无 creation block 时直接判
+    # 失败让重试可用；带 creation block 的"边说边生成"回复仍保持轮询。
+    duration_reply = _latest_assistant_text(payloads)
+    if duration_reply and "秒" in duration_reply and any(
+        marker in duration_reply for marker in ("建议拆", "确认后我直接生成", "我就直接生成", "最长单条时长")
+    ):
+        return {"url": "", "imageUrls": [], "payload": extract_vod_payload(payloads), "error": "upstream_unsupported_duration", "rawError": duration_reply}
+
 
     if protocol_error:
         return {

@@ -50,6 +50,7 @@ class VideoTask:
     elapsed_seconds: float | None = None
     media_path: str | None = None
     media_size: int | None = None
+    reference_images: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -91,7 +92,7 @@ class VideoTaskStore:
         tmp.write_text(json.dumps(task.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(self._path(task.id))
 
-    def create(self, model: str, prompt: str, duration: int, resolution: str, aspect: str) -> VideoTask:
+    def create(self, model: str, prompt: str, duration: int, resolution: str, aspect: str, reference_images: list[str] | None = None) -> VideoTask:
         task = VideoTask(
             id=f"vt_{secrets.token_hex(8)}",
             model=model,
@@ -99,6 +100,7 @@ class VideoTaskStore:
             duration_seconds=duration,
             resolution=resolution,
             aspect_ratio=aspect,
+            reference_images=reference_images or [],
         )
         with self._lock:
             self._tasks[task.id] = task
@@ -168,6 +170,62 @@ def _mouse_click(locator):
     page.mouse.down()
     time.sleep(0.05)
     page.mouse.up()
+
+
+def _fetch_reference_image(source: str) -> bytes:
+    """参考图下载：data URL 解码；http(s) 签名地址直连（不走代理），支持 origin 覆盖。"""
+    import os as _os
+    import urllib.request as _request
+    from urllib.parse import parse_qs, urlsplit, urlunsplit
+
+    source = (source or "").strip()
+    if source.startswith("data:"):
+        _, _, payload = source.partition(",")
+        import base64
+        try:
+            data = base64.b64decode(payload, validate=True)
+        except Exception as exc:
+            raise OmniVideoError(f"reference image data URL invalid: {exc}") from exc
+        if len(data) < 100:
+            raise OmniVideoError("reference image too small")
+        return data
+    if source.startswith(("http://", "https://")):
+        origin = _os.getenv("GEMINIAI_REFERENCE_ASSET_ORIGIN", "").strip()
+        query = parse_qs(urlsplit(source).query)
+        if origin and query.get("purpose") == ["provider-read"] and query.get("signature"):
+            parsed = urlsplit(source)
+            override = urlsplit(origin)
+            if override.scheme not in {"http", "https"} or not override.netloc:
+                raise OmniVideoError("GEMINIAI_REFERENCE_ASSET_ORIGIN invalid")
+            source = urlunsplit((override.scheme, override.netloc, parsed.path, parsed.query, parsed.fragment))
+        opener = _request.build_opener(_request.ProxyHandler({}))
+        req = _request.Request(source, headers={"user-agent": "geminiai-sidecar/1.0"})
+        try:
+            with opener.open(req, timeout=120) as response:
+                data = response.read()
+        except Exception as exc:
+            raise OmniVideoError(f"reference image download failed: {exc}") from exc
+        if len(data) < 100:
+            raise OmniVideoError(f"reference image download too small: {len(data)}")
+        return data
+    raise OmniVideoError("reference image must be a data: or http(s):// URL")
+
+
+def _download_reference_images(sources: list[str], workdir: Path) -> list[Path]:
+    workdir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for index, source in enumerate(sources, start=1):
+        data = _fetch_reference_image(source)
+        ext = ".png"
+        if data[1:4] == b"PNG":
+            ext = ".png"
+        elif data[:3] == b"\xff\xd8\xff":
+            ext = ".jpg"
+        path = workdir / f"reference-{index}{ext}"
+        path.write_bytes(data)
+        paths.append(path)
+    return paths
+
 
 
 class OmniVideoRunner:
@@ -287,9 +345,67 @@ class OmniVideoRunner:
             )
             self.log(f"omni: duration {duration} -> {value}")
 
+    def _attach_images(self, page, image_paths: list[Path]) -> None:
+        """通过 composer 的隐藏 file input 上传参考图；上传完成后继续。"""
+        file_input = page.locator("input[type=file]").first
+        try:
+            file_input.wait_for(state="attached", timeout=10000)
+        except Exception as exc:
+            raise OmniVideoError("reference image upload failed: file input not found") from exc
+        file_input.set_input_files([str(p) for p in image_paths])
+        self.log(f"omni: attached {len(image_paths)} reference image(s)")
+        # 首次上传会弹媒体权利确认对话框（Acknowledge），必须确认
+        for text in ("Acknowledge", "I acknowledge", "Got it", "OK"):
+            button = page.locator("button").filter(has_text=text)
+            if button.count():
+                try:
+                    button.first.click(timeout=4000)
+                    self.log(f"omni: media-rights dialog confirmed via {text!r}")
+                    time.sleep(4)
+                    break
+                except Exception:
+                    continue
+        # 等待上传完成（页面内异步）；遮罩残留会挡住 composer，需清除
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            state = page.evaluate(
+                "JSON.stringify({imgs: document.querySelectorAll('img[src^=\"blob:\"]').length,"
+                "busy: !!document.querySelector('[aria-busy=\"true\"]'),"
+                "overlay: !!document.querySelector('.cdk-overlay-backdrop:not([style*=\"display: none\"])')})"
+            )
+            data = json.loads(state)
+            if data["imgs"] >= len(image_paths) and not data["busy"] and not data["overlay"]:
+                break
+            if data["overlay"]:
+                page.evaluate(
+                    "document.querySelectorAll('.cdk-overlay-backdrop').forEach(e => e.remove());"
+                    "document.querySelectorAll('.cdk-overlay-container').forEach(e => { if (!e.children.length) e.remove(); })"
+                )
+            time.sleep(2)
+        # 等待对话框关闭动画完成、遮罩彻底消失（Angular 会延迟移除）
+        overlay_deadline = time.time() + 15
+        while time.time() < overlay_deadline:
+            remaining = page.evaluate("document.querySelectorAll('.cdk-overlay-backdrop').length")
+            if not remaining:
+                break
+            page.evaluate("document.querySelectorAll('.cdk-overlay-backdrop').forEach(e => e.remove())")
+            time.sleep(1)
+        _dismiss_overlays(page)
+        self.log("omni: reference images uploaded")
+        time.sleep(2)
+
     def _submit_and_wait(self, page, prompt: str, context) -> None:
-        box = page.get_by_role("textbox", name="Enter a prompt")
-        box.click()
+        for attempt in range(4):
+            page.evaluate("document.querySelectorAll('.cdk-overlay-backdrop').forEach(e => e.remove())")
+            time.sleep(0.5)
+            try:
+                box = page.get_by_role("textbox", name="Enter a prompt")
+                box.click(timeout=5000)
+                break
+            except Exception:
+                if attempt == 3:
+                    raise OmniVideoError("composer not accessible after reference upload (overlay stuck)")
+                time.sleep(2)
         time.sleep(0.8)
         page.keyboard.press("Control+a")
         page.keyboard.press("Backspace")
@@ -334,7 +450,7 @@ class OmniVideoRunner:
         download_info.value.save_as(str(target))
 
     # -- entry ----------------------------------------------------------
-    def run(self, model: str, prompt: str, duration: int, resolution: str, target: Path) -> dict:
+    def run(self, model: str, prompt: str, duration: int, resolution: str, target: Path, image_paths: list[Path] | None = None) -> dict:
         from camoufox.sync_api import Camoufox
 
         proxies = None
@@ -348,6 +464,8 @@ class OmniVideoRunner:
             self._warmup(context, page)
             self._select_model(page, model)
             self._apply_settings(page, duration, resolution)
+            if image_paths:
+                self._attach_images(page, image_paths)
             self._submit_and_wait(page, prompt, context)
             target.parent.mkdir(parents=True, exist_ok=True)
             self._download(page, target)
@@ -387,7 +505,7 @@ class OmniVideoService:
         self._cooldown[account_id] = time.time() + (6 * 3600 if _QUOTA_RE.search(message) else 3600)
 
     # -- public API ------------------------------------------------------
-    def submit(self, model: str, prompt: str, duration: int, resolution: str, aspect: str) -> dict:
+    def submit(self, model: str, prompt: str, duration: int, resolution: str, aspect: str, reference_images: list[str] | None = None) -> dict:
         if model not in SUPPORTED_MODELS:
             raise OmniVideoError(f"model not supported for AI Studio video: {model}", 400)
         if not prompt.strip():
@@ -395,7 +513,11 @@ class OmniVideoService:
         duration = max(DURATION_RANGE[0], min(DURATION_RANGE[1], int(duration or 10)))
         resolution = resolution if resolution in RESOLUTIONS else ""
         aspect = aspect if aspect in ASPECTS else "auto"
-        task = self.tasks.create(model, prompt.strip(), duration, resolution, aspect)
+        images = [str(item).strip() for item in (reference_images or []) if str(item).strip()][:4]
+        for item in images:
+            if not item.startswith(("data:", "http://", "https://")):
+                raise OmniVideoError("reference image must be a data: or http(s):// URL", 400)
+        task = self.tasks.create(model, prompt.strip(), duration, resolution, aspect, images)
         with self._lock:
             self._queue.append(task.id)
             if not self._worker or not self._worker.is_alive():
@@ -427,9 +549,14 @@ class OmniVideoService:
                 return
             tried.add(account_id)
             self.tasks.update(task_id, lambda t: setattr(t, "account_id", account_id))
+            image_paths: list[Path] = []
+            if task.reference_images:
+                refs_dir = self.tasks.media_dir / f"{task_id}-refs"
+                image_paths = _download_reference_images(task.reference_images, refs_dir)
+                self.log(f"omni: downloaded {len(image_paths)} reference image(s)")
             try:
                 runner = OmniVideoRunner(state, None, self.log)
-                result = runner.run(task.model, task.prompt, task.duration_seconds, task.resolution, target)
+                result = runner.run(task.model, task.prompt, task.duration_seconds, task.resolution, target, image_paths or None)
 
                 def apply(t: VideoTask) -> None:
                     t.status = "succeeded"
@@ -463,6 +590,7 @@ class OmniVideoService:
             "duration_seconds": task.duration_seconds,
             "resolution": task.resolution,
             "aspect_ratio": task.aspect_ratio,
+            "reference_images": len(task.reference_images),
             "status": task.status,
             "account_id": task.account_id,
             "created_at": task.created_at,

@@ -284,8 +284,8 @@ const geminiAiVideoOperation: ProtocolOperation = {
     durationRange: "3-10 秒",
     aspectRatios: ["16:9", "9:16"],
     qualityOptions: ["360p", "720p", "1080p", "4k"],
-    referenceRule: "Gemini Omni（AI Studio 页面自动化）由服务器已授权 Google 账号提交；成片无水印。暂不支持参考素材。",
-    supportsReferenceImage: false,
+    referenceRule: "Gemini Omni（AI Studio 页面自动化）由服务器已授权 Google 账号提交；支持参考图片（AI Studio 页面上传，作为画面主体/风格参考），不支持首尾帧、参考视频与音频。成片无水印。",
+    supportsReferenceImage: true,
     supportsReferenceVideo: false,
     supportsReferenceAudio: false,
 };

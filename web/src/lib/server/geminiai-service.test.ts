@@ -201,3 +201,17 @@ describe("GeminiAI service", () => {
         await expect(runGeminiAiImageTest({ userId: "admin-a", model: "gemini-3.1-flash-image", prompt: "蓝色圆形" })).rejects.toThrow("账号登录成功只代表浏览器身份有效");
     });
 });
+
+describe("configuredGeminiAiModels video branch", () => {
+    it("maps video-capable channel models so saved selection survives reload", async () => {
+        const { configuredGeminiAiModels } = await import("./geminiai-service");
+        const channel = {
+            models: ["gemini-omni-1.1-flash"],
+            advancedConfig: { protocol: "geminiai", modelCapabilities: { "gemini-omni-1.1-flash": "video" } },
+        } as never;
+        const models = configuredGeminiAiModels(channel);
+        expect(models).toHaveLength(1);
+        expect(models[0].capabilities).toEqual(["video"]);
+        expect(models[0].enabled).toBe(true);
+    });
+});

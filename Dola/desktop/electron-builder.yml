@@ -7,19 +7,20 @@ files:
   - package.json
   - src/**/*
   - resources/dreamyo-mark.png
-extraResources:
-  - from: resources/sidecars
-    to: sidecars
-    filter:
-      - "**/*"
 mac:
   icon: resources/dreamyo.icns
   category: public.app-category.video
   identity: null
   target: [dmg, zip]
+  extraResources:
+    - from: resources/sidecars/darwin/arm64
+      to: sidecars/darwin/arm64
 win:
   icon: resources/dreamyo.ico
   target: [nsis]
+  extraResources:
+    - from: resources/sidecars/win32/x64
+      to: sidecars/win32/x64
 nsis:
   oneClick: false
   perMachine: false

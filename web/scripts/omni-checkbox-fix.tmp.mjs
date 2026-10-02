@@ -1,0 +1,16 @@
+import { chromium } from "@playwright/test";
+import { readFileSync } from "node:fs";
+const base = "http://127.0.0.1:3333";
+const browser = await chromium.launch();
+const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+await context.addCookies([{ name: "dreamyo_session", value: readFileSync("/tmp/admin-session.txt", "utf8").trim(), url: base }]);
+const page = await context.newPage();
+await page.goto(base + "/admin", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(4000);
+await page.getByText("GeminiAIStudio", { exact: true }).first().click();
+await page.waitForTimeout(3000);
+const cb = page.getByRole("checkbox", { name: /gemini-omni-1\.1-flash/i }).first();
+console.log("omni checkbox found:", await cb.count() > 0, "| CHECKED after fix:", await cb.isChecked());
+const cb2 = page.getByRole("checkbox", { name: /gemini-omni-flash-preview/i }).first();
+console.log("preview checkbox CHECKED:", await cb2.count() > 0 ? await cb2.isChecked() : "n/a");
+await browser.close();

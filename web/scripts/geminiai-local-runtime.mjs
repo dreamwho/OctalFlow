@@ -25,6 +25,7 @@ export function localGeminiAiRuntime({ repoRoot, webRoot, environment = process.
     const providerEnvironment = {
         ...source,
         AISTUDIO_API_KEY: apiKey,
+        GEMINIAI_REFERENCE_ASSET_ORIGIN: `http://127.0.0.1:${source.PORT || process.env.PORT || 3333}`,
         AISTUDIO_ACCOUNTS_DIR: accountsDir,
         AISTUDIO_CONFIG_FILE: path.join(providerRoot, "config.yaml"),
         AISTUDIO_DUMP_RAW_RESPONSE: source.AISTUDIO_DUMP_RAW_RESPONSE?.trim() || "0",
