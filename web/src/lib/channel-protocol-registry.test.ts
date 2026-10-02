@@ -34,6 +34,7 @@ describe("channel protocol registry", () => {
             "yumeng",
             "gemini",
             "geminiai",
+            "geminivids",
             "dola",
             "gemini-tools",
             "chatgpt-api",
@@ -66,8 +67,9 @@ describe("channel protocol registry", () => {
             apiFormat: "openai",
             authMode: "provider-managed",
             modelCatalogPaths: ["/v1/models"],
-            capabilities: ["text", "image"],
+            capabilities: ["text", "image", "video"],
         });
+        expect(channelProtocolDefinition("geminiai")?.operations.video?.createPath).toBe("/v1/videos");
         expect(channelProtocolDefinition("gemini-tools")).toMatchObject({
             label: "Gemini Antigravity Tools",
             apiFormat: "openai",

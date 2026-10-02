@@ -18,6 +18,7 @@ from .dependencies import _extract_request_token, require_api_key
 from .routes_accounts import router as accounts_router
 from .routes_gemini import router as gemini_router
 from .routes_openai import router as openai_router
+from .routes_videos import router as videos_router
 from .routes_system import protected_router as system_protected_router
 from .routes_system import public_router as system_public_router
 from .state import runtime_state
@@ -70,6 +71,15 @@ async def lifespan(app: FastAPI):
         cooldown_seconds=cooldown,
     )
     runtime_state.rotator = rotator
+
+    # Omni 视频任务服务（页面自动化，顺序 worker）
+    from aistudio_api.application.omni_video import OmniVideoService, VideoTaskStore
+    from aistudio_api.infrastructure.account.account_store import _resolve_accounts_dir
+    runtime_state.omni_videos = OmniVideoService(
+        VideoTaskStore(_resolve_accounts_dir().parent / "videos"),
+        account_store,
+        lambda message: logger.info(message),
+    )
 
     account_count = len(account_store.list_accounts())
     logger.info(
@@ -185,6 +195,7 @@ app.include_router(system_protected_router, dependencies=[Depends(require_api_ke
 app.include_router(gemini_router, dependencies=[Depends(require_api_key)])
 app.include_router(openai_router, dependencies=[Depends(require_api_key)])
 app.include_router(anthropic_router, dependencies=[Depends(require_api_key)])
+app.include_router(videos_router, dependencies=[Depends(require_api_key)])
 app.include_router(accounts_router, dependencies=[Depends(require_api_key)])
 
 # 挂载静态文件

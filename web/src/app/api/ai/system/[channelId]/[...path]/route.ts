@@ -33,6 +33,7 @@ import { authorizeSystemAiProxyRequest } from "@/lib/server/system-ai-proxy-poli
 import { chatGptErrorMessage, chatGptRuntimeRequest, getChatGptRuntimeConfig, resolveChatGptReferences, rewriteChatGptMedia, rewriteChatGptStream, syncChatGptMagicProxy } from "@/lib/server/chatgpt-api-service";
 import { CHATGPT_API_PROTOCOL, normalizeChatGptApiRuntimePath } from "@/lib/server/chatgpt-api-models";
 import { GEMINIAI_PROTOCOL, geminiAiProviderConfigured, geminiAiRuntimeRequest, isGeminiAiRuntimePath } from "@/lib/server/geminiai-provider";
+import { GEMINIVIDS_PROTOCOL, geminiVidsProviderConfigured, geminiVidsRuntimeRequest, isGeminiVidsRuntimePath } from "@/lib/server/geminivids-provider";
 import { GEMINI_TOOLS_PROTOCOL, geminiToolsOAuthConfigured, geminiToolsRuntimeRequest, isGeminiToolsRuntimePath } from "@/lib/server/gemini-tools-service";
 import { DOLA_CHANNEL_ID, DOLA_PROTOCOL, dolaProviderConfigured, dolaRuntimeRequest, isDolaRuntimePath } from "@/lib/server/dola/provider";
 import { getDolaAccount, getDolaAccountCookie, markDolaAccountQuotaExhausted, markDolaAccountRateLimited, markDolaAccountUsed, releaseDolaAccountAttempt, reserveDolaAccount, setDolaAccountStatus } from "@/lib/server/dola/account-service";
@@ -170,6 +171,7 @@ async function proxySystemRequestInternal(request: Request, context: RouteContex
     }
 
     const isGeminiAiChannel = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL;
+    const isGeminiVidsChannel = channel.advancedConfig?.protocol === GEMINIVIDS_PROTOCOL;
     const isGeminiToolsChannel = channel.advancedConfig?.protocol === GEMINI_TOOLS_PROTOCOL;
     const isDolaChannel = channel.id === DOLA_CHANNEL_ID || channel.advancedConfig?.protocol === DOLA_PROTOCOL;
     const routedPath = globalAdaptation?.path || path;
@@ -177,6 +179,8 @@ async function proxySystemRequestInternal(request: Request, context: RouteContex
     const geminiAiPath = `/${routedPath.join("/")}${requestSearch}`;
     if (isGeminiAiChannel && !geminiAiProviderConfigured()) return NextResponse.json({ error: "GeminiAI 服务尚未配置或不可用" }, { status: 503 });
     if (isGeminiAiChannel && !isGeminiAiRuntimePath(geminiAiPath)) return NextResponse.json({ error: "GeminiAI 不支持该运行时接口" }, { status: 404 });
+    if (isGeminiVidsChannel && !geminiVidsProviderConfigured()) return NextResponse.json({ error: "GeminiVids 服务尚未配置或不可用" }, { status: 503 });
+    if (isGeminiVidsChannel && !isGeminiVidsRuntimePath(geminiAiPath)) return NextResponse.json({ error: "GeminiVids 不支持该运行时接口" }, { status: 404 });
     if (isGeminiToolsChannel && !geminiToolsOAuthConfigured()) return NextResponse.json({ error: "GeminiTools OAuth 尚未配置" }, { status: 503 });
     if (isGeminiToolsChannel && !isGeminiToolsRuntimePath(geminiAiPath)) return NextResponse.json({ error: "GeminiTools 不支持该运行时接口" }, { status: 404 });
     if (isDolaChannel && !dolaProviderConfigured()) return NextResponse.json({ error: "Dola Camoufox Provider 尚未配置" }, { status: 503 });
@@ -190,7 +194,7 @@ async function proxySystemRequestInternal(request: Request, context: RouteContex
         }
         if (!chatGptApiPath) return NextResponse.json({ error: "GPTAPI 不支持该运行时接口" }, { status: 404 });
     }
-    const providerManaged = isGeminiAiChannel || isGeminiToolsChannel || isChatGptApiChannel || isDolaChannel;
+    const providerManaged = isGeminiAiChannel || isGeminiToolsChannel || isChatGptApiChannel || isDolaChannel || isGeminiVidsChannel;
     const target = providerManaged ? "" : targetUrl(globalPreset?.baseUrl || channel.baseUrl, globalPreset?.apiFormat || apiFormat, routedPath, requestSearch, globalChannel, modelConfig?.protocol || channel.advancedConfig?.protocol);
     if (!providerManaged && !(await isSafeOutboundUrl(target, { allowCredentials: false, allowProxyFakeIpSpace: true }))) return NextResponse.json({ error: "接口地址不允许访问内网或保留地址" }, { status: 400 });
     const headers = new Headers();
@@ -290,6 +294,13 @@ async function proxySystemRequestInternal(request: Request, context: RouteContex
                   body: runtimeBody,
                   signal: request.signal,
               })
+            : isGeminiVidsChannel
+              ? await geminiVidsRuntimeRequest(geminiAiPath, {
+                    method: request.method,
+                    headers,
+                    body: runtimeBody,
+                    signal: request.signal,
+                })
             : isGeminiToolsChannel
               ? await geminiToolsRuntimeRequest(geminiAiPath, {
                     method: request.method,
@@ -666,7 +677,7 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
         const logId = task?.upstream?.id ? await safeFindDolaTaskLog(task.upstream.id) : "";
         if (logId) updateTrafficContext({ requestId: logId });
     }
-    const target = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL ? geminiAiMediaTarget(rawUrl) : channel.advancedConfig?.protocol === DOLA_PROTOCOL ? dolaMediaTarget(rawUrl) : mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
+    const target = channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL ? geminiAiMediaTarget(rawUrl) : channel.advancedConfig?.protocol === GEMINIVIDS_PROTOCOL ? geminiVidsMediaTarget(rawUrl) : channel.advancedConfig?.protocol === DOLA_PROTOCOL ? dolaMediaTarget(rawUrl) : mediaTargetRequest(channel.baseUrl, channel.apiFormat, rawUrl, isGlobalAiOpcChannel(channel.advancedConfig));
     if (!target) return NextResponse.json({ error: "Invalid media url" }, { status: 400 });
     // 媒体地址来自上游任务结果，且本请求携带按 URL 绑定的生成媒体授权：允许代理工具 fake-IP 段（198.18/15），由本机 TUN 按 Host 路由到真实公网目标。
     const mediaOutboundOptions = { allowCredentials: false, allowProxyFakeIpSpace: true };
@@ -678,7 +689,13 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
 
     const headers = new Headers();
     if (target.includeAuth) {
-        Object.entries(protocolAuthHeaders(channel.apiKey, channel.advancedConfig, isGlobalAiOpcChannel(channel.advancedConfig) ? "openai" : channel.apiFormat)).forEach(([key, value]) => headers.set(key, value));
+        if (channel.advancedConfig?.protocol === GEMINIVIDS_PROTOCOL || channel.advancedConfig?.protocol === GEMINIAI_PROTOCOL) {
+            // provider-managed sidecar 媒体：凭据来自服务端环境变量而非渠道 apiKey。
+            const sidecarKey = (channel.advancedConfig?.protocol === GEMINIVIDS_PROTOCOL ? process.env.DREAMYO_GEMINIVIDS_API_KEY : process.env.DREAMYO_GEMINIAI_API_KEY)?.trim() || "";
+            if (sidecarKey) headers.set("authorization", `Bearer ${sidecarKey}`);
+        } else {
+            Object.entries(protocolAuthHeaders(channel.apiKey, channel.advancedConfig, isGlobalAiOpcChannel(channel.advancedConfig) ? "openai" : channel.apiFormat)).forEach(([key, value]) => headers.set(key, value));
+        }
     }
 
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(SYSTEM_MEDIA_TIMEOUT_MS)]);
@@ -713,13 +730,67 @@ async function proxySystemMediaRequest(request: Request, channel: SystemMediaCha
     }
 }
 
-function geminiAiMediaTarget(value: string): { url: string; includeAuth: boolean } | null {
+function geminiVidsMediaTarget(value: string): { url: string; includeAuth: boolean } | null {
+    // GeminiVids 成片挂在 provider-managed sidecar 上：相对路径仅允许
+    // /v1/videos/:id/(content|media)；绝对地址仅接受与 sidecar 同源（测试 fixture 同样满足）。
+    // 出站安全由调用方的 isSafeOutboundUrl 统一裁决。
+    const mediaUrl = value.trim();
+    if (!mediaUrl) return null;
+    const baseRaw = process.env.DREAMYO_GEMINIVIDS_URL?.trim() || "";
+    let base: URL | null = null;
+    if (baseRaw) {
+        try {
+            base = new URL(baseRaw);
+        } catch {
+            base = null;
+        }
+    }
     try {
-        const url = new URL(value.trim());
-        return url.protocol === "http:" || url.protocol === "https:" ? { url: url.toString(), includeAuth: false } : null;
+        if (mediaUrl.startsWith("/")) {
+            if (!base || !/^\/v1\/videos\/[A-Za-z0-9_-]+\/(?:content|media)(?:\?[^\s]*)?$/.test(mediaUrl)) return null;
+            return { url: new URL(mediaUrl, base.origin).toString(), includeAuth: true };
+        }
+        const absolute = new URL(mediaUrl);
+        if (absolute.protocol !== "http:" && absolute.protocol !== "https:") return null;
+        if (base && absolute.origin === base.origin) return { url: absolute.toString(), includeAuth: true };
+        return null;
     } catch {
         return null;
     }
+}
+
+function geminiAiMediaTarget(value: string): { url: string; includeAuth: boolean } | null {
+    // 文本/图片为外部地址直连；Omni 视频成片挂在 provider-managed sidecar 上
+    // （相对路径仅允许 /v1/videos/:id/(content|media)，绝对地址仅接受 sidecar 同源）。
+    const mediaUrl = value.trim();
+    if (!mediaUrl) return null;
+    const baseRaw = process.env.DREAMYO_GEMINIAI_URL?.trim() || "";
+    let base: URL | null = null;
+    if (baseRaw) {
+        try {
+            base = new URL(baseRaw);
+        } catch {
+            base = null;
+        }
+    }
+    try {
+        if (mediaUrl.startsWith("/")) {
+            if (!base || !/^\/v1\/videos\/[A-Za-z0-9_-]+\/(?:content|media)(?:\?[^\s]*)?$/.test(mediaUrl)) return null;
+            return { url: new URL(mediaUrl, base.origin).toString(), includeAuth: true };
+        }
+        const absolute = new URL(mediaUrl);
+        if (absolute.protocol !== "http:" && absolute.protocol !== "https:") return null;
+        if (base && absolute.origin === base.origin && GEMINIAI_VIDEO_MEDIA_PATH_RE.test(absolute.pathname)) return { url: absolute.toString(), includeAuth: true };
+        return urlProtocolAllowed(absolute) ? { url: absolute.toString(), includeAuth: false } : null;
+    } catch {
+        return null;
+    }
+}
+
+const GEMINIAI_VIDEO_MEDIA_PATH_RE = /^\/v1\/videos\/[A-Za-z0-9_-]+\/(?:content|media)$/;
+
+function urlProtocolAllowed(url: URL) {
+    return url.protocol === "http:" || url.protocol === "https:";
 }
 
 function dolaMediaTarget(value: string): { url: string; includeAuth: boolean } | null {

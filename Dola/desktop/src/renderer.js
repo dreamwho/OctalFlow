@@ -1,6 +1,7 @@
 import { referenceLabel, nextReferenceLabel, normalizePictureTags, referencedIds, mentionAtCursor, replaceMention, replaceReferenceToken, deleteReferenceAtCaret } from "./prompt-references.mjs";
 import { testProxyNodes } from "./proxy-batch-test.mjs";
 import { fingerprintOptions } from "./browser-fingerprint.mjs";
+import { scanLongDurations, stripLongDurations } from "./duration-scan.mjs";
 
 const defaultFingerprintSelection = () => Object.fromEntries(fingerprintOptions.map((item) => [item.key, item.default !== false]));
 
@@ -516,7 +517,7 @@ function renderRail() {
     card.append(node("span", `state ${task.status === "failed" ? "failed" : ""}`, task.status));
     card.append(node("p", "", [task.model, task.ratio, task.createdAt ? displayTime(task.createdAt) : ""].filter(Boolean).join(" · ")));
     if (task.error) card.append(node("p", "", `失败原因：${taskErrorText(task)}${!task.conversationId ? "；未创建 Dola 会话" : ""}`));
-    else if (!task.conversationId && ["queued", "running", "accepted"].includes(task.status)) card.append(node("p", "", `${task.diagnostics?.submitStage === "uploading_references" ? "正在上传参考图" : task.diagnostics?.submitStage === "submitting_to_dola" ? "正在提交到 Dola" : "正在准备提交"}，尚未获得 Dola 会话`));
+    else if (!task.conversationId && ["queued", "running", "accepted"].includes(task.status)) card.append(node("p", "", `${task.diagnostics?.submitStage === "uploading_references" ? "正在上传参考图" : task.diagnostics?.submitStage === "rule_priming" ? "正在建立 30 秒时长规则" : task.diagnostics?.submitStage === "submitting_to_dola" ? "正在提交到 Dola" : "正在准备提交"}，尚未获得 Dola 会话`));
     if (task.unwatermarkedUrl) card.append(node("p", "", "无水印版本已就绪"));
     else if (task.watermarkError) card.append(node("p", "", `无水印取回：${task.watermarkError}`));
     if (task.status === "needs_review") card.append(node("p", "", "Dola 要求人工验证。请在已登录浏览器中完成验证，再查询状态。"));
@@ -980,6 +981,32 @@ byId("prompt-drop-zone").addEventListener("drop", (event) => { event.preventDefa
 byId("prompt").oninput = (event) => { byId("expanded-prompt").value = event.target.value; renderReferences(); if (event.inputType === "insertFromPaste") hideMentionMenu(); else updateMentionMenu(event.target); };
 byId("prompt-expand").onclick = () => { byId("expanded-prompt").value = byId("prompt").value; byId("prompt-dialog").showModal(); updateBrowserBounds(); renderReferences(); byId("expanded-prompt").focus(); };
 byId("expanded-prompt").oninput = (event) => { byId("prompt").value = event.target.value; renderReferences(); if (event.inputType === "insertFromPaste") hideMentionMenu(); else updateMentionMenu(event.target); };
+let durationScanMatches = [];
+function renderDurationScan() {
+  byId("duration-scan-result").classList.remove("hidden");
+  const text = byId("duration-scan-text");
+  const strip = byId("duration-strip");
+  if (!durationScanMatches.length) {
+    text.textContent = "未检测到超过 10 秒的时长表述";
+    strip.classList.add("hidden");
+    return;
+  }
+  const preview = durationScanMatches.slice(0, 4).map((match) => match.text.replace(/\s+/g, " ").trim()).join("、");
+  text.textContent = `检测到 ${durationScanMatches.length} 处超过 10 秒的时长表述：${preview}${durationScanMatches.length > 4 ? " 等" : ""}`;
+  strip.classList.remove("hidden");
+}
+byId("duration-scan").onclick = () => { durationScanMatches = scanLongDurations(byId("prompt").value); renderDurationScan(); };
+byId("duration-strip").onclick = () => {
+  const next = stripLongDurations(byId("prompt").value);
+  byId("prompt").value = next.value;
+  byId("expanded-prompt").value = next.value;
+  renderPromptOverlay(byId("prompt"));
+  renderPromptOverlay(byId("expanded-prompt"));
+  renderReferences();
+  toast(next.removed.length ? `已删除 ${next.removed.length} 处超过 10 秒的时长表述` : "没有需要删除的时长表述");
+  durationScanMatches = scanLongDurations(next.value);
+  renderDurationScan();
+};
 byId("submit").onclick = async () => {
   const button = byId("submit");
   button.disabled = true;

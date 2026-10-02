@@ -30,8 +30,9 @@ export type GeminiAiAccount = {
 };
 export type GeminiAiRotation = { enabled: boolean; mode?: "round_robin" | "lru" | "least_rl"; cooldownSeconds?: number; accounts?: Record<string, unknown> };
 
-const GEMINIAI_UNSUPPORTED_MODEL_NAME = /(?:^|[-_.\s/])(video|veo|audio|tts|speech|voice|music|sound|lyria|live)(?:$|[-_.\s/])/i;
+const GEMINIAI_UNSUPPORTED_MODEL_NAME = /(?:^|[-_.\s/])(veo|audio|tts|speech|voice|music|sound|lyria|live)(?:$|[-_.\s/])/i;
 const GEMINIAI_IMAGE_MODEL_NAME = /(?:^|[-_.\s/])(image|images|img|imagen)(?:$|[-_.\s/])|nano[-_.\s]?banana/i;
+const GEMINIAI_VIDEO_MODEL_NAME = /gemini[-_.\s]?omni/i;
 const ROTATION_MODES = new Set<NonNullable<GeminiAiRotation["mode"]>>(["round_robin", "lru", "least_rl"]);
 
 export async function getGeminiAiOverview() {
@@ -179,8 +180,10 @@ export async function listGeminiAiCatalog(): Promise<GeminiAiCatalogModel[]> {
         .filter((entry) => !GEMINIAI_UNSUPPORTED_MODEL_NAME.test(entry.id))
         .flatMap((entry) => {
             const image = entry.capability === "image" || GEMINIAI_IMAGE_MODEL_NAME.test(entry.id);
-            const capability = image ? "image" : entry.capability === "text" ? "text" : "";
-            return capability ? [{ id: entry.id, name: entry.id, capabilities: capability === "text" ? (["text", "search"] as GeminiAiCatalogCapability[]) : (["image"] as GeminiAiCatalogCapability[]), enabled: false, source: "geminiai" as const }] : [];
+            const video = !image && GEMINIAI_VIDEO_MODEL_NAME.test(entry.id);
+            const capability = image ? "image" : video ? "video" : entry.capability === "text" ? "text" : "";
+            const capabilities: GeminiAiCatalogCapability[] = capability === "text" ? ["text", "search"] : capability === "video" ? ["video"] : capability === "image" ? ["image"] : [];
+            return capabilities.length ? [{ id: entry.id, name: entry.id, capabilities, enabled: false, source: "geminiai" as const }] : [];
         });
 }
 
@@ -206,10 +209,10 @@ export async function saveGeminiAiModelSelection(input: { models?: unknown }) {
         },
         GEMINIAI_PROTOCOL,
     );
+    const modelCapability = (model: GeminiAiCatalogModel) => (model.capabilities.includes("image") ? ("image" as const) : model.capabilities.includes("video") ? ("video" as const) : ("text" as const));
     const modelConfigs = Object.fromEntries(
         selected.flatMap((model) => {
-            const capability = model.capabilities.includes("image") ? ("image" as const) : ("text" as const);
-            const config = protocolModelConfig(GEMINIAI_PROTOCOL, capability, model.id);
+            const config = protocolModelConfig(GEMINIAI_PROTOCOL, modelCapability(model), model.id);
             return config ? [[normalizeModelId(model.id), config] as const] : [];
         }),
     );
@@ -219,7 +222,7 @@ export async function saveGeminiAiModelSelection(input: { models?: unknown }) {
         hasApiKey: false,
         advancedConfig: {
             ...base.advancedConfig!,
-            modelCapabilities: Object.fromEntries(selected.map((model) => [normalizeModelId(model.id), model.capabilities.includes("image") ? "image" : "text"] as const)),
+            modelCapabilities: Object.fromEntries(selected.map((model) => [normalizeModelId(model.id), modelCapability(model)] as const)),
             modelConfigs,
         },
     };
@@ -286,6 +289,19 @@ export function resolveSavedGeminiVideoCandidates(settings: AuthSettings) {
 export function resolveSavedGeminiVideoModel(settings: AuthSettings, model: string, channelId = "") {
     const candidates = resolveSavedGeminiVideoCandidates(settings);
     return candidates.find((candidate) => (!channelId || candidate.channelId === channelId) && sameModel(candidate.id, model)) || null;
+}
+
+/** Omni 视频模型绑定：从已保存的 GeminiAIStudio 渠道解析（capability 必须为 video）。 */
+export function resolveGeminiAiOmniVideoBinding(settings: AuthSettings, model: string): ResolvedLogicalModel | null {
+    const channel = settings.systemChannels.find((item) => item.enabled && (item.id === GEMINIAI_CHANNEL_ID || item.advancedConfig?.protocol === GEMINIAI_PROTOCOL));
+    if (!channel || !channel.models.some((item) => sameModel(item, model))) return null;
+    if (channelModelCapability(channel, model) !== "video") return null;
+    for (const logical of settings.logicalModels) {
+        if (!logical.enabled || logical.capability !== "video") continue;
+        const binding = logical.bindings.find((item) => item.enabled && item.channelId === channel.id && sameModel(item.upstreamModel, model));
+        if (binding) return { logicalModelId: logical.id, upstreamModel: binding.upstreamModel, channelId: channel.id, channel };
+    }
+    return { logicalModelId: model, upstreamModel: model, channelId: channel.id, channel };
 }
 
 export function resolveSavedGeminiVideoBinding(settings: AuthSettings, model: string, channelId: string): ResolvedLogicalModel | null {

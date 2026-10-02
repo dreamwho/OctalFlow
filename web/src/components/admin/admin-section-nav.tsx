@@ -215,6 +215,7 @@ export const adminSections: AdminSection[] = [
     { key: "genericProxy", label: "通用代理", description: "管理通用代理分组与节点，查看经代理出口提交的请求日志。", shortDescription: "代理分组", icon: <Globe className="size-4" /> },
     { key: "runninghub", label: "RunningHub", description: "管理 RunningHub 账户、应用工作流、功能绑定、任务监控和请求日志。", shortDescription: "应用与任务", icon: <Workflow className="size-4" /> },
     { key: "geminiai", label: "GeminiAIStudio", description: "授权 Google AI Studio 账号，同步 Gemini AI Studio 模型并进行单模型实测。", shortDescription: "账号与模型", icon: <Bot className="size-4" /> },
+    { key: "geminivids", label: "GeminiVids", description: "导入 Google 账号并以纯协议调用 Google Vids Omni 文生视频；支持账号、代理、日志与反代网关。", shortDescription: "视频账号与网关", icon: <Bot className="size-4" /> },
     { key: "dolaApi", label: "Dola API", description: "导入 Dola Cookie 账号，管理 Camoufox 页面 Provider、Seedance 视频模型、请求日志和通用代理出口。", shortDescription: "账号与视频", icon: <Bot className="size-4" /> },
     { key: "geminiTools", label: "GeminiTools", description: "使用当前浏览器授权 Google 账号，管理 Antigravity 文本模型、额度、网关、API 密钥和请求日志。", shortDescription: "Antigravity 网关", icon: <KeyRound className="size-4" /> },
     { key: "chatgptApi", label: "GPTAPI", description: "管理 ChatGPT 账号、模型目录、代理来源、兼容网关、API 密钥和请求日志。", shortDescription: "ChatGPT 网关", icon: <Bot className="size-4" /> },
@@ -241,7 +242,7 @@ export const adminSectionGroups: AdminSectionGroup[] = [
     { title: "经营分析", items: sectionsFor(["overview", "users", "logs", "generationOperations"]) },
     { title: "商品运营", items: sectionsFor(["products", "orders", "promotions", "coupons", "referrals"]) },
     { title: "财务管理", items: sectionsFor(["points", "payments", "cdk", "wallet"]) },
-    { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "genericProxy", "runninghub", "geminiai", "dolaApi", "geminiTools", "chatgptApi", "minimax", "minimaxH3", "tencentMusic", "qwenAudio", "dreamina", "skills", "canvasActions"]) },
+    { title: "上游配置", items: sectionsFor(["channels", "magicProxy", "genericProxy", "runninghub", "geminiai", "geminivids", "dolaApi", "geminiTools", "chatgptApi", "minimax", "minimaxH3", "tencentMusic", "qwenAudio", "dreamina", "skills", "canvasActions"]) },
     { title: "系统管理", items: sectionsFor(["site", "settings", "accountDeletion", "mediaStorage", "externalStorage", "backup", "updates", "adminHelp"]) },
     { title: "内容运营", items: sectionsFor(["works", "announcements", "prompts"]) },
 ];

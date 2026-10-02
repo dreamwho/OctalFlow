@@ -16,8 +16,9 @@ import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-pr
 import { getGeminiAiGatewaySettings } from "@/lib/server/geminiai-gateway-store";
 import { providerTrafficHeaders, trafficBodyModel } from "@/lib/server/traffic-context";
 
-const GEMINIAI_REQUEST_PATHS = new Set(["/v1/models", "/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
-const GEMINIAI_GENERATION_PATHS = new Set(["/v1/chat/completions", "/v1/images/generations", "/v1/images/edits"]);
+const GEMINIAI_REQUEST_PATHS = new Set(["/v1/models", "/v1/chat/completions", "/v1/images/generations", "/v1/images/edits", "/v1/videos"]);
+const GEMINIAI_GENERATION_PATHS = new Set(["/v1/chat/completions", "/v1/images/generations", "/v1/images/edits", "/v1/videos"]);
+const GEMINIAI_VIDEO_MEDIA_RE = /\/v1\/videos\/[A-Za-z0-9_-]+(?:\/(?:content|media))?$/;
 
 export const GEMINIAI_PROTOCOL = "geminiai" as const;
 export const GEMINIAI_CHANNEL_ID = "geminiai";
@@ -249,8 +250,16 @@ function sidecarUrl(baseUrl: URL, path: string) {
 function normalizeRuntimePath(value: string) {
     const normalized = normalizeSidecarPath(value);
     if (!normalized) return "";
-    const path = normalized.startsWith("/v1/") ? normalized : `/v1${normalized}`;
-    return GEMINIAI_REQUEST_PATHS.has(path.split("?")[0]) ? path : "";
+    const [pathname, search] = splitRuntimePath(normalized);
+    const path = pathname.startsWith("/v1/") ? pathname : `/v1${pathname}`;
+    if (GEMINIAI_REQUEST_PATHS.has(path)) return search ? `${path}${search}` : path;
+    if (GEMINIAI_VIDEO_MEDIA_RE.test(path)) return search ? `${path}${search}` : path;
+    return "";
+}
+
+function splitRuntimePath(value: string): [string, string] {
+    const index = value.indexOf("?");
+    return index < 0 ? [value, ""] : [value.slice(0, index), value.slice(index)];
 }
 
 function normalizeSidecarPath(value: string) {
@@ -311,13 +320,13 @@ function extractUserAgent(headers?: HeadersInit): string | undefined {
 
 function requestLogMetadata(path: string, init: RequestInit, source?: GeminiAiRequestSource): RequestLogMetadata | null {
     const pathname = path.split("?")[0] || "";
-    const runtimeCapability = pathname === "/v1/images/generations" || pathname === "/v1/images/edits" ? "image" : pathname === "/v1/chat/completions" ? "text" : null;
+    const runtimeCapability = pathname === "/v1/images/generations" || pathname === "/v1/images/edits" ? "image" : pathname === "/v1/chat/completions" ? "text" : pathname === "/v1/videos" ? "video" : null;
     const nativeMatch = pathname.match(/^\/v1beta\/models\/([^/:]+):(streamGenerateContent|generateContent)$/);
     if (!runtimeCapability && !nativeMatch) return null;
     const body = requestBodySummary(init.body);
     const model = body.model || (nativeMatch ? decodeURIComponent(nativeMatch[1] || "") : "");
     if (!model) return null;
-    const capability = runtimeCapability === "image" ? "image" : body.googleSearch ? "search" : "text";
+    const capability = runtimeCapability === "image" ? "image" : runtimeCapability === "video" ? "video" : body.googleSearch ? "search" : "text";
     return {
         source: source || "admin-test",
         capability,

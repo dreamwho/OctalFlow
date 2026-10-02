@@ -18,6 +18,7 @@ type SystemChannelProtocol =
     | "yumeng"
     | "gemini"
     | "geminiai"
+    | "geminivids"
     | "dola"
     | "gemini-tools"
     | "chatgpt-api"

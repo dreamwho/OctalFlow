@@ -14,6 +14,8 @@ import { canvasDreaminaImageProfile, canvasDreaminaVideoProfile, resolveCanvasDr
 import { compileInteriorDesignPrompt, interiorDesignModels, isInteriorDesignModel } from "@/app/(user)/canvas/utils/canvas-interior-design";
 import type { CanvasInteriorDesignSettings } from "@/app/(user)/canvas/types";
 import { canvasDolaVideoProfile, resolveCanvasDolaModelId } from "@/app/(user)/canvas/utils/canvas-dola";
+import { canvasGeminiVidsVideoProfile, resolveCanvasGeminiVidsModelId } from "@/app/(user)/canvas/utils/canvas-geminivids";
+import { canvasGeminiAiVideoProfile, resolveCanvasGeminiAiOmniModelId } from "@/app/(user)/canvas/utils/canvas-geminiai";
 import { formatCreditAmount, requestCreditCost } from "@/constant/credits";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
@@ -103,7 +105,9 @@ export function ImageVideoWorkbench() {
     const videoCommand = referenceFiles.length + referenceAssets.length > 1 ? "multiframe2video" : referenceFiles.length + referenceAssets.length ? "image2video" : "text2video";
     const dolaVideo = canvasDolaVideoProfile(resolveCanvasDolaModelId(modelPickerConfig, selectedModel));
     const dreaminaVideo = canvasDreaminaVideoProfile(resolveCanvasDreaminaModelId(modelPickerConfig, selectedModel), videoCommand);
-    const videoProfile = dolaVideo || dreaminaVideo;
+    const geminiVidsVideo = canvasGeminiVidsVideoProfile(resolveCanvasGeminiVidsModelId(modelPickerConfig, selectedModel));
+    const geminiAiVideo = canvasGeminiAiVideoProfile(resolveCanvasGeminiAiOmniModelId(modelPickerConfig, selectedModel));
+    const videoProfile = dolaVideo || dreaminaVideo || geminiVidsVideo || geminiAiVideo;
     const chatGptApi = currentKind === "image" && isChatGptApiModelConfig(config, selectedModel);
     const ratioOptions = (currentKind === "video" ? videoProfile?.fixedRatio ? [{ value: "auto" }] : videoProfile?.ratios || videoRatios : chatGptApi ? chatGptApiImageSizes : dreamina?.ratios || imageRatios).map((option) => option.value);
     const currentQualityOptions = currentKind === "image" ? dreamina?.qualities.map((option) => option.value) || qualityOptions : [];

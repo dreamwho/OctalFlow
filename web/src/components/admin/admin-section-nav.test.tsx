@@ -15,6 +15,7 @@ describe("admin navigation order", () => {
             "通用代理",
             "RunningHub",
             "GeminiAIStudio",
+            "GeminiVids",
             "Dola API",
             "GeminiTools",
             "GPTAPI",

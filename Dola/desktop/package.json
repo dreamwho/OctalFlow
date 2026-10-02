@@ -6,7 +6,7 @@
   "main": "src/main.mjs",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "build": "node --check src/main.mjs && node --check src/store.mjs && node --check src/proxy-runtime.mjs && node --check src/subscription-uri.mjs && node --check src/media-url.mjs && node --check src/watermark.mjs && node --check src/prompt-references.mjs && node --check src/proxy-batch-test.mjs && node --check src/task-draft.mjs && node --check src/cookie-batch.mjs && node --check src/credential-batch.mjs && node --check src/registration-flow.mjs && node --check src/browser-fingerprint.mjs && node --check src/login-url.mjs && node --check src/manual-task.mjs && node --check src/browser-duration-unlocker.cjs && node --check src/preload.cjs && node --check src/renderer.js",
+    "build": "node --check src/main.mjs && node --check src/store.mjs && node --check src/proxy-runtime.mjs && node --check src/subscription-uri.mjs && node --check src/media-url.mjs && node --check src/watermark.mjs && node --check src/prompt-references.mjs && node --check src/duration-scan.mjs && node --check src/proxy-batch-test.mjs && node --check src/task-draft.mjs && node --check src/cookie-batch.mjs && node --check src/credential-batch.mjs && node --check src/registration-flow.mjs && node --check src/browser-fingerprint.mjs && node --check src/login-url.mjs && node --check src/manual-task.mjs && node --check src/browser-duration-unlocker.cjs && node --check src/preload.cjs && node --check src/renderer.js",
     "start": "electron .",
     "test": "node --test src/*.test.mjs",
     "freeze:provider": "node scripts/freeze-provider.mjs",

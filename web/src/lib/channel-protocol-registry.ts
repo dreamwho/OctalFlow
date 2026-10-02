@@ -176,6 +176,26 @@ const geminiVideoOperation: ProtocolOperation = {
     supportsReferenceAudio: false,
 };
 
+const geminiVidsVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/videos",
+    queryPath: "/v1/videos/:task_id",
+    requestTemplate: '{"prompt":"{{prompt}}","aspect_ratio":"{{ratio}}","resolution":"{{resolution}}","duration_seconds":{{duration}},"images":"{{images}}"}',
+    resultField: "video_url",
+    statusField: "status",
+    durationRange: "4-10 秒",
+    aspectRatios: ["16:9", "9:16"],
+    qualityOptions: ["720p", "1080p"],
+    referenceRule: "GeminiVids 由服务器已授权 Google 账号经 docs.google.com/videos 纯协议提交（Omni）；支持参考图片（作为“图片 N”素材动画化，暂不支持首尾帧、参考视频与音频）。注意：Google Vids 上游成片自带右下角星形水印，且时长超范围会被上游静默钳制到 10 秒；需要无水印视频请使用 AI Studio 的 Gemini Omni 模型。",
+    supportsReferenceImage: true,
+    supportsReferenceVideo: false,
+    supportsReferenceAudio: false,
+};
+
+const GEMINIVIDS_VIDEO_MODELS = [
+    { id: "google-vids-omni", label: "Google Vids Omni", capability: "video" as const, operation: geminiVidsVideoOperation },
+];
+
 const dolaVideoOperations: ProtocolOperation = {
     capability: "video",
     createPath: "/v1/videos",
@@ -254,6 +274,22 @@ const dreamyoRecommendedVideoOperation: ProtocolOperation = {
     supportsReferenceAudio: true,
 };
 
+const geminiAiVideoOperation: ProtocolOperation = {
+    capability: "video",
+    createPath: "/v1/videos",
+    queryPath: "/v1/videos/:task_id",
+    requestTemplate: '{"model":"{{model}}","prompt":"{{prompt}}","duration_seconds":{{duration}},"resolution":"{{resolution}}","aspect_ratio":"{{ratio}}"}',
+    resultField: "video_url",
+    statusField: "status",
+    durationRange: "3-10 秒",
+    aspectRatios: ["16:9", "9:16"],
+    qualityOptions: ["360p", "720p", "1080p", "4k"],
+    referenceRule: "Gemini Omni（AI Studio 页面自动化）由服务器已授权 Google 账号提交；成片无水印。暂不支持参考素材。",
+    supportsReferenceImage: false,
+    supportsReferenceVideo: false,
+    supportsReferenceAudio: false,
+};
+
 const stableDiffusionOperation: ProtocolOperation = {
     capability: "image",
     createPath: "/sdapi/v1/txt2img",
@@ -304,12 +340,24 @@ export const registeredChannelProtocolDefinitions: ChannelProtocolDefinition[] =
     {
         id: "geminiai",
         label: "Gemini AI Studio",
-        description: "通过服务器已授权的 Google AI Studio 账号调用；支持文本、Google 搜索与图片生成。",
+        description: "通过服务器已授权的 Google AI Studio 账号调用；支持文本、Google 搜索、图片生成与 Gemini Omni 视频生成。",
         apiFormat: "openai",
         authMode: "provider-managed",
         modelCatalogPaths: ["/v1/models"],
-        capabilities: ["text", "image"],
-        operations: { text: openAiOperations.text, image: openAiOperations.image },
+        capabilities: ["text", "image", "video"],
+        operations: { text: openAiOperations.text, image: openAiOperations.image, video: geminiAiVideoOperation },
+        strict: true,
+    },
+    {
+        id: "geminivids",
+        label: "GeminiVids",
+        description: "通过服务器已授权 Google 账号以纯协议调用 docs.google.com/videos 的 Omni 视频；横竖版、720p/1080p、4-10 秒，支持参考图片。",
+        apiFormat: "openai",
+        authMode: "provider-managed",
+        modelCatalogPaths: [],
+        capabilities: ["video"],
+        operations: { video: geminiVidsVideoOperation },
+        builtInModels: GEMINIVIDS_VIDEO_MODELS,
         strict: true,
     },
     {

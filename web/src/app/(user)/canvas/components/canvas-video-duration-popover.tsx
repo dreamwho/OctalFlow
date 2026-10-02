@@ -13,6 +13,8 @@ import type { CanvasNodeMetadata } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 import { canvasDolaVideoProfile, resolveCanvasDolaModelId } from "../utils/canvas-dola";
 import { canvasDreaminaVideoCommand, canvasDreaminaVideoProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
+import { canvasGeminiVidsVideoProfile, resolveCanvasGeminiVidsModelId } from "../utils/canvas-geminivids";
+import { canvasGeminiAiVideoProfile, resolveCanvasGeminiAiOmniModelId } from "../utils/canvas-geminiai";
 
 type CanvasVideoDurationPopoverProps = {
     config: AiConfig;
@@ -32,7 +34,9 @@ export function CanvasVideoDurationPopover({ config, metadata, references, secon
     const dola = canvasDolaVideoProfile(resolveCanvasDolaModelId(config));
     const dreamina = canvasDreaminaVideoProfile(resolveCanvasDreaminaModelId(config), canvasDreaminaVideoCommand(metadata, references));
     const snapPoints = dola?.durations.map((duration) => duration.value);
-    const range = dola?.durationRange || dreamina?.durationRange || (config.model?.toLowerCase().includes("minimax") ? { min: 5, max: 15 } : { min: 5, max: 15 });
+    const geminiVids = canvasGeminiVidsVideoProfile(resolveCanvasGeminiVidsModelId(config));
+    const geminiAi = canvasGeminiAiVideoProfile(resolveCanvasGeminiAiOmniModelId(config));
+    const range = dola?.durationRange || dreamina?.durationRange || geminiVids?.durationRange || geminiAi?.durationRange || (config.model?.toLowerCase().includes("minimax") ? { min: 5, max: 15 } : { min: 5, max: 15 });
     const rangeMin = range.min;
     const rangeMax = range.max;
 

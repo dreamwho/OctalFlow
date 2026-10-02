@@ -85,7 +85,7 @@ export type GeminiAiRequestLog = {
     id: string;
     createdAt: string;
     source: "runtime" | "admin-test" | "external";
-    capability: "text" | "image" | "search";
+    capability: "text" | "image" | "search" | "video";
     method: string;
     path: string;
     model: string;
@@ -210,7 +210,7 @@ export function getGeminiAiTestStatus(input: Pick<GeminiAiTestResult, "taskId" |
 }
 
 export function getGeminiAiLogs(
-    input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search"; source?: "runtime" | "admin-test" | "external"; model?: string; accountId?: string } = {},
+    input: { page?: number; pageSize?: number; keyword?: string; status?: "success" | "failed"; capability?: "text" | "image" | "search" | "video"; source?: "runtime" | "admin-test" | "external"; model?: string; accountId?: string } = {},
 ) {
     const search = new URLSearchParams();
     if (input.page) search.set("page", String(input.page));

@@ -1,5 +1,5 @@
 {
-  "route": "http://127.0.0.1:58227/canvas/canvas-aB-vhMx6Gzb68u9XXjBhM",
+  "route": "http://127.0.0.1:54915/canvas/canvas-6ufwyeu8b2zVM-p_2dYNj",
   "theme": "light",
   "viewport": {
     "width": 1280,
@@ -36,6 +36,6 @@
     "buttonLeft": 705,
     "buttonTop": 403
   },
-  "buildId": "vwVjeQ3SCDEKz8nUgIQCJ",
-  "capturedAt": "2026-09-30T16:06:33.648Z"
+  "buildId": "CP-i3Y2QwY3xBMV2x-Q3f",
+  "capturedAt": "2026-10-01T11:33:53.749Z"
 }

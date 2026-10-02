@@ -5,6 +5,60 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### Dola 提示词时长检测与一键清理按钮（2026-10-02 六轮）
+
+- 需求：桌面端 Dola 提示词区域新增「检测时长」按钮，检测提示词中超过 10 秒的时长表述（正是触发上游会话模型 4-15s 对话策略拒识的内容），并提供「一键删除」清理，避免 30 秒任务因可见文本泄漏超档意图被拒。
+- 实现：新增 `src/duration-scan.mjs`（与服务端 `sanitize_video_prompt_duration` 同源的规则集）：分段时间轴区间（"0-2.5秒：/27.2-30秒/0-2.5s"，含小数、英文连字符形式与全角破折号）、"时长约28秒/大约30秒"、"duration: 30s"、"生成30秒视频"、裸"30 秒/15-second"等按数值或区间最大值 >10 秒判定；重叠匹配只按最外层计一次。清理为整段删除并整理标点（保留换行结构与 ≤10 秒的表述，"每秒5.5字/5.4字/秒"语速类不受影响）。提示词框右上角新增时钟图标按钮，检测结果条在提示词框内下方展示命中片段与「一键删除」按钮，删除后同步双编辑器、@引用浮层并复检清零。
+- 已验证：桌面 `pnpm build` 语法链通过、node --test 63/63 全绿（新增 6 项：中英文检出、≤10 秒与语速类不误报、重叠去重、真实脚本清理与标点整理、干净文本原样）；用看房脚本实测——检出"时长30秒/8.8-11.8秒：/15-18.3秒：/27.2-30秒："4 处，清理后复检为 0，画面内容与时间轴前 3 段完整保留。
+- 待用户验收：安装重新打包的 DMG（`Dola/desktop/dist/Dola Studio-0.1.0-arm64.dmg`，已核验 asar 含检测按钮代码、内嵌 Provider 冻结二进制与本轮冻结产物哈希一致），在提示词框粘贴脚本，点击时钟按钮查看检测条，点击「一键删除」后直接提交 30 秒任务，确认上游不再以"4 到 15 秒"拒识。
+
+### Dola 30 秒拒识收尾：桌面页面提交撤除规则消息下发 + 清洗补齐分段时间轴（2026-10-02 五轮）
+
+- 现象：用户在桌面内嵌浏览器以 3000+ 字带完整时间轴的看房脚本提交 30 秒任务，上游会话模型回复"视频生成目前支持 4 到 15 秒"并给出 15 秒 A/B 选项。回查请求日志发现拒绝回复末尾带着规则消息的确认句（"请提供 30s 提示词"）——二轮只撤除了协议 HTTP 路径的规则消息，`prepare_browser_submission`（内嵌浏览器页面签名提交）仍在下发 `ruleBody` 两步提交，已证伪的方案在页面路径漏撤。
+- 修复：①桌面 `prepare_browser_submission` 不再下发 `ruleBody`，内嵌浏览器 30 秒提交与协议路径一致为单发结构化请求（`_build_rule_prime_body` 与页面脚本分支保留休眠，无运行时影响）；②`sanitize_video_prompt_duration` 两端同步补齐：分段时间轴区间（"0-2.5秒：/2.5-6秒/27.2-30秒"，含小数、英文与全角破折号）整段移除、"时长约28秒/大约30秒"类表述移除、裸"秒"提及支持小数与中文句读边界；语速类"每秒5.5字/5.4字/秒"不触发拦截，保留。
+- 已验证：服务端 dola-api pytest 133、桌面 provider pytest 104 全绿（新增时间轴清洗用例与"页面提交不再携带 ruleBody"断言）；用户真实脚本样本清洗后无"30秒/28秒/2.5秒/时长"残留，画面内容与语速描述完整保留；本地栈已按生产构建重启。
+- 待用户验收：重启 Dola Studio 后分别用短提示词和长脚本提示词提交 seedance-2.5 30 秒任务。若清洗后仍被"4 到 15 秒"拒识，剩余变量是账号本身（自注册新号 vs 咸鱼老号池）——建议导入寄售池 Cookie 同号复测一次再做结论。
+
+### Dola 桌面端 provider 进程树残留修复（2026-10-02 四轮）
+
+- 现象：用户测试期间出现约 25 个 Dola/Camoufox 残留进程。根因：桌面 app `before-quit` 只对 PyInstaller onefile 引导进程 `kill()`，provider 的 python、playwright 驱动和已打开的 Camoufox 整棵进程树全部变孤儿；30 秒改走 provider 协议链后，提交协程的 Camoufox 在整个生成期间（可达十几分钟）保持存活，退出窗口大幅变大（一组浏览器 ≈ 8 个进程，25 个 ≈ 3 个账号会话）。
+- 修复（三层）：①桌面 provider 以独立进程组启动（`detached`），退出时对整组发 SIGTERM（uvicorn 优雅退出并收掉浏览器），Windows 用 `taskkill /T /F`；②provider 把每个提交协程登记进 `_submit_jobs`，新增 `close_all_sessions()` 统一取消并让 Camoufox 上下文作用域收尾，FastAPI lifespan 关闭时调用（带 15 秒上限）；③新增父进程看门狗——桌面通过 `DOLA_PROVIDER_PARENT_PID` 传入 app 进程号，provider 每 3 秒探活，连续两次失联即关闭全部会话并退出，兜底强退/崩溃场景；未设置该环境变量的服务器/Docker 部署行为完全不变（traffic-meter 生命周期保留）。
+- 已验证：桌面 provider pytest 103 项（新增 `test_shutdown.py`：提交任务登记可取消、看门狗父进程失联触发清理退出）、服务端 dola-api pytest 132 项、桌面端 node --test 57 项全部通过；冻结二进制实测——杀掉指定的父进程后 provider 在一个探活周期内自动退出；DMG 重新打包并核验（内嵌二进制一致、asar 含进程组与看门狗代码）。
+- 待用户验收：安装新 DMG 后正常提交一次 30 秒任务，在生成进行中退出 Dola Studio，等约 30 秒后在活动监视器搜索 `camoufox`——不应再有属于该应用的进程残留（注意区分仍在运行的 WEB 栈 GeminiAI 常驻浏览器，它们属于本地 3333 服务，不是桌面残留）。
+
+### Dola 30 秒档桌面端改走 Provider 协议链路（2026-10-02 二轮，对齐 WEB 端方案）
+
+- 一轮规则消息方案实测无效：新构建里"## 30 秒视频生成规则"消息确实送达（模型在拒绝回复末尾原样复述了要求的确认句"请提供 30s 提示词"），但仍在对话层拒绝派发 30 秒并给出 15 秒 A/B 选项——提示词层技巧压不过上游模型对该档位的拦截。
+- 证据回溯（对齐用户指定参考）：WEB 端 9-27 一晚三次、9-29 一次 30 秒成功（含两次纯文生视频、58–66 字短提示词），全部走服务端 provider 的 Camoufox 协议提交链（provider 构造请求体 → 注入 `DOLA_30S_UNLOCKER_SCRIPT` 的真实页面内签名 → SSE ACK → 轮询），账号全部来自「咸鱼千寻寄售」老号池 + 台湾代理；saysyao123 的 dola-seedance25-30s-poc（小柴多开器静态分析）同样结论：30 秒不是改网页参数，而是"用户选 30s 时基于真实浏览器会话重建专用请求结构提交"。
+- 修改：桌面端时长 >15 秒的视频提交不再走 Electron 工作区浏览器签名提交，改走 provider 的 Camoufox 协议路径（`/internal/runtime/v1/videos`，与 WEB 端同一条链、同一请求构造），任务来源标 `provider-protocol`、提交阶段显示"正在准备提交"；≤15 秒与生图继续走工作区浏览器路径不变。两端 provider 的协议提交恢复为单发结构化（一轮加的规则消息自动下发已撤除，页面脚本与 `_build_rule_prime_body` 能力保留为休眠，无运行时影响）。
+- 已验证：桌面 provider pytest 101、桌面端 node --test 57 + `node --check`、服务端 dola-api pytest 130 全部通过；provider 重新冻结并过鉴权冒烟，DMG 重新打包，内嵌二进制与冻结产物逐字节一致、asar 内含新路由代码。
+- 待用户验收（消耗真实额度）：安装新 DMG 后在桌面表单选 seedance-2-5 + 30 秒提交；**建议先短提示词测一次**（成功样本均为短提示词），成功后再用长脚本提示词。若短提示词仍被"4 到 15 秒"追问，则剩余差异是账号因素（老号池账号 vs 桌面自注册新号）——可把一个咸鱼寄售池 Cookie 导入桌面端用同号复测来确认。
+- 查询链路修正（2026-10-02 三轮）：30 秒任务可创建后，点"查询任务状态"报"查询期间任务账号浏览器已关闭、切换或离开原会话"，且浏览器内点任何会话都被弹回首页——根因是 refreshTask 对所有有会话 ID 的任务强制"工作区浏览器页面内查询"，provider 协议任务的会话由 provider 自己的 Camoufox 创建，浏览器被 loadURL 到该会话后被 Dola 重定向回首页、URL 校验失败即抛错。修复：`source=provider-protocol` 的任务查询一律走 provider 轮询端点（与 WEB 端同源），提交后不再把用户浏览器导航到会话页；仅 `workspace-browser` 来源任务保留页面内查询。ensurePage 报错现在带当前页面 URL，检测到被弹回首页时给出对应提示。另经用户确认：桌面内嵌浏览器里点会话被 Dola 弹回首页是 Dola 官方网站自身的行为（站点侧问题），与本地登录态无关；30 秒任务状态查询已完全不依赖该浏览器。
+- 已知边界：内嵌浏览器手动选 30 秒提交仍走页面原生请求（有意保留）；30 秒档频控现状未变，连续失败先看失败原因区分限流与拒识。
+
+### GeminiVids 水印/时长实证纠偏 + AI Studio Omni 1.1 Flash 协议破解（2026-10-02 三轮）
+
+- **水印更正（重要）**：此前「成片无水印」结论有误——Google Vids generate 返回的成片**右下角自带白色四角星水印**（帧级视觉确认）。generate 响应中只有一条 `contribution-rt` 下载地址，不存在"无水印变体"；水印烧录在视频流内，纯协议侧无绕过路径。需要无水印视频应使用 **AI Studio 的 Gemini Omni 1.1 Flash**（本轮已实测其成片完全无水印）。
+- **Vids 时长上限实证**：纯协议把参数槽 p8 提交为 15，上游接受请求但**静默钳制回 10 秒**（返回 duration=10.0s 且正常出片）。4–10 秒是 Vids 服务端硬限制，参数侧无法突破。
+- **AI Studio Omni 1.1 Flash 协议已破解并实测出片**：模型 ID `gemini-omni-1.1-flash`（Paid，另有 `gemini-omni-flash-preview` 与 Veo 3.1 系列）；生成 RPC 为 `MakerSuiteService/CreateInteractionStream`（流式），会话经 `CreatePrompt`/`UpdatePrompt` 持久化，**成片以 `["video/mp4","<base64>"]` 内嵌在 UpdatePrompt 请求体中**（约 6.1MB），与页面 Download 按钮产物字节一致（实测 640x360/10s/2.3MB，四角无水印）。官方能力：首尾帧插值、关键帧控制、4K upscale、"scenes up to 30 seconds"。
+- **30 秒提交实测（用户要求）**：Playground 时长控件 DOM 硬性 `min=3 max=10`，用原生 setter 强写 30 会被 Angular 立即钳回 10；即 30 秒是"场景延展（scene extension）"的宣传能力（对已有视频续写），**不是单次生成的时长上限**。另：测试账号当日视频配额在约 8 次生成后耗尽（页面提示 "You've reached your quota for the day"），30 秒场景延展的真实成片验证待配额重置后补测。
+- **GeminiAIStudio 纯 HTTP 可行性结论**：MakerSuiteService 的 `$rpc` 是标准 REST（SAPISIDHASH + Cookie 认证，与 Vids 同族），文本/图片/Omni 视频链路理论上可纯协议化；最大障碍是请求体内的 audit token（由 `waa Waa/Create` 反滥用体系在页面 JS 内动态计算），需要逆向其生成算法或保留轻量浏览器会话专供 token。
+- 本轮自动化验证：Omni 1.1 Flash 从「Cookie 导入→Drive 授权→选模型→提交→等待→下载成片→逐帧水印检查」全流程真机走通（含 Temporary chat 拦截、Drive OAuth 弹窗、Cookie 同意页、spend-cap toast 遮挡等 UI 障碍的自动化处理）；Vids 15s 协议提交、水印帧对比均已留档。
+- 待用户验收：①配额重置后补测 Omni 1.1 Flash 的 30 秒场景延展与 720p/1080p/4K 输出档位；②是否将 Omni 1.1 Flash 以独立渠道/逻辑模型接入站内（需先解决 audit token 或采用受控浏览器 token 供给方案）。
+
+### GeminiVids：Google Vids（Omni）纯协议视频生成（2026-10-01）
+
+- 新增独立 Python sidecar 服务 `services/geminivids`：以纯 HTTP 协议调用 `docs.google.com/videos` 的 Omni 文生视频（POST `appsgenaiserver-pa.clients6.google.com/v1/genai/generate`，SAPISIDHASH + 精确 `.google.com` Cookie 域匹配），运行时**零浏览器**；同步长驻请求直接返回成片下载地址。（2026-10-02 更正：成片自带右下角星形水印，见上节。）
+- 参数已全组合协议实测：横屏/竖屏 × 720p/1080p × 4–10 秒（另含 360p 内部档位），响应分辨率/时长与请求一致；文档上下文 ID 不校验存在性，无需建档。
+- 账号管理与 GeminiAIStudio 完全同构（storage_state auth.json），后台「上游配置 → GeminiVids → 账号管理」支持**一键从 GeminiAIStudio 导入全部账号**（本地已验证 3 账号导入）、Cookie 字符串导入、激活与删除；代理管理可将 sidecar 出口切换到指定代理；请求日志记录创建/轮询/下载生命周期；反代网关提供 `oct_gv_` 密钥与 `/api/geminivids/v1/videos` 对外直连。
+- Web 接入：协议注册表新增 `geminivids`（video 能力、`/v1/videos` 创建 + `/v1/videos/:task_id` 轮询）、系统代理分发、视频任务创建/轮询/`_media` 成片下载全链路；逻辑模型 `google-vids-omni` 自动进入 `/create` 视频工作台与画布视频模型目录（能力约束：16:9/9:16、720p/1080p、4–10 秒，支持参考图片，不支持首尾帧/参考音视频）。
+- 参考图（图生视频，2026-10-01 二轮）：破解 Google Vids 素材上传协议（`POST /upload/temporaryblob/videos` start → `x-goog-upload-url` → PUT finalize 带 md5，响应 `["AVL_…"]` blob token），generate body 携带 `client_context[25]` 素材槽与分段 prompt（文本 + `@图片 N` 引用段），纯协议闭环已实测（上传 4.9s → 生成 36s → 1.7MB 无水印成片）。sidecar `/v1/videos` 接受 `images`（data URL 或已签名站内 URL，上限 8 张，按「图片 1..N」作为素材）；Web 端注册表 `supportsReferenceImage: true`，画布与 `/create` 的参考图提交直达该模型；Docker 内网可用 `GEMINIVIDS_REFERENCE_ASSET_ORIGIN` 覆盖站内参考图地址的 scheme+host（对齐 dola 的同名机制）。后台模型实测弹窗支持上传 PNG/JPEG 参考图。
+- 前端参数修正（2026-10-01 二轮）：画布视频参数弹层、时长弹层、Canvas Agent 面板与 `/create` 视频工作台新增 `canvas-geminivids` 能力档案——比例仅 16:9/9:16、清晰度仅 720P/1080P、时长 4–10 秒（此前误显示通用 7 档比例、智能/480P 清晰度与 5–15 秒）。
+- 后台 UI 复刻（2026-10-01 二轮）：GeminiVids 分区按 GeminiAIStudio 结构完全重做——「账号与渠道 / 流量统计 / 反代网关与 API 密钥 / 请求日志 / 代理管理」五个 Tabs；概览含状态指标、渠道启用开关、账号列表（设为当前/改名/删除）、请求概览指标；日志页含 4 项指标卡、关键词/状态/来源/模型/账号筛选、分页、请求详情抽屉（复制 cURL/请求体/响应体、基本信息、脱敏提示）；密钥创建支持过期时间与 IP 白名单；代理管理展示并回读当前 sidecar 代理地址（新增 `GET /runtime/proxy`）。
+- 本地已验证：sidecar HTTP 全链路（导入→1080p 生成→下载）、admin API（渠道启用→账号导入→真实测试生成）、用户管道（`/api/video-generation-tasks` 提交→轮询→成片落盘为站内永久资产）、`/create` 浏览器全链路（视频模式→选择 Google Vids Omni→提交→结果卡片出片）、后台分区渲染与 3 账号列表；vitest 3531 项、sidecar pytest 14 项、compose 契约 14 项全部通过。
+- 配额说明（已实证纠偏）：编辑器轮询的 `quotaSummary` RPC（bucket 9）只返回 `999999/999999/3` 一类粗粒度值——实测完成约 20 次生成后该响应**完全不变**，`3` 并非使用计数（更似状态枚举），该接口读不到真实每账号用量；因此**配额耗尽行为未经验证**。sidecar 已具备 429/401/403 冷却与账号轮换逻辑，但真实限流路径（错误文案、恢复节奏、是否按账号独立）需长时间用量或专门压测触发后再校准。
+- 待用户验收：①画布内视频生成配置节点选择 Google Vids Omni 提交出片（与 /create 同一模型目录与提交端点）；②带参考图的画布/`/create` 图生视频真实提交（本轮已通过纯协议与后台实测弹窗验证，浏览器端到端待用户复验）；③服务器 Docker 部署（7 个 compose 变体已含 `geminivids` 服务与 `DREAMYO_GEMINIVIDS_URL/API_KEY`，需在 `.env` 配置独立密钥）；④Google 账号 Cookie 过期后的失败提示与重新导入流程；⑤后台流量统计 Tab（`protocol="geminivids"`）在真实调用积累后的数据展示。
+
 ### 全渠道与后台首页流量统计（2026-10-01）
 
 - 后台首页新增全局流量统计，标准渠道详情与各专用渠道增加流量入口，支持精确时间、渠道、模型、连接方式和代理端口筛选，并显示上行、下行与合计字节。

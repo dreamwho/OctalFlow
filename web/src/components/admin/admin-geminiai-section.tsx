@@ -78,7 +78,7 @@ export function AdminGeminiAiSection() {
     const [logKeywordDraft, setLogKeywordDraft] = useState("");
     const [logKeyword, setLogKeyword] = useState("");
     const [logStatus, setLogStatus] = useState<"" | "success" | "failed">("");
-    const [logCapability, setLogCapability] = useState<"" | "text" | "image" | "search">("");
+    const [logCapability, setLogCapability] = useState<"" | "text" | "image" | "search" | "video">("");
     const [logSource, setLogSource] = useState<"" | "runtime" | "admin-test" | "external">("");
     const [logModel, setLogModel] = useState<string>("");
     const [logAccountId, setLogAccountId] = useState<string>("");
@@ -663,7 +663,7 @@ function GeminiAiRequestLogs({
     loading: boolean;
     keyword: string;
     status: "" | "success" | "failed";
-    capability: "" | "text" | "image" | "search";
+    capability: "" | "text" | "image" | "search" | "video";
     source: "" | "runtime" | "admin-test" | "external";
     model: string;
     accountId: string;
@@ -672,7 +672,7 @@ function GeminiAiRequestLogs({
     onKeywordChange: (value: string) => void;
     onSearch: () => void;
     onStatusChange: (value: "" | "success" | "failed") => void;
-    onCapabilityChange: (value: "" | "text" | "image" | "search") => void;
+    onCapabilityChange: (value: "" | "text" | "image" | "search" | "video") => void;
     onSourceChange: (value: "" | "runtime" | "admin-test" | "external") => void;
     onModelChange: (value: string) => void;
     onAccountChange: (value: string) => void;
@@ -750,6 +750,7 @@ function GeminiAiRequestLogs({
                             { value: "", label: "全部能力" },
                             { value: "text", label: "文本" },
                             { value: "image", label: "图片" },
+                            { value: "video", label: "视频" },
                             { value: "search", label: "Google 搜索" },
                         ]}
                     />
@@ -1718,7 +1719,7 @@ function GeminiAiModelTestDialog({ state, open, onClose }: { state: GeminiAiAdmi
                     })}
                 </div>
                 <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">{geminiAiTestTabs.find((tab) => tab.capability === capability)?.description}</p>
-                {capability === "video" ? <Alert type="warning" showIcon message="视频测试仅调用已保存的官方 Gemini/Veo 渠道" description="Google AI Studio 账号本身不提供 Veo。没有已配置官方渠道时，服务端会返回明确的配置提示。" /> : null}
+                {capability === "video" ? <Alert type="info" showIcon message="Omni 模型走 GeminiAIStudio Provider，其余走官方 Gemini/Veo 渠道" description="选择 gemini-omni 模型时由 AI Studio 账号页面自动化提交（单次 3-10 秒，成片无水印，每账号每日配额有限）；其余视频模型需要已保存并启用的官方 Gemini/Veo 渠道。" /> : null}
                 {capability === "image" ? <Alert type="info" showIcon message="图片测试使用 AI Studio 页面原生生成" description="仅测试 gemini-3-pro-image 与 gemini-3.1-flash-image；比例和画质会同步到页面的 Aspect ratio 与 Resolution 设置。" /> : null}
                 <div className={`grid gap-3 ${capability === "image" ? "sm:grid-cols-[minmax(0,1fr)_140px_140px]" : "sm:grid-cols-[minmax(0,1fr)_180px]"}`}>
                     <label className="block text-sm font-medium text-zinc-800 dark:text-zinc-200">

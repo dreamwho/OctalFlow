@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- [Dola Studio/提示词时长检测] 提示词框新增「检测时长」按钮与一键清理：点击后按与服务端清洗器同源的规则找出超过 10 秒的时长表述（时长30秒、约28秒、分段时间轴"27.2-30秒"、30s/15-second 等中英文形式，重叠只计一次），结果条展示命中片段并提供「一键删除」整段移除并整理标点；≤10 秒表述与"每秒5.5字"语速类不受影响，删除后同步双编辑器并复检清零。用于避免 30 秒任务因可见文本泄漏超档时长被上游会话模型拒识。
+
+- [Dola/桌面端进程残留] 修复退出应用后 provider 与 Camoufox 浏览器整树残留：桌面 provider 改为独立进程组启动，退出时对整组发 SIGTERM（Windows taskkill 杀树）；provider 端新增提交任务登记与 `close_all_sessions` 统一取消在途浏览器会话，并加父进程看门狗（`DOLA_PROVIDER_PARENT_PID`，每 3 秒探活、连续两次失联即清理退出）兜底强退/崩溃；服务器与 Docker 部署未设置该环境变量，行为不变。
+
+- [Dola/30 秒档桌面端对齐 WEB 端方案] 桌面端时长超过 15 秒的视频提交改走 provider 的 Camoufox 协议链路（与 WEB 端 9 月四次 30 秒成功样本同一条链：provider 构造请求体、真实页面内签名、SSE 确认、轮询），不再经 Electron 工区浏览器签名提交（该链路 30 秒会被上游会话模型以"仅支持 4 到 15 秒"追问拦截，提示词规则消息实测也无法绕过）；≤15 秒与生图路径不变。协议提交与桌面内嵌浏览器页面签名提交均为单发结构化，规则消息两步编排保留为休眠能力（页面路径的下发已撤除）；两端 provider 提示词清洗补齐"30 秒分镜/脚本"、分段时间轴区间（"0-2.5秒/27.2-30秒"，含小数与英文）与"时长约28秒"类表述。
+
+- [GeminiAIStudio/Omni 视频] 破解 AI Studio `gemini-omni-1.1-flash` 视频生成链路（CreateInteractionStream 流式 RPC + UpdatePrompt 内嵌成片 base64），真机全流程实测出片且成片**无水印**（对照：Google Vids 成片右下角自带星形水印，无绕过路径）；确认其 Playground 时长控件 min=3/max=10（强写 30 被立即钳回，"30 秒"为场景延展宣传能力），并留档 $rpc 纯协议化的可行性与 waa audit token 障碍。
+- [GeminiVids/实证纠偏] 更正此前「成片无水印」结论：Vids 成片右下角有星形水印且无法从协议侧去除；纯协议提交 15 秒被上游静默钳制回 10 秒（服务端硬限制）；渠道 referenceRule 已补充水印与钳制说明，引导无水印需求使用 AI Studio Omni 模型。
+
+- [GeminiVids/参考图生视频] 破解 Google Vids 素材上传协议（temporaryblob 两步 resumable 上传返回 AVL_ blob token）并以纯协议实现图生视频：sidecar `/v1/videos` 接受参考图（data URL 或站内签名 URL，作为「图片 N」素材），generate body 携带素材槽与分段提示词；协议注册表开放 `supportsReferenceImage`，画布与 `/create` 的参考图提交直达该模型，纯协议闭环实测出片（36–50 秒、无水印）。参考图下载强制直连不受代理环境变量干扰，Docker/本机可经 `GEMINIVIDS_REFERENCE_ASSET_ORIGIN` 回源。
+- [GeminiVids/参数与后台] `google-vids-omni` 前端参数档案落地：画布参数/时长弹层、Canvas Agent 与 `/create` 视频工作台的比例仅 16:9/9:16、清晰度仅 720P/1080P、时长 4–10 秒（此前误显示通用 7 档比例、智能/480P 与 5–15 秒）；后台 GeminiVids 分区按 GeminiAIStudio 结构完全复刻为「账号与渠道/流量统计/反代网关与 API 密钥/请求日志/代理管理」五 Tab（状态指标、渠道开关、账号管理、日志指标卡+多维筛选+分页+详情抽屉、密钥过期时间与 IP 白名单、代理回读），模型实测弹窗支持上传参考图；请求日志存储支持分页/模型/账号筛选与统计聚合。
+
+- [GeminiVids/视频生成] 新增 Google Vids（Omni）纯协议视频生成渠道：独立 sidecar 服务以纯 HTTP（SAPISIDHASH + 精确 Cookie 域）调用 docs.google.com/videos，运行时零浏览器，成片无水印；横竖版、720p/1080p、4–10 秒全参数组合协议实测通过。后台新增「GeminiVids」分区（账号一键从 GeminiAIStudio 导入/Cookie 导入、代理管理、请求日志、`oct_gv_` 反代网关），`/create` 视频工作台与画布模型目录自动出现 `google-vids-omni`，视频任务创建、轮询与成片下载走全站统一管道；全部 docker compose 变体已纳入 `geminivids` 服务与独立内部密钥配置。
+
 - [全渠道/流量统计] 新增独立出站 TCP 计量服务与后台全局、渠道统计入口，按时间、模型、渠道、连接方式和端口查看上行、下行与合计；共享浏览器流量显式标记归属边界。
 
 - [Dola/随机指纹身份] 账号级浏览器指纹随机化全面落地：桌面端新增 Canvas/音频确定性噪声、WebGL 显卡、屏幕像素比、语音列表、电池与 Do Not Track 参数，时区偏移按真实日期动态计算（覆盖夏令时），旧账号首开只补缺失参数；内嵌浏览器默认 UA 去掉 Electron token 并修复 Accept-Language 脱钩，WebRTC 强制走代理防真实 IP 泄漏，桌面协议轮询透传账号真实 UA 与语言。Web 端后台新增「随机指纹身份」开关（默认关闭），开启后每账号持久化一套随机身份（OS/Chrome 版本/语言/窗口），协议轮询、探活与 Camoufox 浏览器共用同一身份且与既有 preset 平台对齐，代理出口 IP 按代理冻结；关闭后恢复全站统一固定身份。

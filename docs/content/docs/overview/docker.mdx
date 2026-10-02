@@ -93,6 +93,7 @@ docker compose -f docker-compose.local.yml up -d --build
 
 - dreamyo 主应用：Node.js、Next.js standalone、Sharp/libvips、FFmpeg 和 PostgreSQL 客户端。
 - GeminiAI sidecar：Python、Playwright/Camoufox、浏览器运行库和服务代码。
+- GeminiVids sidecar：纯协议（无浏览器）Python 服务，调用 Google Vids Omni 生成视频；需在 `.env` 配置独立的 `DREAMYO_GEMINIVIDS_API_KEY`。
 - Mihomo v1.19.30：一份镜像同时承载三个静态 mixed 监听和 file provider；构建脚本只拉取并保存该镜像，不重新构建。入口脚本会初始化私有 runtime provider 文件并设置安全权限。
 
 输出目录为 `本次修改需上传文件_YYYYMMDD`。把整个目录上传到 Linux 服务器后执行：
@@ -108,7 +109,7 @@ chmod +x 一键部署.sh
 
 脚本默认拒绝跨架构部署；本机使用 Docker Desktop 做临时仿真验证时可显式设置 `DREAMYO_ALLOW_PLATFORM_EMULATION=1`，正式服务器仍应构建并上传与服务器架构一致的包。
 
-离线包不会固化外部模型、支付或 OAuth 密钥。PostgreSQL、应用媒体和 GeminiAI 账号分别使用独立数据卷；升级或停止服务时不要执行 `docker compose down -v`。
+离线包不会固化外部模型、支付或 OAuth 密钥。PostgreSQL、应用媒体、GeminiAI 账号和 GeminiVids 数据分别使用独立数据卷；升级或停止服务时不要执行 `docker compose down -v`。
 
 ## 日志与检查
 

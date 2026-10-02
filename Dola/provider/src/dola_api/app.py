@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -13,12 +14,46 @@ from .uploads import PREPARE_UPLOAD_BODY
 
 pool = CamoufoxSessionPool()
 
+async def _parent_watchdog(parent_pid: int) -> None:
+    """Shut down (closing browser children) once the spawning app is gone.
+
+    The desktop app can be force-quit or crash without running its cleanup;
+    without this watchdog the frozen provider and every Camoufox tree it opened
+    stay orphaned. Two consecutive liveness misses guard against transient
+    probe errors.
+    """
+    misses = 0
+    while True:
+        await asyncio.sleep(3)
+        try:
+            os.kill(parent_pid, 0)
+            misses = 0
+        except ProcessLookupError:
+            misses += 1
+        except OSError:
+            misses = 0
+        if misses >= 2:
+            break
+    try:
+        await pool.close_all_sessions()
+    finally:
+        os._exit(0)
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    watchdog = None
+    parent_pid = os.getenv("DOLA_PROVIDER_PARENT_PID", "").strip()
+    if parent_pid.isdigit():
+        watchdog = asyncio.create_task(_parent_watchdog(int(parent_pid)))
     try:
         yield
     finally:
-        await pool.close_all_verifications()
+        if watchdog:
+            watchdog.cancel()
+        try:
+            await asyncio.wait_for(pool.close_all_sessions(), timeout=15)
+        except Exception:
+            pass
 
 app = FastAPI(title="dreamyo Dola Camoufox Provider", lifespan=lifespan)
 

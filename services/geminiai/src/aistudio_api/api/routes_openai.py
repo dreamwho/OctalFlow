@@ -29,6 +29,9 @@ MODELS = [
     {"id": "gemini-3.1-flash-lite", "object": "model", "created": 1700000000, "owned_by": "google"},
     {"id": "gemini-3.1-flash-image", "object": "model", "created": 1700000000, "owned_by": "google"},
     {"id": "gemini-3-pro-image", "object": "model", "created": 1700000000, "owned_by": "google"},
+    # Gemini Omni 视频生成（AI Studio 页面自动化）
+    {"id": "gemini-omni-1.1-flash", "object": "model", "created": 1700000000, "owned_by": "google"},
+    {"id": "gemini-omni-flash-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
     {"id": "gemini-3.1-flash-live-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
     {"id": "gemini-3.1-flash-tts-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
     # Gemini 2.5 系列

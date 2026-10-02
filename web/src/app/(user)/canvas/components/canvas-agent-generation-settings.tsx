@@ -16,6 +16,8 @@ import { resolveModelChannel, useConfigStore } from "@/stores/use-config-store";
 
 import { isChatGptApiModelConfig } from "./canvas-image-settings-popover";
 import { canvasDreaminaImageProfile, canvasDreaminaVideoProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
+import { canvasGeminiVidsVideoProfile, resolveCanvasGeminiVidsModelId } from "../utils/canvas-geminivids";
+import { canvasGeminiAiVideoProfile, resolveCanvasGeminiAiOmniModelId } from "../utils/canvas-geminiai";
 
 export function CanvasAgentGenerationSettings({
     preferences,
@@ -112,7 +114,7 @@ export function canvasAgentSelectedImageProfile(config: Parameters<typeof resolv
 export function canvasAgentSelectedVideoProfile(config: Parameters<typeof resolveCanvasDreaminaModelId>[0], selectedModels: CreativeAgentModelOption[]): AgentVideoGenerationCapabilityProfile | undefined {
     const videoModels = selectedModels.filter((model) => model.capability === "video");
     if (!videoModels.length) return undefined;
-    const profiles = videoModels.map((model) => canvasDreaminaVideoProfile(resolveCanvasDreaminaModelId(config, model.id), "text2video"));
+    const profiles = videoModels.map((model) => canvasDreaminaVideoProfile(resolveCanvasDreaminaModelId(config, model.id), "text2video") || canvasGeminiVidsVideoProfile(resolveCanvasGeminiVidsModelId(config, model.id)) || canvasGeminiAiVideoProfile(resolveCanvasGeminiAiOmniModelId(config, model.id)));
     if (profiles.some((profile) => !profile)) return undefined;
     return intersectCanvasAgentVideoProfiles(profiles as AgentVideoGenerationCapabilityProfile[]);
 }

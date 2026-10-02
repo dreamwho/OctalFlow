@@ -401,6 +401,23 @@ export async function createUpstream(
                         firstFrame: firstFrameUrl || undefined,
                         lastFrame: lastFrameUrl || undefined,
                     })
+                  : channel.advancedConfig?.protocol === "geminiai"
+                    ? buildGeminiAiOmniVideoRequest({
+                        model: channel.model,
+                        prompt,
+                        aspectRatio: values.ratio as string,
+                        resolution: values.resolution as string,
+                        duration: values.duration as number,
+                    })
+                  : channel.advancedConfig?.protocol === "geminivids"
+                    ? buildGeminiVidsVideoRequest({
+                        model: channel.model,
+                        prompt,
+                        aspectRatio: values.aspect_ratio as string,
+                        resolution: values.resolution as string,
+                        duration: values.duration as number,
+                        images: requestImages,
+                    })
                   : globalPreset
                     ? buildGlobalAiOpcVideoRequest(globalPreset, {
                           model: channel.model,
@@ -688,7 +705,9 @@ function ratio(value: unknown) {
     return normalizeVideoAspectRatio(value);
 }
 function resolution(value: unknown) {
-    const text = clean(value).replace(/p$/i, "");
+    const text = clean(value).toLowerCase().replace(/p$/i, "");
+    if (text === "360") return "360p";
+    if (text === "4k" || text === "2160") return "4k";
     return text === "480" || text === "1080" ? `${text}p` : "720p";
 }
 function videoDimensions(size: unknown, quality: unknown) {
@@ -762,4 +781,20 @@ class DeferredSubmissionFailure extends Error {
         super(message);
         this.retryAfterSeconds = Math.max(1, Math.ceil((retryAfterAt - Date.now()) / 1_000));
     }
+}
+
+/** GeminiVids（docs.google.com/videos Omni 纯协议）创建请求体。 */
+export function buildGeminiAiOmniVideoRequest(input: { model: string; prompt: string; aspectRatio: string; resolution: string; duration: number }) {
+    const aspectRatio = input.aspectRatio === "9:16" ? "9:16" : input.aspectRatio === "16:9" ? "16:9" : "auto";
+    const resolution = ["360p", "720p", "1080p", "4k"].includes(input.resolution) ? input.resolution : "";
+    const duration = Number.isFinite(input.duration) && input.duration > 0 ? Math.max(3, Math.min(10, Math.floor(input.duration))) : 10;
+    return { model: input.model, prompt: input.prompt, duration_seconds: duration, ...(resolution ? { resolution } : {}), aspect_ratio: aspectRatio };
+}
+
+export function buildGeminiVidsVideoRequest(input: { model: string; prompt: string; aspectRatio: string; resolution: string; duration: number; images?: string[] }) {
+    const aspectRatio = input.aspectRatio === "9:16" ? "9:16" : "16:9";
+    const resolution = input.resolution === "1080p" ? "1080p" : "720p";
+    const duration = Number.isFinite(input.duration) && input.duration > 0 ? Math.max(4, Math.min(10, Math.floor(input.duration))) : 5;
+    const images = (input.images || []).filter((url) => /^https?:\/\//.test(url) || /^data:/i.test(url)).slice(0, 8);
+    return { model: input.model, prompt: input.prompt, aspect_ratio: aspectRatio, resolution, duration_seconds: duration, ...(images.length ? { images } : {}) };
 }

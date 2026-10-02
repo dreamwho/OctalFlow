@@ -51,6 +51,7 @@ const loadChannelsSection = () => import("./admin-upstream-sections").then((modu
 const loadMagicProxySection = () => import("./admin-magic-proxy-section").then((module) => module.AdminMagicProxySection);
 const loadRunningHubSection = () => import("@/app/admin/runninghub/components/admin-runninghub-section").then((module) => module.AdminRunningHubSection);
 const loadGeminiAiSection = () => import("./admin-geminiai-section").then((module) => module.AdminGeminiAiSection);
+const loadGeminiVidsSection = () => import("./admin-geminivids-section").then((module) => module.AdminGeminiVidsSection);
 const loadDolaApiSection = () => import("./admin-dola-api-section").then((module) => module.AdminDolaApiSection);
 const loadGeminiToolsSection = () => import("./admin-gemini-tools-section").then((module) => module.AdminGeminiToolsSection);
 const loadChatGptApiSection = () => import("@/app/admin/chatgpt-api/components/admin-chatgpt-api-section").then((module) => module.AdminChatGptApiSection);
@@ -90,6 +91,7 @@ const sectionLoaders: Partial<Record<AdminSectionKey, () => Promise<unknown>>> =
     magicProxy: loadMagicProxySection,
     runninghub: loadRunningHubSection,
     geminiai: loadGeminiAiSection,
+    geminivids: loadGeminiVidsSection,
     dolaApi: loadDolaApiSection,
     geminiTools: loadGeminiToolsSection,
     chatgptApi: loadChatGptApiSection,
@@ -129,6 +131,7 @@ const AdminChannelsSection = dynamic(loadChannelsSection, { loading: AdminSectio
 const AdminMagicProxySection = dynamic(loadMagicProxySection, { loading: AdminSectionLoading });
 const AdminRunningHubSection = dynamic(loadRunningHubSection, { loading: AdminSectionLoading });
 const AdminGeminiAiSection = dynamic(loadGeminiAiSection, { loading: AdminSectionLoading });
+const AdminGeminiVidsSection = dynamic(loadGeminiVidsSection, { loading: AdminSectionLoading });
 const AdminDolaApiSection = dynamic(loadDolaApiSection, { loading: AdminSectionLoading });
 const AdminGeminiToolsSection = dynamic(loadGeminiToolsSection, { loading: AdminSectionLoading });
 const AdminChatGptApiSection = dynamic(loadChatGptApiSection, { loading: AdminSectionLoading });
@@ -303,6 +306,7 @@ export function AdminDashboard(props: AdminDashboardProps) {
                     {activeSection === "magicProxy" ? <AdminMagicProxySection /> : null}
                     {activeSection === "runninghub" ? <AdminRunningHubSection /> : null}
                     {activeSection === "geminiai" ? <AdminGeminiAiSection /> : null}
+                    {activeSection === "geminivids" ? <AdminGeminiVidsSection /> : null}
                     {activeSection === "dolaApi" ? <AdminDolaApiSection /> : null}
                     {activeSection === "geminiTools" ? <AdminGeminiToolsSection controller={controller} /> : null}
                     {activeSection === "chatgptApi" ? <AdminChatGptApiSection controller={controller} /> : null}

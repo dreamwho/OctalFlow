@@ -17,6 +17,8 @@ import { canvasVideoReferenceModeLabel, normalizeCanvasVideoReferenceMode } from
 import { CanvasVideoReferenceSettings } from "./canvas-video-reference-settings";
 import { canvasDreaminaVideoCommand, canvasDreaminaVideoProfile, resolveCanvasDreaminaModelId } from "../utils/canvas-dreamina-cli";
 import { canvasDolaVideoProfile, resolveCanvasDolaModelId } from "../utils/canvas-dola";
+import { canvasGeminiVidsVideoProfile, resolveCanvasGeminiVidsModelId } from "../utils/canvas-geminivids";
+import { canvasGeminiAiVideoProfile, resolveCanvasGeminiAiOmniModelId } from "../utils/canvas-geminiai";
 
 type CanvasVideoSettingsPopoverProps = {
     config: AiConfig;
@@ -35,7 +37,9 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
     const dreaminaCommand = canvasDreaminaVideoCommand(metadata, references);
     const dreamina = canvasDreaminaVideoProfile(dreaminaModelId, dreaminaCommand);
     const dola = canvasDolaVideoProfile(resolveCanvasDolaModelId(config));
-    const videoProfile = dola || dreamina;
+    const geminiVids = canvasGeminiVidsVideoProfile(resolveCanvasGeminiVidsModelId(config));
+    const geminiAi = canvasGeminiAiVideoProfile(resolveCanvasGeminiAiOmniModelId(config));
+    const videoProfile = dola || dreamina || geminiVids || geminiAi;
     const minimaxDurationRange = /minimax/i.test(config.model || "") ? { min: 5, max: 15 } : undefined;
     const preferences: GenerationPreferences = {
         mode: "video",
@@ -58,7 +62,8 @@ export function CanvasVideoSettingsPopover({ config, metadata, references, onCon
         const quality = String(config.vquality || "720")
             .toLowerCase()
             .replace(/p$/, "");
-        if (!videoProfile.qualities.some((option) => option.value === quality)) onConfigChange("vquality", videoProfile.qualities[0]?.value || "auto");
+        const qualityMatches = (option: { value: string }) => option.value === quality || option.value.toLowerCase().replace(/p$/, "") === quality;
+        if (!videoProfile.qualities.some(qualityMatches)) onConfigChange("vquality", videoProfile.qualities[0]?.value || "auto");
         const seconds = positiveInteger(config.videoSeconds, 5);
         if (seconds < videoProfile.durationRange.min || seconds > videoProfile.durationRange.max) onConfigChange("videoSeconds", String(Math.min(Math.max(5, videoProfile.durationRange.min), videoProfile.durationRange.max)));
         const size = config.size || "auto";

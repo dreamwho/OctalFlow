@@ -106,6 +106,14 @@ app.on("before-quit", () => {
   for (const timer of taskPolls.values()) clearTimeout(timer);
   clearInterval(registrationNudgeTimer);
   apiServer?.close();
+  // provider 是 PyInstaller onefile：只 kill 引导进程会让 python、playwright
+  // 驱动和已打开的 Camoufox 整棵树变孤儿（>15 秒提交的浏览器会存活数分钟）。
+  // mac/linux 对整个进程组发 SIGTERM（uvicorn 优雅退出并关闭浏览器）；Windows
+  // 用 taskkill 杀进程树；provider 内还有父进程看门狗兜底强退/崩溃场景。
+  try {
+    if (provider?.pid && process.platform !== "win32") process.kill(-provider.pid, "SIGTERM");
+    else if (provider?.pid) spawn("taskkill", ["/pid", String(provider.pid), "/T", "/F"], { stdio: "ignore" });
+  } catch {}
   provider?.kill();
   void mihomo?.close();
 });
@@ -812,7 +820,11 @@ async function submitTask(input, fromWorkspace = false) {
   const identity = await accountIdentity(account);
   const requestId = String(input.requestId || randomUUID());
   const body = { accountId: account.id, credentialVersion: account.credentialVersion, cookie, model, prompt, duration: isImage ? 0 : Number(input.duration || 5), ratio: String(input.ratio || "16:9"), references: references.map(({ id: _id, ...item }) => item), requestId, proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyTarget: proxy.name, proxyUrl: proxy.url, imagexProxyMode: uploadProxy.url ? "managed" : "direct", imagexProxyUrl: uploadProxy.url, ...identity };
-  if (fromWorkspace) {
+  // >15 秒档必须走 provider 的 Camoufox 协议提交（与 Web 端同一请求构造和
+  // 签名链路，9-27/9-29 的 30 秒成功样本均出自该链路）；工作区浏览器签名
+  // 提交对该档位会被上游会话模型以“仅支持 4 到 15 秒”追问拦截。
+  const overQuarterMinute = !isImage && body.duration > 15;
+  if (fromWorkspace && !overQuarterMinute) {
     if (workspaceSubmissionView) throw new Error("当前浏览器已有任务正在提交，请等待它取得 Dola 会话");
     const task = { id: `dola-${randomUUID()}`, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: "running", references: references.map((item) => ({ id: item.id, name: item.name, role: item.role })), conversationId: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [], source: "workspace-browser", diagnostics: { submitStage: references.length ? "uploading_references" : "submitting_to_dola", referenceCount: references.length } };
     store.state.tasks.unshift(task);
@@ -826,11 +838,13 @@ async function submitTask(input, fromWorkspace = false) {
   const created = await providerJson(endpoint, { method: "POST", body: JSON.stringify(body) });
   const id = created.taskId || created.id;
   if (!id) throw new Error("Dola 未返回任务 ID，请检查上游响应，避免重复提交");
-  const task = { id, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: created.status || "queued", references: references.map((item) => ({ id: item.id, name: item.name, role: item.role })), conversationId: created.conversationId || "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [] };
+  const task = { id, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: created.status || "queued", references: references.map((item) => ({ id: item.id, name: item.name, role: item.role })), conversationId: created.conversationId || "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [], source: overQuarterMinute ? "provider-protocol" : undefined, diagnostics: overQuarterMinute ? { submitStage: "protocol_submitting", referenceCount: references.length } : undefined };
   store.state.tasks.unshift(task);
   await store.save();
-  observedTaskId = id;
-  void observeTaskInBrowser(task).catch((error) => window?.webContents.send("dola:task", { type: "browser-error", message: String(error) }));
+  if (!overQuarterMinute) {
+    observedTaskId = id;
+    void observeTaskInBrowser(task).catch((error) => window?.webContents.send("dola:task", { type: "browser-error", message: String(error) }));
+  }
   scheduleTaskPoll(id);
   return task;
 }
@@ -868,14 +882,15 @@ async function submitThroughWorkspaceBrowser(task, request, view) {
     const prepared = await providerJson("/internal/runtime/v1/browser-submit/prepare", { method: "POST", body: JSON.stringify({ ...request, references: resolvedReferences }) });
     task.requestShape = completionRequestShape(prepared.body);
     ensurePage();
-    task.diagnostics = { submitStage: "submitting_to_dola", referenceCount: prepared.referenceCount };
+    const rulePrimed = Boolean(prepared.ruleBody);
+    task.diagnostics = { submitStage: rulePrimed ? "rule_priming" : "submitting_to_dola", referenceCount: prepared.referenceCount };
     task.updatedAt = new Date().toISOString();
     await store.save();
     window?.webContents.send("dola:task", { type: "task", task });
-    const config = { body: JSON.stringify(prepared.body), fallbackQuery: "", timeoutMs: 60_000, hookDeadline: Date.now() + 40_000 };
+    const config = { body: JSON.stringify(prepared.body), ruleBody: rulePrimed ? JSON.stringify(prepared.ruleBody) : "", fallbackQuery: "", timeoutMs: 60_000, hookDeadline: Date.now() + 40_000 };
     await view.webContents.executeJavaScript(`window.__DOLA_SUBMIT_CONFIG__ = ${JSON.stringify(config)}; ${prepared.script}`);
     let raw = "";
-    const deadline = Date.now() + 70_000;
+    const deadline = Date.now() + (rulePrimed ? 150_000 : 70_000);
     while (!raw && Date.now() < deadline) {
       ensurePage();
       raw = await view.webContents.executeJavaScript("document.getElementById('__dola_submit_result__')?.value || ''");
@@ -951,7 +966,13 @@ async function queryTaskInBrowser(task) {
   const prepared = await providerJson(`/internal/runtime/v1/tasks/${encodeURIComponent(task.id)}/browser-query`);
   const expectedUrl = `https://www.dola.com/chat/${task.conversationId}`;
   const ensurePage = () => {
-    if (browserView !== view || activeAccountId !== task.accountId || view.webContents.isDestroyed() || view.webContents.getURL() !== expectedUrl) throw new Error("查询期间任务账号浏览器已关闭、切换或离开原会话");
+    const currentUrl = view.webContents.isDestroyed() ? "" : view.webContents.getURL();
+    if (browserView !== view || activeAccountId !== task.accountId || view.webContents.isDestroyed() || currentUrl !== expectedUrl) {
+      const bounced = /^https:\/\/www\.dola\.com\/?$/.test(currentUrl) || /^https:\/\/www\.dola\.com\/chat\/?$/.test(currentUrl);
+      throw new Error(bounced
+        ? "Dola 把会话页重定向回了首页，通常是该账号在浏览器中的登录态已失效；请在中间浏览器重新登录此账号后再查询"
+        : "查询期间任务账号浏览器已关闭、切换或离开原会话");
+    }
   };
   ensurePage();
   const config = { path: prepared.path, body: JSON.stringify(prepared.body), resultId: `__dola_query_${randomUUID()}`, timeoutMs: 30_000, hookDeadline: Date.now() + 30_000 };
@@ -978,7 +999,10 @@ async function refreshTask(id, force = false) {
   if (!task) throw new Error("任务不存在");
   if (task.source === "workspace-browser" && !task.conversationId) return task;
   const endpoint = task.model === "dola-seedream-4-5" ? "images" : "videos";
-  let result = force && task.conversationId ? await queryTaskInBrowser(task) : await providerJson(`/internal/runtime/v1/${endpoint}/${encodeURIComponent(id)}`);
+  // 只有工作区浏览器内提交的任务才以页面内签名查询为准；provider 协议任务
+  // 的会话由 provider 自己的 Camoufox 创建，强制浏览器查询只会让用户浏览器
+  // 被导航后遭 Dola 弹回首页，权威状态一律走 provider 轮询端点。
+  let result = force && task.source === "workspace-browser" && task.conversationId ? await queryTaskInBrowser(task) : await providerJson(`/internal/runtime/v1/${endpoint}/${encodeURIComponent(id)}`);
   if (result.error === "task_state_cookie_unavailable" && task.conversationId) {
     const account = store.state.accounts.find((item) => item.id === task.accountId && item.cookieCiphertext);
     if (account) {
@@ -1003,7 +1027,7 @@ async function refreshTask(id, force = false) {
   task.updatedAt = new Date().toISOString();
   await store.save();
   window?.webContents.send("dola:task", { type: "task", task });
-  if (observedTaskId === id) void observeTaskInBrowser(task).catch((error) => window?.webContents.send("dola:task", { type: "browser-error", message: String(error) }));
+  if (observedTaskId === id && task.source !== "provider-protocol") void observeTaskInBrowser(task).catch((error) => window?.webContents.send("dola:task", { type: "browser-error", message: String(error) }));
   if (task.status === "completed" && task.resultUrls.length && store.state.settings.autoDownload) await downloadTaskAssets(id).catch((error) => window?.webContents.send("dola:task", { type: "download-error", id, message: String(error) }));
   return task;
 }
@@ -1247,9 +1271,10 @@ async function startProvider() {
   const browserVersion = app.isPackaged ? JSON.parse(await readFile(path.join(browser, "version.json"), "utf8")).version : "";
   const command = app.isPackaged ? bundled : "uv";
   const args = app.isPackaged ? [] : ["run", "--project", project, "dola-api"];
-  provider = spawn(command, args, { env: {
+  provider = spawn(command, args, { detached: process.platform !== "win32", env: {
     ...process.env,
     DOLA_PROVIDER_PORT: String(port), DOLA_PROVIDER_KEY: providerKey,
+    DOLA_PROVIDER_PARENT_PID: String(process.pid),
     DOLA_TASK_ENCRYPTION_KEY: store.decrypt(store.state.providerTaskKeyCiphertext),
     DOLA_TASK_STATE_PATH: path.join(store.root, "tasks", "provider.json"),
     DOLA_ENABLE_BROWSER: "1", DOLA_BROWSER_ENGINE: "camoufox",

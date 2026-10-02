@@ -291,6 +291,7 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
     if (cfg.resultCallback) document.dispatchEvent(new CustomEvent(cfg.resultCallback, { detail: JSON.stringify(info) }));
     try { el.value = JSON.stringify(info); } catch (_) { el.value = JSON.stringify({ fatal: "result_serialize_failed" }); }
   };
+  const extractConversationId = (text) => String(text || "").replace(/\\"/g, '"').match(/"(?:conversation_id|conversationId)"\s*:\s*"?(\d{12,32})/)?.[1] || "";
   try {
     const completionKeys = new Set([
       "aid", "device_id", "device_platform", "doubao_device_platform",
@@ -327,7 +328,7 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
       const identity = Object.fromEntries(["device_id", "web_id", "tea_uuid", "region", "sys_region", "web_tab_id", "tz_name", "pc_version", "doubao_pc_version"].map((key) => [key, params.get(key) || ""]));
       return { url: `${location.origin}/chat/completion?${params.toString()}`, identity, identitySource: "provider_fresh_identity" };
     };
-    const send = (request) => {
+    const send = (request, onDone) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", request.url);
       xhr.setRequestHeader("accept", "*/*");
@@ -345,7 +346,7 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
         try { text = xhr.responseText || ""; } catch (_) {}
         let signed = false;
         try { signed = new URL(xhr.responseURL || request.url, location.origin).searchParams.has("a_bogus"); } catch (_) {}
-        done({ status: xhr.status, contentType: (xhr.getResponseHeader && xhr.getResponseHeader("content-type")) || "", responseBytes: text.length, text: text.slice(0, 262144), identity: request.identity, identitySource: request.identitySource, signed });
+        onDone({ status: xhr.status, contentType: (xhr.getResponseHeader && xhr.getResponseHeader("content-type")) || "", responseBytes: text.length, text: text.slice(0, 262144), identity: request.identity, identitySource: request.identitySource, signed });
       };
       xhr.onreadystatechange = () => {
         if (xhr.readyState === 3 && /event:\s*SSE_REPLY_END/.test(xhr.responseText || "")) {
@@ -355,18 +356,43 @@ MAIN_WORLD_SUBMIT_SCRIPT = r"""
         }
       };
       xhr.onerror = () => { settleTimer = setTimeout(finish, 200); };
-      xhr.send(cfg.body);
+      xhr.send(request.body);
       setTimeout(finish, cfg.timeoutMs || 60000);
     };
-    const waitReady = () => {
+    const waitReady = (onReady) => {
       const signerReady = typeof window.bdms === "object";
       const deadlineReached = Date.now() >= (cfg.hookDeadline || 0);
       const request = liveRequest() || (deadlineReached ? fallbackRequest() : null);
-      if (request && (signerReady || deadlineReached)) return send(request);
+      if (request && (signerReady || deadlineReached)) return onReady(request);
       if (deadlineReached) return done({ fatal: "page_identity_unavailable", pageUrl: location.href, pageTitle: document.title || "" });
-      return setTimeout(waitReady, 250);
+      return setTimeout(() => waitReady(onReady), 250);
     };
-    waitReady();
+    waitReady((request) => {
+      if (!cfg.ruleBody) return send({ ...request, body: cfg.body }, done);
+      // Dola's conversational model now asks for confirmation when the
+      // structured duration exceeds its 4-15s dialog policy. Prime the new
+      // conversation with an explicit duration rule first, wait for the
+      // conversation ACK, then send the real prompt inside that conversation.
+      send({ ...request, body: cfg.ruleBody }, (ruleResult) => {
+        if (ruleResult.fatal) return done({ ...ruleResult, stage: "rule_prime" });
+        const ruleConversationId = extractConversationId(ruleResult.text);
+        if (!ruleConversationId) {
+          const failure = { ...ruleResult, stage: "rule_prime" };
+          if (!ruleResult.text && !ruleResult.status) failure.fatal = "rule_prime_timeout";
+          return done(failure);
+        }
+        let body;
+        try { body = JSON.parse(cfg.body); } catch (_) { return done({ fatal: "submit_body_unparseable", stage: "content" }); }
+        try {
+          body.client_meta.conversation_id = ruleConversationId;
+          if (body.option) {
+            body.option.need_create_conversation = false;
+            delete body.option.conversation_init_option;
+          }
+        } catch (_) {}
+        send({ ...request, body: JSON.stringify(body) }, (result) => done({ ...result, ruleConversationId, ruleStatus: ruleResult.status }));
+      });
+    });
   } catch (e) {
     done({ fatal: String(e && e.message || e).slice(0, 300) });
   }

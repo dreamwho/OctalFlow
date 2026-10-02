@@ -62,9 +62,10 @@ def sanitize_video_prompt_duration(prompt: str) -> str:
     """Strip explicit duration phrases from prompt to prevent Dola conversational LLM refusal.
 
     Dola's conversational assistant evaluates visible message text against a 4-15s
-    dialog policy. If '30秒', '30s', '15秒', or '时长30秒' appear in user_input_content
-    or visible text, the LLM intercepts the turn with a conversational refusal
-    ('视频生成目前支持 4–15 秒...') instead of dispatching the structured video generation tool.
+    dialog policy. If '30秒', '30s', '时长30秒', or a segment timeline like
+    '0-2.5秒/2.5-6秒/27.2-30秒' appear in user_input_content or visible text, the
+    LLM reads the over-15s intent and intercepts the turn with a conversational
+    refusal instead of dispatching the structured video generation tool.
     The duration must be passed exclusively through ability_param['duration'].
     """
     if not prompt:
@@ -76,31 +77,38 @@ def sanitize_video_prompt_duration(prompt: str) -> str:
         "",
         text,
     )
-    # 2. '视频时长: 30秒' / '时长为30秒' / 'duration: 30s'
+    # 2. '视频时长: 30秒' / '时长为30秒' / '时长约28秒' / 'duration: 30s'
     text = re.sub(
-        r"(?i)(?:视频)?时长\s*[:：=为是]?\s*(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\b",
+        r"(?i)(?:视频)?时长\s*[:：=为是约]?\s*(?:大约)?\s*(?:\d+(?:\.\d+)?(?:\s*[-~到至]\s*\d+(?:\.\d+)?)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\b",
         "",
         text,
     )
-    text = re.sub(r"(?i)\bduration\s*[:=]\s*\d+\s*s?\b", "", text)
-    # 3. '30 秒完整分镜' / '30 秒脚本'：保留“分镜/脚本”的创作语义。
-    text = re.sub(r"(?i)\d+\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?=(?:完整)?分镜|脚本)", "", text)
+    text = re.sub(r"(?i)\bduration\s*[:=]\s*\d+(?:\.\d+)?\s*s?\b", "", text)
+    # 3. '30 秒完整分镜' / '30 秒脚本'：保留分镜/脚本的创作语义。
+    text = re.sub(r"(?i)\d+(?:\.\d+)?\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?=(?:完整)?分镜|脚本)", "", text)
     # 4. '30秒的短视频' / '15s微电影'
     text = re.sub(
-        r"(?i)(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?:的)?(?:短?视频|片断|片段|微电影)",
+        r"(?i)(?:\d+(?:\.\d+)?(?:\s*[-~到至]\s*\d+(?:\.\d+)?)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(?:的)?(?:短?视频|片断|片段|微电影)",
         "",
         text,
     )
-    # 5. Other mentions of the requested duration (e.g. '完整 30 秒') must not
-    # reach the conversational layer; duration is already in ability_param.
-    text = re.sub(r"(?i)(?<!\d)(?:15|30)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)(?!\d)", "", text)
-    # 6. standalone '30秒' / '15s'
+    # 5. 分段时间轴区间 '0-2.5秒：' / '2.5-6秒' / '27.2-30秒'：完整时间轴会让会话
+    # 模型读出总时长（如 30 秒）并按 4-15s 对话策略拦截，必须整段去除。
     text = re.sub(
-        r"(?i)(?:^|(?<=[\s,，、;:：]))(?:\d+(?:\s*[-~到至]\s*\d+)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)(?=$|[\s,，、;:：])",
+        r"(?i)(?<![\d.])(?:(?:约|大约)\s*)?\d+(?:\.\d+)?\s*[-–—~到至]\s*\d+(?:\.\d+)?\s*(?:秒钟?|s(?:ec(?:onds?)?)?)\s*[:：]?",
         "",
         text,
     )
-    # 7. Clean up duplicate delimiters
+    # 6. Other mentions of the requested duration (e.g. '完整 30 秒') must not
+    # reach the conversational layer; duration is already in ability_param.
+    text = re.sub(r"(?i)(?<![\d.])(?:15|30)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)(?![\d.])", "", text)
+    # 7. standalone '30秒' / '约28秒' / '2.5-6秒'
+    text = re.sub(
+        r"(?i)(?:^|(?<=[\s,，、;:：。！？]))(?:约|大约)?\s*(?:\d+(?:\.\d+)?(?:\s*[-–—~到至]\s*\d+(?:\.\d+)?)?|\d+)\s*(?:秒钟?|s(?:ec(?:onds?)?)?)(?=$|[\s,，、;:：。！？])",
+        "",
+        text,
+    )
+    # 8. Clean up duplicate delimiters
     text = re.sub(
         r"[,，、\s]+",
         lambda m: "，" if "，" in m.group() or "," in m.group() else " ",

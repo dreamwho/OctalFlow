@@ -71,7 +71,7 @@ DREAMYO_DATABASE_POOL_MAX=10
 DREAMYO_DATABASE_SSL=0
 ```
 
-云 PostgreSQL 开启 SSL 后默认验证服务端证书。供应商使用私有 CA 时设置 `DREAMYO_DATABASE_SSL_CA`；不要为了绕过证书错误关闭校验。只有供应商明确无法提供可信证书链且已接受中间人攻击风险时，才将 `DREAMYO_DATABASE_SSL_REJECT_UNAUTHORIZED=0` 作为临时措施。
+云 PostgreSQL 开启 SSL 后默认验证服务端证书。上游配置另有「GeminiVids」分区：管理 Google Vids（Omni）纯协议视频生成的 Google 账号（可一键从 GeminiAIStudio 导入）、代理出口、请求日志与 `oct_gv_` 反代网关密钥。供应商使用私有 CA 时设置 `DREAMYO_DATABASE_SSL_CA`；不要为了绕过证书错误关闭校验。只有供应商明确无法提供可信证书链且已接受中间人攻击风险时，才将 `DREAMYO_DATABASE_SSL_REJECT_UNAUTHORIZED=0` 作为临时措施。
 
 主 Compose 会根据这些变量创建数据库：
 

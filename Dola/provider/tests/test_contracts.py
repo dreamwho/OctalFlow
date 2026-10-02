@@ -91,7 +91,20 @@ def test_main_world_submit_waits_for_live_signer_before_one_send():
     assert 'typeof window.bdms === "object"' in MAIN_WORLD_SUBMIT_SCRIPT
     assert "request && (signerReady || deadlineReached)" in MAIN_WORLD_SUBMIT_SCRIPT
     assert '.searchParams.has("a_bogus")' in MAIN_WORLD_SUBMIT_SCRIPT
-    assert MAIN_WORLD_SUBMIT_SCRIPT.count("xhr.send(cfg.body)") == 1
+    assert MAIN_WORLD_SUBMIT_SCRIPT.count("xhr.send(request.body)") == 1
+    assert "xhr.send(cfg.body)" not in MAIN_WORLD_SUBMIT_SCRIPT
+
+
+def test_main_world_submit_script_primes_over_15s_duration_with_rule_message():
+    assert "cfg.ruleBody" in MAIN_WORLD_SUBMIT_SCRIPT
+    assert 'extractConversationId(ruleResult.text)' in MAIN_WORLD_SUBMIT_SCRIPT
+    assert '"rule_prime"' in MAIN_WORLD_SUBMIT_SCRIPT
+    assert "body.client_meta.conversation_id = ruleConversationId" in MAIN_WORLD_SUBMIT_SCRIPT
+    assert "body.option.need_create_conversation = false" in MAIN_WORLD_SUBMIT_SCRIPT
+    assert "delete body.option.conversation_init_option" in MAIN_WORLD_SUBMIT_SCRIPT
+    assert "ruleConversationId" in MAIN_WORLD_SUBMIT_SCRIPT
+    # single-shot path must stay intact when no rule body is configured
+    assert "if (!cfg.ruleBody) return send({ ...request, body: cfg.body }, done);" in MAIN_WORLD_SUBMIT_SCRIPT
 
 
 def test_completion_query_has_full_generation_identity_contract():
@@ -688,6 +701,66 @@ def test_sanitize_video_prompt_duration_removes_conversational_triggers():
     assert sanitize_video_prompt_duration("一只猫咪在草地上玩耍 30s") == "一只猫咪在草地上玩耍"
     assert sanitize_video_prompt_duration("A futuristic city at night, duration: 30s, cinematic lighting") == "A futuristic city at night，cinematic lighting"
     assert sanitize_video_prompt_duration("30秒") == ""
+
+
+def test_sanitize_video_prompt_duration_strips_storyboard_and_bare_mentions():
+    assert sanitize_video_prompt_duration("按 30 秒完整分镜生成：门外吐槽，进门，客厅被惊艳") == "按 完整分镜生成：门外吐槽，进门，客厅被惊艳"
+    assert "30 秒" not in sanitize_video_prompt_duration("完整 30 秒的手持生活流脚本：门外吐槽，进门")
+    assert sanitize_video_prompt_duration("15s intro scene") == "intro scene"
+
+
+def test_sanitize_video_prompt_duration_strips_segment_timeline_and_approx_duration():
+    assert sanitize_video_prompt_duration("0-2.5秒：\n初始状态：跟随设计师穿过走廊") == "初始状态：跟随设计师穿过走廊"
+    assert sanitize_video_prompt_duration("时间轴：2.5-6秒转身，27.2-30秒收尾定格") == "时间轴：转身，收尾定格"
+    assert sanitize_video_prompt_duration("短片时长约28秒，节奏紧凑") == "短片，节奏紧凑"
+    assert sanitize_video_prompt_duration("opening 0-2.5s handheld walk") == "opening handheld walk"
+
+
+def test_build_rule_prime_body_only_for_over_15s_video():
+    import json
+    from dola_api.session import _build_rule_prime_body
+
+    prime = VideoRequest(model="dola-seedance-2-5", prompt="海边日落", duration=30, ratio="9:16")
+    profile = validate_request(prime.model, prime.duration, prime.ratio)
+    rule_body = _build_rule_prime_body(profile, prime)
+    assert isinstance(rule_body, dict)
+    rule_text = rule_body["messages"][0]["content_block"][0]["content"]["text_block"]["text"]
+    assert "## 30 秒视频生成规则" in rule_text
+    assert "duration=30" in rule_text
+    assert "seedance2.5" in rule_text
+    assert "请提供 30s 提示词" in rule_text
+    assert rule_body["option"]["need_create_conversation"] is True
+    rule_ability = json.loads(rule_body["chat_ability"]["ability_param"])
+    assert rule_ability["duration"] == 30
+    assert rule_ability["ratio"] == "9:16"
+    # 规则消息独立成条：不带参考素材集合
+    assert rule_body["option"]["collect_id"] == ""
+
+    for duration in (5, 10, 15):
+        request = VideoRequest(model="dola-seedance-2-5", prompt="海边日落", duration=duration)
+        assert _build_rule_prime_body(validate_request(request.model, duration, request.ratio), request) is None
+    image = VideoRequest(model="dola-seedream-4-5", prompt="画一间客厅", duration=0)
+    assert _build_rule_prime_body(validate_request(image.model, 0, image.ratio), image) is None
+
+
+def test_prepare_browser_submission_returns_rule_body_for_30s():
+    import json
+    request = VideoRequest(model="dola-seedance-2-5", prompt="云朵缓慢飘过", duration=30, ratio="9:16")
+    prepared = asyncio.run(prepare_browser_submission(request, None))
+    assert "ruleBody" not in prepared
+    content_ability = json.loads(prepared["body"]["chat_ability"]["ability_param"])
+    assert content_ability["duration"] == 30
+    short = VideoRequest(model="dola-seedance-2-5", prompt="云朵缓慢飘过", duration=15, ratio="9:16")
+    assert "ruleBody" not in asyncio.run(prepare_browser_submission(short, None))
+
+
+def test_completion_transport_falls_back_to_rule_conversation_id():
+    from dola_api.session import parse_completion_transport
+
+    payload = {"status": 200, "contentType": "text/event-stream", "text": "event: SSE_HEARTBEAT\r\ndata: {}\r\n\r\n", "ruleConversationId": "38418048283899153", "identity": {}}
+    result = parse_completion_transport({**payload, "requestObserved": True, "requestSigned": True})
+    assert result["conversationId"] == "38418048283899153"
+    assert result["ackReceived"] is True
 
 
 def test_build_request_body_for_30s_video_passes_structured_ability_and_clean_prompt():

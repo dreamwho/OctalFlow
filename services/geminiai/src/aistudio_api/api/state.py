@@ -23,6 +23,7 @@ class RuntimeState:
     account_service: object | None = None  # AccountService 实例
     rotator: object | None = None  # AccountRotator 实例
     anthropic_tool_context: dict[str, dict] = field(default_factory=dict)
+    omni_videos: object | None = None  # OmniVideoService 实例
     model_stats: dict[str, dict] = field(
         default_factory=lambda: defaultdict(
             lambda: {

@@ -7,7 +7,7 @@ import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
 import { geminiVideoCreatePath } from "@/lib/server/gemini-video-provider";
 import { resolveInternalOrigin } from "@/lib/server/internal-origin";
 import { GeminiAiProviderError } from "@/lib/server/geminiai-provider";
-import { resolveSavedGeminiVideoBinding } from "@/lib/server/geminiai-service";
+import { resolveGeminiAiOmniVideoBinding, resolveSavedGeminiVideoBinding } from "@/lib/server/geminiai-service";
 import { failVideoTaskFromWorker, persistVideoTaskResult, queryVideoTaskUpstream } from "@/lib/server/video-task-runtime";
 import { createVideoTask, getVideoTask, transitionVideoTask, updateVideoTask, type VideoTask } from "@/lib/server/video-task-store";
 
@@ -25,10 +25,11 @@ export type GeminiAiVideoTestResult = {
 export async function createGeminiAiVideoTest(request: Request, user: PublicUser, input: { model?: unknown; prompt?: unknown; channelId?: unknown; size?: unknown; quality?: unknown }) {
     const model = requiredText(input.model, "视频模型", 200);
     const prompt = requiredText(input.prompt, "测试提示词", 20_000);
-    const channelId = requiredText(input.channelId, "Gemini/Veo 渠道", 200);
     const settings = await getAuthSettings();
-    const binding = resolveSavedGeminiVideoBinding(settings, model, channelId);
-    if (!binding) throw new GeminiAiProviderError("所选视频模型不属于已保存且已启用的 Google Gemini / Veo 渠道", 422);
+    const isOmni = /^gemini-omni/i.test(model);
+    const channelId = isOmni ? "geminiai" : requiredText(input.channelId, "Gemini/Veo 渠道", 200);
+    const binding = isOmni ? resolveGeminiAiOmniVideoBinding(settings, model) : resolveSavedGeminiVideoBinding(settings, model, channelId);
+    if (!binding) throw new GeminiAiProviderError(isOmni ? "所选 Omni 模型未保存到已启用的 GeminiAIStudio 渠道" : "所选视频模型不属于已保存且已启用的 Google Gemini / Veo 渠道", 422);
     const channel = toSystemGenerationChannel(binding);
     const started = startGenerationAttempt([], { channelId: channel.channelId, model: channel.model, capability: "video" });
     const parameters = {
@@ -43,7 +44,7 @@ export async function createGeminiAiVideoTest(request: Request, user: PublicUser
         displayName: user.displayName,
         title: "GeminiAI 视频测试",
         config: channel,
-        upstream: { id: "", provider: "generation", model: channel.model, pollPath: geminiVideoCreatePath(channel.model) },
+        upstream: { id: "", provider: "generation", model: channel.model, pollPath: channel.advancedConfig?.protocol === "geminiai" ? channel.advancedConfig?.createPath || "/v1/videos" : geminiVideoCreatePath(channel.model) },
         requestedDurationSeconds: parameters.videoSeconds,
         prompt,
         source: "geminiai-admin-test",
@@ -66,7 +67,8 @@ export async function createGeminiAiVideoTest(request: Request, user: PublicUser
 export async function refreshGeminiAiVideoTest(request: Request, user: PublicUser, taskId: string, channelId: string) {
     const task = await getVideoTask(requiredText(taskId, "视频任务", 200));
     if (!task || task.userId !== user.id || task.source !== "geminiai-admin-test") throw new GeminiAiProviderError("视频测试任务不存在", 404);
-    if (task.config.channelId !== requiredText(channelId, "Gemini/Veo 渠道", 200) || task.config.advancedConfig?.protocol !== "gemini") throw new GeminiAiProviderError("视频测试任务与 Gemini/Veo 渠道不匹配", 403);
+    const expectedProtocol = task.config.advancedConfig?.protocol;
+    if (task.config.channelId !== requiredText(channelId, "视频渠道", 200) || (expectedProtocol !== "gemini" && expectedProtocol !== "geminiai")) throw new GeminiAiProviderError("视频测试任务与渠道不匹配", 403);
     if (task.status !== "running") return toVideoTestResult(task, Date.now());
 
     const origin = resolveInternalOrigin(new URL(request.url).origin);

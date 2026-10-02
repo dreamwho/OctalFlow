@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { localGeminiAiRuntime } from "./geminiai-local-runtime.mjs";
+import { localGeminiVidsRuntime } from "./geminivids-local-runtime.mjs";
 import { localChatGptApiRuntime } from "./chatgpt-api-local-runtime.mjs";
 import { localDolaApiRuntime } from "./dola-api-local-runtime.mjs";
 import { localTrafficMeterRuntime } from "./traffic-meter-local-runtime.mjs";
@@ -16,7 +17,8 @@ const { standaloneRoot } = process.env.DREAMYO_DESKTOP_PACKAGED === "1"
     : await prepareStandaloneAssets({ webRoot, distDir });
 const trafficMeter = localTrafficMeterRuntime({ repoRoot, webRoot });
 const geminiAi = localGeminiAiRuntime({ repoRoot, webRoot, environment: { ...process.env, ...trafficMeter.environment } });
-const chatGptApi = localChatGptApiRuntime({ repoRoot, webRoot, environment: { ...trafficMeter.environment, ...geminiAi.environment } });
+const geminiVids = localGeminiVidsRuntime({ repoRoot, webRoot, environment: { ...trafficMeter.environment, ...geminiAi.environment } });
+const chatGptApi = localChatGptApiRuntime({ repoRoot, webRoot, environment: { ...trafficMeter.environment, ...geminiAi.environment, ...geminiVids.environment } });
 const dolaApi = localDolaApiRuntime({ repoRoot, webRoot, environment: { ...trafficMeter.environment, ...chatGptApi.environment } });
 const mihomo = process.env.DREAMYO_DESKTOP_MIHOMO_EXECUTABLE ? {
     name: "mihomo",
@@ -32,6 +34,7 @@ const runtime = generationRuntimeEnvironment({
         ...trafficMeter.environment,
         ...chatGptApi.environment,
         ...dolaApi.environment,
+        ...geminiVids.environment,
         PORT: process.env.PORT || "3333",
         HOSTNAME: process.env.HOSTNAME || "0.0.0.0",
         DREAMYO_DATA_DIR: process.env.DREAMYO_DATA_DIR || path.join(webRoot, ".data"),
@@ -45,5 +48,5 @@ process.exitCode = await superviseGenerationRuntime({
     app: { command: process.execPath, args: ["server.js"], cwd: standaloneRoot },
     workerScript: path.join(webRoot, "scripts", "generation-worker.mjs"),
     environment: runtime.environment,
-    services: [mihomo, trafficMeter.service, geminiAi.service, chatGptApi.service, dolaApi.service].filter(Boolean),
+    services: [mihomo, trafficMeter.service, geminiAi.service, geminiVids.service, chatGptApi.service, dolaApi.service].filter(Boolean),
 });

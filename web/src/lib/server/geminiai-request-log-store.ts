@@ -7,7 +7,7 @@ import { GeminiAiRequestLogRepository } from "@/lib/server/database/geminiai-req
 const FILE_NAME = "geminiai-request-logs.json";
 const MAX_LOGS = 10_000;
 
-export type GeminiAiRequestCapability = "text" | "image" | "search";
+export type GeminiAiRequestCapability = "text" | "image" | "search" | "video";
 export type GeminiAiRequestSource = "runtime" | "admin-test" | "external";
 export type GeminiAiRequestLogPhase = "queued" | "running" | "success" | "failed";
 export type GeminiAiRequestLifecyclePhase = "queued" | "routing" | "auth" | "upstream" | "response" | "running" | "success" | "failed";

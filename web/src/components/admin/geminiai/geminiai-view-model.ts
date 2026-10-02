@@ -5,7 +5,7 @@ const testCapabilities = new Set<GeminiAiCapability>(["text", "image", "video", 
 export const geminiAiTestTabs: Array<{ capability: GeminiAiCapability; label: string; description: string }> = [
     { capability: "text", label: "文本", description: "向已声明文本能力的模型发送一次真实请求。" },
     { capability: "image", label: "图片", description: "生成并直接展示本次上游返回的全部图片。" },
-    { capability: "video", label: "视频", description: "仅使用已保存的官方 Gemini/Veo 渠道，不由 AI Studio 账号冒充提供。" },
+    { capability: "video", label: "视频", description: "Omni 模型经 GeminiAIStudio Provider 提交（成片无水印）；其余视频模型仅使用已保存的官方 Gemini/Veo 渠道。" },
     { capability: "search", label: "Google 搜索", description: "使用模型已声明的 Google 搜索能力并展示来源。" },
 ];
 

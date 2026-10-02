@@ -104,6 +104,47 @@ services:
       traffic-meter:
         condition: service_healthy
 
+  geminivids:
+    platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
+    image: ${DREAMYO_GEMINIVIDS_IMAGE:-dreamyo-geminivids:offline}
+    container_name: dreamyo-geminivids
+    network_mode: host
+    command:
+      [
+        "python",
+        "main.py",
+        "server",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+      ]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      GVIDS_API_KEY: ${DREAMYO_GEMINIVIDS_API_KEY:?请在 .env 中配置独立的 GeminiVids 内部密钥}
+      GVIDS_HOST: 127.0.0.1
+      GVIDS_PORT: "8080"
+      GVIDS_PROXY: http://127.0.0.1:17890
+      GVIDS_GENERATE_TIMEOUT: "420"
+    volumes:
+      - dreamyo-geminivids-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      magic-proxy:
+        condition: service_healthy
+
   chatgpt-api:
     platform: ${DREAMYO_DOCKER_PLATFORM:-linux/amd64}
     image: ${DREAMYO_IMAGE:-dreamyo-app:offline}
@@ -220,6 +261,7 @@ services:
       DREAMYO_MAGIC_PROXY_DOLA_PORT: "17893"
       DREAMYO_MAGIC_PROXY_DOLA_UPLOAD_PORT: "17894"
       DREAMYO_GEMINIAI_URL: http://127.0.0.1:8080
+      DREAMYO_GEMINIVIDS_URL: http://127.0.0.1:8080
       DREAMYO_GEMINIAI_API_KEY: ${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}
       DREAMYO_TRAFFIC_METER_URL: http://127.0.0.1:${TRAFFIC_METER_PORT:-18083}
       DREAMYO_TRAFFIC_METER_KEY: ${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}
@@ -232,6 +274,8 @@ services:
       DREAMYO_DOLA_PROVIDER_KEY: ${DREAMYO_DOLA_PROVIDER_KEY:?请在 .env 中配置至少 32 位 Dola Provider 内部服务密钥}
     depends_on:
       geminiai:
+        condition: service_healthy
+      geminivids:
         condition: service_healthy
       chatgpt-api:
         condition: service_healthy
@@ -273,5 +317,6 @@ services:
 volumes:
   dreamyo-data:
   dreamyo-geminiai-accounts:
+  dreamyo-geminivids-data:
   dreamyo-traffic-meter:
   dreamyo-magic-proxy-runtime:

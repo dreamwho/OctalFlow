@@ -55,7 +55,8 @@ function isAdminLocalCloudPath(pathname: string) {
 }
 
 function isCommercialUnroutedGenerationPath(pathname: string) {
-    const roots = ["/api/ai", "/api/agent", "/api/create", "/api/dola", "/api/geminiai", "/api/gemini-tools", "/api/chatgpt-api", "/api/dreamina", "/api/image-tasks", "/api/video-tasks", "/api/video-generation-tasks", "/api/audio-tasks", "/api/text-tasks", "/api/canvas/video-analysis", "/api/canvas/dola-watermark", "/api/drama/analyze", "/api/drama/review", "/api/drama/render", "/api/qwen-audio", "/api/minimax"];
+    const roots = ["/api/ai", "/api/agent", "/api/create", "/api/dola", "/api/geminiai",
+    "/api/geminivids", "/api/gemini-tools", "/api/chatgpt-api", "/api/dreamina", "/api/image-tasks", "/api/video-tasks", "/api/video-generation-tasks", "/api/audio-tasks", "/api/text-tasks", "/api/canvas/video-analysis", "/api/canvas/dola-watermark", "/api/drama/analyze", "/api/drama/review", "/api/drama/render", "/api/qwen-audio", "/api/minimax"];
     return /^\/api\/canvas\/projects\/[^/]+\/assistant-conversations(?:\/|$)/.test(pathname) || roots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 

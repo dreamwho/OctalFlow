@@ -1,0 +1,2 @@
+[console_scripts]
+geminivids-api = geminivids_api.main:main

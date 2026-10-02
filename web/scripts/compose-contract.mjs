@@ -15,8 +15,8 @@ const magicProxyProviderFile = "/app/web/.magic-proxy-runtime/subscription.yaml"
 const mihomoProviderPath = "/root/.config/mihomo/runtime/subscription.yaml";
 
 export const composeProfiles = [
-    { file: "docker-compose.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "postgres", "app", "generation-worker"] },
-    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-dreamyo-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "chatgpt-api", "dola-api", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "geminivids", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.offline.yml", embeddedPostgres: true, image: "${DREAMYO_IMAGE:-dreamyo-app:offline}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "geminivids", "chatgpt-api", "dola-api", "postgres", "app", "generation-worker"] },
     {
         file: "docker-compose.offline-external-db.yml",
         embeddedPostgres: false,
@@ -26,19 +26,19 @@ export const composeProfiles = [
         internalOrigin: "http://127.0.0.1:${PORT:-8866}",
         trustedProxyHops: "${DREAMYO_TRUSTED_PROXY_HOPS:-0}",
         workerOrigin: "http://127.0.0.1:${PORT:-8866}",
-        expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "chatgpt-api", "dola-api", "app", "generation-worker"],
+        expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "geminivids", "chatgpt-api", "dola-api", "app", "generation-worker"],
     },
-    { file: "docker-compose.local.yml", embeddedPostgres: true, image: "dreamyo:local", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "postgres", "app", "generation-worker"] },
+    { file: "docker-compose.local.yml", embeddedPostgres: true, image: "dreamyo:local", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "geminivids", "postgres", "app", "generation-worker"] },
     {
         file: "docker-compose.baota.yml",
         embeddedPostgres: false,
         hostNetwork: true,
         image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}",
         workerOrigin: "http://127.0.0.1:3000",
-        expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "app", "generation-worker"],
+        expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "geminivids", "app", "generation-worker"],
     },
-    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "app", "generation-worker"] },
-    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "app", "generation-worker"] },
+    { file: "docker-compose.external-db.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "geminivids", "app", "generation-worker"] },
+    { file: "docker-compose.lowmem.yml", embeddedPostgres: false, image: "${DREAMYO_IMAGE:-ghcr.io/dreamwho/dreamyo:v0.1.1}", workerOrigin: "http://app:3000", expectedServices: ["magic-proxy", "traffic-meter", "geminiai", "geminivids", "app", "generation-worker"] },
 ];
 
 export const docsComposeProfiles = [
@@ -50,6 +50,7 @@ const maintenanceToken = "${DREAMYO_MAINTENANCE_TOKEN:?请在 .env 中配置至�
 const workerToken = "${DREAMYO_WORKER_TOKEN:?请在 .env 中配置独立的至少 32 位 Worker 令牌}";
 const installToken = "${DREAMYO_INSTALL_TOKEN:?请在 .env 中配置至少 32 位一次性安装令牌}";
 const geminiAiToken = "${DREAMYO_GEMINIAI_API_KEY:?请在 .env 中配置独立的 GeminiAI 内部密钥}";
+const geminiVidsToken = "${DREAMYO_GEMINIVIDS_API_KEY:?请在 .env 中配置独立的 GeminiVids 内部密钥}";
 const dolaToken = "${DREAMYO_DOLA_PROVIDER_KEY:?请在 .env 中配置至少 32 位 Dola Provider 内部服务密钥}";
 const trafficMeterKey = "${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}";
 
@@ -272,6 +273,18 @@ export function validateComposeContract(source, profile) {
     ensure(geminiAiEnvironment.AISTUDIO_ACCOUNTS_DIR === "/data/accounts", "geminiai 账号目录必须固定在私有数据卷");
     ensure(String(geminiAiEnvironment.AISTUDIO_DUMP_RAW_RESPONSE) === "0", "geminiai 不得默认落盘原始响应");
     ensure(!geminiAi.env_file, "geminiai 不得读取包含其他业务密钥的 .env");
+    const geminiVids = services.geminivids || {};
+    const geminiVidsEnvironment = geminiVids.environment || {};
+    ensure(Boolean(services.geminivids), "缺少 geminivids 服务");
+    ensure(geminiVidsEnvironment.GVIDS_API_KEY === geminiVidsToken, "geminivids 未使用与 app 相同的内部密钥");
+    ensure(appEnvironment.DREAMYO_GEMINIVIDS_URL === (profile.hostNetwork ? "http://127.0.0.1:8080" : "http://geminivids:8080"), "app 缺少 GeminiVids 服务地址");
+    ensure(app.depends_on?.geminivids?.condition === "service_healthy", "app 必须等待 geminivids 健康");
+    ensure(geminiVids.depends_on?.["magic-proxy"]?.condition === "service_healthy", "geminivids 必须等待 magic-proxy 健康");
+    ensure(String(geminiVidsEnvironment.GVIDS_PROXY) === `${profile.hostNetwork ? "http://127.0.0.1" : "http://magic-proxy"}:17890`, "geminivids 未使用专用代理监听");
+    ensure(geminiVids.volumes?.[0]?.startsWith("dreamyo-geminivids-data:"), "geminivids 数据必须落在私有数据卷");
+    ensure(geminiVids.healthcheck?.test?.some((part) => String(part).includes("/health")), "geminivids 健康检查必须探测 /health");
+    ensure(geminiVids.restart === "unless-stopped", "geminivids 必须自动重启");
+    if (!profile.hostNetwork) ensure(!("ports" in geminiVids), "geminivids 不得暴露公开端口");
     ensure(!geminiAi.ports, "geminiai 不得向公网映射端口");
     ensure(geminiAi.volumes?.includes("dreamyo-geminiai-accounts:/data/accounts"), "geminiai 缺少私有账号数据卷挂载");
     ensure(Object.hasOwn(compose?.volumes || {}, "dreamyo-geminiai-accounts"), "缺少 GeminiAI 账号数据卷");

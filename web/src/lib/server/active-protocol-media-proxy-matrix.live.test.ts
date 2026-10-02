@@ -116,6 +116,8 @@ describe("active protocols through persisted admin settings and the system proxy
         fixtureOrigin = `http://127.0.0.1:${address.port}`;
         vi.stubEnv("DREAMYO_GEMINIAI_URL", fixtureOrigin);
         vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "fixture-key");
+        vi.stubEnv("DREAMYO_GEMINIVIDS_URL", fixtureOrigin);
+        vi.stubEnv("DREAMYO_GEMINIVIDS_API_KEY", "fixture-key");
         mocks.getCurrentUser.mockReset().mockResolvedValue({ id: "proxy-user", role: "admin", status: "active", adminPermissions: ["upstream.manage"], pointsBalance: 100 });
         mocks.consumeUserPoints.mockReset().mockResolvedValue({ cost: 1, remaining: 99, permanentRemaining: 99, dailyRemaining: 0, dailyExpiresAt: "", recordId: "points-record" });
         mocks.refundUserPoints.mockReset();
