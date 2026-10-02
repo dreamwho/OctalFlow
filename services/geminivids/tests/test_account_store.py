@@ -43,3 +43,23 @@ def test_cookie_parser_requires_auth_cookies():
     names = {c["name"] for c in state["cookies"]}
     assert names == {"SID", "SAPISID", "NID"}
     assert all(c["domain"] == ".google.com" for c in state["cookies"])
+
+
+def test_reimport_reactivates_invalid_account(tmp_path):
+    """重新导入新鲜凭据时，失效账号恢复 active 并清除 last_error。"""
+    import json
+
+    from geminivids_api.infrastructure.account_store import AccountStore
+
+    store = AccountStore(tmp_path)
+    state = {"cookies": [{"name": "SID", "value": "s1", "domain": ".google.com", "path": "/"}]}
+    meta = store.save_account("a@example.com", state, email="a@example.com")
+    store.update_account(meta.id, status="invalid", last_error="quota")
+    assert store.get_account(meta.id).status == "invalid"
+
+    refreshed = dict(state)
+    refreshed["cookies"] = [{"name": "SID", "value": "s2", "domain": ".google.com", "path": "/"}]
+    meta2 = store.save_account("a@example.com", refreshed, email="a@example.com")
+    assert meta2.id == meta.id
+    assert meta2.status == "active"
+    assert meta2.last_error is None

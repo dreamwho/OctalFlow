@@ -172,8 +172,9 @@ class AccountStore:
                 created_at=existing.get("created_at") or _now_iso(),
                 last_used=existing.get("last_used"),
                 vids_doc_id=vids_doc_id or existing.get("vids_doc_id"),
-                status=existing.get("status", "active"),
-                last_error=existing.get("last_error"),
+                # 重新导入 = 提供了新鲜凭据：恢复可用并清除历史错误
+                status="active",
+                last_error=None,
             )
             registry["accounts"][account_id] = meta.to_dict()
             if not registry.get("active_account_id"):
