@@ -461,7 +461,7 @@ export function ImageVideoWorkbench() {
                         <button type="button" className={styles.expandPrompt} aria-label="展开提示词" title="展开提示词" onClick={() => setPromptExpanded(true)}><Maximize2 /></button>
                     </div>
                     <div className={styles.fieldBlock}>
-                        <ModelPicker headerLabel="模型选择" popupTheme={themeName} popupPlacement="rightTop" config={modelPickerConfig} value={selectedModel} capability={capability} fullWidth className={styles.modelTrigger} onChange={setModel} onMissingConfig={() => openConfigDialog(true)} />
+                        <ModelPicker headerLabel="模型选择" popupTheme={themeName} popupPlacement="rightTop" config={modelPickerConfig} value={selectedModel} capability={capability} fullWidth className={styles.modelTrigger} onChange={setModel} onMissingConfig={(capability) => openConfigDialog(true, capability)} />
                     </div>
                     <div className={styles.compactOptions} aria-label="生成参数">
                         <WorkbenchOption name={currentKind === "image" ? "图片比例" : "视频比例"} value={ratio} open={activeOption === "ratio"} onOpen={(value) => setActiveOption(value ? "ratio" : null)} values={ratioOptions} selected={ratio} onSelect={setRatio} icon={ratioIcon(ratio)} optionIcon={ratioIcon} />

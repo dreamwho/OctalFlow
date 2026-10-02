@@ -43,8 +43,11 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
     }, [installRoute, setConfig, setUser]);
 
     useEffect(() => {
-        const handleMissingConfig = () => {
-            message.warning("请联系管理员在后台配置可用模型渠道");
+        const handleMissingConfig = (event: Event) => {
+            const detail = (event as CustomEvent<{ capability?: string }>).detail;
+            const capability = detail?.capability;
+            const label = capability === "image" ? "图片" : capability === "video" ? "视频" : capability === "audio" ? "音频" : capability === "text" ? "文本" : "";
+            message.warning(label ? `当前账号没有可用的${label}模型，请联系管理员在后台配置模型渠道或在用户角色中开放${label}分类权限` : "请联系管理员在后台配置可用模型渠道");
         };
         window.addEventListener("dreamyo-system-config-missing", handleMissingConfig);
         return () => window.removeEventListener("dreamyo-system-config-missing", handleMissingConfig);

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [Dola Studio/精简代理] 新增 0.2.0 精简版：完整移除魔法代理（订阅导入/节点测速/默认魔法节点）与链式代理（跳板落地/链路管理/默认链路）两大功能，代理方式收敛为 直连/通用代理（通用代理仍经 mihomo 内核拨号）；旧工作区遗留的 magic/chained 代理取值自动回落直连。`subscription-uri`、`proxy-batch-test` 两个仅服务于订阅功能的模块连同测试删除。变更前源码备份为 `Dola-Studio-源码备份-v1-20261002.tar.gz`；Provider（Python）零改动，Windows 便携 Python 运行时与 macOS 冻结二进制原样复用。
+
 - [Dola Studio/Windows 包] 新增 Windows x64 安装包与便携包交叉构建：`main.mjs` 打包态在 Windows 上无冻结 `dola-api.exe` 时自动改用内嵌便携 Python 运行时（embeddable 3.12 + 按 uv.lock 以 Windows 平台解析预装的锁定依赖，含 Playwright Windows 驱动）运行 provider，进程收尾沿用看门狗与 taskkill；Camoufox 与 mihomo 均为官方 Windows 产物（版本与 mac 包一致）。`pnpm pack:win` 交叉产出 NSIS 安装包与解压即用 zip（electron-builder 需显式 `--x64`，默认会跟随宿主架构）。
 
 - [Dola Studio/提示词时长检测] 提示词框新增「检测时长」按钮与一键清理：点击后按与服务端清洗器同源的规则找出超过 10 秒的时长表述（时长30秒、约28秒、分段时间轴"27.2-30秒"、30s/15-second 等中英文形式，重叠只计一次），结果条展示命中片段并提供「一键删除」整段移除并整理标点；≤10 秒表述与"每秒5.5字"语速类不受影响，删除后同步双编辑器并复检清零。用于避免 30 秒任务因可见文本泄漏超档时长被上游会话模型拒识。
@@ -9,6 +11,8 @@
 - [Dola/桌面端进程残留] 修复退出应用后 provider 与 Camoufox 浏览器整树残留：桌面 provider 改为独立进程组启动，退出时对整组发 SIGTERM（Windows taskkill 杀树）；provider 端新增提交任务登记与 `close_all_sessions` 统一取消在途浏览器会话，并加父进程看门狗（`DOLA_PROVIDER_PARENT_PID`，每 3 秒探活、连续两次失联即清理退出）兜底强退/崩溃；服务器与 Docker 部署未设置该环境变量，行为不变。
 
 - [Dola/30 秒档桌面端对齐 WEB 端方案] 桌面端时长超过 15 秒的视频提交改走 provider 的 Camoufox 协议链路（与 WEB 端 9 月四次 30 秒成功样本同一条链：provider 构造请求体、真实页面内签名、SSE 确认、轮询），不再经 Electron 工区浏览器签名提交（该链路 30 秒会被上游会话模型以"仅支持 4 到 15 秒"追问拦截，提示词规则消息实测也无法绕过）；≤15 秒与生图路径不变。协议提交与桌面内嵌浏览器页面签名提交均为单发结构化，规则消息两步编排保留为休眠能力（页面路径的下发已撤除）；两端 provider 提示词清洗补齐"30 秒分镜/脚本"、分段时间轴区间（"0-2.5秒/27.2-30秒"，含小数与英文）与"时长约28秒"类表述。
+
+- [画布/音频节点] 修复受限用户角色下音频节点提示「请联系管理员配置渠道」的误导：根因为用户角色模型分类权限缺「音频」导致公开 session 剥空音频渠道（非渠道配置问题）；报错文案现按能力区分并指引到用户角色权限入口，事件链路携带 capability。
 
 - [GeminiAIStudio/Omni 全站接入] `gemini-omni-1.1-flash` 并入 geminiai 渠道实现四端视频生成（画布、/create、Agent、后台实测）：sidecar `/v1/videos` 页面自动化任务端点（账号冷却+自动轮换）、注册表 video operation（3-10 秒/360p-4K/16:9/9:16）、系统代理与 `_media` 链路、前端能力档案与后台视频实测入口；真实 E2E 94 秒出片（无水印）。附带修复画布视频参数弹层画质比较死循环与 worker 账号元数据崩溃。纯 HTTP 协议实验结论：文本通道 100% 可行（必需头已消融确认），视频通道协议层打通但 audit token 必需（寿命未验证）——当前保持浏览器机制，备份 tag `pre-pure-http-experiment`。
 - [部署/离线包] 离线部署包纳入 GeminiVids 镜像（68MB）与 `DREAMYO_GEMINIVIDS_API_KEY` 自动种子/校验；镜像归档扩展为六个（app/geminiai/geminivids/dola-api/traffic-meter/magic-proxy）。

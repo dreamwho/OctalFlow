@@ -170,7 +170,7 @@ function CanvasDefaultConfigNodePanel({ node, isRunning, inputSummary, reference
                     onChange={(model) => onConfigChange(node.id, { model })}
                     capability={mode}
                     options={compatibleModels}
-                    onMissingConfig={() => openConfigDialog(true)}
+                    onMissingConfig={(capability) => openConfigDialog(true, capability)}
                     fullWidth
                 />
                 {mode === "video" ? (

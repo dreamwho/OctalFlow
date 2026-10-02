@@ -45,7 +45,7 @@ export class WorkspaceStore {
     this.root = root;
     this.encrypt = encrypt;
     this.decrypt = decrypt;
-    this.state = { accounts: [], accountGroups: [], accountGroupProxies: {}, tasks: [], assets: [], proxies: { generic: [], magicSubscriptions: [], chained: [] }, settings: { theme: "dark", apiEnabled: false, apiPort: 19527, autoDownload: true, autoRemoveWatermark: true, downloadDir: "", imagexUploadProxyId: "", magicProxyId: "", chainedProxyId: "" }, apiKeyDigest: "" };
+    this.state = { accounts: [], accountGroups: [], accountGroupProxies: {}, tasks: [], assets: [], proxies: { generic: [] }, settings: { theme: "dark", apiEnabled: false, apiPort: 19527, autoDownload: true, autoRemoveWatermark: true, downloadDir: "", imagexUploadProxyId: "" }, apiKeyDigest: "" };
   }
 
   async load() {

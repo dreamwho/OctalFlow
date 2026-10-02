@@ -62,7 +62,7 @@ export function CanvasStoryboardDialog({
                 model={model || defaultModel}
                 onModelChange={setModel}
                 onSelect={(action) => setSelectedId(action.id)}
-                onMissingConfig={() => openConfigDialog(true)}
+                onMissingConfig={(capability) => openConfigDialog(true, capability)}
                 onClose={onClose}
                 onConfirm={() => selected && onConfirm(selected, model || defaultModel)}
                 confirmDisabled={!selected}
@@ -91,7 +91,7 @@ export function CanvasStoryboardDialogContent({
     model: string;
     onModelChange: (model: string) => void;
     onSelect: (action: CanvasQuickActionEntry) => void;
-    onMissingConfig: () => void;
+    onMissingConfig: (capability?: "image" | "video" | "audio" | "text") => void;
     onClose: () => void;
     onConfirm: () => void;
     confirmDisabled?: boolean;

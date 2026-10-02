@@ -325,7 +325,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 capability={mode}
                 options={mode === "audio" ? audioModelOptions : undefined}
                 getModelLabel={mode === "audio" ? audioModelLabel : undefined}
-                onMissingConfig={() => openConfigDialog(true)}
+                onMissingConfig={(capability) => openConfigDialog(true, capability)}
             />
             {mode === "image" ? (
                 <>

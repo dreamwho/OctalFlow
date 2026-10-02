@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { WorkspaceStore, matchApiKey, newApiKey, parseCookie } from "./store.mjs";
-import { MihomoManager, accountProxyId, configuredProxyId, fetchMagicSubscriptionUsing, genericMihomoNode, normalizeGenericProxyUrl, parseGenericProxyGroups, parseMagicSubscription } from "./proxy-runtime.mjs";
+import { MihomoManager, accountProxyId, configuredProxyId, genericMihomoNode, normalizeGenericProxyUrl, parseGenericProxyGroups } from "./proxy-runtime.mjs";
 import { resolveDolaWatermarkUrlRemote } from "./watermark.mjs";
 import { restoreTaskDraft } from "./task-draft.mjs";
 import { fetchTrustedMedia, trustedMediaUrl } from "./media-url.mjs";
@@ -296,11 +296,6 @@ function registerIpc() {
       }
       case "proxy:save": return saveProxies(input);
       case "proxy:import-groups": return saveProxies({ generic: [...publicProxies().generic, ...parseGenericProxyGroups(input.text)] });
-      case "proxy:import-magic": return importMagicSubscription(input);
-      case "proxy:choose-magic-file": return chooseMagicSubscriptionFile();
-      case "proxy:delete-magic": return deleteMagicSubscription(input.id);
-      case "proxy:save-chain": return saveChain(input);
-      case "proxy:delete-chain": return deleteChain(input.id);
       case "proxy:test": return testProxy(input.id);
       case "settings:save": return saveSettings(input);
       case "workspace:choose": return chooseWorkspace();
@@ -654,21 +649,12 @@ async function exportAccounts(ids, group = "") {
 async function resolveProxy(id, accountId) {
   if (!id) { await mihomo.stop(accountId); return { source: "direct", url: "", name: "直连" }; }
   const generic = store.state.proxies.generic.find((item) => item.id === id);
-  if (generic) return { source: "generic", url: await mihomo.ensure(accountId, null, genericMihomoNode({ ...generic, url: store.decrypt(generic.urlCiphertext) }, generic.name)), name: generic.name };
-  const magic = magicNode(id);
-  if (magic) return { source: "magic", url: await mihomo.ensure(accountId, null, magic.config), name: magic.name };
-  const chain = store.state.proxies.chained.find((item) => item.id === id);
-  if (chain) {
-    const hop = proxyNode(chain.hopId);
-    const landing = proxyNode(chain.landingId);
-    if (!hop || !landing || chain.hopId === chain.landingId) throw new Error("链式代理节点配置无效");
-    return { source: "chained", url: await mihomo.ensure(accountId, hop.config, landing.config), name: chain.name };
-  }
+  if (generic) return { source: "generic", url: await mihomo.ensure(accountId, genericMihomoNode({ ...generic, url: store.decrypt(generic.urlCiphertext) }, generic.name)), name: generic.name };
   throw new Error("该代理节点不存在");
 }
 
 async function resolveAccountProxy(account) {
-  return resolveProxy(configuredProxyId(accountProxyId(account, store.state), store.state), account.id);
+  return resolveProxy(configuredProxyId(accountProxyId(account, store.state)), account.id);
 }
 
 async function applyAccountProxy(account, partition) {
@@ -693,7 +679,7 @@ async function refreshActiveAccountProxy() {
 }
 
 function validateAccountProxyId(id) {
-  if ([undefined, "", "direct", "magic", "chained"].includes(id)) return;
+  if ([undefined, "", "direct"].includes(id)) return;
   if (!store.state.proxies.generic.some((item) => item.id === id)) throw new Error("请选择有效的通用代理节点");
 }
 
@@ -712,8 +698,6 @@ async function saveProxies(input) {
 function publicProxies() {
   return {
     generic: store.state.proxies.generic.map(({ urlCiphertext: _url, ...item }) => ({ ...item, url: publicProxyUrl({ urlCiphertext: _url }) })),
-    magicSubscriptions: store.state.proxies.magicSubscriptions.map(({ contentCiphertext: _content, urlCiphertext: _url, ...item }) => item),
-    chained: store.state.proxies.chained,
   };
 }
 
@@ -722,78 +706,21 @@ function publicProxyUrl(item) {
   return `${url.protocol}//${url.hostname}:${url.port}`;
 }
 
-function magicNode(id) {
-  const match = String(id).match(/^magic:([^:]+):(\d+)$/);
-  if (!match) return null;
-  const subscription = store.state.proxies.magicSubscriptions.find((item) => item.id === match[1]);
-  if (!subscription) return null;
-  const parsed = parseMagicSubscription(store.decrypt(subscription.contentCiphertext), subscription.id);
-  const node = parsed.nodes[Number(match[2])];
-  return node ? { name: node.name, config: parsed.raw[node.index] } : null;
-}
-
-function proxyNode(id) {
-  const generic = store.state.proxies.generic.find((item) => item.id === id);
-  if (generic) return { name: generic.name, config: genericMihomoNode({ ...generic, url: store.decrypt(generic.urlCiphertext) }, generic.name) };
-  return magicNode(id);
-}
-
-async function importMagicSubscription(input) {
-  const url = String(input.url || "").trim();
-  const id = randomUUID();
-  const supplied = String(input.content || "").trim();
-  const imported = supplied ? { content: supplied, parsed: parseMagicSubscription(supplied, id), url: "" } : await fetchMagicSubscriptionUsing(url, id, [fetch, session.defaultSession.fetch.bind(session.defaultSession)]);
-  store.state.proxies.magicSubscriptions.push({ id, name: String(input.name || "魔法订阅").trim().slice(0, 80), contentCiphertext: store.encrypt(imported.content), urlCiphertext: imported.url ? store.encrypt(imported.url) : "", nodes: imported.parsed.nodes, importedAt: new Date().toISOString() });
-  await store.save();
-  return publicProxies();
-}
-
-async function chooseMagicSubscriptionFile() {
-  const selected = await dialog.showOpenDialog(window, { properties: ["openFile"], filters: [{ name: "Clash YAML / 文本", extensions: ["yaml", "yml", "txt"] }] });
-  if (selected.canceled || !selected.filePaths[0]) return null;
-  if ((await stat(selected.filePaths[0])).size > 4 * 1024 * 1024) throw new Error("订阅文件超过 4 MiB，请缩小文件后重试");
-  const file = await readFile(selected.filePaths[0]);
-  if (file.byteLength > 4 * 1024 * 1024) throw new Error("订阅文件超过 4 MiB，请缩小文件后重试");
-  return { name: path.basename(selected.filePaths[0]), content: new TextDecoder("utf-8", { fatal: true }).decode(file) };
-}
-
 async function testProxy(id) {
-  const node = proxyNode(id);
-  const chain = store.state.proxies.chained.find((item) => item.id === id);
-  const hop = chain ? proxyNode(chain.hopId) : null;
-  const landing = chain ? proxyNode(chain.landingId) : node;
-  if (!landing || (chain && !hop)) throw new Error("代理节点不存在或链路配置无效");
+  const landing = store.state.proxies.generic.find((item) => item.id === id);
+  if (!landing) throw new Error("代理节点不存在");
+  const node = genericMihomoNode({ ...landing, url: store.decrypt(landing.urlCiphertext) }, landing.name);
   const key = `test-${randomUUID()}`;
   const testSession = session.fromPartition(key);
   const started = Date.now();
   try {
-    const url = await mihomo.ensure(key, hop?.config || null, landing.config);
+    const url = await mihomo.ensure(key, node);
     await testSession.setProxy({ proxyRules: url });
     const response = await testSession.fetch("https://www.dola.com/", { method: "GET", signal: AbortSignal.timeout(15_000) });
     await response.body?.cancel();
     return { connected: true, status: response.status, latencyMs: Date.now() - started };
   } catch (error) { return { connected: false, latencyMs: Date.now() - started, error: String(error?.message || error).slice(0, 160) }; }
   finally { await mihomo.stop(key); await testSession.clearStorageData(); }
-}
-
-async function deleteMagicSubscription(id) {
-  store.state.proxies.magicSubscriptions = store.state.proxies.magicSubscriptions.filter((item) => item.id !== id);
-  await store.save();
-  return publicProxies();
-}
-
-async function saveChain(input) {
-  if (input.hopId === input.landingId || !proxyNode(input.hopId) || !proxyNode(input.landingId)) throw new Error("请选择两个不同的有效代理节点");
-  const chain = { id: input.id || randomUUID(), name: String(input.name || "链式代理").trim().slice(0, 80), hopId: input.hopId, landingId: input.landingId };
-  store.state.proxies.chained = [...store.state.proxies.chained.filter((item) => item.id !== chain.id), chain];
-  await store.save();
-  return publicProxies();
-}
-
-async function deleteChain(id) {
-  store.state.proxies.chained = store.state.proxies.chained.filter((item) => item.id !== id);
-  await store.save();
-  return publicProxies();
 }
 
 async function submitTask(input, fromWorkspace = false) {
@@ -1220,19 +1147,9 @@ async function saveSettings(input) {
   if (typeof input.apiEnabled === "boolean") store.state.settings.apiEnabled = input.apiEnabled;
   if (input.imagexUploadProxyId !== undefined) {
     const selected = String(input.imagexUploadProxyId || "");
-    if (selected && !store.state.proxies.generic.some((item) => item.id === selected) && !store.state.proxies.chained.some((item) => item.id === selected) && !magicNode(selected)) throw new Error("参考图上传代理节点不存在");
+    if (selected && !store.state.proxies.generic.some((item) => item.id === selected)) throw new Error("参考图上传代理节点不存在");
     if (selected !== store.state.settings.imagexUploadProxyId) await mihomo.stop("imagex-upload");
     store.state.settings.imagexUploadProxyId = selected;
-  }
-  if (input.magicProxyId !== undefined) {
-    const id = String(input.magicProxyId || "");
-    if (id && !magicNode(id)) throw new Error("魔法代理节点不存在");
-    store.state.settings.magicProxyId = id;
-  }
-  if (input.chainedProxyId !== undefined) {
-    const id = String(input.chainedProxyId || "");
-    if (id && !store.state.proxies.chained.some((item) => item.id === id)) throw new Error("链式代理不存在");
-    store.state.settings.chainedProxyId = id;
   }
   const previousPort = store.state.settings.apiPort;
   if (input.apiPort !== undefined) {
@@ -1247,7 +1164,6 @@ async function saveSettings(input) {
     apiOrigin = "";
     await startApi();
   }
-  if (input.magicProxyId !== undefined || input.chainedProxyId !== undefined) await refreshActiveAccountProxy();
   return store.state.settings;
 }
 

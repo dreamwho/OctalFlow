@@ -23,7 +23,7 @@ type ModelPickerProps = {
     popupTheme?: "light" | "dark";
     fullWidth?: boolean;
     placeholder?: string;
-    onMissingConfig?: () => void;
+    onMissingConfig?: (capability?: ModelCapability) => void;
     options?: readonly string[];
     getModelLabel?: (model: string) => string;
     popupPlacement?: "rightTop";
@@ -124,7 +124,7 @@ export function ModelPicker({ config, value, onChange, capability, className, he
     const handleOpenChange = (nextOpen: boolean) => {
         if (nextOpen && !hasConfiguredOptions) {
             setOpen(false);
-            onMissingConfig?.();
+            onMissingConfig?.(capability);
             return;
         }
         if (nextOpen) {

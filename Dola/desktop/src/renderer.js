@@ -1,5 +1,4 @@
 import { referenceLabel, nextReferenceLabel, normalizePictureTags, referencedIds, mentionAtCursor, replaceMention, replaceReferenceToken, deleteReferenceAtCaret } from "./prompt-references.mjs";
-import { testProxyNodes } from "./proxy-batch-test.mjs";
 import { fingerprintOptions } from "./browser-fingerprint.mjs";
 import { scanLongDurations, stripLongDurations } from "./duration-scan.mjs";
 
@@ -11,7 +10,7 @@ const displayTime = (value) => value ? new Date(value).toLocaleString("zh-CN", {
 const taskErrorText = (task) => task.error === "dola_upstream_rejected_710022002" || (task.diagnostics?.httpStatus === 200 && task.diagnostics?.codes?.includes("710022002"))
   ? "Dola 拒绝了协议提交（代码 710022002）；此代码不能单独证明账号限流"
   : task.rawError || task.error;
-const state = { accounts: [], accountGroups: [], accountGroupProxies: {}, editingGroup: "", tasks: [], assets: [], proxies: { generic: [] }, settings: { theme: "dark" }, page: "workspace", proxyTab: "generic", rail: "tasks", mode: "video", activeAccountId: "", expandedAccountId: "", editingProxyId: "", magicFile: null, magicTestResults: new Map(), magicBatch: null, references: [], loadedAssets: new Map(), thumbnails: new Map(), importFiles: [], registrationFiles: [], registrationIds: [], registration: null, accountMode: "manual" };
+const state = { accounts: [], accountGroups: [], accountGroupProxies: {}, editingGroup: "", tasks: [], assets: [], proxies: { generic: [] }, settings: { theme: "dark" }, page: "workspace", proxyTab: "generic", rail: "tasks", mode: "video", activeAccountId: "", expandedAccountId: "", editingProxyId: "", references: [], loadedAssets: new Map(), thumbnails: new Map(), importFiles: [], registrationFiles: [], registrationIds: [], registration: null, accountMode: "manual" };
 
 function node(tag, className = "", content = "") {
   const item = document.createElement(tag);
@@ -30,7 +29,7 @@ const loadingLabels = {
   "account:open": "正在打开账号网页…", "account:add": "正在添加账号…", "account:group-add": "正在创建分组…", "account:group-proxy": "正在保存分组代理…", "account:update": "正在保存账号…", "account:delete": "正在删除账号…", "account:import": "正在导入账号…", "account:import-file": "正在读取账号文件…", "account:export": "正在导出 Cookie…", "registration:import": "正在导入账号…", "registration:start": "正在打开首个账号…",
   "task:create": "正在提交生成任务…", "task:open": "正在打开任务会话…", "task:refresh": "正在查询任务状态…", "task:unwatermark": "正在获取无水印视频…",
   "asset:choose": "正在选择素材…", "asset:ingest": "正在保存素材…", "asset:read": "正在读取素材…", "asset:download": "正在下载素材…", "asset:download-many": "正在批量下载素材…", "asset:show": "正在打开素材目录…",
-  "proxy:test": "正在测试代理连通性…", "proxy:import-magic": "正在导入魔法代理订阅…", "proxy:choose-magic-file": "正在读取订阅文件…", "proxy:import-groups": "正在导入代理组…", "proxy:save": "正在保存代理…", "proxy:save-chain": "正在保存代理链路…", "proxy:delete-magic": "正在删除订阅…", "proxy:delete-chain": "正在删除代理链路…",
+  "proxy:test": "正在测试代理连通性…", "proxy:import-groups": "正在导入代理组…", "proxy:save": "正在保存代理…",
   "settings:save": "正在保存设置…", "workspace:choose": "正在选择工作空间…", "workspace:open": "正在打开工作空间…", "download:choose": "正在选择下载目录…", "download:open": "正在打开下载目录…", "api:new-key": "正在生成 API 密钥…", "api:revoke": "正在撤销 API 密钥…",
 };
 const loadingStack = [];
@@ -268,13 +267,13 @@ function positionAccountPopover() {
 }
 function proxyMode(id) {
   if (!id) return "inherit";
-  if (["direct", "magic", "chained"].includes(id)) return id;
+  if (id === "direct") return id;
   const item = selectableProxies().find((item) => item.id === id);
-  return item?.kind === "magic" ? "magic" : item?.kind === "chain" ? "chained" : "generic";
+  return item ? "generic" : "generic";
 }
 function proxySummary(id) {
   const mode = proxyMode(id);
-  return { direct: "直连", magic: "魔法代理", chained: "链式代理" }[mode] || state.proxies.generic?.find((item) => item.id === id)?.name || "节点已删除";
+  return mode === "direct" ? "直连" : state.proxies.generic?.find((item) => item.id === id)?.name || "节点已删除";
 }
 function accountProxySummary(account) {
   const groupId = Object.hasOwn(state.accountGroupProxies || {}, account.group) ? state.accountGroupProxies[account.group] : "direct";
@@ -284,7 +283,7 @@ function mountProxyPicker(target, value, inherit = false, selectedMode) {
   target.replaceChildren();
   target.classList.add("proxy-picker");
   const mode = selectedMode || proxyMode(value || (inherit ? "" : "direct"));
-  const modes = [...(inherit ? [["inherit", "跟随分组"]] : []), ["direct", "直连"], ["magic", "魔法代理"], ["generic", "通用代理"], ["chained", "链式代理"]];
+  const modes = [...(inherit ? [["inherit", "跟随分组"]] : []), ["direct", "直连"], ["generic", "通用代理"]];
   const choices = node("div", "proxy-mode-options");
   choices.setAttribute("role", "group");
   choices.setAttribute("aria-label", inherit ? "账号代理方式" : "分组代理方式");
@@ -300,7 +299,7 @@ function mountProxyPicker(target, value, inherit = false, selectedMode) {
     target.dataset.mode = selected;
     target.dataset.value = selected === "generic" ? select.value : selected === "inherit" ? "" : selected;
     field.classList.toggle("hidden", selected !== "generic");
-    hint.textContent = selected === "inherit" ? "跟随当前分组设置，分组未设置时直连。" : selected === "magic" ? "使用代理管理中设置的默认魔法节点。" : selected === "chained" ? "使用代理管理中设置的默认链路。" : "";
+    hint.textContent = selected === "inherit" ? "跟随当前分组设置，分组未设置时直连。" : "";
     positionAccountPopover();
   };
   for (const [key, label] of modes) {
@@ -324,15 +323,7 @@ function proxyPickerValue(target) {
 }
 
 function renderProxies() {
-  for (const [kind, count] of [["generic", state.proxies.generic?.length || 0], ["magic", state.proxies.magicSubscriptions?.length || 0], ["chain", state.proxies.chained?.length || 0]]) byId(`proxy-count-${kind}`).textContent = String(count);
-  renderProxyTab();
-  for (const [id, kind, setting] of [["magic-default", "magic", "magicProxyId"], ["chain-default", "chain", "chainedProxyId"]]) {
-    const select = byId(id);
-    const value = state.settings[setting] || "";
-    select.replaceChildren(new Option("尚未设置，请选择", ""), ...selectableProxies().filter((item) => item.kind === kind).map((item) => new Option(item.name, item.id)));
-    if (value && ![...select.options].some((item) => item.value === value)) select.append(new Option("所选节点或链路已删除，请重新设置", value));
-    select.value = value;
-  }
+  byId("proxy-count-generic").textContent = String(state.proxies.generic?.length || 0);
   const list = byId("proxy-list");
   list.replaceChildren();
   for (const proxy of state.proxies.generic || []) {
@@ -362,96 +353,10 @@ function renderProxies() {
     list.append(row);
   }
   if (!list.children.length) list.append(node("p", "help", "尚无通用代理节点。"));
-  const magicList = byId("magic-list");
-  magicList.replaceChildren();
-  for (const subscription of state.proxies.magicSubscriptions || []) {
-    const row = node("div", "proxy-item");
-    const info = node("div");
-    info.append(node("strong", "", subscription.name), node("small", "", `${subscription.nodes.length} 个节点 · ${subscription.importedAt?.slice(0, 10) || ""}`));
-    const remove = node("button", "", "删除");
-    remove.onclick = async () => { if (!confirm(`删除订阅“${subscription.name}”？`)) return; try { await run("proxy:delete-magic", { id: subscription.id }); await refresh(); } catch {} };
-    row.append(info, remove);
-    const details = node("details", "proxy-nodes");
-    details.append(node("summary", "", `查看并测试 ${subscription.nodes.length} 个节点`));
-    for (const item of subscription.nodes) {
-      const entry = node("div", "magic-node-row");
-      entry.dataset.magicNodeId = item.id;
-      const name = node("span", "magic-node-name", item.name);
-      name.title = item.name;
-      const status = node("span", "magic-node-status", "待测");
-      const test = node("button", "proxy-node-test", "测试");
-      test.onclick = async () => {
-        state.magicTestResults.set(item.id, { testing: true });
-        renderMagicTestState();
-        try {
-          const result = await run("proxy:test", { id: item.id });
-          state.magicTestResults.set(item.id, result);
-          toast(result.connected ? `${item.name} 连通 · ${result.latencyMs} ms` : `${item.name} 不可用：${result.error}`);
-        } catch (error) { state.magicTestResults.set(item.id, { connected: false, error: String(error?.message || error) }); }
-        finally { renderMagicTestState(); }
-      };
-      entry.append(name, status, test);
-      details.append(entry);
-    }
-    magicList.append(row, details);
-  }
-  if (!magicList.children.length) magicList.append(node("p", "help", "可输入 HTTPS 订阅地址，或粘贴 Clash/Mihomo YAML 导入。"));
-  renderMagicTestState();
-  const options = selectableProxies().filter((item) => item.kind !== "chain");
-  for (const [id, label] of [["chain-hop", "选择跳板节点"], ["chain-landing", "选择落地节点"]]) {
-    const select = byId(id);
-    const selected = select.value;
-    select.replaceChildren(new Option(label, ""), ...options.map((item) => new Option(item.name, item.id)));
-    select.value = selected;
-  }
-  const chainList = byId("chain-list");
-  chainList.replaceChildren();
-  for (const chain of state.proxies.chained || []) {
-    const row = node("div", "proxy-item");
-    const info = node("div");
-    const hop = options.find((item) => item.id === chain.hopId)?.name || "缺失节点";
-    const landing = options.find((item) => item.id === chain.landingId)?.name || "缺失节点";
-    info.append(node("strong", "", chain.name), node("small", "", `${hop} → ${landing}`));
-    const remove = node("button", "", "删除");
-    remove.onclick = async () => { if (!confirm(`删除链路“${chain.name}”？`)) return; try { await run("proxy:delete-chain", { id: chain.id }); await refresh(); } catch {} };
-    const test = node("button", "", "测试链路");
-    test.onclick = async () => { try { const result = await run("proxy:test", { id: chain.id }); toast(result.connected ? `链路连通 · ${result.latencyMs} ms` : `链路不可用：${result.error}`); } catch {} };
-    row.append(info, test, remove);
-    chainList.append(row);
-  }
-  if (!chainList.children.length) chainList.append(node("p", "help", "选择两个不同的节点作为跳板与落地出口。"));
 }
-function renderMagicTestState() {
-  const batch = state.magicBatch;
-  const total = (state.proxies.magicSubscriptions || []).reduce((count, subscription) => count + subscription.nodes.length, 0);
-  const button = byId("magic-test-all");
-  button.disabled = !total || Boolean(batch?.running && batch.cancelRequested);
-  button.textContent = batch?.running ? batch.cancelRequested ? "停止中…" : "停止测试" : "测试全部节点";
-  button.classList.toggle("testing", Boolean(batch?.running));
-  byId("magic-test-progress").textContent = batch ? `${batch.cancelled ? "已停止 · " : batch.running ? "测试中 · " : "测试完成 · "}${batch.completed}/${batch.total} 个 · 可用 ${batch.connected} · 不可用 ${batch.failed}` : `共 ${total} 个节点`;
-  for (const entry of document.querySelectorAll("[data-magic-node-id]")) {
-    const result = state.magicTestResults.get(entry.dataset.magicNodeId);
-    const status = entry.querySelector(".magic-node-status");
-    status.className = `magic-node-status${result?.connected ? " connected" : result?.connected === false ? " failed" : ""}`;
-    status.textContent = result?.testing ? "测试中…" : result?.connected ? `连通 · ${result.latencyMs} ms` : result?.connected === false ? `不可用 · ${result.error || "连接失败"}` : "待测";
-    status.title = status.textContent;
-    entry.querySelector("button").disabled = Boolean(batch?.running || result?.testing);
-  }
-}
-function renderProxyTab() {
-  for (const kind of ["generic", "magic", "chain"]) {
-    const selected = state.proxyTab === kind;
-    byId(`proxy-tab-${kind}`).setAttribute("aria-selected", String(selected));
-    byId(`proxy-tab-${kind}`).tabIndex = selected ? 0 : -1;
-    byId(`proxy-panel-${kind}`).classList.toggle("hidden", !selected);
-  }
-}
+
 function selectableProxies() {
-  return [
-    ...(state.proxies.generic || []).map((item) => ({ ...item, kind: "generic" })),
-    ...(state.proxies.magicSubscriptions || []).flatMap((subscription) => subscription.nodes.map((item) => ({ ...item, name: `${subscription.name} / ${item.name}`, kind: "magic" }))),
-    ...(state.proxies.chained || []).map((item) => ({ ...item, kind: "chain" })),
-  ];
+  return (state.proxies.generic || []).map((item) => ({ ...item, kind: "generic" }));
 }
 function updateRegistrationProxyOptions() {
   const mode = byId("registration-proxy-mode").value;
@@ -783,15 +688,6 @@ function showReferenceMenu(textarea, mention, assets, anchor = null, replacement
 }
 
 document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => { state.page = button.dataset.page; state.expandedAccountId = ""; render(); }));
-document.querySelectorAll("[data-proxy-tab]").forEach((button) => {
-  button.onclick = () => { state.proxyTab = button.dataset.proxyTab; renderProxyTab(); };
-  button.onkeydown = (event) => {
-    const kinds = ["generic", "magic", "chain"];
-    const index = kinds.indexOf(button.dataset.proxyTab);
-    const next = event.key === "ArrowRight" ? kinds[(index + 1) % kinds.length] : event.key === "ArrowLeft" ? kinds[(index + kinds.length - 1) % kinds.length] : event.key === "Home" ? kinds[0] : event.key === "End" ? kinds.at(-1) : "";
-    if (next) { event.preventDefault(); byId(`proxy-tab-${next}`).click(); byId(`proxy-tab-${next}`).focus(); }
-  };
-});
 document.addEventListener("click", (event) => { if (state.expandedAccountId && !event.target.closest("#account-popover, .account-menu")) { state.expandedAccountId = ""; renderAccounts(); } });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape" && state.expandedAccountId) { state.expandedAccountId = ""; renderAccounts(); } });
 window.addEventListener("resize", () => { updateBrowserBounds(); positionAccountPopover(); });
@@ -1043,47 +939,6 @@ byId("proxy-edit-save").onclick = async () => {
   } catch {}
 };
 byId("generic-import").onclick = async () => { try { await run("proxy:import-groups", { text: byId("generic-json").value }); byId("generic-json").value = ""; await refresh(); } catch {} };
-byId("magic-add").onclick = async () => { try { await run("proxy:import-magic", { name: byId("magic-name").value, url: byId("magic-url").value, content: byId("magic-content").value }); byId("magic-name").value = ""; byId("magic-url").value = ""; byId("magic-content").value = ""; await refresh(); } catch {} };
-byId("magic-test-all").onclick = async () => {
-  if (state.magicBatch?.running) { state.magicBatch.cancelRequested = true; renderMagicTestState(); return; }
-  const items = (state.proxies.magicSubscriptions || []).flatMap((subscription) => subscription.nodes);
-  if (!items.length) return;
-  state.magicTestResults.clear();
-  const batch = { running: true, cancelRequested: false, completed: 0, total: items.length, connected: 0, failed: 0, cancelled: false };
-  state.magicBatch = batch;
-  renderMagicTestState();
-  const summary = await testProxyNodes(items, (item) => api.call("proxy:test", { id: item.id }), (event) => {
-    Object.assign(batch, { completed: event.completed, connected: event.connected, failed: event.failed });
-    state.magicTestResults.set(event.item.id, event.type === "testing" ? { testing: true } : event.result);
-    renderMagicTestState();
-  }, () => batch.cancelRequested);
-  Object.assign(batch, summary, { running: false });
-  renderMagicTestState();
-};
-byId("magic-file-choose").onclick = async () => {
-  try {
-    const file = await run("proxy:choose-magic-file");
-    if (!file) return;
-    state.magicFile = file;
-    byId("magic-file-name").textContent = file.name;
-    byId("magic-file-name").title = file.name;
-    byId("magic-file-import").disabled = false;
-  } catch {}
-};
-byId("magic-file-import").onclick = async () => {
-  if (!state.magicFile) return;
-  try {
-    await run("proxy:import-magic", { name: byId("magic-name").value.trim() || state.magicFile.name.replace(/\.[^.]+$/, ""), content: state.magicFile.content });
-    state.magicFile = null;
-    byId("magic-file-name").textContent = "尚未选择文件";
-    byId("magic-file-name").removeAttribute("title");
-    byId("magic-file-import").disabled = true;
-    byId("magic-name").value = "";
-    await refresh();
-    toast("订阅文件已导入");
-  } catch {}
-};
-byId("chain-add").onclick = async () => { try { await run("proxy:save-chain", { name: byId("chain-name").value, hopId: byId("chain-hop").value, landingId: byId("chain-landing").value }); byId("chain-name").value = ""; await refresh(); } catch {} };
 byId("theme-light").onclick = async () => { try { await run("settings:save", { theme: "light" }); await refresh(); } catch {} };
 byId("theme-dark").onclick = async () => { try { await run("settings:save", { theme: "dark" }); await refresh(); } catch {} };
 byId("workspace-choose").onclick = async () => { try { const root = await run("workspace:choose"); if (root) await refresh(); } catch {} };
@@ -1092,9 +947,6 @@ byId("download-choose").onclick = async () => { try { const directory = await ru
 byId("download-open").onclick = () => run("download:open").catch(() => {});
 byId("auto-download").onchange = async (event) => { try { await run("settings:save", { autoDownload: event.target.checked }); await refresh(); } catch { event.target.checked = !event.target.checked; } };
 byId("auto-unwatermark").onchange = async (event) => { try { await run("settings:save", { autoRemoveWatermark: event.target.checked }); await refresh(); } catch { event.target.checked = !event.target.checked; } };
-for (const [id, setting] of [["magic-default", "magicProxyId"], ["chain-default", "chainedProxyId"]]) {
-  byId(id).onchange = async (event) => { try { await run("settings:save", { [setting]: event.target.value }); await refresh(); toast("默认代理设置已保存"); } catch { await refresh(); } };
-}
 byId("imagex-upload-proxy").onchange = async (event) => { try { await run("settings:save", { imagexUploadProxyId: event.target.value }); await refresh(); } catch { await refresh(); } };
 byId("browser-static-direct").onchange = async (event) => { try { await run("settings:save", { browserStaticDirect: event.target.checked }); await refresh(); toast("设置已保存，重新打开账号后生效"); } catch { await refresh(); } };
 byId("api-enabled").onchange = async (event) => { try { await run("settings:save", { apiEnabled: event.target.checked }); await refresh(); } catch { event.target.checked = !event.target.checked; } };
