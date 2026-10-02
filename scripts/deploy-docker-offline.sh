@@ -131,6 +131,9 @@ resolve_expected_image_archives() {
     # 若 SHA256SUMS 未包含镜像归档，则结合 manifest.env 与数据库模式动态构建
     if [[ "${#archives[@]}" -eq 0 ]]; then
         archives=(images/app.tar images/geminiai.tar)
+        if grep -q '^DREAMYO_GEMINIVIDS_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/geminivids.tar" ]]; then
+            archives+=(images/geminivids.tar)
+        fi
         if grep -q '^DREAMYO_DOLA_API_IMAGE=' "$MANIFEST_FILE" 2>/dev/null || [[ -f "$SCRIPT_DIR/images/dola-api.tar" ]]; then
             archives+=(images/dola-api.tar)
         fi
@@ -463,6 +466,7 @@ install_port="$app_port"
 ensure_env_value NEXT_PUBLIC_SITE_URL "${NEXT_PUBLIC_SITE_URL:-http://localhost:$install_port}"
 ensure_env_value DREAMYO_TRUSTED_PROXY_HOPS "${DREAMYO_TRUSTED_PROXY_HOPS:-0}"
 ensure_env_value DREAMYO_GEMINIAI_API_KEY "${DREAMYO_GEMINIAI_API_KEY:-$(generate_token)}"
+    ensure_env_value DREAMYO_GEMINIVIDS_API_KEY "${DREAMYO_GEMINIVIDS_API_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_CHATGPT_API_KEY "${DREAMYO_CHATGPT_API_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_DOLA_PROVIDER_KEY "${DREAMYO_DOLA_PROVIDER_KEY:-$(generate_token)}"
 ensure_env_value DREAMYO_TRAFFIC_METER_KEY "${DREAMYO_TRAFFIC_METER_KEY:-$(generate_token)}"
@@ -484,6 +488,7 @@ seed_env_from_example DREAMYO_INSTALL_TOKEN
 seed_env_from_example DREAMYO_MAINTENANCE_TOKEN
 seed_env_from_example DREAMYO_WORKER_TOKEN
 seed_env_from_example DREAMYO_GEMINIAI_API_KEY
+    seed_env_from_example DREAMYO_GEMINIVIDS_API_KEY
 seed_env_from_example DREAMYO_CHATGPT_API_KEY
 seed_env_from_example DREAMYO_DOLA_PROVIDER_KEY
 seed_env_from_example DREAMYO_TRAFFIC_METER_KEY
@@ -544,7 +549,7 @@ fi
 
 encryption_key="$(read_env_value DREAMYO_ENCRYPTION_KEY)"
 [[ "${#encryption_key}" -ge 32 ]] || die "DREAMYO_ENCRYPTION_KEY 至少需要 32 个字符"
-for key in DREAMYO_INSTALL_TOKEN DREAMYO_MAINTENANCE_TOKEN DREAMYO_WORKER_TOKEN DREAMYO_GEMINIAI_API_KEY DREAMYO_CHATGPT_API_KEY DREAMYO_DOLA_PROVIDER_KEY DREAMYO_TRAFFIC_METER_KEY DREAMYO_MAGIC_PROXY_SECRET; do
+for key in DREAMYO_INSTALL_TOKEN DREAMYO_MAINTENANCE_TOKEN DREAMYO_WORKER_TOKEN DREAMYO_GEMINIAI_API_KEY DREAMYO_GEMINIVIDS_API_KEY DREAMYO_CHATGPT_API_KEY DREAMYO_DOLA_PROVIDER_KEY DREAMYO_TRAFFIC_METER_KEY DREAMYO_MAGIC_PROXY_SECRET; do
     value="$(read_env_value "$key")"
     [[ "${#value}" -ge 32 ]] || die "$key 至少需要 32 个字符"
 done

@@ -5,6 +5,14 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 
 # 待测试
 
+### Dola Studio Windows x64 安装包与便携包交叉构建（2026-10-02 七轮）
+
+- 背景：本机（macOS arm64）无法产出 Windows PyInstaller 冻结单文件（Rosetta/Wine 不可用，仓库 CI `desktop-windows.yml` 只覆盖 `apps/desktop` 管理员版产品线），Dola Studio 此前无任何 Windows 构建先例（todo 中 Windows 安装包为待办）。
+- 方案：`main.mjs` 打包态新增 win32 分支——`sidecars/win32/x64` 下没有 `dola-api.exe` 但存在 `python/python.exe` + `provider-entry.py` 时，改用**内嵌便携 Python 运行时**直接运行 provider 入口（`PYTHONUTF8=1`、`PYTHONIOENCODING=utf-8`；进程组/看门狗/taskkill 收尾逻辑不变）。运行时 = python.org 3.12.10 embeddable + 按 `Dola/provider/uv.lock` 锁定版本以 `uv --python-platform windows` 解析预装的 site-packages（camoufox 0.5.6、playwright 1.62.0 Windows 驱动含 node.exe、cryptography 50.0.1 等 64 项锁定 + browser extra 合并后 139 项），语义与冻结产物等价但未单文件化。
+- Sidecars：Camoufox `152.0.4-beta.30` 官方 `win.x86_64` 束（与 mac 版同版本，`version.json` 记录 zip sha256）、mihomo v1.19.32 官方 `windows-amd64` 标准 build。`uv export` 默认不含 extras（browser 依赖会静默缺失），必须单独补装——这是本次踩到的坑。
+- 产物与核验：`Dola/desktop/dist/Dola Studio Setup 0.1.0.exe`（NSIS 安装包，934MB）+ `Dola Studio-0.1.0-win.zip`（便携包，解压即用，根目录 `Dola Studio.exe`）。asar 内已确认含便携分支（usePortablePython/provider-entry.py/PYTHONUTF8）与提示词时长检测按钮代码；sidecar 布局完整（python.exe/camoufox.exe/mihomo.exe/version.json）。注意 electron-builder 不带 `--x64` 时默认跟随宿主打 arm64（sidecars 是 x64，必须显式 `--x64`）。桌面 node --test 63/63。
+- 待用户验收（必须真实 Windows x64 机器）：安装（或解压便携包）→ 启动 → 等协议服务就绪 → 提交 15s 与 30s 任务各一次 → 退出后在任务管理器确认 python/camoufox/mihomo 无残留。已知边界：安装包未签名（SmartScreen 会提示"仍要运行"）；杀软可能对 camoufox.exe/node.exe 误报需加白；不支持 Windows on ARM 原生（本包为 x64，ARM 机型靠兼容层）。
+
 ### Dola 提示词时长检测与一键清理按钮（2026-10-02 六轮）
 
 - 需求：桌面端 Dola 提示词区域新增「检测时长」按钮，检测提示词中超过 10 秒的时长表述（正是触发上游会话模型 4-15s 对话策略拒识的内容），并提供「一键删除」清理，避免 30 秒任务因可见文本泄漏超档意图被拒。

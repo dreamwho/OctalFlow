@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [Dola Studio/Windows 包] 新增 Windows x64 安装包与便携包交叉构建：`main.mjs` 打包态在 Windows 上无冻结 `dola-api.exe` 时自动改用内嵌便携 Python 运行时（embeddable 3.12 + 按 uv.lock 以 Windows 平台解析预装的锁定依赖，含 Playwright Windows 驱动）运行 provider，进程收尾沿用看门狗与 taskkill；Camoufox 与 mihomo 均为官方 Windows 产物（版本与 mac 包一致）。`pnpm pack:win` 交叉产出 NSIS 安装包与解压即用 zip（electron-builder 需显式 `--x64`，默认会跟随宿主架构）。
+
 - [Dola Studio/提示词时长检测] 提示词框新增「检测时长」按钮与一键清理：点击后按与服务端清洗器同源的规则找出超过 10 秒的时长表述（时长30秒、约28秒、分段时间轴"27.2-30秒"、30s/15-second 等中英文形式，重叠只计一次），结果条展示命中片段并提供「一键删除」整段移除并整理标点；≤10 秒表述与"每秒5.5字"语速类不受影响，删除后同步双编辑器并复检清零。用于避免 30 秒任务因可见文本泄漏超档时长被上游会话模型拒识。
 
 - [Dola/桌面端进程残留] 修复退出应用后 provider 与 Camoufox 浏览器整树残留：桌面 provider 改为独立进程组启动，退出时对整组发 SIGTERM（Windows taskkill 杀树）；provider 端新增提交任务登记与 `close_all_sessions` 统一取消在途浏览器会话，并加父进程看门狗（`DOLA_PROVIDER_PARENT_PID`，每 3 秒探活、连续两次失联即清理退出）兜底强退/崩溃；服务器与 Docker 部署未设置该环境变量，行为不变。

@@ -8,6 +8,7 @@ PACKAGE_DIR="${DREAMYO_PACKAGE_DIR:-$REPO_ROOT/本次修改需上传文件_$PACK
 PLATFORM="${DREAMYO_DOCKER_PLATFORM:-linux/amd64}"
 APP_IMAGE="${DREAMYO_OFFLINE_APP_IMAGE:-dreamyo-app:offline}"
 GEMINIAI_IMAGE="${DREAMYO_OFFLINE_GEMINIAI_IMAGE:-dreamyo-geminiai:offline}"
+GEMINIVIDS_IMAGE="${DREAMYO_OFFLINE_GEMINIVIDS_IMAGE:-dreamyo-geminivids:offline}"
 DOLA_API_IMAGE="${DREAMYO_OFFLINE_DOLA_API_IMAGE:-dreamyo-dola-api:offline}"
 TRAFFIC_METER_IMAGE="${DREAMYO_OFFLINE_TRAFFIC_METER_IMAGE:-dreamyo-traffic-meter:offline}"
 MAGIC_PROXY_IMAGE="${DREAMYO_MAGIC_PROXY_IMAGE:-metacubex/mihomo:v1.19.30}"
@@ -264,6 +265,14 @@ else
         --progress "$BUILD_PROGRESS" \
         "$REPO_ROOT/services/geminiai"
 
+    printf '构建 GeminiVids 镜像：%s（平台 %s）\n' "$GEMINIVIDS_IMAGE" "$PLATFORM"
+    docker buildx build \
+        --platform "$PLATFORM" \
+        --tag "$GEMINIVIDS_IMAGE" \
+        --load \
+        --progress "$BUILD_PROGRESS" \
+        "$REPO_ROOT/services/geminivids"
+
     printf '构建 Dola API 镜像：%s（平台 %s）\n' "$DOLA_API_IMAGE" "$PLATFORM"
     docker buildx build \
         --platform "$PLATFORM" \
@@ -292,15 +301,17 @@ else
     fi
 
     if [[ "$DATABASE_MODE" == embedded ]]; then
-        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$TRAFFIC_METER_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$GEMINIVIDS_IMAGE" "$DOLA_API_IMAGE" "$TRAFFIC_METER_IMAGE" "$MAGIC_PROXY_IMAGE" "$POSTGRES_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
     else
-        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$DOLA_API_IMAGE" "$TRAFFIC_METER_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
+        docker image inspect --platform "$PLATFORM" "$APP_IMAGE" "$GEMINIAI_IMAGE" "$GEMINIVIDS_IMAGE" "$DOLA_API_IMAGE" "$TRAFFIC_METER_IMAGE" "$MAGIC_PROXY_IMAGE" >/dev/null || die "构建或拉取的镜像无法读取"
     fi
 
     printf '导出主应用镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/app.tar" "$APP_IMAGE"
     printf '导出 GeminiAI 镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/geminiai.tar" "$GEMINIAI_IMAGE"
+    printf '导出 GeminiVids 镜像归档\n'
+    docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/geminivids.tar" "$GEMINIVIDS_IMAGE"
     printf '导出 Dola API 镜像归档\n'
     docker save --platform "$PLATFORM" --output "$PACKAGE_DIR/images/dola-api.tar" "$DOLA_API_IMAGE"
     printf '导出 Traffic meter 镜像归档\n'
@@ -313,7 +324,7 @@ else
     fi
 fi
 
-IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/dola-api.tar images/traffic-meter.tar images/magic-proxy.tar)
+IMAGE_ARCHIVES=(images/app.tar images/geminiai.tar images/geminivids.tar images/dola-api.tar images/traffic-meter.tar images/magic-proxy.tar)
 if [[ "$DATABASE_MODE" == embedded ]]; then
     IMAGE_ARCHIVES+=(images/postgres.tar)
 fi
@@ -382,6 +393,7 @@ DREAMYO_PRIVATE_MIGRATION=$PRIVATE_MIGRATION
 DREAMYO_PRIVATE_SETTINGS_SYNC=$PRIVATE_SETTINGS_SYNC
 DREAMYO_IMAGE=$APP_IMAGE
 DREAMYO_GEMINIAI_IMAGE=$GEMINIAI_IMAGE
+DREAMYO_GEMINIVIDS_IMAGE=$GEMINIVIDS_IMAGE
 DREAMYO_DOLA_API_IMAGE=$DOLA_API_IMAGE
 DREAMYO_TRAFFIC_METER_IMAGE=$TRAFFIC_METER_IMAGE
 DREAMYO_MAGIC_PROXY_IMAGE=$MAGIC_PROXY_IMAGE

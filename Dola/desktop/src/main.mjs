@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createTcpServer } from "node:net";
 import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
@@ -1266,13 +1266,19 @@ async function startProvider() {
     await store.save();
   }
   const project = path.resolve(sourceRoot, "../../provider");
-  const bundled = path.join(process.resourcesPath, "sidecars", process.platform, process.arch, process.platform === "win32" ? "dola-api.exe" : "dola-api");
-  const browser = path.join(process.resourcesPath, "sidecars", process.platform, process.arch, "camoufox");
+  const sidecarRoot = path.join(process.resourcesPath, "sidecars", process.platform, process.arch);
+  const bundled = path.join(sidecarRoot, process.platform === "win32" ? "dola-api.exe" : "dola-api");
+  const browser = path.join(sidecarRoot, "camoufox");
+  const portablePython = path.join(sidecarRoot, "python", "python.exe");
+  const portableEntry = path.join(sidecarRoot, "provider-entry.py");
   const browserVersion = app.isPackaged ? JSON.parse(await readFile(path.join(browser, "version.json"), "utf8")).version : "";
-  const command = app.isPackaged ? bundled : "uv";
-  const args = app.isPackaged ? [] : ["run", "--project", project, "dola-api"];
+  // Windows 便携包不带冻结单文件 Provider：内嵌嵌入式 Python 直接运行入口脚本。
+  const usePortablePython = app.isPackaged && process.platform === "win32" && !existsSync(bundled) && existsSync(portablePython);
+  const command = app.isPackaged ? (usePortablePython ? portablePython : bundled) : "uv";
+  const args = app.isPackaged ? (usePortablePython ? [portableEntry] : []) : ["run", "--project", project, "dola-api"];
   provider = spawn(command, args, { detached: process.platform !== "win32", env: {
     ...process.env,
+    ...(usePortablePython ? { PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" } : {}),
     DOLA_PROVIDER_PORT: String(port), DOLA_PROVIDER_KEY: providerKey,
     DOLA_PROVIDER_PARENT_PID: String(process.pid),
     DOLA_TASK_ENCRYPTION_KEY: store.decrypt(store.state.providerTaskKeyCiphertext),
