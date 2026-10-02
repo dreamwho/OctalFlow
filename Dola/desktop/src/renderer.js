@@ -548,23 +548,57 @@ function selectComposeOption(kind, value) {
   const button = byId(kind);
   button.dataset.value = value;
   button.textContent = kind === "duration" ? `${value} 秒` : value;
-  if (kind === "duration") byId("duration-slider").value = Math.min(30, Math.max(5, Number(value) || 5));
   byId(`${kind}-menu`).classList.add("hidden");
   renderComposeOptions();
 }
 function renderComposeOptions() {
   const ratios = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
-  const durations = byId("model").value === "dola-seedance-2-5" ? ["5", "10", "15", "30"] : ["5", "10", "15"];
-  byId("duration-slider").classList.toggle("hidden", byId("model").value !== "dola-seedance-2-5");
-  for (const [kind, values] of [["ratio", ratios], ["duration", durations]]) {
-    const menu = byId(`${kind}-menu`);
-    menu.replaceChildren();
-    for (const value of values) {
-      const option = node("button", value === byId(kind).dataset.value ? "selected" : "", kind === "duration" ? `${value} 秒` : value);
+  const isCustomDuration = byId("model").value === "dola-seedance-2-5";
+  const durations = isCustomDuration ? ["5", "10", "15", "30"] : ["5", "10", "15"];
+  const durationMenu = byId("duration-menu");
+  durationMenu.classList.toggle("duration-menu-popup", isCustomDuration);
+  durationMenu.replaceChildren();
+  if (isCustomDuration) {
+    // 画布节点同款：点击时长徽标后在弹出层内拖动滑块自定义 5-30 秒。
+    const popup = node("div", "duration-popup");
+    const valueRow = node("div", "duration-popup-value");
+    valueRow.append(node("span", "", "自定义时长"), node("strong", "", `${byId("duration").dataset.value} 秒`));
+    const slider = node("input");
+    slider.type = "range";
+    slider.min = "5";
+    slider.max = "30";
+    slider.step = "1";
+    slider.value = Math.min(30, Math.max(5, Number(byId("duration").dataset.value) || 5));
+    slider.setAttribute("aria-label", "自定义时长（5-30 秒）");
+    slider.oninput = () => {
+      byId("duration").dataset.value = slider.value;
+      byId("duration").textContent = `${slider.value} 秒`;
+      valueRow.querySelector("strong").textContent = `${slider.value} 秒`;
+    };
+    const presets = node("div", "duration-presets");
+    for (const value of durations) {
+      const option = node("button", value === byId("duration").dataset.value ? "selected" : "", `${value} 秒`);
       option.type = "button";
-      option.onclick = () => selectComposeOption(kind, value);
-      menu.append(option);
+      option.onclick = () => selectComposeOption("duration", value);
+      presets.append(option);
     }
+    popup.append(valueRow, slider, presets);
+    durationMenu.append(popup);
+  } else {
+    for (const value of durations) {
+      const option = node("button", value === byId("duration").dataset.value ? "selected" : "", `${value} 秒`);
+      option.type = "button";
+      option.onclick = () => selectComposeOption("duration", value);
+      durationMenu.append(option);
+    }
+  }
+  const ratioMenu = byId("ratio-menu");
+  ratioMenu.replaceChildren();
+  for (const value of ratios) {
+    const option = node("button", value === byId("ratio").dataset.value ? "selected" : "", value);
+    option.type = "button";
+    option.onclick = () => selectComposeOption("ratio", value);
+    ratioMenu.append(option);
   }
 }
 function updateBrowserBounds() {
@@ -817,13 +851,11 @@ byId("mode-image").onclick = () => { state.mode = "image"; renderMode(); };
 byId("reference-mode").onchange = applyReferenceMode;
 byId("model").onchange = renderMode;
 for (const kind of ["ratio", "duration"]) byId(kind).onclick = () => {
-  if (kind === "duration" && byId("model").value === "dola-seedance-2-5") return;
   const menu = byId(`${kind}-menu`);
   for (const other of ["ratio-menu", "duration-menu"]) if (other !== `${kind}-menu`) byId(other).classList.add("hidden");
   menu.classList.toggle("hidden");
 };
 document.addEventListener("click", (event) => { if (!event.target.closest(".option-control")) for (const kind of ["ratio", "duration"]) byId(`${kind}-menu`).classList.add("hidden"); });
-byId("duration-slider").oninput = (event) => selectComposeOption("duration", event.target.value);
 byId("add-reference").onclick = async () => { try { const items = await run("asset:choose"); for (const item of items) { state.loadedAssets.set(item.id, item); if (!state.references.some((reference) => reference.id === item.id)) state.references.push({ ...item, label: nextReferenceLabel(state.references), role: "reference" }); } applyReferenceMode(); await refresh(); } catch {} };
 async function addImageFiles(files) {
   return withLoading("正在添加图片素材…", async () => {
