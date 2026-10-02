@@ -13,6 +13,7 @@ RUN apt-get update \
 COPY pyproject.toml ./
 COPY src ./src
 COPY main.py ./
+COPY docker-entrypoint.py ./
 
 RUN pip install --no-cache-dir .
 
