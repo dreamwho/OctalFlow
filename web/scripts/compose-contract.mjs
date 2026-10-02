@@ -277,7 +277,7 @@ export function validateComposeContract(source, profile) {
     const geminiVidsEnvironment = geminiVids.environment || {};
     ensure(Boolean(services.geminivids), "缺少 geminivids 服务");
     ensure(geminiVidsEnvironment.GVIDS_API_KEY === geminiVidsToken, "geminivids 未使用与 app 相同的内部密钥");
-    ensure(appEnvironment.DREAMYO_GEMINIVIDS_URL === (profile.hostNetwork ? "http://127.0.0.1:8080" : "http://geminivids:8080"), "app 缺少 GeminiVids 服务地址");
+    ensure(appEnvironment.DREAMYO_GEMINIVIDS_URL === (profile.hostNetwork ? "http://127.0.0.1:18080" : "http://geminivids:8080"), "app 缺少 GeminiVids 服务地址");
     ensure(app.depends_on?.geminivids?.condition === "service_healthy", "app 必须等待 geminivids 健康");
     ensure(geminiVids.depends_on?.["magic-proxy"]?.condition === "service_healthy", "geminivids 必须等待 magic-proxy 健康");
     ensure(String(geminiVidsEnvironment.GVIDS_PROXY) === `${profile.hostNetwork ? "http://127.0.0.1" : "http://magic-proxy"}:17890`, "geminivids 未使用专用代理监听");
