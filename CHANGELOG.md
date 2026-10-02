@@ -10,6 +10,9 @@
 
 - [Dola/30 秒档桌面端对齐 WEB 端方案] 桌面端时长超过 15 秒的视频提交改走 provider 的 Camoufox 协议链路（与 WEB 端 9 月四次 30 秒成功样本同一条链：provider 构造请求体、真实页面内签名、SSE 确认、轮询），不再经 Electron 工区浏览器签名提交（该链路 30 秒会被上游会话模型以"仅支持 4 到 15 秒"追问拦截，提示词规则消息实测也无法绕过）；≤15 秒与生图路径不变。协议提交与桌面内嵌浏览器页面签名提交均为单发结构化，规则消息两步编排保留为休眠能力（页面路径的下发已撤除）；两端 provider 提示词清洗补齐"30 秒分镜/脚本"、分段时间轴区间（"0-2.5秒/27.2-30秒"，含小数与英文）与"时长约28秒"类表述。
 
+- [GeminiAIStudio/Omni 全站接入] `gemini-omni-1.1-flash` 并入 geminiai 渠道实现四端视频生成（画布、/create、Agent、后台实测）：sidecar `/v1/videos` 页面自动化任务端点（账号冷却+自动轮换）、注册表 video operation（3-10 秒/360p-4K/16:9/9:16）、系统代理与 `_media` 链路、前端能力档案与后台视频实测入口；真实 E2E 94 秒出片（无水印）。附带修复画布视频参数弹层画质比较死循环与 worker 账号元数据崩溃。纯 HTTP 协议实验结论：文本通道 100% 可行（必需头已消融确认），视频通道协议层打通但 audit token 必需（寿命未验证）——当前保持浏览器机制，备份 tag `pre-pure-http-experiment`。
+- [部署/离线包] 离线部署包纳入 GeminiVids 镜像（68MB）与 `DREAMYO_GEMINIVIDS_API_KEY` 自动种子/校验；镜像归档扩展为六个（app/geminiai/geminivids/dola-api/traffic-meter/magic-proxy）。
+
 - [GeminiAIStudio/Omni 视频] 破解 AI Studio `gemini-omni-1.1-flash` 视频生成链路（CreateInteractionStream 流式 RPC + UpdatePrompt 内嵌成片 base64），真机全流程实测出片且成片**无水印**（对照：Google Vids 成片右下角自带星形水印，无绕过路径）；确认其 Playground 时长控件 min=3/max=10（强写 30 被立即钳回，"30 秒"为场景延展宣传能力），并留档 $rpc 纯协议化的可行性与 waa audit token 障碍。
 - [GeminiVids/实证纠偏] 更正此前「成片无水印」结论：Vids 成片右下角有星形水印且无法从协议侧去除；纯协议提交 15 秒被上游静默钳制回 10 秒（服务端硬限制）；渠道 referenceRule 已补充水印与钳制说明，引导无水印需求使用 AI Studio Omni 模型。
 

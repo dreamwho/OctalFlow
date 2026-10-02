@@ -44,6 +44,16 @@ description: dreamyo 当前版本需要人工或真实环境确认的事项
 - 查询链路修正（2026-10-02 三轮）：30 秒任务可创建后，点"查询任务状态"报"查询期间任务账号浏览器已关闭、切换或离开原会话"，且浏览器内点任何会话都被弹回首页——根因是 refreshTask 对所有有会话 ID 的任务强制"工作区浏览器页面内查询"，provider 协议任务的会话由 provider 自己的 Camoufox 创建，浏览器被 loadURL 到该会话后被 Dola 重定向回首页、URL 校验失败即抛错。修复：`source=provider-protocol` 的任务查询一律走 provider 轮询端点（与 WEB 端同源），提交后不再把用户浏览器导航到会话页；仅 `workspace-browser` 来源任务保留页面内查询。ensurePage 报错现在带当前页面 URL，检测到被弹回首页时给出对应提示。另经用户确认：桌面内嵌浏览器里点会话被 Dola 弹回首页是 Dola 官方网站自身的行为（站点侧问题），与本地登录态无关；30 秒任务状态查询已完全不依赖该浏览器。
 - 已知边界：内嵌浏览器手动选 30 秒提交仍走页面原生请求（有意保留）；30 秒档频控现状未变，连续失败先看失败原因区分限流与拒识。
 
+### AI Studio Omni 1.1 Flash 全站接入 + 纯 HTTP 协议实验（2026-10-02 四轮）
+
+- **Omni 1.1 Flash 已接入站内四端**（并入 `geminiai` 渠道，复用账号池/浏览器池/后台分区）：sidecar 新增 `/v1/videos` 任务端点与页面自动化执行器（Cookie 会话→同意页→warmup→Drive 授权→选模型→时长设置→提交→下载，含账号冷却与自动轮换）；目录注册 `gemini-omni-1.1-flash`/`gemini-omni-flash-preview`；协议注册表 geminiai 增加 video operation（3-10 秒、360p-4K、16:9/9:16）；系统代理路径白名单、媒体目标与 `_media` 授权注入、视频任务创建分支、画布/时长弹层/Agent 面板//create 能力档案（`canvas-geminiai.ts`）全部就绪；后台日志筛选与模型实测支持视频能力（Omni 走 Provider，其余走官方 Gemini/Veo 渠道）。
+- **真实 E2E 闭环**：用户管道提交 → 坏账号 Cookie 过期自动轮换 → 好账号 94 秒出片（640×360/h264/无水印）→ 成片落盘 sidecar。修复过程中解决画布参数弹层画质比较死循环（React #185）与 geminiai AccountMeta 无 status 字段的 worker 崩溃。
+- **纯 HTTP 协议实验（用户指令：成功则换/失败保持，已留备份 tag `pre-pure-http-experiment` 与分支 `backup-geminiai-browser-mechanism`）**：
+  - **文本 GenerateContent：纯 HTTP 100% 成功**。必需头经消融确认：`x-goog-api-key` + `x-aistudio-g1-tier: TIER1` + 三段 SAPISIDHASH（时间戳现算，无时效问题）+ `.google.com` 全量 Cookie；visit-id/ext-bin/sec-fetch 等全部可省。
+  - **视频 CreateInteractionStream：协议层打通**。真实 body 原样重放返回 200 并进入模型执行（当前返回当日配额耗尽业务错，与浏览器一致）；body[4] audit token 置 null 即 403——**token 必需**，旧 token 可重放但寿命未知。
+  - **当前决策：保持浏览器机制不更换**。理由：文本虽可纯 HTTP 化，但现有浏览器机制同时服务文本/图片/视频且 token 供给链已稳定；视频通道的 token 寿命未验证，贸然切换有账号风险。后续可在低峰窗口验证 token 跨天复用性后再决定是否迁移。
+- 待用户验收：①画布与 /create 选择 `gemini-omni-1.1-flash` 提交出片（本地 E2E 已通过）；②账号当日视频配额耗尽后的轮换与提示；③离线部署包（20261002，3.3GB 六镜像含 geminivids 68MB）上传服务器执行 `./一键部署.sh`。
+
 ### GeminiVids 水印/时长实证纠偏 + AI Studio Omni 1.1 Flash 协议破解（2026-10-02 三轮）
 
 - **水印更正（重要）**：此前「成片无水印」结论有误——Google Vids generate 返回的成片**右下角自带白色四角星水印**（帧级视觉确认）。generate 响应中只有一条 `contribution-rt` 下载地址，不存在"无水印变体"；水印烧录在视频流内，纯协议侧无绕过路径。需要无水印视频应使用 **AI Studio 的 Gemini Omni 1.1 Flash**（本轮已实测其成片完全无水印）。
