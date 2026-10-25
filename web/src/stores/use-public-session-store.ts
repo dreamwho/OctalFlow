@@ -3,8 +3,8 @@
 import { create } from "zustand";
 
 import { resolveSiteTitle } from "@/lib/site-brand";
-import type { LocalUser } from "@/stores/use-user-store";
-import type { PublicSystemSettings } from "@/stores/use-config-store";
+import { useUserStore, type LocalUser } from "@/stores/use-user-store";
+import { applyPublicSystemSettings, useConfigStore, type PublicSystemSettings } from "@/stores/use-config-store";
 
 export type PublicSiteSettings = {
     title: string;
@@ -56,6 +56,8 @@ export function loadPublicSession({ force = false }: { force?: boolean } = {}) {
         .then((payload) => {
             if (requestVersion === sessionRequestVersion) {
                 sessionLoadedAt = Date.now();
+                useUserStore.getState().setUser(payload.user || null);
+                useConfigStore.getState().setConfig(applyPublicSystemSettings(useConfigStore.getState().config, payload.settings));
                 usePublicSessionStore.setState({ payload, ready: true });
             }
             return payload;

@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert, App, Button, Checkbox, Empty, Input, Modal, Pagination, Popconfirm, Progress, Segmented, Select, Space, Spin, Switch, Tabs, Tag } from "antd";
-import { KeyRound, Plus, RefreshCw, Upload } from "lucide-react";
+import { KeyRound, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
@@ -16,6 +16,8 @@ import { ChatGptUploadProxyPanel } from "./chatgpt-upload-proxy-panel";
 import { ChatGptStatisticsPanel } from "./chatgpt-statistics";
 import { accountOperationCompletionNotice, accountOperationProgressPercent, type AccountOperationProgress, useAccountOperationProgress } from "./use-account-operation-progress";
 import { ChatGptRequestLogPanel } from "./chatgpt-request-log-panel";
+import { ChatGptAccountTestModal } from "./chatgpt-account-test-modal";
+import { canSyncChatGptModels, removeChatGptModelSelection, unavailableChatGptModels } from "../model-selection";
 
 type ChatGptTab = "overview" | "statistics" | "gateway" | "proxy" | "logs";
 type LoadTarget = "overview" | "gateway";
@@ -47,8 +49,11 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
     const { message } = App.useApp();
     const [tab, setTab] = useState<ChatGptTab>("overview");
     const [accounts, setAccounts] = useState<ChatGptAccountPage>({ items: [], total: 0 });
+    const [testAccount, setTestAccount] = useState<ChatGptAccountPage["items"][number] | null>(null);
+    const [testMode, setTestMode] = useState<"chat" | "image">("chat");
     const [catalog, setCatalog] = useState<ChatGptModelCatalog | null>(null);
     const [selected, setSelected] = useState<string[]>([]);
+    const [savedSelected, setSavedSelected] = useState<string[]>([]);
     const [gateway, setGateway] = useState<ChatGptGateway>({ enabled: false });
     const [keys, setKeys] = useState<ChatGptKey[]>([]);
     const [page, setPage] = useState(1);
@@ -120,6 +125,7 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
             setCatalog(nextCatalog);
             if (nextSelection) {
                 setSelected(nextSelection.models);
+                setSavedSelected(nextSelection.models);
                 modelSelectionLoaded.current = true;
                 selectedDirty.current = false;
             }
@@ -235,11 +241,28 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
         await loadOverview();
     };
 
+    const confirmCleanupAbnormalAccounts = async () => {
+        try {
+            const preview = await chatGptApiRequest<{ count: number }>("accounts/cleanup-abnormal");
+            Modal.confirm({
+                title: "一键清理异常账号？",
+                content: `当前预计清理 ${preview.count} 个已确认失效或已禁用/封禁的账号。网络失败、超时和限流账号会保留；执行时服务端会重新核对状态。`,
+                okText: "清理账号",
+                okButtonProps: { danger: true },
+                cancelText: "取消",
+                onOk: () => runAccountOperation("清理异常账号", () => chatGptApiRequest<AccountOperationResult>("accounts/cleanup-abnormal", json({}))),
+            });
+        } catch (reason) {
+            message.error(reason instanceof Error ? reason.message : "读取异常账号数量失败");
+        }
+    };
+
     const saveModels = async () => {
         if (!startMutation("models", "overview")) return;
         try {
             const result = await chatGptApiRequest<{ models: string[] }>("models", json({ models: selected }, "PUT"));
             setSelected(result.models);
+            setSavedSelected(result.models);
             modelSelectionLoaded.current = true;
             selectedDirty.current = false;
             try {
@@ -256,6 +279,19 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
             }
         } catch (reason) {
             message.error(reason instanceof Error ? reason.message : "保存模型失败");
+        } finally {
+            finishMutation();
+        }
+    };
+
+    const refreshModelCatalog = async () => {
+        if (!startMutation("model-catalog", "overview")) return;
+        try {
+            const nextCatalog = await chatGptApiRequest<ChatGptModelCatalog>("model-catalog/refresh", json({}));
+            setCatalog(nextCatalog);
+            message.success("已获取上游最新模型目录；当前选择未改变");
+        } catch (reason) {
+            message.error(reason instanceof Error ? reason.message : "获取上游模型目录失败");
         } finally {
             finishMutation();
         }
@@ -312,6 +348,9 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
               ? "success"
               : "info";
     const accountOperationPercent = accountOperationProgressPercent(accountOperation?.progress);
+    const unavailableModels = unavailableChatGptModels(selected, catalog);
+    const selectionChanged = selected.length !== savedSelected.length || selected.some((model) => !savedSelected.includes(model)) || savedSelected.some((model) => !selected.includes(model));
+    const canSyncModels = canSyncChatGptModels(selectionChanged, unavailableModels);
 
     return (
         <div className="min-w-0 space-y-4">
@@ -338,6 +377,14 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                         description="导入 Access Token / Refresh Token；凭据仅在服务端处理，不在列表展示。导入不自动调用上游。"
                         actions={
                             <Space wrap size={6}>
+                                <Button
+                                    danger
+                                    icon={<Trash2 className="size-4" />}
+                                    disabled={mutating || accountOperationPending}
+                                    onClick={() => void confirmCleanupAbnormalAccounts()}
+                                >
+                                    一键清理异常账号
+                                </Button>
                                 <Button
                                     icon={<RefreshCw className="size-4" />}
                                     loading={loading.overview || (accountOperationPending && !accountOperation?.followError)}
@@ -426,6 +473,8 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                                         {account.status_reason && account.status_reason !== "账号已启用，当前凭据可调用" ? <div className="mt-1 break-words text-xs text-zinc-500">{account.status_reason}</div> : null}
                                     </div>
                                     <Space wrap size={6}>
+                                        <Button size="small" disabled={!account.enabled || mutating || accountOperationPending} onClick={() => { setTestMode("chat"); setTestAccount(account); }}>文本测试</Button>
+                                        <Button size="small" disabled={!account.enabled || mutating || accountOperationPending} onClick={() => { setTestMode("image"); setTestAccount(account); }}>图片测试</Button>
                                         <Switch
                                             aria-label={"启用 " + account.display_name}
                                             checked={account.enabled}
@@ -459,20 +508,75 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                         <Pagination current={page} pageSize={20} total={accounts.total} showSizeChanger={false} onChange={setPage} />
                     </div>
                 </Panel>
+                <ChatGptAccountTestModal account={testAccount} catalog={catalog} initialMode={testMode} onClose={() => setTestAccount(null)} />
                 <Panel>
                     <PanelHeader
                         title="模型渠道"
-                        description="勾选模型后点击“同步至渠道与逻辑模型”，即可在模型渠道及画布中使用。目录不代表账号实际调用权限。"
+                        description="目录展示当前已读取的模型。获取上游最新目录不会保存渠道；勾选模型后仍需单独同步，目录不代表账号实际调用权限。"
                         actions={
-                            <Button type="primary" loading={mutation === "models"} disabled={mutating || !selected.length} onClick={() => void saveModels()}>
-                                同步至渠道与逻辑模型
-                            </Button>
+                            <Space wrap size={6}>
+                                <Button icon={<RefreshCw className="size-4" />} loading={mutation === "model-catalog"} disabled={mutating} onClick={() => void refreshModelCatalog()}>
+                                    获取上游最新模型
+                                </Button>
+                                <Button type="primary" loading={mutation === "models"} disabled={mutating || !canSyncModels} onClick={() => void saveModels()}>
+                                    同步至渠道与逻辑模型
+                                </Button>
+                            </Space>
                         }
                     />
                     <div className="space-y-4 p-3 sm:p-4">
                         <p className="text-sm text-zinc-500">
                             已选 {selected.length} 个模型{selected.length ? "；修改后需点击同步保存。" : "；尚未选择模型时不会自动创建可用渠道。"}
                         </p>
+                        {catalog?.discovery ? (
+                            <p className="break-all text-xs text-zinc-500">
+                                上游来源：{catalog.discovery.account_label}（{catalog.discovery.account_id}） · 获取时间：{catalog.discovery.fetched_at} · 接口：{catalog.discovery.endpoint} · 当前目录：文本 {catalog.chat_models.length} 个，图片 {catalog.image_models.length} 个
+                            </p>
+                        ) : null}
+                        {catalog?.warnings?.length ? (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                title="模型目录获取提示"
+                                description={
+                                    <ul className="list-disc space-y-1 pl-5">
+                                        {catalog.warnings.map((warning, index) => (
+                                            <li key={`${index}-${warning}`}>{warning}</li>
+                                        ))}
+                                    </ul>
+                                }
+                            />
+                        ) : null}
+                        {unavailableModels.length ? (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                title="部分已保存模型未出现在当前目录"
+                                description={
+                                    <div className="space-y-2">
+                                        <p>这些模型仍保留在当前选择中。请逐项移出待同步列表后再同步；存在未发现的模型时，同步按钮会保持禁用。</p>
+                                        <div className="flex min-w-0 flex-wrap gap-2">
+                                            {unavailableModels.map((model) => (
+                                                <Tag key={model} className="m-0 flex max-w-full items-center gap-1 break-all">
+                                                    <span>{model}</span>
+                                                    <Button
+                                                        type="link"
+                                                        size="small"
+                                                        disabled={mutating}
+                                                        onClick={() => {
+                                                            selectedDirty.current = true;
+                                                            setSelected((current) => removeChatGptModelSelection(current, model));
+                                                        }}
+                                                    >
+                                                        移出待同步
+                                                    </Button>
+                                                </Tag>
+                                            ))}
+                                        </div>
+                                    </div>
+                                }
+                            />
+                        ) : null}
                         {catalog ? (
                             [
                                 { title: "文本", values: catalog.chat_models },
@@ -480,21 +584,25 @@ export function AdminChatGptApiSection({ controller }: { controller: AdminDashbo
                             ].map((group) => (
                                 <div key={group.title}>
                                     <div className="mb-2 text-sm font-medium">{group.title}</div>
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                                        {group.values.map((model) => (
-                                            <Checkbox
-                                                key={model}
-                                                checked={selected.includes(model)}
-                                                disabled={mutating}
-                                                onChange={(event) => {
-                                                    selectedDirty.current = true;
-                                                    setSelected((current) => (event.target.checked ? [...current, model] : current.filter((item) => item !== model)));
-                                                }}
-                                            >
-                                                <span className="break-all">{model}</span>
-                                            </Checkbox>
-                                        ))}
-                                    </div>
+                                    {group.values.length ? (
+                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                            {group.values.map((model) => (
+                                                <Checkbox
+                                                    key={model}
+                                                    checked={selected.includes(model)}
+                                                    disabled={mutating}
+                                                    onChange={(event) => {
+                                                        selectedDirty.current = true;
+                                                        setSelected((current) => (event.target.checked ? [...current, model] : current.filter((item) => item !== model)));
+                                                    }}
+                                                >
+                                                    <span className="break-all">{model}</span>
+                                                </Checkbox>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`当前没有发现${group.title}模型`} />
+                                    )}
                                 </div>
                             ))
                         ) : (

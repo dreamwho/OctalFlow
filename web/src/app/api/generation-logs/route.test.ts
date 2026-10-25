@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     taskByRequest: vi.fn(),
     taskRecord: vi.fn(),
     listLogs: vi.fn(),
+    getLog: vi.fn(),
+    cancelSlots: vi.fn(),
     getSettings: vi.fn(),
 }));
 
@@ -21,6 +23,7 @@ vi.mock("@/lib/auth/store", () => ({ getAuthSettings: mocks.getSettings }));
 vi.mock("@/lib/server/generation-log-store", () => ({
     deleteGenerationLogs: vi.fn(),
     listGenerationLogs: mocks.listLogs,
+    getGenerationLogForUser: mocks.getLog,
     listUserGenerationLogsForDelete: vi.fn(),
 }));
 vi.mock("@/lib/server/generation-log-task-service", () => ({
@@ -31,6 +34,7 @@ vi.mock("@/lib/server/generation-log-task-service", () => ({
     recordGenerationLogDraft: mocks.recordDraft,
     renameGenerationLogForUser: mocks.rename,
 }));
+vi.mock("@/lib/server/generation-log-cancellation", () => ({ cancelActiveGenerationLogSlots: mocks.cancelSlots }));
 vi.mock("@/lib/server/generation-task-store", () => ({ getStoredGenerationTaskByRequest: mocks.taskByRequest, getStoredGenerationTaskRecord: mocks.taskRecord }));
 
 import { GET, PATCH, POST } from "./route";
@@ -40,6 +44,8 @@ describe("generation log browser write boundary", () => {
         vi.clearAllMocks();
         mocks.currentUser.mockResolvedValue({ id: "user-one", username: "user", displayName: "User" });
         mocks.getSettings.mockResolvedValue({ generationDefaults: { imageMaxCount: 8 } });
+        mocks.getLog.mockResolvedValue(null);
+        mocks.cancelSlots.mockResolvedValue([]);
     });
 
     it("rejects browser-submitted terminal status and result URLs", async () => {

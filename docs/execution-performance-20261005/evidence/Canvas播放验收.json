@@ -1,0 +1,43 @@
+{
+  "projectId": "canvas-QJgHjNrBReA5W1VEm1foU",
+  "nodeId": "performance-omni-video",
+  "evidence": [
+    {
+      "viewport": 1440,
+      "media": {
+        "src": "/api/reference-assets/permanent/2026/10/05/videos/20261005-002347-cb5b519d-f352-446f-9fd2-6039b3915f1e.mp4",
+        "width": 1080,
+        "height": 1920,
+        "duration": 10.005,
+        "readyState": 4,
+        "currentTime": 0.017826
+      },
+      "node": {
+        "x": 156.875,
+        "y": 160,
+        "width": 236.25,
+        "height": 420
+      }
+    },
+    {
+      "viewport": 390,
+      "media": {
+        "width": 1080,
+        "height": 1920,
+        "duration": 10.005,
+        "readyState": 4
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "media": {
+        "width": 1080,
+        "height": 1920,
+        "duration": 10.005,
+        "readyState": 4
+      },
+      "overflow": false
+    }
+  ]
+}

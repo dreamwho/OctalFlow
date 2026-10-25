@@ -1,0 +1,542 @@
+{
+  "date": "2026-10-21",
+  "buildId": "aUPh-uIlhOSqrYJOtQiEu",
+  "baseline": {
+    "baselineBuildId": "m3jm9QvxONtidslN7NEL2",
+    "newBuildId": "aUPh-uIlhOSqrYJOtQiEu",
+    "baselineRuntimeFiles": 7790,
+    "baselineFromImmutableDeliveredArchive": true,
+    "python": {
+      "services/chatgpt-api/api/app.py": [
+        "34043bf2430398d79441f02c41cc8122e7cef267a53eb797c6c06ecfdf50f55d"
+      ],
+      "services/chatgpt-api/api/accounts.py": [
+        "c2fb4f56ef3b09516b0c9ebad1d400213e8bd44082699cfe0895dd9d4e96394f"
+      ],
+      "services/chatgpt-api/contracts/account_test.py": [
+        "6a7cc72edfa8b998ff95fc4f415bf115bc36fdadc63254b1103a5484bef5fc04"
+      ],
+      "services/chatgpt-api/services/account_test_service.py": [
+        "b61201059b78484206185e812d1b51ca7672e7a0b08984db8d04c6d0391b6714"
+      ],
+      "services/chatgpt-api/services/protocol/conversation.py": [
+        "6a0e23680a999f87da0434fb114fe0dc8fdbba1fb6eec7a6933eab77d36b1148"
+      ],
+      "services/chatgpt-api/services/model_catalog_service.py": [
+        "a8ec243d5412b0a392b8873b7ff50307acc3cf120002b2f8b02a9db6e1cbc429",
+        "dd5d9a67df97e72649e0cf0ba46be8f1b14d2c19df90847a7d2cd7d6f0238611"
+      ]
+    }
+  },
+  "checks": {
+    "python": {
+      "passed": 159,
+      "warnings": 2,
+      "exitCode": 0
+    },
+    "web": {
+      "passed": 3661,
+      "skipped": 17,
+      "passedFiles": 721,
+      "skippedFiles": 9,
+      "exitCode": 0
+    },
+    "typecheck": {
+      "exitCode": 0
+    },
+    "eslint": {
+      "exitCode": 0
+    },
+    "linuxProductionBuild": {
+      "exitCode": 0,
+      "node": "22.23.3",
+      "platform": "linux/amd64/glibc",
+      "sharpLoaded": true,
+      "yamlLoaded": true
+    },
+    "nativeProductionRepeat": {
+      "exitCode": 0
+    },
+    "deploymentJournalMock": {
+      "exitCode": 0,
+      "updateAndRollbackInterruptions": true
+    },
+    "deploymentMountRegression": {
+      "passed": 2,
+      "exitCode": 0,
+      "preservesUnlistedPythonMounts": true,
+      "refusesForeignMounts": true
+    }
+  },
+  "browser": [
+    {
+      "passed": true,
+      "width": 1440,
+      "theme": "dark",
+      "metrics": {
+        "left": 380,
+        "right": 1060,
+        "width": 680,
+        "viewport": 1440,
+        "overflow": false,
+        "buttons": [
+          {
+            "text": "",
+            "left": 1016,
+            "right": 1048
+          },
+          {
+            "text": "关 闭",
+            "left": 856.515625,
+            "right": 918
+          },
+          {
+            "text": "开始真实测试",
+            "left": 926,
+            "right": 1036
+          }
+        ]
+      },
+      "requestCount": 4,
+      "manualOnly": true,
+      "disabledAccountBlocked": true,
+      "emptyTextFails": true,
+      "imageActualWebP": true,
+      "logIdMatches": true,
+      "realLinuxWeb": true,
+      "realLinuxPython": true,
+      "upstreamTcpFixture": true,
+      "streamTransportAndResolverFixtureAdapters": true
+    },
+    {
+      "passed": true,
+      "width": 1440,
+      "theme": "light",
+      "metrics": {
+        "left": 380,
+        "right": 1060,
+        "width": 680,
+        "viewport": 1440,
+        "overflow": false,
+        "buttons": [
+          {
+            "text": "",
+            "left": 1016,
+            "right": 1048
+          },
+          {
+            "text": "关 闭",
+            "left": 856.515625,
+            "right": 918
+          },
+          {
+            "text": "开始真实测试",
+            "left": 926,
+            "right": 1036
+          }
+        ]
+      },
+      "requestCount": 4,
+      "manualOnly": true,
+      "disabledAccountBlocked": true,
+      "emptyTextFails": true,
+      "imageActualWebP": true,
+      "logIdMatches": true,
+      "realLinuxWeb": true,
+      "realLinuxPython": true,
+      "upstreamTcpFixture": true,
+      "streamTransportAndResolverFixtureAdapters": true
+    },
+    {
+      "passed": true,
+      "width": 390,
+      "theme": "dark",
+      "metrics": {
+        "left": 12,
+        "right": 378,
+        "width": 366,
+        "viewport": 390,
+        "overflow": false,
+        "buttons": [
+          {
+            "text": "",
+            "left": 334,
+            "right": 366
+          },
+          {
+            "text": "关 闭",
+            "left": 174.515625,
+            "right": 236
+          },
+          {
+            "text": "开始真实测试",
+            "left": 244,
+            "right": 354
+          }
+        ]
+      },
+      "requestCount": 4,
+      "manualOnly": true,
+      "disabledAccountBlocked": true,
+      "emptyTextFails": true,
+      "imageActualWebP": true,
+      "logIdMatches": true,
+      "realLinuxWeb": true,
+      "realLinuxPython": true,
+      "upstreamTcpFixture": true,
+      "streamTransportAndResolverFixtureAdapters": true
+    },
+    {
+      "passed": true,
+      "width": 390,
+      "theme": "light",
+      "metrics": {
+        "left": 12,
+        "right": 378,
+        "width": 366,
+        "viewport": 390,
+        "overflow": false,
+        "buttons": [
+          {
+            "text": "",
+            "left": 334,
+            "right": 366
+          },
+          {
+            "text": "关 闭",
+            "left": 174.515625,
+            "right": 236
+          },
+          {
+            "text": "开始真实测试",
+            "left": 244,
+            "right": 354
+          }
+        ]
+      },
+      "requestCount": 4,
+      "manualOnly": true,
+      "disabledAccountBlocked": true,
+      "emptyTextFails": true,
+      "imageActualWebP": true,
+      "logIdMatches": true,
+      "realLinuxWeb": true,
+      "realLinuxPython": true,
+      "upstreamTcpFixture": true,
+      "streamTransportAndResolverFixtureAdapters": true
+    },
+    {
+      "passed": true,
+      "width": 430,
+      "theme": "dark",
+      "metrics": {
+        "left": 12,
+        "right": 418,
+        "width": 406,
+        "viewport": 430,
+        "overflow": false,
+        "buttons": [
+          {
+            "text": "",
+            "left": 374,
+            "right": 406
+          },
+          {
+            "text": "关 闭",
+            "left": 214.515625,
+            "right": 276
+          },
+          {
+            "text": "开始真实测试",
+            "left": 284,
+            "right": 394
+          }
+        ]
+      },
+      "requestCount": 4,
+      "manualOnly": true,
+      "disabledAccountBlocked": true,
+      "emptyTextFails": true,
+      "imageActualWebP": true,
+      "logIdMatches": true,
+      "realLinuxWeb": true,
+      "realLinuxPython": true,
+      "upstreamTcpFixture": true,
+      "streamTransportAndResolverFixtureAdapters": true
+    },
+    {
+      "passed": true,
+      "width": 430,
+      "theme": "light",
+      "metrics": {
+        "left": 12,
+        "right": 418,
+        "width": 406,
+        "viewport": 430,
+        "overflow": false,
+        "buttons": [
+          {
+            "text": "",
+            "left": 374,
+            "right": 406
+          },
+          {
+            "text": "关 闭",
+            "left": 214.515625,
+            "right": 276
+          },
+          {
+            "text": "开始真实测试",
+            "left": 284,
+            "right": 394
+          }
+        ]
+      },
+      "requestCount": 4,
+      "manualOnly": true,
+      "disabledAccountBlocked": true,
+      "emptyTextFails": true,
+      "imageActualWebP": true,
+      "logIdMatches": true,
+      "realLinuxWeb": true,
+      "realLinuxPython": true,
+      "upstreamTcpFixture": true,
+      "streamTransportAndResolverFixtureAdapters": true
+    }
+  ],
+  "deployment": {
+    "result": "passed",
+    "scope": "isolated Docker fixture only; production package unchanged",
+    "fixture": "dreamyo-gptapi-tests-fixture-20261021",
+    "test_only_adaptation": "Pinned production base image sha256:640c3f1482573ec994e96a4d18d0fc8eeab7a7fadcef6ed0e305448e6d5783ff replaced only in copied test package with locally cached sha256:f57f40f0f824ceaf9d99ca49320e24df165481318d83847342d7698bd750fee4; production package untouched. PostgreSQL 16 fixture used; fake credentials, no upstream calls.",
+    "safe_refusals_before_success": [
+      "File-provider preflight refused and restored Compose without target restarts.",
+      "Compose path-label mismatch refused safely.",
+      "Provider static guard required literal DREAMYO_DATABASE_PROVIDER: postgres; fixture corrected without bypassing checks."
+    ],
+    "apply": {
+      "compose_sha256": "27123b6f12cd43dd59e0290cb10ee5230a0b14bf04e20363773e2f9002ca2f3d",
+      "build_id": "aUPh-uIlhOSqrYJOtQiEu",
+      "container_ids": {
+        "app": "1ac6043869db19f7453b3792eb6335ec18e30d17c814458d56658e06b836929e",
+        "generation-worker": "5b9a30d0bb3b01b09b6e6562cc302c45c273f0378f82dd663135f8c01c03916a",
+        "chatgpt-api": "e502cad61b7108dd6f62227fcaac2bd89f9a897cd7ee294b04c080686bc1f3a9",
+        "untouched": "e2975ce10ea31ace57dee02a1f4c2e79872a17892b5ea6b4ba617b63d405a426",
+        "postgres": "edb546e54e7e91480047e309b2e4d1f6186035ee32fb5943193e75a4e5b2cf03"
+      },
+      "python_sha256": {
+        "api/accounts.py": "908f8d1df45603cb0f9c3440efdf891e9b18c97f7e1e8c721ccfffde92350edc",
+        "api/app.py": "8ab1c9f2dbb03963169ad8c23e7317bc4d8c686af865d5e623ae5ece9db006c4",
+        "contracts/account_test.py": "247da22ee7320d925bd717d5fa2e28dfd93b6ac745ad0a9b365a430b45780a60",
+        "services/account_test_service.py": "16aef2131c70cf7ca6444b01eb26b42b731eeec929a5e4c45e2c37befa5d83ac",
+        "services/model_catalog_service.py": "dd5d9a67df97e72649e0cf0ba46be8f1b14d2c19df90847a7d2cd7d6f0238611",
+        "services/protocol/conversation.py": "57a6c93fceed52108b0f14b7b9a7dc41be486189499640d2c577945da44783de",
+        "api/integration.py": "b31dd23e8257a244b7a3f4c5ccc04c79648c1ce3a38aa21e2ad190b64dba7ffd",
+        "contracts/models.py": "e29db500fd585a6621db1336538ac96bcbfdc110e6d70fa6ce26be87917b9880",
+        "services/account_service.py": "0be685800aefd92e7759ba64e27c44b1f37e94769e9a652fac9eb2bc1e7b47e0",
+        "services/image_failure.py": "3e12af0d7eecff9ac06626ff4901033dd1d28990077c345b5a96737d8d0f97b9",
+        "services/openai_backend_api.py": "1a66dd310d1ae7e938491224a50043417f312637e96b91071a8d85a7c875bf9d",
+        "utils/helper.py": "cc314c29b42ae0c790dc91aec557714bd6b5c30bcc57fc1924a541f3ea06d15f"
+      },
+      "readonly_python_mounts": {
+        "services/chatgpt-api/api/accounts.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/20261021T141153Z-12bc8f1e/python/services/chatgpt-api/api/accounts.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/api/app.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/20261021T141153Z-12bc8f1e/python/services/chatgpt-api/api/app.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/api/integration.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/api/integration.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/contracts/account_test.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/20261021T141153Z-12bc8f1e/python/services/chatgpt-api/contracts/account_test.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/contracts/models.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/contracts/models.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/account_service.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/services/account_service.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/account_test_service.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/20261021T141153Z-12bc8f1e/python/services/chatgpt-api/services/account_test_service.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/image_failure.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/services/image_failure.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/model_catalog_service.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/20261021T141153Z-12bc8f1e/python/services/chatgpt-api/services/model_catalog_service.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/openai_backend_api.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/services/openai_backend_api.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/utils/helper.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/utils/helper.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/protocol/conversation.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/20261021T141153Z-12bc8f1e/python/services/chatgpt-api/services/protocol/conversation.py",
+          "readOnly": true
+        }
+      },
+      "env_sha256": "6d7d50da5b994a9083eff10f055e678e3a4856c099fe633cc6db769358fdd852",
+      "data_sha256": {
+        "auth.json": "34460136504659931398fbb74a6a8593c62827d874bcf571c363539dfeaaf8d2",
+        "chatgpt-api/chatgpt2api.db": "76d04df9784ff7fdeae2284255bccf0b1924227dc9816c4306f06c0f1ba92f84",
+        "generation-tasks.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      },
+      "health": {
+        "app": "HTTP 200",
+        "chatgpt-api": "authenticated HTTP 200",
+        "postgres": "127.0.0.1:61284 - accepting connections",
+        "generation-worker": "running generation-worker.mjs process",
+        "untouched": "running sleep infinity process"
+      }
+    },
+    "rollback": {
+      "compose_sha256": "aac5b8de75ac10660c4759aeeeffe0c38332ec298a5871cf63669db16b349ee8",
+      "build_id": "m3jm9QvxONtidslN7NEL2",
+      "container_ids": {
+        "app": "68c16f119fe0bebfe171fac57d36403b93913996ba4ee7b0a06aa53af3a1bb5b",
+        "generation-worker": "469fc9b5bf83e4628635f62d0d6f2c2c9646ad7fd8455de5edeec0d06e2f376f",
+        "chatgpt-api": "17984788112e8e3da47cfffb939c6add56dd87754c6a7f9398f2566e671a6237",
+        "untouched": "e2975ce10ea31ace57dee02a1f4c2e79872a17892b5ea6b4ba617b63d405a426",
+        "postgres": "edb546e54e7e91480047e309b2e4d1f6186035ee32fb5943193e75a4e5b2cf03"
+      },
+      "python_sha256": {
+        "api/accounts.py": "c2fb4f56ef3b09516b0c9ebad1d400213e8bd44082699cfe0895dd9d4e96394f",
+        "api/app.py": "34043bf2430398d79441f02c41cc8122e7cef267a53eb797c6c06ecfdf50f55d",
+        "contracts/account_test.py": "6a7cc72edfa8b998ff95fc4f415bf115bc36fdadc63254b1103a5484bef5fc04",
+        "services/account_test_service.py": "b61201059b78484206185e812d1b51ca7672e7a0b08984db8d04c6d0391b6714",
+        "services/model_catalog_service.py": "a8ec243d5412b0a392b8873b7ff50307acc3cf120002b2f8b02a9db6e1cbc429",
+        "services/protocol/conversation.py": "6a0e23680a999f87da0434fb114fe0dc8fdbba1fb6eec7a6933eab77d36b1148",
+        "api/integration.py": "b31dd23e8257a244b7a3f4c5ccc04c79648c1ce3a38aa21e2ad190b64dba7ffd",
+        "contracts/models.py": "e29db500fd585a6621db1336538ac96bcbfdc110e6d70fa6ce26be87917b9880",
+        "services/account_service.py": "0be685800aefd92e7759ba64e27c44b1f37e94769e9a652fac9eb2bc1e7b47e0",
+        "services/image_failure.py": "3e12af0d7eecff9ac06626ff4901033dd1d28990077c345b5a96737d8d0f97b9",
+        "services/openai_backend_api.py": "1a66dd310d1ae7e938491224a50043417f312637e96b91071a8d85a7c875bf9d",
+        "utils/helper.py": "cc314c29b42ae0c790dc91aec557714bd6b5c30bcc57fc1924a541f3ea06d15f"
+      },
+      "readonly_python_mounts": {
+        "services/chatgpt-api/api/accounts.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/api/accounts.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/api/app.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/api/app.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/api/integration.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/api/integration.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/contracts/models.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/contracts/models.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/account_service.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/services/account_service.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/image_failure.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/services/image_failure.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/model_catalog_service.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/services/model_catalog_service.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/services/openai_backend_api.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/services/openai_backend_api.py",
+          "readOnly": true
+        },
+        "services/chatgpt-api/utils/helper.py": {
+          "source": "/tmp/dreamyo-account-tests-20261021/deploy-fixture/.source-update/releases/baseline/python/services/chatgpt-api/utils/helper.py",
+          "readOnly": true
+        }
+      },
+      "env_sha256": "6d7d50da5b994a9083eff10f055e678e3a4856c099fe633cc6db769358fdd852",
+      "data_sha256": {
+        "auth.json": "34460136504659931398fbb74a6a8593c62827d874bcf571c363539dfeaaf8d2",
+        "chatgpt-api/chatgpt2api.db": "76d04df9784ff7fdeae2284255bccf0b1924227dc9816c4306f06c0f1ba92f84",
+        "generation-tasks.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      },
+      "health": {
+        "app": "HTTP 200",
+        "chatgpt-api": "authenticated HTTP 200",
+        "postgres": "127.0.0.1:61284 - accepting connections",
+        "generation-worker": "running generation-worker.mjs process",
+        "untouched": "running sleep infinity process"
+      }
+    },
+    "checks": {
+      "apply_succeeded_and_healthy": true,
+      "six_target_python_files_match_package": true,
+      "six_unlisted_python_files_preserved": true,
+      "all_12_python_mounts_readonly": true,
+      "runtime_env_and_data_preserved": true,
+      "only_three_target_services_recreated": true,
+      "rollback_exact_compose_bytes": true,
+      "rollback_all_12_python_hashes_and_mounts_restored": true,
+      "rollback_old_build_healthy": true,
+      "rollback_env_data_and_untouched_containers_preserved": true
+    },
+    "evidence": {
+      "baseline": "baseline-final.json",
+      "apply": "applied-final.json",
+      "rollback": "rollback-final.json",
+      "apply_log": "apply.log",
+      "rollback_log": "rollback.log",
+      "package_copy": "package-final-corrected/"
+    }
+  },
+  "scope": {
+    "web": [
+      "web/src/services/api/chatgpt-api.ts",
+      "web/src/app/admin/chatgpt-api/components/admin-chatgpt-api-section.tsx",
+      "web/src/app/admin/chatgpt-api/components/chatgpt-account-test-modal.tsx",
+      "web/src/app/admin/chatgpt-api/account-test.ts",
+      "web/src/app/admin/chatgpt-api/account-test.test.ts",
+      "web/src/app/api/admin/chatgpt-api/[...path]/route.ts",
+      "web/src/app/api/admin/chatgpt-api/[...path]/route.test.ts",
+      "web/src/lib/server/chatgpt-api-service.ts",
+      "web/src/lib/server/chatgpt-api-service.test.ts",
+      "web/src/lib/media-image-url.ts",
+      "web/src/lib/media-image-url.test.ts"
+    ],
+    "python": [
+      "services/chatgpt-api/api/app.py",
+      "services/chatgpt-api/api/accounts.py",
+      "services/chatgpt-api/contracts/account_test.py",
+      "services/chatgpt-api/services/account_test_service.py",
+      "services/chatgpt-api/services/protocol/conversation.py",
+      "services/chatgpt-api/services/model_catalog_service.py"
+    ]
+  },
+  "unchangedUnpublishedSources": {
+    "web/src/app/api/auth/session/route.ts": "7d6ce93e2d60c85c1f78cdafbc2bcc80dea00e3042019ef06cb83df34e3aa0ec",
+    "web/src/app/api/auth/session/route.test.ts": "76958b72ce9a72facf6d6d10071fccb6893236ea1a1ae61ea437bc68c19cc373",
+    "web/src/stores/use-public-session-store.ts": "8d18c0ad1900a1c7be7d30f6b6a6b840acbbfcfe1044c49d09eb9dacc49635b6",
+    "web/src/stores/use-public-session-store.test.ts": "abafc2d937aae98cbe74f48bf4777b3d75bc658ad4c5effd41a16b1fca35942d",
+    "web/src/components/layout/client-root-init.tsx": "0175ed189c836be3565430fd3f7347b82eb7ba2404e50db37199fd1b3ed7aa50",
+    "web/src/components/model-picker.tsx": "940ef64555c863812222c2257d6b93c69a05214d73b4216ba813bae6f0c3ac9e",
+    "web/src/lib/server/gemini-tools-service.ts": "74f2802b1bd5d5ef88b9dfcc4b76fca19c2a1ba7ce36d056e73f67fd772f7a88",
+    "web/src/lib/server/gemini-tools-service.test.ts": "769e4acda1c001085f6e91b6b7e07f7bede145aec44c221d5281c3e019f28d7f"
+  },
+  "limits": [
+    "Local TCP upstream fixture uses fixed fake credentials and isolated data.",
+    "Browser uses real Linux Web/admin bridge/Python account service/parser/storage/logs. Only upstream conversation transport and image-address resolution are adapted.",
+    "No real supplier generation, quota billing, production PostgreSQL or production deployment was tested this turn.",
+    "Original provider 502 root cause remains unconfirmed; semantic failures no longer create false stream-interruption metrics.",
+    "Legacy Flare/Sunburst aliases do not provide independently verified model selection."
+  ]
+}

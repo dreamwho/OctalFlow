@@ -1,0 +1,10 @@
+{
+  "bytes": 4828998809,
+  "sha256": "8b145ef5b47736712ffb8c6a12e83b3281a02935b65882dfeb85db7c4b8cdf86",
+  "packageFiles": 17,
+  "checksumFiles": 16,
+  "archiveFileHashesMatch": true,
+  "gzipCRC": true,
+  "archiveFiles": 17,
+  "noUnexpectedFiles": true
+}

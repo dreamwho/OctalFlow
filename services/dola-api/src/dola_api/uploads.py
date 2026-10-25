@@ -54,7 +54,7 @@ def _canonical_query_string(raw_url: str) -> str:
     return "&".join(f"{key}={value}" for key, value in pairs)
 
 
-def _sign_imagex_request(*, method: str, raw_url: str, credentials: dict[str, str], body: str = "", include_payload_hash: bool = False) -> dict[str, str]:
+def _sign_imagex_request(*, method: str, raw_url: str, credentials: dict[str, str], body: str = "", include_payload_hash: bool = False, service: str = IMAGEX_SERVICE) -> dict[str, str]:
     amz_date = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     date_stamp = amz_date[:8]
     payload_hash = _sha256_hex(body)
@@ -73,11 +73,11 @@ def _sign_imagex_request(*, method: str, raw_url: str, credentials: dict[str, st
             payload_hash,
         ]
     )
-    credential_scope = f"{date_stamp}/{IMAGEX_REGION}/{IMAGEX_SERVICE}/aws4_request"
+    credential_scope = f"{date_stamp}/{IMAGEX_REGION}/{service}/aws4_request"
     string_to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, credential_scope, _sha256_hex(canonical_request)])
     date_key = _hmac_sha256(f"AWS4{credentials['secret_access_key']}", date_stamp)
     region_key = _hmac_sha256(date_key, IMAGEX_REGION)
-    service_key = _hmac_sha256(region_key, IMAGEX_SERVICE)
+    service_key = _hmac_sha256(region_key, service)
     signing_key = _hmac_sha256(service_key, "aws4_request")
     signature = _hmac_sha256(signing_key, string_to_sign, hex_digest=True)
     headers = {
@@ -178,7 +178,7 @@ async def _fetch_source_bytes(
         except (ValueError, binascii.Error) as error:
             raise RuntimeError("reference_data_url_invalid") from error
         mime = header[5:].split(";", 1)[0] or "image/png"
-        return _check_source_size(content), mime, "reference.png"
+        return _check_source_size(content), mime, "reference" + (mimetypes.guess_extension(mime) or ".bin")
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise RuntimeError("reference_url_invalid")
     fetch_url, fetch_proxy = _reference_fetch_route(url, proxy_url)
@@ -197,7 +197,7 @@ async def _fetch_source_bytes(
 
 async def _fetch_remote_source(client: httpx.AsyncClient, fetch_url: str, path: str) -> tuple[bytes, str, str]:
     try:
-        response = await client.get(fetch_url, headers={"accept": "image/*,*/*;q=0.8"})
+        response = await client.get(fetch_url, headers={"accept": "*/*"})
     except httpx.RequestError as error:
         raise RuntimeError(f"reference_fetch_{type(error).__name__}") from error
     if response.status_code < 200 or response.status_code >= 300:
@@ -213,7 +213,7 @@ def _check_source_size(content: bytes) -> bytes:
     return content
 
 
-async def _prepare_upload(page: Any) -> dict[str, Any]:
+async def _prepare_upload(page: Any, kind: str = "image") -> dict[str, Any]:
     pattern = "**/alice/resource/prepare_upload?*"
     captured = asyncio.get_running_loop().create_future()
 
@@ -228,7 +228,7 @@ async def _prepare_upload(page: Any) -> dict[str, Any]:
 
     await page.route(pattern, capture)
     try:
-        await page.add_script_tag(content=f"({PREPARE_UPLOAD_SCRIPT})({json.dumps({'body': PREPARE_UPLOAD_BODY})});")
+        await page.add_script_tag(content=f"({PREPARE_UPLOAD_SCRIPT})({json.dumps({'body': _prepare_upload_body(kind)})});")
         request = await asyncio.wait_for(captured, timeout=90.0)
     finally:
         await page.unroute(pattern, capture)
@@ -254,6 +254,69 @@ async def _prepare_upload(page: Any) -> dict[str, Any]:
     return data["data"]
 
 
+def _reference_kind(item: dict[str, Any]) -> str:
+    declared = str(item.get("type") or "").strip()
+    mime = str(item.get("mime") or "")
+    source = str(item.get("dataUrl") or item.get("url") or "")
+    if source.startswith("data:"):
+        mime = source[5:].split(";", 1)[0]
+    inferred = mime.split("/", 1)[0]
+    kind = declared or (inferred if inferred in {"image", "video", "audio"} else "image")
+    if kind not in {"image", "video", "audio"}:
+        raise RuntimeError("reference_type_unsupported")
+    if inferred in {"image", "video", "audio"} and kind != inferred:
+        raise RuntimeError("reference_type_mismatch")
+    return kind
+
+
+def _prepare_upload_body(kind: str) -> dict[str, Any]:
+    # Dola's native ERN uploader configuration: audio uses the same VOD
+    # transport/resource type as video, with its own credential scene.
+    return PREPARE_UPLOAD_BODY if kind == "image" else {"tenant_id": "3", "scene_id": "46" if kind == "video" else "47", "resource_type": 4}
+
+
+async def _upload_media_reference(client: httpx.AsyncClient, content: bytes, mime: str, name: str, config: dict[str, Any], kind: str) -> dict[str, Any]:
+    credentials = _normalize_upload_credentials(config.get("upload_auth_token"))
+    host = str(config.get("upload_host") or "").removeprefix("https://").rstrip("/")
+    space = str(config.get("service_id") or "")
+    if not host or not space:
+        raise RuntimeError("prepare_upload_config_incomplete")
+    base = f"https://{host}/"
+    query = {"Action": "ApplyUploadInner", "Version": "2020-11-19", "SpaceName": space, "FileType": "video", "IsInner": "1", "FileSize": str(len(content)), "s": _random_base36()}
+    url = base + "?" + urlencode(query)
+    response = await client.get(url, headers=_sign_imagex_request(method="GET", raw_url=url, credentials=credentials, service="vod"))
+    data = await _read_response_json(response, "vod_apply")
+    error = (data.get("ResponseMetadata") or {}).get("Error")
+    if error:
+        raise RuntimeError(f"vod_apply_rejected_{error.get('Code', 'unknown')}")
+    nodes = ((data.get("Result") or {}).get("InnerUploadAddress") or {}).get("UploadNodes") or []
+    node = nodes[0] if nodes else {}
+    stores = node.get("StoreInfos") or []
+    store = stores[0] if stores else {}
+    upload_id, session_key = str(store.get("UploadID") or ""), str(node.get("SessionKey") or "")
+    if not all([node.get("UploadHost"), store.get("StoreUri"), store.get("Auth"), upload_id, session_key]):
+        raise RuntimeError("vod_apply_incomplete")
+    target = f"https://{node['UploadHost']}/upload/v1/{store['StoreUri']}"
+    crc = f"{binascii.crc32(content) & 0xFFFFFFFF:08x}"
+    headers = {**(node.get("UploadHeader") or {}), "Authorization": store["Auth"]}
+    uploaded = await _read_response_json(await client.post(target, headers={**headers, "Content-CRC32": crc, "Content-Type": "application/octet-stream"}, content=content), "vod_transfer")
+    if uploaded.get("code") != 2000:
+        raise RuntimeError("vod_transfer_rejected")
+    url = base + "?" + urlencode({"Action": "CommitUploadInner", "Version": "2020-11-19", "SpaceName": space})
+    body = json.dumps({"SessionKey": session_key, "Functions": []}, separators=(",", ":"))
+    committed = await _read_response_json(await client.post(url, headers={"Content-Type": "application/json", **_sign_imagex_request(method="POST", raw_url=url, credentials=credentials, body=body, include_payload_hash=True, service="vod")}, content=body), "vod_commit")
+    error = (committed.get("ResponseMetadata") or {}).get("Error")
+    if error:
+        raise RuntimeError(f"vod_commit_rejected_{error.get('Code', 'unknown')}")
+    results = (committed.get("Result") or {}).get("Results") or []
+    result = results[0] if results else {}
+    meta = result.get("VideoMeta") or {}
+    vid = str(result.get("Vid") or "")
+    if not vid or meta.get("FileType") != kind:
+        raise RuntimeError("vod_commit_missing_vid_or_type_mismatch")
+    return {"type": kind, "uri": vid, "vid": vid, "name": name, "mime": mime, "size": int(meta.get("Size") or len(content)), "duration": float(meta.get("Duration") or 0), "width": int(meta.get("Width") or 0), "height": int(meta.get("Height") or 0)}
+
+
 async def upload_reference(
     page: Any,
     item: dict[str, Any],
@@ -264,9 +327,10 @@ async def upload_reference(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
-    existing_uri = str(item.get("uri") or "").strip()
+    kind = _reference_kind(item)
+    existing_uri = str(item.get("vid") or item.get("uri") or "").strip()
     if existing_uri:
-        return {"uri": existing_uri, "name": str(item.get("name") or "image.png"), "width": int(item.get("width") or 0), "height": int(item.get("height") or 0), "mime": str(item.get("mime") or "image/png")}
+        return {**item, "type": kind, "uri": existing_uri, "name": str(item.get("name") or "image.png"), "width": int(item.get("width") or 0), "height": int(item.get("height") or 0), "mime": str(item.get("mime") or "image/png")}
     source_url = str(item.get("url") or item.get("dataUrl") or "").strip()
     if not source_url:
         raise RuntimeError("reference_url_missing")
@@ -284,7 +348,12 @@ async def upload_reference(
                     client=shared,
                 )
     content, mime, file_name = await _fetch_source_bytes(source_url, upload_proxy, client, traffic_metadata)
-    upload_config = await _prepare_upload(page)
+    if mime.split("/", 1)[0] != kind:
+        raise RuntimeError("reference_type_mismatch")
+    file_name = str(item.get("name") or file_name)
+    upload_config = await _prepare_upload(page, kind)
+    if kind != "image":
+        return await _upload_media_reference(client, content, mime, file_name, upload_config, kind)
     credentials = _normalize_upload_credentials(upload_config.get("upload_auth_token"))
     service_id = str(upload_config.get("service_id") or "")
     imagex_host = str(upload_config.get("upload_host") or "imagex-ap-southeast-1.bytevcloudapi.com")

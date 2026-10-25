@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-20",
+  "scope": "GeminiTools 反代网关真流式改造 + 429 后自动刷新该账号额度目录快照（仅 app 运行时覆盖）",
+  "method": "运行时覆盖补丁：LAN HTTP 下载 61MB runtime tar → 服务器 docker build FROM 现网镜像叠加 runtime/ → .env 切换 DREAMYO_IMAGE → compose up -d --wait app generation-worker",
+  "baseImage": "dreamyo-app:release-20261010-model-icons-account-health-20261016（从服务器 .env 动态读取）",
+  "newImage": "dreamyo-app:release-20261020-gemini-tools-streaming",
+  "buildId": "UDOFZu1p4n7eOhjSxw7Vn",
+  "archive": "gemini-tools-streaming-web-20261020.tar.gz",
+  "archiveSha256": "3a11515073c4bc69e5ed5b68ebcbf466cd3ee4d3cfa23965356af6a5b3742604",
+  "archiveBytes": 64189181,
+  "isolation": {
+    "manifest": "docs/deployment-20261010/构建输入哈希.json",
+    "workspaceVsDeployedDiff": 9,
+    "intendedShip": [
+      "web/src/lib/server/gemini-tools-service.ts",
+      "web/src/lib/server/gemini-tools-service.test.ts",
+      "web/src/app/api/gemini-tools/[...path]/route.ts"
+    ],
+    "excludedUnpublished": [
+      "web/src/app/api/auth/session/route.ts",
+      "web/src/app/api/auth/session/route.test.ts",
+      "web/src/stores/use-public-session-store.ts",
+      "web/src/stores/use-public-session-store.test.ts",
+      "web/src/components/layout/client-root-init.tsx",
+      "web/src/components/model-picker.tsx"
+    ],
+    "revertVerification": "5 文件 git HEAD 内容哈希==清单；model-picker.tsx 剥离 Session 任务 hunks 后重构哈希==清单(940ef645…)，字节级一致",
+    "negativeMarker": "构建产物中「正在更新模型权限」出现 0 次"
+  },
+  "verification": {
+    "copyTypecheck": true,
+    "targetedTests": "gemini-tools-service.test.ts 22 passed（副本内）",
+    "build": true,
+    "streamGenerateContentInServerChunks": 4,
+    "countTokensInServerChunks": 2,
+    "localSmoke": "runtime standalone 启动 OK；/api/gemini-tools/v1/models 无 key 返回 401 JSON；/ 返回 200",
+    "sharpLinux": "从 dreamyo-app:offline 镜像提取 @img+sharp-linux-x64 + libvips-linux 注入 runtime/node_modules/.pnpm"
+  },
+  "rollback": "cp patches/gemini-tools-streaming-20261020/env.before-gemini-tools /opt/www/dreamyo/.env && docker compose -f docker-compose.offline-external-db.yml up -d --no-deps --wait app generation-worker",
+  "lanServe": "http://192.168.100.43:50405/gemini-tools-streaming-web-20261020.tar.gz",
+  "deployedAt": "2026-10-20",
+  "liveVerification": "应用 8866 首页 200；首页 3 个 chunk 内容哈希文件名与新构建逐一匹配（构建身份证明）；/api/gemini-tools/v1/models 无 key 返回 401。第二次运行续跑脚本被防重复断言正确拦截。"
+}

@@ -1,7 +1,7 @@
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
 import { resolveGlobalAiOpcPreset } from "@/lib/globalaiopc-catalog";
 import { inferModelCapability, isCreativeGenerationModel, normalizeModelId } from "@/lib/model-capability";
-import { normalizeModelIconKey } from "@/lib/model-icons";
+import { normalizeModelIconKey, normalizeModelIconUrl } from "@/lib/model-icons";
 import { channelConnectionReady, protocolCatalogCapability, resolveChannelModelConfig } from "@/lib/channel-protocol-registry";
 export { channelConnectionReady } from "@/lib/channel-protocol-registry";
 
@@ -93,7 +93,35 @@ export function modelRoutingValidationErrors(logicalModels: LogicalModel[], chan
             if (bindingKeys.has(bindingKey)) errors.push(`逻辑模型 ${model.id} 存在重复绑定`);
             bindingKeys.add(bindingKey);
         }
+        const fallbackModelId = typeof model.fallbackModelId === "string" ? model.fallbackModelId.trim() : "";
+        if (fallbackModelId) {
+            const fallback = logicalModels.find((item) => item.id.toLowerCase() === fallbackModelId.toLowerCase());
+            if (model.capability !== "image" && model.capability !== "video") errors.push(`逻辑模型 ${model.id} 仅图片或视频模型可以配置备用模型`);
+            else if (fallbackModelId.length > 120) errors.push(`逻辑模型 ${model.id} 的备用模型 ID 不能超过 120 个字符`);
+            else if (fallbackModelId.toLowerCase() === model.id.toLowerCase()) errors.push(`逻辑模型 ${model.id} 不能将自身设为备用模型`);
+            else if (!fallback) errors.push(`逻辑模型 ${model.id} 的备用模型不存在：${fallbackModelId}`);
+            else if (fallback.capability !== model.capability) errors.push(`逻辑模型 ${model.id} 的备用模型能力必须为${capabilityLabel(model.capability)}：${fallbackModelId}`);
+            else if (!fallback.enabled || !isLogicalModelResolvable(logicalModels, channels, model.capability, fallback.id)) errors.push(`逻辑模型 ${model.id} 的备用模型不可用：${fallbackModelId}`);
+        }
     }
+    const modelById = new Map(logicalModels.map((model) => [model.id.toLowerCase(), model]));
+    const visitedFallbacks = new Set<string>();
+    const cyclicFallbacks = new Set<string>();
+    const visitFallback = (model: LogicalModel, path: string[]) => {
+        const id = model.id.toLowerCase();
+        const cycleStart = path.indexOf(id);
+        if (cycleStart >= 0) {
+            path.slice(cycleStart).forEach((item) => cyclicFallbacks.add(item));
+            return;
+        }
+        if (visitedFallbacks.has(id)) return;
+        const nextId = model.fallbackModelId?.trim().toLowerCase();
+        const next = nextId ? modelById.get(nextId) : undefined;
+        if (next) visitFallback(next, [...path, id]);
+        visitedFallbacks.add(id);
+    };
+    logicalModels.forEach((model) => visitFallback(model, []));
+    for (const id of cyclicFallbacks) errors.push(`逻辑模型 ${modelById.get(id)?.id || id} 的备用模型配置存在循环引用`);
     for (const [capability, key] of Object.entries(CAPABILITY_DEFAULT_KEYS) as Array<[LogicalModelCapability, keyof SystemDefaultModels]>) {
         const modelId = defaults[key];
         if (modelId && !isLogicalModelResolvable(logicalModels, channels, capability, modelId)) errors.push(`默认${capabilityLabel(capability)}模型不可解析：${modelId}`);
@@ -129,13 +157,14 @@ export function channelDetectedCapabilities(channel: Pick<SystemModelChannel, "a
 export function resolveLogicalModelCapabilityProfile(binding: Pick<LogicalModelBinding, "capabilityProfile">, capability: LogicalModelCapability, channel?: Pick<SystemModelChannel, "advancedConfig">, upstreamModel = "") {
     if (!binding.capabilityProfile && !channel?.advancedConfig) return undefined;
     const stored = binding.capabilityProfile || {};
+    const dolaMediaReferences = advancedDolaMediaReferences(channel?.advancedConfig, upstreamModel);
     const advanced = channel?.advancedConfig;
     const globalPreset = resolveGlobalAiOpcPreset(advanced, upstreamModel);
     const modelConfig = resolveChannelModelConfig(advanced, upstreamModel) || advanced?.operationConfigs?.[capability];
     return {
         supportsReferenceImage: booleanValue(stored.supportsReferenceImage, globalPreset?.supportsReferenceImage ?? modelConfig?.supportsReferenceImage ?? advanced?.supportsReferenceImage),
-        supportsReferenceVideo: booleanValue(stored.supportsReferenceVideo, globalPreset?.supportsReferenceVideo ?? modelConfig?.supportsReferenceVideo ?? advanced?.supportsReferenceVideo),
-        supportsReferenceAudio: booleanValue(stored.supportsReferenceAudio, globalPreset?.supportsReferenceAudio ?? modelConfig?.supportsReferenceAudio ?? advanced?.supportsReferenceAudio),
+        supportsReferenceVideo: dolaMediaReferences ?? booleanValue(stored.supportsReferenceVideo, globalPreset?.supportsReferenceVideo ?? modelConfig?.supportsReferenceVideo ?? advanced?.supportsReferenceVideo),
+        supportsReferenceAudio: dolaMediaReferences ?? booleanValue(stored.supportsReferenceAudio, globalPreset?.supportsReferenceAudio ?? modelConfig?.supportsReferenceAudio ?? advanced?.supportsReferenceAudio),
         maxReferenceImages: positiveInteger(stored.maxReferenceImages),
         aspectRatios: normalizeAspectRatios(stored.aspectRatios || modelConfig?.aspectRatios),
         durationRange: text(stored.durationRange, 120) || modelConfig?.durationRange || advanced?.durationRange || undefined,
@@ -191,14 +220,17 @@ function sanitizeLogicalModels(models: LogicalModel[], channels: SystemModelChan
         const channel = channels.find((item) => item.id === first.channelId);
         const detected = channel ? resolveChannelModelCapability(channel, first.upstreamModel) : null;
         const icon = normalizeModelIconKey(model.icon);
+        const iconUrl = normalizeModelIconUrl(model.iconUrl);
         const pickerGroup = text(model.pickerGroup, 80);
         return [
             {
                 id,
                 name: text(model.name, 120) || id,
                 capability: detected?.authoritative ? detected.capability : normalizeCapability(model.capability),
+                ...(typeof model.fallbackModelId === "string" && model.fallbackModelId.trim() ? { fallbackModelId: model.fallbackModelId.trim() } : {}),
                 ...(pickerGroup ? { pickerGroup } : {}),
                 ...(icon ? { icon } : {}),
+                ...(iconUrl ? { iconUrl } : {}),
                 enabled: model.enabled !== false,
                 ...(model.pickerVisible === false ? { pickerVisible: false } : {}),
                 bindings,
@@ -315,4 +347,8 @@ function clampWeight(value: unknown) {
 
 function text(value: unknown, maxLength: number) {
     return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function advancedDolaMediaReferences(config: SystemModelChannel["advancedConfig"], model: string) {
+    return config?.protocol === "dola" ? normalizeModelId(model) === "dola-seedance-2-5" : undefined;
 }

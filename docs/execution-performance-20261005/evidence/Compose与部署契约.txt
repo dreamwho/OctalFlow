@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 /Users/dream/Desktop/Vibe Coding/PythonProject/Octal-Canvas/web
+
+
+ Test Files  2 passed (2)
+      Tests  30 passed (30)
+   Start at  00:36:00
+   Duration  15.05s (transform 29ms, setup 0ms, import 69ms, tests 14.79s, environment 0ms)
+

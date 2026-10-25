@@ -22,7 +22,7 @@ import { DramaGenerationPanel } from "./drama-generation-panel";
 import { DramaReviewPanel } from "./drama-review-panel";
 import { DramaStoryboardShotCard } from "./drama-storyboard-shot-card";
 import { DramaVersionModal } from "./drama-project-modals";
-import { dramaGenerationSize, estimateTaskPoints, referenceImage, shotReferenceImages, storyboardReferenceImages } from "./drama-shot-generation-utils";
+import { dramaGenerationSize, estimateTaskPoints, referenceImage, shotReferenceImages, shotReferenceMedia, storyboardReferenceImages } from "./drama-shot-generation-utils";
 import { useGenerationCapacityRetry } from "./use-generation-capacity-retry";
 import { DramaEpisodeSidebar, DramaScriptPanel, DramaWorkspaceHeader, type DramaProjectStage } from "./drama-project-sections";
 
@@ -330,8 +330,9 @@ function DramaProjectEditor({ project }: { project: DramaProject }) {
         startingShotRef.current = next.id;
         const mode = next.videoMode || project.defaultVideoMode;
         const references = mode === "reference" ? shotReferenceImages(project, next) : storyboardReferenceImages(next);
+        const mediaReferences = shotReferenceMedia(next);
         const prompts = compileDramaShotPrompts(project, episode, next);
-        if (mode === "reference" && !references.length) {
+        if (mode === "reference" && !references.length && !mediaReferences.videos.length && !mediaReferences.audios.length) {
             updateShot(project.id, episode.id, next.id, { generationStatus: "error", generationError: "参考图模式需要先为关联角色、场景、道具或项目素材配置参考图" });
             startingShotRef.current = "";
             return;
@@ -350,8 +351,8 @@ function DramaProjectEditor({ project }: { project: DramaProject }) {
             { ...config, model: config.videoModel || config.model, size: dramaGenerationSize(project, prompts.videoPrompt, references), videoSeconds: String(next.duration), videoGenerateAudio: String((next.audioMode || "source") === "source") },
             prompts.videoPrompt,
             references,
-            [],
-            [],
+            mediaReferences.videos,
+            mediaReferences.audios,
             {
                 conversationId: project.creativeConversationId,
                 surface: "drama",

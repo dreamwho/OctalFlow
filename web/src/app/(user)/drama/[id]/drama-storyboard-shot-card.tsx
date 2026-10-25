@@ -9,6 +9,7 @@ import { StoryboardTag } from "./drama-editor-elements";
 import { DramaShotAudioModeEditor } from "./drama-shot-audio-mode-editor";
 import { DramaShotContinuityEditor } from "./drama-shot-continuity-editor";
 import { DramaShotDialogueEditor } from "./drama-shot-dialogue-editor";
+import { DramaShotMediaReferences } from "./drama-shot-media-references";
 import { DramaShotFrameEditor } from "./drama-shot-frame-editor";
 
 const shotFieldClass = "!shadow-none hover:!border-foreground/25 focus:!border-foreground/35 focus:!shadow-none";
@@ -143,6 +144,7 @@ export function DramaStoryboardShotCard({ project, episodeId, shot, expanded, on
                             </label>
                         </div>
                         {(shot.videoMode || project.defaultVideoMode) === "storyboard" ? <DramaShotFrameEditor projectId={project.id} episodeId={episodeId} shot={shot} /> : null}
+                        <DramaShotMediaReferences project={project} episodeId={episodeId} shot={shot} />
                         <DramaShotContinuityEditor projectId={project.id} episodeId={episodeId} shot={shot} />
                         {shot.storyboardError ? <p className="mt-2 text-xs text-red-500">{shot.storyboardError}</p> : null}
                         {shot.storyboardEndError ? <p className="mt-2 text-xs text-red-500">{shot.storyboardEndError}</p> : null}

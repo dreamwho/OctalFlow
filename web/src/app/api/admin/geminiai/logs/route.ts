@@ -19,7 +19,7 @@ export async function GET(request: Request) {
             pageSize: numberParam(search.get("pageSize"), 20),
             keyword: search.get("keyword") || undefined,
             status: search.get("status") === "success" || search.get("status") === "failed" ? (search.get("status") as "success" | "failed") : undefined,
-            capability: capability === "text" || capability === "image" || capability === "search" ? (capability as GeminiAiRequestCapability) : undefined,
+            capability: capability === "text" || capability === "image" || capability === "search" || capability === "video" ? (capability as GeminiAiRequestCapability) : undefined,
             source: source === "runtime" || source === "admin-test" || source === "external" ? (source as GeminiAiRequestSource) : undefined,
             model,
             accountId,

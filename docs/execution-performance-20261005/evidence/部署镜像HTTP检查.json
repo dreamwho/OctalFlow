@@ -1,0 +1,14 @@
+[
+  {
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "path": "/api/generation-logs/events",
+    "status": 401
+  },
+  {
+    "path": "/api/maintenance/geminiai-videos/notify",
+    "status": 401
+  }
+]

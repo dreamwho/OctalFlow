@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 
 const cards = Array.from({ length: 9 }, (_, index) => ({
     id: `image-workbench:visual-${index}`,
@@ -8,7 +9,13 @@ const cards = Array.from({ length: 9 }, (_, index) => ({
     prompt: `测试图片 ${index + 1}`,
     model: "e2e-image",
     assets: index === 8 ? [] : [{ type: "image", url: "/design/home/aurora-background.webp", mimeType: "image/webp", width: 4096, height: 2313 }],
-    requestSnapshot: { version: 1, userPrompt: `测试图片 ${index + 1}`, parameters: { model: "e2e-image", size: "16:9" }, references: [], slots: [{ id: `slot-${index}`, index: 0, status: index === 8 ? "pending" : "success", assetIndex: index === 8 ? undefined : 0, startedAt: Date.now() - 12_000 }] },
+    requestSnapshot: {
+        version: 1,
+        userPrompt: `测试图片 ${index + 1}`,
+        parameters: { model: "e2e-image", size: "16:9" },
+        references: [],
+        slots: [{ id: `slot-${index}`, index: 0, status: index === 8 ? "pending" : "success", assetIndex: index === 8 ? undefined : 0, startedAt: Date.now() - 12_000 }],
+    },
     createdAt: "2026-09-24T04:00:00.000Z",
     durationMs: 12_000,
 }));
@@ -17,13 +24,15 @@ test("unified generation page keeps nine cards, theme, parameter menus and refer
     await page.route("**/api/generation-logs**", (route) => route.fulfill({ json: { items: new URL(route.request().url()).searchParams.get("kind") === "image" ? cards : [] } }));
     await page.route("**/api/library-assets**", (route) => route.fulfill({ json: { code: 0, data: { assets: [], total: 0, page: 1, pageSize: 100 }, msg: "OK" } }));
     await page.route("**/api/model-generation-stats", (route) => route.fulfill({ json: { data: { "e2e-image": { avgDurationMs: 30_000, samples: 3 } } } }));
-    await page.route("**/api/runninghub/apps?binding=interior-design", (route) => route.fulfill({ json: { code: 0, data: [{ id: "interior-test", remoteId: "interior-test", kind: "workflow", name: "测试室内设计应用", description: "", thumbnailUrl: "", featureBindings: ["interior-design"], fieldCount: 0 }], msg: "OK" } }));
+    await page.route("**/api/runninghub/apps?binding=interior-design", (route) =>
+        route.fulfill({ json: { code: 0, data: [{ id: "interior-test", remoteId: "interior-test", kind: "workflow", name: "测试室内设计应用", description: "", thumbnailUrl: "", featureBindings: ["interior-design"], fieldCount: 0 }], msg: "OK" } }),
+    );
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/create?mode=image");
     const workbench = page.locator('[data-testid="image-video-workbench"]:visible').first();
     await expect(workbench).toBeVisible();
     const themeButton = page.getByRole("button", { name: /切换.*主题/ });
-    if (await workbench.getAttribute("data-theme") === "dark") await themeButton.click();
+    if ((await workbench.getAttribute("data-theme")) === "dark") await themeButton.click();
     await expect(page.getByRole("button", { name: "图片", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: "图片比例：16:9" })).toBeVisible();
     await expect(page.getByRole("button", { name: "画质：低 · 1K" })).toBeVisible();
@@ -54,7 +63,7 @@ test("unified generation page keeps nine cards, theme, parameter menus and refer
     expect(dialogRect!.width).toBeLessThanOrEqual(600);
     expect(dialogRect!.height).toBeLessThan(sidebarRect!.height);
     await page.getByRole("button", { name: "本机上传" }).click();
-    await expect(page.getByText("拖拽、粘贴或选择图片")).toBeVisible();
+    await expect(page.getByText("拖拽、粘贴或选择素材")).toBeVisible();
     await page.getByRole("dialog", { name: "添加参考图片" }).getByRole("button", { name: "Close" }).click();
     await expect(page.getByRole("dialog", { name: "添加参考图片" })).toBeHidden();
     await page.getByRole("button", { name: /室内设计 SU 直出/ }).click();
@@ -119,7 +128,12 @@ test("unified generation page keeps nine cards, theme, parameter menus and refer
     await interiorClear.click();
     const resultCards = workbench.locator("article");
     await expect(resultCards).toHaveCount(9);
-    const geometry = await resultCards.evaluateAll((items) => items.map((item) => { const rect = item.getBoundingClientRect(); return { top: rect.top, left: rect.left, bottom: rect.bottom }; }));
+    const geometry = await resultCards.evaluateAll((items) =>
+        items.map((item) => {
+            const rect = item.getBoundingClientRect();
+            return { top: rect.top, left: rect.left, bottom: rect.bottom };
+        }),
+    );
     expect(geometry[0].top).toBeCloseTo(geometry[1].top, 0);
     expect(geometry[0].top).toBeCloseTo(geometry[2].top, 0);
     expect(geometry[3].top).toBeGreaterThan(geometry[0].top);
@@ -143,11 +157,13 @@ test("unified generation page keeps nine cards, theme, parameter menus and refer
     await page.screenshot({ path: testInfo.outputPath("image-preview-light-1440.png") });
     await lightbox.getByRole("button", { name: "关闭预览" }).click();
     await page.setViewportSize({ width: 2059, height: 940 });
-    const wideGeometry = await resultCards.evaluateAll((items) => items.map((item) => {
-        const card = item.getBoundingClientRect();
-        const media = item.querySelector("[class*='mediaFrame']")?.getBoundingClientRect();
-        return { top: card.top, left: card.left, cardWidth: card.width, mediaWidth: media?.width || 0, mediaHeight: media?.height || 0 };
-    }));
+    const wideGeometry = await resultCards.evaluateAll((items) =>
+        items.map((item) => {
+            const card = item.getBoundingClientRect();
+            const media = item.querySelector("[class*='mediaFrame']")?.getBoundingClientRect();
+            return { top: card.top, left: card.left, cardWidth: card.width, mediaWidth: media?.width || 0, mediaHeight: media?.height || 0 };
+        }),
+    );
     expect(wideGeometry.slice(0, 4).every((item) => Math.abs(item.top - wideGeometry[0].top) < 1)).toBe(true);
     expect(wideGeometry[4].top).toBeGreaterThan(wideGeometry[0].top);
     expect(wideGeometry[3].left).toBeGreaterThan(wideGeometry[2].left);
@@ -199,13 +215,16 @@ test("unified generation page keeps nine cards, theme, parameter menus and refer
 
 test("reference selection stays local until submission", async ({ page }) => {
     let uploadRequests = 0;
-    await page.route("**/api/reference-assets", (route) => { uploadRequests += 1; return route.abort(); });
+    await page.route("**/api/reference-assets", (route) => {
+        uploadRequests += 1;
+        return route.abort();
+    });
     await page.goto("/create?mode=image");
     await page.getByRole("button", { name: "添加参考图片" }).click();
     await expect(page.getByRole("dialog", { name: "添加参考图片" }).getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
     await page.locator("#workbench-reference-file").setInputFiles({ name: "reference.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lJkAAAAASUVORK5CYII=", "base64") });
     await expect(page.getByRole("img", { name: "reference.png" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /继续添加参考图/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /继续添加参考素材/ })).toBeVisible();
     await page.locator("#workbench-prompt").fill("@");
     await page.locator("[data-canvas-resource-mention-menu] button").filter({ hasText: "图片1" }).first().click();
     await expect(page.locator('#workbench-prompt [data-canvas-token="reference"]')).toHaveCount(1);
@@ -215,12 +234,12 @@ test("reference selection stays local until submission", async ({ page }) => {
     const expandedPrompt = page.getByRole("textbox", { name: "展开的提示词" });
     await expect(expandedPrompt.locator('[data-canvas-token="reference"]')).toHaveCount(1);
     await page.getByRole("dialog", { name: "编辑提示词" }).getByRole("button", { name: "Close" }).click();
-    await page.getByRole("button", { name: "继续添加参考图" }).click();
+    await page.getByRole("button", { name: "继续添加参考素材" }).click();
     const dialog = page.getByRole("dialog", { name: "添加参考图片" });
     await expect(dialog.getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
     await dialog.getByRole("button", { name: "我的素材库" }).click();
     await dialog.getByRole("button", { name: "Close" }).click();
-    await page.getByRole("button", { name: "继续添加参考图" }).click();
+    await page.getByRole("button", { name: "继续添加参考素材" }).click();
     await expect(page.getByRole("dialog", { name: "添加参考图片" }).getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
     expect(uploadRequests).toBe(0);
 });
@@ -231,7 +250,7 @@ test("reference upload picker opens first on mobile", async ({ page }) => {
     await page.getByRole("button", { name: "添加参考图片" }).click();
     const dialog = page.getByRole("dialog", { name: "添加参考图片" });
     await expect(dialog.getByRole("button", { name: "本机上传" })).toHaveAttribute("aria-pressed", "true");
-    await expect(dialog.getByText("拖拽、粘贴或选择图片")).toBeVisible();
+    await expect(dialog.getByText("拖拽、粘贴或选择素材")).toBeVisible();
     const rect = await dialog.boundingBox();
     expect(rect!.x).toBeGreaterThanOrEqual(0);
     expect(rect!.x + rect!.width).toBeLessThanOrEqual(390);
@@ -239,7 +258,9 @@ test("reference upload picker opens first on mobile", async ({ page }) => {
 
 test("asset cover upload shows waiting state and blocks saving", async ({ page }) => {
     let releaseUpload: (() => void) | undefined;
-    const uploadGate = new Promise<void>((resolve) => { releaseUpload = resolve; });
+    const uploadGate = new Promise<void>((resolve) => {
+        releaseUpload = resolve;
+    });
     await page.route("**/api/reference-assets", async (route) => {
         await uploadGate;
         await route.fulfill({ status: 400, json: { error: "测试上传失败" } });
@@ -248,7 +269,10 @@ test("asset cover upload shows waiting state and blocks saving", async ({ page }
         await page.goto("/assets");
         await page.getByRole("button", { name: "新增素材" }).click();
         const dialog = page.getByRole("dialog", { name: "新增素材" });
-        await dialog.locator('input[type="file"][accept="image/*"]').first().setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lJkAAAAASUVORK5CYII=", "base64") });
+        await dialog
+            .locator('input[type="file"][accept="image/*"]')
+            .first()
+            .setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lJkAAAAASUVORK5CYII=", "base64") });
         await expect(dialog.getByRole("button", { name: /处理中|上传 \d+%/ })).toBeVisible();
         await expect(dialog.getByRole("button", { name: /保\s*存/ })).toBeDisabled();
         releaseUpload?.();
@@ -256,4 +280,151 @@ test("asset cover upload shows waiting state and blocks saving", async ({ page }
     } finally {
         releaseUpload?.();
     }
+});
+
+test("workbench receives durable log changes over SSE and coalesces slow refreshes", async ({ page, request }) => {
+    const id = `performance-${randomUUID()}`;
+    const clientRequestId = `performance-request-${randomUUID()}`;
+    const slotId = "slot-one";
+    const created = await request.post("/api/generation-logs", {
+        data: {
+            id,
+            kind: "image",
+            source: "image-workbench",
+            status: "pending",
+            count: 1,
+            title: "性能通知回归",
+            prompt: "性能通知回归",
+            model: "e2e-image",
+            requestSnapshot: { version: 1, userPrompt: "性能通知回归", parameters: {}, references: [], slots: [{ id: slotId, index: 0, status: "pending", clientRequestId, startedAt: Date.now() }] },
+        },
+    });
+    expect(created.ok()).toBeTruthy();
+    await page.addInitScript(() => {
+        const NativeEventSource = window.EventSource;
+        window.EventSource = class extends NativeEventSource {
+            constructor(url: string | URL, options?: EventSourceInit) {
+                super(url, options);
+                if (String(url).endsWith("/api/generation-logs/events")) {
+                    this.addEventListener("logs.changed", () => {
+                        const root = document.documentElement;
+                        root.dataset.logChangeEvents = String(Number(root.dataset.logChangeEvents || 0) + 1);
+                    });
+                }
+            }
+        };
+    });
+    let active = 0;
+    let peak = 0;
+    let release!: () => void;
+    let began!: () => void;
+    let first = true;
+    const held = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+        began = resolve;
+    });
+    await page.route("**/api/generation-logs?*", async (route) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        try {
+            const response = await route.fetch();
+            if (first) {
+                first = false;
+                began();
+                await held;
+            }
+            await route.fulfill({ response });
+        } finally {
+            active -= 1;
+        }
+    });
+    try {
+        const stream = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/generation-logs/events" && response.headers()["content-type"]?.includes("text/event-stream"));
+        await page.goto("/create?mode=image");
+        await started;
+        await page.evaluate(() => {
+            window.dispatchEvent(new Event("focus"));
+            window.dispatchEvent(new Event("focus"));
+        });
+        release();
+        await stream;
+        const workbench = page.locator('[data-testid="image-video-workbench"]:visible').first();
+        const card = workbench.locator(`article[data-record-id="${id}"]`);
+        await expect(card).toHaveAttribute("data-status", "pending");
+        const beforeChange = await page.locator("html").getAttribute("data-log-change-events");
+        const changed = await request.patch("/api/generation-logs", { data: { action: "fail-draft-slot", id, slotId, clientRequestId, error: "真实持久化通知已同步" } });
+        expect(changed.ok()).toBeTruthy();
+        await expect.poll(() => page.locator("html").getAttribute("data-log-change-events")).not.toBe(beforeChange);
+        await expect(card).toHaveAttribute("data-status", "failed");
+        await expect(card.getByText("真实持久化通知已同步")).toBeVisible();
+        expect(peak).toBe(1);
+        await page.reload();
+        await expect(page.locator(`article[data-record-id="${id}"][data-status="failed"]`)).toBeVisible();
+    } finally {
+        release();
+        await request.delete("/api/generation-logs", { data: { ids: [id] } });
+    }
+});
+
+test("role model permissions filter the image workbench and reject forbidden submissions", async ({ page, request }, testInfo) => {
+    const settingsResponse = await request.get("/api/admin/settings");
+    expect(settingsResponse.ok()).toBe(true);
+    const { settings } = await settingsResponse.json();
+    const roleId = `restricted-${randomUUID().slice(0, 8)}`;
+    const username = `role_${randomUUID().slice(0, 8)}`;
+    const password = "E2E-role-password-2026!";
+    const role = { id: roleId, name: "单模型测试角色", pointsMultiplier: 1, recordOnly: false, modelAccess: { all: false, capabilities: [], modelIds: ["e2e-image"], excludedModelIds: [] } };
+    const saveRole = async (modelIds: string[]) => {
+        const response = await request.put("/api/admin/user-roles", { data: { roles: [...settings.userRoles, { ...role, modelAccess: { ...role.modelAccess, modelIds } }] } });
+        expect(response.ok(), await response.text()).toBe(true);
+    };
+    await saveRole(["e2e-image"]);
+    const created = await request.post("/api/admin/users", { data: { username, displayName: "模型权限测试", password, role: roleId, status: "active", pointsBalance: 0 } });
+    expect(created.ok(), await created.text()).toBe(true);
+    const login = await page.request.post("/api/auth/login", { data: { username, password } });
+    expect(login.ok(), await login.text()).toBe(true);
+    const session = await (await page.request.get("/api/auth/session")).json();
+    expect(session.user.role).toBe(roleId);
+    expect(session.settings.logicalModels.map((model: { id: string }) => model.id)).toEqual(["e2e-image"]);
+    await saveRole(["e2e-image", "e2e-image-fallback"]);
+    await page.goto("/create?mode=image");
+    await page.getByRole("button", { name: "当前模型：e2e-image", exact: true }).click();
+    await expect(page.locator("[data-model-picker-panel]:visible").getByRole("option", { name: /e2e-image-fallback/ })).toBeVisible();
+    await page.getByRole("textbox", { name: "提示词", exact: true }).click();
+    await saveRole(["e2e-image"]);
+    await page.getByRole("button", { name: "当前模型：e2e-image", exact: true }).click();
+    await expect(page.locator("[data-model-picker-panel]:visible").getByRole("option", { name: "e2e-image 图片", exact: true }).first()).toBeVisible();
+    await expect(page.locator("[data-model-picker-panel]:visible").getByRole("option", { name: /e2e-image-fallback/ })).toHaveCount(0);
+    await page.getByRole("textbox", { name: "提示词", exact: true }).click();
+    await page.getByRole("button", { name: "返回首页", exact: true }).click();
+    await page.getByRole("button", { name: "图片和视频生成", exact: true }).click();
+    await page.getByRole("button", { name: "当前模型：e2e-image", exact: true }).click();
+    await expect(page.locator("[data-model-picker-panel]:visible").getByRole("option", { name: "e2e-image 图片", exact: true }).first()).toBeVisible();
+    await expect(page.locator("[data-model-picker-panel]:visible").getByRole("option", { name: /e2e-image-fallback/ })).toHaveCount(0);
+    for (const width of [1440, 390, 430]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto("/create?mode=image");
+        const trigger = page.getByRole("button", { name: "当前模型：e2e-image", exact: true });
+        await expect(trigger).toBeVisible();
+        await trigger.click();
+        const panel = page.locator("[data-model-picker-panel]:visible");
+        await expect(panel.getByRole("option", { name: /e2e-image/ }).first()).toBeVisible();
+        await expect(panel.getByRole("option", { name: /e2e-image-fallback|e2e-video|e2e-text/ })).toHaveCount(0);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: testInfo.outputPath(`role-models-${width}.png`) });
+    }
+    const forbidden = await page.request.post("/api/image-tasks", { data: { kind: "generate", prompt: "权限回归", config: { model: "e2e-image-fallback" } } });
+    expect(forbidden.status()).toBe(403);
+    expect(await forbidden.json()).toMatchObject({ error: "当前用户角色无权使用该图片模型" });
+    await saveRole([]);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "当前模型：e2e-image", exact: true })).toHaveCount(0);
+    const emptySession = await (await page.request.get("/api/auth/session")).json();
+    expect(emptySession.settings.logicalModels).toEqual([]);
+    expect(emptySession.settings.systemChannels).toEqual([]);
+    const adminSession = await (await request.get("/api/auth/session")).json();
+    expect(adminSession.user.role).toBe("admin");
+    expect(adminSession.settings.logicalModels.length).toBeGreaterThan(1);
 });

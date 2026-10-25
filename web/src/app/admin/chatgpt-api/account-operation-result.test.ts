@@ -14,6 +14,9 @@ describe("native account operation response", () => {
     it("keeps asynchronous operations pending", () => {
         expect(accountOperationOutcome({ progress_id: "fixture-id" })).toEqual({ kind: "pending", progressId: "fixture-id" });
     });
+    it("accepts synchronous abnormal-account cleanup completion", () => {
+        expect(accountOperationOutcome({ removed: 2, removed_ids: ["a1", "a2"], errors: [] })).toEqual({ kind: "complete", failed: 0, message: "清理 2 个，失败 0 个" });
+    });
     it.each([{}, { added: -1, skipped: 0, errors: [] }, { added: 10, skipped: 0 }])("does not assume unknown responses succeeded", (result) => {
         expect(() => accountOperationOutcome(result)).toThrow("勿重复提交");
     });

@@ -1,0 +1,21 @@
+{
+  "buildId": "ja-z1noZmz9I3b9ZrddNp",
+  "imageId": "sha256:640c3f1482573ec994e96a4d18d0fc8eeab7a7fadcef6ed0e305448e6d5783ff",
+  "originalUploadArchiveSha256": "2c2fa42d9fa24a047a5bf6e282a2752ae9d3e6221556c96ae8fe306e1360b8e7",
+  "runtimeReferenceFileCount": 2361,
+  "verifiedDeltaReceiptSha256": "44ee4d8d6bf16000e1a5e5299849fcb9975defc9a59e4827b2639a9e80104e98",
+  "isolatedSourceOverrides": [
+    {
+      "path": "web/src/lib/server/gemini-tools-service.ts",
+      "sha256": "74f2802b1bd5d5ef88b9dfcc4b76fca19c2a1ba7ce36d056e73f67fd772f7a88",
+      "note": "retain observed deployed GeminiTools behavior; exclude unpublished 429 quota refresh"
+    },
+    {
+      "path": "web/src/lib/server/gemini-tools-service.test.ts",
+      "sha256": "769e4acda1c001085f6e91b6b7e07f7bede145aec44c221d5281c3e019f28d7f",
+      "note": "retain observed deployed GeminiTools behavior; exclude unpublished 429 quota refresh"
+    }
+  ],
+  "testBuildId": "AnrAgd7X4oF11u6w9hubY",
+  "compiledGeminiToolsSha256": "59f61126391ca139dac90bfeefb8f9566855c96e8e48369e60e0d2d4da1ca825"
+}

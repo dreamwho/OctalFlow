@@ -37,6 +37,8 @@ export class GeminiAiRequestLogRepository {
             CREATE INDEX IF NOT EXISTS idx_geminiai_logs_created_at ON geminiai_request_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_geminiai_logs_model ON geminiai_request_logs(model);
             CREATE INDEX IF NOT EXISTS idx_geminiai_logs_account ON geminiai_request_logs(account_id);
+            ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS task_id varchar(128);
+            CREATE UNIQUE INDEX IF NOT EXISTS geminiai_request_logs_task_idx ON geminiai_request_logs(task_id, source) WHERE task_id IS NOT NULL;
             ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS phase varchar(32) DEFAULT 'success';
             ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb DEFAULT '[]'::jsonb;
             ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS prompt_tokens integer DEFAULT 0;
@@ -58,12 +60,12 @@ export class GeminiAiRequestLogRepository {
                 id, created_at, source, capability, method, path, model, account_id, account_email,
                 status_code, duration_ms, error, request_preview, response_preview, phase, lifecycle,
                 prompt_tokens, completion_tokens, total_tokens, image_requested_count, image_succeeded_count, image_failed_count,
-                client_ip, user_agent, headers, proxy_egress
+                client_ip, user_agent, headers, proxy_egress, task_id
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9,
                 $10, $11, $12, $13, $14, $15, $16,
                 $17, $18, $19, $20, $21, $22,
-                $23, $24, $25, $26
+                $23, $24, $25, $26, $27
             )`,
             [
                 log.id,
@@ -92,6 +94,7 @@ export class GeminiAiRequestLogRepository {
                 log.userAgent || null,
                 log.headers ? JSON.stringify(log.headers) : null,
                 log.proxyEgress ? JSON.stringify(log.proxyEgress) : null,
+                log.taskId || null,
             ],
         );
         await this.database.query("DELETE FROM geminiai_request_logs WHERE id IN (SELECT id FROM geminiai_request_logs ORDER BY created_at DESC OFFSET $1)", [maxLogs]);
@@ -116,8 +119,9 @@ export class GeminiAiRequestLogRepository {
                 image_failed_count = $15,
                 client_ip = coalesce($16, client_ip),
                 user_agent = coalesce($17, user_agent),
-                proxy_egress = coalesce($18, proxy_egress)
-            WHERE id = $1`,
+                proxy_egress = coalesce($18, proxy_egress),
+                task_id = coalesce($19, task_id)
+            WHERE id = $1 AND NOT (task_id IS NOT NULL AND phase IN ('success', 'failed') AND $8 = 'running')`,
             [
                 log.id,
                 log.statusCode,
@@ -137,6 +141,7 @@ export class GeminiAiRequestLogRepository {
                 log.clientIp || null,
                 log.userAgent || null,
                 log.proxyEgress ? JSON.stringify(log.proxyEgress) : null,
+                log.taskId || null,
             ],
         );
     }
@@ -146,11 +151,16 @@ export class GeminiAiRequestLogRepository {
         return result.rows[0] ? mapLog(result.rows[0]) : null;
     }
 
+    async findByTaskId(taskId: string, source: GeminiAiRequestSource) {
+        const result = await this.database.query("SELECT * FROM geminiai_request_logs WHERE task_id = $1 AND source = $2 LIMIT 1", [taskId, source]);
+        return result.rows[0] ? mapLog(result.rows[0]) : null;
+    }
+
     async list(input: { page: number; pageSize: number; keyword?: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability; source?: GeminiAiRequestSource; model?: string; accountId?: string }) {
         const where: string[] = [];
         const values: unknown[] = [];
-        if (input.status === "success") where.push("status_code < 400");
-        if (input.status === "failed") where.push("status_code >= 400");
+        if (input.status === "success") where.push("status_code < 400 AND phase = 'success'");
+        if (input.status === "failed") where.push("(status_code >= 400 OR phase = 'failed')");
         if (input.capability) {
             values.push(input.capability);
             where.push(`capability = $${values.length}`);
@@ -178,7 +188,7 @@ export class GeminiAiRequestLogRepository {
         const [count, stats] = await Promise.all([
             this.database.query(`SELECT count(*)::integer AS total FROM geminiai_request_logs${condition}`, [...values]),
             this.database.query(
-                "SELECT count(*)::integer AS total,count(*) FILTER (WHERE status_code < 400)::integer AS success,count(*) FILTER (WHERE status_code >= 400)::integer AS failed,coalesce(round(avg(duration_ms)),0)::integer AS average_duration_ms FROM geminiai_request_logs",
+                "SELECT count(*)::integer AS total,count(*) FILTER (WHERE status_code < 400 AND phase = 'success')::integer AS success,count(*) FILTER (WHERE status_code >= 400 OR phase = 'failed')::integer AS failed,coalesce(round(avg(duration_ms)),0)::integer AS average_duration_ms FROM geminiai_request_logs",
             ),
         ]);
         values.push(input.pageSize, (input.page - 1) * input.pageSize);
@@ -201,6 +211,7 @@ function mapLog(row: Record<string, unknown>): GeminiAiRequestLog {
         method: string(row.method) || "POST",
         path: string(row.path),
         model: string(row.model),
+        ...(string(row.task_id) ? { taskId: string(row.task_id) } : {}),
         ...(string(row.account_id) ? { accountId: string(row.account_id) } : {}),
         ...(string(row.account_email) ? { accountEmail: string(row.account_email) } : {}),
         statusCode: number(row.status_code),
@@ -252,7 +263,7 @@ function mapStats(row: Record<string, unknown> | undefined): GeminiAiRequestStat
 }
 
 function capability(value: unknown): GeminiAiRequestCapability {
-    return value === "image" || value === "search" ? value : "text";
+    return value === "image" || value === "search" || value === "video" ? value : "text";
 }
 function string(value: unknown) {
     return value === null || value === undefined ? "" : String(value);

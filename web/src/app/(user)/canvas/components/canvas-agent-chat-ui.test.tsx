@@ -91,7 +91,7 @@ describe("Canvas Agent media attachments", () => {
     it("renders an uploaded video as a playable media thumbnail", () => {
         const markup = renderToStaticMarkup(<AgentChatComposer {...baseProps} attachments={[{ id: "video", name: "reference.mp4", url: "blob:video", type: "video", status: "ready" }]} onAddFiles={vi.fn()} />);
 
-        expect(markup).toContain('accept="image/*,video/*,text/plain,text/markdown,.md,.markdown,.txt"');
+        expect(markup).toContain('accept="image/*,video/*,audio/*,text/plain,text/markdown,.md,.markdown,.txt"');
         expect(markup).toContain("<video");
         expect(markup).toContain('aria-label="reference.mp4"');
     });

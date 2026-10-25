@@ -2,7 +2,7 @@ import { apiCompatError, apiSuccess } from "@/app/api/_shared/api-response";
 import { hasAdminPermission } from "@/lib/admin-permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { auditActorFromRequest, safeRecordAuditLog } from "@/lib/server/audit-log-store";
-import { ChatGptApiError, chatGptRuntimeJson, chatGptRuntimeRequest, getChatGptUploadProxySelection, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection, updateChatGptUploadProxySelection } from "@/lib/server/chatgpt-api-service";
+import { ChatGptApiError, chatGptRuntimeJson, chatGptRuntimeRequest, getChatGptUploadProxySelection, rewriteChatGptMedia, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection, updateChatGptUploadProxySelection } from "@/lib/server/chatgpt-api-service";
 import { getChatGptSavedModels, saveChatGptModels } from "@/lib/server/chatgpt-api-models";
 import { readRequestBodyText, RequestBodyTooLargeError } from "@/lib/server/request-body-limit";
 
@@ -13,10 +13,12 @@ type Context = { params: Promise<{ path: string[] }> };
 const routes: Record<string, { path: string; methods: string[] }> = {
     health: { path: "/integration/health", methods: ["GET"] },
     accounts: { path: "/api/accounts", methods: ["GET", "POST", "DELETE"] },
+    "accounts/cleanup-abnormal": { path: "/api/accounts/cleanup-abnormal", methods: ["GET", "POST"] },
     "accounts/batch-update": { path: "/api/accounts/batch-update", methods: ["POST"] },
     "accounts/update": { path: "/api/accounts/update", methods: ["POST"] },
     "accounts/refresh": { path: "/api/accounts/refresh", methods: ["POST"] },
     "model-catalog": { path: "/api/model-catalog", methods: ["GET"] },
+    "model-catalog/refresh": { path: "/api/model-catalog/refresh", methods: ["POST"] },
     keys: { path: "/api/auth/users", methods: ["GET", "POST"] },
     logs: { path: "/api/logs", methods: ["GET"] },
     statistics: { path: "/integration/statistics", methods: ["GET"] },
@@ -93,9 +95,12 @@ async function handle(request: Request, context: Context) {
                 },
             });
         } else {
+            const accountTest = /^accounts\/[\w-]+\/test$/.test(path);
             const route =
                 routes[path] ||
-                (/^logs\/[\w-]+$/.test(path)
+                (accountTest
+                    ? { path: `/api/${path}`, methods: ["POST"] }
+                    : /^logs\/[\w-]+$/.test(path)
                     ? { path: `/api/${path}`, methods: ["GET"] }
                     : /^keys\/[\w-]+$/.test(path)
                       ? { path: `/api/auth/users/${segments[1]}`, methods: ["POST", "DELETE"] }
@@ -107,12 +112,21 @@ async function handle(request: Request, context: Context) {
             if (!route || !route.methods.includes(request.method)) return apiCompatError(404, "接口不存在");
             const body = request.method === "GET" ? undefined : await readRequestBodyText(request, 64 * 1024);
             const parsedBody = body ? JSON.parse(body) : undefined;
-            if (path === "accounts/refresh") await syncChatGptMagicProxy();
+            if (path === "accounts/refresh" || accountTest) await syncChatGptMagicProxy();
             const search = new URL(request.url).search;
             data = path === "proxy-selection" && request.method === "PATCH" ? await updateChatGptProxySelection(parsedBody)
                 : path === "upload-proxy" ? request.method === "PATCH" ? await updateChatGptUploadProxySelection(parsedBody) : await getChatGptUploadProxySelection()
                 : await chatGptRuntimeJson(route.path + search, { method: request.method, ...(body ? { body } : {}), signal: request.signal });
             data = sanitizeChatGptAdminResult(data, path === "keys" && request.method === "POST");
+            if (accountTest && data && typeof data === "object" && "image_urls" in data && Array.isArray(data.image_urls)) {
+                data = { ...data, image_urls: data.image_urls.map((value: unknown) => {
+                    if (typeof value !== "string") return value;
+                    const signed = rewriteChatGptMedia(value, new URL(request.url).origin);
+                    if (signed === value || typeof signed !== "string") return signed;
+                    const url = new URL(signed);
+                    return url.pathname + url.search;
+                }) };
+            }
         }
         await safeRecordAuditLog({ action: `admin.chatgpt_api.${request.method.toLowerCase()}`, actor: auditActorFromRequest(request, user), target: { type: "chatgpt_api", id: path } });
         return apiSuccess(data);

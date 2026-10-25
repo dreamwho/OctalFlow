@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ user: null as unknown, runtime: vi.fn(), runtimeRequest: vi.fn(), selection: vi.fn(), audit: vi.fn() }));
+const state = vi.hoisted(() => ({ user: null as unknown, runtime: vi.fn(), runtimeRequest: vi.fn(), selection: vi.fn(), audit: vi.fn(), syncProxy: vi.fn() }));
 vi.mock("@/lib/auth/session", () => ({ getCurrentUser: () => state.user }));
 vi.mock("@/lib/server/audit-log-store", () => ({ auditActorFromRequest: () => ({ id: "fixture" }), safeRecordAuditLog: state.audit }));
 vi.mock("@/lib/server/chatgpt-api-models", () => ({ getChatGptSavedModels: () => ({ models: [] }), saveChatGptModels: () => ({ models: [] }) }));
@@ -8,16 +8,40 @@ vi.mock("@/lib/server/chatgpt-api-service", async (original) => ({
     ...(await original<typeof import("@/lib/server/chatgpt-api-service")>()),
     chatGptRuntimeJson: state.runtime,
     chatGptRuntimeRequest: state.runtimeRequest,
-    syncChatGptMagicProxy: vi.fn(),
+    syncChatGptMagicProxy: state.syncProxy,
     updateChatGptProxySelection: state.selection,
 }));
 import { DELETE, GET, PATCH, POST } from "./route";
 afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     state.user = null;
 });
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split("/") }) });
 describe("ChatGPT management authorization", () => {
+    it("runs explicit account tests only for upstream administrators and signs returned image links", async () => {
+        const path = "accounts/acct_fixture/test";
+        const url = `http://canvas.test/api/admin/chatgpt-api/${path}`;
+        const body = JSON.stringify({ mode: "image", model: "gpt-image-2.5", prompt: "测试图片" });
+        expect((await POST(new Request(url, { method: "POST", body }), context(path))).status).toBe(401);
+        state.user = { id: "fixture", role: "admin", status: "active", adminPermissions: ["audit.read"] };
+        expect((await POST(new Request(url, { method: "POST", body }), context(path))).status).toBe(403);
+        expect(state.runtime).not.toHaveBeenCalled();
+        state.user = { id: "fixture", role: "admin", status: "active", adminPermissions: ["upstream.manage"] };
+        vi.stubEnv("DREAMYO_CHATGPT_API_URL", "http://127.0.0.1:8046");
+        vi.stubEnv("DREAMYO_CHATGPT_API_KEY", "fixture-runtime-key-0123456789abcdef");
+        state.runtime.mockResolvedValue({ status: "success", image_urls: ["http://runtime/images/fixture.png"], access_token: "secret" });
+        const response = await POST(new Request(url, { method: "POST", body }), context(path));
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result.data.image_urls[0]).toMatch(/^\/api\/chatgpt-api\/media\/images\/fixture.png\?/);
+        expect(JSON.stringify(result)).not.toContain("secret");
+        expect(state.runtime).toHaveBeenCalledWith(`/api/${path}`, expect.objectContaining({ method: "POST", body }));
+        expect(state.syncProxy).toHaveBeenCalledOnce();
+        expect(JSON.stringify(state.audit.mock.calls)).not.toContain("测试图片");
+        expect((await GET(new Request(url), context(path))).status).toBe(404);
+        expect((await POST(new Request(url, { method: "POST", body }), context("accounts/acct_fixture/test/extra"))).status).toBe(404);
+    });
     it("exposes read-only log details with credentials and raw detail removed", async () => {
         const url = "http://canvas.test/api/admin/chatgpt-api/logs/fixture-log";
         expect((await GET(new Request(url), context("logs/fixture-log"))).status).toBe(401);
@@ -59,6 +83,17 @@ describe("ChatGPT management authorization", () => {
         expect((await GET(new Request(url), context("statistics"))).status).toBe(200);
         expect(state.runtime).toHaveBeenCalledWith("/integration/statistics?time_range=7d", expect.objectContaining({ method: "GET" }));
         expect((await POST(new Request(url, { method: "POST", body: "{}" }), context("statistics"))).status).toBe(404);
+    });
+    it("discovers the upstream model catalog only through the authorized refresh route", async () => {
+        const url = "http://canvas.test/api/admin/chatgpt-api/model-catalog/refresh";
+        expect((await POST(new Request(url, { method: "POST", body: "{}" }), context("model-catalog/refresh"))).status).toBe(401);
+        state.user = { id: "fixture", role: "admin", status: "active", adminPermissions: ["upstream.manage"] };
+        state.runtime.mockResolvedValue({ chat_models: ["chat-fixture"], image_models: [], source: { chat: "upstream", image: "upstream" }, warnings: [] });
+        const response = await POST(new Request(url, { method: "POST", body: "{}" }), context("model-catalog/refresh"));
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ code: 0, data: { chat_models: ["chat-fixture"], image_models: [] } });
+        expect(state.runtime).toHaveBeenCalledWith("/api/model-catalog/refresh", expect.objectContaining({ method: "POST", body: "{}" }));
+        expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "admin.chatgpt_api.post" }));
     });
     it("forwards explicit proxy management routes without logging private input", async () => {
         state.user = { id: "fixture", role: "admin", status: "active", adminPermissions: ["upstream.manage"] };

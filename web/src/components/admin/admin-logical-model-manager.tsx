@@ -2,7 +2,7 @@
 
 import { App, Button, Checkbox, Drawer, Empty, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
-import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, MessageSquare, Pencil, Plus, RefreshCw, Route, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, GitBranch, GripVertical, ListOrdered, MessageSquare, Pencil, Plus, RefreshCw, RotateCcw, Route, Search, Trash2, Upload } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { DreamyoIcon } from "@/components/ui/dreamyo-icon";
@@ -11,7 +11,7 @@ import { LabeledControl, SectionTitle } from "@/components/admin/admin-settings-
 import { formatDurationMinSec } from "@/lib/duration-format";
 import type { LogicalModel, LogicalModelBinding, LogicalModelCapability, LogicalModelCapabilityProfile, SystemDefaultModels, SystemModelChannel } from "@/lib/auth/store";
 import type { ModelIconKey } from "@/lib/auth/store-types";
-import { modelIconOptions } from "@/lib/model-icons";
+import { MODEL_ICON_MAX_BYTES, MODEL_ICON_MIME_TYPES, modelIconOptions, normalizeModelIconUrl } from "@/lib/model-icons";
 import { logicalModelDisplayName } from "@/lib/public-model-catalog";
 import { capabilityLabel, channelConnectionReady, channelSupportsModel, isLogicalModelResolvable, normalizeDefaultModelsConfig, resolveLogicalModelConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
 import { moveLogicalModel, moveModelPickerGroup, reorderLogicalModels, setLogicalModelPickerVisibility } from "./logical-model-display-order";
@@ -31,6 +31,10 @@ const capabilityOptions: Array<{ label: string; value: LogicalModelCapability }>
     { label: "视频", value: "video" },
     { label: "音频", value: "audio" },
 ];
+
+export function parseCommaSeparatedValues(value: string) {
+    return Array.from(new Set(value.split(/[，,]/u).map((item) => item.trim()).filter(Boolean)));
+}
 
 /* 能力类型彩色标签：不同能力一目了然 */
 const CAPABILITY_TAG_COLORS: Record<LogicalModelCapability, string> = {
@@ -52,6 +56,9 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editingId, setEditingId] = useState("");
     const [draft, setDraft] = useState<LogicalModel | null>(null);
+    const [readingIcon, setReadingIcon] = useState(false);
+    const iconInputRef = useRef<HTMLInputElement>(null);
+    const iconReaderRef = useRef<FileReader | null>(null);
     const [query, setQuery] = useState("");
     const [capabilityFilter, setCapabilityFilter] = useState<LogicalModelCapability | "all">("all");
     const [managerTab, setManagerTab] = useState<string>("all");
@@ -91,6 +98,37 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
     const availableDefaultFields = defaultFields.filter(({ capability }) => logicalModels.some((model) => model.capability === capability && isLogicalModelResolvable(logicalModels, channels, capability, model.id)));
     const readyCount = availableDefaultFields.filter(({ capability, key }) => isLogicalModelResolvable(logicalModels, channels, capability, defaultModels[key])).length;
 
+    useEffect(() => {
+        if (!drawerOpen) {
+            iconReaderRef.current?.abort();
+            iconReaderRef.current = null;
+            setReadingIcon(false);
+        }
+        return () => { iconReaderRef.current?.abort(); };
+    }, [drawerOpen]);
+
+    const uploadIcon = (file?: File) => {
+        if (!file || !draft) return;
+        if (!MODEL_ICON_MIME_TYPES.includes(file.type) || file.size > MODEL_ICON_MAX_BYTES) {
+            message.warning("模型图标支持 PNG、JPG、WebP、SVG 或 ICO，文件不能超过 300KB");
+            return;
+        }
+        const reader = new FileReader();
+        iconReaderRef.current?.abort();
+        iconReaderRef.current = reader;
+        setReadingIcon(true);
+        reader.onload = () => {
+            if (iconReaderRef.current !== reader) return;
+            const iconUrl = normalizeModelIconUrl(reader.result);
+            if (!iconUrl) return void message.error("图标文件无效，请重新选择");
+            setDraft((current) => current ? { ...current, iconUrl } : current);
+            message.success("图标已读取，应用修改后生效");
+        };
+        reader.onerror = () => message.error("图标读取失败");
+        reader.onloadend = () => { if (iconReaderRef.current === reader) setReadingIcon(false); };
+        reader.readAsDataURL(file);
+    };
+
     const openEdit = (model: LogicalModel) => {
         setEditingId(model.id);
         setDraft(cloneLogicalModel(model));
@@ -126,7 +164,8 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
         const bindingKeys = draft.bindings.map((binding) => `${binding.channelId}:${binding.upstreamModel.trim().toLowerCase()}`);
         if (new Set(bindingKeys).size !== bindingKeys.length) return void message.error("同一逻辑模型中不能重复绑定相同的渠道模型");
         const saved = cloneLogicalModel({ ...draft, id, name });
-        const nextModels = editingId ? logicalModels.map((model) => (model.id === editingId ? saved : model)) : [...logicalModels, saved];
+        const updatedModels = editingId ? logicalModels.map((model) => (model.id === editingId ? saved : model)) : [...logicalModels, saved];
+        const nextModels = editingId && editingId !== id ? updatedModels.map((model) => model.fallbackModelId?.toLowerCase() === editingId.toLowerCase() ? { ...model, fallbackModelId: id } : model) : updatedModels;
         const renamedDefaults = Object.fromEntries(Object.entries(defaultModels).map(([key, value]) => [key, editingId && value === editingId ? id : value])) as SystemDefaultModels;
         const nextDefaultModels = normalizeDefaultModelsConfig(renamedDefaults, nextModels, channels);
         onChange({ logicalModels: nextModels, defaultModels: nextDefaultModels });
@@ -136,7 +175,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
     };
 
     const deleteModel = (modelId: string) => {
-        const nextModels = logicalModels.filter((model) => model.id !== modelId);
+        const nextModels = logicalModels.filter((model) => model.id !== modelId).map((model) => model.fallbackModelId?.toLowerCase() === modelId.toLowerCase() ? { ...model, fallbackModelId: undefined } : model);
         const nextDefaultModels = normalizeDefaultModelsConfig(defaultModels, nextModels, channels);
         onChange({ logicalModels: nextModels, defaultModels: nextDefaultModels });
         void onPersist({ systemChannels: channels, logicalModels: nextModels, modelPickerGroups, defaultModels: nextDefaultModels }, "逻辑模型已删除并保存");
@@ -153,6 +192,9 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
     };
 
     const updateDefault = (key: keyof SystemDefaultModels, modelId: string) => onChange({ logicalModels, defaultModels: { ...defaultModels, [key]: modelId } });
+    const fallbackOptions = draft && (draft.capability === "image" || draft.capability === "video")
+        ? logicalModels.filter((model) => model.id !== editingId && model.id.toLowerCase() !== draft.id.trim().toLowerCase() && model.capability === draft.capability && model.enabled && isLogicalModelResolvable(logicalModels, channels, model.capability, model.id) && !wouldCreateFallbackCycle(logicalModels, draft.id.trim(), model.id, editingId))
+        : [];
     const persistGroups = (groups: string[], models: LogicalModel[], successText: string) => {
         onChange({ logicalModels: models, modelPickerGroups: groups, defaultModels });
         void onPersist({ systemChannels: channels, logicalModels: models, modelPickerGroups: groups, defaultModels }, successText);
@@ -380,7 +422,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
                                         <div className="flex min-w-0 items-start justify-between gap-2">
                                             <div className="flex min-w-0 items-center gap-2.5">
                                                 <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-stone-100 text-stone-600 dark:bg-stone-900 dark:text-stone-300">
-                                                    {model.icon || resolveModelIcon(`${model.id} ${model.name}`, model.capability, undefined, modelProviderHint(model, channels)) ? <ModelIcon model={`${model.id} ${model.name}`} capability={model.capability} iconKey={model.icon} providerHint={modelProviderHint(model, channels)} /> : model.capability === "text" ? <MessageSquare className="size-4.5" /> : <DreamyoIcon name={model.capability} size={20} />}
+                                                    {model.iconUrl || model.icon || resolveModelIcon(`${model.id} ${model.name}`, model.capability, undefined, modelProviderHint(model, channels)) ? <ModelIcon model={`${model.id} ${model.name}`} capability={model.capability} iconKey={model.icon} iconUrl={model.iconUrl} providerHint={modelProviderHint(model, channels)} /> : model.capability === "text" ? <MessageSquare className="size-4.5" /> : <DreamyoIcon name={model.capability} size={20} />}
                                                 </span>
                                                 <div className="min-w-0">
                                                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -500,7 +542,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
                 extra={
                     <Space>
                         <Button onClick={() => setDrawerOpen(false)}>取消</Button>
-                        <Button type="primary" disabled={!draft?.name.trim()} onClick={saveDraft}>
+                        <Button type="primary" disabled={!draft?.name.trim() || readingIcon} onClick={saveDraft}>
                             应用修改
                         </Button>
                     </Space>
@@ -531,7 +573,7 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
                                     />
                                 </LabeledControl>
                                 <LabeledControl label="能力类型">
-                                    <Select className="w-full" value={draft.capability} options={capabilityOptions} onChange={(capability: LogicalModelCapability) => setDraft((current) => (current ? { ...current, capability } : current))} />
+                                    <Select className="w-full" value={draft.capability} options={capabilityOptions} onChange={(capability: LogicalModelCapability) => setDraft((current) => current ? { ...current, capability, fallbackModelId: logicalModels.find((model) => model.id === current.fallbackModelId)?.capability === capability ? current.fallbackModelId : undefined } : current)} />
                                 </LabeledControl>
                                 <LabeledControl label="模型状态">
                                     <div className="flex h-8 items-center">
@@ -539,22 +581,44 @@ export function AdminLogicalModelManager({ channels, logicalModels, modelPickerG
                                     </div>
                                 </LabeledControl>
                             </div>
-                            <div className="mt-3 grid items-end gap-3 sm:grid-cols-[minmax(0,240px)_minmax(0,240px)_1fr]">
+                            <div className="mt-3 grid items-end gap-3 sm:grid-cols-2">
+                                {(draft.capability === "image" || draft.capability === "video") ? (
+                                    <LabeledControl label="备用逻辑模型">
+                                        <Select
+                                            className="w-full"
+                                            aria-label="备用逻辑模型"
+                                            allowClear
+                                            placeholder="不配置备用模型"
+                                            value={draft.fallbackModelId || undefined}
+                                            options={fallbackOptions.map((model) => ({ value: model.id, label: `${logicalModelDisplayName(model)}（${model.id}）` }))}
+                                            onChange={(fallbackModelId?: string) => setDraft((current) => current ? { ...current, fallbackModelId } : current)}
+                                        />
+                                        <p className="mt-1 text-[11px] text-stone-400">模型失败后会先询问用户，再切换到此模型。</p>
+                                    </LabeledControl>
+                                ) : null}
                                 <LabeledControl label="前端选项分组">
                                     <Select className="w-full" aria-label="前端模型选项分组" value={draft.pickerGroup || modelPickerGroups[0]} options={modelPickerGroups.map((group) => ({ value: group, label: group }))} onChange={(group: string) => setDraft((current) => (current ? { ...current, pickerGroup: group } : current))} />
                                     <p className="mt-1 text-[11px] text-stone-400">分类在本页上方统一管理。</p>
                                 </LabeledControl>
                                 <LabeledControl label="模型图标">
                                     <Select
-                                        className="w-full"
-                                        value={draft.icon || ""}
-                                        options={[{ label: "自动匹配", value: "" }, ...modelIconOptions]}
-                                        onChange={(value: string) => setDraft((current) => (current ? { ...current, icon: (value || undefined) as ModelIconKey | undefined } : current))}
+                                        className="!w-full"
+                                        aria-label="模型内置图标"
+                                        disabled={readingIcon}
+                                        value={draft.iconUrl ? "custom" : draft.icon || ""}
+                                        options={[{ label: "默认图标（自动匹配）", value: "" }, ...modelIconOptions.map((option) => ({ value: option.value, label: <span className="inline-flex items-center gap-2"><ModelIcon model="" iconKey={option.value} />{option.label}</span> })), ...(draft.iconUrl ? [{ label: "已上传自定义图标", value: "custom" }] : [])]}
+                                        onChange={(value: string) => { if (value !== "custom") setDraft((current) => (current ? { ...current, icon: (value || undefined) as ModelIconKey | undefined, iconUrl: undefined } : current)); }}
                                     />
                                 </LabeledControl>
-                                <div className="flex min-w-0 items-center gap-2 pb-1 text-xs text-stone-500 dark:text-stone-400">
-                                    <ModelIcon model={`${draft.id} ${draft.name} ${draft.bindings.map((binding) => binding.upstreamModel).join(" ")}`} capability={draft.capability} iconKey={draft.icon} providerHint={modelProviderHint(draft, channels)} />
-                                    <span>自动匹配 Gemini 生图与字节图片/视频模型；也可以为这个模型单独指定图标。</span>
+                                <div className="flex min-w-0 flex-wrap items-center gap-2 sm:col-span-2" data-model-icon-editor>
+                                    <span className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm" aria-label="模型图标预览">
+                                        <ModelIcon model={`${draft.id} ${draft.name} ${draft.bindings.map((binding) => binding.upstreamModel).join(" ")}`} capability={draft.capability} iconKey={draft.icon} iconUrl={draft.iconUrl} providerHint={modelProviderHint(draft, channels)} />
+                                        预览
+                                    </span>
+                                    <input ref={iconInputRef} type="file" hidden accept={MODEL_ICON_MIME_TYPES.join(",")} aria-label="上传模型图标文件" onChange={(event) => { uploadIcon(event.target.files?.[0]); event.target.value = ""; }} />
+                                    <Button icon={<Upload className="size-4" />} loading={readingIcon} onClick={() => iconInputRef.current?.click()}>上传自定义图标</Button>
+                                    <Button icon={<RotateCcw className="size-4" />} disabled={readingIcon || (!draft.icon && !draft.iconUrl)} onClick={() => setDraft((current) => current ? { ...current, icon: undefined, iconUrl: undefined } : current)}>恢复默认图标</Button>
+                                    <p className="w-full text-xs text-muted-foreground">支持 PNG、JPG、WebP、SVG、ICO，最大 300KB；自定义图标保留原色，未设置时使用当前默认图标。</p>
                                 </div>
                             </div>
                         </div>
@@ -766,17 +830,12 @@ function BindingEditor({
     const channelNotReady = Boolean(channel && channel.enabled && !channelConnectionReady(channel));
     const channelMissingModel = Boolean(channel && channel.enabled && channelConnectionReady(channel) && !channelSupportsModel(channel, binding.upstreamModel));
     const profile = binding.capabilityProfile || {};
+    const [aspectRatiosText, setAspectRatiosText] = useState(() => profile.aspectRatios?.join(", ") || "");
+    const [qualityOptionsText, setQualityOptionsText] = useState(() => profile.qualityOptions?.join(", ") || "");
     const effectiveAsync = profile.supportsAsync ?? (capability === "image" || capability === "video");
     const timeoutSeconds = profile.timeoutMs ? Math.round(profile.timeoutMs / 1000) : undefined;
     const defaultTimeoutSeconds = capability === "image" ? 600 : capability === "text" ? 180 : 1800;
     const updateProfile = (patch: Partial<LogicalModelCapabilityProfile>) => onChange({ capabilityProfile: { ...profile, ...patch } });
-    const updateList = (value: string) =>
-        updateProfile({
-            aspectRatios: value
-                .split(",")
-                .map((item) => item.trim())
-                .filter(Boolean),
-        });
     return (
         <div className="rounded-lg border border-stone-200 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-stone-900/40">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_90px_90px_auto_auto] sm:items-end">
@@ -874,26 +933,28 @@ function BindingEditor({
                             <Input value={profile.durationRange || ""} placeholder="4-15 秒 或 4、6、8 秒" onChange={(event: ChangeEvent<HTMLInputElement>) => updateProfile({ durationRange: event.target.value.trim() || undefined })} />
                         </LabeledControl>
                     ) : null}
-                    <LabeledControl label="支持比例（逗号分隔）">
-                        <Input value={profile.aspectRatios?.join(", ") || ""} placeholder="1:1, 16:9, 9:16" onChange={(event: ChangeEvent<HTMLInputElement>) => updateList(event.target.value)} />
+                    <LabeledControl label={capability === "image" ? "支持尺寸 / 比例" : "支持比例（逗号分隔）"}>
+                        <Input
+                            value={aspectRatiosText}
+                            placeholder={capability === "image" ? "1024x1024, 16:9" : "1:1, 16:9, 9:16"}
+                            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                                const value = event.target.value;
+                                setAspectRatiosText(value);
+                                updateProfile({ aspectRatios: parseCommaSeparatedValues(value) });
+                            }}
+                        />
+                        {capability === "image" ? <div className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">可填 1024x1024 或 16:9；未配置沿用默认。</div> : null}
                     </LabeledControl>
                     {capability === "video" ? (
                         <LabeledControl label="支持清晰度（逗号分隔）">
                             <Input
-                                value={profile.qualityOptions?.join(", ") || ""}
+                                value={qualityOptionsText}
                                 placeholder="480p, 720p, 1080p"
-                                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                                    updateProfile({
-                                        qualityOptions: Array.from(
-                                            new Set(
-                                                event.target.value
-                                                    .split(",")
-                                                    .map((item) => item.trim())
-                                                    .filter(Boolean),
-                                            ),
-                                        ),
-                                    })
-                                }
+                                onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                                    const value = event.target.value;
+                                    setQualityOptionsText(value);
+                                    updateProfile({ qualityOptions: parseCommaSeparatedValues(value) });
+                                }}
                             />
                         </LabeledControl>
                     ) : null}
@@ -925,6 +986,19 @@ function BindingEditor({
 
 function cloneLogicalModel(model: LogicalModel): LogicalModel {
     return { ...model, bindings: model.bindings.map((binding) => ({ ...binding, capabilityProfile: binding.capabilityProfile ? { ...binding.capabilityProfile } : undefined })) };
+}
+
+function wouldCreateFallbackCycle(models: LogicalModel[], sourceId: string, candidateId: string, previousSourceId = "") {
+    const sourceIds = new Set([sourceId.toLowerCase(), previousSourceId.toLowerCase()].filter(Boolean));
+    const byId = new Map(models.map((model) => [model.id.toLowerCase(), model]));
+    const visited = new Set<string>();
+    let currentId = candidateId.toLowerCase();
+    while (currentId) {
+        if (sourceIds.has(currentId) || visited.has(currentId)) return true;
+        visited.add(currentId);
+        currentId = byId.get(currentId)?.fallbackModelId?.trim().toLowerCase() || "";
+    }
+    return false;
 }
 
 function modelProviderHint(model: LogicalModel, channels: SystemModelChannel[]) {

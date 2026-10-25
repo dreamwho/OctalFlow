@@ -67,7 +67,7 @@ export function useCanvasAgentAttachments(onUpload: (file: File) => Promise<stri
             const pending = Array.from(files || [])
                 .filter(isCanvasAgentAttachmentFile)
                 .map((file) => {
-                    const type = isCanvasAgentTextFile(file) ? ("text" as const) : file.type.startsWith("video/") ? ("video" as const) : ("image" as const);
+                    const type = isCanvasAgentTextFile(file) ? ("text" as const) : file.type.startsWith("video/") ? ("video" as const) : file.type.startsWith("audio/") ? ("audio" as const) : ("image" as const);
                     return { id: nanoid(), name: file.name || "粘贴素材", url: type === "text" ? "" : URL.createObjectURL(file), type, status: "uploading" as const, file };
                 });
             if (!pending.length) return;

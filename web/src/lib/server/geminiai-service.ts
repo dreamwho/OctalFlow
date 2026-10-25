@@ -18,6 +18,7 @@ export type GeminiAiCatalogModel = {
     enabled: boolean;
     channelId?: string;
     source?: "geminiai" | "gemini";
+    catalogOrigin?: "builtin" | "manual" | "aistudio";
 };
 export type GeminiAiAccount = {
     id: string;
@@ -27,11 +28,18 @@ export type GeminiAiAccount = {
     usage?: Record<string, string | number | boolean>;
     createdAt?: string;
     lastUsedAt?: string;
+    health?: GeminiAiAccountHealth;
+};
+export type GeminiAiAccountHealth = {
+    status: "ready" | "login_required" | "unavailable" | "error";
+    checkedAt: string;
+    message: string;
+    cookieExpiresAt: string | null;
+    cookieExpiryKnown: boolean;
 };
 export type GeminiAiRotation = { enabled: boolean; mode?: "round_robin" | "lru" | "least_rl"; cooldownSeconds?: number; accounts?: Record<string, unknown> };
 
 const GEMINIAI_UNSUPPORTED_MODEL_NAME = /(?:^|[-_.\s/])(veo|audio|tts|speech|voice|music|sound|lyria|live)(?:$|[-_.\s/])/i;
-const GEMINIAI_IMAGE_MODEL_NAME = /(?:^|[-_.\s/])(image|images|img|imagen)(?:$|[-_.\s/])|nano[-_.\s]?banana/i;
 const GEMINIAI_VIDEO_MODEL_NAME = /gemini[-_.\s]?omni/i;
 const ROTATION_MODES = new Set<NonNullable<GeminiAiRotation["mode"]>>(["round_robin", "lru", "least_rl"]);
 
@@ -144,6 +152,14 @@ export async function activateGeminiAiAccount(accountId: string) {
     return normalizeAccount(responseRecord(payload)) || { id, name: id };
 }
 
+export async function checkGeminiAiAccount(accountId: string) {
+    const id = identifier(accountId, "账号");
+    const payload = await sidecarJson(`/accounts/${encodeURIComponent(id)}/check`, { method: "POST" });
+    const account = normalizeAccount(responseRecord(payload));
+    if (!account) throw new GeminiAiProviderError("GeminiAI 未返回账号检测结果", 502);
+    return account;
+}
+
 export async function renameGeminiAiAccount(accountId: string, name: unknown) {
     const id = identifier(accountId, "账号");
     const normalizedName = stringValue(name, 120);
@@ -175,15 +191,34 @@ export async function setGeminiAiRotation(input: { mode?: unknown; cooldownSecon
 }
 
 export async function listGeminiAiCatalog(): Promise<GeminiAiCatalogModel[]> {
-    const payload = await sidecarJson("/v1/models");
+    return catalogModels(await sidecarJson("/v1/models"));
+}
+
+export async function syncGeminiAiCatalog() {
+    return catalogModels(await sidecarJson("/config/models/sync", { method: "POST" }));
+}
+
+export async function addGeminiAiCatalogModel(input: { id?: unknown; name?: unknown; capability?: unknown }) {
+    const id = typeof input.id === "string" ? input.id.trim().replace(/^models\//, "") : "";
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(id)) throw new GeminiAiProviderError("请输入有效模型 ID，仅允许字母、数字、点、下划线和连字符", 400);
+    if (input.capability !== "text" && input.capability !== "image") throw new GeminiAiProviderError("手动添加仅支持现有文本或图片生成能力", 400);
+    if (GEMINIAI_UNSUPPORTED_MODEL_NAME.test(id) || GEMINIAI_VIDEO_MODEL_NAME.test(id)) throw new GeminiAiProviderError("该模型需要独立的视频、音频或实时协议，不能作为文本或图片模型添加", 422);
+    return catalogModels(await sidecarJson("/config/models", { method: "POST", body: JSON.stringify({ id, name: typeof input.name === "string" ? input.name.trim() : "", capability: input.capability }) }));
+}
+
+function catalogModels(payload: unknown): GeminiAiCatalogModel[] {
+    const rows = objectValue(payload)?.data;
+    const metadata = new Map(Array.isArray(rows) ? rows.map((row) => { const value = objectValue(row); return [String(value?.id || ""), value] as const; }) : []);
     return parseModelCatalog(payload, "provider", GEMINIAI_PROTOCOL)
         .filter((entry) => !GEMINIAI_UNSUPPORTED_MODEL_NAME.test(entry.id))
         .flatMap((entry) => {
-            const image = entry.capability === "image" || GEMINIAI_IMAGE_MODEL_NAME.test(entry.id);
+            const image = entry.capability === "image";
             const video = !image && GEMINIAI_VIDEO_MODEL_NAME.test(entry.id);
             const capability = image ? "image" : video ? "video" : entry.capability === "text" ? "text" : "";
             const capabilities: GeminiAiCatalogCapability[] = capability === "text" ? ["text", "search"] : capability === "video" ? ["video"] : capability === "image" ? ["image"] : [];
-            return capabilities.length ? [{ id: entry.id, name: entry.id, capabilities, enabled: false, source: "geminiai" as const }] : [];
+            const details = metadata.get(entry.id);
+            const origin = details?.catalog_origin;
+            return capabilities.length ? [{ id: entry.id, name: typeof details?.name === "string" && details.name.trim() ? details.name.trim() : entry.id, capabilities, enabled: false, source: "geminiai" as const, ...(["builtin", "manual", "aistudio"].includes(String(origin)) ? { catalogOrigin: origin as GeminiAiCatalogModel["catalogOrigin"] } : {}) }] : [];
         });
 }
 
@@ -340,7 +375,7 @@ async function sidecarJson(path: string, init: RequestInit = {}) {
                 ? "Camoufox 授权组件不完整（缺少 Playwright 驱动），请安装最新桌面版"
                 : path === "/accounts/login/start" && /Camoufox (?:exited before startup|failed to start)/i.test(providerMessage)
                   ? "Camoufox 授权窗口启动失败，请检查桌面运行日志"
-                  : providerType === "account_access_denied"
+                : providerType === "account_access_denied" || providerType === "model_catalog_error" || path === "/config/models"
                 ? safeSidecarMessage(providerMessage)
                 : /caller does not have permission|permission denied|禁止访问|paid api key/i.test(providerMessage)
                   ? "Google AI Studio 页面原生通道未能使用当前账号调用该模型；请在对应授权 Profile 中确认模型仍可运行后重试。"
@@ -401,7 +436,7 @@ function mergeCatalogModels(catalog: GeminiAiCatalogModel[], configured: GeminiA
     for (const model of [...catalog, ...configured]) {
         const key = normalizeModelId(model.id);
         const current = models.get(key);
-        models.set(key, { ...(current || model), ...model, enabled: enabled.has(key) || model.enabled });
+        models.set(key, { ...(current || model), ...model, name: current?.name || model.name, enabled: enabled.has(key) || model.enabled });
     }
     return Array.from(models.values()).sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -426,10 +461,28 @@ function normalizeAccount(value: Record<string, unknown> | undefined): GeminiAiA
         id,
         name: stringValue(value?.name ?? value?.label, 120) || id,
         ...(stringValue(value?.email, 320) ? { email: stringValue(value?.email, 320) } : {}),
-        status: stringValue(value?.status, 80) || (stringValue(value?.email, 320) ? "ready" : "unknown"),
+        status: stringValue(value?.status, 80) || "unknown",
+        ...(normalizeAccountHealth(value?.health) ? { health: normalizeAccountHealth(value?.health) } : {}),
         ...(usage ? { usage } : {}),
         ...(dateValue(value?.createdAt ?? value?.created_at) ? { createdAt: dateValue(value?.createdAt ?? value?.created_at)! } : {}),
         ...(dateValue(value?.lastUsedAt ?? value?.last_used_at ?? value?.last_used) ? { lastUsedAt: dateValue(value?.lastUsedAt ?? value?.last_used_at ?? value?.last_used)! } : {}),
+    };
+}
+
+function normalizeAccountHealth(value: unknown): GeminiAiAccountHealth | undefined {
+    const record = objectValue(value);
+    if (!record || !["ready", "login_required", "unavailable", "error"].includes(String(record.status))) return undefined;
+    const checkedAt = dateValue(record.checked_at);
+    const message = safeSidecarMessage(record.message);
+    if (!checkedAt || !message) return undefined;
+    const cookieExpiryKnown = record.cookie_expiry_known === true;
+    const cookieExpiresAt = cookieExpiryKnown ? dateValue(record.cookie_expires_at) || null : null;
+    return {
+        status: record.status as GeminiAiAccountHealth["status"],
+        checkedAt,
+        message,
+        cookieExpiresAt,
+        cookieExpiryKnown: cookieExpiryKnown && Boolean(cookieExpiresAt),
     };
 }
 

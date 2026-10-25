@@ -1,3 +1,4 @@
+import { notifyGenerationLogChanged } from "./generation-log-event-signal";
 import { randomUUID } from "node:crypto";
 
 import { createPostgresRepositories, ensurePostgresSchema, isPostgresDatabaseEnabled, withPostgresTransaction } from "@/lib/server/database";
@@ -87,7 +88,7 @@ export async function failGenerationLogDraftSlotForUser(userId: string, id: stri
         const slot = snapshot?.slots.find((candidate) => candidate.id === slotId);
         if (!current || !snapshot || !slot || slot.status !== "pending" || slot.taskId || slot.serverTaskId || !clientRequestId || slot.clientRequestId !== clientRequestId) return current;
         updated = true;
-        const slots = snapshot.slots.map((candidate) => candidate.id === slotId ? { ...candidate, status: "failed" as const, error: normalizeText(error, "生成任务创建失败", 1000) } : candidate);
+        const slots = snapshot.slots.map((candidate) => (candidate.id === slotId ? { ...candidate, status: "failed" as const, error: normalizeText(error, "生成任务创建失败", 1000) } : candidate));
         return finalizeGenerationLog({ ...current, requestSnapshot: { ...snapshot, slots } }, slots);
     });
     return updated ? log : null;
@@ -155,6 +156,9 @@ async function mutateOwnedGenerationLog(id: string, userId: string, mutate: (cur
         if (!next) return null;
         db.logs = [next, ...db.logs.filter((log) => log.id !== id)];
         return next;
+    }).then((log) => {
+        if (log) notifyGenerationLogChanged(log.userId);
+        return log;
     });
 }
 
@@ -219,6 +223,7 @@ function mergeGenerationLogDraftSnapshot(existing: StoredGenerationLog["requestS
     return {
         version: 1 as const,
         userPrompt: existing?.userPrompt || incoming.userPrompt,
+        interiorDesign: incoming.interiorDesign || existing?.interiorDesign,
         parameters: Object.keys(incoming.parameters).length ? incoming.parameters : existing?.parameters || {},
         references: incoming.references.length ? incoming.references : existing?.references || [],
         slots: Array.from(slots.values()).sort((left, right) => left.index - right.index),

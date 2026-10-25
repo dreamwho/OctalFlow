@@ -1,0 +1,65 @@
+{
+  "buildId": "Bqlhp0IQzdOc5xHBvm8lL",
+  "route": "/admin?section=channels",
+  "theme": "dark",
+  "viewport": 1440,
+  "state": "自定义图标上传完成",
+  "editor": {
+    "x": 717,
+    "y": 257.640625,
+    "width": 686,
+    "height": 74,
+    "top": 257.640625,
+    "right": 1403,
+    "bottom": 331.640625,
+    "left": 717
+  },
+  "children": [
+    {
+      "x": 717,
+      "y": 257.640625,
+      "width": 78,
+      "height": 38,
+      "top": 257.640625,
+      "right": 795,
+      "bottom": 295.640625,
+      "left": 717
+    },
+    {
+      "x": 803,
+      "y": 260.640625,
+      "width": 147,
+      "height": 32,
+      "top": 260.640625,
+      "right": 950,
+      "bottom": 292.640625,
+      "left": 803
+    },
+    {
+      "x": 958,
+      "y": 260.640625,
+      "width": 134,
+      "height": 32,
+      "top": 260.640625,
+      "right": 1092,
+      "bottom": 292.640625,
+      "left": 958
+    },
+    {
+      "x": 717,
+      "y": 303.640625,
+      "width": 686,
+      "height": 16,
+      "top": 303.640625,
+      "right": 1403,
+      "bottom": 319.640625,
+      "left": 717
+    }
+  ],
+  "image": {
+    "width": 24,
+    "height": 24,
+    "filter": "none",
+    "objectFit": "contain"
+  }
+}

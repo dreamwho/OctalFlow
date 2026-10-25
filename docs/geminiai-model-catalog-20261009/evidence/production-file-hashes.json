@@ -1,0 +1,20 @@
+{
+  "webBuildId": "Wrj2YS9oT-5ZtAC5vGD-r",
+  "sha256": {
+    "services/geminiai/README.md": "55ab732f5fe68fc7a56f8eaed9f3edf31d7dc23f2d4010d080d1920e3a8dd398",
+    "services/geminiai/config.yaml": "8d97bb90f5f7dde735b94a8ab04083ebba66120d7c8d14e9beaa5301911dfdaf",
+    "services/geminiai/src/aistudio_api/api/response_models.py": "2517ae56d46fcd6790c56059cc1854fca201dcd02b5167420bdf31b554ac34c7",
+    "services/geminiai/src/aistudio_api/api/routes_openai.py": "91dff5a9d5d1a386861b41594be57812c1db30df1d7d622ce24f1b7169b5c01d",
+    "services/geminiai/src/aistudio_api/infrastructure/gateway/client.py": "c864c9f6b84e471a788c746c3671eb4d14cffb65555571be44319706c7ec61e8",
+    "services/geminiai/src/aistudio_api/infrastructure/gateway/model_catalog.py": "184065ecfa5127e97d1f7ac0696d94bd86d13c897e93309ed8525c2c418931fa",
+    "services/geminiai/src/aistudio_api/infrastructure/gateway/model_defaults.py": "0604dbff03164a15c01affe1b543fb4550baeae076c4cc0ce0c19f9975ed1130",
+    "services/geminiai/src/aistudio_api/infrastructure/gateway/model_discovery.py": "48ace19ba2522d06422f510e5f64ba49290978af728a4ce2a4c0d86cda540d95",
+    "services/geminiai/src/aistudio_api/infrastructure/gateway/session.py": "fb2c0377d6bc4689608a22e5061a05e9d18ac2629a0e5e0c68f45aa5a2e6af00",
+    "web/src/app/api/admin/geminiai/models/route.ts": "c368219639a30e2bedfe8e284268a92f11eb29cb32526c8b74b113e2249e9130",
+    "web/src/app/api/admin/geminiai/models/sync/route.ts": "b54713ee19c01ed5f48029561f8947301fbcd305c8445b8f8a568afb1ad24058",
+    "web/src/components/admin/admin-geminiai-section.tsx": "9cea933676274abf99c254647f02e21f35b55037a477abeb14af9d4065cb0d56",
+    "web/src/lib/server/geminiai-service.ts": "868aed6cea68ad3f0b8852d4db77cef93a31865db0a6d255ce30621997152048",
+    "web/src/services/api/geminiai.ts": "5184ea8d7100eb4f5eec135113c5a2c8e28adc34016a3d31b14481d8d5aa3dfe",
+    "docs/backend-database.md": "df7ae8d34d7a82ede1f4a3c591033a18b3973393a5b24ffc365faa3683c0c52d"
+  }
+}

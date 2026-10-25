@@ -1,0 +1,49 @@
+{
+  "account_id": "acc_5d8bd7be",
+  "reference_source": "three owned geometric PNG fixtures; not original failed-task images",
+  "video_submitted": false,
+  "upload_complete": true,
+  "distinct_drive_file_ids": 3,
+  "elapsed_seconds": 14.85,
+  "events": [
+    {
+      "event": "request",
+      "method": "POST",
+      "path": "/upload/drive/v3/files",
+      "elapsed": 11.04
+    },
+    {
+      "event": "request",
+      "method": "POST",
+      "path": "/upload/drive/v3/files",
+      "elapsed": 11.29
+    },
+    {
+      "event": "request",
+      "method": "POST",
+      "path": "/upload/drive/v3/files",
+      "elapsed": 11.56
+    },
+    {
+      "event": "response",
+      "status": 200,
+      "path": "/upload/drive/v3/files",
+      "elapsed": 14.12,
+      "file_id_present": true
+    },
+    {
+      "event": "response",
+      "status": 200,
+      "path": "/upload/drive/v3/files",
+      "elapsed": 14.32,
+      "file_id_present": true
+    },
+    {
+      "event": "response",
+      "status": 200,
+      "path": "/upload/drive/v3/files",
+      "elapsed": 14.58,
+      "file_id_present": true
+    }
+  ]
+}

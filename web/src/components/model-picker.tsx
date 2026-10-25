@@ -8,10 +8,11 @@ import { formatDurationMinSec } from "@/lib/duration-format";
 import { canvasSelectionBorderStyle, canvasThemes } from "@/lib/canvas-theme";
 import { inferredModelPickerGroup } from "@/lib/model-picker-groups";
 import type { LogicalModelCapability, ModelIconKey } from "@/lib/auth/store-types";
-import { resolveModelIconPath } from "@/lib/model-icons";
+import { normalizeModelIconUrl, resolveModelIconPath } from "@/lib/model-icons";
 import { cn } from "@/lib/utils";
-import { modelOptionLabel, modelOptionName, resolveModelChannel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { modelOptionLabel, modelOptionName, resolveModelChannel, selectableModelsByCapability, useConfigStore, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { loadPublicSession } from "@/stores/use-public-session-store";
 
 type ModelPickerProps = {
     config: AiConfig;
@@ -36,10 +37,11 @@ export type ModelOption = {
     modelName: string;
     capability?: LogicalModelCapability;
     iconKey?: ModelIconKey;
+    iconUrl?: string;
     providerHint?: string;
 };
 
-type ModelIconContext = Pick<ModelOption, "capability" | "iconKey" | "providerHint">;
+type ModelIconContext = Pick<ModelOption, "capability" | "iconKey" | "iconUrl" | "providerHint">;
 
 const RECENT_MODEL_LIMIT = 4;
 /* 搜索框 + 列表内边距等面板固定占用高度 */
@@ -51,6 +53,8 @@ export function ModelPicker({ config, value, onChange, capability, className, he
     const activeTheme = useThemeStore((state) => state.theme);
     const pickerId = useId();
     const [open, setOpen] = useState(false);
+    const [catalogStatus, setCatalogStatus] = useState<"loading" | "error" | null>(null);
+    const catalogRequestRef = useRef(0);
     const [query, setQuery] = useState("");
     const [recentModels, setRecentModels] = useState<string[]>([]);
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -71,7 +75,6 @@ export function ModelPicker({ config, value, onChange, capability, className, he
         const currentOption = !capability || !value || configuredOptions.includes(value) ? value : "";
         return Array.from(new Set((currentOption && !configuredOptions.includes(currentOption) ? [currentOption, ...configuredOptions] : configuredOptions).filter((model): model is string => Boolean(model))));
     }, [capability, configuredOptions, value]);
-    const hasConfiguredOptions = configuredOptions.length > 0;
     const labelForModel = useCallback((model: string) => getModelLabel?.(model) || modelOptionLabel(config, model), [config, getModelLabel]);
     const modelOptions = useMemo<ModelOption[]>(
         () =>
@@ -122,12 +125,20 @@ export function ModelPicker({ config, value, onChange, capability, className, he
         });
     }, []);
     const handleOpenChange = (nextOpen: boolean) => {
-        if (nextOpen && !hasConfiguredOptions) {
-            setOpen(false);
-            onMissingConfig?.(capability);
-            return;
-        }
+        const requestId = ++catalogRequestRef.current;
         if (nextOpen) {
+            setCatalogStatus("loading");
+            void loadPublicSession({ force: true })
+                .then(() => {
+                    if (requestId !== catalogRequestRef.current) return;
+                    setCatalogStatus(null);
+                    const available = selectableModelsByCapability(useConfigStore.getState().config, capability);
+                    if (!available.some((model) => !allowedOptions || allowedOptions.includes(model))) {
+                        setOpen(false);
+                        onMissingConfig?.(capability);
+                    }
+                })
+                .catch(() => { if (requestId === catalogRequestRef.current) setCatalogStatus("error"); });
             window.dispatchEvent(new CustomEvent("model-picker-open", { detail: pickerId }));
             setQuery("");
             measureAvailableHeight();
@@ -186,11 +197,13 @@ export function ModelPicker({ config, value, onChange, capability, className, he
                 </div>
             </div>
             <div className="hide-scrollbar max-h-[min(28rem,calc(100dvh-132px))] overflow-y-auto overscroll-contain p-2" style={listMaxHeight ? { maxHeight: `${listMaxHeight}px` } : undefined} role="listbox" aria-label="模型列表">
+                {catalogStatus ? <div role="status" className="px-3 py-6 text-center text-xs text-muted-foreground">{catalogStatus === "loading" ? "正在更新模型权限…" : "模型权限加载失败，请关闭后重试"}</div> : <>
                 {filteredRecentOptions.length ? <ModelOptionGroup title="最近使用" icon={<Clock3 className="size-3.5" />} options={filteredRecentOptions} current={current} capability={capability} durationStats={durationStats} onSelect={handleSelect} /> : null}
                 {Array.from(groupedOptions.entries()).map(([provider, providerOptions]) => (
                     <ModelOptionGroup key={provider} title={provider} options={providerOptions} current={current} capability={capability} durationStats={durationStats} onSelect={handleSelect} />
                 ))}
                 {!filteredOptions.length ? <div className="rounded-xl border border-dashed border-border/80 px-3 py-6 text-center text-xs text-muted-foreground">{query.trim() ? "没有匹配的模型" : emptyModelLabel(config, capability)}</div> : null}
+                </>}
             </div>
         </div>
     );
@@ -226,7 +239,7 @@ export function ModelPicker({ config, value, onChange, capability, className, he
                 aria-label={current ? "当前模型：" + labelForModel(current) : placeholder}
                 aria-haspopup="listbox"
                 aria-expanded={open}
-                aria-disabled={!hasConfiguredOptions}
+                aria-busy={catalogStatus === "loading"}
             >
                 {headerLabel ? <span className="model-picker-labeled-content min-w-0 flex-1 text-left">
                     <span className="model-picker-eyebrow block truncate">{headerLabel}</span>
@@ -270,7 +283,7 @@ function ModelOptionGroup({ title, icon, options, current, capability, durationS
                             onClick={() => onSelect(option.id)}
                         >
                             <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg bg-muted/65", selected && "bg-primary/15")}>
-                                <ModelIcon model={option.id} capability={option.capability} iconKey={option.iconKey} providerHint={option.providerHint} />
+                                <ModelIcon model={option.id} capability={option.capability} iconKey={option.iconKey} iconUrl={option.iconUrl} providerHint={option.providerHint} />
                             </span>
                             <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium">{option.label}</span>
@@ -325,11 +338,14 @@ function modelCapabilityLabel(capability: ModelCapability) {
     return capability === "image" ? "图片" : capability === "video" ? "视频" : capability === "audio" ? "音频" : "文本";
 }
 
-export function ModelIcon({ model, capability, iconKey, providerHint, config }: { model: string; capability?: LogicalModelCapability; iconKey?: ModelIconKey; providerHint?: string; config?: AiConfig }) {
+export function ModelIcon({ model, capability, iconKey, iconUrl, providerHint, config }: { model: string; capability?: LogicalModelCapability; iconKey?: ModelIconKey; iconUrl?: string; providerHint?: string; config?: AiConfig }) {
     const context: ModelIconContext = config ? modelIconContext(config, model) : {};
-    const icon = resolveModelIcon(model, capability || context.capability, iconKey || context.iconKey, providerHint || context.providerHint);
+    const [failedIcons, setFailedIcons] = useState<{ custom?: string; fallback?: string }>({});
+    const customIcon = useMemo(() => normalizeModelIconUrl(iconUrl || context.iconUrl), [iconUrl, context.iconUrl]);
+    const fallback = resolveModelIcon(model, capability || context.capability, iconKey || context.iconKey, providerHint || context.providerHint);
+    const icon = customIcon && failedIcons.custom !== customIcon ? customIcon : failedIcons.fallback !== fallback ? fallback : "";
     const colorIcon = icon === "/icons/jimeng.svg" || icon === "/icons/minimax.svg" || icon === "/icons/qwen.svg" || icon === "/icons/nanobanana.svg" || icon === "/icons/doubao.svg";
-    return icon ? <img src={icon} alt="" className={cn("size-4 shrink-0", colorIcon ? "" : "dark:invert")} /> : <Cpu className="size-4 shrink-0 opacity-70" />;
+    return icon ? <img src={icon} alt="" className={cn("size-4 shrink-0 object-contain", colorIcon || icon === customIcon ? "" : "dark:invert")} onError={() => setFailedIcons((current) => ({ ...current, [icon === customIcon ? "custom" : "fallback"]: icon }))} /> : <Cpu className="size-4 shrink-0 opacity-70" />;
 }
 
 export function resolveModelIcon(model: string, capability?: LogicalModelCapability, iconKey?: ModelIconKey, providerHint?: string) {
@@ -339,7 +355,7 @@ export function resolveModelIcon(model: string, capability?: LogicalModelCapabil
 function modelIconContext(config: AiConfig, value: string): ModelIconContext {
     const logicalModel = findLogicalModel(config, value);
     const channel = resolveModelChannel(config, value);
-    return { capability: logicalModel?.capability, iconKey: logicalModel?.icon, providerHint: [channel.name, channel.id, channel.advancedConfig?.protocol].filter(Boolean).join(" ") };
+    return { capability: logicalModel?.capability, iconKey: logicalModel?.icon, iconUrl: logicalModel?.iconUrl, providerHint: [channel.name, channel.id, channel.advancedConfig?.protocol].filter(Boolean).join(" ") };
 }
 
 function findLogicalModel(config: AiConfig, value: string) {

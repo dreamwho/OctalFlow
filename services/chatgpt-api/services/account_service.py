@@ -81,6 +81,16 @@ class ImageAccountSelectionError(RuntimeError):
         super().__init__(f"image_account_selection:{self.kind}; {detail}")
 
 
+def is_account_cleanup_candidate(account: dict[str, Any]) -> bool:
+    """True only for persisted disabled accounts or confirmed invalid credentials."""
+    status = str(account.get("status") or "").strip()
+    confirmed_invalid = (
+        str(account.get("last_remote_check_result") or "").strip().lower() == "invalid"
+        or bool(account.get("refresh_token_invalid_at"))
+    )
+    return status == "禁用" or (status == "异常" and confirmed_invalid)
+
+
 class OAuthRefreshError(RuntimeError):
     """Structured OAuth token refresh failure."""
 
@@ -369,6 +379,14 @@ class AccountService:
                 normalized["pending_auth_scope"] = None
                 normalized.pop("pending_auth_verification_id", None)
                 changed = True
+            if (
+                normalized.get("status") == "异常"
+                and (
+                    normalized.get("last_remote_check_result") == "invalid"
+                    or normalized.get("refresh_token_invalid_at")
+                )
+            ):
+                normalized["status"] = "禁用"
             if normalized != item:
                 changed = True
             used_management_ids.add(management_id)
@@ -444,11 +462,12 @@ class AccountService:
         self,
         *,
         wait_for_refresh: bool = False,
+        force: bool = False,
     ) -> bool:
         now = time.monotonic()
         ttl = self._account_snapshot_ttl_seconds()
         with self._lock:
-            if (
+            if not force and (
                 now - self._account_snapshot_checked_at
                 < ttl
             ):
@@ -458,7 +477,7 @@ class AccountService:
             return False
         try:
             with self._lock:
-                if (
+                if not force and (
                     time.monotonic() - self._account_snapshot_checked_at
                     < ttl
                 ):
@@ -2955,16 +2974,22 @@ class AccountService:
             # The account store is authoritative; diagnostics must not reverse its outcome.
             pass
 
+    def cleanup_abnormal_accounts(self) -> dict:
+        """Delete eligible accounts selected and rechecked under the account lock."""
+        self._refresh_accounts_snapshot_if_stale(wait_for_refresh=True, force=True)
+        return self.delete_accounts([], return_items=False, eligible_abnormal_only=True)
+
     @account_processing_batch
     def delete_accounts(
         self,
         tokens: list[str],
         return_items: bool = True,
         *,
+        eligible_abnormal_only: bool = False,
         progress_callback: Callable[[str, int], None] | None = None,
     ) -> dict:
         requested_tokens = list(dict.fromkeys(token for token in tokens if token))
-        if not requested_tokens:
+        if not requested_tokens and not eligible_abnormal_only:
             return {
                 "removed": 0,
                 "removed_ids": [],
@@ -2977,6 +3002,11 @@ class AccountService:
             len(requested_tokens),
         )
         with self._lock:
+            if eligible_abnormal_only:
+                requested_tokens = [
+                    token for token, account in self._accounts.items()
+                    if is_account_cleanup_candidate(account)
+                ]
             target_tokens: list[str] = []
             candidate_ids: list[str] = []
             missing_tokens: list[str] = []
@@ -2989,6 +3019,8 @@ class AccountService:
                 account = self._accounts.get(access_token)
                 if account is None:
                     missing_tokens.append(requested_token)
+                    continue
+                if eligible_abnormal_only and not is_account_cleanup_candidate(account):
                     continue
                 target_tokens.append(access_token)
                 management_id = str(account.get("management_id") or "").strip().lower()
@@ -3029,6 +3061,7 @@ class AccountService:
             "removed": len(removed_ids),
             "removed_ids": removed_ids,
             "missing_tokens": missing_tokens,
+            **({"checked": len(requested_tokens)} if eligible_abnormal_only else {}),
             "items": items,
         }
 
@@ -3556,11 +3589,11 @@ class AccountService:
             )
             if terminal_already_recorded:
                 account = dict(current)
-                if not (remove and account.get("status") == "异常"):
+                if not (remove and account.get("status") != "禁用"):
                     return False
             else:
                 next_item = dict(current)
-                next_item["status"] = "禁用" if current.get("status") == "禁用" else "异常"
+                next_item["status"] = "禁用"
                 next_item["quota"] = 0
                 next_item["image_quota_unknown"] = True
                 next_item["invalid_count"] = int(next_item.get("invalid_count") or 0) + 1
@@ -3584,7 +3617,7 @@ class AccountService:
                     return False
 
             final_status = str(account.get("status") or "异常")
-            removed = bool(remove and final_status == "异常")
+            removed = bool(remove and current.get("status") != "禁用")
             if removed:
                 self._accounts.pop(access_token, None)
             else:

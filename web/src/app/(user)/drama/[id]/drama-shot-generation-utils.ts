@@ -60,3 +60,11 @@ export function estimateEpisodePoints(config: ReturnType<typeof useEffectiveConf
     }, 0);
     return Number(total.toFixed(2));
 }
+
+export function shotReferenceMedia(shot: DramaShot) {
+    const references = (shot.videoReferences || []).flatMap((asset) => {
+        const url = asset.serverUrl || asset.remoteUrl;
+        return url ? [{ id: asset.id, name: asset.title, type: asset.mimeType || (asset.type === "video" ? "video/mp4" : "audio/mpeg"), url, storageKey: asset.storageKey, width: asset.width, height: asset.height, kind: asset.type }] : [];
+    });
+    return { videos: references.filter((item) => item.kind === "video"), audios: references.filter((item) => item.kind === "audio") };
+}

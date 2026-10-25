@@ -672,7 +672,7 @@ describe("magic proxy service", () => {
         expect(overview.nodes.find((item) => item.name === "Tokyo-01")?.alive).not.toBe(false);
     });
 
-    it("locates the failing stage of a dead node instead of repeating the kernel's generic message", async () => {
+    it("reports independent DNS and TCP evidence without guessing the failed healthcheck stage", async () => {
         await importMagicProxySubscription({
             content: `proxies:
   - name: HK-01
@@ -688,15 +688,15 @@ describe("magic proxy service", () => {
         mocks.lookup.mockResolvedValueOnce([]);
         expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("应用侧无法用系统 DNS 解析节点域名 hk.private.example");
 
-        // 域名可解析但端口不可达：节点已下线或被封锁。
+        // 域名可解析，但本次应用侧连接未成功，不能直接归因节点故障。
         mocks.lookup.mockResolvedValueOnce([{ address: "203.0.113.9", family: 4 }]);
         mocks.connect.mockImplementationOnce(() => fakeSocket("timeout"));
-        expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("TCP 443 均不可达");
+        expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("TCP 443 探测均未连接成功");
 
-        // TCP 可达仍未通过健康检查：问题在代理协议握手阶段，与网络可达性无关。
+        // TCP 可达仍未通过健康检查：不足以确定 Mihomo 的具体失败阶段。
         mocks.lookup.mockResolvedValueOnce([{ address: "203.0.113.9", family: 4 }]);
         mocks.connect.mockImplementationOnce(() => fakeSocket("connect"));
-        expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("失败发生在 mihomo 拨号阶段");
+        expect((await testMagicProxyNodeDelay({ node: "HK-01" })).error).toContain("具体失败阶段尚未确认");
 
         // 三类失败都必须只拨当前节点，不得触发全组重拨。
         expect(groupDelayCalls()).toHaveLength(0);

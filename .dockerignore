@@ -20,6 +20,7 @@ web/playwright-report
 *.log
 .env*
 **/.env*
+**/antigravity_tokens.json
 !.env.example
 **/.venv
 **/__pycache__

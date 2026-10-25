@@ -4,6 +4,7 @@ import { hostname, platform } from "node:os";
 
 import { getAuthSettings, setAuthSettings, type AuthSettings, type SystemModelChannel } from "@/lib/auth/store";
 import { applyChannelProtocol, protocolModelConfig } from "@/lib/channel-protocol-registry";
+import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-lifecycle";
 import { normalizeModelId } from "@/lib/model-capability";
 import { normalizeDefaultModelsConfig, synchronizeLogicalModelsWithChannels } from "@/lib/model-routing-config";
 import { resolvePublicRequestOrigin } from "@/lib/server/public-request-origin";
@@ -25,6 +26,7 @@ import {
     listGeminiToolsCandidateAccounts,
     listGeminiToolsRequestLogs,
     recordGeminiToolsAccountUsage,
+    recordGeminiToolsApiKeyTokens,
     type GeminiToolsPrivateAccount,
     type GeminiToolsQuota,
     type GeminiToolsLifecycleEntry,
@@ -246,13 +248,13 @@ export async function testGeminiToolsText(input: { model?: unknown; prompt?: unk
     return { model, text: payload?.choices?.[0]?.message?.content || "" };
 }
 
-export async function geminiToolsRuntimeRequest(path: string, init: RequestInit, context: { protocol?: "openai" | "gemini" | "anthropic" | "admin-test"; keyPrefix?: string } = {}) {
+export async function geminiToolsRuntimeRequest(path: string, init: RequestInit, context: { protocol?: "openai" | "gemini" | "anthropic" | "admin-test"; keyPrefix?: string; keyId?: string } = {}) {
     return withTrafficContext({ channelId: GEMINI_TOOLS_CHANNEL_ID, channelName: GEMINI_TOOLS_CHANNEL_NAME, protocol: GEMINI_TOOLS_PROTOCOL, model: trafficBodyModel(init.body), ...currentTrafficContext() }, () =>
         withGeminiToolsMagicProxy(() => geminiToolsRuntimeRequestInternal(path, init, context)),
     );
 }
 
-async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit, context: { protocol?: "openai" | "gemini" | "anthropic" | "admin-test"; keyPrefix?: string } = {}) {
+async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit, context: { protocol?: "openai" | "gemini" | "anthropic" | "admin-test"; keyPrefix?: string; keyId?: string } = {}) {
     const startedAt = Date.now();
     const normalizedPath = normalizeRuntimePath(path);
     if (!normalizedPath) return Response.json({ error: { message: "GeminiTools 不支持该接口" } }, { status: 404 });
@@ -262,6 +264,11 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
     if (normalizedPath === "/v1/models" && (init.method || "GET").toUpperCase() === "GET") {
         const data = catalogFromAccounts(await listGeminiToolsAccounts()).map((model) => ({ id: model.id, object: "model", created: 0, owned_by: "google-antigravity" }));
         return Response.json({ object: "list", data });
+    }
+
+    if (normalizedPath === "/v1/messages/count_tokens" && (init.method || "POST").toUpperCase() === "POST") {
+        const body = await requestJson(init.body);
+        return Response.json({ input_tokens: estimateMessageTokens(body) });
     }
 
     const body = await requestJson(init.body);
@@ -381,18 +388,104 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             const upstreamStart = Date.now();
             await pushPhase({
                 phase: "upstream",
-                message: "调用 Google Cloud Code 语言模型生成接口",
+                message: "调用 Google Cloud Code 语言模型生成接口 (流式)",
                 time: new Date(upstreamStart).toISOString(),
                 durationMs: upstreamStart - startedAt,
                 detail: `模型: ${model}, 项目: ${project.projectId}, 载荷大小: ${JSON.stringify(nativePayload).length} 字节`,
             });
 
+            const settleSuccess = async (usage: { promptTokens: number; completionTokens: number; totalTokens: number }, previewText: string) => {
+                const finishAt = Date.now();
+                await pushPhase({
+                    phase: "success",
+                    message: "协议格式转换与 Token 统计完成",
+                    time: new Date(finishAt).toISOString(),
+                    durationMs: finishAt - startedAt,
+                    detail: `Token 消耗: ${usage.totalTokens} (Prompt: ${usage.promptTokens}, Completion: ${usage.completionTokens}), 总耗时: ${finishAt - startedAt}ms`,
+                });
+                await Promise.all([
+                    recordGeminiToolsAccountUsage(account.id, usage.totalTokens, false),
+                    (async () => {
+                        const settlePayload = {
+                            protocol,
+                            method,
+                            path: normalizedPath,
+                            model,
+                            accountId: account.id,
+                            accountEmail: account.email,
+                            statusCode: 200,
+                            durationMs: finishAt - startedAt,
+                            promptTokens: usage.promptTokens,
+                            completionTokens: usage.completionTokens,
+                            totalTokens: usage.totalTokens,
+                            keyPrefix: context.keyPrefix,
+                            requestPreview: previewRequest(body),
+                            responsePreview: previewText,
+                            proxyEgress: egress,
+                            lifecycle,
+                            ...(clientIp ? { clientIp } : {}),
+                            ...(userAgent ? { userAgent } : {}),
+                            ...(headers ? { headers } : {}),
+                        } as const;
+                        if (openLogId) return settleGeminiToolsRequestLog(openLogId, settlePayload).catch(() => undefined);
+                        return appendGeminiToolsRequestLog(settlePayload);
+                    })(),
+                    // 流式响应没有总 Token 响应头，API Key 用量在流结束时结算；非流式仍由路由按响应头记录，避免双份。
+                    ...(context.keyId && streamingRequested(body) ? [recordGeminiToolsApiKeyTokens(context.keyId, usage.totalTokens)] : []),
+                ]);
+            };
+
+            // 上游统一走 streamGenerateContent：非流式接口配额更严，且流式可在生成期间持续向下游交付数据，
+            // 避免 Claude Code / ZCode 等 Agent CLI 因长时间无字节而触发请求看门狗断连。
             attemptedGeneration = true;
-            const native = await cloudCodeGenerate(token.accessToken, project.projectId, model, nativePayload);
+            const upstream = await cloudCodeStreamGenerate(token.accessToken, project.projectId, model, nativePayload, upstreamBetaHeaders(init.headers, model));
+
+            if (streamingRequested(body)) {
+                const streamStart = Date.now();
+                await pushPhase({
+                    phase: "response",
+                    message: "Google Cloud Code 流式连接已建立，开始实时转发",
+                    time: new Date(streamStart).toISOString(),
+                    durationMs: streamStart - startedAt,
+                    detail: `连接建立耗时: ${streamStart - upstreamStart}ms`,
+                });
+                return relayProtocolStream({
+                    upstream,
+                    translator: new NativeStreamTranslator(protocol === "anthropic" ? "anthropic" : "openai", model),
+                    onSettled: async (settlement) => {
+                        if (settlement.ok) {
+                            await settleSuccess(settlement, settlement.preview);
+                            return;
+                        }
+                        // 中断发生在生成开始之后，属模糊失败：不换号重放，仅落库失败证据。
+                        await pushPhase({
+                            phase: "failed",
+                            message: `上游流式转发中断: ${settlement.error}`,
+                            time: new Date().toISOString(),
+                            durationMs: Date.now() - startedAt,
+                            detail: `账号: ${account.email || account.id}`,
+                        });
+                        await recordGeminiToolsAccountUsage(account.id, 0, true);
+                        if (openLogId) {
+                            await settleGeminiToolsRequestLog(openLogId, {
+                                statusCode: 502,
+                                durationMs: Date.now() - startedAt,
+                                error: settlement.error,
+                                accountId: account.id,
+                                accountEmail: account.email,
+                                proxyEgress: egress,
+                                lifecycle,
+                            }).catch(() => undefined);
+                        }
+                    },
+                });
+            }
+
+            const native = await collectNativeFromStream(upstream);
             const responseEnd = Date.now();
             await pushPhase({
                 phase: "response",
-                message: "收到 Google Cloud Code 接口响应 (HTTP 200)",
+                message: "收到 Google Cloud Code 流式响应并聚合完成",
                 time: new Date(responseEnd).toISOString(),
                 durationMs: responseEnd - startedAt,
                 detail: `上游调用耗时: ${responseEnd - upstreamStart}ms, 响应数据接收正常`,
@@ -405,49 +498,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
             const functionCalls = functionCallsFromNative(native);
             const finishReason = finishReasonFromNative(native);
             const previewText = (content || reasoning || (functionCalls.length ? `[工具调用: ${functionCalls.map((c) => c.name).join(", ")}]` : finishReason ? `[结束原因: ${finishReason}]` : "")).slice(0, 500);
-            const finishAt = Date.now();
-            await pushPhase({
-                phase: "success",
-                message: "协议格式转换与 Token 统计完成",
-                time: new Date(finishAt).toISOString(),
-                durationMs: finishAt - startedAt,
-                detail: `Token 消耗: ${usage.totalTokens} (Prompt: ${usage.promptTokens}, Completion: ${usage.completionTokens}), 总耗时: ${finishAt - startedAt}ms`,
-            });
-
-            await Promise.all([
-                recordGeminiToolsAccountUsage(account.id, usage.totalTokens, false),
-                (async () => {
-                    const settlePayload = {
-                        protocol,
-                        method,
-                        path: normalizedPath,
-                        model,
-                        accountId: account.id,
-                        accountEmail: account.email,
-                        statusCode: 200,
-                        durationMs: finishAt - startedAt,
-                        promptTokens: usage.promptTokens,
-                        completionTokens: usage.completionTokens,
-                        totalTokens: usage.totalTokens,
-                        keyPrefix: context.keyPrefix,
-                        requestPreview: previewRequest(body),
-                        responsePreview: previewText,
-                        proxyEgress: egress,
-                        lifecycle,
-                        ...(clientIp ? { clientIp } : {}),
-                        ...(userAgent ? { userAgent } : {}),
-                        ...(headers ? { headers } : {}),
-                    } as const;
-                    if (openLogId) return settleGeminiToolsRequestLog(openLogId, settlePayload).catch(() => undefined);
-                    return appendGeminiToolsRequestLog(settlePayload);
-                })(),
-            ]);
-            if (streamingRequested(body)) {
-                if (protocol === "anthropic") {
-                    return anthropicSseResponse(formatted as Record<string, unknown>, usage.totalTokens);
-                }
-                return openAiSseResponse(formatted as OpenAiResponse, usage.totalTokens);
-            }
+            await settleSuccess(usage, previewText);
             return Response.json(formatted, { headers: { "x-gemini-tools-total-tokens": String(usage.totalTokens) } });
         } catch (error) {
             lastError = error instanceof GeminiToolsError ? error : new GeminiToolsError(error instanceof Error ? error.message : "Google 上游请求失败");
@@ -460,6 +511,19 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                 detail: `状态码: ${lastError.status || 500}, 异常原因: ${lastError.message}`,
             });
             await recordGeminiToolsAccountUsage(account.id, 0, true);
+            if (lastError.status === 429) {
+                // Google 返回 429 时后台显示的 remainingPercent 还是上次刷新的快照；
+                // 立即异步刷新该账号额度目录，让轮询过滤与后台展示拿到真实剩余额度。
+                void (async () => {
+                    try {
+                        const freshToken = await validAccessToken(account);
+                        const quotas = await fetchAvailableModels(freshToken.accessToken, account.projectId);
+                        await updateGeminiToolsAccountCredentials(account.id, { accessToken: freshToken.accessToken, expiresAt: freshToken.expiresAt, projectId: account.projectId, planType: account.planType, quotas });
+                    } catch {
+                        // 快照刷新失败不影响主流程与错误透出。
+                    }
+                })();
+            }
             if (isDefiniteGoogleAuthFailure(lastError)) await updateGeminiToolsAccount(account.id, { status: "invalid" });
             // Do not replay a generation after an ambiguous upstream or
             // transport failure. Authentication and quota rejections are
@@ -602,28 +666,145 @@ async function fetchAvailableModels(accessToken: string, projectId?: string) {
     throw last || new GeminiToolsError("读取 Google 模型额度失败");
 }
 
-async function cloudCodeGenerate(accessToken: string, projectId: string, model: string, payload: Record<string, unknown>) {
+async function cloudCodeStreamGenerate(accessToken: string, projectId: string, model: string, payload: Record<string, unknown>, extraHeaders: Record<string, string>) {
     let last: GeminiToolsError | null = null;
     for (const base of CLOUD_CODE_ENDPOINTS) {
         try {
-            let result: Record<string, unknown>;
+            let response: Response;
             try {
-                result = await cloudCodeJson(`${base}:generateContent`, accessToken, { project: projectId, request: payload, model }, projectId);
+                response = await googleRawResponse(`${base}:streamGenerateContent?alt=sse`, accessToken, { project: projectId, request: payload, model }, projectId, extraHeaders);
             } catch (error) {
                 if (!(error instanceof GeminiToolsError) || error.status !== 403) throw error;
-                result = await cloudCodeJson(`${base}:generateContent`, accessToken, { project: projectId, request: payload, model });
+                response = await googleRawResponse(`${base}:streamGenerateContent?alt=sse`, accessToken, { project: projectId, request: payload, model }, "", extraHeaders);
             }
-            const response = record(result.response);
-            return Object.keys(response).length ? response : result;
+            return response;
         } catch (error) {
             last = error instanceof GeminiToolsError ? error : new GeminiToolsError("Google 模型调用失败");
-            // A generation transport failure can be ambiguous: Google may have
-            // accepted it before the connection failed. Only a definite 404 is
-            // safe to try against the next documented Cloud Code endpoint.
+            // 生成请求的传输失败可能是模糊失败：Google 可能在连接中断前已受理。
+            // 只有明确的 404 才允许换下一个已文档化的 Cloud Code 端点重试。
             if (last.status !== 404) throw last;
         }
     }
     throw last || new GeminiToolsError("Google 模型调用失败");
+}
+
+function cloudCodeHeaders(accessToken: string, projectId: string, extraHeaders: Record<string, string> = {}) {
+    return {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+        "user-agent": antigravityUserAgent(),
+        "x-client-name": "antigravity",
+        "x-client-version": "4.3.0",
+        "x-machine-id": MACHINE_ID,
+        "x-vscode-sessionid": SESSION_ID,
+        ...(projectId ? { "x-goog-user-project": projectId } : {}),
+        ...extraHeaders,
+    };
+}
+
+async function googleRawResponse(url: string, accessToken: string, body: unknown, projectId: string, extraHeaders: Record<string, string>) {
+    let response: Response;
+    try {
+        const proxyUrl = await geminiToolsMagicProxyUrl();
+        const egress = await geminiToolsProxyEgress();
+        const channel = geminiToolsChannel(await getAuthSettings());
+        response = await fetchSafeOutbound(
+            url,
+            {
+                method: "POST",
+                headers: cloudCodeHeaders(accessToken, projectId, extraHeaders),
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(GENERATION_TRANSPORT_TIMEOUT_MS),
+                cache: "no-store",
+                redirect: "error",
+            },
+            {
+                allowProxyFakeIpSpace: true,
+                ...(proxyUrl ? { proxyUrl } : {}),
+                trafficContext: {
+                    channelId: channel?.id || GEMINI_TOOLS_CHANNEL_ID,
+                    channelName: channel?.name || GEMINI_TOOLS_CHANNEL_NAME,
+                    model: trafficBodyModel(JSON.stringify(body)),
+                    protocol: GEMINI_TOOLS_PROTOCOL,
+                    ...currentTrafficContext(),
+                    connectionMode: egress?.mode || (proxyUrl ? "generic" : "direct"),
+                },
+            },
+        );
+    } catch (error) {
+        const isTimeout = error instanceof Error && (error.name === "TimeoutError" || error.message.toLowerCase().includes("timeout") || (error as { code?: string }).code === "UND_ERR_CONNECT_TIMEOUT");
+        const cause = error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : "";
+        const detail = error instanceof Error ? `${error.message}${cause}` : String(error);
+        throw new GeminiToolsError(isTimeout ? "Google Cloud Code 请求失败：请求超时" : `Google Cloud Code 请求失败：${detail}`, isTimeout ? 504 : 502);
+    }
+    if (!response.ok) {
+        const raw = await response.text();
+        throw new GeminiToolsError(safeGoogleError(raw ? safeJson(raw) : {}) || "Google Cloud Code 请求失败", response.status);
+    }
+    return response;
+}
+
+async function readUpstreamSseData(response: Response, onData: (data: string) => "continue" | "stop") {
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let stopped = false;
+    const consumeLine = (line: string) => {
+        if (stopped || !line.startsWith("data:")) return;
+        const data = line.slice(5).trim();
+        if (data && onData(data) === "stop") stopped = true;
+    };
+    while (!stopped) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let index;
+        while ((index = buffer.indexOf("\n")) >= 0) {
+            consumeLine(buffer.slice(0, index).trim());
+            buffer = buffer.slice(index + 1);
+            if (stopped) break;
+        }
+    }
+    if (!stopped && buffer.trim().startsWith("data:")) consumeLine(buffer.trim());
+    reader.cancel().catch(() => undefined);
+}
+
+function unwrapNativeChunk(chunk: Record<string, unknown>) {
+    const inner = record(chunk.response);
+    return Object.keys(inner).length ? inner : chunk;
+}
+
+// 非流式客户端同样通过流式上游调用（配额更宽松），在这里把增量分片聚合为完整原生响应。
+async function collectNativeFromStream(response: Response) {
+    let parts: unknown[] = [];
+    let finishReason = "";
+    let usage: Record<string, unknown> | null = null;
+    let modelVersion = "";
+    let responseId = "";
+    await readUpstreamSseData(response, (data) => {
+        if (data === "[DONE]") return "stop";
+        const native = unwrapNativeChunk(record(safeJson(data)));
+        if (!Object.keys(native).length) return "continue";
+        const candidate = record((Array.isArray(native.candidates) ? native.candidates : [])[0]);
+        const content = record(record(candidate.content));
+        if (Array.isArray(content.parts)) parts = parts.concat(content.parts);
+        const nextFinish = text(candidate.finishReason, 100);
+        if (nextFinish) finishReason = nextFinish;
+        const nextUsage = record(native.usageMetadata);
+        if (Object.keys(nextUsage).length) usage = nextUsage;
+        modelVersion = text(native.modelVersion, 200) || modelVersion;
+        responseId = text(native.responseId, 200) || responseId;
+        return "continue";
+    });
+    const native: Record<string, unknown> = {
+        ...(responseId ? { responseId } : {}),
+        ...(modelVersion ? { modelVersion } : {}),
+        candidates: [{ content: { role: "model", parts }, ...(finishReason ? { finishReason } : {}) }],
+        ...(usage ? { usageMetadata: usage } : {}),
+    };
+    if (!parts.length && !finishReason) throw new GeminiToolsError("Google 上游流式响应为空", 502);
+    return native;
 }
 
 async function cloudCodeJson(url: string, accessToken: string, body: unknown, projectId = "") {
@@ -631,16 +812,7 @@ async function cloudCodeJson(url: string, accessToken: string, body: unknown, pr
         url,
         {
             method: "POST",
-            headers: {
-                authorization: `Bearer ${accessToken}`,
-                "content-type": "application/json",
-                "user-agent": antigravityUserAgent(),
-                "x-client-name": "antigravity",
-                "x-client-version": "4.3.0",
-                "x-machine-id": MACHINE_ID,
-                "x-vscode-sessionid": SESSION_ID,
-                ...(projectId ? { "x-goog-user-project": projectId } : {}),
-            },
+            headers: cloudCodeHeaders(accessToken, projectId),
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(240_000),
         },
@@ -710,6 +882,8 @@ function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-te
     let systemInstruction: { parts: Array<{ text: string }> } | undefined;
     const system = protocol === "anthropic" ? body.system : undefined;
     if (typeof system === "string" && system.trim()) systemInstruction = { parts: [{ text: system }] };
+    // OpenAI 的 role:"tool" 消息只带 tool_call_id，需要回查它对应的上游函数名。
+    const toolCallNames = new Map<string, string>();
     for (const raw of messages) {
         const message = record(raw);
         if (message.role === "system") {
@@ -717,8 +891,66 @@ function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-te
             if (value) systemInstruction = { parts: [{ text: value }] };
             continue;
         }
-        const parts = messageParts(message.content);
-        if (parts.length) contents.push({ role: message.role === "assistant" ? "model" : "user", parts });
+        if (message.role === "tool") {
+            const callId = text(message.tool_call_id, 200);
+            const output = messageText(message.content);
+            contents.push({ role: "user", parts: [{ functionResponse: { name: toolCallNames.get(callId) || callId || "tool", response: { output: output || "Command executed successfully." } } }] });
+            continue;
+        }
+        const isAssistant = message.role === "assistant";
+        const parts: Array<Record<string, unknown>> = [];
+        let lastSignature = "";
+        const blocks = Array.isArray(message.content) ? message.content : [];
+        if (typeof message.content === "string" && message.content.trim()) parts.push({ text: message.content });
+        for (const rawBlock of blocks) {
+            const block = record(rawBlock);
+            const type = text(block.type, 40);
+            // 思考块正文不上游，但其中的签名必须暂存，供紧随其后的工具调用回传给 Gemini。
+            if (type === "thinking" || type === "reasoning") {
+                lastSignature = text(block.signature, 100_000) || lastSignature;
+                continue;
+            }
+            if (type === "tool_use") {
+                const name = text(block.name, 200);
+                if (!name) continue;
+                const callId = text(block.id, 200);
+                if (callId) toolCallNames.set(callId, name);
+                parts.push({ functionCall: { name, args: record(block.input) }, ...(lastSignature ? { thoughtSignature: lastSignature } : {}) });
+                continue;
+            }
+            if (type === "tool_result") {
+                const callId = text(block.tool_use_id, 200);
+                const result = toolResultText(block);
+                parts.push({ functionResponse: { name: text(block.name, 200) || toolCallNames.get(callId) || callId || "tool", response: { output: result || "Command executed successfully." } } });
+                continue;
+            }
+            if (type === "text" && text(block.text, 100_000)) {
+                parts.push({ text: text(block.text, 100_000) });
+                continue;
+            }
+            const image = record(block.image_url);
+            const dataUrl = text(image.url, 20_000_000);
+            const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/s);
+            if (match) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+        }
+        if (isAssistant && Array.isArray(message.tool_calls)) {
+            for (const rawCall of message.tool_calls) {
+                const call = record(rawCall);
+                const fn = record(call.function);
+                const name = text(fn.name, 200);
+                if (!name) continue;
+                const callId = text(call.id, 200);
+                if (callId) toolCallNames.set(callId, name);
+                let args: Record<string, unknown> = {};
+                try {
+                    args = record(JSON.parse(String(fn.arguments || "{}")));
+                } catch {
+                    args = {};
+                }
+                parts.push({ functionCall: { name, args }, ...(lastSignature ? { thoughtSignature: lastSignature } : {}) });
+            }
+        }
+        if (parts.length) contents.push({ role: isAssistant ? "model" : "user", parts });
     }
     if (!contents.length && typeof body.input === "string") contents.push({ role: "user", parts: [{ text: body.input }] });
     const generationConfig: Record<string, unknown> = {};
@@ -726,7 +958,93 @@ function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-te
     if (optionalNumber(body.top_p) !== undefined) generationConfig.topP = optionalNumber(body.top_p);
     const maxTokens = optionalNumber(body.max_completion_tokens) ?? optionalNumber(body.max_tokens);
     if (maxTokens !== undefined) generationConfig.maxOutputTokens = maxTokens;
-    return { contents, ...(systemInstruction ? { systemInstruction } : {}), ...(Object.keys(generationConfig).length ? { generationConfig } : {}) };
+    const tools = toolDeclarations(protocol, body);
+    const toolConfig = toolCallingConfig(protocol, body.tool_choice);
+    return {
+        contents,
+        ...(systemInstruction ? { systemInstruction } : {}),
+        ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
+        ...(tools ? { tools } : {}),
+        ...(toolConfig ? { toolConfig } : {}),
+    };
+}
+
+function toolResultText(block: Record<string, unknown>) {
+    const value = block.content;
+    const join = (items: unknown[]) =>
+        items
+            .map((item) => text(record(item).text, 200_000))
+            .filter(Boolean)
+            .join("\n");
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return join(value);
+    return "";
+}
+
+function toolDeclarations(protocol: "openai" | "gemini" | "anthropic" | "admin-test", body: Record<string, unknown>) {
+    const tools = Array.isArray(body.tools) ? body.tools : [];
+    const declarations: Array<Record<string, unknown>> = [];
+    for (const raw of tools) {
+        const tool = record(raw);
+        const fn = protocol === "anthropic" ? tool : record(tool.function);
+        const name = text(fn.name, 200);
+        if (protocol !== "anthropic" && tool.type !== "function") continue;
+        if (!name) continue;
+        const schema = geminiSchema(record(fn.input_schema ?? fn.parameters));
+        declarations.push({ name, ...(text(fn.description, 8_000) ? { description: text(fn.description, 8_000) } : {}), ...(Object.keys(schema).length ? { parameters: schema } : {}) });
+    }
+    return declarations.length ? [{ functionDeclarations: declarations }] : undefined;
+}
+
+// Anthropic/OpenAI 的 JSON Schema 需要归一为 Gemini 支持的形态：type 枚举大写，剔除上游不认的字段。
+function geminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
+    const unsupported = new Set(["$schema", "additionalProperties", "$defs", "definitions", "default", "examples", "exclusiveMaximum", "exclusiveMinimum", "format"]);
+    const convert = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(convert);
+        if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+        const input = value as Record<string, unknown>;
+        const result: Record<string, unknown> = {};
+        for (const [key, item] of Object.entries(input)) {
+            if (unsupported.has(key)) continue;
+            if (key === "type" && typeof item === "string") {
+                result.type = item.toUpperCase();
+                continue;
+            }
+            result[key] = convert(item);
+        }
+        return result;
+    };
+    return record(convert(schema));
+}
+
+function toolCallingConfig(protocol: "openai" | "gemini" | "anthropic" | "admin-test", choice: unknown): Record<string, unknown> | undefined {
+    const config = (mode: string, allowed?: string[]) => ({ functionCallingConfig: { mode, ...(allowed ? { allowedFunctionNames: allowed } : {}) } });
+    if (protocol === "anthropic") {
+        const typed = record(choice);
+        if (typed.type === "any") return config("ANY");
+        if (typed.type === "tool" && text(typed.name, 200)) return config("ANY", [text(typed.name, 200)]);
+        if (choice !== undefined && choice !== null) return config("AUTO");
+        return undefined;
+    }
+    if (choice === "required") return config("ANY");
+    if (choice === "none") return config("NONE");
+    if (choice && typeof choice === "object") {
+        const name = text(record(record(choice).function).name, 200);
+        if (name) return config("ANY", [name]);
+    }
+    return undefined;
+}
+
+function upstreamBetaHeaders(headers: HeadersInit | null | undefined, model: string): Record<string, string> {
+    const incoming = new Headers(headers ?? undefined).get("anthropic-beta") || "";
+    const beta = new Set(
+        incoming
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+    );
+    if (/claude/i.test(model)) beta.add("claude-code-20250219");
+    return beta.size ? { "anthropic-beta": [...beta].join(",") } : {};
 }
 
 type OpenAiResponse = {
@@ -771,6 +1089,19 @@ function finishReasonFromNative(native: Record<string, unknown>) {
     return text(candidate.finishReason, 100);
 }
 
+// Gemini 多轮 function calling 要求回传 thoughtSignature；取原生分片中的最后一个签名。
+function signatureFromNative(native: Record<string, unknown>) {
+    const candidates = Array.isArray(native.candidates) ? native.candidates : [];
+    const content = record(record(record(candidates[0]).content));
+    const parts = Array.isArray(content.parts) ? content.parts : [];
+    let signature = "";
+    for (const raw of parts) {
+        const found = text(record(raw).thoughtSignature, 100_000);
+        if (found) signature = found;
+    }
+    return signature;
+}
+
 function protocolResponse(protocol: "openai" | "gemini" | "anthropic" | "admin-test", native: Record<string, unknown>, model: string) {
     if (protocol === "gemini") return native;
     const content = textFromNative(native);
@@ -778,12 +1109,13 @@ function protocolResponse(protocol: "openai" | "gemini" | "anthropic" | "admin-t
     const usage = usageFromNative(native);
     const functionCalls = functionCallsFromNative(native);
     const finishReason = finishReasonFromNative(native);
+    const signature = signatureFromNative(native);
     const effectiveText = content || (functionCalls.length === 0 && reasoning ? reasoning : "");
 
     if (protocol === "anthropic") {
         const contentBlocks: Array<Record<string, unknown>> = [];
         if (reasoning && content) {
-            contentBlocks.push({ type: "thinking", thinking: reasoning });
+            contentBlocks.push({ type: "thinking", thinking: reasoning, ...(signature ? { signature } : {}) });
             contentBlocks.push({ type: "text", text: content });
         } else if (effectiveText) {
             contentBlocks.push({ type: "text", text: effectiveText });
@@ -843,153 +1175,239 @@ function protocolResponse(protocol: "openai" | "gemini" | "anthropic" | "admin-t
     } satisfies OpenAiResponse;
 }
 
-function openAiSseResponse(payload: OpenAiResponse, totalTokens: number) {
-    const choice = payload.choices[0];
-    const message = choice?.message;
-    const chunkId = payload.id;
-    const created = payload.created;
-    const model = payload.model;
+type StreamProtocol = "openai" | "anthropic";
 
-    const initialDelta: Record<string, unknown> = { role: "assistant" };
-    if (message?.reasoning_content) {
-        initialDelta.reasoning_content = message.reasoning_content;
-    }
-    if (message?.content) {
-        initialDelta.content = message.content;
-    }
-    if (message?.tool_calls?.length) {
-        initialDelta.tool_calls = message.tool_calls.map((call, idx) => ({
-            index: idx,
-            id: call.id,
-            type: call.type,
-            function: call.function,
-        }));
+type StreamSettlement = { ok: boolean; error: string; promptTokens: number; completionTokens: number; totalTokens: number; preview: string };
+
+// 把 Google 流式增量分片实时翻译为 Anthropic / OpenAI 的标准 SSE 事件流。
+// 分片语义：candidates[0].content.parts 为增量正文/思考/工具调用；usageMetadata 与 finishReason 随分片渐进到达。
+class NativeStreamTranslator {
+    private blockType: "" | "text" | "thinking" = "";
+    private blockIndex = 0;
+    private messageStarted = false;
+    private pendingSignature = "";
+    private sawToolCall = false;
+    private finishReason = "";
+    private promptTokens = 0;
+    private completionTokens = 0;
+    private totalTokens = 0;
+    private contentPreview = "";
+    private thinkingPreview = "";
+    private toolPreview = "";
+    private openAiToolIndex = 0;
+    private readonly id: string;
+
+    constructor(
+        private readonly protocol: StreamProtocol,
+        private readonly model: string,
+    ) {
+        this.id = `${protocol === "anthropic" ? "msg" : "chatcmpl"}_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
     }
 
-    const chunk = {
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [{ index: 0, delta: initialDelta, finish_reason: null }],
-    };
-    const final = {
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [{ index: 0, delta: {}, finish_reason: choice?.finish_reason || "stop" }],
-        usage: payload.usage,
-    };
-    const encoder = new TextEncoder();
-    return new Response(
-        new ReadableStream({
-            start(controller) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(final)}\n\n`));
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                controller.close();
-            },
-        }),
-        {
-            headers: {
-                "content-type": "text/event-stream; charset=utf-8",
-                "cache-control": "no-cache, no-transform",
-                connection: "keep-alive",
-                "x-accel-buffering": "no",
-                "x-gemini-tools-total-tokens": String(totalTokens),
-            },
-        },
-    );
+    translate(chunk: Record<string, unknown>): string[] {
+        const native = unwrapNativeChunk(chunk);
+        const frames: string[] = [];
+        const usage = record(native.usageMetadata);
+        if (Object.keys(usage).length) {
+            this.promptTokens = positiveNumber(usage.promptTokenCount, this.promptTokens);
+            this.completionTokens = positiveNumber(usage.candidatesTokenCount, this.completionTokens);
+            this.totalTokens = positiveNumber(usage.totalTokenCount, this.promptTokens + this.completionTokens);
+        }
+        if (!this.messageStarted && (Object.keys(usage).length || Array.isArray(native.candidates))) {
+            this.messageStarted = true;
+            frames.push(...this.messageStart());
+        }
+        const candidate = record((Array.isArray(native.candidates) ? native.candidates : [])[0]);
+        const finishReason = text(candidate.finishReason, 100);
+        if (finishReason) this.finishReason = finishReason;
+        const content = record(record(candidate.content));
+        const parts = Array.isArray(content.parts) ? content.parts : [];
+        for (const rawPart of parts) {
+            const part = record(rawPart);
+            const signature = text(part.thoughtSignature, 100_000);
+            if (signature) this.pendingSignature = signature;
+            const call = record(part.functionCall);
+            const callName = text(call.name, 200);
+            if (callName) {
+                frames.push(...this.functionCall(callName, record(call.args), signature));
+                continue;
+            }
+            const piece = text(part.text, 1_000_000);
+            if (!piece) continue;
+            frames.push(...(part.thought === true ? this.thinking(piece) : this.text(piece)));
+        }
+        return frames;
+    }
+
+    finish(): string[] {
+        if (!this.messageStarted) {
+            // 上游没有产生任何分片：显式下发一条空消息，而不是静默挂断让客户端超时。
+            return [...this.messageStart(), ...this.stopFrames()];
+        }
+        return this.stopFrames();
+    }
+
+    abort(message: string): string[] {
+        if (this.protocol === "anthropic") return [...this.closeBlock(), this.frame("error", { type: "error", error: { type: "api_error", message } })];
+        return [`data: ${JSON.stringify({ error: { type: "api_error", message } })}\n\n`, "data: [DONE]\n\n"];
+    }
+
+    settlement(error: string): StreamSettlement {
+        const preview = [this.contentPreview, this.thinkingPreview ? `[思考] ${this.thinkingPreview}` : "", this.toolPreview ? `[工具调用: ${this.toolPreview}]` : "", !this.contentPreview && !this.thinkingPreview && !this.toolPreview && this.finishReason ? `[结束原因: ${this.finishReason}]` : ""]
+            .filter(Boolean)
+            .join(" / ")
+            .slice(0, 500);
+        return { ok: !error, error, promptTokens: this.promptTokens, completionTokens: this.completionTokens, totalTokens: this.totalTokens || this.promptTokens + this.completionTokens, preview };
+    }
+
+    private messageStart(): string[] {
+        if (this.protocol === "anthropic") {
+            return [this.frame("message_start", { type: "message_start", message: { id: this.id, type: "message", role: "assistant", content: [], model: this.model, stop_reason: null, stop_sequence: null, usage: { input_tokens: this.promptTokens, output_tokens: 1 } } })];
+        }
+        return [this.openAiChunk({ role: "assistant" }, null)];
+    }
+
+    private stopFrames(): string[] {
+        if (this.protocol === "anthropic") {
+            const stopReason = this.sawToolCall ? "tool_use" : this.finishReason === "MAX_TOKENS" ? "max_tokens" : "end_turn";
+            return [...this.closeBlock(), this.frame("message_delta", { type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: this.completionTokens } }), this.frame("message_stop", { type: "message_stop" })];
+        }
+        const finishReason = this.sawToolCall ? "tool_calls" : this.finishReason === "MAX_TOKENS" ? "length" : this.finishReason === "SAFETY" ? "content_filter" : "stop";
+        return [this.openAiChunk({}, finishReason, true), "data: [DONE]\n\n"];
+    }
+
+    private thinking(piece: string): string[] {
+        this.thinkingPreview = (this.thinkingPreview + piece).slice(0, 600);
+        if (this.protocol === "openai") return [this.openAiChunk({ reasoning_content: piece }, null)];
+        const frames: string[] = [];
+        if (this.blockType !== "thinking") {
+            frames.push(...this.closeBlock());
+            frames.push(this.frame("content_block_start", { type: "content_block_start", index: this.blockIndex, content_block: { type: "thinking", thinking: "" } }));
+            this.blockType = "thinking";
+        }
+        frames.push(this.blockDelta({ type: "thinking_delta", thinking: piece }));
+        return frames;
+    }
+
+    private text(piece: string): string[] {
+        this.contentPreview = (this.contentPreview + piece).slice(0, 600);
+        if (this.protocol === "openai") return [this.openAiChunk({ content: piece }, null)];
+        const frames: string[] = [];
+        if (this.blockType !== "text") {
+            frames.push(...this.closeBlock());
+            frames.push(this.frame("content_block_start", { type: "content_block_start", index: this.blockIndex, content_block: { type: "text", text: "" } }));
+            this.blockType = "text";
+        }
+        frames.push(this.blockDelta({ type: "text_delta", text: piece }));
+        return frames;
+    }
+
+    private functionCall(name: string, args: Record<string, unknown>, signature: string): string[] {
+        this.sawToolCall = true;
+        this.toolPreview = this.toolPreview ? `${this.toolPreview}, ${name}` : name;
+        if (this.protocol === "openai") {
+            const index = this.openAiToolIndex++;
+            return [this.openAiChunk({ tool_calls: [{ index, id: `call_${randomUUID().replace(/-/g, "").slice(0, 24)}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] }, null)];
+        }
+        const frames: string[] = [];
+        if (this.blockType) frames.push(...this.closeBlock());
+        // Gemini 把签名直接挂在 functionCall 分片上，而 Anthropic 客户端只认思考块上的签名：
+        // 追加一个自闭合思考块承载，保证下一轮历史能把它回传给上游。
+        else if (signature) frames.push(...this.syntheticSignatureBlock(signature));
+        frames.push(this.frame("content_block_start", { type: "content_block_start", index: this.blockIndex, content_block: { type: "tool_use", id: `toolu_${randomUUID().replace(/-/g, "").slice(0, 24)}`, name, input: {} } }));
+        frames.push(this.blockDelta({ type: "input_json_delta", partial_json: JSON.stringify(args) }));
+        frames.push(this.frame("content_block_stop", { type: "content_block_stop", index: this.blockIndex }));
+        this.blockIndex += 1;
+        return frames;
+    }
+
+    private closeBlock(): string[] {
+        if (!this.blockType) return [];
+        const frames: string[] = [];
+        if (this.blockType === "thinking" && this.pendingSignature) frames.push(this.blockDelta({ type: "signature_delta", signature: this.pendingSignature }));
+        frames.push(this.frame("content_block_stop", { type: "content_block_stop", index: this.blockIndex }));
+        this.blockIndex += 1;
+        this.blockType = "";
+        this.pendingSignature = "";
+        return frames;
+    }
+
+    private syntheticSignatureBlock(signature: string): string[] {
+        const index = this.blockIndex;
+        this.blockIndex += 1;
+        return [
+            this.frame("content_block_start", { type: "content_block_start", index, content_block: { type: "thinking", thinking: "" } }),
+            this.at(index, { type: "thinking_delta", thinking: "" }),
+            this.at(index, { type: "signature_delta", signature }),
+            this.frame("content_block_stop", { type: "content_block_stop", index }),
+        ];
+    }
+
+    private frame(event: string, data: Record<string, unknown>) {
+        return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    }
+
+    private blockDelta(delta: Record<string, unknown>) {
+        return this.frame("content_block_delta", { type: "content_block_delta", index: this.blockIndex, delta });
+    }
+
+    private at(index: number, delta: Record<string, unknown>) {
+        return this.frame("content_block_delta", { type: "content_block_delta", index, delta });
+    }
+
+    private openAiChunk(delta: Record<string, unknown>, finishReason: string | null, withUsage = false) {
+        const chunk = { id: this.id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: this.model, choices: [{ index: 0, delta, finish_reason: finishReason }], ...(withUsage ? { usage: { prompt_tokens: this.promptTokens, completion_tokens: this.completionTokens, total_tokens: this.totalTokens || this.promptTokens + this.completionTokens } } : {}) };
+        return `data: ${JSON.stringify(chunk)}\n\n`;
+    }
 }
 
-function anthropicSseResponse(payload: Record<string, unknown>, totalTokens: number) {
+function relayProtocolStream(options: { upstream: Response; translator: NativeStreamTranslator; onSettled: (settlement: StreamSettlement) => Promise<void> }) {
     const encoder = new TextEncoder();
+    const { upstream, translator } = options;
+    let settled = false;
+    const settle = (settlement: StreamSettlement) => {
+        if (settled) return undefined;
+        settled = true;
+        return options.onSettled(settlement);
+    };
     return new Response(
-        new ReadableStream({
-            start(controller) {
-                const sendEvent = (event: string, data: Record<string, unknown>) => {
-                    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-                };
-
-                const msgId = text(payload.id, 100) || `msg_${randomUUID()}`;
-                const model = text(payload.model, 100);
-                const usage = record(payload.usage);
-                const inputTokens = positiveNumber(usage.input_tokens, 0);
-                const outputTokens = positiveNumber(usage.output_tokens, 0);
-                const stopReason = text(payload.stop_reason, 50) || "end_turn";
-
-                sendEvent("message_start", {
-                    type: "message_start",
-                    message: {
-                        id: msgId,
-                        type: "message",
-                        role: "assistant",
-                        content: [],
-                        model,
-                        stop_reason: null,
-                        stop_sequence: null,
-                        usage: { input_tokens: inputTokens, output_tokens: 1 },
-                    },
-                });
-
-                const contentBlocks = Array.isArray(payload.content) ? payload.content : [];
-                contentBlocks.forEach((blockRaw, index) => {
-                    const block = record(blockRaw);
-                    const blockType = text(block.type, 50);
-                    if (blockType === "thinking") {
-                        const thinkingText = text(block.thinking, 1_000_000);
-                        sendEvent("content_block_start", {
-                            type: "content_block_start",
-                            index,
-                            content_block: { type: "thinking", thinking: "" },
-                        });
-                        sendEvent("content_block_delta", {
-                            type: "content_block_delta",
-                            index,
-                            delta: { type: "thinking_delta", thinking: thinkingText },
-                        });
-                        sendEvent("content_block_stop", { type: "content_block_stop", index });
-                    } else if (blockType === "tool_use") {
-                        sendEvent("content_block_start", {
-                            type: "content_block_start",
-                            index,
-                            content_block: {
-                                type: "tool_use",
-                                id: block.id,
-                                name: block.name,
-                                input: {},
-                            },
-                        });
-                        sendEvent("content_block_delta", {
-                            type: "content_block_delta",
-                            index,
-                            delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input || {}) },
-                        });
-                        sendEvent("content_block_stop", { type: "content_block_stop", index });
-                    } else {
-                        const contentText = text(block.text, 1_000_000);
-                        sendEvent("content_block_start", {
-                            type: "content_block_start",
-                            index,
-                            content_block: { type: "text", text: "" },
-                        });
-                        sendEvent("content_block_delta", {
-                            type: "content_block_delta",
-                            index,
-                            delta: { type: "text_delta", text: contentText },
-                        });
-                        sendEvent("content_block_stop", { type: "content_block_stop", index });
+        new ReadableStream<Uint8Array>({
+            async start(controller) {
+                let closed = false;
+                const send = (frames: string[]) => {
+                    if (closed) return;
+                    try {
+                        for (const frame of frames) controller.enqueue(encoder.encode(frame));
+                    } catch {
+                        closed = true;
                     }
-                });
-
-                sendEvent("message_delta", {
-                    type: "message_delta",
-                    delta: { stop_reason: stopReason, stop_sequence: null },
-                    usage: { output_tokens: outputTokens },
-                });
-                sendEvent("message_stop", { type: "message_stop" });
-                controller.close();
+                };
+                // SSE 注释心跳：让 Agent CLI 与中间代理在首包前/思考间隙不因无字节而判死连接。
+                const heartbeat = setInterval(() => send([": ping\n\n"]), 3_000);
+                let error = "";
+                try {
+                    await readUpstreamSseData(upstream, (data) => {
+                        if (data === "[DONE]") return "stop";
+                        const parsed = safeJson(data);
+                        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "continue";
+                        send(translator.translate(record(parsed)));
+                        return "continue";
+                    });
+                    send(translator.finish());
+                } catch (cause) {
+                    error = cause instanceof Error ? cause.message : String(cause);
+                    send(translator.abort(`Google 上游流式响应中断: ${error}`));
+                } finally {
+                    clearInterval(heartbeat);
+                    if (!closed) {
+                        closed = true;
+                        controller.close();
+                    }
+                    await settle(translator.settlement(error));
+                }
+            },
+            cancel() {
+                upstream.body?.cancel().catch(() => undefined);
             },
         }),
         {
@@ -998,7 +1416,6 @@ function anthropicSseResponse(payload: Record<string, unknown>, totalTokens: num
                 "cache-control": "no-cache, no-transform",
                 connection: "keep-alive",
                 "x-accel-buffering": "no",
-                "x-gemini-tools-total-tokens": String(totalTokens),
             },
         },
     );
@@ -1054,22 +1471,13 @@ function reasoningFromNative(native: Record<string, unknown>) {
         .join("");
 }
 
-function messageParts(value: unknown): Array<Record<string, unknown>> {
-    if (typeof value === "string") return value.trim() ? [{ text: value }] : [];
-    if (!Array.isArray(value)) return [];
-    const parts: Array<Record<string, unknown>> = [];
-    for (const raw of value) {
-        const part = record(raw);
-        if (part.type === "text" && text(part.text, 100_000)) {
-            parts.push({ text: text(part.text, 100_000) });
-            continue;
-        }
-        const image = record(part.image_url);
-        const dataUrl = text(image.url, 20_000_000);
-        const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/s);
-        if (match) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
-    }
-    return parts;
+// Agent CLI 用 count_tokens 做上下文预算；网关本地按 CJK/ASCII 加权估算即可，无需上游调用。
+function estimateMessageTokens(body: Record<string, unknown> | null) {
+    if (!body) return 0;
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const chars = [typeof body.system === "string" ? body.system : "", ...messages.map((item) => messageText(record(item).content))].join("\n");
+    const cjk = (chars.match(/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/g) || []).length;
+    return Math.max(1, Math.round(cjk * 0.7 + (chars.length - cjk) / 4));
 }
 
 function messageText(value: unknown) {
@@ -1096,8 +1504,9 @@ function normalizeRuntimePath(value: string) {
     const path = value.split("?")[0].replace(/\/+$/, "") || "/";
     if (path === "/chat/completions") return "/v1/chat/completions";
     if (path === "/messages") return "/v1/messages";
+    if (path === "/messages/count_tokens") return "/v1/messages/count_tokens";
     if (path === "/models") return "/v1/models";
-    return ["/v1/models", "/v1/chat/completions", "/v1/messages"].includes(path) ? path : "";
+    return ["/v1/models", "/v1/chat/completions", "/v1/messages", "/v1/messages/count_tokens"].includes(path) ? path : "";
 }
 
 function protocolFromPath(path: string): "openai" | "anthropic" {

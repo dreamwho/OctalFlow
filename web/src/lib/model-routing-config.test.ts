@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { LogicalModel, SystemModelChannel } from "@/lib/auth/store";
 import {
+    resolveLogicalModelCapabilityProfile,
     channelDetectedCapabilities,
     channelModelCapability,
     deriveLogicalModelsConfig,
@@ -17,6 +18,58 @@ import {
 const channel = (id: string, models: string[], enabled = true): SystemModelChannel => ({ id, name: id, baseUrl: `https://${id}.example.com/v1`, apiKey: "test-secret", apiFormat: "openai", models, enabled });
 
 describe("model routing config", () => {
+    it("preserves uploaded icons through normalization and synchronization, and clears them when restored", () => {
+        const channels = [channel("one", ["gemini-image"])];
+        const iconUrl = "data:image/png;base64,YQ==";
+        const model: LogicalModel = { id: "gemini-image", name: "图片", capability: "image", icon: "openai", iconUrl, enabled: true, bindings: [{ id: "binding", channelId: "one", upstreamModel: "gemini-image", enabled: true, priority: 1 }] };
+        expect(normalizeLogicalModelsConfig([model], channels)[0]).toMatchObject({ icon: "openai", iconUrl });
+        expect(synchronizeLogicalModelsWithChannels([model], channels)[0]).toMatchObject({ iconUrl });
+        const restored = normalizeLogicalModelsConfig([{ ...model, icon: undefined, iconUrl: undefined }], channels)[0];
+        expect(restored).not.toHaveProperty("iconUrl");
+        expect(restored).not.toHaveProperty("icon");
+    });
+    it("preserves a configured fallback model through settings normalization", () => {
+        const channels = [channel("primary", ["gpt-image-2"]), channel("backup", ["flux-image-pro"] )];
+        const models: LogicalModel[] = [
+            { id: "poster-image", name: "海报模型", capability: "image", fallbackModelId: "backup-image", enabled: true, bindings: [{ id: "primary", channelId: "primary", upstreamModel: "gpt-image-2", enabled: true, priority: 1 }] },
+            { id: "backup-image", name: "备用海报模型", capability: "image", enabled: true, bindings: [{ id: "backup", channelId: "backup", upstreamModel: "flux-image-pro", enabled: true, priority: 1 }] },
+        ];
+
+        expect(normalizeLogicalModelsConfig(models, channels)[0]?.fallbackModelId).toBe("backup-image");
+        expect(synchronizeLogicalModelsWithChannels(models, channels)[0]?.fallbackModelId).toBe("backup-image");
+        expect(modelRoutingValidationErrors(models, channels, { textModel: "", imageModel: "", videoModel: "", audioModel: "" })).toEqual([]);
+    });
+
+    it("rejects missing, self, cross-capability, unavailable, and cyclic fallback models", () => {
+        const channels = [channel("one", ["gpt-image-2", "flux-image-pro", "seedance-2.0"]), channel("off", ["flux-image-pro"], false)];
+        const models: LogicalModel[] = [
+            { id: "missing-source", name: "Missing", capability: "image", fallbackModelId: "missing", enabled: true, bindings: [{ id: "a", channelId: "one", upstreamModel: "gpt-image-2", enabled: true, priority: 1 }] },
+            { id: "self-source", name: "Self", capability: "image", fallbackModelId: "self-source", enabled: true, bindings: [{ id: "b", channelId: "one", upstreamModel: "gpt-image-2", enabled: true, priority: 1 }] },
+            { id: "cross-source", name: "Cross", capability: "image", fallbackModelId: "video-model", enabled: true, bindings: [{ id: "c", channelId: "one", upstreamModel: "gpt-image-2", enabled: true, priority: 1 }] },
+            { id: "disabled-source", name: "Disabled", capability: "image", fallbackModelId: "disabled-model", enabled: true, bindings: [{ id: "d", channelId: "one", upstreamModel: "gpt-image-2", enabled: true, priority: 1 }] },
+            { id: "disabled-model", name: "Disabled target", capability: "image", enabled: false, bindings: [{ id: "e", channelId: "one", upstreamModel: "flux-image-pro", enabled: true, priority: 1 }] },
+            { id: "cycle-a", name: "Cycle A", capability: "image", fallbackModelId: "cycle-b", enabled: true, bindings: [{ id: "f", channelId: "one", upstreamModel: "gpt-image-2", enabled: true, priority: 1 }] },
+            { id: "cycle-b", name: "Cycle B", capability: "image", fallbackModelId: "cycle-a", enabled: true, bindings: [{ id: "g", channelId: "one", upstreamModel: "flux-image-pro", enabled: true, priority: 1 }] },
+            { id: "video-model", name: "Video", capability: "video", enabled: true, bindings: [{ id: "h", channelId: "one", upstreamModel: "seedance-2.0", enabled: true, priority: 1 }] },
+        ];
+        const errors = modelRoutingValidationErrors(models, channels, { textModel: "", imageModel: "", videoModel: "", audioModel: "" });
+
+        expect(errors).toEqual(expect.arrayContaining([
+            "逻辑模型 missing-source 的备用模型不存在：missing",
+            "逻辑模型 self-source 不能将自身设为备用模型",
+            "逻辑模型 cross-source 的备用模型能力必须为图片：video-model",
+            "逻辑模型 disabled-source 的备用模型不可用：disabled-model",
+            "逻辑模型 cycle-a 的备用模型配置存在循环引用",
+            "逻辑模型 cycle-b 的备用模型配置存在循环引用",
+        ]));
+    });
+    it("uses the fixed Dola media contract for logical aliases and keeps Fast image-only", () => {
+        const binding = { capabilityProfile: { supportsReferenceVideo: false, supportsReferenceAudio: false } };
+        const dola = { advancedConfig: { protocol: "dola" } } as Pick<SystemModelChannel, "advancedConfig">;
+        expect(resolveLogicalModelCapabilityProfile(binding, "video", dola, "dola-seedance-2-5")).toMatchObject({ supportsReferenceVideo: true, supportsReferenceAudio: true });
+        expect(resolveLogicalModelCapabilityProfile({ capabilityProfile: { supportsReferenceAudio: true } }, "video", dola, "dola-seedance-2-0-fast")).toMatchObject({ supportsReferenceVideo: false, supportsReferenceAudio: false });
+    });
+
     it("removes missing, unsupported, and duplicate bindings", () => {
         const channels = [channel("one", ["models/GPT-TEST"]), channel("two", ["gpt-test-2"], false)];
         const models: LogicalModel[] = [

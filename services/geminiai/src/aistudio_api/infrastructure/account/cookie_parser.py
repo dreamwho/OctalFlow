@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Iterable
 from typing import Any
 
@@ -77,9 +76,6 @@ def build_google_cookie_list(
     ``url`` field instead of an imprecise ``domain`` so Playwright can inject
     them without tripping cookie prefix validation.
     """
-    now = int(time.time())
-    default_expires = now + 86400 * 180  # 180 天后过期
-
     seen: set[tuple[str, str, str]] = set()
     cookies: list[dict[str, Any]] = []
 
@@ -103,7 +99,6 @@ def build_google_cookie_list(
             "secure": True,
             "httpOnly": name not in _AUTH_COOKIE_NAMES,
             "sameSite": "None",
-            "expires": default_expires,
         }
         if target_kind == "url":
             cookie["url"] = target_value

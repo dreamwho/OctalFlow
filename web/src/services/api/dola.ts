@@ -89,7 +89,7 @@ export function testDolaVideo(input: {
     prompt: string;
     duration: number;
     ratio: string;
-    references?: Array<{ dataUrl?: string; url?: string; role?: string; name?: string; mime?: string }>;
+    references?: Array<{ type?: "image" | "video" | "audio"; dataUrl?: string; url?: string; role?: string; name?: string; mime?: string }>;
     headless?: boolean;
     customCookie?: string;
     accountId?: string;

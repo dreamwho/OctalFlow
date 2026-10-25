@@ -103,9 +103,10 @@ type LogicalModel = {
     capability: ModelCapability;
     pickerGroup?: string;
     icon?: ModelIconKey;
+    iconUrl?: string;
     enabled: boolean;
     pickerVisible?: boolean;
-    bindings: Array<{ id: string; channelId: string; upstreamModel: string; enabled: boolean; priority: number; displayName?: string }>;
+    bindings: Array<{ id: string; channelId: string; upstreamModel: string; enabled: boolean; priority: number; displayName?: string; capabilityProfile?: { aspectRatios?: string[] } }>;
 };
 
 export type AiConfig = {

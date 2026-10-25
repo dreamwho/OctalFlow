@@ -1,10 +1,13 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { readJsonBody } from "@/lib/auth/request";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuthSettings } from "@/lib/auth/store";
-import { deleteGenerationLogs, listGenerationLogs, listUserGenerationLogsForDelete } from "@/lib/server/generation-log-store";
+import { deleteGenerationLogs, getGenerationLogForUser, listGenerationLogs, listUserGenerationLogsForDelete } from "@/lib/server/generation-log-store";
 import { deleteGenerationLogResultsForUser, failGenerationLogDraftSlotForUser, GenerationLogDraftValidationError, GenerationLogOwnershipError, recordGenerationLogDraft, renameGenerationLogForUser } from "@/lib/server/generation-log-task-service";
+import { cancelActiveGenerationLogSlots } from "@/lib/server/generation-log-cancellation";
+import { resolveInternalOrigin } from "@/lib/server/internal-origin";
+import { runGenerationTaskRecoveryBatch } from "@/lib/server/generation-task-recovery-service";
 import { getStoredGenerationTaskByRequest, getStoredGenerationTaskRecord } from "@/lib/server/generation-task-store";
 import type { GenerationLogInput } from "@/lib/server/generation-log-types";
 
@@ -74,6 +77,13 @@ export async function PATCH(request: Request) {
             return log ? NextResponse.json({ log }) : NextResponse.json({ error: "生成记录不存在或标题为空" }, { status: 404 });
         }
         if (body.action === "delete-results") {
+            const existingLog = await getGenerationLogForUser(currentUser.id, id);
+            const selected = new Map([[id, new Set(Array.isArray(body.slotIds) ? body.slotIds : [])]]);
+            const cancelled = existingLog ? await cancelActiveGenerationLogSlots(currentUser.id, [existingLog], selected) : [];
+            if (cancelled.length) {
+                const origin = resolveInternalOrigin(new URL(request.url).origin);
+                after(() => runGenerationTaskRecoveryBatch({ origin, cookie: request.headers.get("cookie") || "", taskIds: cancelled.map((task) => task.id) }));
+            }
             const log = await deleteGenerationLogResultsForUser(currentUser.id, id, Array.isArray(body.slotIds) ? body.slotIds : []);
             return log ? NextResponse.json({ log }) : NextResponse.json({ error: "生成记录或结果不存在" }, { status: 404 });
         }
@@ -96,8 +106,15 @@ export async function DELETE(request: Request) {
     const requestedIds = Array.isArray(body.ids) ? Array.from(new Set(body.ids.map((id) => id.trim()).filter(Boolean))) : [];
     if (!requestedIds.length) return NextResponse.json({ deleted: 0 });
 
-    const deletableIds = (await listUserGenerationLogsForDelete(currentUser.id, requestedIds)).map((log) => log.id);
+    const deletableLogs = await listUserGenerationLogsForDelete(currentUser.id, requestedIds);
+    const deletableIds = deletableLogs.map((log) => log.id);
     if (!deletableIds.length) return NextResponse.json({ deleted: 0 });
+
+    const cancelled = await cancelActiveGenerationLogSlots(currentUser.id, deletableLogs);
+    if (cancelled.length) {
+        const origin = resolveInternalOrigin(new URL(request.url).origin);
+        after(() => runGenerationTaskRecoveryBatch({ origin, cookie: request.headers.get("cookie") || "", taskIds: cancelled.map((task) => task.id) }));
+    }
 
     return NextResponse.json(await deleteGenerationLogs(deletableIds));
 }

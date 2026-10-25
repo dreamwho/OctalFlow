@@ -79,10 +79,12 @@ services:
       AISTUDIO_PORT: "8080"
       AISTUDIO_PROXY: http://magic-proxy:17890
       AISTUDIO_STUDIO_URL: ${DREAMYO_GEMINIAI_STUDIO_URL:-https://aistudio.google.com/prompts/new_chat}
+      GEMINIAI_REFERENCE_ASSET_ORIGIN: http://app:3000
       DREAMYO_TRAFFIC_METER_URL: http://traffic-meter:${TRAFFIC_METER_PORT:-18083}
       DREAMYO_TRAFFIC_METER_KEY: ${DREAMYO_TRAFFIC_METER_KEY:?请在 .env 中配置至少 32 位 Traffic meter 内部服务密钥}
     volumes:
       - dreamyo-geminiai-accounts:/data/accounts
+      - dreamyo-geminiai-videos:/data/videos
     expose:
       - "8080"
     healthcheck:
@@ -222,6 +224,7 @@ services:
 volumes:
   dreamyo-data:
   dreamyo-geminiai-accounts:
+  dreamyo-geminiai-videos:
   dreamyo-geminivids-data:
   dreamyo-traffic-meter:
   dreamyo-magic-proxy-runtime:

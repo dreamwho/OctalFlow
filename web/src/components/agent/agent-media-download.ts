@@ -3,7 +3,7 @@ import { saveAs } from "file-saver";
 import { mediaDownloadFileName } from "@/lib/media-file";
 import { originalImageDownloadUrl, originalMediaDownloadUrl } from "@/lib/media-image-url";
 
-export type AgentMediaDownload = { type: "image" | "video"; url: string; title: string; mimeType?: string };
+export type AgentMediaDownload = { type: "image" | "video" | "audio"; url: string; title: string; mimeType?: string };
 
 export function downloadAgentMedia(items: AgentMediaDownload[]) {
     items.forEach((item, index) => {
@@ -14,5 +14,5 @@ export function downloadAgentMedia(items: AgentMediaDownload[]) {
 }
 
 export function agentMediaDownloadName(type: AgentMediaDownload["type"], title: string, url: string, mimeType?: string) {
-    return mediaDownloadFileName(`${type}:${title}:${url}`, mimeType || (type === "video" ? "video/mp4" : "image/png"), url);
+    return mediaDownloadFileName(`${type}:${title}:${url}`, mimeType || (type === "video" ? "video/mp4" : type === "audio" ? "audio/mpeg" : "image/png"), url);
 }

@@ -1,0 +1,15 @@
+{
+  "archive": "本次修改需上传文件_20261005.tar.gz",
+  "bytes": 3512950832,
+  "sha256": "22491bb2000514b1fc35274a05527e61ccb807845acc8471b3a810b1e6820113",
+  "platform": "linux/amd64",
+  "databaseMode": "external",
+  "images": 6,
+  "packageFilesSha256Verified": true,
+  "utf8TextFiles": 9,
+  "corruptionMarkers": 0,
+  "scriptSyntaxVerified": true,
+  "sourceHashesVerified": true,
+  "appImage": "sha256:bad1ecd8740718a7d560254cfef58a9f9874e8f43205459a0de7eb894e66b12b",
+  "serverDeployed": false
+}

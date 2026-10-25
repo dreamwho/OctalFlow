@@ -12,6 +12,18 @@ afterEach(() => {
 });
 
 describe("serializePublicSettings", () => {
+    it("prioritizes the configured Dola default over the first visible video model", () => {
+        const settings: AuthSettings = structuredClone(DEFAULT_SETTINGS);
+        settings.logicalModels = [
+            { id: "first-video", name: "First", capability: "video", enabled: true, bindings: [] },
+            { id: "dola-video", name: "Dola", capability: "video", enabled: true, bindings: [] },
+        ];
+        settings.defaultModels.videoModel = "dola-video";
+        expect(serializePublicSettings(settings, { role: "admin" }).defaultModels.videoModel).toBe("dola-video");
+        settings.defaultModels.videoModel = "disabled-video";
+        expect(serializePublicSettings(settings, { role: "admin" }).defaultModels.videoModel).toBe("first-video");
+    });
+
     it("only exposes the browser settings allowlist", () => {
         const settings: AuthSettings = structuredClone(DEFAULT_SETTINGS);
         settings.mail = { ...settings.mail, host: "smtp.internal", username: "mail-user", password: "mail-secret" };
@@ -66,6 +78,7 @@ describe("serializePublicSettings", () => {
                 enabled: true,
                 pickerGroup: "自定义生图",
                 pickerVisible: false,
+                iconUrl: "data:image/png;base64,YQ==",
                 bindings: [
                     {
                         id: "binding-one",
@@ -74,7 +87,7 @@ describe("serializePublicSettings", () => {
                         enabled: true,
                         priority: 1,
                         weight: 8,
-                        capabilityProfile: { unitCost: 3, unitCostCurrency: "USD", timeoutMs: 60_000 },
+                        capabilityProfile: { aspectRatios: ["1024x1024", "1536x1024"], unitCost: 3, unitCostCurrency: "USD", timeoutMs: 60_000 },
                     },
                 ],
             },
@@ -102,9 +115,11 @@ describe("serializePublicSettings", () => {
                 hasApiKey: true,
             },
         ]);
-        expect(result.logicalModels[0]).toMatchObject({ id: "image-main", pickerVisible: false, pickerGroup: "自定义生图" });
+        expect(result.logicalModels[0]).toMatchObject({ id: "image-main", pickerVisible: false, pickerGroup: "自定义生图", iconUrl: "data:image/png;base64,YQ==" });
         expect(result.modelPickerGroups).toEqual(["自定义生图"]);
-        expect(result.logicalModels[0]?.bindings[0]).toEqual({ id: "binding-one", channelId: "channel-one", upstreamModel: "vendor-image", enabled: true, priority: 1 });
+        expect(result.logicalModels[0]?.bindings[0]).toEqual({ id: "binding-one", channelId: "channel-one", upstreamModel: "vendor-image", enabled: true, priority: 1, capabilityProfile: { aspectRatios: ["1024x1024", "1536x1024"] } });
+        expect(serialized).not.toContain("unitCost");
+        expect(serialized).not.toContain("timeoutMs");
         expect(serialized).not.toContain("provider-secret");
         expect(serialized).not.toContain("internal-provider.example");
         expect(serialized).not.toContain("smtp.internal");

@@ -1,5 +1,6 @@
 "use client";
 
+import { configuredModelImageSizes, hasOnlyFixedImageSizes } from "@/lib/model-image-sizes";
 import { SlidersHorizontal } from "lucide-react";
 import { useEffect } from "react";
 
@@ -39,9 +40,10 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const responsivePlacement = useCreativeComposerPopoverPlacement(placement);
     const geminiAi = isGeminiAiImageConfig(config);
     const chatGptApi = isChatGptApiImageConfig(config);
+    const configuredSizes = chatGptApi ? undefined : configuredModelImageSizes(config, config.model);
     const dreaminaModelId = resolveCanvasDreaminaModelId(config);
     const dreamina = canvasDreaminaImageProfile(dreaminaModelId);
-    const allowCustomSize = !(dreaminaModelId === "dreamina-seedream-3-0" || dreaminaModelId === "dreamina-seedream-3-1") || config.quality !== "low";
+    const allowCustomSize = !hasOnlyFixedImageSizes(configuredSizes) && (!(dreaminaModelId === "dreamina-seedream-3-0" || dreaminaModelId === "dreamina-seedream-3-1") || config.quality !== "low");
     const preferences: GenerationPreferences = {
         mode: "image",
         image: {
@@ -67,12 +69,16 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             if (!chatGptApiImageQualities.some((option) => option.value === quality)) onConfigChange("quality", CHATGPT_API_DEFAULT_QUALITY);
             return;
         }
+        if (configuredSizes?.length) {
+            if (!configuredSizes.some((option) => option.value === (config.size || "auto")) && (hasOnlyFixedImageSizes(configuredSizes) || !/^\d+x\d+$/i.test(config.size || ""))) onConfigChange("size", configuredSizes[0].value);
+            return;
+        }
         if (!dreamina) return;
         if (!dreamina.qualities.some((option) => option.value === config.quality)) onConfigChange("quality", dreamina.defaultQuality);
         const size = config.size || "auto";
         if (!/^\d+x\d+$/i.test(size) && !dreamina.ratios.some((option) => option.value === size)) onConfigChange("size", "auto");
         if (!allowCustomSize && /^\d+x\d+$/i.test(size)) onConfigChange("size", "auto");
-    }, [allowCustomSize, chatGptApi, config.quality, config.size, dreamina, onConfigChange]);
+    }, [allowCustomSize, chatGptApi, config.quality, config.size, configuredSizes, dreamina, onConfigChange]);
 
     return (
         <CreativeGenerationPreferences
@@ -90,7 +96,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             fixedSizeLabel={fixedSizeLabel}
             canvasPanel={{}}
             imageQualityProfile={geminiAi ? "geminiai" : "default"}
-            ratioOptions={chatGptApi ? chatGptApiImageSizes : dreamina?.ratios}
+            ratioOptions={chatGptApi ? chatGptApiImageSizes : configuredSizes || dreamina?.ratios}
             imageQualityOptions={chatGptApi ? chatGptApiImageQualities : dreamina?.qualities}
             allowCustomSize={chatGptApi ? false : allowCustomSize}
             ratioGridClassName="grid-cols-3"

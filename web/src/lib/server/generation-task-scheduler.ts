@@ -140,7 +140,9 @@ export async function releaseGenerationTaskLease(type: GenerationTaskType, id: s
             `UPDATE generation_tasks
              SET execution_phase = COALESCE($4, execution_phase), upstream_task_id = COALESCE($5, upstream_task_id),
                  channel_id = COALESCE($6, channel_id), provider = COALESCE($7, provider), query_path = COALESCE($8, query_path),
-                 submitted_at = COALESCE($9, submitted_at), next_poll_at = $10, last_poll_at = COALESCE($11, last_poll_at),
+                 submitted_at = COALESCE($9, submitted_at),
+                 next_poll_at = CASE WHEN last_upstream_status = 'provider_notified' AND $10::timestamptz IS NOT NULL THEN LEAST($10::timestamptz, now()) ELSE $10::timestamptz END,
+                 last_poll_at = COALESCE($11, last_poll_at),
                  last_upstream_status = COALESCE($12, last_upstream_status), result_payload = COALESCE($13::jsonb, result_payload),
                  worker_id = NULL, lease_until = NULL
              WHERE id = $1 AND task_type = $2 AND worker_id = $3
@@ -156,10 +158,44 @@ export async function releaseGenerationTaskLease(type: GenerationTaskType, id: s
             if (task.id !== id || task.type !== type || task.workerId !== owner) return task;
             if (!canApplySchedulePatch(task, options)) return task;
             const updated = { ...applyPatch(task, normalized), workerId: undefined, leaseUntil: undefined };
+            if (task.lastUpstreamStatus === "provider_notified" && updated.nextPollAt !== undefined) updated.nextPollAt = Math.min(updated.nextPollAt, Date.now());
             result = toLease(updated);
             return updated;
         });
         return { tasks: next, result };
+    });
+}
+
+// Notifications only wake an existing Omni task; the normal leased query
+// remains responsible for validating the provider's status and media URL.
+export async function wakeGeminiAiVideoTask(upstreamTaskId: string) {
+    if (getDatabaseProvider() === "postgres") {
+        await ensurePostgresSchema();
+        const result = await postgresQuery<Record<string, unknown>>(
+            `UPDATE generation_tasks SET next_poll_at = now(), last_upstream_status = 'provider_notified'
+             WHERE task_type = 'video' AND upstream_task_id = $1 AND (channel_id = 'geminiai' OR provider = 'geminiai')
+               AND status IN ('pending', 'running') AND execution_phase IN ('submitted', 'polling')
+             RETURNING *`,
+            [upstreamTaskId],
+        );
+        return result.rows.map(mapLease);
+    }
+    return withGenerationTaskFileMutation(async (tasks) => {
+        const awakened: GenerationTaskLease[] = [];
+        const next = tasks.map((task) => {
+            if (
+                task.type !== "video" ||
+                (task.provider !== "geminiai" && task.channelId !== "geminiai") ||
+                task.upstreamTaskId !== upstreamTaskId ||
+                !["pending", "running"].includes(task.status) ||
+                !["submitted", "polling"].includes(task.executionPhase || "")
+            )
+                return task;
+            const updated = { ...task, nextPollAt: Date.now(), lastUpstreamStatus: "provider_notified" };
+            awakened.push(toLease(updated));
+            return updated;
+        });
+        return { tasks: next, result: awakened };
     });
 }
 

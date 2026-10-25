@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-ModelCatalogSourceKind = Literal["config", "accounts", "fallback"]
+ModelCatalogSourceKind = Literal["config", "accounts", "fallback", "upstream"]
 
 
 class _StrictModel(BaseModel):
@@ -13,8 +13,8 @@ class _StrictModel(BaseModel):
 
 
 class ModelCatalogDefaults(_StrictModel):
-    chat_model: str = Field(min_length=1)
-    image_model: str = Field(min_length=1)
+    chat_model: str | None = Field(default=None, min_length=1)
+    image_model: str | None = Field(default=None, min_length=1)
 
 
 class ModelCatalogCapabilities(_StrictModel):
@@ -25,6 +25,13 @@ class ModelCatalogCapabilities(_StrictModel):
 class ModelCatalogSource(_StrictModel):
     chat: ModelCatalogSourceKind
     image: ModelCatalogSourceKind
+
+
+class ModelCatalogDiscovery(_StrictModel):
+    account_id: str = Field(min_length=1)
+    account_label: str = Field(min_length=1)
+    fetched_at: str = Field(min_length=1)
+    endpoint: str = Field(min_length=1)
 
 
 class ModelCatalogView(_StrictModel):
@@ -38,14 +45,14 @@ class ModelCatalogView(_StrictModel):
     defaults: ModelCatalogDefaults
     capabilities: ModelCatalogCapabilities
     source: ModelCatalogSource
+    discovery: ModelCatalogDiscovery | None = None
+    warnings: tuple[str, ...] = ()
     openai_models_endpoint: Literal["/v1/models"] = "/v1/models"
 
     @model_validator(mode="after")
     def validate_catalog(self) -> "ModelCatalogView":
-        if not self.chat_models:
-            raise ValueError("chat_models must not be empty")
-        if not self.image_models:
-            raise ValueError("image_models must not be empty")
+        if not self.chat_models and not self.image_models:
+            raise ValueError("model catalog must not be empty")
         if len(self.chat_models) != len(set(self.chat_models)):
             raise ValueError("chat_models must be unique")
         if len(self.image_models) != len(set(self.image_models)):
@@ -54,9 +61,9 @@ class ModelCatalogView(_StrictModel):
         expected_all = tuple(dict.fromkeys((*self.chat_models, *self.image_models)))
         if self.all_models != expected_all:
             raise ValueError("all_models must be the ordered union of chat_models and image_models")
-        if self.defaults.chat_model not in self.chat_models:
+        if self.defaults.chat_model is not None and self.defaults.chat_model not in self.chat_models:
             raise ValueError("default chat model must be listed in chat_models")
-        if self.defaults.image_model not in self.image_models:
+        if self.defaults.image_model is not None and self.defaults.image_model not in self.image_models:
             raise ValueError("default image model must be listed in image_models")
 
         image_models = set(self.image_models)

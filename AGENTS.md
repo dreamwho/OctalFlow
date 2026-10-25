@@ -25,6 +25,8 @@
 
 ## 后端规范
 
+- 生成运维状态不能作为请求已进入目标 Provider 或已提交上游的证据；必须结合 Provider 原始响应、稳定任务 ID 与对应请求日志定位断点。新增请求能力时同步检查 PostgreSQL CHECK 约束，并用真实 PostgreSQL 验证日志落库。
+
 - 后端使用 Next.js Route Handler + TypeScript，服务端代码位于 `web/src/app/api/` 与 `web/src/lib/server/`。
 - Route Handler 只处理 HTTP 入参、鉴权、调用服务和响应映射，不堆业务规则或数据库细节。
 - `web/src/lib/server/` 放业务服务、领域校验、任务编排和 provider 适配。
@@ -55,7 +57,7 @@
 - `/create` 参考 GPT、豆包、即梦等成熟产品时只借鉴“需求与参考素材 → 最终公开模型/参数 → 生成结果 → 后续操作”的信息层级，必须按 dreamyo 实际能力做混合布局，禁止逐像素复制第三方页面、品牌、文案、图标、字体、素材或专有 token。图片/视频/音频 Run 按稳定 `runId` 组合为对话式创作记录：用户需求在右侧上一行并显示用户头像，助手结果在左侧下一行并显示站点 Logo，禁止再把结果与需求横向拉成同排双栏。普通文本问答继续使用聊天布局。公开摘要只显示实际模型、尺寸/比例、画质/清晰度、时长、音色、格式、数量和状态，不得暴露内部规划或执行提示词。
 - `/create` 图片与视频 Result Card 禁止为了视觉统一设置固定大宽高或最小高度。主媒体先使用后端有效 `width/height`，缺失时读取图片 `naturalWidth/naturalHeight` 或视频 `videoWidth/videoHeight`，再回退真实比例 metadata 与安全默认值，并在有界最大尺寸内等比计算 `renderedWidth × renderedHeight`；媒体、预览容器和可见 Card 必须同宽同高，不得用 `cover` 拉伸或让媒体只占 Card 一角。结果组使用 shrink-to-fit，只有操作栏真实放不下时才允许比媒体略宽。图片与视频统一只按实际 ready 且有真实 URL 的结果数组判断多结果：`results.length <= 1` 时“更多”及切换器 DOM 必须完全不存在，`results.length > 1` 时才渲染；桌面缩略图紧跟主媒体右侧，移动端位于主媒体下方，操作栏不得参与两者间距计算。生成完成时间与耗时作为标题同行的弱化元信息，不得独占媒体上方一整行。
 - `/create` 右侧资产面板的当前对话、我的提示词和提示词库统一使用每行 4 个缩略图，并在真实滚动内容区保留左右内边距，首尾缩略图不得贴住面板边界。图片与视频点击后按媒体真实比例展开，媒体边框只包裹媒体本身，不使用固定黑色大画布；内容图片和预览继续请求限宽 WebP 变体。当前对话的“引用/已引用”和提示词的“插入”必须位于对应缩略图下方，不得覆盖画面；引用选中态使用项目主题色边框与文字状态，不显示 Checkbox 或右上角勾选。图片/视频引用进入输入框后只显示紧凑媒体缩略图，标题只用于 `alt`、悬停提示或无障碍名称；通过 `@` 选择资产时必须移除本次 `@查询` 文本并保留真实 `assetId`，不得再把 `@素材标题` 写入公开草稿。提示词不展示标题和正文，分类使用主题感知的紧凑菜单并按服务端 `category` 参数重新请求。
-- `/create` 媒体创作记录只有失败轮次显示“直接重试”，点击后必须复用原 `conversationId`、用户/助手消息、Run 或失败提交的稳定请求身份，在原轮更新状态并直接重新执行；不得恢复输入框、要求用户重新输入、追加一轮同名消息或新建对话。失败 Run 有多个失败子任务时必须用一次请求在同一 Run 内原子重试全部失败项，只做一次 Run 更新和一次调度；禁止前端逐个请求让 Worker 与后续请求竞争覆盖，并发额度不能把该 Run 自身重复计数。规划失败重试原 Run，创建请求尚未落成 Run 时复用原幂等请求。成功轮次禁止显示“重新编辑”或“再次生成”，结果操作只复制服务端显式白名单的 `optimizedPrompt`，并保留下载和当前结果引用，不提供“新窗口打开”。`optimizedPrompt` 必须是规划器产出的公开提示词，不得包含平台 foundation、direction、Skill 执行规则、依赖上下文或其他内部执行内容；用户消息旁始终提供原文复制，图片、视频和普通对话使用同一规则。
+- `/create` 图片/视频工作台结果菜单的“重新生成”在成功、失败、准备中、生成中和结果待确认状态均可使用，只把该结果的用户原文、参考素材与帧角色、模型和参数恢复到左侧草稿；只有用户手动点击生成才创建新的请求。删除进行中的记录或结果必须先取消归属当前用户的持久任务，再删除记录；上游未提供取消协议时明确只保证本地取消，不得宣称上游已停止或已退款。统一 Agent 的失败 Run 直接重试继续沿用原会话、消息和 Run 身份，并原子重试全部失败子任务。公开提示词只使用服务端显式白名单的 `optimizedPrompt`，禁止内部 foundation、direction、Skill 规则和规划上下文进入公开复制内容；用户消息始终提供原文复制。
 - `/create` 视频结果的 `<video src>` 由 React 负责；effect cleanup 只能暂停播放，禁止 `removeAttribute("src")`、清空 `src` 或调用 `load()`。React Strict Mode 回归必须确认开发模式二次 effect 后媒体 URL、`readyState`、固有宽高和时长仍有效。播放器控件按媒体容器宽度响应，不按 viewport 判断显隐；桌面、390px、430px 与窄竖屏结果都要读取播放器和最右控件边界，确保全屏按钮不溢出。
 - `/create` 输入框的“优化提示词”必须调用后台默认文本模型并将结果回填为可编辑草稿，不自动发送；请求必须防重复计费，并沿用后台模型与渠道的真实能力配置，禁止额外写死输出 token 上限。用户继续编辑或发送后，迟到的优化响应不得覆盖新内容；只有用户最终发送的公开草稿才能进入可见用户消息及其原文复制操作。
 - `/create` 输入框中的已上传图片或视频必须直接占据左侧“添加参考素材”槽位并展示真实缩略图，文件名只作为 `alt`、悬停提示或无障碍说明，禁止在输入框上方另起一行渲染“媒体图标 + 文件名”标签；视频首帧与尾帧继续在同一输入行的专用角色槽位并列展示，不能在普通附件区重复出现。
@@ -192,6 +194,7 @@
 - Linux Standalone 与发布镜像必须携带当前 CPU/libc 对应的 Sharp 原生包和 libvips 运行库，并在独立产物或镜像内验证可加载；Buildx 多架构 manifest 在 `pipefail` 下提取 digest 时必须完整消费 `imagetools inspect` 输出，禁止用会提前关闭管道的 `awk ... exit`。
 - `camoufox fetch` 在 GitHub 目录同步失败（API 限流/断网）时会以退出码 0 结束且不安装任何浏览器；geminiai/dola-api 镜像构建必须在 fetch 后显式验证浏览器束真实存在（`python -c "from camoufox.pkgman import camoufox_path; camoufox_path(download_if_missing=False)"`），验证失败进入重试并最终使构建失败。交付离线包前必须核对 geminiai/dola-api 镜像体积包含数百 MB 浏览器束（缺束时仅数百 MB 级的裸 Python 镜像），避免交付后运行时报 `official/stable is not installed`。
 - `chatgpt2api` 按标准 OpenAI 兼容渠道接入，禁止新增专用协议枚举、适配器或猜测路径；图片生成继续使用 OpenAI `/v1/images/generations` 与 `data[].url` / `b64_json` 契约。只有渠道显式声明 `queryPath` 或响应返回明确轮询地址时才允许异步查询；仅返回任务 ID 的非标准响应进入 `needs_review`，不得自动拼接查询路径、切换渠道、退款或重新创建任务。
+- 逻辑图片/视频模型可配置同能力备用模型；工作台与 Canvas 只有在原任务明确失败且可安全重试时才提示用户确认切换，确认前不得提交备用任务，取消后停止该次尝试。网络超时、查询异常、结果待确认、权限或并发限制均不得触发跨模型重建；备用模型必须重新检查当前用户角色权限，单次操作只切换一次。
 - 逻辑模型是独立的前端公开身份，管理员可以创建、编辑、删除逻辑 ID、昵称、能力类型和渠道绑定；同一个上游模型允许绑定为多个不同逻辑模型，并分别固定到不同渠道供前端明确选择。目录同步只为尚未绑定的 `渠道 ID + 上游模型` 建立独立逻辑模型，不得按上游模型名跨渠道合并，也不得在后续保存时重新创建管理员已删除的逻辑模型；删除渠道必须等待服务端持久化成功后再关闭界面，并由服务端同步清理失效绑定和默认模型。
 - 模型基础积分的稳定配置键是逻辑模型 ID；上游模型名只允许作为已有配置的兼容读取来源，并按启用绑定优先级解析。后台展示与编辑、前端预计积分、服务端实际扣费和退款必须复用同一价格解析规则，禁止分别按逻辑模型和上游别名查价。单价为 `0` 的免费调用仍必须写入幂等流水、累计套餐调用次数，并在上游失败时按原流水撤销用量。
 - 服务器内部文本任务、Agent 规划、结构化分析和创作复盘调用系统渠道时，必须显式携带逻辑文本模型 ID；可由重放、恢复或重复提交触发的调用还必须使用包含用户、业务请求、候选渠道和上游模型身份的稳定幂等键。失败退款以消费流水 ID 和已解析的 `pointsCost` 是否存在为准，不能使用 `pointsCost > 0` 判断；0 积分调用也要撤销套餐文本次数。
@@ -203,6 +206,7 @@
 - 移植 Provider 的账号导入、刷新和删除等写接口，浏览器夹具必须对照原生隔离接口实测返回结构；同步完成结果不能强制要求异步 progress_id。回归必须覆盖真实落库、同步完成后的列表刷新及重复提交返回，禁止只用自行假定的成功响应证明功能可用。
 
 - After every code change, run the relevant automated checks and browser regression flow before reporting completion.
+- 后台浏览器回归需定位可见且 `data-hydrated="true"` 的实际后台容器；服务端占位容器可能在水合切换时短暂共存，禁止对全部 `.admin-dashboard-shell` 作单元素断言，或用固定等待掩盖重复定位。
 - 协议回归默认必须使用仓库内本地 TCP fixture、每次运行确认空闲的随机端口和固定测试凭据，禁止读取或调用管理员后台已配置的真实渠道/API；只有用户明确要求真实上游验收时才允许调用，并必须单独报告测试范围。
 - Cover desktop and mobile layouts, canvas interactions including node actions and linking, image workbench generation/history/reference-image flows, video workbench text-to-video and image-to-video flows, all visible buttons touched by the change, and configured API capability checks for text/image/video.
 - For live upstream API tests that include Chinese prompts, do not put Chinese literals directly in PowerShell commands. Use the app flow, Node/fetch with UTF-8 text loaded from a file, or base64/Unicode reconstruction before sending so the upstream prompt is not submitted as question marks.

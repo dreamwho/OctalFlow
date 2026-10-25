@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from aistudio_api.infrastructure.account.account_store import AccountStore, AccountMeta
+from aistudio_api.infrastructure.account.account_health import check_account_health
 from aistudio_api.infrastructure.account.login_service import LoginService, LoginSession
 
 logger = logging.getLogger("aistudio.account")
@@ -21,6 +23,8 @@ class AccountService:
     ) -> None:
         self._store = account_store
         self._login = login_service
+        self._health_checks: dict[str, asyncio.Task[AccountMeta | None]] = {}
+        self._health_checks_lock = asyncio.Lock()
 
     def list_accounts(self) -> list[AccountMeta]:
         """列出所有账号。"""
@@ -37,6 +41,24 @@ class AccountService:
     def get_active_account(self) -> AccountMeta | None:
         """获取当前活跃账号。"""
         return self._store.get_active_account()
+
+    async def check_account(self, account_id: str) -> AccountMeta | None:
+        """Check one account in an isolated browser, coalescing concurrent checks."""
+        async with self._health_checks_lock:
+            task = self._health_checks.get(account_id)
+            if task is None or task.done():
+                task = asyncio.create_task(self._check_account(account_id))
+                self._health_checks[account_id] = task
+                task.add_done_callback(lambda completed: self._forget_health_check(account_id, completed))
+        return await asyncio.shield(task)
+
+    async def _check_account(self, account_id: str) -> AccountMeta | None:
+        health = await check_account_health(self._store, account_id)
+        return self._store.get_account(account_id) if health is not None else None
+
+    def _forget_health_check(self, account_id: str, task: asyncio.Task[AccountMeta | None]) -> None:
+        if self._health_checks.get(account_id) is task:
+            self._health_checks.pop(account_id, None)
 
     async def start_login(
         self,

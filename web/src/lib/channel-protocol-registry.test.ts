@@ -13,6 +13,7 @@ import {
     channelProtocolValidationErrors,
     normalizeStrictProtocolModelConfig,
     protocolAuthHeaders,
+    protocolModelConfig,
     resolveChannelModelConfig,
 } from "./channel-protocol-registry";
 
@@ -444,4 +445,11 @@ describe("channel protocol registry", () => {
             ),
         ).toMatchObject({ capability: "video", protocol: "custom", createPath: "/jobs" });
     });
+});
+
+
+it("enables Dola audio and video references only for Seedance 2.5", () => {
+    expect(protocolModelConfig("dola", "video", "dola-seedance-2-5")).toMatchObject({ supportsReferenceImage: true, supportsReferenceVideo: true, supportsReferenceAudio: true });
+    expect(protocolModelConfig("dola", "video", "dola-seedance-2-0-fast")?.supportsReferenceVideo).toBeFalsy();
+    expect(protocolModelConfig("dola", "video", "dola-seedance-2-0-fast")?.supportsReferenceAudio).toBeFalsy();
 });

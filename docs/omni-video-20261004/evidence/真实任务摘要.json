@@ -1,0 +1,72 @@
+{
+  "provider": {
+    "id": "vt_539e4ffcccac51e3",
+    "model": "gemini-omni-1.1-flash",
+    "duration_seconds": 10,
+    "resolution": "1080p",
+    "aspect_ratio": "9:16",
+    "reference_images": 3,
+    "status": "succeeded",
+    "execution_stage": "succeeded",
+    "created_at": 1791125484.242458,
+    "elapsed_seconds": 153.4,
+    "file_size": 1611881
+  },
+  "app": {
+    "id": "9211abb0-db5c-4f5b-aa3b-12e3c0eabd08",
+    "status": "success",
+    "executionPhase": "completed",
+    "upstreamId": "vt_539e4ffcccac51e3",
+    "canRetry": false,
+    "result": {
+      "url": "/api/reference-assets/permanent/2026/10/04/videos/20261004-225416-88711564-ce5f-47bf-be60-7ea7d8bea428.mp4",
+      "durationMs": 10005
+    }
+  },
+  "browser": {
+    "readyState": 4,
+    "videoWidth": 1080,
+    "videoHeight": 1920,
+    "duration": 10.005,
+    "playback": {
+      "paused": false,
+      "currentTime": 6.776515
+    },
+    "refreshRestored": true
+  },
+  "sourceSha256": {
+    "services/geminiai/src/aistudio_api/application/omni_video.py": "f1f14dcc89dd5923a8ed8ecd590b7210f88bb45691bfe35f14ec63f73ef273f2",
+    "services/geminiai/tests/unit/test_omni_video.py": "686ef30ae5dc3f3ec5552fc0c527dc812f0f17e643bb2638c6e1d32ec0a50dce",
+    "web/src/app/api/video-tasks/[id]/route.ts": "ad3a7dbc013acf4a2e1e964e876a66b6fdc59e7d21b32fb62a583a4c65365fa0",
+    "web/src/app/api/video-tasks/[id]/route.test.ts": "c421994bd45b125d7658671f40c034152ab2377375fbfa2be92bc897360d5817",
+    "web/src/app/(user)/canvas/components/canvas-node-content.tsx": "02504593a8d2b16139593baef3f425a6f78b6e2c43ac2855658274095e8501c2",
+    "web/e2e/canvas.spec.ts": "fef28dd91faaee28ecf4786639bc6a5ef745590e53a3fc9ea8ffe587594d23f8"
+  },
+  "mediaSha256": "3e1fa6796d92288bd2cb18b40ad04a39a49d554d3224b893e074435041daced7",
+  "requestLogs": [
+    {
+      "id": "geminiai-log-139844d6-883b-42d2-bc08-b5001ec848a5",
+      "taskId": "vt_539e4ffcccac51e3",
+      "phase": "success",
+      "statusCode": 200,
+      "model": "gemini-omni-1.1-flash",
+      "capability": "video",
+      "durationMs": 170980
+    },
+    {
+      "id": "geminiai-log-3436f2ee-c8c1-44fc-9381-5892182efcfb",
+      "taskId": "vt_d66bf189d118c9cc",
+      "phase": "failed",
+      "statusCode": 200,
+      "model": "gemini-omni-1.1-flash",
+      "capability": "video",
+      "durationMs": 93581
+    }
+  ],
+  "providerContainer": {
+    "platform": "linux/amd64",
+    "browserBundled": true,
+    "headlessBrowserRenderedPage": true,
+    "sourceSha256": "f1f14dcc89dd5923a8ed8ecd590b7210f88bb45691bfe35f14ec63f73ef273f2"
+  }
+}

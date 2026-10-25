@@ -8,6 +8,13 @@ export type GeminiAiAccount = {
     usage?: string | { used?: number; limit?: number; remaining?: number; label?: string };
     lastUsedAt?: string;
     createdAt?: string;
+    health?: {
+        status: "ready" | "login_required" | "unavailable" | "error";
+        checkedAt: string;
+        message: string;
+        cookieExpiresAt: string | null;
+        cookieExpiryKnown: boolean;
+    };
 };
 
 export type GeminiAiRotation = {
@@ -25,6 +32,7 @@ export type GeminiAiModel = {
     supportsSearch?: boolean;
     enabled?: boolean;
     source?: string;
+    catalogOrigin?: "builtin" | "manual" | "aistudio";
 };
 
 export type GeminiAiChannel = {
@@ -89,6 +97,7 @@ export type GeminiAiRequestLog = {
     method: string;
     path: string;
     model: string;
+    taskId?: string;
     accountId?: string;
     accountEmail?: string;
     statusCode: number;
@@ -187,6 +196,10 @@ export function activateGeminiAiAccount(accountId: string) {
     return requestGeminiAi<GeminiAiAccount>(`/api/admin/geminiai/accounts/${encodeURIComponent(accountId)}/activate`, { method: "POST" });
 }
 
+export function checkGeminiAiAccount(accountId: string) {
+    return requestGeminiAi<{ account: GeminiAiAccount }>(`/api/admin/geminiai/accounts/${encodeURIComponent(accountId)}/check`, { method: "POST" });
+}
+
 export function updateGeminiAiRotation(rotation: GeminiAiRotation) {
     return requestGeminiAi<GeminiAiRotation>("/api/admin/geminiai/rotation", { method: "PATCH", body: jsonBody(rotation) });
 }
@@ -197,6 +210,10 @@ export function syncGeminiAiModels() {
 
 export function updateGeminiAiModels(models: string[]) {
     return requestGeminiAi<{ models?: GeminiAiModel[] } | GeminiAiModel[]>("/api/admin/geminiai/models", { method: "PUT", body: jsonBody({ models }) });
+}
+
+export function addGeminiAiModel(input: { id: string; name?: string; capability: "text" | "image" }) {
+    return requestGeminiAi<{ models: GeminiAiModel[] }>("/api/admin/geminiai/models", { method: "POST", body: jsonBody(input) });
 }
 
 export function testGeminiAiModel(input: { capability: GeminiAiCapability; model: string; prompt: string; options?: Record<string, string | number | boolean> }) {

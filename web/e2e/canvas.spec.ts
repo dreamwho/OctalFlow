@@ -111,6 +111,69 @@ for (const outcome of ["success-50", "success-70", "failure", "reduced"] as cons
         }
     });
 
+for (const failure of [
+    { stage: "reference", error: "reference_upload: reference image upload did not complete: uploaded 2/3", summary: "参考图上传失败" },
+    { stage: "warmup", error: "warmup: AI Studio dialog blocks submission; open the authorized account in AI Studio and complete or dismiss the dialog manually", summary: "" },
+]) test(`Omni ${failure.stage} failure stops a restored generating node without resubmission`, async ({ page, request }, testInfo) => {
+    const { error, summary } = failure;
+    const originalSite = (await (await request.get("/api/admin/settings")).json()).settings.site;
+    const taskId = `omni-fixture-${randomUUID()}`;
+    const project = await createCanvasProject(request, {
+        title: "Omni 参考图失败回归",
+        viewport: { x: 0, y: 0, k: 1 },
+        nodes: [node("omni-video", "video", 100, 130, 138, 236, { status: "loading", prompt: "参考图生成视频", generationStartedAt: Date.now(), videoTask: { id: taskId, serverTaskId: taskId, pollPath: "server", provider: "generation", model: "gemini-omni-1.1-flash" } })],
+        connections: [],
+    });
+    let polls = 0;
+    let submits = 0;
+    let failed = false;
+    await page.route("**/api/video-generation-tasks", async (route) => { submits++; await route.abort(); });
+    await page.route(`**/api/video-tasks/${taskId}`, async (route) => {
+        polls++;
+        await route.fulfill({ json: { task: { id: taskId, status: failed ? "error" : "running", ...(failed ? { error, canRetry: true } : {}) } } });
+    });
+    try {
+        await page.goto(`/canvas/${project.id}`);
+        const video = page.locator('[data-node-id="omni-video"]');
+        await expect(video.locator("[data-canvas-node-loading]")).toBeVisible();
+        failed = true;
+        await expect(video.locator("[data-canvas-node-error]")).toBeVisible();
+        if (summary) {
+            await expect(video.getByText(summary, { exact: true })).toBeVisible();
+            await video.getByText("查看失败原因", { exact: true }).click();
+            await expect(video.getByText(error, { exact: true })).toBeVisible();
+        }
+        await expect.poll(async () => (await readCanvasProject(request, `/api/canvas/projects/${project.id}`)).nodes.find((item) => item.id === "omni-video")?.metadata).toMatchObject({ status: "error", errorDetails: error });
+        for (const theme of ["light", "dark"]) {
+            const themeResponse = await request.patch("/api/admin/settings", { data: { site: { ...originalSite, frontendTheme: theme } } });
+            expect(themeResponse.ok()).toBe(true);
+            for (const width of [1440, 390, 430]) {
+                await page.setViewportSize({ width, height: 900 });
+                await page.reload();
+                await expect(page.locator("[data-canvas-surface]")).toHaveCSS("background-color", theme === "light" ? "rgb(244, 248, 255)" : "rgb(8, 15, 32)");
+                await expect(video.locator("[data-canvas-node-error]")).toBeVisible();
+                await expect(video.locator("[data-canvas-node-loading]")).toHaveCount(0);
+                await expect(video.getByRole("button", { name: "再次生成", exact: true })).toBeVisible();
+                if (summary) {
+                    await video.getByText("查看失败原因", { exact: true }).click();
+                    await expect(video.getByText(error, { exact: true })).toBeVisible();
+                }
+                await expectNoHorizontalOverflow(page, `Omni ${theme} ${width}px`);
+                await page.screenshot({ path: testInfo.outputPath(`omni-failure-${theme}-${width}.png`) });
+            }
+        }
+        expect(polls).toBeGreaterThanOrEqual(2);
+        const terminalPolls = polls;
+        await page.reload();
+        await expect(video.locator("[data-canvas-node-error]")).toBeVisible();
+        expect(polls).toBe(terminalPolls);
+        expect(submits).toBe(0);
+    } finally {
+        await request.patch("/api/admin/settings", { data: { site: originalSite } });
+        await deleteCanvasProject(request, project.id);
+    }
+});
+
 test("Dola portrait protection stops a restored generating node and persists the failure reason", async ({ page, request }) => {
     const error = "参考图中的人脸未通过肖像保护审核，请更换参考图或改用文生视频。";
     const taskId = `portrait-fixture-${randomUUID()}`;

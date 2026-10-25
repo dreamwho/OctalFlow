@@ -60,6 +60,38 @@ def test_generation_input_never_restores_unknown_or_assistant_messages():
     assert extract_generation_input({"messages": [{"content": '[{"text_block":{"text":"未知来源"}}]'}, {"user_type": 2, "content": '[{"text_block":{"text":"内部执行"}}]'}]}) == {}
 
 
+def test_current_browser_video_recovers_an_earlier_refusal_in_the_same_conversation(monkeypatch):
+    pool = CamoufoxSessionPool()
+    pool._loaded = True
+    task = VideoTask(id="previously-failed", accountId="account", model="dola-seedance-2-5",
+                     status="failed", conversationId="38418080062463249",
+                     error="upstream_unsupported_duration", rawError="抱歉，目前支持 4–15 秒")
+    pool._tasks[task.id] = task
+    persisted = []
+
+    async def persist():
+        persisted.append(pool._tasks[task.id])
+
+    monkeypatch.setattr(pool, "_persist", persist)
+    content = [{"content": {"text_block": {"text": "你的视频生成好了"}, "creation_block": {
+        "creations": [{"type": 2, "video": {"status": 2, "download_url": "http://v16-dola.dola.com/final.mp4",
+            "fallback_api": "https://vod-urls-mya.byteintlapi.com/video?sig=fixture"}}]}}}]
+    chain = {"conversation_id": task.conversationId, "messages": [
+        {"user_type": 2, "content": json.dumps([{"text_block": {"text": task.rawError}}], ensure_ascii=False)},
+        {"user_type": 2, "content": json.dumps(content, ensure_ascii=False)},
+    ]}
+    request = BrowserQueryResultRequest(accountId="account", conversationId=task.conversationId,
+        payload={"code": 0, "downlink_body": {"pull_singe_chain_downlink_body": chain}})
+    result = asyncio.run(pool.apply_browser_result(task.id, request))
+    assert result.id == task.id
+    assert result.status == "completed"
+    assert result.error is None and result.rawError is None
+    assert result.videoUrl == "http://v16-dola.dola.com/final.mp4"
+    assert "fallback_api" in str(result.vodPayload)
+    assert result.diagnostics["upstreamResponseText"].endswith("你的视频生成好了")
+    assert persisted == [result]
+
+
 def test_original_native_ability_restores_editable_input_and_exact_parameters():
     message = {"user_type": 1, "create_time": "1790767917", "content": '[{"text_block":{"text":"生成视频：公开草稿"}}]', "ext": {"chat_ability": json.dumps({"ability_type": 17, "ability_param": json.dumps({"duration": 5, "ratio": "9:16", "input_box_content": {"user_input_content": "公开草稿"}})})}}
     result = extract_generation_input({"messages": [message]})

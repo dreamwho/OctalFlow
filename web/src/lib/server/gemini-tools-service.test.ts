@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     listCandidates: vi.fn(),
     listLogs: vi.fn(),
     recordUsage: vi.fn(),
+    recordKeyTokens: vi.fn(),
     getAuthSettings: vi.fn(),
     setAuthSettings: vi.fn(),
     updateCredentials: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("@/lib/server/gemini-tools-store", () => ({
     listGeminiToolsCandidateAccounts: mocks.listCandidates,
     listGeminiToolsRequestLogs: mocks.listLogs,
     recordGeminiToolsAccountUsage: mocks.recordUsage,
+    recordGeminiToolsApiKeyTokens: mocks.recordKeyTokens,
     updateGeminiToolsAccountCredentials: mocks.updateCredentials,
     updateGeminiToolsAccount: mocks.updateAccount,
     upsertGeminiToolsAccount: vi.fn(),
@@ -51,6 +53,18 @@ import {
     startGeminiToolsOAuth,
     syncGeminiToolsModelCatalog,
 } from "./gemini-tools-service";
+
+const NATIVE_SUCCESS_CHUNKS = [
+    { response: { candidates: [{ content: { parts: [{ text: "真实返回" }] } }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4, totalTokenCount: 7 } } },
+];
+
+function sseResponse(chunks: unknown[], init?: ResponseInit) {
+    return new Response(chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(""), { status: 200, headers: { "content-type": "text/event-stream" }, ...init });
+}
+
+function isGenerationUrl(url: string | URL) {
+    return String(url).includes("streamGenerateContent");
+}
 
 describe("GeminiTools runtime", () => {
     afterEach(() => vi.unstubAllEnvs());
@@ -108,11 +122,15 @@ describe("GeminiTools runtime", () => {
         ]);
         vi.stubGlobal(
             "fetch",
-            vi.fn().mockResolvedValue(
-                new Response(JSON.stringify({ response: { candidates: [{ content: { parts: [{ text: "真实返回" }] } }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4, totalTokenCount: 7 } } }), {
-                    status: 200,
-                    headers: { "content-type": "application/json" },
-                }),
+            vi.fn((url: string | URL, init?: RequestInit) =>
+                Promise.resolve(
+                    isGenerationUrl(url)
+                        ? sseResponse(NATIVE_SUCCESS_CHUNKS)
+                        : new Response(JSON.stringify({ response: { candidates: [{ content: { parts: [{ text: "真实返回" }] } }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4, totalTokenCount: 7 } } }), {
+                              status: 200,
+                              headers: { "content-type": "application/json" },
+                          }),
+                ),
             ),
         );
     });
@@ -156,7 +174,7 @@ describe("GeminiTools runtime", () => {
         expect(response.status, JSON.stringify(payload)).toBe(200);
         expect(response.headers.get("x-gemini-tools-total-tokens")).toBe("7");
         expect(payload).toMatchObject({ model: "gemini-2.5-pro", choices: [{ message: { content: "真实返回" } }], usage: { total_tokens: 7 } });
-        expect(fetch).toHaveBeenCalledWith(expect.stringContaining(":generateContent"), expect.objectContaining({ method: "POST" }));
+        expect(fetch).toHaveBeenCalledWith(expect.stringContaining(":streamGenerateContent?alt=sse"), expect.objectContaining({ method: "POST" }));
         expect(mocks.recordUsage).toHaveBeenCalledWith("one", 7, false);
         expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ accountEmail: "one@example.com", model: "gemini-2.5-pro", totalTokens: 7, keyPrefix: "oct_gat_demo" }));
     });
@@ -168,7 +186,7 @@ describe("GeminiTools runtime", () => {
 
         expect(mocks.ensureMagicProxy).toHaveBeenCalledTimes(1);
         expect(mocks.safeFetch).toHaveBeenCalledWith(
-            expect.stringContaining(":generateContent"),
+            expect.stringContaining(":streamGenerateContent?alt=sse"),
             expect.objectContaining({ method: "POST" }),
             expect.objectContaining({ allowProxyFakeIpSpace: true, proxyUrl: "http://mihomo-listener.test:17891/", trafficContext: expect.objectContaining({ model: "gemini-2.5-pro", connectionMode: "magic" }) }),
         );
@@ -245,6 +263,22 @@ describe("GeminiTools runtime", () => {
         expect(payload).toEqual({ error: { message: "invalid_grant: Bad Request" } });
         expect(mocks.updateAccount).toHaveBeenCalledWith("one", { status: "invalid" });
         expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ accountId: "one", accountEmail: "one@example.com", error: "invalid_grant: Bad Request" }));
+    });
+
+    it("refreshes the account quota catalog when Google returns 429", async () => {
+        mocks.safeFetch.mockImplementation((url: string | URL) => {
+            const target = String(url);
+            if (target.includes("streamGenerateContent")) return Promise.resolve(new Response(JSON.stringify({ error: { message: "Resource has been exhausted (e.g. check quota)." } }), { status: 429 }));
+            if (target.includes("fetchAvailableModels")) return Promise.resolve(Response.json({ models: { "gemini-2.5-pro": { displayName: "Gemini 2.5 Pro", quotaInfo: { remainingFraction: 0.25 } } } }));
+            return Promise.resolve(new Response("{}", { status: 200 }));
+        });
+
+        const response = await geminiToolsRuntimeRequest("/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "配额测试" }] }) });
+
+        expect(response.status).toBe(429);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(mocks.safeFetch).toHaveBeenCalledWith(expect.stringContaining("fetchAvailableModels"), expect.objectContaining({ method: "POST" }), expect.anything());
+        expect(mocks.updateCredentials).toHaveBeenCalledWith("one", expect.objectContaining({ quotas: [expect.objectContaining({ model: "gemini-2.5-pro", remainingPercent: 25 })] }));
     });
 
     it("surfaces transport network failure details rather than masking them", async () => {
@@ -332,12 +366,134 @@ describe("GeminiTools runtime", () => {
         expect(body.request.contents[0].parts).toEqual([{ text: "描述图片" }, { inlineData: { mimeType: "image/jpeg", data: "YWJj" } }]);
     });
 
+    it("streams anthropic responses in real time and forwards tool declarations with signatures", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((url: string | URL) =>
+                Promise.resolve(
+                    isGenerationUrl(url)
+                        ? sseResponse([
+                              { response: { candidates: [{ content: { parts: [{ text: "推理中", thought: true, thoughtSignature: "sigQwCj" }] } }] } },
+                              { response: { candidates: [{ content: { parts: [{ text: "上海" }, { text: "天气晴" }] } }] } },
+                              { response: { candidates: [{ content: { parts: [{ functionCall: { name: "get_weather", args: { city: "上海" } } }] } }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 6, totalTokenCount: 16 } } },
+                              { response: { candidates: [{ finishReason: "STOP" }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 8, totalTokenCount: 18 } } },
+                          ])
+                        : Promise.resolve(new Response("{}", { status: 200 })),
+                ),
+            ),
+        );
+
+        const response = await geminiToolsRuntimeRequest(
+            "/v1/messages",
+            {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    model: "gemini-2.5-pro",
+                    stream: true,
+                    tools: [{ name: "get_weather", description: "查询城市天气", input_schema: { type: "object", properties: { city: { type: "string", description: "城市名" } }, required: ["city"], additionalProperties: false } }],
+                    messages: [
+                        { role: "user", content: "上海天气如何？" },
+                        { role: "assistant", content: [{ type: "tool_use", id: "toolu_prev", name: "get_weather", input: { city: "上海" } }] },
+                        { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_prev", content: "晴 25 度" }] },
+                    ],
+                }),
+            },
+            { keyId: "key-1" },
+        );
+
+        expect(response.headers.get("content-type")).toBe("text/event-stream; charset=utf-8");
+        const body = await response.text();
+        expect(body).toContain("event: message_start");
+        expect(body).toContain('"thinking_delta","thinking":"推理中"');
+        expect(body).toContain('"signature_delta","signature":"sigQwCj"');
+        expect(body).toContain('"text_delta","text":"上海"');
+        expect(body).toContain('"name":"get_weather"');
+        expect(body).toContain('"partial_json":"{\\"city\\":\\"上海\\"}"');
+        expect(body).toContain('"stop_reason":"tool_use"');
+        expect(body).toContain("event: message_stop");
+
+        const upstream = vi.mocked(fetch).mock.calls.find(([url]) => isGenerationUrl(String(url)));
+        const payload = JSON.parse(String(upstream?.[1]?.body)) as { request: { tools: Array<{ functionDeclarations: Array<Record<string, unknown>> }>; contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> } };
+        expect(payload.request.tools[0].functionDeclarations[0]).toMatchObject({ name: "get_weather", description: "查询城市天气", parameters: { type: "OBJECT", properties: { city: { type: "STRING" } } } });
+        expect(payload.request.contents[1]).toMatchObject({ role: "model", parts: [{ functionCall: { name: "get_weather", args: { city: "上海" } } }] });
+        expect(payload.request.contents[2]).toMatchObject({ role: "user", parts: [{ functionResponse: { name: "get_weather", response: { output: "晴 25 度" } } }] });
+        expect(mocks.recordUsage).toHaveBeenCalledWith("one", 18, false);
+        expect(mocks.recordKeyTokens).toHaveBeenCalledWith("key-1", 18);
+        expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ totalTokens: 18, responsePreview: expect.stringContaining("[工具调用: get_weather]") }));
+    });
+
+    it("streams openai chat completions as incremental chunks with final usage", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((url: string | URL) =>
+                Promise.resolve(
+                    isGenerationUrl(url)
+                        ? sseResponse([
+                              { response: { candidates: [{ content: { parts: [{ text: "你好" }] } }], usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 1, totalTokenCount: 3 } } },
+                              { response: { candidates: [{ finishReason: "STOP" }], usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 2, totalTokenCount: 4 } } },
+                          ])
+                        : Promise.resolve(new Response("{}", { status: 200 })),
+                ),
+            ),
+        );
+
+        const response = await geminiToolsRuntimeRequest("/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", stream: true, messages: [{ role: "user", content: "打个招呼" }] }) });
+
+        expect(response.headers.get("content-type")).toBe("text/event-stream; charset=utf-8");
+        const body = await response.text();
+        expect(body).toContain('"delta":{"role":"assistant"}');
+        expect(body).toContain('"content":"你好"');
+        expect(body).toContain('"finish_reason":"stop"');
+        expect(body).toContain('"total_tokens":4');
+        expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+    });
+
+    it("emits a protocol error event and records the failure when the upstream stream breaks mid-flight", async () => {
+        const encoder = new TextEncoder();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((url: string | URL) =>
+                Promise.resolve(
+                    isGenerationUrl(url)
+                        ? new Response(
+                              new ReadableStream({
+                                  start(controller) {
+                                      controller.enqueue(encoder.encode('data: {"response":{"candidates":[{"content":{"parts":[{"text":"部分"}]}}]}}\n\n'));
+                                      controller.error(new Error("stream reset by peer"));
+                                  },
+                              }),
+                              { status: 200, headers: { "content-type": "text/event-stream" } },
+                          )
+                        : Promise.resolve(new Response("{}", { status: 200 })),
+                ),
+            ),
+        );
+
+        const response = await geminiToolsRuntimeRequest("/v1/messages", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", stream: true, messages: [{ role: "user", content: "流式中断" }] }) });
+
+        const body = await response.text();
+        expect(body).toContain("event: error");
+        expect(body).toContain("stream reset by peer");
+        expect(mocks.recordUsage).toHaveBeenCalledWith("one", 0, true);
+    });
+
     it("advertises only implemented compatibility endpoints", async () => {
         expect(isGeminiToolsRuntimePath("/v1/models")).toBe(true);
         expect(isGeminiToolsRuntimePath("/v1/chat/completions")).toBe(true);
         expect(isGeminiToolsRuntimePath("/chat/completions")).toBe(true);
         expect(isGeminiToolsRuntimePath("/v1/messages")).toBe(true);
+        expect(isGeminiToolsRuntimePath("/v1/messages/count_tokens")).toBe(true);
+        expect(isGeminiToolsRuntimePath("/messages/count_tokens")).toBe(true);
         expect(isGeminiToolsRuntimePath("/v1/responses")).toBe(false);
+    });
+
+    it("answers anthropic count_tokens locally without any upstream call", async () => {
+        const response = await geminiToolsRuntimeRequest("/v1/messages/count_tokens", { method: "POST", body: JSON.stringify({ model: "gemini-2.5-pro", messages: [{ role: "user", content: "统计一下这些 token" }] }) });
+
+        const payload = await response.json();
+        expect(payload.input_tokens).toBeGreaterThan(0);
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it("creates the provider-managed channel and synchronizes its logical text model", async () => {

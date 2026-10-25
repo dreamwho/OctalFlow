@@ -28,6 +28,7 @@ import { DREAMINA_CLI_CHANNEL_ID, DREAMINA_UPSCALE_RESOLUTIONS } from "@/lib/ser
 import { dreaminaCliOperationEnabled } from "@/lib/server/dreamina-cli-service";
 import { rawModelName } from "@/lib/server/generation-channel";
 import { getRunningHubApp } from "@/lib/server/runninghub-store";
+import { cancelGenerationTaskById, isActiveGenerationLogSlot } from "@/lib/server/generation-log-cancellation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -157,8 +158,14 @@ export async function POST(request: Request) {
         if (existing) return NextResponse.json({ task: publicTask(existing) });
     }
     if (requestId) resolvedBody.context = { ...(resolvedBody.context || {}), clientRequestId: requestId, ...(headerAttemptNo ? { attemptNo: headerAttemptNo } : {}) };
+    if (resolvedBody.source === "image-workbench" && !await isWorkbenchSlotActive(currentUser.id, resolvedBody.context)) {
+        return NextResponse.json({ error: "该生成记录已删除或已取消，无法继续创建任务" }, { status: 409 });
+    }
     const settings = await getAuthSettings();
     const response = await withGenerationConcurrencyLimit(currentUser.id, "image", 10 * 60 * 1000, effectiveGenerationConcurrencyLimit(currentUser.role, settings.generationConcurrency.image), async () => {
+        if (resolvedBody.source === "image-workbench" && !await isWorkbenchSlotActive(currentUser.id, resolvedBody.context)) {
+            return NextResponse.json({ error: "该生成记录已删除或已取消，无法继续创建任务" }, { status: 409 });
+        }
         const prompt = (resolvedBody.prompt || "").trim();
         const publicPrompt = typeof resolvedBody.publicPrompt === "string" ? resolvedBody.publicPrompt.trim().slice(0, 5000) : "";
         const kind = resolvedBody.kind === "upscale" ? "upscale" : resolvedBody.kind === "edit" ? "edit" : "generation";
@@ -218,6 +225,12 @@ export async function POST(request: Request) {
                 : {}),
         });
         await linkStoredGenerationTask("image", task.id, resolvedBody.context || {});
+        if (resolvedBody.source === "image-workbench" && !await isWorkbenchSlotActive(currentUser.id, resolvedBody.context)) {
+            await cancelGenerationTaskById("image", currentUser.id, task.id);
+            const origin = resolveInternalOrigin(new URL(request.url).origin);
+            after(() => runGenerationTaskRecoveryBatch({ origin, cookie: request.headers.get("cookie") || "", limit: 1, taskIds: [task.id] }));
+            return NextResponse.json({ error: "该生成记录已删除或已取消，无法继续创建任务" }, { status: 409 });
+        }
         const cookie = request.headers.get("cookie") || "";
         const origin = resolveInternalOrigin(new URL(request.url).origin);
         const publicOrigin = requestPublicOrigin(request);
@@ -227,6 +240,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ task: publicTask(task) });
     });
     return response || NextResponse.json({ error: "当前用户生图任务已达到并发上限，请稍后再试" }, { status: 429 });
+}
+
+async function isWorkbenchSlotActive(userId: string, context: GenerationTaskContext | undefined) {
+    return Boolean(context?.generationLogId && context.generationSlotId && context.clientRequestId && await isActiveGenerationLogSlot(userId, context.generationLogId, context.generationSlotId, context.clientRequestId, "image"));
 }
 
 function runningHubImageConfig(config: ImageTaskConfig | undefined, appId: string, appName: string): ImageTaskConfig {

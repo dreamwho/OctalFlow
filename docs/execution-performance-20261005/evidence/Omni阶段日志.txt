@@ -1,0 +1,17 @@
+00:21:47 [aistudio.server] omni: vt_29e87008cebf51dc stage=reference_download
+00:21:47 [aistudio.server] omni: vt_29e87008cebf51dc stage=account_selection
+00:21:47 [aistudio.server] omni: vt_29e87008cebf51dc stage=browser_startup
+00:21:48 [aistudio.server] omni: vt_29e87008cebf51dc stage=opening_studio
+00:21:52 [aistudio.server] omni: vt_29e87008cebf51dc stage=warmup
+00:21:55 [aistudio.server] omni: warmup conversation ready
+00:21:55 [aistudio.server] omni: vt_29e87008cebf51dc stage=model_selection
+00:21:56 [aistudio.server] omni: Video Resolution applied: 1080p
+00:21:56 [aistudio.server] omni: Aspect ratio applied: 9:16
+00:21:56 [aistudio.server] omni: duration applied: 10
+00:21:56 [aistudio.server] omni: vt_29e87008cebf51dc stage=reference_upload
+00:22:04 [aistudio.server] omni: reference images uploaded
+00:22:04 [aistudio.server] omni: vt_29e87008cebf51dc stage=submitting
+00:22:05 [aistudio.server] omni: vt_29e87008cebf51dc stage=generating
+00:23:47 [aistudio.server] omni: vt_29e87008cebf51dc stage=downloading
+00:23:47 [httpx] HTTP Request: POST http://127.0.0.1:3334/api/maintenance/geminiai-videos/notify "HTTP/1.1 200 OK"
+00:23:47 [aistudio.server] omni: vt_29e87008cebf51dc completion notification delivered

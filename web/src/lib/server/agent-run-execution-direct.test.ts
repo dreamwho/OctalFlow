@@ -4,6 +4,14 @@ import { assertAgentSkillModelConstraints, directAgentPlan, normalizeTasks, plan
 import { agentSurfaceImageSize, normalizeCanvasPlanForSelection, resolveAgentTaskRatio } from "./agent-run-task-input";
 
 describe("directAgentPlan", () => {
+    it("keeps explicit audio and video assets for unified Agent video execution", () => {
+        const assets = [{ id: "sound", type: "audio", serverUrl: "/api/reference-assets/s.mp3", title: "参考音频", status: "ready" }, { id: "motion", type: "video", serverUrl: "/api/reference-assets/v.mp4", title: "参考视频", status: "ready" }];
+        const plan = directAgentPlan([{ id: "video-pro", name: "视频模型", capability: "video", capabilityProfile: { supportsReferenceAudio: true, supportsReferenceVideo: true } } as never], "参考音频和视频", assets.map((asset) => asset.id));
+        const [task] = normalizeTasks(plan as never, [], generationSettings() as never, undefined, "参考音频和视频", "chat", assets as never);
+        expect(task.references?.map((ref) => ref.type)).toEqual(["audio", "video"]);
+        expect(task.references?.map((ref) => ref.assetId)).toEqual(["sound", "motion"]);
+    });
+
     it("使用用户指定的媒体模型创建单任务计划", () => {
         const plan = directAgentPlan([{ id: "image-pro", name: "专业图片模型", capability: "image", capabilityProfile: undefined }], "生成商品主图", ["asset-one"]);
 

@@ -6,6 +6,7 @@ import {
     appendGeminiAiRequestLog,
     appendGeminiAiRequestLifecycle,
     openGeminiAiRequestLog,
+    findGeminiAiRequestLogByTaskId,
     settleGeminiAiRequestLog,
     type GeminiAiRequestCapability,
     type GeminiAiRequestSource,
@@ -14,7 +15,7 @@ import {
 } from "@/lib/server/geminiai-request-log-store";
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
 import { getGeminiAiGatewaySettings } from "@/lib/server/geminiai-gateway-store";
-import { providerTrafficHeaders, trafficBodyModel } from "@/lib/server/traffic-context";
+import { currentTrafficContext, providerTrafficHeaders, trafficBodyModel } from "@/lib/server/traffic-context";
 
 const GEMINIAI_REQUEST_PATHS = new Set(["/v1/models", "/v1/chat/completions", "/v1/images/generations", "/v1/images/edits", "/v1/videos"]);
 const GEMINIAI_GENERATION_PATHS = new Set(["/v1/chat/completions", "/v1/images/generations", "/v1/images/edits", "/v1/videos"]);
@@ -74,7 +75,8 @@ export async function geminiAiSidecarRequest(path: string, init: RequestInit = {
             detail: `来源: ${options.logSource || "admin-test"}, 能力: ${metadata?.capability || "text"}, 方法: ${(init.method || "GET").toUpperCase()}, 路径: ${normalizedPath}${metadata?.model ? `, 模型: ${metadata.model}` : ""}`,
         },
     ];
-    const openLogId = metadata ? await safeOpenLog(metadata, lifecycle) : "";
+    // Status polling only records terminal responses, rather than a row on every poll.
+    const openLogId = metadata && !isVideoTaskQuery(metadata.path, metadata.method) ? await safeOpenLog(metadata, lifecycle) : "";
     try {
         const binding = await ensureMagicProxyProvider("geminiai");
         if (metadata && binding.egress) metadata.proxyEgress = binding.egress;
@@ -183,7 +185,7 @@ async function safeSettleError(openLogId: string, metadata: RequestLogMetadata, 
             console.error("Failed to settle GeminiAIStudio request log", persistError);
         }
     }
-    await safeAppendRequestLog({ ...metadata, statusCode, durationMs: Date.now() - startedAt, error: message, lifecycle });
+    await safeAppendRequestLog({ ...metadata, phase: "failed", statusCode, durationMs: Date.now() - startedAt, error: message, lifecycle });
 }
 
 let lastSyncedGeminiAiProxy: string | undefined;
@@ -320,17 +322,19 @@ function extractUserAgent(headers?: HeadersInit): string | undefined {
 
 function requestLogMetadata(path: string, init: RequestInit, source?: GeminiAiRequestSource): RequestLogMetadata | null {
     const pathname = path.split("?")[0] || "";
-    const runtimeCapability = pathname === "/v1/images/generations" || pathname === "/v1/images/edits" ? "image" : pathname === "/v1/chat/completions" ? "text" : pathname === "/v1/videos" ? "video" : null;
+    const method = (init.method || "GET").toUpperCase();
+    const videoQuery = isVideoTaskQuery(pathname, method);
+    const runtimeCapability = pathname === "/v1/images/generations" || pathname === "/v1/images/edits" ? "image" : pathname === "/v1/chat/completions" ? "text" : pathname === "/v1/videos" || videoQuery ? "video" : null;
     const nativeMatch = pathname.match(/^\/v1beta\/models\/([^/:]+):(streamGenerateContent|generateContent)$/);
     if (!runtimeCapability && !nativeMatch) return null;
     const body = requestBodySummary(init.body);
-    const model = body.model || (nativeMatch ? decodeURIComponent(nativeMatch[1] || "") : "");
-    if (!model) return null;
+    const model = body.model || (nativeMatch ? decodeURIComponent(nativeMatch[1] || "") : videoQuery ? currentTrafficContext()?.model || "" : "");
+    if (!model && !videoQuery) return null;
     const capability = runtimeCapability === "image" ? "image" : runtimeCapability === "video" ? "video" : body.googleSearch ? "search" : "text";
     return {
         source: source || "admin-test",
         capability,
-        method: (init.method || "GET").toUpperCase(),
+        method,
         path: pathname,
         model,
         ...(body.preview ? { requestPreview: body.preview } : {}),
@@ -338,6 +342,10 @@ function requestLogMetadata(path: string, init: RequestInit, source?: GeminiAiRe
         ...(extractUserAgent(init.headers) ? { userAgent: extractUserAgent(init.headers) } : {}),
         ...(sanitizeLogHeaders(init.headers) ? { headers: sanitizeLogHeaders(init.headers) } : {}),
     };
+}
+
+function isVideoTaskQuery(path: string, method: string) {
+    return method === "GET" && /^\/v1\/videos\/[A-Za-z0-9_-]+$/.test(path);
 }
 
 function requestBodySummary(body: RequestInit["body"]) {
@@ -455,16 +463,36 @@ async function activeAccount(config: NonNullable<ReturnType<typeof readProviderC
 }
 
 async function recordRequestLog(config: NonNullable<ReturnType<typeof readProviderConfig>>, metadata: RequestLogMetadata, response: Response, startedAt: number, openLogId = "", lifecycle?: GeminiAiRequestLifecycleEntry[]) {
+    const video = metadata.capability === "video" ? ((await response.clone().json().catch(() => null)) as { id?: string; model?: string; status?: string; execution_stage?: string; account_id?: string; account_email?: string; video_url?: string; error?: unknown } | null) : null;
+    const videoFailed = video?.status === "failed";
+    const videoQuery = isVideoTaskQuery(metadata.path, metadata.method);
+    const existing = videoQuery && video?.id ? await findGeminiAiRequestLogByTaskId(video.id, metadata.source) : null;
+    if (!metadata.model) metadata.model = existing?.model || textValue(video?.model);
+    if (!metadata.model) return;
+    if (existing) {
+        openLogId = existing.id;
+        startedAt = new Date(existing.createdAt).getTime();
+        lifecycle = [...(existing.lifecycle || [])];
+    }
+    // A polling HTTP error is an unsuccessful query, not a confirmed generation failure.
+    if (videoQuery && !response.ok) {
+        openLogId = "";
+        startedAt = Date.now();
+        lifecycle = [];
+    }
+    const videoPending = response.ok && video?.status === "processing";
+    const phase = videoPending ? "running" : videoFailed || !response.ok ? "failed" : "success";
     const responseAccountId = textValue(response.headers.get("x-aistudio-account-id"));
     const responseAccountEmail = textValue(response.headers.get("x-aistudio-account-email"));
-    const account = responseAccountId || responseAccountEmail ? { id: responseAccountId, email: responseAccountEmail } : await activeAccount(config);
+    const account = responseAccountId || responseAccountEmail ? { id: responseAccountId, email: responseAccountEmail } : video ? { id: video.account_id, email: video.account_email } : await activeAccount(config);
     const { preview: responsePreview, metrics } = await safeResponsePreviewAndMetrics(response, metadata.capability);
-    const error = response.ok ? undefined : responsePreview || `上游返回 HTTP ${response.status}`;
+    const error = videoFailed ? errorText(video) || "视频生成失败" : video?.status === "succeeded" && !textValue(video.video_url) ? "视频任务返回成功状态，但缺少视频地址" : response.ok && metadata.capability === "video" && (!textValue(video?.id) || !["processing", "succeeded", "failed"].includes(video?.status || "")) ? errorText(video || {}) || "视频接口缺少有效任务 ID 或状态" : response.ok ? undefined : responsePreview || `上游返回 HTTP ${response.status}`;
 
-    if (lifecycle) {
+    const message = error ? `上游调用异常: ${error}` : videoPending ? (videoQuery ? videoStageLabel(video.execution_stage) : `视频任务已受理，等待生成结果（${video.id || ""}）`) : video ? "视频生成完成，已返回视频地址" : "请求处理完成并成功交付客户端";
+    if (lifecycle && (!existing || lifecycle.at(-1)?.message !== message)) {
         lifecycle.push({
-            phase: response.ok ? "success" : "failed",
-            message: response.ok ? "请求处理完成并成功交付客户端" : `上游调用异常: ${error || "HTTP " + response.status}`,
+            phase: error ? "failed" : phase,
+            message,
             time: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
             detail: response.ok ? `总耗时: ${Date.now() - startedAt}ms, 消耗 Tokens: ${metrics.totalTokens || 0}${account?.email ? `, 账号: ${account.email}` : ""}` : `错误详情: ${error || "上游未返回成功响应"}`,
@@ -474,6 +502,8 @@ async function recordRequestLog(config: NonNullable<ReturnType<typeof readProvid
     const settle: Parameters<typeof settleGeminiAiRequestLog>[1] = {
         statusCode: response.status,
         durationMs: Date.now() - startedAt,
+        phase: error ? "failed" : phase,
+        ...(video?.id && response.ok ? { taskId: video.id } : {}),
         ...(error ? { error } : {}),
         ...(responsePreview ? { responsePreview } : {}),
         ...(account?.id ? { accountId: account.id } : {}),
@@ -498,7 +528,13 @@ async function recordRequestLog(config: NonNullable<ReturnType<typeof readProvid
     await safeAppendRequestLog({
         ...metadata,
         ...settle,
+        phase: error ? "failed" : phase,
     });
+}
+
+function videoStageLabel(stage?: string) {
+    const labels: Record<string, string> = { queued: "等待视频执行器", reference_download: "下载参考图片", account_selection: "选择授权账号", browser_startup: "启动浏览器", opening_studio: "打开 AI Studio", warmup: "初始化会话与 Drive 授权", model_selection: "选择视频模型与参数", reference_upload: "上传参考图片", submitting: "向 AI Studio 提交提示词", generating: "AI Studio 视频生成中", downloading: "下载生成视频" };
+    return labels[stage || ""] || "视频任务执行中，等待生成结果";
 }
 
 async function safeResponsePreviewAndMetrics(response: Response, capability: GeminiAiRequestCapability) {
@@ -510,6 +546,10 @@ async function safeResponsePreviewAndMetrics(response: Response, capability: Gem
         if (!text) return { preview: "", metrics: extractResponseMetrics(null, capability) };
         const value = JSON.parse(text) as Record<string, unknown>;
         const metrics = extractResponseMetrics(value, capability);
+        if (capability === "video") {
+            const summary = Object.fromEntries(["id", "model", "status", "execution_stage", "stage_updated_at", "account_id", "account_email", "created_at", "elapsed_seconds", "duration_seconds", "resolution", "aspect_ratio", "reference_images", "video_url", "file_size", "error"].filter((key) => value[key] !== undefined).map((key) => [key, value[key]]));
+            return { preview: JSON.stringify(summary, null, 2), metrics };
+        }
         if (capability === "image") {
             const summarized = summarizeResponseValue(value);
             const rendered = JSON.stringify(summarized, null, 2);

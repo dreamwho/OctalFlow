@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { GeminiAiModel } from "@/services/api/geminiai";
 
-import { geminiAiAccountUsage, geminiAiModelCapabilities, geminiAiModelsForCapability, geminiAiSelectableModels, geminiAiSelectedModelIds, geminiAiTestTabs } from "./geminiai-view-model";
+import { geminiAiAccountHealthText, geminiAiAccountUsage, geminiAiModelCapabilities, geminiAiModelsForCapability, geminiAiSelectableModels, geminiAiSelectedModelIds, geminiAiTestTabs } from "./geminiai-view-model";
 
 describe("GeminiAI admin view model", () => {
+    it.each([["ready", "登录正常"], ["login_required", "需重新授权"], ["unavailable", "连接异常"], ["error", "页面异常"], [undefined, "未检测"]] as const)("maps health status %s", (status, label) => {
+        expect(geminiAiAccountHealthText(status)).toBe(label);
+    });
     const models: GeminiAiModel[] = [
         { id: "gemini-text", capabilities: ["text", "search"], enabled: true, source: "geminiai" },
         { id: "gemini-image", capabilities: ["image"], enabled: false, source: "geminiai" },

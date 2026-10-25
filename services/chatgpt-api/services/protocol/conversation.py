@@ -77,6 +77,24 @@ def _elapsed_ms(started: float) -> int:
     return int((time.perf_counter() - started) * 1000)
 
 
+def _is_image_transport_failure(exc: BaseException) -> bool:
+    """Return whether an exception chain records an actual transport interruption."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        failure = getattr(current, "failure", None)
+        if isinstance(failure, ImageFailure) and failure.code in {
+            "image_stream_interrupted",
+            "image_stream_timeout",
+        }:
+            return True
+        if isinstance(current, (TimeoutError, curl_exceptions.RequestException, ConnectionError)):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def _proxy_hash(proxy_url: object) -> str:
     value = str(proxy_url or "").strip()
     if not value:
@@ -2129,6 +2147,8 @@ def _generate_single_image(
         request.monitor_attempt = len(image_attempts) + 1
         account_wait_started = time.perf_counter()
         stream_started = 0.0
+        stream_elapsed_ms = 0
+        stream_error_ms: int | None = None
         try:
             if retry_token:
                 token = retry_token
@@ -2304,10 +2324,7 @@ def _generate_single_image(
                     account_failure=failure.verify_account,
                     account_email=account_email,
                     conversation_id=attempt_conversation_id,
-                    stream_error_ms=(
-                        int((time.perf_counter() - stream_started) * 1000)
-                        if stream_started > 0 else 0
-                    ),
+                    **({"stream_error_ms": stream_error_ms} if stream_error_ms is not None else {}),
                     index=index,
                     total=total,
                 )
@@ -2594,12 +2611,14 @@ def _generate_single_image(
                 else classify_image_exception(exc)
             )
             attempt_conversation_id = str(getattr(exc, "conversation_id", "") or attempt_conversation_id)
-            stream_error_ms = int((time.perf_counter() - stream_started) * 1000) if stream_started > 0 else 0
+            stream_elapsed_ms = int((time.perf_counter() - stream_started) * 1000) if stream_started > 0 else 0
+            if stream_started > 0 and _is_image_transport_failure(exc):
+                stream_error_ms = stream_elapsed_ms
             http_timing = _backend_http_timing_data(backend)
             quick_timeout_retry_ms = min(30000, max(5000, int(config.image_stream_timeout_secs * 1000 * 0.2)))
             early_connection_failure = (
                 not emitted_for_token
-                and (stream_error_ms == 0 or stream_error_ms <= quick_timeout_retry_ms)
+                and (stream_elapsed_ms == 0 or stream_elapsed_ms <= quick_timeout_retry_ms)
                 and failure.code in {
                     "upstream_connection_failed",
                     "upstream_connection_timeout",
@@ -2620,7 +2639,7 @@ def _generate_single_image(
                     "fallback_proxy_configured": True,
                     "fallback_from_egress_key": fallback_from_egress.get("egress_key", ""),
                     "fallback_from_egress_label": fallback_from_egress.get("egress_label", ""),
-                    "stream_error_ms": stream_error_ms,
+                    **({"stream_error_ms": stream_error_ms} if stream_error_ms is not None else {}),
                     "error": str(exc)[:200],
                 })
                 if request.trace_image_perf:
@@ -2695,7 +2714,7 @@ def _generate_single_image(
                 "failure_code": failure.code,
                 "status_code": failure.status_code,
                 "account_failure": failure.verify_account,
-                "stream_error_ms": stream_error_ms,
+                **({"stream_error_ms": stream_error_ms} if stream_error_ms is not None else {}),
                 "index": index,
                 **http_timing,
             })

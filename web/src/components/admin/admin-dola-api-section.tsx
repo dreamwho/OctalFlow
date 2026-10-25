@@ -33,7 +33,7 @@ export function AdminDolaApiSection() {
     const [testDuration, setTestDuration] = useState(5);
     const [testRatio, setTestRatio] = useState("16:9");
     const [testPrompt, setTestPrompt] = useState("清晨的海边，一只白色海鸟掠过波光粼粼的海面，镜头平稳跟随，画面自然流畅。");
-    const [testReference, setTestReference] = useState<{ dataUrl: string; name: string; mime: string } | null>(null);
+    const [testReference, setTestReference] = useState<{ type: "image" | "video" | "audio"; dataUrl: string; name: string; mime: string } | null>(null);
     const [testHeadless, setTestHeadless] = useState(true);
     const [testCredentialMode, setTestCredentialMode] = useState<"auto" | "account" | "custom">("auto");
     const [testAccountId, setTestAccountId] = useState("");
@@ -67,6 +67,8 @@ export function AdminDolaApiSection() {
 
     const selectedModel = useMemo(() => state?.models.find((model) => model.id === testModel) || state?.models[0], [state?.models, testModel]);
     const isImageTestModel = Boolean(selectedModel?.capabilities?.includes("image"));
+    const supportsMediaReference = selectedModel?.id === "dola-seedance-2-5";
+    useEffect(() => { if (!supportsMediaReference && testReference?.type !== "image") setTestReference(null); }, [supportsMediaReference, testReference]);
     useEffect(() => { if (selectedModel && !selectedModel.durations.includes(testDuration)) setTestDuration(selectedModel.durations[0] || 5); }, [selectedModel, testDuration]);
 
     const fileProps: UploadProps = {
@@ -105,7 +107,7 @@ export function AdminDolaApiSection() {
                 prompt: testPrompt,
                 duration: testDuration,
                 ratio: testRatio,
-                references: testReference ? [{ dataUrl: testReference.dataUrl, role: "reference", name: testReference.name, mime: testReference.mime }] : [],
+                references: testReference ? [{ ...testReference, role: "reference" }] : [],
                 headless: testHeadless,
                 customCookie: testCredentialMode === "custom" ? testCustomCookie.trim() || undefined : undefined,
                 accountId: testCredentialMode === "account" ? testAccountId || undefined : undefined,
@@ -241,10 +243,15 @@ export function AdminDolaApiSection() {
                     </div>
                 )}
                 <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">参考图（选填）</label>
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">参考素材（选填）</label>
                     <div className="flex flex-wrap items-center gap-2">
-                        <Upload accept="image/*" maxCount={1} showUploadList={false} beforeUpload={async (file) => { try { setTestReference({ dataUrl: await readFileDataUrl(file), name: file.name, mime: file.type || "image/png" }); } catch (error) { message.error(error instanceof Error ? error.message : "参考图读取失败"); } return false; }}><Button icon={<UploadCloud className="size-4" />}>{testReference ? `更换：${testReference.name}` : "上传参考图"}</Button></Upload>
-                        {testReference ? <Button onClick={() => setTestReference(null)}>移除参考图</Button> : <span className="text-[11px] text-zinc-500">不上传时直接按文字提示词生成视频</span>}
+                        <Upload accept={supportsMediaReference ? "image/*,video/*,audio/*" : "image/*"} maxCount={1} showUploadList={false} beforeUpload={async (file) => {
+                            const type = file.type.split("/", 1)[0];
+                            if (type !== "image" && (!supportsMediaReference || (type !== "video" && type !== "audio"))) { message.error("当前模型不支持此参考素材类型"); return false; }
+                            try { setTestReference({ type: type as "image" | "video" | "audio", dataUrl: await readFileDataUrl(file), name: file.name, mime: file.type }); } catch (error) { message.error(error instanceof Error ? error.message : "参考素材读取失败"); }
+                            return false;
+                        }}><Button icon={<UploadCloud className="size-4" />}>{testReference ? `更换：${testReference.name}` : "上传参考素材"}</Button></Upload>
+                        {testReference ? <Button onClick={() => setTestReference(null)}>移除参考素材</Button> : <span className="text-[11px] text-zinc-500">{supportsMediaReference ? "支持图片、视频、音频；测试窗口单份素材不超过 3MB" : "支持图片；测试窗口单份素材不超过 3MB"}</span>}
                     </div>
                 </div>
                 <div className="space-y-1.5">
@@ -261,8 +268,8 @@ export function AdminDolaApiSection() {
 function readFileDataUrl(file: File) {
     return new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onerror = () => reject(new Error("参考图读取失败"));
-        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("参考图读取失败"));
+        reader.onerror = () => reject(new Error("参考素材读取失败"));
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("参考素材读取失败"));
         reader.readAsDataURL(file);
     });
 }

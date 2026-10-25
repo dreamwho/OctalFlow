@@ -1,5 +1,6 @@
 "use client";
 
+import { configuredModelImageSizes, hasOnlyFixedImageSizes } from "@/lib/model-image-sizes";
 import { useEffect, useMemo } from "react";
 
 import {
@@ -44,12 +45,12 @@ export function CanvasAgentGenerationSettings({
         if (!imageProfile?.lockedRatios || preferences.mode !== "image") return;
         const size = preferences.image?.size || "auto";
         const quality = preferences.image?.quality || "";
-        const sizeValid = size === "auto" || imageProfile.ratios.some((option) => option.value === size);
+        const sizeValid = imageProfile.ratios.some((option) => option.value === size) || (imageProfile.allowCustomSize !== false && /^\d+x\d+$/i.test(size));
         const qualityValid = imageProfile.qualities.some((option) => option.value === quality);
         if (sizeValid && qualityValid) return;
         onChange(
             updateAgentGenerationPreferences(preferences, "image", {
-                size: sizeValid ? size : "auto",
+                size: sizeValid ? size : imageProfile.ratios[0]?.value || "auto",
                 quality: qualityValid ? quality : imageProfile.defaultQuality || "auto",
             }),
         );
@@ -105,9 +106,11 @@ const chatGptApiAgentImageProfile: AgentImageGenerationCapabilityProfile = {
 export function canvasAgentSelectedImageProfile(config: Parameters<typeof resolveCanvasDreaminaModelId>[0], selectedModels: CreativeAgentModelOption[]): AgentImageGenerationCapabilityProfile | undefined {
     const imageModel = selectedModels.find((model) => model.capability === "image");
     if (!imageModel) return undefined;
+    if (isChatGptApiModelConfig(config, imageModel.id)) return chatGptApiAgentImageProfile;
+    const configuredSizes = configuredModelImageSizes(config, imageModel.id);
+    if (configuredSizes) return { ratios: configuredSizes, qualities: agentImageQualities, allowCustomSize: !hasOnlyFixedImageSizes(configuredSizes), lockedRatios: true };
     const profile = canvasDreaminaImageProfile(resolveCanvasDreaminaModelId(config, imageModel.id));
     if (profile) return { ratios: profile.ratios, qualities: profile.qualities };
-    if (isChatGptApiModelConfig(config, imageModel.id)) return chatGptApiAgentImageProfile;
     return undefined;
 }
 

@@ -1,3 +1,4 @@
+import { notifyGenerationLogChanged } from "./generation-log-event-signal";
 import { randomUUID } from "node:crypto";
 import { relative, resolve } from "node:path";
 
@@ -103,6 +104,20 @@ export async function listUserGenerationLogsForDelete(userId: string, ids: strin
     return userLogs.filter((log) => idSet.has(log.id) || log.assets.some((asset) => assetUrls.has(stableAssetUrl(asset))));
 }
 
+export async function getGenerationLogForUser(userId: string, id: string) {
+    const targetUserId = userId.trim();
+    const targetId = id.trim();
+    if (!targetUserId || !targetId) return null;
+    if (isPostgresDatabaseEnabled()) {
+        await ensurePostgresSchema();
+        const record = await createPostgresRepositories().generationLogs.getById(targetId);
+        if (!record || record.userId !== targetUserId) return null;
+        return toStoredGenerationLog(record);
+    }
+    const db = await readGenerationLogDb();
+    return db.logs.find((log) => log.id === targetId && log.userId === targetUserId) || null;
+}
+
 export async function recordGenerationLog(input: GenerationLogInput) {
     const id = normalizeText(input.id, randomUUID(), 120);
     if (isPostgresDatabaseEnabled()) {
@@ -143,6 +158,9 @@ export async function recordGenerationLog(input: GenerationLogInput) {
 
         db.logs = [next, ...db.logs.filter((log) => log.id !== id)];
         return next;
+    }).then((log) => {
+        if (log) notifyGenerationLogChanged(log.userId);
+        return log;
     });
 }
 
@@ -168,6 +186,7 @@ export async function deleteGenerationLogs(ids: string[]) {
         return { deleted: removed.length };
     });
     await deleteRemovedLogMedia(removed);
+    for (const userId of new Set(removed.map((log) => log.userId))) notifyGenerationLogChanged(userId);
     return result;
 }
 
@@ -199,6 +218,7 @@ export async function deleteGenerationLogsByUserId(userId: string) {
         return { deleted: removed.length };
     });
     await deleteRemovedLogMedia(removed);
+    for (const userId of new Set(removed.map((log) => log.userId))) notifyGenerationLogChanged(userId);
     return result;
 }
 

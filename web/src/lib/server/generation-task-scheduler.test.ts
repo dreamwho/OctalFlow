@@ -21,7 +21,7 @@ vi.mock("@/lib/server/generation-task-store", () => ({
     }),
 }));
 
-import { claimDueGenerationTasks, generationTaskNextPollAt, releaseGenerationTaskLease, renewGenerationTaskLeases, scheduleGenerationTask } from "./generation-task-scheduler";
+import { claimDueGenerationTasks, generationTaskNextPollAt, releaseGenerationTaskLease, renewGenerationTaskLeases, scheduleGenerationTask, wakeGeminiAiVideoTask } from "./generation-task-scheduler";
 
 describe("generation task scheduler", () => {
     beforeEach(() => {
@@ -92,6 +92,21 @@ describe("generation task scheduler", () => {
         expect(generationTaskNextPollAt({ submittedAt: 1_000, now: 180_000 })).toBe(205_000);
         expect(generationTaskNextPollAt({ now: 1_000, consecutiveErrors: 1 })).toBe(11_000);
         expect(generationTaskNextPollAt({ now: 1_000, consecutiveErrors: 99 })).toBe(61_000);
+    });
+
+    it("wakes only the matching active Omni task without stealing its lease", async () => {
+        const task = { ...record("omni", Date.now() + 25_000), type: "video", provider: "generation", channelId: "geminiai", upstreamTaskId: "vt_one", workerId: "owner", leaseUntil: Date.now() + 90_000 };
+        mocks.records = [task, { ...task, id: "other-provider", provider: "dola", channelId: "dola" }, { ...task, id: "done", status: "success", executionPhase: "completed" }, { ...task, id: "saving", executionPhase: "persisting" }];
+        await expect(wakeGeminiAiVideoTask("vt_one")).resolves.toEqual([expect.objectContaining({ id: "omni", workerId: "owner", leaseUntil: task.leaseUntil, lastUpstreamStatus: "provider_notified" })]);
+        expect(mocks.records[1].nextPollAt).toBe(task.nextPollAt);
+        const released = await releaseGenerationTaskLease("video", "omni", "owner", { executionPhase: "polling", nextPollAt: Date.now() + 25_000, lastUpstreamStatus: "processing" });
+        expect(released?.nextPollAt).toBeLessThanOrEqual(Date.now());
+        expect(released?.workerId).toBeUndefined();
+    });
+
+    it("keeps terminal phases unscheduled after a notification races with completion", async () => {
+        mocks.records = [{ ...record("omni", 900), type: "video", provider: "geminiai", upstreamTaskId: "vt_one", workerId: "owner", lastUpstreamStatus: "provider_notified" }];
+        await expect(releaseGenerationTaskLease("video", "omni", "owner", { executionPhase: "completed", nextPollAt: undefined })).resolves.toMatchObject({ executionPhase: "completed", nextPollAt: undefined });
     });
 });
 

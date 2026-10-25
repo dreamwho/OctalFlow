@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
@@ -25,12 +27,21 @@ class LoginStartResponse(BaseModel):
     session_id: str
 
 
+class AccountHealthResponse(BaseModel):
+    status: Literal["ready", "login_required", "unavailable", "error"]
+    checked_at: str
+    message: str
+    cookie_expires_at: str | None
+    cookie_expiry_known: bool
+
+
 class AccountResponse(BaseModel):
     id: str
     name: str
     email: str | None
     created_at: str
     last_used: str | None
+    health: AccountHealthResponse | None = None
 
 
 class LoginStatusResponse(BaseModel):
@@ -107,6 +118,7 @@ async def list_accounts(
             email=a.email,
             created_at=a.created_at,
             last_used=a.last_used,
+            health=a.health,
         )
         for a in accounts
     ]
@@ -138,6 +150,26 @@ async def get_active_account(
         email=account.email,
         created_at=account.created_at,
         last_used=account.last_used,
+        health=account.health,
+    )
+
+
+@router.post("/{account_id}/check", response_model=AccountResponse)
+async def check_account(
+    account_id: str,
+    account_service=Depends(get_account_service),
+):
+    """Check a saved account using a temporary browser profile."""
+    account = await account_service.check_account(account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    return AccountResponse(
+        id=account.id,
+        name=account.name,
+        email=account.email,
+        created_at=account.created_at,
+        last_used=account.last_used,
+        health=account.health,
     )
 
 
@@ -167,6 +199,7 @@ async def activate_account(
         email=account.email,
         created_at=account.created_at,
         last_used=account.last_used,
+        health=account.health,
     )
 
 
@@ -198,6 +231,7 @@ async def update_account(
         email=account.email,
         created_at=account.created_at,
         last_used=account.last_used,
+        health=account.health,
     )
 
 

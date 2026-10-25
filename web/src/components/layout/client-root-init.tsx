@@ -5,28 +5,17 @@ import { useEffect } from "react";
 import { App } from "antd";
 import { usePathname } from "next/navigation";
 
-import { applyPublicSystemSettings, useConfigStore } from "@/stores/use-config-store";
-import { useUserStore } from "@/stores/use-user-store";
 import { loadPublicSession, PUBLIC_SETTINGS_CHANGED_EVENT } from "@/stores/use-public-session-store";
 
 export function ClientRootInit({ children }: { children: ReactNode }) {
     const { message } = App.useApp();
     const pathname = usePathname();
     const installRoute = pathname === "/install";
-    const setConfig = useConfigStore((state) => state.setConfig);
-    const setUser = useUserStore((state) => state.setUser);
 
     useEffect(() => {
         if (installRoute) return;
-        let cancelled = false;
         const hydrate = (force = false) => {
-            void loadPublicSession({ force })
-                .then((payload) => {
-                    if (cancelled) return;
-                    setUser(payload.user || null);
-                    setConfig(applyPublicSystemSettings(useConfigStore.getState().config, payload.settings));
-                })
-                .catch(() => undefined);
+            void loadPublicSession({ force }).catch(() => undefined);
         };
         const handleSettingsChanged = () => hydrate(true);
         const handleVisibilityChange = () => {
@@ -36,11 +25,10 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         window.addEventListener(PUBLIC_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
         document.addEventListener("visibilitychange", handleVisibilityChange);
         return () => {
-            cancelled = true;
             window.removeEventListener(PUBLIC_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [installRoute, setConfig, setUser]);
+    }, [installRoute]);
 
     useEffect(() => {
         const handleMissingConfig = (event: Event) => {

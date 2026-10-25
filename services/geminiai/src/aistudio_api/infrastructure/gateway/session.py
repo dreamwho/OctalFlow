@@ -263,6 +263,10 @@ class BrowserSession:
     async def capture_template(self, model: str, *, force_refresh: bool = False) -> dict[str, Any]:
         return await self._run_sync(self._capture_template_sync, model, force_refresh)
 
+    async def discover_models(self) -> list[dict]:
+        from .model_discovery import discover_models
+        return await self._run_sync(lambda: discover_models(self._ensure_browser_sync(read_only=True)))
+
     async def invalidate_template(self, model: str) -> None:
         """Drop a (possibly stale) template so the next capture rebuilds it."""
         return await self._run_sync(self._invalidate_template_sync, model)
@@ -576,7 +580,7 @@ class BrowserSession:
         self._bootstrap_template = None
         self._close_sync()
 
-    def _ensure_browser_sync(self):
+    def _ensure_browser_sync(self, *, read_only: bool = False):
         if self._ctx is not None and self._hook_page is not None and not self._hook_page.is_closed():
             return self._ctx
 
@@ -585,34 +589,40 @@ class BrowserSession:
 
         self._close_sync()
 
-        # Chromium backend: auth.json
-        if not is_camoufox_engine():
-            return self._ensure_browser_chromium_sync(_t0)
+        try:
+            # Chromium backend: auth.json
+            if not is_camoufox_engine():
+                return self._ensure_browser_chromium_sync(_t0, read_only=read_only)
 
-        # Legacy mode: Camoufox + auth.json
-        from camoufox.sync_api import Camoufox
-        from aistudio_api.config import build_camoufox_proxy
+            # Legacy mode: Camoufox + auth.json
+            from camoufox.sync_api import Camoufox
+            from aistudio_api.config import build_camoufox_proxy
 
-        self._cf = Camoufox(
-            headless=settings.browser_headless,
-            main_world_eval=True,
-            proxy=build_camoufox_proxy(settings.proxy_url),
-            persistent_context=True,
-            user_data_dir=self._profile_dir,
-        )
-        self._ctx = self._cf.__enter__()
-        self._browser = None
-        self._apply_auth_file_sync()
-        self._hook_page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
-        sync_maximize_page_window(self._hook_page)
-        log.debug(f"[timing] browser launched in {_t.time()-_t0:.1f}s")
-        self._goto_aistudio_sync(self._hook_page)
-        log.debug(f"[timing] page loaded in {_t.time()-_t0:.1f}s")
-        self._install_hooks_sync(self._hook_page)
-        log.debug(f"[timing] hooks installed in {_t.time()-_t0:.1f}s")
-        return self._ctx
+            self._cf = Camoufox(
+                headless=settings.browser_headless,
+                main_world_eval=True,
+                proxy=build_camoufox_proxy(settings.proxy_url),
+                persistent_context=True,
+                user_data_dir=self._profile_dir,
+            )
+            self._ctx = self._cf.__enter__()
+            self._browser = None
+            self._apply_auth_file_sync()
+            self._hook_page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
+            sync_maximize_page_window(self._hook_page)
+            if read_only:
+                return self._ctx
+            log.debug(f"[timing] browser launched in {_t.time()-_t0:.1f}s")
+            self._goto_aistudio_sync(self._hook_page)
+            log.debug(f"[timing] page loaded in {_t.time()-_t0:.1f}s")
+            self._install_hooks_sync(self._hook_page)
+            log.debug(f"[timing] hooks installed in {_t.time()-_t0:.1f}s")
+            return self._ctx
+        except Exception:
+            self._close_sync()
+            raise
 
-    def _ensure_browser_chromium_sync(self, _t0: float):
+    def _ensure_browser_chromium_sync(self, _t0: float, *, read_only: bool = False):
         """Chromium backend: prefer per-account persistent profile, fallback to auth.json."""
         import time as _t
 
@@ -638,6 +648,12 @@ class BrowserSession:
 
         self._hook_page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
         sync_maximize_page_window(self._hook_page)
+
+        if read_only:
+            if should_seed_from_auth and self._auth_file and Path(self._auth_file).exists():
+                data = json.loads(Path(self._auth_file).read_text(encoding="utf-8"))
+                self._ctx.add_cookies(data.get("cookies") or [])
+            return self._ctx
 
         # First, see whether the persistent profile / current context is already alive.
         try:

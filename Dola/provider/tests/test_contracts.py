@@ -281,7 +281,7 @@ def test_browser_submit_accepts_uploaded_references_without_upload_credentials()
     request = VideoRequest(model="dola-seedance-2-5", prompt="云朵缓慢飘过", duration=5, references=references)
     prepared = asyncio.run(prepare_browser_submission(request, None))
     assert prepared["referenceCount"] == 3
-    assert prepared["resolvedReferences"] == references
+    assert prepared["resolvedReferences"] == [dict(item, type="image") for item in references]
     assert prepared["body"]["option"]["need_create_conversation"] is True
     assert all(item["uri"] in str(prepared["body"]) for item in references)
 

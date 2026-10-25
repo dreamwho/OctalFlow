@@ -11,7 +11,25 @@ export type ChatGptAccount = {
     failure_count: number;
 };
 export type ChatGptAccountPage = { items: ChatGptAccount[]; total: number };
-export type ChatGptModelCatalog = { chat_models: string[]; image_models: string[]; source: { chat: string; image: string } };
+export type ChatGptAccountTestResult = {
+    status: "success" | "failed";
+    content?: string;
+    image_urls?: string[];
+    duration_ms?: number;
+    error_code?: string;
+    error_message?: string;
+    call_id?: string;
+    account_label?: string;
+    model?: string;
+    mode?: "chat" | "image";
+};
+export type ChatGptModelCatalog = {
+    chat_models: string[];
+    image_models: string[];
+    source: { chat: string; image: string };
+    discovery?: { account_id: string; account_label: string; fetched_at: string; endpoint: string };
+    warnings?: string[];
+};
 export type ChatGptKey = { id: string; name: string; enabled: boolean; created_at?: string; last_used_at?: string };
 export type ChatGptGateway = { enabled: boolean };
 export type ChatGptLogStatus = "" | "success" | "failed" | "limited";

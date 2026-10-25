@@ -1,0 +1,106 @@
+{
+  "baseBuildId": "ja-z1noZmz9I3b9ZrddNp",
+  "baseEvidence": "docs/generation-management/部署基线修正_20261021.md",
+  "excludedUnrelatedFiles": [
+    {
+      "path": "web/src/app/api/auth/session/route.test.ts",
+      "sha256": "76958b72ce9a72facf6d6d10071fccb6893236ea1a1ae61ea437bc68c19cc373"
+    },
+    {
+      "path": "web/src/app/api/auth/session/route.ts",
+      "sha256": "7d6ce93e2d60c85c1f78cdafbc2bcc80dea00e3042019ef06cb83df34e3aa0ec"
+    },
+    {
+      "path": "web/src/components/layout/client-root-init.tsx",
+      "sha256": "0175ed189c836be3565430fd3f7347b82eb7ba2404e50db37199fd1b3ed7aa50"
+    },
+    {
+      "path": "web/src/components/model-picker.tsx",
+      "sha256": "940ef64555c863812222c2257d6b93c69a05214d73b4216ba813bae6f0c3ac9e"
+    },
+    {
+      "path": "web/src/stores/use-public-session-store.test.ts",
+      "sha256": "abafc2d937aae98cbe74f48bf4777b3d75bc658ad4c5effd41a16b1fca35942d"
+    },
+    {
+      "path": "web/src/stores/use-public-session-store.ts",
+      "sha256": "8d18c0ad1900a1c7be7d30f6b6a6b840acbbfcfe1044c49d09eb9dacc49635b6"
+    },
+    {
+      "path": "web/src/lib/server/gemini-tools-service.ts",
+      "sha256": "74f2802b1bd5d5ef88b9dfcc4b76fca19c2a1ba7ce36d056e73f67fd772f7a88",
+      "note": "retain observed deployed GeminiTools behavior; exclude unpublished 429 quota refresh"
+    },
+    {
+      "path": "web/src/lib/server/gemini-tools-service.test.ts",
+      "sha256": "769e4acda1c001085f6e91b6b7e07f7bede145aec44c221d5281c3e019f28d7f",
+      "note": "retain observed deployed GeminiTools behavior; exclude unpublished 429 quota refresh"
+    }
+  ],
+  "changedFiles": [
+    "web/e2e/generation-management.spec.ts",
+    "web/e2e/model-image-sizes.spec.ts",
+    "web/playwright.config.ts",
+    "web/src/app/(user)/canvas/[id]/use-canvas-generation-actions.tsx",
+    "web/src/app/(user)/canvas/[id]/use-canvas-task-runtime.tsx",
+    "web/src/app/(user)/canvas/components/canvas-agent-generation-settings.tsx",
+    "web/src/app/(user)/canvas/components/canvas-image-settings-popover.tsx",
+    "web/src/app/(user)/image/image-video-workbench-draft.test.ts",
+    "web/src/app/(user)/image/image-video-workbench-draft.ts",
+    "web/src/app/(user)/image/image-video-workbench-references.test.ts",
+    "web/src/app/(user)/image/image-video-workbench-references.ts",
+    "web/src/app/(user)/image/image-video-workbench.module.css",
+    "web/src/app/(user)/image/image-video-workbench.tsx",
+    "web/src/app/admin/chatgpt-api/account-operation-result.test.ts",
+    "web/src/app/admin/chatgpt-api/account-operation-result.ts",
+    "web/src/app/admin/chatgpt-api/components/admin-chatgpt-api-section.tsx",
+    "web/src/app/api/admin/chatgpt-api/[...path]/route.ts",
+    "web/src/app/api/generation-logs/route.test.ts",
+    "web/src/app/api/generation-logs/route.ts",
+    "web/src/app/api/image-tasks/route.test.ts",
+    "web/src/app/api/image-tasks/route.ts",
+    "web/src/app/api/models/fallback/route.test.ts",
+    "web/src/app/api/models/fallback/route.ts",
+    "web/src/app/api/video-generation-tasks/video-generation-route.ts",
+    "web/src/components/admin/admin-logical-model-manager.test.ts",
+    "web/src/components/admin/admin-logical-model-manager.tsx",
+    "web/src/hooks/use-confirmed-model-fallback.test.ts",
+    "web/src/hooks/use-confirmed-model-fallback.ts",
+    "web/src/lib/auth/session.test.ts",
+    "web/src/lib/auth/session.ts",
+    "web/src/lib/auth/store-types.ts",
+    "web/src/lib/generation-log-snapshot.ts",
+    "web/src/lib/model-image-sizes.test.ts",
+    "web/src/lib/model-image-sizes.ts",
+    "web/src/lib/model-routing-config.test.ts",
+    "web/src/lib/model-routing-config.ts",
+    "web/src/lib/server/generation-log-cancellation.postgres.test.ts",
+    "web/src/lib/server/generation-log-cancellation.test.ts",
+    "web/src/lib/server/generation-log-cancellation.ts",
+    "web/src/lib/server/generation-log-repository.test.ts",
+    "web/src/lib/server/generation-log-repository.ts",
+    "web/src/lib/server/generation-log-store.ts",
+    "web/src/lib/server/generation-log-task-service.ts",
+    "web/src/lib/server/model-fallback.test.ts",
+    "web/src/lib/server/model-fallback.ts",
+    "web/src/services/api/image.ts",
+    "web/src/services/api/model-fallback.ts",
+    "web/src/stores/use-config-store.ts",
+    "CHANGELOG.md",
+    "AGENTS.md",
+    "scripts/deploy-source-update.sh",
+    "docs/deployment-source-update.md",
+    "docs/content/docs/progress/pending-test.mdx",
+    "docs/content/docs/progress/todo.mdx",
+    "docs/content/docs/overview/production-readiness.mdx",
+    "services/chatgpt-api/api/accounts.py",
+    "services/chatgpt-api/services/account_service.py",
+    "services/chatgpt-api/tests/test_account_cleanup.py",
+    "scripts/verify-source-update-baseline.cjs",
+    "scripts/verify-source-update-baseline.test.mjs"
+  ],
+  "webSourceFiles": 2217,
+  "scope": "Web source build closure plus only two Python runtime overlays; no image, dependencies, credentials or business data",
+  "referenceBuildId": "UDOFZu1p4n7eOhjSxw7Vn",
+  "runtimeManifest": "expected-runtime-files.json"
+}

@@ -76,6 +76,7 @@ export class ImageGenerationTaskTerminalError extends Error {
     constructor(
         message: string,
         readonly canRetry: boolean,
+        readonly fallbackEligible = false,
     ) {
         super(message);
         this.name = "ImageGenerationTaskTerminalError";
@@ -256,7 +257,7 @@ export async function waitForImageGenerationTask(config: AiConfig, task: ImageGe
         }
         if (current.status === "error") {
             await refreshUserPointsIfSystem(config.apiSource);
-            throw new ImageGenerationTaskTerminalError(current.error || "图片生成失败", current.canRetry === true);
+            throw new ImageGenerationTaskTerminalError(current.error || "图片生成失败", current.canRetry === true, current.canRetry === true);
         }
         if (current.status === "cancelled") {
             await refreshUserPointsIfSystem(config.apiSource);

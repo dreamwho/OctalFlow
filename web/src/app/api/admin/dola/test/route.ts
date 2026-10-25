@@ -20,11 +20,11 @@ export async function POST(request: Request) {
     }>(request);
     if (!parsed.ok) return apiCompatError(parsed.status, parsed.message);
     if (typeof parsed.data.model !== "string" || typeof parsed.data.prompt !== "string") return apiCompatError(400, "模型和提示词不能为空");
-    let references: Array<{ dataUrl?: string; url?: string; role?: string; name?: string; mime?: string }>;
+    let references: Array<{ type?: "image" | "video" | "audio"; dataUrl?: string; url?: string; role?: string; name?: string; mime?: string }>;
     try {
-        references = normalizeTestReferences(parsed.data.references);
+        references = normalizeTestReferences(parsed.data.references, parsed.data.model);
     } catch (error) {
-        return apiCompatError(400, error instanceof Error ? error.message : "测试参考图格式无效");
+        return apiCompatError(400, error instanceof Error ? error.message : "测试参考素材格式无效");
     }
     const headless = typeof parsed.data.headless === "boolean" ? parsed.data.headless : undefined;
     const customCookie = typeof parsed.data.customCookie === "string" && parsed.data.customCookie.trim() ? parsed.data.customCookie.trim() : undefined;
@@ -49,19 +49,24 @@ export async function POST(request: Request) {
     }
 }
 
-function normalizeTestReferences(value: unknown) {
-    if (value === undefined) return [] as Array<{ dataUrl?: string; url?: string; role?: string; name?: string; mime?: string }>;
-    if (!Array.isArray(value) || value.length > 4) throw new Error("测试参考图最多 4 张");
+function normalizeTestReferences(value: unknown, model: string) {
+    if (value === undefined) return [] as Array<{ type?: "image" | "video" | "audio"; dataUrl?: string; url?: string; role?: string; name?: string; mime?: string }>;
+    if (!Array.isArray(value) || value.length > 4) throw new Error("测试参考素材最多 4 份");
     return value.map((item) => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("测试参考图格式无效");
+        if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("测试参考素材格式无效");
         const record = item as Record<string, unknown>;
         const dataUrl = typeof record.dataUrl === "string" ? record.dataUrl.trim() : "";
         const url = typeof record.url === "string" ? record.url.trim() : "";
-        if (!dataUrl && !url) throw new Error("测试参考图缺少地址");
-        if (!dataUrl && url) throw new Error("测试窗口参考图必须通过上传进入");
-        if (dataUrl && (!dataUrl.startsWith("data:image/") || dataUrl.length > 3_000_000)) throw new Error("测试参考图必须是 3MB 以内的图片");
+        if (!dataUrl && !url) throw new Error("测试参考素材缺少地址");
+        if (!dataUrl && url) throw new Error("测试窗口参考素材必须通过上传进入");
+        const kind = /^data:(image|video|audio)\//.exec(dataUrl)?.[1] as "image" | "video" | "audio" | undefined;
+        if (!kind || dataUrl.length > 3_000_000) throw new Error("测试参考素材必须是 3MB 以内的图片、视频或音频");
+        if (kind !== "image" && model !== "dola-seedance-2-5") throw new Error("音视频参考仅支持 Seedance 2.5");
+        if (record.type && record.type !== kind) throw new Error("参考素材类型与文件不一致");
+        if (typeof record.mime === "string" && record.mime.split("/", 1)[0] !== kind) throw new Error("参考素材类型与文件不一致");
         return {
-            ...(dataUrl ? { dataUrl } : { url }),
+            type: kind,
+            dataUrl,
             ...(typeof record.role === "string" ? { role: record.role.slice(0, 40) } : {}),
             ...(typeof record.name === "string" ? { name: record.name.slice(0, 160) } : {}),
             ...(typeof record.mime === "string" ? { mime: record.mime.slice(0, 80) } : {}),

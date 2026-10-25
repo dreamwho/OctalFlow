@@ -29,5 +29,7 @@ describe("AdminChatGptApiSection", () => {
         expect(markup).not.toContain('data-chatgpt-api-tab-panel="ipwo"');
         expect(markup).not.toContain('aria-label="IPWO 配置"');
         expect(markup).not.toContain("ChatGPTAPI · 魔法代理");
+        expect(markup).toContain("获取上游最新模型");
+        expect(markup).toContain("同步至渠道与逻辑模型");
     });
 });

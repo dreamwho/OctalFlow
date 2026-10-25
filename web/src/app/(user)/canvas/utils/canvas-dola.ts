@@ -23,6 +23,6 @@ export function canvasDolaVideoProfile(modelId: string) {
     if (modelId !== "dola-seedance-2-5" && modelId !== "dola-seedance-2-0-fast") return null;
     const durationValues = modelId === "dola-seedance-2-5" ? [5, 10, 15, 30] : [5, 10, 15];
     const durations: readonly GenerationDurationOption[] = durationValues.map((value) => ({ value, label: `${value} 秒` }));
-    return { ratios: DOLA_RATIOS, qualities: DOLA_QUALITY, durations, durationRange: { min: durationValues[0], max: durationValues.at(-1)! }, fixedRatio: false } as const;
+    return { supportsMediaReferences: modelId === "dola-seedance-2-5", ratios: DOLA_RATIOS, qualities: DOLA_QUALITY, durations, durationRange: { min: durationValues[0], max: durationValues.at(-1)! }, fixedRatio: false } as const;
 }
 

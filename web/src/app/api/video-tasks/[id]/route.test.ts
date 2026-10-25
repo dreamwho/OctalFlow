@@ -59,6 +59,28 @@ describe("GET /api/video-tasks/[id]", () => {
         expect(after).toHaveBeenCalledOnce();
     });
 
+    it("returns the Omni failure discovered during this poll instead of a stale running snapshot", async () => {
+        const task = videoTask({ config: { ...videoTask().config, advancedConfig: { protocol: "geminiai" } } });
+        const error = "reference_upload: reference image upload did not complete";
+        mocks.getVideoTask.mockResolvedValueOnce(task).mockResolvedValueOnce({ ...task, status: "error", error });
+        mocks.getSchedule.mockResolvedValueOnce({ executionPhase: "polling" }).mockResolvedValueOnce({ executionPhase: "completed" });
+        mocks.recover.mockResolvedValue({ claimed: 1, failed: 1 });
+
+        const response = await GET(new Request("http://localhost/api/video-tasks/local-video", { headers: { cookie: "session=test" } }), context);
+
+        expect(mocks.recover).toHaveBeenCalledWith({ origin: "http://localhost", cookie: "session=test", limit: 1, taskIds: [task.id] });
+        expect(after).not.toHaveBeenCalled();
+        expect((await response.json()).task).toMatchObject({ status: "error", error, executionPhase: "completed" });
+    });
+
+    it("keeps an Omni task running when the status transport is unavailable", async () => {
+        const task = videoTask({ config: { ...videoTask().config, advancedConfig: { protocol: "geminiai" } } });
+        mocks.getVideoTask.mockResolvedValue(task);
+        mocks.recover.mockRejectedValueOnce(new Error("fixture transport unavailable"));
+        const response = await GET(new Request("http://localhost/api/video-tasks/local-video"), context);
+        expect((await response.json()).task).toMatchObject({ status: "running" });
+    });
+
     it.each([
         ["cancelled", "任务已取消"],
         ["error", "The output video may contain sensitive information"],

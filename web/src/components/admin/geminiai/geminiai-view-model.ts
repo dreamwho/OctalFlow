@@ -54,3 +54,11 @@ export function geminiAiStatusText(status?: string) {
     if (status === "disabled") return "已停用";
     return status || "未知";
 }
+
+export function geminiAiAccountHealthText(status?: string) {
+    if (status === "ready") return "登录正常";
+    if (status === "login_required") return "需重新授权";
+    if (status === "unavailable") return "连接异常";
+    if (status === "error") return "页面异常";
+    return "未检测";
+}

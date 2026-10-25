@@ -46,7 +46,7 @@ vi.mock("@/lib/server/geminiai-gateway-store", () => ({
     listGeminiAiApiKeys: mocks.listApiKeys,
 }));
 
-import { getGeminiAiLoginStatus, getGeminiAiOverview, listGeminiAiCatalog, listGeminiAiAccounts, runGeminiAiImageTest, runGeminiAiSearchTest, runGeminiAiTextTest, saveGeminiAiModelSelection, setGeminiAiRotation, startGeminiAiLogin } from "./geminiai-service";
+import { addGeminiAiCatalogModel, syncGeminiAiCatalog, checkGeminiAiAccount, getGeminiAiLoginStatus, getGeminiAiOverview, listGeminiAiCatalog, listGeminiAiAccounts, runGeminiAiImageTest, runGeminiAiSearchTest, runGeminiAiTextTest, saveGeminiAiModelSelection, setGeminiAiRotation, startGeminiAiLogin } from "./geminiai-service";
 
 const emptySettings = { systemChannels: [], logicalModels: [], defaultModels: {}, generationDefaults: { videoQuality: "standard", videoSeconds: 8 } };
 
@@ -83,10 +83,73 @@ describe("GeminiAI service", () => {
         ]);
     });
 
+    it("registers opaque image IDs and uses current account discovery without generating", async () => {
+        const row = { id: "gemini-new-render", name: "新图片模型", capability: "image", catalog_origin: "manual" };
+        mocks.sidecarRequest.mockImplementation(async () => sidecarJson({ data: [row] }));
+        await expect(addGeminiAiCatalogModel({ id: " models/gemini-new-render ", name: " 新图片模型 ", capability: "image" })).resolves.toEqual([
+            { id: row.id, name: row.name, capabilities: ["image"], enabled: false, source: "geminiai", catalogOrigin: "manual" },
+        ]);
+        expect(mocks.sidecarRequest).toHaveBeenCalledWith("/config/models", expect.objectContaining({ method: "POST", body: JSON.stringify({ id: row.id, name: row.name, capability: "image" }) }));
+        expect(mocks.setAuthSettings).not.toHaveBeenCalled();
+        await syncGeminiAiCatalog();
+        expect(mocks.sidecarRequest).toHaveBeenLastCalledWith("/config/models/sync", expect.objectContaining({ method: "POST" }));
+        await expect(saveGeminiAiModelSelection({ models: [row.id] })).resolves.toMatchObject({ models: [expect.objectContaining({ id: row.id, capabilities: ["image"], enabled: true })] });
+        expect(mocks.setAuthSettings.mock.calls[0][0].systemChannels[0].advancedConfig.modelCapabilities).toEqual({ [row.id]: "image" });
+        mocks.getAuthSettings.mockResolvedValue(mocks.setAuthSettings.mock.calls[0][0]);
+        await expect(getGeminiAiOverview()).resolves.toMatchObject({ models: [expect.objectContaining({ id: row.id, name: row.name, enabled: true, catalogOrigin: "manual" })] });
+    });
+
+    it("rejects unsupported manual IDs before contacting the provider", async () => {
+        for (const id of ["../file", "gemini-live-new", "veo-4", "gemini-omni-new"]) {
+            await expect(addGeminiAiCatalogModel({ id, capability: "image" })).rejects.toThrow();
+        }
+        await expect(addGeminiAiCatalogModel({ id: "gemini-new", capability: "video" })).rejects.toThrow();
+        expect(mocks.sidecarRequest).not.toHaveBeenCalled();
+    });
+
+    it("preserves the account discovery failure for manual fallback", async () => {
+        mocks.sidecarRequest.mockResolvedValue(Response.json({ detail: { message: "当前 Google 授权已失效", type: "model_catalog_error" } }, { status: 502 }));
+        await expect(syncGeminiAiCatalog()).rejects.toThrow("当前 Google 授权已失效");
+    });
+
+    it("saves Nano Banana 2.1 as an image model and submits its exact upstream ID", async () => {
+        const model = "gemini-nano-banana-2.1";
+        mocks.sidecarRequest.mockResolvedValue(sidecarJson({ data: [{ id: model }] }));
+
+        const saved = await saveGeminiAiModelSelection({ models: [model] });
+        expect(saved.models).toEqual([{ id: model, name: model, capabilities: ["image"], enabled: true, source: "geminiai" }]);
+        expect(mocks.setAuthSettings.mock.calls[0][0].systemChannels[0].advancedConfig).toMatchObject({
+            modelCapabilities: { [model]: "image" },
+            modelConfigs: { [model]: { capability: "image", createPath: "/images/generations", editPath: "/images/edits", supportsReferenceImage: true } },
+        });
+
+        mocks.sidecarRequest.mockResolvedValueOnce(sidecarJson({ data: [{ id: model }] })).mockResolvedValueOnce(sidecarJson({ data: [{ b64_json: "aGVsbG8=" }] }));
+        await expect(runGeminiAiImageTest({ userId: "admin-a", model, prompt: "海边日落", aspectRatio: "9:16", imageSize: "4K" })).resolves.toEqual({ model, images: ["/media/geminiai-test-1.png"] });
+        expect(mocks.sidecarRequest).toHaveBeenLastCalledWith(
+            "/v1/images/generations",
+            expect.objectContaining({ body: JSON.stringify({ model, prompt: "海边日落", n: 1, aspect_ratio: "9:16", image_size: "4K", google_search: false, image_search: false }) }),
+        );
+    });
+
     it("normalizes sidecar account wrappers and its last_used timestamp", async () => {
         mocks.sidecarRequest.mockResolvedValue(sidecarJson({ data: { accounts: [{ id: "account-a", name: "主账号", email: "a@example.com", last_used: "2026-08-30T12:00:00Z" }] } }));
 
-        await expect(listGeminiAiAccounts()).resolves.toEqual([{ id: "account-a", name: "主账号", email: "a@example.com", status: "ready", lastUsedAt: "2026-08-30T12:00:00Z" }]);
+        await expect(listGeminiAiAccounts()).resolves.toEqual([{ id: "account-a", name: "主账号", email: "a@example.com", status: "unknown", lastUsedAt: "2026-08-30T12:00:00Z" }]);
+    });
+
+    it("checks one account without activating it and normalizes only whitelisted health data", async () => {
+        mocks.sidecarRequest.mockResolvedValue(sidecarJson({ data: { id: "account-a", name: "主账号", email: "a@example.com", status: "active", health: { status: "ready", checked_at: "2026-10-16T08:00:00Z", message: "登录正常，token=private-value", cookie_expires_at: null, cookie_expiry_known: false, cookie: "private-value", extra: "ignored" } } }));
+
+        await expect(checkGeminiAiAccount("account-a")).resolves.toEqual({
+            id: "account-a", name: "主账号", email: "a@example.com", status: "active",
+            health: { status: "ready", checkedAt: "2026-10-16T08:00:00Z", message: "登录正常，token=[REDACTED]", cookieExpiresAt: null, cookieExpiryKnown: false },
+        });
+        expect(mocks.sidecarRequest).toHaveBeenCalledWith("/accounts/account-a/check", expect.objectContaining({ method: "POST" }));
+    });
+
+    it("does not accept unknown health status or infer ready from email", async () => {
+        mocks.sidecarRequest.mockResolvedValue(sidecarJson({ data: { accounts: [{ id: "account-a", email: "a@example.com", health: { status: "ready-ish", checked_at: "2026-10-16T08:00:00Z", message: "登录正常" } }] } }));
+        await expect(listGeminiAiAccounts()).resolves.toEqual([{ id: "account-a", name: "account-a", email: "a@example.com", status: "unknown" }]);
     });
 
     it("returns a sanitized sidecar login failure instead of discarding headed-login diagnostics", async () => {

@@ -1,0 +1,135 @@
+{
+  "imageArchives": [
+    {
+      "archive": "images/app.tar",
+      "tag": "dreamyo-app:release-20261010-model-icons",
+      "imageId": "sha256:d65c5abf91ba1a3d019e01469eb3c3dccf8662e3953ab18c2a3947a7f8bb3f01",
+      "archiveConfigDigest": "sha256:7831140dc224fc5ff8235673cc8db5264ee32c0e24cb40fa353d0fe5d2ba946e",
+      "platform": "linux/amd64",
+      "bytes": 974956032
+    },
+    {
+      "archive": "images/dola-api.tar",
+      "tag": "dreamyo-dola-api:release-20261010-model-icons",
+      "imageId": "sha256:3afcc7dee59a22b700d5964cf1407edcd8e3ef321317939edeee1014846fad68",
+      "archiveConfigDigest": "sha256:d8acf6b973bf95d7fd700292e2c2fb94e52ec2cdb2d6ec91fa1a88560d11b456",
+      "platform": "linux/amd64",
+      "bytes": 1661973504
+    },
+    {
+      "archive": "images/geminiai.tar",
+      "tag": "dreamyo-geminiai:release-20261010-model-icons",
+      "imageId": "sha256:3d82d70aa539a2dba0330937fd087c7c5ad0fe7cc488a86b7751ceec25a4f0e3",
+      "archiveConfigDigest": "sha256:bfa0cfd10c5df84af76ebf1a280c1aebe4e79b6b44acccf22d57c984a022a571",
+      "platform": "linux/amd64",
+      "bytes": 2065209856
+    },
+    {
+      "archive": "images/geminivids.tar",
+      "tag": "dreamyo-geminivids:release-20261010-model-icons",
+      "imageId": "sha256:87b2b02d7760a59d2dba90f6426dfd615cfe2a56d078380f44e1196db6b89f13",
+      "archiveConfigDigest": "sha256:858909df7779d8c5d8b879ec85e448562299c321596f7dac74a0342a2b7f0b76",
+      "platform": "linux/amd64",
+      "bytes": 69430784
+    },
+    {
+      "archive": "images/magic-proxy.tar",
+      "tag": "metacubex/mihomo:v1.19.30",
+      "imageId": "sha256:9d7964963f07e658d6fc9b8a52391b8fc9813d7525ded6e69ecbd38b0af61393",
+      "archiveConfigDigest": "sha256:cc9a3fa3b170f2bbba16bf564d91a831cb23a75aa8ab31f149fd93fd4048083a",
+      "platform": "linux/amd64",
+      "bytes": 33319424
+    },
+    {
+      "archive": "images/traffic-meter.tar",
+      "tag": "dreamyo-traffic-meter:release-20261010-model-icons",
+      "imageId": "sha256:b5f3cefa3edb26583ef291f556e5e15791626f859c19a7af9e6f13f549850ff7",
+      "archiveConfigDigest": "sha256:b104d8d526ace2930e40b251587f8cb14955e18cd0cc1c11e8258718cf0bc7c6",
+      "platform": "linux/amd64",
+      "bytes": 53820416
+    }
+  ],
+  "sourceFreezeCount": 2636,
+  "sourceFreezeVerified": true,
+  "config": {
+    "platform": "linux/amd64",
+    "databaseMode": "external",
+    "noPrivateSnapshot": true,
+    "envTemplateUnchanged": true,
+    "utf8Files": [
+      "README.md",
+      "manifest.env",
+      "docker-compose.offline-external-db.yml",
+      "一键部署.sh",
+      ".env.example",
+      "SHA256SUMS",
+      "docker/mihomo/bootstrap-host.yaml",
+      "docker/mihomo/bootstrap.yaml",
+      "docker/mihomo/entrypoint.sh"
+    ],
+    "composeValid": true,
+    "appWorkerSameImage": true,
+    "geminiaiAccountsVolume": true,
+    "geminiaiVideosVolume": true,
+    "externalDatabaseOnly": true
+  },
+  "app": {
+    "sharpLoaded": true,
+    "sharpGeneratedPNG": true,
+    "modelUI": {
+      "上传自定义图标": true,
+      "恢复默认图标": true,
+      "手动添加模型": true,
+      "获取账号模型": true
+    },
+    "customIconField": true,
+    "buildId": "Uw3FQwvBgp2R1U7poCwf5",
+    "privateRuntimeFilesExcluded": true
+  },
+  "appWorkerPostgres": {
+    "isolatedPostgreSQL": true,
+    "schemaInitialized": true,
+    "iconSaveResetSQL": true,
+    "publicIconURL": true,
+    "firstAdminCreated": true,
+    "appLiveHTTP": 200,
+    "appReadyHTTP": 200,
+    "workerHeartbeatHealthy": true,
+    "credentials": "fixed QA values only",
+    "externalModelRequests": 0,
+    "network": "internal only"
+  },
+  "geminiaiHTTP": {
+    "providerHealthHTTP": 200,
+    "nanoBanana21HTTP": true,
+    "manualRegistrationHTTP": 200,
+    "duplicateRegistrationHTTP": 409,
+    "providerRestartPersistence": true,
+    "externalRequests": 0,
+    "network": "none"
+  },
+  "geminiaiBrowser": {
+    "uid": 10001,
+    "nanoBanana21": true,
+    "manualCatalog": true,
+    "camoufoxBundle": true,
+    "hashes": {
+      "application/omni_video.py": "6c84d4f683d2078d78173fa7c5161d2a02c24f085c71149a1b26a15cf9f98eeb",
+      "infrastructure/gateway/model_catalog.py": "184065ecfa5127e97d1f7ac0696d94bd86d13c897e93309ed8525c2c418931fa",
+      "infrastructure/gateway/model_discovery.py": "48ace19ba2522d06422f510e5f64ba49290978af728a4ce2a4c0d86cda540d95",
+      "api/routes_openai.py": "91dff5a9d5d1a386861b41594be57812c1db30df1d7d622ce24f1b7169b5c01d"
+    },
+    "camoufoxWarmupFixture": true,
+    "termsNeverAccepted": true
+  },
+  "dolaBrowser": {
+    "camoufoxBundle": true,
+    "hashes": {
+      "session.py": "c7df1a11518b6d273f1cb2e9fb982786aae2e96945037b6084e31d0e007a277c",
+      "uploads.py": "896f05dd27c1aa3d8bd6f5b00a98543e4fc58d8fc23ec39455d7a6032c8d3ff4"
+    },
+    "camoufoxOfflineLaunch": true
+  },
+  "deploymentScriptTests": 17,
+  "externalModelRequests": 0
+}

@@ -1,0 +1,14 @@
+README.md: OK
+manifest.env: OK
+一键部署.sh: OK
+docker-compose.offline-external-db.yml: OK
+.env.example: OK
+docker/mihomo/bootstrap.yaml: OK
+docker/mihomo/bootstrap-host.yaml: OK
+docker/mihomo/entrypoint.sh: OK
+images/app.tar: OK
+images/geminiai.tar: OK
+images/geminivids.tar: OK
+images/dola-api.tar: OK
+images/traffic-meter.tar: OK
+images/magic-proxy.tar: OK

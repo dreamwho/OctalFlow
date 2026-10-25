@@ -1,0 +1,60 @@
+{
+  "verifiedAt": "2026-10-04T16:31:04.617Z",
+  "provider": {
+    "id": "vt_29e87008cebf51dc",
+    "model": "gemini-omni-1.1-flash",
+    "status": "succeeded",
+    "stage": "succeeded",
+    "createdAt": 1791130907.406264,
+    "finishedAt": 1791131027.499954,
+    "elapsedSeconds": 120.1,
+    "referenceImages": 3,
+    "durationSeconds": 10,
+    "resolution": "1080p",
+    "aspectRatio": "9:16",
+    "mediaBytes": 1561462,
+    "sha256": "feaf5cd75ad6aae07c513c657b5721feb7b2cdef791be0e70357ee04b4320b4c"
+  },
+  "app": {
+    "id": "409e1b0a-41d9-41c6-b90b-bf66a01bd450",
+    "status": "success",
+    "phase": "completed",
+    "createdAt": 1791130907384,
+    "updatedAt": 1791131027713,
+    "lastPollAt": 1791131027540,
+    "durationSeconds": 120.329,
+    "result": {
+      "url": "/api/reference-assets/permanent/2026/10/05/videos/20261005-002347-cb5b519d-f352-446f-9fd2-6039b3915f1e.mp4",
+      "mimeType": "video/mp4",
+      "durationMs": 10005
+    },
+    "completionToPersistenceMs": 213.0458984375,
+    "upstreamFinishToQueryMs": 40.0458984375
+  },
+  "baseline": {
+    "providerId": "vt_539e4ffcccac51e3",
+    "elapsedSeconds": 153.4,
+    "parameters": "3 refs, 1080p, 9:16, 10 seconds",
+    "evidence": "docs/omni-video-20261004/验收报告.md"
+  },
+  "media": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1080,
+        "height": 1920,
+        "duration": "10.000000"
+      },
+      {
+        "codec_name": "aac",
+        "duration": "10.005000"
+      }
+    ],
+    "format": {
+      "duration": "10.005000",
+      "size": "1561462"
+    }
+  }
+}

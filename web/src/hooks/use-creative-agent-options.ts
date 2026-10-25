@@ -18,7 +18,7 @@ export function creativeAgentModelsFromConfig(config: AiConfig, capabilities: Cr
         const modelName = modelOptionName(id);
         const channel = resolveModelChannel(config, id);
         const logical = config.logicalModels.find((item) => item.id.toLowerCase() === modelName.toLowerCase() || item.bindings.some((binding) => binding.channelId === channel.id && binding.upstreamModel.toLowerCase() === modelName.toLowerCase()));
-        return { id, name: modelOptionLabel(config, id), capability, iconKey: logical?.icon, providerHint: channel.name };
+        return { id, name: modelOptionLabel(config, id), capability, iconKey: logical?.icon, iconUrl: logical?.iconUrl, providerHint: channel.name };
     }));
 }
 

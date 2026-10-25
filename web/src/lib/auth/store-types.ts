@@ -171,8 +171,10 @@ export type LogicalModel = {
     id: string;
     name: string;
     capability: LogicalModelCapability;
+    fallbackModelId?: string;
     pickerGroup?: string;
     icon?: ModelIconKey;
+    iconUrl?: string;
     enabled: boolean;
     pickerVisible?: boolean;
     bindings: LogicalModelBinding[];

@@ -2,7 +2,7 @@ import { normalizeImagePreviewWidth } from "@/lib/media-image-variant";
 import { mediaFileExtension } from "@/lib/media-file";
 
 const PRIVATE_MEDIA_ROUTES = ["/api/reference-assets/", "/api/generation-log-assets/"];
-const IMAGE_PREVIEW_ROUTES = [...PRIVATE_MEDIA_ROUTES, "/api/public/works/", "/api/public/prompt-images", "/api/admin/object-storage/files/preview"];
+const IMAGE_PREVIEW_ROUTES = [...PRIVATE_MEDIA_ROUTES, "/api/public/works/", "/api/public/prompt-images", "/api/admin/object-storage/files/preview", "/api/chatgpt-api/media/"];
 
 export function imagePreviewUrl(url: string, width = 1600) {
     return withLocalMediaParams(url, IMAGE_PREVIEW_ROUTES, (params) => {

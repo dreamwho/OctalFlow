@@ -189,7 +189,13 @@ def test_image_output_resolution_accepts_all_geminiai_supported_ratios():
     assert AIStudioClient.resolve_image_size("", aspect_ratio="1:1", image_size="8K") is None
 
 
-def test_client_replays_captured_request_for_supported_image_model(tmp_path):
+@pytest.mark.parametrize("model", ["gemini-3-pro-image", "gemini-nano-banana-2.1", "models/gemini-nano-banana-2.1", "gemini-new-render"])
+@pytest.mark.parametrize("with_reference", [False, True])
+def test_client_replays_captured_request_for_supported_image_model(tmp_path, monkeypatch, model, with_reference):
+    if model == "gemini-new-render":
+        from aistudio_api.infrastructure.gateway.model_catalog import ModelDeclaration, save_declarations
+        monkeypatch.setenv("AISTUDIO_ACCOUNTS_DIR", str(tmp_path / "accounts"))
+        save_declarations([ModelDeclaration(id=model, capability="image")], origin="manual")
     from aistudio_api.infrastructure.gateway.client import AIStudioClient
     from aistudio_api.infrastructure.gateway.capture import CapturedRequest
 
@@ -223,19 +229,23 @@ def test_client_replays_captured_request_for_supported_image_model(tmp_path):
         )
 
     client.capture_request = _capture
+    reference = tmp_path / "reference.png"
+    reference.write_bytes(b"reference-image")
     output = asyncio.run(
         client.generate_image(
             prompt="red apple",
-            model="gemini-3-pro-image",
+            model=model,
+            images=[str(reference)] if with_reference else None,
             aspect_ratio="9:16",
             image_size="4K",
             save_path=str(tmp_path / "result"),
         )
     )
 
-    assert output.model == "gemini-3-pro-image"
+    assert output.model == model.removeprefix("models/")
     assert output.images
     assert client._replay_service.calls[0]["timeout"] == 120
+    assert json.loads(client._replay_service.calls[0]["body"])[0] == f"models/{output.model}"
     assert json.loads(client._replay_service.calls[0]["body"])[3][26] == ["9:16", "4K"]
     assert (tmp_path / "result.jpg").read_bytes() == output.images[0].data
 

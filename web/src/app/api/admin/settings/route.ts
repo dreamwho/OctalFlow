@@ -11,6 +11,7 @@ import { invalidatePublicSiteSettings } from "@/lib/server/site-metadata";
 import { applyChannelProtocol, channelProtocolValidationErrors } from "@/lib/channel-protocol-registry";
 import { hasAllAdminPermissions, hasAnyAdminPermission, type AdminPermission } from "@/lib/admin-permissions";
 import { normalizeModelPickerGroups } from "@/lib/model-picker-groups";
+import { normalizeModelIconUrl } from "@/lib/model-icons";
 import { normalizeTrafficDisplayUnit } from "@/lib/traffic-format";
 
 export const runtime = "nodejs";
@@ -34,6 +35,9 @@ export async function PATCH(request: Request) {
         if (!hasAllAdminPermissions(currentUser, requiredPermissions)) return NextResponse.json({ error: "当前管理员没有修改这些设置的职责权限" }, { status: 403 });
         const socialValidationError = siteSocialValidationError(body.site?.socials);
         if (socialValidationError) throw new AuthInputError(socialValidationError);
+        if (Array.isArray(body.logicalModels) && body.logicalModels.some((model) => model?.iconUrl !== undefined && model.iconUrl !== "" && !normalizeModelIconUrl(model.iconUrl))) {
+            throw new AuthInputError("模型图标需为有效的 PNG、JPG、WebP、SVG 或 ICO 图片，且不能超过 300KB");
+        }
         const currentSettings = await getFreshAuthSettings();
         const patch: Partial<AuthSettings> = {};
         if (body.site) patch.site = { ...body.site, frontendTheme: normalizeThemeName(body.site.frontendTheme), adminTheme: normalizeThemeName(body.site.adminTheme) };

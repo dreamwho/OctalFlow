@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { e2eSettingsPatch } from "./support";
+import { E2E_PROTOCOL_ORIGIN, e2eSettingsPatch, pollTask, protocolFixtureState } from "./support";
 import { protocolModelConfig } from "../src/lib/channel-protocol-registry";
 
 test.describe.configure({ mode: "serial" });
@@ -9,6 +9,83 @@ const READY_COOKIE = "session=e2e-ready-cookie; uid=101";
 const EXPIRED_COOKIE = "session=e2e-expired-cookie; uid=102";
 const BOOM_COOKIE = "session=e2e-boom-cookie; uid=103";
 const REFRESH_ROUTE = /\/api\/admin\/dola\/accounts\/[^/]+\/refresh$/;
+
+for (const kind of ["audio", "video"] as const) {
+test(`DOLA Seedance 2.5 上传 ${kind} 并将混合参考完整传入本地协议夹具`, async ({ page, request }, testInfo) => {
+    const defaults = e2eSettingsPatch();
+    const upstreamModel = "dola-seedance-2-5";
+    const logicalModel = "e2e-dola-media";
+    const group = "音视频参考夹具";
+    let projectId = "";
+    const saved = await request.patch("/api/admin/settings", { data: {
+        systemChannels: [...defaults.systemChannels, { id: "dola", name: "Dola API", baseUrl: "", apiKey: "", enabled: true, apiFormat: "openai", models: [upstreamModel], advancedConfig: { protocol: "dola", authMode: "provider-managed", modelCapabilities: { [upstreamModel]: "video" }, modelConfigs: { [upstreamModel]: protocolModelConfig("dola", "video", upstreamModel) } } }],
+        logicalModels: [...defaults.logicalModels, { id: logicalModel, name: logicalModel, capability: "video", enabled: true, bindings: [{ id: `dola:${upstreamModel}`, channelId: "dola", upstreamModel, enabled: true, priority: 1 }] }],
+        modelPointCosts: { ...defaults.modelPointCosts, [logicalModel]: 0 },
+    } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    expect((await request.post("/api/admin/dola/accounts", { data: { items: [{ cookie: READY_COOKIE, name: "音视频参考测试账号", group }] } })).ok()).toBe(true);
+    await request.patch("/api/admin/dola/gateway", { data: { dispatchGroups: [group] } });
+    try {
+        await openDolaAccounts(page);
+        await page.getByRole("button", { name: "通信测试", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "Dola 视频通信测试" });
+        await expect(dialog).toBeVisible();
+        const input = dialog.locator('input[type="file"]');
+        await expect(input).toHaveAttribute("accept", "image/*,video/*,audio/*");
+        for (const type of [kind]) {
+            const name = type === "audio" ? "fixture.mp3" : "fixture.mp4";
+            await input.setInputFiles({ name, mimeType: type === "audio" ? "audio/mpeg" : "video/mp4", buffer: Buffer.from("fixed-media-fixture") });
+            await expect(dialog.getByRole("button", { name: `更换：${name}` })).toBeVisible();
+            const submitted = page.waitForResponse((response) => response.url().endsWith("/api/admin/dola/test") && response.request().method() === "POST");
+            await dialog.getByRole("button", { name: "提交一次测试 (无头)", exact: true }).click();
+            const response = await submitted;
+            expect(response.ok(), await response.text()).toBe(true);
+            await expect(dialog.getByRole("button", { name: /提交一次测试/ })).not.toHaveClass(/ant-btn-loading/);
+        }
+        for (const width of [1440, 390, 430]) {
+            await page.setViewportSize({ width, height: 932 });
+            await expect.poll(async () => { const rect = await dialog.boundingBox(); return Boolean(rect && rect.x >= 0 && rect.x + rect.width <= width + 1); }).toBe(true);
+            expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+            await page.screenshot({ path: testInfo.outputPath(`dola-media-reference-${width}.png`) });
+        }
+        const nodes = [
+            { id: "media-config", type: "config", title: "DOLA 音视频参考", position: { x: 30, y: 80 }, width: 300, height: 180, metadata: { generationMode: "video", model: logicalModel, composerContent: "参考 @视频1 与 @音频1 创作", size: "16:9", seconds: "30", vquality: "720" } },
+            { id: "media-audio", type: "audio", title: "参考音频", position: { x: 400, y: 80 }, width: 240, height: 150, metadata: { content: `${E2E_PROTOCOL_ORIGIN}/media/fixture.mp3`, remoteUrl: `${E2E_PROTOCOL_ORIGIN}/media/fixture.mp3`, mimeType: "audio/mpeg" } },
+            { id: "media-video", type: "video", title: "参考视频", position: { x: 400, y: 300 }, width: 240, height: 150, metadata: { content: `${E2E_PROTOCOL_ORIGIN}/media/fixture.mp4`, remoteUrl: `${E2E_PROTOCOL_ORIGIN}/media/fixture.mp4`, mimeType: "video/mp4" } },
+        ];
+        const created = await request.post("/api/canvas/projects", { data: { title: "DOLA 音视频参考回归", project: { nodes, viewport: { x: 0, y: 80, k: 1 }, connections: [
+            { id: "audio-edge", fromNodeId: "media-audio", toNodeId: "media-config" },
+            { id: "video-edge", fromNodeId: "media-video", toNodeId: "media-config" },
+        ] } } });
+        expect(created.ok(), await created.text()).toBe(true);
+        projectId = (await created.json()).data.project.id;
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.goto(`/canvas/${projectId}`);
+        const submitted = page.waitForResponse((response) => response.url().endsWith("/api/video-generation-tasks") && response.request().method() === "POST");
+        await page.locator('[data-node-id="media-config"]').getByRole("button", { name: "开始生成" }).click();
+        const response = await submitted;
+        expect(response.ok(), await response.text()).toBe(true);
+        expect(response.request().postDataJSON().references.map((item: { type: string }) => item.type).sort()).toEqual(["audio", "video"]);
+        const { task } = await response.json();
+        const completed = await pollTask(request, `/api/video-tasks/${task.id}`);
+        expect(completed.status).toBe("success");
+        const result = completed.result as { url: string; mimeType: string };
+        expect(result).toMatchObject({ url: expect.stringContaining("/api/reference-assets/"), mimeType: "video/mp4" });
+        const media = await request.get(result.url);
+        expect(media.ok()).toBe(true);
+        expect((await media.body()).byteLength).toBeGreaterThan(0);
+        await page.screenshot({ path: testInfo.outputPath("dola-canvas-media-reference.png") });
+        const state = await protocolFixtureState(request);
+        const submissions = state.requests.filter((item) => item.method === "POST" && item.path.endsWith("/internal/runtime/v1/videos"));
+        expect(submissions.at(-2)?.references?.[0]).toMatchObject({ type: kind, dataUrl: expect.stringContaining(`data:${kind}/`) });
+        expect(submissions.at(-1)?.references?.map((item) => item.type).sort()).toEqual(["audio", "video"]);
+    } finally {
+        if (projectId) await request.delete("/api/canvas/projects", { data: { ids: [projectId] } });
+        await request.patch("/api/admin/settings", { data: defaults });
+        await request.patch("/api/admin/dola/gateway", { data: { dispatchGroups: [] } });
+    }
+});
+}
 
 test("DOLA accepted 额度拒绝会换号，记录消耗，并保持管理员取消终态", async ({ page, request }) => {
     const defaults = e2eSettingsPatch();
@@ -641,4 +718,129 @@ test("请求日志行内有头测试预填指定账号并有头模式", async ({
     await expect(modal.getByRole("button", { name: "启动有头浏览器测试" })).toBeVisible();
     await expect(modal.getByText("选择要测试的账号")).toBeVisible();
     await modal.getByRole("button", { name: /取\s*消/ }).click();
+});
+
+test("DOLA 音视频参考覆盖视频工作台、Canvas Agent 和短剧镜头并保留刷新快照", async ({ page, request }, testInfo) => {
+    const defaults = e2eSettingsPatch();
+    const upstreamModel = "dola-seedance-2-5";
+    const logicalModel = "e2e-dola-all-web";
+    const group = "全部 Web 参考回归";
+    let canvasId = "";
+    let dramaId = "";
+    let libraryId = "";
+    const saved = await request.patch("/api/admin/settings", { data: {
+        systemChannels: [...defaults.systemChannels, { id: "dola", name: "Dola API", baseUrl: "", apiKey: "", enabled: true, apiFormat: "openai", models: [upstreamModel], advancedConfig: { protocol: "dola", authMode: "provider-managed", modelConfigs: { [upstreamModel]: protocolModelConfig("dola", "video", upstreamModel) } } }],
+        logicalModels: [...defaults.logicalModels, { id: logicalModel, name: logicalModel, capability: "video", enabled: true, bindings: [{ id: `dola:${upstreamModel}`, channelId: "dola", upstreamModel, enabled: true, priority: 1 }] }],
+        defaultModels: { ...defaults.defaultModels, videoModel: logicalModel },
+        modelPointCosts: { ...defaults.modelPointCosts, [logicalModel]: 0 },
+    } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    await request.post("/api/admin/dola/accounts", { data: { items: [{ cookie: READY_COOKIE, name: "Web 参考测试", group }] } });
+    await request.patch("/api/admin/dola/gateway", { data: { dispatchGroups: [group] } });
+    const mediaFiles = [
+        { name: "sound.mp3", mimeType: "audio/mpeg", buffer: await (await request.get(`${E2E_PROTOCOL_ORIGIN}/media/fixture.mp3`)).body() },
+        { name: "motion.mp4", mimeType: "video/mp4", buffer: await (await request.get(`${E2E_PROTOCOL_ORIGIN}/media/fixture.mp4`)).body() },
+    ];
+    try {
+        await page.goto("/create?mode=video");
+        const workbench = page.getByTestId("image-video-workbench");
+        await workbench.locator(".canvas-composer-model-picker").first().click();
+        await page.locator("[data-model-picker-panel]").getByText(logicalModel, { exact: true }).first().click();
+        await expect(workbench.locator(".canvas-composer-model-picker").first()).toContainText(logicalModel);
+        let uploads = 0;
+        page.on("request", (req) => { if (req.url().endsWith("/api/reference-assets") && req.method() === "POST") uploads++; });
+        await page.getByRole("button", { name: /添加参考素材/ }).click();
+        const dialog = page.getByRole("dialog", { name: "添加参考素材", exact: true });
+        await expect(dialog.locator('input[type="file"]')).toHaveAttribute("accept", "image/*,video/*,audio/*");
+        await dialog.locator('input[type="file"]').setInputFiles(mediaFiles);
+        await expect(workbench.getByRole("button", { name: "移除参考素材 sound.mp3" })).toBeVisible();
+        expect(uploads).toBe(0);
+        for (const width of [1440, 390, 430]) {
+            await page.setViewportSize({ width, height: 932 });
+            expect(await workbench.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+            await page.screenshot({ path: testInfo.outputPath(`workbench-media-${width}.png`) });
+        }
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.locator("#workbench-prompt").fill("按照参考音频和视频创作");
+        const submission = page.waitForResponse((res) => res.url().endsWith("/api/video-generation-tasks") && res.request().method() === "POST");
+        await workbench.getByRole("button", { name: /立即生成/ }).click();
+        const response = await submission;
+        expect(response.ok(), await response.text()).toBe(true);
+        expect(response.request().postDataJSON().references.map((ref: { type: string }) => ref.type).sort()).toEqual(["audio", "video"]);
+        expect((await pollTask(request, `/api/video-tasks/${(await response.json()).task.id}`)).status).toBe("success");
+        const logId = response.request().postDataJSON().context.generationLogId;
+        const readLog = async () => ((await (await request.get("/api/generation-logs?kind=video&source=video-workbench")).json()).items as Array<{ id: string; requestSnapshot: { references: Array<{ kind: string; storageKey: string }> } }>).find((log) => log.id === logId);
+        const originalRefs = (await readLog())!.requestSnapshot.references;
+        expect(originalRefs.map((ref) => ref.kind).sort()).toEqual(["audio", "video"]);
+        await page.reload();
+        const tile = page.locator("article").filter({ hasText: "按照参考音频和视频创作" }).first();
+        await expect(tile).toBeVisible();
+        await tile.getByRole("button", { name: "生成结果操作" }).click();
+        const replay = page.waitForResponse((res) => res.url().endsWith("/api/video-generation-tasks") && res.request().method() === "POST");
+        await page.getByText("重新生成", { exact: true }).click();
+        const replayResponse = await replay;
+        expect(replayResponse.ok(), await replayResponse.text()).toBe(true);
+        expect(replayResponse.request().postDataJSON().references.map((ref: { type: string }) => ref.type).sort()).toEqual(["audio", "video"]);
+        expect(uploads).toBe(2);
+        await pollTask(request, `/api/video-tasks/${(await replayResponse.json()).task.id}`);
+        const audioRef = originalRefs.find((ref) => ref.kind === "audio")! as typeof originalRefs[number] & { url: string; mimeType: string };
+        const libraryCreated = await request.post("/api/library-assets", { data: { kind: "audio", title: "复用原参考音频", coverUrl: "", tags: [], data: { url: audioRef.url, serverUrl: audioRef.url, storageKey: audioRef.storageKey, mimeType: audioRef.mimeType, bytes: mediaFiles[0].buffer.length } } });
+        expect(libraryCreated.ok(), await libraryCreated.text()).toBe(true);
+        libraryId = (await libraryCreated.json()).data.asset.id;
+        await workbench.getByRole("button", { name: /添加参考素材/ }).click();
+        const libraryDialog = page.getByRole("dialog", { name: "添加参考素材", exact: true });
+        await libraryDialog.getByRole("button", { name: "我的素材库" }).click();
+        await libraryDialog.getByRole("button", { name: /复用原参考音频/ }).click();
+        await libraryDialog.getByRole("button", { name: /使用所选素材/ }).click();
+        await expect(workbench.getByRole("button", { name: "移除参考素材 复用原参考音频" })).toBeVisible();
+        await workbench.getByRole("button", { name: "移除参考素材 复用原参考音频" }).click();
+        expect(uploads).toBe(2);
+        const createdCanvas = await request.post("/api/canvas/projects", { data: { title: "Agent 音频上传回归", project: { nodes: [], connections: [] } } });
+        canvasId = (await createdCanvas.json()).data.project.id;
+        await page.goto(`/canvas/${canvasId}`);
+        await page.getByRole("button", { name: "打开 Agent", exact: true }).click();
+        const panel = page.getByRole("complementary", { name: "Canvas Agent 对话面板" });
+        await panel.locator('input[type="file"][multiple]').setInputFiles(mediaFiles[0]);
+        await expect(page.locator("[data-node-id]").filter({ hasText: "sound.mp3" })).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath("canvas-agent-audio.png") });
+        const createdDrama = await request.post("/api/drama/projects", { data: { title: "DOLA 参考短剧", initialScript: "朋友进入房间。", ratio: "16:9" } });
+        const drama = (await createdDrama.json()).data.project;
+        dramaId = drama.id;
+        const episode = drama.episodes[0];
+        const shot = { id: "media-shot", order: 1, title: "参考镜头", videoMode: "direct", videoPrompt: "参考动作与声音", imagePrompt: "房间", duration: 5 };
+        expect((await request.patch(`/api/drama/projects/${dramaId}`, { data: { ...drama, episodes: [{ ...episode, reviewStatus: "visual_ready", shots: [shot] }] } })).ok()).toBe(true);
+        await page.goto(`/drama/${dramaId}`);
+        await page.getByRole("button", { name: "切换到分镜" }).click();
+        await page.getByRole("button", { name: "展开", exact: true }).first().click();
+        const editor = page.getByTestId("drama-media-references");
+        await expect(editor).toBeVisible();
+        await editor.locator('input[type="file"]').setInputFiles(mediaFiles);
+        await expect(editor.getByRole("button", { name: "移除参考素材 sound.mp3" })).toBeVisible();
+        await expect.poll(async () => (await (await request.get(`/api/drama/projects/${dramaId}`)).json()).data.project.episodes[0].shots[0].videoReferences?.length).toBe(2);
+        await page.reload();
+        await page.getByRole("button", { name: "切换到分镜" }).click();
+        await page.getByRole("button", { name: "展开", exact: true }).first().click();
+        await expect(editor.getByText("sound.mp3", { exact: true })).toBeVisible();
+        for (const width of [1440, 390, 430]) {
+            await page.setViewportSize({ width, height: 932 });
+            expect(await editor.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+            await editor.scrollIntoViewIfNeeded();
+            await expect(editor.getByRole("button", { name: "上传音视频参考", exact: true })).toBeVisible();
+            await page.screenshot({ path: testInfo.outputPath(`drama-media-${width}.png`) });
+        }
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.getByRole("button", { name: "切换到镜头生成" }).click();
+        const dramaSubmission = page.waitForResponse((res) => res.url().endsWith("/api/video-generation-tasks") && res.request().method() === "POST");
+        await page.getByRole("button", { name: "生成镜头", exact: true }).click();
+        const dramaResponse = await dramaSubmission;
+        expect(dramaResponse.ok(), await dramaResponse.text()).toBe(true);
+        expect(dramaResponse.request().postDataJSON().references.map((ref: { type: string }) => ref.type).sort()).toEqual(["audio", "video"]);
+        expect((await pollTask(request, `/api/video-tasks/${(await dramaResponse.json()).task.id}`)).status).toBe("success");
+    } finally {
+        if (libraryId) await request.delete(`/api/library-assets/${libraryId}`);
+        if (canvasId) await request.delete("/api/canvas/projects", { data: { ids: [canvasId] } });
+        if (dramaId) await request.delete(`/api/drama/projects/${dramaId}`);
+        await request.patch("/api/admin/settings", { data: defaults });
+        await request.patch("/api/admin/dola/gateway", { data: { dispatchGroups: [] } });
+    }
 });

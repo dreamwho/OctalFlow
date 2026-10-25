@@ -318,6 +318,7 @@ fi
 [[ "$PRIVATE_MIGRATION" != 1 || "$PRIVATE_SETTINGS_SYNC" != 1 ]] || die "首次迁移快照与在线设置同步不能同时启用"
 APP_IMAGE="$(read_manifest_value DREAMYO_IMAGE)"
 GEMINIAI_IMAGE="$(read_manifest_value DREAMYO_GEMINIAI_IMAGE)"
+GEMINIVIDS_IMAGE="$(read_manifest_value DREAMYO_GEMINIVIDS_IMAGE)"
 DOLA_API_IMAGE=""
 if grep -q '^DREAMYO_DOLA_API_IMAGE=' "$MANIFEST_FILE" 2>/dev/null; then
     DOLA_API_IMAGE="$(read_manifest_value DREAMYO_DOLA_API_IMAGE)"
@@ -430,6 +431,10 @@ generate_token() {
 set_env_value DREAMYO_DOCKER_PLATFORM "$PACKAGE_PLATFORM"
 set_env_value DREAMYO_IMAGE "$APP_IMAGE"
 set_env_value DREAMYO_GEMINIAI_IMAGE "$GEMINIAI_IMAGE"
+set_env_value DREAMYO_GEMINIVIDS_IMAGE "$GEMINIVIDS_IMAGE"
+if [[ -n "$DOLA_API_IMAGE" ]]; then
+    set_env_value DREAMYO_DOLA_API_IMAGE "$DOLA_API_IMAGE"
+fi
 set_env_value DREAMYO_TRAFFIC_METER_IMAGE "$TRAFFIC_METER_IMAGE"
 set_env_value DREAMYO_MAGIC_PROXY_IMAGE "$MAGIC_PROXY_IMAGE"
 if [[ "$DATABASE_MODE" == embedded ]]; then
@@ -519,14 +524,8 @@ if [[ "$DATABASE_MODE" == external ]]; then
                 printf '已从备份 %s 恢复数据库连接 DATABASE_URL\n' "$newest_env_backup" >&2
             fi
         fi
-    elif [[ "$database_url" == *"f777653747bf2d4abc4ae46e3c06d1cc"* ]]; then
-        # 自动纠正误带入的开发机测试连接为服务器真实凭据
-        database_url="postgres://user_nAEKtB:password_NXbGBn@127.0.0.1:5432/user_nAEKtB"
-        set_env_value DATABASE_URL "$database_url"
-        set_env_value POSTGRES_USER "user_nAEKtB"
-        set_env_value POSTGRES_PASSWORD "password_NXbGBn"
-        printf '已自动将数据库连接配置更新为服务器凭据 (user_nAEKtB)\n'
-    elif [[ -z "$database_url" ]]; then
+    fi
+    if [[ -z "$database_url" ]]; then
         if [[ -t 0 ]]; then
             printf '请输入已有 PostgreSQL 的 DATABASE_URL（例如 postgres://user:password@127.0.0.1:5432/dbname，输入不会回显）：' >&2
             IFS= read -r -s database_url
@@ -566,6 +565,7 @@ fi
 
 docker image inspect "$APP_IMAGE" >/dev/null 2>&1 || die "主应用镜像未加载：$APP_IMAGE"
 docker image inspect "$GEMINIAI_IMAGE" >/dev/null 2>&1 || die "GeminiAI 镜像未加载：$GEMINIAI_IMAGE"
+docker image inspect "$GEMINIVIDS_IMAGE" >/dev/null 2>&1 || die "GeminiVids 镜像未加载：$GEMINIVIDS_IMAGE"
 if [[ -n "$DOLA_API_IMAGE" ]]; then
     docker image inspect "$DOLA_API_IMAGE" >/dev/null 2>&1 || die "Dola Provider 镜像未加载：$DOLA_API_IMAGE"
 fi

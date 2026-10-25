@@ -1,0 +1,11 @@
+{
+  "id": "13347eda-da96-4c4f-badb-c6b3b86bdce3",
+  "type": "video",
+  "status": "running",
+  "executionPhase": "needs_review",
+  "generationLogId": "video-workbench:s9KtrZDXqyoxK9Vy7mnkY",
+  "channelId": "e2e-primary",
+  "provider": "openai",
+  "lastUpstreamStatus": "submission_outcome_unknown",
+  "scope": "本地 OpenAI 图生视频 TCP 夹具回归，非真实 GeminiAI 模型测试"
+}

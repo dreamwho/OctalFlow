@@ -4,6 +4,8 @@ model_defaults:
     # 生图模型默认配置
     - name: image_models
       match:
+        exact:
+          - gemini-nano-banana-2.1
         contains:
           - image
       # 命中后视为生图模型

@@ -1,0 +1,11 @@
+{
+  "archive": "dreamyo-image-catalog-fix-20261021.tar.gz",
+  "bytes": 464678,
+  "sha256": "49f2be41e50c34a75b34ef349c8c94f58cc7dae403b292d910476c1b8a34e6a4",
+  "verifiedFiles": 247,
+  "runtimeFiles": 1,
+  "noSymlinks": true,
+  "strictUtf8": true,
+  "noBusinessData": true,
+  "archiveRoundTrip": true
+}

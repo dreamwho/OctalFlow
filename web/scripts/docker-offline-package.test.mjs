@@ -16,6 +16,27 @@ afterEach(() => {
 });
 
 describe("offline Docker package scripts", () => {
+    it("persists Omni task records, references and generated videos across container recreation", () => {
+        const composeFiles = readdirSync(repoRoot).filter((name) => /^docker-compose(?:\..+)?\.yml$/.test(name));
+        for (const file of composeFiles) {
+            const compose = parse(readFileSync(path.join(repoRoot, file), "utf8"));
+            expect(compose.services.geminiai.volumes).toContain("dreamyo-geminiai-videos:/data/videos");
+            expect(compose.volumes).toHaveProperty("dreamyo-geminiai-videos");
+        }
+    });
+
+    it("routes GeminiAI reference downloads to the reachable app origin in every Compose deployment", () => {
+        for (const file of ["docker-compose.baota.yml", "docker-compose.offline-external-db.yml"]) {
+            const { services } = parse(readFileSync(path.join(repoRoot, file), "utf8"));
+            expect(services.geminiai.environment.GEMINIAI_REFERENCE_ASSET_ORIGIN).toBe(services.app.environment.DREAMYO_INTERNAL_ORIGIN);
+            expect(services.geminiai.environment.GEMINIAI_REFERENCE_ASSET_ORIGIN).toBe(file.includes("offline") ? "http://127.0.0.1:${PORT:-8866}" : "http://127.0.0.1:3000");
+        }
+        for (const file of ["docker-compose.yml", "docker-compose.local.yml", "docker-compose.external-db.yml", "docker-compose.offline.yml"]) {
+            const { services } = parse(readFileSync(path.join(repoRoot, file), "utf8"));
+            expect(services.geminiai.environment.GEMINIAI_REFERENCE_ASSET_ORIGIN).toBe("http://app:3000");
+        }
+    });
+
     it("keeps local secrets out of the package unless explicitly requested", () => {
         const fixture = createFixture();
         writeFileSync(path.join(fixture.root, ".env"), "DREAMYO_DOLA_PROVIDER_KEY=local-private-value\n", "utf8");
@@ -36,7 +57,7 @@ describe("offline Docker package scripts", () => {
 
         expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DATABASE_MODE=external");
         expect(readFileSync(path.join(packageDir, "manifest.env"), "utf8")).toContain("DREAMYO_DOCKER_PLATFORM=linux/amd64");
-        expect(readdirSync(path.join(packageDir, "images")).sort()).toEqual(["app.tar", "dola-api.tar", "geminiai.tar", "magic-proxy.tar", "traffic-meter.tar"]);
+        expect(readdirSync(path.join(packageDir, "images")).sort()).toEqual(["app.tar", "dola-api.tar", "geminiai.tar", "geminivids.tar", "magic-proxy.tar", "traffic-meter.tar"]);
         expect(readFileSync(path.join(packageDir, "SHA256SUMS"), "utf8")).toContain("images/app.tar");
         expect(readFileSync(path.join(fixture.root, "scripts", "build-docker-offline-package.sh"), "utf8")).not.toContain("rm -rf");
 
@@ -114,6 +135,29 @@ describe("offline Docker package scripts", () => {
         const second = run("bash", ["一键部署.sh"], packageDir, fixture.environment);
         expect(second.status, second.stderr || second.stdout).toBe(0);
         expect(readFileSync(path.join(packageDir, ".env"), "utf8")).toBe(firstEnv);
+    });
+
+    it("persists every packaged image tag instead of keeping stale sidecar defaults", () => {
+        const fixture = createFixture();
+        const tags = { APP: "dreamyo-app:release-test", GEMINIAI: "dreamyo-geminiai:release-test", GEMINIVIDS: "dreamyo-geminivids:release-test", DOLA_API: "dreamyo-dola-api:release-test", TRAFFIC_METER: "dreamyo-traffic-meter:release-test" };
+        for (const [key, value] of Object.entries(tags)) fixture.environment[`DREAMYO_OFFLINE_${key}_IMAGE`] = value;
+        const packageDir = buildPackage(fixture);
+        writeFileSync(path.join(packageDir, ".env"), "DREAMYO_GEMINIVIDS_IMAGE=stale:old\nDREAMYO_DOLA_API_IMAGE=stale:old\n", "utf8");
+        const result = run("bash", ["一键部署.sh"], packageDir, { ...fixture.environment, DREAMYO_DATABASE_URL: "postgresql://fixture:password@127.0.0.1:5432/app" });
+        expect(result.status, result.stderr || result.stdout).toBe(0);
+        const environment = readFileSync(path.join(packageDir, ".env"), "utf8");
+        for (const [key, value] of Object.entries(tags)) expect(environment).toContain(`DREAMYO_${key === "APP" ? "IMAGE" : `${key}_IMAGE`}='${value}'`);
+        expect(readFileSync(fixture.dockerLog, "utf8")).toContain(`image inspect ${tags.GEMINIVIDS}`);
+    });
+
+    it("preserves the configured external database without replacing it by a hardcoded server", () => {
+        const fixture = createFixture();
+        const packageDir = buildPackage(fixture);
+        const databaseUrl = "postgresql://fixture:password@127.0.0.1:5432/f777653747bf2d4abc4ae46e3c06d1cc";
+        writeFileSync(path.join(packageDir, ".env"), `DATABASE_URL='${databaseUrl}'\n`, "utf8");
+        const result = run("bash", ["一键部署.sh"], packageDir, fixture.environment);
+        expect(result.status, result.stderr || result.stdout).toBe(0);
+        expect(readFileSync(path.join(packageDir, ".env"), "utf8")).toContain(`DATABASE_URL='${databaseUrl}'`);
     });
 
     it("keeps the external host-network listener, probes, and callbacks on the resolved port", () => {

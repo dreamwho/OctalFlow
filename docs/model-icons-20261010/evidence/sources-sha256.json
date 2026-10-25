@@ -1,0 +1,139 @@
+{
+  "buildId": "Bqlhp0IQzdOc5xHBvm8lL",
+  "utf8": "strict passed; AGENTS.md 中原有乱码示例为规则原文，非编码损坏",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "description": "补充后台水合容器的浏览器回归定位规则。",
+      "upload": true,
+      "sha256": "348246c14435f957a79d6641feae132bb3755fe3104aafc3ba898a41439c56da",
+      "bytes": 55688
+    },
+    {
+      "path": "web/src/lib/auth/store-types.ts",
+      "description": "为逻辑模型增加自定义图标字段 iconUrl。",
+      "upload": true,
+      "sha256": "279af62d2395a3623ac8082ebd56f7aa54bfa846421d54797dacce5b111560cd",
+      "bytes": 16106
+    },
+    {
+      "path": "web/src/stores/use-config-store.ts",
+      "description": "在前端公共模型配置中保留自定义图标。",
+      "upload": true,
+      "sha256": "5948926d8addaad23a6ac6fcf29678cbafada2ee22ddad203d1a0eb5af43e264",
+      "bytes": 26198
+    },
+    {
+      "path": "web/src/lib/auth/session.ts",
+      "description": "向当前用户可用的公开模型目录下发图标配置。",
+      "upload": true,
+      "sha256": "16b22a54de9dd1a26dc2151b140121b04c4f7b83c5c4ff56f8747afa5e315850",
+      "bytes": 10276
+    },
+    {
+      "path": "web/src/lib/model-icons.ts",
+      "description": "校验上传图标格式并沿用品牌图片的 300KB 资源契约。",
+      "upload": true,
+      "sha256": "695e35310ffeb8a8bb983d5812d499135d655b6a4f65439dc88cdc9014b859a4",
+      "bytes": 3783
+    },
+    {
+      "path": "web/src/lib/model-routing-config.ts",
+      "description": "在模型规范化与同步时保留自定义图标。",
+      "upload": true,
+      "sha256": "2d033e0bfc99dbba76bb248dfc5658a229b6d5831b9850a8179cffc510ded20c",
+      "bytes": 17868
+    },
+    {
+      "path": "web/src/app/api/admin/settings/route.ts",
+      "description": "拒绝无效图标并沿用当前管理员权限和设置持久化。",
+      "upload": true,
+      "sha256": "2428fbca7787cff71b874fec4a730a3c5c990204af6b48959b3f5bccfbda2573",
+      "bytes": 10226
+    },
+    {
+      "path": "web/src/hooks/use-creative-agent-options.ts",
+      "description": "向创作 Agent 的模型选项传递自定义图标。",
+      "upload": true,
+      "sha256": "53a6acf15a0ce2847b2f00ad24fdbcffe73f4c03920fc681be98b0ddac434da2",
+      "bytes": 2551
+    },
+    {
+      "path": "web/src/components/agent/creative-agent-controls.tsx",
+      "description": "在创作 Agent 模型选择中显示自定义图标。",
+      "upload": true,
+      "sha256": "376bd46973acb795b23833ceaed181af9732e0042064e9c740e050db78220fe5",
+      "bytes": 24532
+    },
+    {
+      "path": "web/src/components/agent/compact-agent-generation-settings.tsx",
+      "description": "在紧凑 Agent 设置的模型入口和列表中显示自定义图标。",
+      "upload": true,
+      "sha256": "7b8432eff52264b9e0423c4b17ef2a5826b5f03befaa16474ecab8a9d99b62ba",
+      "bytes": 13740
+    },
+    {
+      "path": "web/src/components/model-picker.tsx",
+      "description": "统一显示自定义图标、保留原色并在加载失败时回退默认图标。",
+      "upload": true,
+      "sha256": "940ef64555c863812222c2257d6b93c69a05214d73b4216ba813bae6f0c3ac9e",
+      "bytes": 22123
+    },
+    {
+      "path": "web/src/components/admin/admin-logical-model-manager.tsx",
+      "description": "增加图标上传、预览、内置图标选择和恢复默认操作。",
+      "upload": true,
+      "sha256": "beab2549126980424140b073ed6e3fb3495a7b7dfaec12eec2bd5916b65ab403",
+      "bytes": 69736
+    },
+    {
+      "path": "docs/backend-database.md",
+      "description": "说明图标随既有逻辑模型 JSON 配置保存且不新增数据表。",
+      "upload": true,
+      "sha256": "9fff10144590cfe2428160c74b405d3fb24ddf90a6f9ce83597a16f192de9de5",
+      "bytes": 21791
+    },
+    {
+      "path": "web/src/lib/model-icons.test.ts",
+      "description": "验证图标格式、无效输入及上传大小边界。",
+      "upload": false,
+      "sha256": "0749ae5731f2ed8087804ac8c05d1f30525aabaf4acd8f3525f74ef8b2eafc94",
+      "bytes": 1177
+    },
+    {
+      "path": "web/src/lib/model-routing-config.test.ts",
+      "description": "验证图标保留、模型同步与恢复默认的字段清除。",
+      "upload": false,
+      "sha256": "14fd2647031d1e7c7acc5c9ce08153872040f653771d04d66bac0aee27f270e8",
+      "bytes": 21666
+    },
+    {
+      "path": "web/src/lib/auth/session.test.ts",
+      "description": "验证公开模型目录保留自定义图标并继续隐藏私有配置。",
+      "upload": false,
+      "sha256": "caac5adbdd9505fcd70a22d61b02dab3f8ee256b90594cc6ef3f96a5a9e1e47c",
+      "bytes": 12937
+    },
+    {
+      "path": "web/src/app/api/admin/settings/route.test.ts",
+      "description": "验证图标保存、恢复默认及无效输入拒绝。",
+      "upload": false,
+      "sha256": "4a47b04a1a4a47f5d2813e96bb9ff449ecb4765efbf80441c0eb38831cf74e70",
+      "bytes": 15490
+    },
+    {
+      "path": "web/src/hooks/use-creative-agent-options.test.ts",
+      "description": "验证 Agent 模型选项使用同一份自定义图标。",
+      "upload": false,
+      "sha256": "a0ecaaf8dca3cb3a03086957793f351b42f0df15865fd869a2fa392dd697476d",
+      "bytes": 3000
+    },
+    {
+      "path": "web/e2e/core.spec.ts",
+      "description": "覆盖图标实际上传、页面刷新、SQL 落库、前端显示、失败回退和恢复默认。",
+      "upload": false,
+      "sha256": "2ff290b3a9d13dd4d95fc4d2f82f458765e1cffecf6cd5013130c64647f39d40",
+      "bytes": 58029
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { deleteSession, getPublicUsersByIds, getUserBySession, sessionMaxAgeSeco
 import { authorizedWorkerUserId } from "@/lib/server/maintenance-auth";
 import { getTrustedProxyHops } from "@/lib/server/trusted-proxy";
 import { parseSessionCookie } from "./store-normalizers";
+import { resolveLogicalModelCapabilityProfile } from "@/lib/model-routing-config";
 import { normalizeModelId } from "@/lib/model-capability";
 import { roleModelAccessAllows, userRoleDefinition } from "@/lib/user-roles";
 
@@ -116,7 +117,7 @@ export function serializePublicSettings(settings: AuthSettings, user?: Pick<Publ
     const visiblePointCosts = Object.fromEntries(Object.entries(settings.modelPointCosts).filter(([model]) => role === "admin" || rolePolicy?.modelAccess.all || visiblePricedModels.has(normalizeModelId(model))).map(([model, cost]) => [model, Number((cost * pointFactor).toFixed(4))]));
     const modelDefaults = Object.fromEntries((["image", "video", "text", "audio"] as const).map((capability) => {
         const configured = settings.defaultModels[`${capability}Model`];
-        const permitted = permittedModels.find((model) => model.capability === capability && (model.id === configured || model.pickerVisible !== false));
+        const permitted = permittedModels.find((model) => model.capability === capability && model.id === configured) || permittedModels.find((model) => model.capability === capability && model.pickerVisible !== false);
         return [`${capability}Model`, permitted?.id || ""];
     })) as AuthSettings["defaultModels"];
     return {
@@ -165,18 +166,23 @@ export function serializePublicSettings(settings: AuthSettings, user?: Pick<Publ
                 capability: model.capability,
                 pickerGroup: model.pickerGroup,
                 icon: model.icon,
+                iconUrl: model.iconUrl,
                 enabled: true,
                 pickerVisible: model.pickerVisible !== false,
                 bindings: model.bindings
                     .filter((binding) => binding.enabled)
-                    .map((binding) => ({
-                        id: binding.id,
-                        channelId: binding.channelId,
-                        upstreamModel: binding.upstreamModel,
-                        enabled: true,
-                        priority: binding.priority,
-                        ...(binding.displayName ? { displayName: binding.displayName } : {}),
-                    })),
+                    .map((binding) => {
+                        const profile = model.capability === "image" ? resolveLogicalModelCapabilityProfile(binding, "image", settings.systemChannels.find((channel) => channel.id === binding.channelId), binding.upstreamModel) : undefined;
+                        return {
+                            id: binding.id,
+                            channelId: binding.channelId,
+                            upstreamModel: binding.upstreamModel,
+                            enabled: true,
+                            priority: binding.priority,
+                            ...(binding.displayName ? { displayName: binding.displayName } : {}),
+                            ...(profile?.aspectRatios?.length ? { capabilityProfile: { aspectRatios: [...profile.aspectRatios] } } : {}),
+                        };
+                    }),
             })),
         systemChannels: settings.systemChannels
             .filter((channel) => channel.enabled)

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "0b0e0387-5bbc-40c5-ba99-e345c9268473",
+    "status": "running",
+    "executionPhase": "needs_review",
+    "provider": "openai",
+    "channelId": "e2e-primary",
+    "generationLogId": "video-workbench:Rnjrv03MCyiQAGQmxNim_",
+    "upstreamTaskId": null,
+    "lastUpstreamStatus": "submission_outcome_unknown"
+  }
+]

@@ -19,14 +19,24 @@ export const maxDuration = 2400;
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const user = await getCurrentUser(request);
-    const task = user ? await getVideoTask((await params).id) : null;
+    let task = user ? await getVideoTask((await params).id) : null;
     if (!user || !task || (task.userId !== user.id && user.role !== "admin")) return NextResponse.json({ error: "视频任务不存在" }, { status: user ? 404 : 401 });
-    const schedule = await getStoredGenerationTaskRecord("video", task.id);
-    const executionPhase = schedule?.executionPhase || settledExecutionPhase(task.status);
+    let schedule = await getStoredGenerationTaskRecord("video", task.id);
+    let executionPhase = schedule?.executionPhase || settledExecutionPhase(task.status);
     if (canReconcileVideoTask(task) || (task.status === "cancelled" && (executionPhase === "cancel_requested" || executionPhase === "cancel_polling"))) {
         const origin = resolveInternalOrigin(new URL(request.url).origin);
         const cookie = request.headers.get("cookie") || "";
-        after(() => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [task!.id] }));
+        const taskId = task.id;
+        const recover = () => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [taskId] });
+        // Omni 查询只读取 sidecar 任务状态；沿用 Worker 租约与调度，同次响应返回已确认的失败。
+        if (task.config.advancedConfig?.protocol === "geminiai" && canReconcileVideoTask(task) && executionPhase !== "result_ready" && executionPhase !== "persisting") {
+            await recover().catch((error) => console.warn("Omni task reconciliation deferred", { taskId, error }));
+            task = (await getVideoTask(taskId)) || task;
+            schedule = await getStoredGenerationTaskRecord("video", taskId);
+            executionPhase = schedule?.executionPhase || settledExecutionPhase(task.status);
+        } else {
+            after(recover);
+        }
     }
     const shouldRefund = Boolean(task.upstream.pointsRecordId && !task.upstream.refunded && task.status === "error");
     const settledTask = shouldRefund ? await refundVideoTask(task) : task;

@@ -2,6 +2,12 @@
 
 业务表结构以 `web/src/lib/server/database/schema.ts` 为准，数据库访问由项目 PostgreSQL executor 统一应用 `dreamyo_` 前缀。
 
+## 生成任务与日志通知（2026-10-05）
+
+`dreamyo_generation_logs` 的 INSERT、UPDATE、DELETE 由 `dreamyo_generation_log_change` 触发器调用 `dreamyo_notify_generation_log_change()`，向 `dreamyo_generation_logs` 通知频道发送所属用户 ID。PostgreSQL 只在事务提交后交付通知，回滚不发布；通知不包含提示词或媒体地址。`/api/generation-logs/events` 使用登录用户的 SSE 订阅，收到通知后按用户与当前工作台分页重新读取日志；原有 SSE 心跳用于生成中记录的补偿同步，连接断开沿用原有轮询，隐藏页面关闭连接并暂停刷新。文件 Provider 在持久化完成后发布同一进程内的用户通知。
+
+Omni 完成通知只接受独立 GeminiAI Provider 密钥及稳定上游任务 ID。调度器按 `task_type`、`channel_id/provider`、`upstream_task_id` 和非终态执行阶段定向唤醒已保存任务，并通过 `dreamyo_generation_tasks_provider_upstream_idx` 部分索引补充 Provider/上游 ID 查询；原有渠道/上游 ID 索引仍然使用。通知不清除正在执行的租约、不创建任务、不复活终态，也不信任回调中的结果：Worker 重新查询 Provider，再执行既有结果落盘阶段。查询期间收到通知时，租约释放保留到期唤醒，避免覆盖通知。
+
 ## 用户云存储容量账户（开发中）
 
 `dreamyo_cloud_storage_settings` 保存新用户基础空间默认值，初始为 1 GiB。`dreamyo_cloud_storage_accounts` 在用户创建时由数据库触发器写入基础空间快照；修改默认值不会改变既有账户。`dreamyo_cloud_storage_grants` 保存有生效期的套餐权益，付费存储商品在订单中快照容量、叠加、手动续费和限购规则，支付成功后以订单 ID 唯一授予，退款时撤销；到期或撤销仅停止新增上传，不删除已存文件。同款商品可叠加时，购买数量增加同一有效期内的容量；不可叠加但可续费时，每单限一份，新权益从同款未撤销权益的最晚到期时间开始；不可续费时，只能存在一次未取消、未退款的有效购买。限购按该用户同款商品待支付、已支付及退款中订单的购买份数合计；此处不包含自动续订或自动扣款。`dreamyo_cloud_storage_reservations` 保存上传期间的容量预留，`dreamyo_cloud_storage_objects` 按用户和摘要登记实际 OSS 对象；`dreamyo_cloud_storage_object_refs` 保存每次上传形成的素材、项目、备份或作品引用。相同用户的同一文件可被多个引用共享，已用容量只计算一次实际对象，来源统计归到当前最早引用。容量事务按账户行加锁后计算已用、未过期预留及有效权益，同用户并发预留和删除须串行校验。
@@ -40,11 +46,15 @@
 
 `app_settings.model_picker_groups` 保存前端模型选择器的分类名称及顺序；逻辑模型的 `pickerGroup` 保存所属分类。公开会话只下发当前用户可用的逻辑模型与分类配置。
 
+逻辑模型的 `icon` 保存可选内置图标，`iconUrl` 保存后台上传的图片 Data URL，沿用品牌图片的 300KB 上传契约；两者随既有逻辑模型 JSON 设置持久化，不新增表。自定义图标优先显示，恢复默认清除 `icon` 和 `iconUrl`；公开会话将图标配置传给模型选择器及 Agent，图片加载失败时回退内置图标。
+
 ## 魔法代理
 
 `dreamyo_magic_proxy_settings` 是单例配置表（`id = 'default'`）。单订阅与历史兼容投影保存在 `subscription_url_ciphertext` 与 `nodes_ciphertext`；多订阅列表（包含独立订阅 ID、名称、类型、启用状态、节点明文及识别出的 Clash 内置地域/功能分组）保存于 `subscriptions_ciphertext`；节点测速延迟及存活状态持久化缓存于 `node_delays_ciphertext`，避免容器重启后丢失节点延迟数据。多订阅支持每个订阅独立存储为 `runtime/subscriptions/sub_<id>.yaml` 文件，并由 Mihomo 内核多 provider 与动态 `config.yaml` 分组协同生效；跨功能页（GeminiAIStudio、GeminiTools、ChatGPT API、Dola API）在选择代理节点时展示最新测速延迟。GeminiAIStudio、GeminiTools、GPTAPI 与 Dola API 共用同一套魔法代理绑定，绑定模式为 `magic` 或 `chained`；Dola 同时通过相同的 Provider 入口支持通用代理引用。Dola 参考图上传使用独立的 `dola_upload_enabled/node/mode/fallback_node/chained_config` 列和 17894 监听，关闭时直连 ImageX，启用时可单独选择魔法或链式代理，不继承视频提交出口。每个 Provider 都有独立 Mihomo 分组、监听端口和链式跳板组，不把代理密码或订阅明文返回浏览器。每个 Provider 的 `fallback_node`（主节点失联时由内核 fallback 组接管）在 PostgreSQL 中各自独立成列（`geminiai_fallback_node`、`gemini_tools_fallback_node`、`chatgpt_api_fallback_node`、`dola_fallback_node`、`dola_upload_fallback_node`），与文件 Provider 的 JSON 字段保持一致；缺列会导致保存后读回为空。ChatGPT 自己的 native/magic 选择仍由 `/api/admin/chatgpt-api/proxy-selection` 维护，不能与本 Provider 绑定字段混用。
 
 `dola_accounts` 保存 Dola Cookie 账号的脱敏业务状态；`cookie_ciphertext` 使用服务端密钥加密，`cookie_fingerprint` 只用于 HMAC 去重，列表接口不得返回任一敏感字段。`dola_api_keys`、`gemini_tools_api_keys`、`geminiai_api_keys`、`dola_gateway_settings` 分别保存各反代网关密钥与启用状态，其中 API Key 使用 `key_ciphertext` 进行 AES-256-GCM 服务端可逆加密存储，支持管理员后台实时可见与复制，同时保留 `key_hash` 供 API 鉴权快速比对；`dola_request_logs` 记录请求受理、代理路由、账号鉴权、Camoufox 上游、验证、媒体查询与失败阶段，并保存脱敏请求/响应摘要、任务/验证 ID、时长比例、状态码、耗时和生命周期；Cookie、API Key、Token、参考图和视频二进制不写入日志。`dola_attempts` 固定 `account_id + credential_version + proxy_reference` 与租约序列，服务重启后按同一 attempt 恢复，不通过重发掩盖未知提交结果。代理引用来自现有通用代理管理的 `node:<id>` 或 `group:<id>`，不在 Dola 表中保存区域专用 URL 或密码。Dola 请求日志已同时支持加密 JSON Provider 与 PostgreSQL repository，后台列表使用服务端筛选、分页、聚合和详情抽屉。
+
+`geminiai_request_logs` 保存 GeminiAIStudio 请求受理与查询终态，`capability` 约束包含 `text`、`image`、`search` 和 `video`；服务启动初始化会同步该约束并保留已有日志。缺少 `video` 会使视频请求日志插入失败，日志缺失不能单独证明 Provider 没有执行任务。
 
 GeminiVids（Google Vids 纯协议视频生成）为独立 Python sidecar，不新增 PostgreSQL 表：账号（storage_state `auth.json` + `registry.json`）持久化在 sidecar 数据目录（本地 `web/.data/geminivids/accounts`，Docker `dreamyo-geminivids-data` 卷），视频任务与成片持久化在 sidecar `data/tasks`；网关密钥与设置保存在 JSON Provider 文件 `geminivids-gateway.json`（结构对齐 `geminiai-gateway.json`，key 前缀 `oct_gv_`），请求日志保存于 `geminivids-request-logs.json`（上限 10000 条）。后续接入 PostgreSQL 时按 `geminiai_*` 表族同构建表。
 Mihomo 固定声明 GeminiAIStudio、GeminiTools、ChatGPTAPI 和 DolaAPI 四个独立 group/listener，并为四者分别声明链式跳板组。Dola 的魔法/链式请求通过专用 listener 传给 Camoufox Provider；Dola 的通用代理仍只持久化 `node:<id>` 或 `group:<id>` 引用，运行时短暂解析为代理 URL。Next.js 到本地 Python 服务的内部请求保持直连。
@@ -72,3 +82,12 @@ IPWO 源设置使用独立 Tab 与 `/integration/ipwo` 契约；来源开关通�
 PostgreSQL 的 `app_settings.traffic_unit` 是管理员选择的全局流量显示单位，只接受十进制 `MB`（默认）或 `GB`；原始计量与 API 传输始终使用整数 B，切换显示单位不会改写、换算或影响汇总数据。
 
 计量边界是计量服务到上游代理或目标站的 TCP 字节流，含代理握手和 TLS 记录，不含 Web 到 Python 的内部环回段、IP/TCP 包头、重传、DNS UDP、代理后续跳点或未经过计量连接的浏览器直取/外部下载，也不等同 ISP 或供应商账单。浏览器连接使用 `model='__shared_browser__'` 和 `attribution_scope='shared_browser'`，不能伪装归因到单一模型；无法识别模型的精确传输为 `__unattributed__`。DOLA 未配置中央服务时保留原有本地 `traffic.sqlite3`，仅供旧库调用和测试，不能作为全局后台统计来源。
+
+GeminiAI 视频日志以非空 `(task_id, source)` 唯一索引关联提交与查询。受理后 `phase=running`，查询原任务更新同一行、实际账号和执行阶段；仅 `phase=success` 纳入成功统计。任务终态更新后，迟到的 running 更新在文件锁和 PostgreSQL 条件 UPDATE 中均不能回退终态。
+
+
+## 短剧音视频参考与生成快照
+
+`DramaShot.videoReferences` 保存镜头显式选择的音视频素材（ID、type、title、serverUrl/remoteUrl、storageKey、mimeType），复用短剧项目现有 JSON 持久化，不新增表或迁移。服务端仅保留可访问的 audio/video 条目。视频工作台沿用 `requestSnapshot.references` 的 image/video/audio 类型，所有槽位 referenceIds 指向原素材 ID，历史重新生成复用原永久存储文件。
+
+GeminiAIStudio 动态模型目录不新增 PostgreSQL 表：内置预置与管理员手动/原生账号发现的文本、图片声明合并提供 `/v1/models`，声明持久化在 GeminiAI 账号卷 `/data/accounts/model-catalog.json`（本地 `web/.data/geminiai/accounts/model-catalog.json`）。仅管理员上游管理权限可添加和获取目录；获取失败不删除原声明，重复手动 ID 拒绝覆盖。目录登记不触发生成、不代表账号授权可用；管理员明确勾选保存后才更新既有渠道和逻辑模型配置。

@@ -238,12 +238,13 @@ export function useCanvasMediaSessionActions({ state, interactions, files }: { s
         async (file: File) => {
             const position = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
             const isVideo = file.type.startsWith("video/");
-            if (!isVideo && !file.type.startsWith("image/")) throw new Error("请选择图片或视频素材");
-            const nodeId = await (isVideo ? createVideoFileNode(file, position, true, false) : createImageFileNode(file, position, true, false));
-            message.success(`${isVideo ? "视频" : "图片"}已添加到本轮引用`);
+            const isAudio = isAudioFile(file);
+            if (!isVideo && !isAudio && !file.type.startsWith("image/")) throw new Error("请选择图片、视频或音频素材");
+            const nodeId = await (isAudio ? createAudioFileNode(file, position, true) : isVideo ? createVideoFileNode(file, position, true, false) : createImageFileNode(file, position, true, false));
+            message.success(`${isAudio ? "音频" : isVideo ? "视频" : "图片"}已添加到本轮引用`);
             return nodeId;
         },
-        [createImageFileNode, createVideoFileNode, message, screenToCanvas, size.height, size.width],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, screenToCanvas, size.height, size.width],
     );
 
     const handleAssistantSessionsChange = useCallback((sessions: CanvasAssistantSession[], activeId: string | null) => {

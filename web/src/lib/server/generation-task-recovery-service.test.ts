@@ -43,7 +43,12 @@ vi.mock("@/lib/server/agent-run-executor", () => ({ executeAgentRun: mocks.execu
 vi.mock("@/lib/server/agent-run-execution", () => ({ processAgentRunReview: mocks.processAgentRunReview }));
 vi.mock("@/lib/server/agent-run-store", () => ({ getAgentRun: mocks.getAgentRun }));
 vi.mock("@/lib/server/maintenance-auth", () => ({ maintenanceWorkerContext: vi.fn((userId: string) => `worker-context:${userId}`) }));
-vi.mock("@/lib/server/video-task-runtime", () => ({ failVideoTaskFromWorker: mocks.failVideoTaskFromWorker, persistVideoTaskResult: mocks.persistVideoTaskResult, queryVideoTaskUpstream: mocks.queryVideoTaskUpstream, rotateDolaRateLimitedVideoTask: mocks.rotateDolaVideoTask }));
+vi.mock("@/lib/server/video-task-runtime", () => ({
+    failVideoTaskFromWorker: mocks.failVideoTaskFromWorker,
+    persistVideoTaskResult: mocks.persistVideoTaskResult,
+    queryVideoTaskUpstream: mocks.queryVideoTaskUpstream,
+    rotateDolaRateLimitedVideoTask: mocks.rotateDolaVideoTask,
+}));
 vi.mock("@/lib/server/video-task-store", () => ({ getVideoTask: mocks.getVideoTask }));
 vi.mock("@/lib/server/audio-task-runtime", () => ({ createAudioTaskUpstreamStep: vi.fn(), markAudioTaskFailed: vi.fn(), persistAudioTaskResult: vi.fn(), queryAudioTaskUpstreamStep: mocks.queryAudioTaskUpstreamStep }));
 vi.mock("@/lib/server/audio-task-store", () => ({ getAudioTask: mocks.getAudioTask, updateAudioTask: mocks.updateAudioTask }));
@@ -84,6 +89,36 @@ describe("generation task recovery service", () => {
 
         await expect(runGenerationTaskRecoveryBatch({ origin: "http://internal" })).resolves.toEqual({ claimed: 0, pending: 0, resultReady: 0, completed: 0, failed: 0, needsReview: 0, deferred: 0 });
         expect(mocks.release).not.toHaveBeenCalled();
+    });
+
+    it("saves ready results while an unrelated query is still awaiting its provider", async () => {
+        let finishQuery!: (value: unknown) => void;
+        let saved!: () => void;
+        const saving = new Promise<void>((resolve) => {
+            saved = resolve;
+        });
+        const querying = new Promise((resolve) => {
+            finishQuery = resolve;
+        });
+        mocks.claim.mockResolvedValue([
+            { ...lease(), id: "slow", type: "video", executionPhase: "polling" },
+            { ...lease(), id: "ready", type: "video", executionPhase: "result_ready", resultPayload: { url: "https://provider.example/video.mp4" } },
+        ]);
+        mocks.getVideoTask.mockImplementation(async (id) => ({ id, userId: "user-one", status: "running", upstream: { id: `upstream-${id}` }, config: {} }));
+        mocks.queryVideoTaskUpstream.mockReturnValue(querying);
+        mocks.persistVideoTaskResult.mockImplementation(async (task) => {
+            saved();
+            return { ...task, status: "success" };
+        });
+        const batch = runGenerationTaskRecoveryBatch({ origin: "http://internal", workerId: "worker-one" });
+        try {
+            await saving;
+            expect(mocks.queryVideoTaskUpstream).toHaveBeenCalled();
+            expect(mocks.persistVideoTaskResult).toHaveBeenCalledWith(expect.objectContaining({ id: "ready" }), "https://provider.example/video.mp4", "http://internal", "", "user-one", undefined);
+        } finally {
+            finishQuery({ state: "pending", status: "processing" });
+            await expect(batch).resolves.toMatchObject({ claimed: 2, pending: 1, completed: 1 });
+        }
     });
 
     it("executes an active Agent through its persisted lease and closes the terminal schedule", async () => {

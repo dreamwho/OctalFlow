@@ -5,7 +5,8 @@ import { readRequestBodyBytes, RequestBodyTooLargeError } from "@/lib/server/req
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 240;
+// 必须覆盖最长模型流式生成窗口（含落库结算），与 GENERATION_ROUTE_MAX_DURATION_SECONDS 保持一致。
+export const maxDuration = 2400;
 
 type Context = { params: Promise<{ path: string[] }> };
 
@@ -44,9 +45,13 @@ async function proxy(request: Request, context: Context) {
     const headers = new Headers();
     const contentType = request.headers.get("content-type");
     const accept = request.headers.get("accept");
+    const anthropicBeta = request.headers.get("anthropic-beta");
+    const sessionId = request.headers.get("x-session-id");
     if (contentType) headers.set("content-type", contentType);
     if (accept) headers.set("accept", accept);
-    const response = await geminiToolsRuntimeRequest(`/${path.join("/")}${new URL(request.url).search}`, { method: request.method, headers, body }, { keyPrefix: key.prefix });
+    if (anthropicBeta) headers.set("anthropic-beta", anthropicBeta);
+    if (sessionId) headers.set("x-session-id", sessionId);
+    const response = await geminiToolsRuntimeRequest(`/${path.join("/")}${new URL(request.url).search}`, { method: request.method, headers, body }, { keyPrefix: key.prefix, keyId: key.id });
     if (response.ok) {
         const usage = Number(response.headers.get("x-gemini-tools-total-tokens") || 0);
         if (usage > 0) await recordGeminiToolsApiKeyTokens(key.id, usage);

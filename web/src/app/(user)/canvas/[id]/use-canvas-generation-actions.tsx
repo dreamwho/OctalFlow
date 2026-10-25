@@ -3,6 +3,7 @@
 import { nanoid } from "nanoid";
 import { useCallback, useEffect } from "react";
 
+import { useConfirmedModelFallback } from "@/hooks/use-confirmed-model-fallback";
 import { createFreshGenerationTaskContext } from "@/lib/generation-request-context";
 import { resolveImageRequestSize } from "@/lib/image-size";
 import { readImageMeta } from "@/lib/image-utils";
@@ -52,6 +53,7 @@ import type { CanvasPageState } from "./use-canvas-page-state";
 import type { CanvasTaskRuntime } from "./use-canvas-task-runtime";
 
 export function useCanvasGenerationActions({ state, tasks, interactions }: { state: CanvasPageState; tasks: CanvasTaskRuntime; interactions: CanvasInteractions }) {
+    const { runWithFallback } = useConfirmedModelFallback();
     const {
         message,
         projectId,
@@ -393,6 +395,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     let hasSuccess = false;
                     let hasFailure = false;
                     let hasReview = false;
+                    let hasCancelled = false;
                     await Promise.all(
                         targetIds.map(async (targetId) => {
                             try {
@@ -404,7 +407,11 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                                 if (isConfigNode) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
                                 return true;
                             } catch (error) {
-                                if (isGenerationCanceled(error)) return false;
+                                if (isGenerationCanceled(error)) {
+                                    hasCancelled = true;
+                                    setNodes((prev) => prev.map((node) => (node.id === targetId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_IDLE, errorDetails: undefined, imageTask: undefined } } : node)));
+                                    return false;
+                                }
                                 const errorDetails = error instanceof Error ? error.message : "生成失败";
                                 if (isGenerationTaskNeedsReviewError(error)) {
                                     hasReview = true;
@@ -431,18 +438,18 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                             node.metadata?.status === NODE_STATUS_NEEDS_REVIEW
                                 ? node
                                 : node.id === nodeId && isConfigNode
-                                  ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : hasReview ? NODE_STATUS_IDLE : NODE_STATUS_ERROR, errorDetails: hasSuccess || hasReview ? undefined : "全部图片生成失败" } }
+                                  ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : hasReview || (hasCancelled && !hasFailure) ? NODE_STATUS_IDLE : NODE_STATUS_ERROR, errorDetails: hasSuccess || hasReview || (hasCancelled && !hasFailure) ? undefined : "全部图片生成失败" } }
                                   : node.id === nodeId && isEmptyImageNode
                                     ? {
                                           ...node,
                                           metadata: {
                                               ...node.metadata,
-                                              status: hasSuccess ? NODE_STATUS_SUCCESS : hasReview ? NODE_STATUS_NEEDS_REVIEW : NODE_STATUS_ERROR,
-                                              errorDetails: hasSuccess ? undefined : node.metadata?.errorDetails || "全部图片生成失败",
+                                              status: hasSuccess ? NODE_STATUS_SUCCESS : hasReview ? NODE_STATUS_NEEDS_REVIEW : hasCancelled && !hasFailure ? NODE_STATUS_IDLE : NODE_STATUS_ERROR,
+                                              errorDetails: hasSuccess || (hasCancelled && !hasFailure) ? undefined : node.metadata?.errorDetails || "全部图片生成失败",
                                           },
                                       }
                                     : node.id === rootId && !hasSuccess
-                                      ? { ...node, metadata: { ...node.metadata, status: hasReview ? NODE_STATUS_IDLE : NODE_STATUS_ERROR, errorDetails: hasReview ? undefined : "全部图片生成失败" } }
+                                      ? { ...node, metadata: { ...node.metadata, status: hasReview || (hasCancelled && !hasFailure) ? NODE_STATUS_IDLE : NODE_STATUS_ERROR, errorDetails: hasReview || (hasCancelled && !hasFailure) ? undefined : "全部图片生成失败" } }
                                       : node,
                         ),
                     );
@@ -481,15 +488,22 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     const controller = startGenerationRequest(videoId, nodeId, targetRunningId, runController);
 
                     try {
-                        const task = await createServerVideoGenerationTask(generationConfig, effectivePrompt, videoReferences.images, videoReferences.videos, videoReferences.audios, {
-                            signal: controller.signal,
-                            conversationId: currentProject?.creativeConversationId,
-                            surface: "canvas",
-                            projectId,
-                            ...createFreshGenerationTaskContext("canvas-video", [projectId, videoId]),
-                        });
-                        setNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, metadata: { ...node.metadata, videoTask: task } } : node)));
-                        await completeVideoTask(videoId, generationConfig, task, controller, effectivePrompt);
+                        await runWithFallback(
+                            generationConfig,
+                            "video",
+                            async (attemptConfig) => {
+                                const task = await createServerVideoGenerationTask(attemptConfig, effectivePrompt, videoReferences.images, videoReferences.videos, videoReferences.audios, {
+                                    signal: controller.signal,
+                                    conversationId: currentProject?.creativeConversationId,
+                                    surface: "canvas",
+                                    projectId,
+                                    ...createFreshGenerationTaskContext("canvas-video", [projectId, videoId]),
+                                });
+                                setNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, metadata: { ...node.metadata, videoTask: task, model: task.model } } : node)));
+                                await completeVideoTask(videoId, attemptConfig, task, controller, effectivePrompt);
+                            },
+                            controller.signal,
+                        );
                     } finally {
                         finishGenerationRequest(videoId, controller);
                     }
@@ -603,7 +617,13 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     ),
                 );
             } catch (error) {
-                if (isGenerationCanceled(error)) return;
+                if (isGenerationCanceled(error)) {
+                    if (!runController.signal.aborted) {
+                        const cancelledIds = new Set([nodeId, ...pendingChildIds]);
+                        setNodes((prev) => prev.map((node) => cancelledIds.has(node.id) && node.metadata?.status === NODE_STATUS_LOADING ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_IDLE, errorDetails: undefined, imageTask: undefined, videoTask: undefined, textTask: undefined, audioTask: undefined } } : node));
+                    }
+                    return;
+                }
                 const errorDetails = error instanceof Error ? error.message : "生成失败";
                 if (isGenerationTaskNeedsReviewError(error) && pendingChildIds.length) {
                     message.error(errorDetails);
@@ -650,6 +670,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             setDolaVerification,
             startAndCompleteImageTask,
             startGenerationRequest,
+            runWithFallback,
         ],
     );
     useEffect(() => {
@@ -831,15 +852,22 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                               context: context || (await hydrateNodeGenerationContext(buildNodeGenerationContext(node.id, nodesRef.current, connectionsRef.current, prompt))),
                               availableInputs,
                           });
-                    const task = await createServerVideoGenerationTask(generationConfig, prompt, videoReferences.images, videoReferences.videos, videoReferences.audios, {
-                        signal: controller.signal,
-                        conversationId: currentProject?.creativeConversationId,
-                        surface: "canvas",
-                        projectId,
-                        ...createFreshGenerationTaskContext("canvas-video-retry", [projectId, node.id]),
-                    });
-                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, ...canvasVideoReferenceMetadata(videoReferences), videoTask: task } } : item)));
-                    await completeVideoTask(node.id, generationConfig, task, controller, prompt);
+                    await runWithFallback(
+                        generationConfig,
+                        "video",
+                        async (attemptConfig) => {
+                            const task = await createServerVideoGenerationTask(attemptConfig, prompt, videoReferences.images, videoReferences.videos, videoReferences.audios, {
+                                signal: controller.signal,
+                                conversationId: currentProject?.creativeConversationId,
+                                surface: "canvas",
+                                projectId,
+                                ...createFreshGenerationTaskContext("canvas-video-retry", [projectId, node.id]),
+                            });
+                            setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, ...canvasVideoReferenceMetadata(videoReferences), videoTask: task, model: task.model } } : item)));
+                            await completeVideoTask(node.id, attemptConfig, task, controller, prompt);
+                        },
+                        controller.signal,
+                    );
                     return;
                 }
                 if (node.type === CanvasNodeType.Audio) {
@@ -883,7 +911,10 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
                     panorama: node.type === CanvasNodeType.Panorama,
                 });
             } catch (error) {
-                if (isGenerationCanceled(error)) return;
+                if (isGenerationCanceled(error)) {
+                    if (!controller.signal.aborted) setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_IDLE, errorDetails: undefined, imageTask: undefined, textTask: undefined, videoTask: undefined, audioTask: undefined } } : item)));
+                    return;
+                }
                 const errorDetails = error instanceof Error ? error.message : "生成失败";
                 message.error(errorDetails);
                 if (isGenerationTaskNeedsReviewError(error)) {
@@ -918,6 +949,7 @@ export function useCanvasGenerationActions({ state, tasks, interactions }: { sta
             setDolaVerification,
             startAndCompleteImageTask,
             startGenerationRequest,
+            runWithFallback,
         ],
     );
 

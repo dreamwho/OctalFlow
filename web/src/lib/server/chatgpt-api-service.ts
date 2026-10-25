@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Agent, fetch as undiciFetch } from "undici";
+import sharp from "sharp";
+import { normalizeImagePreviewWidth } from "@/lib/media-image-variant";
+import { MAX_GENERATED_IMAGE_INPUT_PIXELS } from "@/lib/server/generated-image-normalizer";
 import { GENERATION_TRANSPORT_TIMEOUT_MS } from "@/lib/server/generation-http-lifecycle";
 import { ensureMagicProxyProvider, MagicProxyError } from "@/lib/server/magic-proxy-service";
 import { limitMediaResponseBody, MAX_MEDIA_PROXY_BYTES } from "@/lib/server/media-response-limit";
@@ -313,6 +316,12 @@ export async function readChatGptSignedMedia(path: string, url: URL, signal: Abo
     // A verified result link is delivery, not a new public gateway call.
     // Managed generation must remain downloadable with the public gateway off.
     const response = await chatGptRuntimeRequest(path, { signal, headers: { "x-dreamyo-internal-dispatch": "1" } });
+    if (response.ok && url.searchParams.get("format") === "webp" && response.headers.get("content-type")?.startsWith("image/")) {
+        const source = Buffer.from(await new Response(limitMediaResponseBody(response.body, MAX_MEDIA_PROXY_BYTES)).arrayBuffer());
+        const bytes = await sharp(source, { failOn: "error", limitInputPixels: MAX_GENERATED_IMAGE_INPUT_PIXELS })
+            .rotate().resize({ width: normalizeImagePreviewWidth(url.searchParams.get("width")), withoutEnlargement: true, fit: "inside" }).webp().toBuffer();
+        return new Response(new Uint8Array(bytes), { headers: { "content-type": "image/webp", "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
+    }
     return new Response(limitMediaResponseBody(response.body, MAX_MEDIA_PROXY_BYTES), {
         status: response.status,
         headers: { "content-type": response.headers.get("content-type") || "application/octet-stream", "cache-control": "private, no-store", "x-content-type-options": "nosniff" },

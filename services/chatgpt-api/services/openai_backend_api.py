@@ -47,7 +47,14 @@ from services.traffic_context import (
     release_traffic_lease_sync,
 )
 from utils.file_names import sanitize_public_filename
-from utils.helper import UpstreamHTTPError, ensure_ok, iter_sse_payloads, new_uuid, split_image_model
+from utils.helper import (
+    UpstreamHTTPError,
+    ensure_ok,
+    is_discovered_image_model,
+    iter_sse_payloads,
+    new_uuid,
+    split_image_model,
+)
 from utils.diagnostics import diagnostic_excerpt
 from utils.log import logger
 from utils.pow import build_legacy_requirements_token, build_proof_token, parse_pow_resources
@@ -846,6 +853,8 @@ class OpenAIBackendAPI:
 
     def _image_model_slug(self, model: str) -> str:
         """把标准图片模型名映射到底层 model slug。"""
+        if is_discovered_image_model(model):
+            return str(model)
         _, base_model = split_image_model(model)
         if not base_model:
             return "auto"
@@ -3815,23 +3824,42 @@ class OpenAIBackendAPI:
             return "/backend-api/conversation", "Asia/Shanghai"
         return "/backend-anon/conversation", "America/Los_Angeles"
 
-    def list_models(self) -> Dict[str, Any]:
-        """返回当前模式下可用模型，格式对齐 OpenAI `/v1/models`。"""
+    def fetch_authenticated_model_catalog(self) -> Dict[str, Any]:
+        """Fetch the raw authenticated ChatGPT model catalog payload."""
+        if not self.access_token:
+            raise ValueError("authenticated model catalog requires an access token")
         self._bootstrap()
-        path = "/backend-api/models?history_and_training_disabled=false" if self.access_token else (
-            "/backend-anon/models?iim=false&is_gizmo=false"
-        )
-        route = "/backend-api/models" if self.access_token else "/backend-anon/models"
-        context = "auth_models" if self.access_token else "anon_models"
+        path = "/backend-api/models?history_and_training_disabled=false"
+        route = "/backend-api/models"
         response = self.session.get(
             self.base_url + path,
             headers=self._headers(route),
             timeout=30,
         )
-        ensure_ok(response, context)
+        ensure_ok(response, "auth_models")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("authenticated model catalog payload must be an object")
+        return payload
+
+    def list_models(self) -> Dict[str, Any]:
+        """返回当前模式下可用模型，格式对齐 OpenAI `/v1/models`。"""
+        if not self.access_token:
+            self._bootstrap()
+            path = "/backend-anon/models?iim=false&is_gizmo=false"
+            route = "/backend-anon/models"
+            response = self.session.get(
+                self.base_url + path,
+                headers=self._headers(route),
+                timeout=30,
+            )
+            ensure_ok(response, "anon_models")
+            payload = response.json()
+        else:
+            payload = self.fetch_authenticated_model_catalog()
         data = []
         seen = set()
-        for item in response.json().get("models", []):
+        for item in payload.get("models", []):
             if not isinstance(item, dict):
                 continue
             slug = str(item.get("slug", "")).strip()

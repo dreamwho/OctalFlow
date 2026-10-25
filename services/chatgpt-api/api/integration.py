@@ -32,7 +32,13 @@ from services.runtime_environment_service import snapshot as runtime_snapshot
 from services.image_service import get_image_response, get_thumbnail_response
 from services.internal_runtime import runtime_key
 from services.log_service import log_service
-from services.model_catalog_service import get_model_catalog
+from services.model_catalog_service import (
+    ModelCatalogAccountUnavailableError,
+    ModelCatalogRefreshBusyError,
+    ModelCatalogUpstreamError,
+    get_model_catalog,
+    model_catalog_service,
+)
 from services.proxy_management_service import (
     ProxyGroupInUseError,
     ProxySelectionUnavailableError,
@@ -619,8 +625,21 @@ async def patch_settings(
 
 @router.get("/api/model-catalog", response_model=ModelCatalogView)
 async def model_catalog(authorization: str | None = Header(default=None)):
-    require_identity(authorization)
+    _require_admin(authorization)
     return await run_in_threadpool(get_model_catalog)
+
+
+@router.post("/api/model-catalog/refresh", response_model=ModelCatalogView)
+async def refresh_model_catalog(authorization: str | None = Header(default=None)):
+    _require_admin(authorization)
+    try:
+        return await run_in_threadpool(model_catalog_service.refresh)
+    except ModelCatalogRefreshBusyError as exc:
+        raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+    except ModelCatalogAccountUnavailableError as exc:
+        raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
+    except ModelCatalogUpstreamError as exc:
+        raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
 
 @router.get("/api/logs", response_model=CallSummaryPage)

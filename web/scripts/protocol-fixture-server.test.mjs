@@ -25,6 +25,32 @@ afterEach(async () => {
 });
 
 describe("protocol fixture server", () => {
+    it("checks a configured GeminiAI account without generation and persists its snake_case health in the account list", async () => {
+        const result = await fetch(`${origin}/accounts/fixture-google-account/check`, { method: "POST" }).then((response) => response.json());
+        expect(result).toMatchObject({
+            id: "fixture-google-account",
+            health: {
+                status: "ready",
+                checked_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+                message: "登录正常，AI Studio 页面已初始化",
+                cookie_expires_at: null,
+                cookie_expiry_known: false,
+            },
+        });
+        expect(Object.keys(result.health).sort()).toEqual(["checked_at", "cookie_expires_at", "cookie_expiry_known", "message", "status"]);
+        const listed = await fetch(`${origin}/accounts`).then((response) => response.json());
+        expect(listed.accounts).toContainEqual(result);
+        expect(fixture.requests.map((item) => item.path)).toEqual(["/accounts/fixture-google-account/check", "/accounts"]);
+
+        await new Promise((resolve, reject) => fixture.server.close((error) => (error ? reject(error) : resolve())));
+        fixture = createProtocolFixtureServer({ geminiaiAccounts: [{ id: "fixture-expired-account", name: "过期 Fixture 账号" }] });
+        await new Promise((resolve) => fixture.server.listen(0, "127.0.0.1", resolve));
+        const address = fixture.server.address();
+        origin = `http://127.0.0.1:${address.port}`;
+        const needsLogin = await fetch(`${origin}/accounts/fixture-expired-account/check`, { method: "POST" }).then((response) => response.json());
+        expect(needsLogin.health.status).toBe("login_required");
+    });
+
     it("serves a categorized model catalog and structured text tools", async () => {
         const catalog = await fetch(`${origin}/v1/models`).then((response) => response.json());
         expect(catalog.data.map((model) => model.capability)).toEqual(["text", "image", "video", "audio"]);

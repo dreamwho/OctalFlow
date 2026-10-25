@@ -1,0 +1,9 @@
+{
+  "archive": "dreamyo-source-update-20261021.tar.gz",
+  "archiveBytes": 23269271,
+  "archiveSha256": "675824054e5ee667e5ff5740eaec53692dc56db3aa5bd8f11a0e64c7dd6b46cd",
+  "uploadRegularFiles": 2251,
+  "baselineBuildId": "ja-z1noZmz9I3b9ZrddNp",
+  "patchArchive": "dreamyo-baseline-fix-20261021.tar.gz",
+  "patchSha256": "98a6d5ddc5573c412eff645752087e177c6478e7662657f99ac337b901752d24"
+}

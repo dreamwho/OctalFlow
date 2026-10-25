@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import sharp from "sharp";
 const magic = vi.hoisted(() => {
     class FixtureMagicProxyError extends Error {
         constructor(
@@ -27,6 +28,7 @@ afterEach(async () => {
     }
 });
 async function fixture() {
+    const previewImage = await sharp({ create: { width: 1200, height: 600, channels: 3, background: "red" } }).png().toBuffer();
     const seen: Array<{ url: string; key: string; authorization: string; body: string }> = [];
     let uploadMagicConfigured = false;
     server = createServer((request, response) => {
@@ -39,7 +41,10 @@ async function fixture() {
                 response.end("trusted traffic context requires internal dispatch");
                 return;
             }
-            if (request.url === "/images/result.png") {
+            if (request.url === "/images/preview.png") {
+                response.writeHead(200, { "content-type": "image/png" });
+                response.end(previewImage);
+            } else if (request.url === "/images/result.png") {
                 if (request.headers["x-dreamyo-internal-dispatch"] !== "1" || request.headers.authorization !== `Bearer ${request.headers["x-dreamyo-runtime-key"]}`) {
                     response.writeHead(503);
                     response.end("public gateway disabled");
@@ -137,6 +142,18 @@ describe("ChatGPT internal transport", () => {
         expect(seen).toHaveLength(1);
         url.searchParams.set("expires", "1");
         await expect(readChatGptSignedMedia("/images/result.png", url, new AbortController().signal)).rejects.toMatchObject({ status: 403 });
+    });
+    it("serves signed test images as bounded WebP previews while preserving original downloads", async () => {
+        await fixture();
+        const url = new URL(rewriteChatGptMedia("http://runtime/images/preview.png", "https://canvas.example") as string);
+        url.searchParams.set("format", "webp");
+        url.searchParams.set("width", "640");
+        const preview = await readChatGptSignedMedia("/images/preview.png", url, new AbortController().signal);
+        expect(preview.headers.get("content-type")).toBe("image/webp");
+        expect(await sharp(Buffer.from(await preview.arrayBuffer())).metadata()).toMatchObject({ format: "webp", width: 640, height: 320 });
+        url.searchParams.delete("format");
+        const original = await readChatGptSignedMedia("/images/preview.png", url, new AbortController().signal);
+        expect(await sharp(Buffer.from(await original.arrayBuffer())).metadata()).toMatchObject({ format: "png", width: 1200, height: 600 });
     });
     it("keeps SSE boundaries and DONE while rewriting URLs split across chunks", async () => {
         await fixture();

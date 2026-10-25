@@ -3,7 +3,7 @@ import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
 import { ensureMediaFileExtension, mediaFileExtension } from "@/lib/media-file";
-import type { GenerationLogProtocolTrace, GenerationLogReferenceSnapshot, GenerationLogRequestSnapshot, GenerationLogSlotSnapshot, GenerationLogSnapshotParameters } from "@/lib/generation-log-snapshot";
+import type { GenerationLogProtocolTrace, GenerationLogReferenceSnapshot, GenerationLogRequestSnapshot, GenerationLogSlotSnapshot, GenerationLogSnapshotParameters, GenerationLogSnapshotJsonValue } from "@/lib/generation-log-snapshot";
 import { isPostgresDatabaseEnabled, type QueryExecutor } from "@/lib/server/database";
 import { readJsonDataFile, withJsonDataFileLock, writeJsonDataFile } from "@/lib/server/data-adapter";
 import { normalizeGeneratedImageBytes, upscaleGeneratedImageBytes } from "@/lib/server/generated-image-normalizer";
@@ -527,10 +527,28 @@ export function normalizeGenerationLogRequestSnapshot(value: unknown): Generatio
     if (!source || Number(source.version) !== 1) return undefined;
     const userPrompt = normalizeOptionalText(source.userPrompt, undefined, 4000);
     const parameters = normalizeSnapshotParameters(source.parameters);
+    const interiorDesign = normalizeSnapshotInteriorDesign(source.interiorDesign);
     const references = Array.isArray(source.references) ? source.references.flatMap(normalizeSnapshotReference) : [];
     const slots = Array.isArray(source.slots) ? source.slots.flatMap(normalizeSnapshotSlot) : [];
     if (!userPrompt && !Object.keys(parameters).length && !references.length && !slots.length) return undefined;
-    return { version: 1, ...(userPrompt ? { userPrompt } : {}), parameters, references, slots };
+    return { version: 1, ...(userPrompt ? { userPrompt } : {}), ...(interiorDesign ? { interiorDesign } : {}), parameters, references, slots };
+}
+
+function normalizeSnapshotInteriorDesign(value: unknown): GenerationLogRequestSnapshot["interiorDesign"] {
+    const source = jsonObject(value);
+    const input = jsonObject(source?.settings);
+    if (!source || !input) return undefined;
+    const settings: Record<string, GenerationLogSnapshotJsonValue> = {};
+    for (const key of ["scene", "task", "conversion", "spaceType", "style", "exteriorView", "location", "season", "weather", "time", "curtain", "sunlight", "indoorLight", "colorTemperature", "postTone", "lightingQuality", "camera", "aperture", "shutter", "iso", "focalLength", "geometry", "objectIntegrity", "materialIntegrity", "aspectRatio", "resolution"] as const) {
+        const normalized = normalizeOptionalText(input[key], undefined, 500);
+        if (normalized !== undefined) settings[key] = normalized;
+    }
+    for (const key of ["mainLight", "artificialLight"] as const) if (typeof input[key] === "boolean") settings[key] = input[key];
+    if (Array.isArray(input.techniques)) settings.techniques = input.techniques.flatMap((item) => (typeof item === "string" ? [item.slice(0, 200)] : []));
+    if (!Object.keys(settings).length) return undefined;
+    const appId = normalizeOptionalText(source.appId, undefined, 160);
+    const appName = normalizeOptionalText(source.appName, undefined, 240);
+    return { ...(appId ? { appId } : {}), ...(appName ? { appName } : {}), settings };
 }
 
 function normalizeSnapshotParameters(value: unknown): GenerationLogSnapshotParameters {
@@ -548,6 +566,7 @@ function normalizeSnapshotReference(value: unknown): GenerationLogReferenceSnaps
     const source = jsonObject(value);
     if (!source) return [];
     const kind = source.kind === "video" || source.kind === "audio" ? source.kind : "image";
+    const role = source.role === "first_frame" || source.role === "last_frame" ? source.role : source.role === "reference" ? "reference" : undefined;
     const id = normalizeOptionalText(source.id, undefined, 160);
     const storageKey = normalizeOptionalText(source.storageKey, undefined, 1000);
     const url = normalizeSnapshotUrl(source.url);
@@ -558,6 +577,7 @@ function normalizeSnapshotReference(value: unknown): GenerationLogReferenceSnaps
         {
             id,
             kind,
+            ...(role ? { role } : {}),
             name: normalizeText(source.name, `reference-${id}`, 240),
             mimeType: normalizeText(source.mimeType, kind === "video" ? "video/mp4" : kind === "audio" ? "audio/mpeg" : "image/png", 120),
             url,

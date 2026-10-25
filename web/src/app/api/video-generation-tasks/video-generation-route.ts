@@ -12,7 +12,7 @@ import { fetchInternalApi, resolveInternalOrigin } from "@/lib/server/internal-o
 import { resolveLogicalModelCandidates } from "@/lib/server/logical-model-router";
 import { assertReferenceCapabilities, assertReferenceUrls, assertVideoReferenceRoles, buildVideoProviderRequest, isProviderBusinessError, readProviderError, readProviderString, resolvedProviderCreatePaths } from "@/lib/server/provider-task-config";
 import { buildGlobalAiOpcVideoRequest, resolveGlobalAiOpcPreset } from "@/lib/globalaiopc-catalog";
-import { createVideoTask, transitionVideoTask, updateVideoTask, type VideoTask } from "@/lib/server/video-task-store";
+import { createVideoTask, getVideoTask, transitionVideoTask, updateVideoTask, type VideoTask } from "@/lib/server/video-task-store";
 import { toSafeGenerationErrorMessage } from "@/lib/server/generation-errors";
 import { effectiveGenerationConcurrencyLimit, getStoredGenerationTaskByRequest, linkStoredGenerationTask, withGenerationConcurrencyLimit, type GenerationTaskContext } from "@/lib/server/generation-task-store";
 import { normalizeVideoAspectRatio, normalizeVideoQualityForCapability, resolveUpstreamVideoDuration, resolveVideoDuration, resolveVideoGenerationParameters, withVideoReferenceFidelity } from "@/lib/server/video-task-config";
@@ -43,6 +43,8 @@ import { DreaminaCliServiceError, dreaminaCliOperationEnabled, isDreaminaCliConf
 import { createDreaminaCliVideoUpstream, dreaminaCliVideoCommand, DreaminaCliVideoTaskError } from "@/lib/server/dreamina-cli-video-task";
 import { dreaminaCliModel } from "@/lib/server/dreamina-cli-catalog";
 import { compileMinimaxH3Prompt, createMinimaxH3ReferenceBindings, isMinimaxH3Protocol, rebindMinimaxH3ReferenceUrls } from "@/lib/server/minimax-h3-prompt-compiler";
+import { cancelGenerationTaskById, isActiveGenerationLogSlot } from "@/lib/server/generation-log-cancellation";
+import { scheduleCancelledGenerationTask } from "@/lib/server/generation-task-cancellation-service";
 
 const CREATE_PATHS = ["/video/generations", "/videos/generations", "/videos/videos", "/videos"];
 type CreateVideoReferenceInput = VideoGenerationReference & { assetId?: string; nodeId?: string; sourceTaskId?: string; alias?: string };
@@ -71,8 +73,14 @@ export async function POST(request: Request) {
         if (existing) return NextResponse.json({ task: publicTask(existing) });
     }
     if (headerRequestId) body.context = { ...(body.context || {}), clientRequestId: headerRequestId, ...(headerAttemptNo ? { attemptNo: headerAttemptNo } : {}) };
+    if (body.source === "video-workbench" && !await isWorkbenchSlotActive(user.id, body.context)) {
+        return NextResponse.json({ error: "该生成记录已删除或已取消，无法继续创建任务" }, { status: 409 });
+    }
     const settings = await getAuthSettings();
     const response = await withGenerationConcurrencyLimit(user.id, "video", 30 * 60_000, effectiveGenerationConcurrencyLimit(user.role, settings.generationConcurrency.video), async () => {
+        if (body.source === "video-workbench" && !await isWorkbenchSlotActive(user.id, body.context)) {
+            return NextResponse.json({ error: "该生成记录已删除或已取消，无法继续创建任务" }, { status: 409 });
+        }
         const requestedModel = typeof body.config?.model === "string" && body.config.model.trim() ? body.config.model : settings.defaultModels.videoModel;
         const resolvedChannels = resolveLogicalModelCandidates(settings, "video", requestedModel);
         const channels = resolvedChannels.filter((model) => roleModelAccessAllows(settings.userRoles, user.role, model.logicalModelId, "video")).map(toSystemGenerationChannel);
@@ -190,6 +198,11 @@ export async function POST(request: Request) {
                 });
                 localTask = { ...localTask, config: channel, upstream: pendingUpstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts };
             }
+            if (body.source === "video-workbench" && !await isWorkbenchSlotActive(user.id, body.context)) {
+                await cancelGenerationTaskById("video", user.id, localTask.id);
+                after(() => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [localTask!.id] }));
+                return NextResponse.json({ error: "该生成记录已删除或已取消，无法继续创建任务" }, { status: 409 });
+            }
             const submissionStartedAt = Date.now();
             await scheduleGenerationTask("video", localTask.id, {
                 executionPhase: "submitting",
@@ -201,6 +214,11 @@ export async function POST(request: Request) {
             });
             try {
                 const submissionTask = localTask;
+                const beforeProvider = await getVideoTask(submissionTask.id);
+                if (!beforeProvider || beforeProvider.userId !== user.id || beforeProvider.status !== "running") {
+                    after(() => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [submissionTask.id] }));
+                    return NextResponse.json({ error: "该视频任务已取消，无法提交上游" }, { status: 409 });
+                }
                 const upstream = await withTrafficContext(generationTrafficContext(channel, "submit", submissionTask.id), () => createUpstream(
                     user.id,
                     origin,
@@ -219,6 +237,17 @@ export async function POST(request: Request) {
                     submissionTask.generationSlotId,
                 ));
                 await updateVideoTask(localTask.id, { config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts });
+                const afterProvider = await getVideoTask(localTask.id);
+                if (!afterProvider || afterProvider.userId !== user.id || afterProvider.status === "cancelled") {
+                    await scheduleCancelledGenerationTask({
+                        type: "video", taskId: localTask.id, userId: user.id,
+                        executionPhase: "submitted", upstreamTaskId: upstream.id,
+                        queryPath: upstream.queryPath || channel.advancedConfig?.queryPath,
+                        config: channel,
+                    });
+                    after(() => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [localTask!.id] }));
+                    return NextResponse.json({ task: publicTask(afterProvider || { ...localTask, status: "cancelled", upstream }) });
+                }
                 const task = { ...localTask, config: channel, upstream, requestedDurationSeconds: parameters.videoSeconds === -1 ? undefined : parameters.videoSeconds, attempts };
                 const submittedAt = Date.now();
                 await scheduleGenerationTask("video", task.id, {
@@ -234,6 +263,11 @@ export async function POST(request: Request) {
                 after(() => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [task.id] }));
                 return NextResponse.json({ task: publicTask(task) });
             } catch (error) {
+                const currentTask = localTask ? await getVideoTask(localTask.id) : null;
+                if (currentTask?.status === "cancelled") {
+                    after(() => runGenerationTaskRecoveryBatch({ origin, cookie, limit: 1, taskIds: [currentTask.id] }));
+                    return NextResponse.json({ task: publicTask(currentTask) });
+                }
                 lastError = error;
                 attempts = finishGenerationAttempt(attempts, started.attempt.attemptNo, { status: "failed", error: toSafeGenerationErrorMessage(error, "视频任务创建失败") });
                 await updateVideoTask(localTask.id, { attempts });
@@ -261,6 +295,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: toSafeGenerationErrorMessage(lastError, "视频任务创建失败"), canRetry: lastError instanceof SafeCandidateFailure }, { status: 502 });
     });
     return response || NextResponse.json({ error: "当前用户视频任务已达到并发上限" }, { status: 429 });
+}
+
+async function isWorkbenchSlotActive(userId: string, context: GenerationTaskContext | undefined) {
+    return Boolean(context?.generationLogId && context.generationSlotId && context.clientRequestId && await isActiveGenerationLogSlot(userId, context.generationLogId, context.generationSlotId, context.clientRequestId, "video"));
 }
 
 export async function createUpstream(
@@ -347,7 +385,9 @@ export async function createUpstream(
     const multipart = channel.advancedConfig?.requestTemplate?.trim().toLowerCase().startsWith("multipart/form-data") === true;
     const payload = multipart
         ? undefined
-        : channel.advancedConfig?.protocol === "dreamyo-recommended"
+        : channel.advancedConfig?.protocol === "dola"
+          ? { model: channel.model, prompt, duration: values.duration, ratio: values.ratio, images: requestImages, first_frame: firstFrameUrl, last_frame: lastFrameUrl, references }
+          : channel.advancedConfig?.protocol === "dreamyo-recommended"
           ? buildDreamyoRecommendedVideoRequest({
                 model: channel.model,
                 prompt,

@@ -38,7 +38,7 @@ export function summarizeDramaGeneration(project: DramaProject, episode: DramaEp
         const active = [shot.storyboardStatus, shot.storyboardEndStatus, shot.generationStatus, shot.audioStatus].some((status) => ACTIVE_TASK_STATUSES.has(status || ""));
         const failed = [shot.storyboardStatus, shot.storyboardEndStatus, shot.generationStatus, shot.audioStatus].some((status) => status === "error");
         const missingPrompt = !shot.videoPrompt.trim() || (mode === "storyboard" && !shot.imagePrompt.trim());
-        const missingReference = mode === "reference" && !shot.videoUrl && shotReferenceImages(project, shot).length === 0;
+        const missingReference = mode === "reference" && !shot.videoUrl && shotReferenceImages(project, shot).length === 0 && !shot.videoReferences?.length;
 
         if (shot.videoUrl) completedVideoCount += 1;
         else incompleteShotIds.push(shot.id);

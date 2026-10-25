@@ -1,0 +1,17 @@
+{
+  "dependencyAudit": {
+    "passed": false,
+    "existingVulnerabilities": {
+      "low": 6,
+      "moderate": 23,
+      "high": 18,
+      "critical": 1,
+      "total": 48
+    }
+  },
+  "wholeRepositoryFormat": {
+    "passed": false,
+    "existingFiles": 297
+  },
+  "serverDeployed": false
+}

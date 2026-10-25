@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import platform
 import re
@@ -936,6 +937,16 @@ class LoginService:
                 storage_state = await context.storage_state(indexed_db=True)
             except TypeError:
                 storage_state = await context.storage_state()
+            # This state came directly from a browser export, so any positive
+            # cookie expiry values are authoritative. Cookie-string imports do
+            # not set this marker and are reported with unknown expiry.
+            cookie_expiry_known = any(
+                isinstance(cookie.get("expires"), (int, float))
+                and math.isfinite(cookie["expires"])
+                and cookie["expires"] > 0
+                for cookie in storage_state.get("cookies", [])
+                if isinstance(cookie, dict)
+            )
 
             # 尝试从 Google 账号页面获取邮箱
             if detected_email is None:
@@ -975,6 +986,7 @@ class LoginService:
                 name=account_name,
                 email=detected_email,
                 storage_state=storage_state,
+                cookie_expiry_known=cookie_expiry_known,
             )
 
             session.status = LoginStatus.COMPLETED

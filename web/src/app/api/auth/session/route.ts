@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { DEFAULT_SITE_SETTINGS, getAuthSettings } from "@/lib/auth/store";
+import { DEFAULT_SITE_SETTINGS, getAuthSettings, getFreshAuthSettings } from "@/lib/auth/store";
 import { getCurrentUser, serializeCurrentUser, serializePublicSettings } from "@/lib/auth/session";
 import { getInstallStatus } from "@/lib/server/install-status";
 import { getDesktopRuntimeInfo } from "@/lib/server/desktop-runtime";
@@ -17,7 +17,7 @@ export async function GET() {
 
     if (user) {
         try {
-            const settings = await getAuthSettings();
+            const settings = await getFreshAuthSettings();
             return NextResponse.json({
                 user: serializeCurrentUser(user),
                 desktop: getDesktopRuntimeInfo(),

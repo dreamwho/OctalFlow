@@ -331,6 +331,7 @@ function normalizeShot(value: unknown, index: number): DramaShot {
         clueIds: ids(input.clueIds),
         sceneId: optionalText(input.sceneId),
         videoMode: videoMode(input.videoMode),
+        videoReferences: normalizeSourceAssets(input.videoReferences).filter((asset) => (asset.type === "video" || asset.type === "audio") && (asset.serverUrl || asset.remoteUrl)),
         storyboardFrameMode: input.storyboardFrameMode === "first_last" ? "first_last" : "single",
         storyboardStatus: taskStatus(input.storyboardStatus),
         storyboardAttempt: optionalPositiveInteger(input.storyboardAttempt),

@@ -88,6 +88,7 @@ export type DramaShot = {
     clueIds: string[];
     sceneId?: string;
     videoMode?: DramaVideoMode;
+    videoReferences?: DramaSourceAsset[];
     storyboardStatus?: DramaTaskStatus;
     storyboardFrameMode?: DramaStoryboardFrameMode;
     storyboardAttempt?: number;

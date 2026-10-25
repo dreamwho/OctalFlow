@@ -207,6 +207,9 @@ class ModelCardResponse(BaseModel):
     object: Literal["model"] = "model"
     created: int
     owned_by: str
+    name: str = ""
+    capability: str = "text"
+    catalog_origin: str = "builtin"
 
 
 class ModelListResponse(BaseModel):

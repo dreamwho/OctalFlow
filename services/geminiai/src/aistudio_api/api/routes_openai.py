@@ -15,71 +15,42 @@ from aistudio_api.infrastructure.gateway.client import AIStudioClient
 
 from .dependencies import get_client, set_active_account_headers
 from .schemas import ChatRequest, ImageRequest
+from aistudio_api.infrastructure.gateway.model_catalog import ModelDeclaration, find_model, list_catalog, save_declarations
+from aistudio_api.application.api_service_common import account_request_lock
 
 router = APIRouter()
 
-MODELS = [
-    # Gemma 4 系列
-    {"id": "gemma-4-31b-it", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemma-4-26b-a4b-it", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # Gemini 3 系列
-    {"id": "gemini-3-flash-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-3.5-flash", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-3.1-pro-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-3.1-flash-lite", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-3.1-flash-image", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-3-pro-image", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # Gemini Omni 视频生成（AI Studio 页面自动化）
-    {"id": "gemini-omni-1.1-flash", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-omni-flash-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-3.1-flash-live-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-3.1-flash-tts-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # Gemini 2.5 系列
-    # {"id": "gemini-2.5-pro", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "gemini-2.5-flash", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "gemini-2.5-flash-lite", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "gemini-2.5-flash-image", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "gemini-2.5-pro-preview-tts", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "gemini-2.5-flash-preview-tts", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # # Gemini 2.0 系列
-    # {"id": "gemini-2.0-flash-lite", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # # Latest 别名
-    {"id": "gemini-pro-latest", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-flash-latest", "object": "model", "created": 1700000000, "owned_by": "google"},
-    {"id": "gemini-flash-lite-latest", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # # Deep Research
-    # {"id": "deep-research-preview-04-2026", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "deep-research-max-preview-04-2026", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # # 图片生成 (Imagen)
-    # {"id": "imagen-4.0-generate-001", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "imagen-4.0-ultra-generate-001", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "imagen-4.0-fast-generate-001", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # # 视频生成 (Veo)
-    # {"id": "veo-3.1-generate-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "veo-3.1-fast-generate-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "veo-3.1-lite-generate-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "veo-2.0-generate-001", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # # 音乐生成 (Lyria)
-    # {"id": "lyria-3-pro-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # {"id": "lyria-3-clip-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-    # # Robotics
-    # {"id": "gemini-robotics-er-1.6-preview", "object": "model", "created": 1700000000, "owned_by": "google"},
-] 
-MODELS = [ModelCardResponse(**model) for model in MODELS]
-
-MODEL_IDS = {m.id for m in MODELS}
-
-
 @router.get("/v1/models", response_model=ModelListResponse)
 async def list_models():
-    return ModelListResponse(data=MODELS)
+    return ModelListResponse(data=[ModelCardResponse(**model) for model in list_catalog()])
+
+
+@router.post("/config/models", response_model=ModelListResponse)
+async def add_model(payload: ModelDeclaration):
+    try:
+        return ModelListResponse(data=[ModelCardResponse(**model) for model in save_declarations([payload], origin="manual")])
+    except ValueError as error:
+        raise HTTPException(409, detail={"message": str(error), "type": "model_catalog_error"}) from error
+
+
+@router.post("/config/models/sync", response_model=ModelListResponse)
+async def sync_models(client: AIStudioClient = Depends(get_client)):
+    try:
+        async with account_request_lock():
+            discovered = await client._session.discover_models()
+        declarations = [ModelDeclaration(**model) for model in discovered]
+        if not declarations:
+            raise RuntimeError("AI Studio 未返回可用的文本或图片模型目录")
+        return ModelListResponse(data=[ModelCardResponse(**model) for model in save_declarations(declarations, origin="aistudio")])
+    except RuntimeError as error:
+        raise HTTPException(502, detail={"message": str(error), "type": "model_catalog_error"}) from error
 
 
 @router.get("/v1/models/{model_id:path}", response_model=ModelCardResponse)
 async def get_model(model_id: str):
-    for m in MODELS:
-        if m.id == model_id:
-            return m
+    model = find_model(model_id)
+    if model:
+        return ModelCardResponse(**model)
     raise HTTPException(status_code=404, detail={"message": f"Model '{model_id}' not found", "type": "invalid_request_error"})
 
 

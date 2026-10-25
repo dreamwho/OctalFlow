@@ -9,6 +9,7 @@ describe("media image urls", () => {
         expect(imagePreviewUrl("/api/public/works/publicwork123/media/asset-one", 640)).toBe("/api/public/works/publicwork123/media/asset-one?format=webp&width=640");
         expect(imagePreviewUrl("/api/public/prompt-images?path=images%2Fportrait_case1%2Foutput.jpg", 480)).toBe("/api/public/prompt-images?path=images%2Fportrait_case1%2Foutput.jpg&format=webp&width=480");
         expect(imagePreviewUrl("/api/admin/object-storage/files/preview?key=dreamyo%2Ffile.png", 256)).toBe("/api/admin/object-storage/files/preview?key=dreamyo%2Ffile.png&format=webp&width=256");
+        expect(imagePreviewUrl("/api/chatgpt-api/media/images/test.png?expires=1&signature=test", 640)).toBe("/api/chatgpt-api/media/images/test.png?expires=1&signature=test&format=webp&width=640");
     });
 
     it("builds original-file downloads from a preview url", () => {

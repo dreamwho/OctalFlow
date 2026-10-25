@@ -1,0 +1,41 @@
+{
+  "route": "http://127.0.0.1:53649/canvas/canvas-Ml1CYD0viQab13zVPS4a7",
+  "theme": "light",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "zoom": 1
+  },
+  "state": "配置节点生成按钮、积分与圆形提交组合胶囊",
+  "configGenerationVisual": {
+    "rect": {
+      "left": 705,
+      "top": 403,
+      "right": 741,
+      "bottom": 439,
+      "width": 36,
+      "height": 36
+    },
+    "backgroundImage": "linear-gradient(135deg, rgb(78, 70, 233), rgb(110, 83, 246) 55%, rgb(137, 121, 255))",
+    "icon": {
+      "left": 713,
+      "top": 411.171875,
+      "width": 20,
+      "height": 19.65625
+    }
+  },
+  "configCreditVisual": {
+    "rect": {
+      "left": 498,
+      "top": 398,
+      "width": 244,
+      "height": 46
+    },
+    "creditRight": 546.0625,
+    "creditTop": 413,
+    "buttonLeft": 705,
+    "buttonTop": 403
+  },
+  "buildId": "tuThHXS66O86nsFvbz8jJ",
+  "capturedAt": "2026-10-21T08:26:17.122Z"
+}

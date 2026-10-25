@@ -1,12 +1,102 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import sharp from "sharp";
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { Client } from "pg";
 import { E2E_PAYMENT_WEBHOOK_SECRET, pollTask, protocolFixtureState, resetProtocolFixture } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeEach(async ({ request }) => {
     await resetProtocolFixture(request);
+});
+
+test("GeminiAI accepted video remains running and the open log follows its terminal state", async ({ page }, testInfo) => {
+    test.skip(!process.env.DREAMYO_E2E_DATABASE_URL, "Requires an explicitly configured isolated PostgreSQL database");
+    const client = new Client({ connectionString: process.env.DREAMYO_E2E_DATABASE_URL });
+    const id = `e2e-omni-${randomUUID()}`;
+    const taskId = `vt_${randomUUID()}`;
+    await client.connect();
+    try {
+        await client.query(
+            "INSERT INTO dreamyo_geminiai_request_logs (id, source, capability, method, path, model, status_code, duration_ms, phase, task_id, response_preview) VALUES ($1, 'runtime', 'video', 'POST', '/v1/videos', 'gemini-omni-1.1-flash', 200, 4500, 'running', $2, $3)",
+            [id, taskId, JSON.stringify({ id: taskId, status: "processing", execution_stage: "generating" })],
+        );
+        await page.route("**/api/admin/geminiai", (route) =>
+            route.fulfill({ json: { code: 0, data: { configured: true, healthy: true, accounts: [], accountsAvailable: true, models: [], channels: [], gateway: { enabled: true }, apiKeys: [] }, msg: "OK" } }),
+        );
+        await page.goto("/admin?section=geminiai");
+        await page.getByRole("tab", { name: /请求日志|日志/ }).click();
+        const row = page.getByRole("button").filter({ has: page.getByText("gemini-omni-1.1-flash", { exact: true }) });
+        await expect(row).toContainText("执行中");
+        await row.click();
+        const drawer = page.getByRole("dialog");
+        await expect(drawer).toContainText("执行中 · 200");
+        await expect(drawer).toContainText(taskId);
+        const refreshed = page.waitForResponse(async (response) => response.url().includes("/api/admin/geminiai/logs?") && (await response.json()).data?.items?.some((item: { id: string; phase: string }) => item.id === id && item.phase === "success"));
+        await client.query("UPDATE dreamyo_geminiai_request_logs SET phase = 'success', duration_ms = 125000, response_preview = $2 WHERE id = $1", [id, JSON.stringify({ id: taskId, status: "succeeded", video_url: `/v1/videos/${taskId}/content` })]);
+        await refreshed;
+        await expect(drawer).toContainText("成功 · 200");
+        await expect(drawer).toContainText("video_url");
+        await expect(drawer).not.toContainText('"status":"processing"');
+        await page.screenshot({ path: testInfo.outputPath("geminiai-video-log-completed.png") });
+        await drawer.getByRole("button", { name: "关闭", exact: true }).click();
+        await page.reload();
+        await page.getByRole("tab", { name: /请求日志|日志/ }).click();
+        await expect(row).toContainText("成功");
+    } finally {
+        await client.query("DELETE FROM dreamyo_geminiai_request_logs WHERE id = $1", [id]);
+        await client.end();
+    }
+});
+
+test("GeminiAI video failure logs persist in PostgreSQL and remain filterable in the admin UI", async ({ page, request }, testInfo) => {
+    test.skip(!process.env.DREAMYO_E2E_DATABASE_URL, "Requires an explicitly configured isolated PostgreSQL database");
+    const client = new Client({ connectionString: process.env.DREAMYO_E2E_DATABASE_URL });
+    const id = `e2e-omni-${randomUUID()}`;
+    const error = "reference image download failed: fixture connection refused";
+    await client.connect();
+    try {
+        await client.query(
+            "INSERT INTO dreamyo_geminiai_request_logs (id, source, capability, method, path, model, status_code, duration_ms, phase, error) VALUES ($1, 'runtime', 'video', 'GET', '/v1/videos/vt_fixture', 'gemini-omni-1.1-flash', 200, 20, 'failed', $2)",
+            [id, error],
+        );
+        const response = await request.get("/api/admin/geminiai/logs?capability=video&status=failed");
+        expect(response.ok(), await response.text()).toBe(true);
+        expect((await response.json()).data.items).toContainEqual(expect.objectContaining({ id, capability: "video", phase: "failed", error }));
+        await page.route("**/api/admin/geminiai", (route) =>
+            route.fulfill({ json: { code: 0, data: { configured: true, healthy: true, accounts: [], accountsAvailable: true, models: [], channels: [], gateway: { enabled: true }, apiKeys: [] }, msg: "OK" } }),
+        );
+        for (const theme of ["light", "dark"]) {
+            await page.goto("/admin?section=geminiai");
+            await page.evaluate((value) => localStorage.setItem("dreamyo:theme_store", JSON.stringify({ state: { theme: value }, version: 0 })), theme);
+            for (const width of [1440, 390, 430]) {
+                await page.setViewportSize({ width, height: 1000 });
+                await page.reload();
+                await page.getByRole("tab", { name: /请求日志|日志/ }).click();
+                await page.getByRole("combobox").nth(1).click();
+                await page.locator(".ant-select-dropdown:visible").getByText("视频", { exact: true }).click();
+                await page.getByRole("combobox").nth(0).click();
+                await page.locator(".ant-select-dropdown:visible").getByText("失败", { exact: true }).click();
+                const row = page.getByRole("button").filter({ has: page.getByText("gemini-omni-1.1-flash", { exact: true }) });
+                await expect(row).toContainText("视频");
+                await expect(row).toContainText("失败");
+                await row.click();
+                const drawer = page.getByRole("dialog");
+                await expect(drawer).toContainText(error);
+                await expect(drawer).toContainText("失败 · 200");
+                const bounds = await drawer.boundingBox();
+                expect(bounds).not.toBeNull();
+                expect(bounds!.width).toBeLessThanOrEqual(width);
+                await page.screenshot({ path: testInfo.outputPath(`geminiai-video-log-${theme}-${width}.png`) });
+                await drawer.getByRole("button", { name: "关闭", exact: true }).click();
+            }
+        }
+    } finally {
+        await client.query("DELETE FROM dreamyo_geminiai_request_logs WHERE id = $1", [id]);
+        await client.end();
+    }
 });
 
 test("site footer deletions remain deleted after settings and public-session reloads", async ({ request }) => {
@@ -232,41 +322,63 @@ test("image task persists a real media result and reuses the same request identi
     expect(state.requests.filter((item) => item.method === "POST" && item.path.endsWith("/images/generations"))).toHaveLength(1);
 });
 
-test("unified creative page reaches the local planning and image protocols", async ({ page, request }) => {
+test("unified generation page reaches the local image protocol and restores its result", async ({ page, request }) => {
     await page.goto("/create", { waitUntil: "domcontentloaded" });
-    await expect(page.locator(".creative-composer[data-ready='true']")).toHaveAttribute("data-ready", "true", { timeout: 45_000 });
-
-    await page.getByRole("button", { name: "当前创作类型：Agent 模式" }).click();
-    const modePicker = page.locator(".ant-popover").filter({ hasText: "创作类型" }).last();
-    await expect(modePicker).toBeVisible();
-    await modePicker.getByRole("button", { name: /图片生成/ }).click();
-    await expect(page.getByRole("button", { name: "当前创作类型：图片生成" })).toBeVisible();
-
+    const workbench = page.getByTestId("image-video-workbench").filter({ visible: true });
+    await expect(workbench).toBeVisible();
+    await expect(page.getByRole("button", { name: "图片", exact: true })).toHaveAttribute("aria-pressed", "true");
     const prompt = `统一入口协议图片 ${randomUUID().slice(0, 8)}`;
-    await page.getByRole("textbox", { name: "输入创作要求，使用 / 选择 Skill" }).fill(prompt);
-    const runCreated = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/agent/runs");
-    await page.getByRole("button", { name: "发送" }).click();
-    const runResponse = await runCreated;
-    expect(runResponse.ok(), await runResponse.text()).toBe(true);
-    const runId = ((await runResponse.json()) as { data: { run: { id: string } } }).data.run.id;
-
-    await expect
-        .poll(
-            async () => {
-                const response = await request.get(`/api/agent/runs/${runId}`);
-                if (!response.ok()) return `http-${response.status()}`;
-                return ((await response.json()) as { data: { run: { status: string } } }).data.run.status;
-            },
-            { timeout: 60_000 },
-        )
-        .toBe("completed");
-    await expect(page.getByTestId("creative-media-result")).toBeVisible();
-    await expect(page.getByTestId("creative-media-result").getByRole("img")).toHaveAttribute("src", /\/api\/generation-log-assets\/permanent\/.+\.png/);
-
+    await page.getByRole("textbox", { name: "提示词", exact: true }).fill(prompt);
+    const created = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/generation-logs");
+    await page.getByRole("button", { name: /立即生成/ }).click();
+    const response = await created;
+    expect(response.ok(), await response.text()).toBe(true);
+    const recordId = (await response.json()).log.id;
+    const card = workbench.locator(`article[data-record-id="${recordId}"]`);
+    await expect(card).toHaveAttribute("data-status", "success", { timeout: 60_000 });
+    await expect(card.locator("img").first()).toBeVisible();
+    await page.reload();
+    await expect(card).toHaveAttribute("data-status", "success");
     const state = await protocolFixtureState(request);
-    expect(state.requests.some((item) => item.method === "POST" && item.path.endsWith("/chat/completions"))).toBe(true);
     expect(state.requests.filter((item) => item.method === "POST" && item.path.endsWith("/images/generations"))).toHaveLength(1);
 });
+
+for (const reference of [false, true]) {
+    test(`video workbench completes ${reference ? "image-to-video" : "text-to-video"} through the local protocol`, async ({ page, request }) => {
+        await page.goto("/create?mode=video");
+        const workbench = page.getByTestId("image-video-workbench");
+        await expect(page.getByRole("button", { name: "视频", exact: true })).toHaveAttribute("aria-pressed", "true");
+        if (reference) {
+            await page.getByRole("button", { name: "添加参考图片" }).click();
+            await page.locator("#workbench-reference-file").setInputFiles({
+                name: "video-reference.png",
+                mimeType: "image/png",
+                buffer: await sharp({ create: { width: 32, height: 32, channels: 3, background: "#2563eb" } })
+                    .png()
+                    .toBuffer(),
+            });
+            await expect(page.getByRole("img", { name: "video-reference.png" })).toBeVisible();
+        }
+        await page.getByRole("textbox", { name: "提示词", exact: true }).fill(`工作台视频协议 ${reference ? "参考图" : "纯文本"}`);
+        const created = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/generation-logs");
+        const taskCreated = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/video-generation-tasks");
+        await page.getByRole("button", { name: /立即生成/ }).click();
+        const response = await created;
+        expect(response.ok(), await response.text()).toBe(true);
+        const recordId = (await response.json()).log.id;
+        const taskResponse = await taskCreated;
+        expect(taskResponse.ok(), await taskResponse.text()).toBe(true);
+        expect(taskResponse.request().postDataJSON().references || []).toHaveLength(reference ? 1 : 0);
+        const card = workbench.locator(`article[data-record-id="${recordId}"]`);
+        await expect(card).toHaveAttribute("data-status", "success", { timeout: 60_000 });
+        await expect(card.locator("video")).toHaveAttribute("src", /\/api\/reference-assets\/permanent\/.+\.mp4/);
+        await expect.poll(() => card.locator("video").evaluate((video: HTMLVideoElement) => video.videoWidth > 0 && video.videoHeight > 0 && video.duration > 0)).toBe(true);
+        const state = await protocolFixtureState(request);
+        expect(state.requests.filter((item) => item.method === "POST" && item.path.endsWith("/videos"))).toHaveLength(1);
+        await page.reload();
+        await expect(card).toHaveAttribute("data-status", "success");
+    });
+}
 
 test("video request replay and cancellation keep one upstream task", async ({ request }) => {
     const clientRequestId = `e2e-video:${randomUUID()}`;
@@ -338,8 +450,9 @@ test("administrator orders and hides Canvas node models from the logical model c
         expect(seeded.ok(), await seeded.text()).toBe(true);
 
         await page.goto("/admin?section=channels", { waitUntil: "domcontentloaded" });
-        await expect(page.locator(".admin-dashboard-shell")).toHaveAttribute("data-hydrated", "true");
+        await expect(page.locator('.admin-dashboard-shell[data-hydrated="true"]').filter({ visible: true })).toHaveCount(1);
         await page.getByRole("tab", { name: "逻辑模型" }).click();
+        await page.getByRole("tab", { name: "默认与展示排序", exact: true }).click();
         await expect(page.getByText("节点模型显示与排序", { exact: true })).toBeVisible();
         const order = page.locator("[data-logical-model-order]");
         await expect(order).toHaveCount(3);
@@ -363,6 +476,7 @@ test("administrator orders and hides Canvas node models from the logical model c
         await page.setViewportSize({ width: 390, height: 844 });
         await page.goto("/admin?section=channels", { waitUntil: "domcontentloaded" });
         await page.getByRole("tab", { name: "逻辑模型" }).click();
+        await page.getByRole("tab", { name: "默认与展示排序", exact: true }).click();
         const displayPanel = page.getByText("节点模型显示与排序", { exact: true }).locator("xpath=ancestor::section[1]");
         await expect(displayPanel).toBeVisible();
         await displayPanel.scrollIntoViewIfNeeded();
@@ -385,7 +499,7 @@ test("administrator orders and hides Canvas node models from the logical model c
         await page.goto(`/canvas/${projectId}`, { waitUntil: "domcontentloaded" });
         const picker = page.locator('[data-node-id="model-order-config"] .canvas-composer-model-picker');
         await picker.click();
-        const options = page.getByRole("option");
+        const options = page.getByRole("region", { name: "其他模型", exact: true }).getByRole("option");
         await expect(options).toHaveCount(2);
         await expect(options.nth(0)).toContainText("画布图片 C");
         await expect(options.nth(1)).toContainText("画布图片 B");
@@ -398,6 +512,125 @@ test("administrator orders and hides Canvas node models from the logical model c
 
     function logicalModel(id: string, name: string, upstreamModel: string) {
         return { id, name, capability: "image", enabled: true, bindings: [{ id: `${id}-binding`, channelId: "", upstreamModel, enabled: true, priority: 1 }] };
+    }
+});
+
+for (const width of [1440, 390, 430]) test(`uploaded model icons persist and restore defaults at ${width}px`, async ({ page, request }, testInfo) => {
+    test.slow();
+    const before = (await (await request.get("/api/admin/settings")).json()).settings;
+    const modelId = "gemini-icon-test";
+    const name = "图标验收模型";
+    const icon = await sharp({ create: { width: 24, height: 24, channels: 4, background: { r: 255, g: 87, b: 51, alpha: 0.75 } } }).png().toBuffer();
+    const iconUrl = `data:image/png;base64,${icon.toString("base64")}`;
+    const seededModel = { id: modelId, name, capability: "image", enabled: true, bindings: [{ id: "icon-binding", channelId: "e2e-primary", upstreamModel: "e2e-image", enabled: true, priority: 1 }] };
+    const seeded = await request.patch("/api/admin/settings", { data: { logicalModels: [...before.logicalModels.filter((model: { id: string }) => model.id !== modelId), seededModel], defaultModels: { ...before.defaultModels, imageModel: modelId } } });
+    expect(seeded.ok(), await seeded.text()).toBe(true);
+    let projectId = "";
+    try {
+        const created = await request.post("/api/canvas/projects", { data: { title: "自定义模型图标验收", project: { nodes: [{ id: "icon-config", type: "config", title: "生成配置", position: { x: 80, y: 100 }, width: 320, height: 220, metadata: { generationMode: "image", model: modelId } }], connections: [] } } });
+        expect(created.ok(), await created.text()).toBe(true);
+        projectId = (await created.json()).data.project.id;
+        await page.setViewportSize({ width, height: width === 1440 ? 900 : 932 });
+        for (const theme of ["light", "dark"] as const) {
+            const themed = await request.patch("/api/admin/settings", { data: { site: { ...before.site, frontendTheme: theme, adminTheme: theme } } });
+            expect(themed.ok(), await themed.text()).toBe(true);
+            await page.goto("/admin?section=channels");
+            await openEditor();
+            if (theme === "dark") await expect(page.locator("html")).toHaveClass(/dark/);
+            else await expect(page.locator("html")).not.toHaveClass(/dark/);
+            await expect(preview()).toHaveAttribute("src", "/icons/nanobanana.svg");
+            await expect(page.getByRole("button", { name: "恢复默认图标" })).toBeDisabled();
+            await page.getByLabel("上传模型图标文件").setInputFiles({ name: "invalid.txt", mimeType: "text/plain", buffer: Buffer.from("invalid") });
+            await expect(page.getByText("模型图标支持 PNG、JPG、WebP、SVG 或 ICO，文件不能超过 300KB", { exact: true })).toBeVisible();
+            await expect(preview()).toHaveAttribute("src", "/icons/nanobanana.svg");
+            const chooser = page.waitForEvent("filechooser");
+            await page.getByRole("button", { name: "上传自定义图标" }).click();
+            await (await chooser).setFiles({ name: "custom-icon.png", mimeType: "image/png", buffer: icon });
+            await expect(preview()).toHaveAttribute("src", iconUrl);
+            await expect.poll(() => preview().evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth === 24 && getComputedStyle(image).filter === "none")).toBe(true);
+            await expect(page.getByRole("button", { name: "恢复默认图标" })).toBeEnabled();
+            await expect(page.getByText("模型图标支持 PNG、JPG、WebP、SVG 或 ICO，文件不能超过 300KB", { exact: true })).toBeHidden();
+            await expect(page.getByText("图标已读取，应用修改后生效", { exact: true })).toBeHidden();
+            const editorBounds = await page.locator("[data-model-icon-editor]").evaluate((editor) => ({ editor: editor.getBoundingClientRect().toJSON(), children: Array.from(editor.children).filter((child) => getComputedStyle(child).display !== "none").map((child) => child.getBoundingClientRect().toJSON()), viewport: innerWidth }));
+            expect(editorBounds.children.every((box) => box.x >= 0 && box.right <= editorBounds.viewport + 1)).toBe(true);
+            await writeFile(testInfo.outputPath(`icon-editor-${theme}-${width}.json`), JSON.stringify({ buildId: (await readFile(".next/BUILD_ID", "utf8")).trim(), route: "/admin?section=channels", theme, viewport: { width, height: width === 1440 ? 900 : 932 }, state: "自定义图标上传完成", ...editorBounds, image: await preview().evaluate((image: HTMLImageElement) => ({ width: image.naturalWidth, height: image.naturalHeight, filter: getComputedStyle(image).filter, objectFit: getComputedStyle(image).objectFit })) }, null, 2), "utf8");
+            await page.screenshot({ path: testInfo.outputPath(`icon-editor-${theme}-${width}.png`) });
+            await saveEditor();
+            expect((await readModel()).iconUrl).toBe(iconUrl);
+            const publicModels = (await (await request.get("/api/auth/session")).json()).settings.logicalModels;
+            expect(publicModels.find((model: { id: string }) => model.id === modelId).iconUrl).toBe(iconUrl);
+            await page.reload();
+            await openEditor();
+            await expect(preview()).toHaveAttribute("src", iconUrl);
+            await page.getByRole("button", { name: /^取\s*消$/ }).click();
+
+            await page.goto(`/canvas/${projectId}`);
+            const picker = page.locator('[data-node-id="icon-config"] .canvas-composer-model-picker');
+            await expect(picker.locator("img")).toHaveAttribute("src", iconUrl);
+            await picker.click();
+            await expect(page.locator(`[data-model-id="${modelId}"] img`).last()).toHaveAttribute("src", iconUrl);
+            await page.screenshot({ path: testInfo.outputPath(`icon-canvas-${theme}-${width}.png`) });
+            await page.goto("/create?mode=image");
+            const workbenchPicker = page.locator(".canvas-composer-model-picker").filter({ visible: true }).first();
+            await workbenchPicker.click();
+            const workbenchOption = page.locator(`[data-model-id="${modelId}"]`).last();
+            await expect(workbenchOption.locator("img")).toHaveAttribute("src", iconUrl);
+            await workbenchOption.click();
+            await expect(workbenchPicker.locator("img")).toHaveAttribute("src", iconUrl);
+            await page.screenshot({ path: testInfo.outputPath(`icon-workbench-${theme}-${width}.png`) });
+
+            const currentSettings = (await (await request.get("/api/admin/settings")).json()).settings;
+            const broken = await request.patch("/api/admin/settings", { data: { logicalModels: currentSettings.logicalModels.map((model: { id: string }) => model.id === modelId ? { ...model, iconUrl: "data:image/png;base64,YQ==" } : model) } });
+            expect(broken.ok(), await broken.text()).toBe(true);
+            await page.goto("/admin?section=channels");
+            await openEditor();
+            await expect(preview()).toHaveAttribute("src", "/icons/nanobanana.svg");
+            await page.getByRole("button", { name: "恢复默认图标" }).click();
+            await expect(preview()).toHaveAttribute("src", "/icons/nanobanana.svg");
+            await page.screenshot({ path: testInfo.outputPath(`icon-restored-${theme}-${width}.png`) });
+            await saveEditor();
+            expect(await readModel()).not.toHaveProperty("iconUrl");
+            expect(await readModel()).not.toHaveProperty("icon");
+            await page.reload();
+            await openEditor();
+            await expect(preview()).toHaveAttribute("src", "/icons/nanobanana.svg");
+            await page.getByRole("combobox", { name: "模型内置图标" }).click();
+            await page.locator(".ant-select-dropdown:visible").getByText("OpenAI", { exact: true }).click();
+            await expect(preview()).toHaveAttribute("src", "/icons/openai.svg");
+            await page.getByRole("button", { name: "恢复默认图标" }).click();
+            await saveEditor();
+        }
+    } finally {
+        if (projectId) await request.delete(`/api/canvas/projects/${projectId}`);
+        const restored = await request.patch("/api/admin/settings", { data: { site: before.site, logicalModels: before.logicalModels, defaultModels: before.defaultModels } });
+        expect(restored.ok(), await restored.text()).toBe(true);
+    }
+    function preview() { return page.getByLabel("模型图标预览").locator("img"); }
+    async function openEditor() {
+        await expect(page.locator('.admin-dashboard-shell[data-hydrated="true"]').filter({ visible: true })).toHaveCount(1);
+        await page.getByRole("tab", { name: "逻辑模型", exact: true }).click();
+        await page.getByRole("button", { name: `编辑 ${name}`, exact: true }).click();
+        await expect(page.getByText("编辑逻辑模型", { exact: true })).toBeVisible();
+    }
+    async function saveEditor() {
+        const saved = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/admin/settings");
+        await page.getByRole("button", { name: "应用修改", exact: true }).click();
+        const response = await saved;
+        expect(response.ok(), await response.text()).toBe(true);
+    }
+    async function readModel() {
+        const response = await request.get("/api/admin/settings");
+        expect(response.ok(), await response.text()).toBe(true);
+        const model = (await response.json()).settings.logicalModels.find((model: { id: string }) => model.id === modelId);
+        if (process.env.DREAMYO_E2E_DATABASE_URL) {
+            const client = new Client({ connectionString: process.env.DREAMYO_E2E_DATABASE_URL });
+            await client.connect();
+            try {
+                const result = await client.query("SELECT logical_models FROM dreamyo_app_settings WHERE id = 'default'");
+                expect(result.rows[0].logical_models.find((stored: { id: string }) => stored.id === modelId).iconUrl).toBe(model.iconUrl);
+            } finally { await client.end(); }
+        }
+        return model;
     }
 });
 
@@ -473,7 +706,11 @@ async function postSignedWebhook(request: APIRequestContext, rawBody: string) {
     return request.post("/api/billing/webhooks/payply", { data: rawBody, headers: { "content-type": "application/json", "x-dreamyo-signature": signature } });
 }
 
-for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 430, height: 932 }]) {
+for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+]) {
     for (const theme of ["light", "dark"]) {
         test(`prompt rules save, reload and fit ${viewport.width}px ${theme}`, async ({ page, request }, testInfo) => {
             const response = await request.get("/api/admin/settings");
@@ -508,7 +745,15 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
                 const geometry = await page.locator("[data-prompt-rule=imageReference]").evaluate((element) => {
                     const rect = element.getBoundingClientRect();
                     const input = element.querySelector("textarea")!.getBoundingClientRect();
-                    return { left: rect.left, right: rect.right, inputLeft: input.left, inputRight: input.right, viewport: innerWidth, display: getComputedStyle(element.parentElement!).display, overflow: document.documentElement.scrollWidth - innerWidth };
+                    return {
+                        left: rect.left,
+                        right: rect.right,
+                        inputLeft: input.left,
+                        inputRight: input.right,
+                        viewport: innerWidth,
+                        display: getComputedStyle(element.parentElement!).display,
+                        overflow: document.documentElement.scrollWidth - innerWidth,
+                    };
                 });
                 expect(geometry.display).toBe("grid");
                 expect(geometry.left).toBeGreaterThanOrEqual(0);
@@ -528,10 +773,19 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
 test("all prompt rule switches and contents persist independently", async ({ page, request }) => {
     const before = (await (await request.get("/api/admin/settings")).json()).settings.generationDefaults;
     const labels = {
-        imageReference: "图片参考素材约束", sub2ApiImageReference: "Sub2API 图片编辑约束", panorama: "全景节点输出约束",
-        videoReference: "视频参考素材约束", videoFirstFrame: "视频首帧约束", videoFirstLastFrame: "视频首尾帧约束",
-        minimaxH3Base: "MiniMax H3 文生 / 首尾帧包装", minimaxH3Reference: "MiniMax H3 多模态参考包装", minimaxH3Bindings: "MiniMax H3 素材绑定说明",
-        image: "图片通用优化规则", video: "视频通用优化规则", text: "文本通用优化规则", audio: "音频通用优化规则",
+        imageReference: "图片参考素材约束",
+        sub2ApiImageReference: "Sub2API 图片编辑约束",
+        panorama: "全景节点输出约束",
+        videoReference: "视频参考素材约束",
+        videoFirstFrame: "视频首帧约束",
+        videoFirstLastFrame: "视频首尾帧约束",
+        minimaxH3Base: "MiniMax H3 文生 / 首尾帧包装",
+        minimaxH3Reference: "MiniMax H3 多模态参考包装",
+        minimaxH3Bindings: "MiniMax H3 素材绑定说明",
+        image: "图片通用优化规则",
+        video: "视频通用优化规则",
+        text: "文本通用优化规则",
+        audio: "音频通用优化规则",
     };
     try {
         await page.goto("/admin?section=settings", { waitUntil: "domcontentloaded" });
@@ -539,7 +793,7 @@ test("all prompt rule switches and contents persist independently", async ({ pag
         await page.getByRole("tab", { name: "生成控制" }).click();
         for (const [key, label] of Object.entries(labels)) {
             const toggle = page.getByRole("switch", { name: `${label}开关`, exact: true });
-            if (await toggle.getAttribute("aria-checked") === "true") await toggle.click();
+            if ((await toggle.getAttribute("aria-checked")) === "true") await toggle.click();
             await page.getByRole("textbox", { name: `${label}内容`, exact: true }).fill(key === "panorama" ? "" : `${label} 自定义内容\n第二行`);
         }
         await page.getByRole("button", { name: "保存系统设置" }).click();

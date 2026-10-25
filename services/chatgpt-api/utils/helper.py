@@ -118,8 +118,33 @@ def new_uuid() -> str:
     return str(uuid.uuid4())
 
 
+def is_discovered_image_model(model: object) -> bool:
+    """Accept only exact image slugs from a successfully persisted upstream snapshot."""
+    candidate = str(model or "")
+    if not candidate or candidate != candidate.strip():
+        return False
+    normalized = candidate.lower()
+    if normalized in BASE_IMAGE_MODELS:
+        return False
+    for plan_type in IMAGE_MODEL_PLAN_TYPES:
+        prefix = f"{plan_type}-"
+        if normalized.startswith(prefix) and normalized[len(prefix):] == CODEX_IMAGE_MODEL:
+            return False
+    try:
+        from services.config import config
+
+        snapshot = config.get().get("model_catalog_snapshot")
+    except Exception:
+        return False
+    if not isinstance(snapshot, dict) or snapshot.get("source") != "upstream":
+        return False
+    image_models = snapshot.get("image_models")
+    return isinstance(image_models, list) and candidate in image_models
+
+
 def split_image_model(model: object) -> tuple[str | None, str | None]:
-    normalized = str(model or "").strip().lower()
+    raw_model = str(model or "").strip()
+    normalized = raw_model.lower()
     if not normalized:
         return None, None
     if normalized in BASE_IMAGE_MODELS:
@@ -130,6 +155,8 @@ def split_image_model(model: object) -> tuple[str | None, str | None]:
             base_model = normalized[len(prefix):]
             if base_model == CODEX_IMAGE_MODEL:
                 return plan_type, base_model
+    if is_discovered_image_model(model):
+        return None, raw_model
     return None, None
 
 

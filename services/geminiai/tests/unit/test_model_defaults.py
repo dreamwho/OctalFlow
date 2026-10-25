@@ -2,6 +2,16 @@ from aistudio_api.infrastructure.gateway.model_defaults import resolve_model_def
 from aistudio_api.infrastructure.gateway.wire_types import AistudioImageOutputMode
 
 
+def test_nano_banana_21_uses_image_defaults_with_repo_config_and_missing_config(tmp_path):
+    for config_path in (None, tmp_path / "missing.yaml"):
+        defaults = resolve_model_defaults("models/gemini-nano-banana-2.1", config_path=config_path)
+        assert defaults.is_image_model is True
+        assert defaults.disable_safety_settings is True
+        assert defaults.generation_config_defaults["image_output_mode"] == AistudioImageOutputMode.image_only()
+        assert defaults.clear_generation_config_indexes == (7, 13, 17)
+        assert defaults.default_tools == resolve_model_defaults("gemini-3.1-flash-image", config_path=config_path).default_tools
+
+
 def test_resolve_model_defaults_uses_repo_config_for_gemma():
     defaults = resolve_model_defaults("models/gemma-4-31b-it")
 

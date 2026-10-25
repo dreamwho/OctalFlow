@@ -10,9 +10,12 @@ export type GenerationLogSnapshotParameters = {
     runningHubAppId?: string;
 };
 
+export type GenerationLogSnapshotJsonValue = string | number | boolean | null | GenerationLogSnapshotJsonValue[] | { [key: string]: GenerationLogSnapshotJsonValue };
+
 export type GenerationLogReferenceSnapshot = {
     id: string;
     kind: "image" | "video" | "audio";
+    role?: "reference" | "first_frame" | "last_frame";
     name: string;
     mimeType: string;
     url?: string;
@@ -74,6 +77,7 @@ export type GenerationLogSlotSnapshot = {
 export type GenerationLogRequestSnapshot = {
     version: 1;
     userPrompt?: string;
+    interiorDesign?: { appId?: string; appName?: string; settings: Record<string, GenerationLogSnapshotJsonValue> };
     parameters: GenerationLogSnapshotParameters;
     references: GenerationLogReferenceSnapshot[];
     slots: GenerationLogSlotSnapshot[];

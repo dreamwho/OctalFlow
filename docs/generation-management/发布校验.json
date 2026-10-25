@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-21",
+  "baselineBuildId": "ja-z1noZmz9I3b9ZrddNp",
+  "testedLocalBuildId": "AnrAgd7X4oF11u6w9hubY",
+  "scope": "GPTAPI cleanup, generation management and configured image sizes source update",
+  "webBuildInputFiles": 2217,
+  "changeListEntries": 60,
+  "browserTests": {
+    "managementWorkbenchAndSizeIncludingSetup": 19,
+    "canvasBusinessTests": 2,
+    "realUpstreamCalls": 0
+  },
+  "unitTests": {
+    "passed": 3654,
+    "skipped": 17,
+    "passedFiles": 719,
+    "skippedFiles": 9
+  },
+  "checks": {
+    "packageProductionBuild": "passed",
+    "packageTypecheck": "passed",
+    "lint": "passed",
+    "nativeSqliteCleanup": "passed",
+    "isolatedPostgresCancellation": "passed",
+    "utf8": "strict decoding passed; two intentional encoding-marker literals in AGENTS.md and batch-import-skills.mjs",
+    "serverDeploy": "not executed"
+  },
+  "isolation": "all Web differences versus known deployed source are in changedFiles; six unrelated files match baseline hashes",
+  "baselineImageId": "sha256:640c3f1482573ec994e96a4d18d0fc8eeab7a7fadcef6ed0e305448e6d5783ff",
+  "baselineCorrection": {
+    "runtimeFiles": 2361,
+    "nodeTests": 8,
+    "targetedVitestTests": 42,
+    "productionBrowserTests": 19,
+    "geminiToolsExactlyMatchesServer": true,
+    "preservedRuntimeSha256": "59f61126391ca139dac90bfeefb8f9566855c96e8e48369e60e0d2d4da1ca825",
+    "serverStageApply": "not executed"
+  }
+}

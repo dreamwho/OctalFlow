@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
 log = logging.getLogger("aistudio.cookie_refresher")
@@ -73,14 +72,13 @@ def load_cookies_from_string(cookie_string: str) -> list[dict[str, Any]]:
 
     Parses directly, refreshes session cookies via curl_cffi,
     returns Playwright-format cookies for browser injection.
-    Real expires come from browser export after visiting the page.
+    Raw cookie strings contain no expiry metadata, so these cookies are
+    session cookies until the browser supplies a real expiry on export.
     """
     parsed = _parse_cookie_string(cookie_string)
     refreshed = _refresh_session_cookies(parsed)
     merged = dict(parsed)
     merged.update(refreshed)
-    default_expires = int(time.time()) + 86400 * 180  # 180 天后过期
-
     cookies = []
     skipped_names: list[str] = []
     for name, value in merged.items():
@@ -95,7 +93,6 @@ def load_cookies_from_string(cookie_string: str) -> list[dict[str, Any]]:
             "secure": True,
             "httpOnly": name not in AUTH_COOKIE_NAMES,
             "sameSite": "None",
-            "expires": default_expires,
         })
     log.info(
         "[cookie_string] raw=%d refreshed=%d merged=%d",

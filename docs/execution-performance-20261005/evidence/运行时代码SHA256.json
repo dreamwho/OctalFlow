@@ -1,0 +1,18 @@
+{
+  ".dockerignore": "68873372b7abfd680188bb0fe4880319987a9f1568d56268d6f983020f5aa887",
+  "docker-compose.lowmem.yml": "6494cfc47354f3793e9aaaf1ebb998313a9f07720b3977eb91132853258d366d",
+  "services/geminiai/src/aistudio_api/application/omni_video.py": "7037cfb9e3749e66e60abc49fd47e1c447c948a3576867e0c722d27a6fdfca0d",
+  "services/geminiai/src/aistudio_api/api/routes_videos.py": "81a5c930affb3ed8cf255dc8ef6d34dd6f7e363d538263119e4ed5f7ca74ea56",
+  "web/src/lib/server/generation-task-recovery-service.ts": "4468d8457db7fb8df5f666c26343e2ed205cbfc9c984d622b9f7e8cd9db7dd8c",
+  "web/src/lib/server/generation-task-scheduler.ts": "5bb4856b72cef4b0e9bd7a3d306c74257d157c2e484d50a7179d18829e64f826",
+  "web/src/lib/server/geminiai-video-notification.ts": "71bd2c99a4411bce3a0e1e5fabc5ffe489b2a8a34f93e8576a1f45c4e9180137",
+  "web/src/lib/server/generation-log-event-signal.ts": "7115e770e248cb0ca778dc58767c4fefb8c4706595192ed128deed802928a73d",
+  "web/src/lib/server/generation-log-store.ts": "715fac29cc825718b6ff0acfab9dfbe15a01a3e0ae7f6fb358607b37db75e610",
+  "web/src/lib/server/generation-log-task-service.ts": "692c0e0b518928083fa7d9236bc71a5462d62ccb3c138cf2871eb137d89bbe42",
+  "web/src/lib/server/database/schema.ts": "9194781ebba654f023ff21ddd2818016a36e1990c24a6dd359fc000b8ed7f54c",
+  "web/src/lib/server/database/postgres.ts": "58f78fef3d4ecfb3fe2598e1a2def1f6c45c1d26d78f256643741c7c44b107ba",
+  "web/src/app/api/generation-logs/events/route.ts": "1d1fc724a77bf7c27bcff4055992af014f880742e1572b23a4b4dbde411cf8dd",
+  "web/src/app/api/maintenance/geminiai-videos/notify/route.ts": "95585e809bce6c667efd01796da779d0f95bfac1792cd123bf316c2137a739a7",
+  "web/src/services/api/generation-log-events.ts": "296af1c49b2c3890bc610b48950042b58bf906f42428bc342c04a3d223801d3e",
+  "web/src/app/(user)/image/image-video-workbench.tsx": "b8f418e99971ce26157f9dce6c56e829a5c39c8097fe76b7a2005c8e66fff951"
+}

@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-21",
+  "delivery": "precompiled-linux-amd64-standalone",
+  "buildId": "olNkUh-lqWJcSnTkri4l9",
+  "node": "v22.23.3",
+  "platform": "linux",
+  "arch": "x64",
+  "modules": "127",
+  "libc": "glibc",
+  "sourceFilesCompared": 2217,
+  "frozenSourceDifferences": [],
+  "excludedSourceFilesVerified": 8,
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "linuxNativeWebPConversion": "passed",
+  "linuxPlaywright": {
+    "passed": 19,
+    "failed": 0
+  },
+  "baselineVerifierTests": {
+    "passed": 8,
+    "failed": 0
+  },
+  "deploymentMockRegression": "passed",
+  "realDockerDeployment": {
+    "apply": "passed",
+    "appAndWorkerBuildAfterApply": "olNkUh-lqWJcSnTkri4l9",
+    "manualRollback": "passed",
+    "appAndWorkerBuildAfterRollback": "ja-z1noZmz9I3b9ZrddNp",
+    "failedHealthAutomaticRollback": "passed",
+    "automaticRollbackExitCode": 1,
+    "exactComposeBytesRestored": true,
+    "controlContainerNetwork": "none",
+    "fixtureImage": "sha256:f57f40f0f824ceaf9d99ca49320e24df165481318d83847342d7698bd750fee4",
+    "note": "Isolated Docker fixture uses locally available Node22 image and an image-ID-adjusted fixture manifest; production artifact keeps real server image ID and all 2361 baseline file hashes unchanged."
+  },
+  "productionExpectedImage": "sha256:640c3f1482573ec994e96a4d18d0fc8eeab7a7fadcef6ed0e305448e6d5783ff",
+  "productionDeployment": "not performed",
+  "liveBilledUpstreamGeneration": "not performed",
+  "runtimeRegularFiles": 7790,
+  "runtimeSymlinks": 148,
+  "secretsOrBusinessDataIncluded": false,
+  "evidence": {
+    "buildLogSha256": "01ecda0e679dbc096783b6bbf0b43ac126dbe8bda51816ae29d7de789c491c03",
+    "browserLogSha256": "58bd3a1decdd40a55604b83b776768f78a163e39b7813870901b9a87dfc78950",
+    "applyLogSha256": "bee10dae2a33237ad6c38197c8c0a4ebb59c9c70922ee6ef67dfc73b73b7e154",
+    "rollbackLogSha256": "64788f4b3140579b513d6127e6cfefceb2e1a31508ed5bb5beb3a134441ea52b",
+    "automaticRollbackLogSha256": "c3127d44c3ff1ed31ea93c2caba444f5ef72bcc3d58e9f4d2da56a93f329d373"
+  }
+}

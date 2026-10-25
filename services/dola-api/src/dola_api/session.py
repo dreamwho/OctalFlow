@@ -28,7 +28,7 @@ from .page_scripts import DOLA_30S_UNLOCKER_SCRIPT, MAIN_WORLD_CREDIT_SCRIPT, MA
 from .protocol import PROFILES, canonical_ratio, sanitize_video_prompt_duration, validate_request
 from .query import _classify_refusal_code, _extract_assistant_text, decode_main_url, extract_conversation_id, extract_image_urls, extract_video_url, fetch_generation_result, fetch_recent_conversation_id, generation_query_payloads, parse_account_login_state, parse_generation_payloads, probe_account_login
 from .task_store import decrypt_secret, decrypt_cookie, encrypt_secret, encrypt_cookie, load_state, save_state
-from .uploads import resolve_references
+from .uploads import resolve_references, _reference_kind
 
 logger = logging.getLogger("dola.session")
 
@@ -2349,7 +2349,9 @@ def _normalize_request_references(request: VideoRequest) -> list[dict[str, Any]]
                     ref_list.append(img)
         if request.last_frame:
             ref_list.append({"url": request.last_frame, "role": "last_frame", "type": "image"})
-    return [item for item in ref_list if isinstance(item, dict) and (item.get("uri") or item.get("url") or item.get("dataUrl"))]
+    if request.model != "dola-seedance-2-5" and any(_reference_kind(item) != "image" for item in ref_list):
+        raise ValueError("reference_media_requires_seedance_2_5")
+    return [item for item in ref_list if isinstance(item, dict) and (item.get("vid") or item.get("uri") or item.get("url") or item.get("dataUrl"))]
 
 
 async def _execute_completion_submit(
@@ -2544,8 +2546,19 @@ def _ratio_from_size(size: str, ratios: tuple[str, ...]) -> str:
     return best
 
 
+def _reference_attachment(item: dict[str, Any]) -> dict[str, Any]:
+    kind = item.get("type", "image")
+    if kind in {"video", "audio"}:
+        content = {"media": {"vid": item.get("vid") or item.get("uri") or "", "media_type": 2 if kind == "video" else 1, "duration": float(item.get("duration") or 0), "size": int(item.get("size") or 0), "name": item.get("name") or f"reference.{ 'mp4' if kind == 'video' else 'mp3' }"}}
+        attachment_type = 3  # Native nested file attachment with VOD media.
+    else:
+        content = {"image": {"name": item.get("name") or "image.png", "uri": item.get("uri") or item.get("url") or "", "image_ori": {"url": "", "width": int(item.get("width") or 0), "height": int(item.get("height") or 0), "format": "", "url_formats": {}}}}
+        attachment_type = 1
+    return {"type": attachment_type, "identifier": item.get("identifier") or str(uuid.uuid4()), **content, "parse_state": 0, "review_state": 1, "upload_status": 1, "progress": 100, "src": ""}
+
+
 def _attachment_messages(references: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    items = [item for item in references if isinstance(item, dict) and (item.get("uri") or item.get("url") or item.get("dataUrl"))]
+    items = [item for item in references if isinstance(item, dict) and (item.get("vid") or item.get("uri") or item.get("url") or item.get("dataUrl"))]
     if not items:
         return []
     return [{
@@ -2554,20 +2567,7 @@ def _attachment_messages(references: list[dict[str, Any]]) -> list[dict[str, Any
             "block_type": 10052,
             "content": {
                 "attachment_block": {
-                    "attachments": [{
-                        "type": 1,
-                        "identifier": item.get("identifier") or str(uuid.uuid4()),
-                        "image": {
-                            "name": item.get("name") or "image.png",
-                            "uri": item.get("uri") or item.get("url") or "",
-                            "image_ori": {"url": "", "width": int(item.get("width") or 0), "height": int(item.get("height") or 0), "format": "", "url_formats": {}},
-                        },
-                        "parse_state": 0,
-                        "review_state": 1,
-                        "upload_status": 1,
-                        "progress": 100,
-                        "src": "",
-                    } for item in items],
+                    "attachments": [_reference_attachment(item) for item in items],
                 },
                 "pc_event_block": "",
             },

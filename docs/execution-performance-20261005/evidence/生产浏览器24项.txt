@@ -1,0 +1,63 @@
+[WebServer] (node:69869) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:69945) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:69946) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ node --env-file-if-exists=.env.local scripts/start-standalone.mjs
+[WebServer] (node:70273) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] Generation worker heartbeat failed fetch failed
+[WebServer] Generation worker lane 1 batch failed fetch failed retrying in 1000ms
+[WebServer] Generation worker lane 2 batch failed fetch failed retrying in 1000ms
+[WebServer] Billing refund worker failed fetch failed retrying in 2000ms
+[WebServer] (node:70272) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] INFO:     Started server process [70270]
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:18083 (Press CTRL+C to quit)
+[WebServer] INFO:     Started server process [70271]
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:18081 (Press CTRL+C to quit)
+
+Running 24 tests using 1 worker
+
+(node:70639) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] ⨯ Error: PostgreSQL schema has not been initialized
+[WebServer]     at L (.next/server/chunks/src_lib_0vsts7q._.js:2310:13175)
+[WebServer]     at async b (.next/server/chunks/_0cgxwig._.js:69:43394)
+[WebServer]     at async o (.next/server/chunks/[root-of-the-server]__18r8-a2._.js:1:1820)
+[WebServer]     at async z (.next/server/chunks/[root-of-the-server]__18r8-a2._.js:1:5103)
+[WebServer]     at async X (.next/server/chunks/[root-of-the-server]__18r8-a2._.js:1:6181)
+[WebServer]     at async Module.R [as handler] (.next/server/chunks/[root-of-the-server]__18r8-a2._.js:1:8238)
+  ✓   1 [setup] › e2e/installation.spec.ts:9:1 › fresh deployments enter the installation flow (746ms)
+  ✓   2 [setup] › e2e/installation.spec.ts:18:1 › public session omits internal configuration fields (22ms)
+  ✓   3 [setup] › e2e/installation.spec.ts:30:1 › initialization rejects a wrong token and creates the first administrator once (1.6s)
+(node:72132) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   4 [chromium] › e2e/canvas.spec.ts:63:5 › confirmed success-50 handles estimated mid-progress without an abrupt successful result (1.5s)
+  ✓   5 [chromium] › e2e/canvas.spec.ts:63:5 › confirmed success-70 handles estimated mid-progress without an abrupt successful result (1.4s)
+  ✓   6 [chromium] › e2e/canvas.spec.ts:63:5 › confirmed failure handles estimated mid-progress without an abrupt successful result (1.1s)
+  ✓   7 [chromium] › e2e/canvas.spec.ts:63:5 › confirmed reduced handles estimated mid-progress without an abrupt successful result (1.1s)
+  ✓   8 [chromium] › e2e/canvas.spec.ts:114:1 › Omni reference failure stops a restored generating node without resubmission (5.6s)
+  ✓   9 [chromium] › e2e/canvas.spec.ts:306:1 › canvas generation progress stays in the top-left on desktop and mobile (997ms)
+  ✓  10 [chromium] › e2e/canvas.spec.ts:570:1 › canvas keeps editing, selection, linking and persistence fluid (7.5s)
+  ✓  11 [chromium] › e2e/canvas.spec.ts:970:1 › canvas video first and last frame roles persist and retry from the output snapshot (5.1s)
+  ✓  12 [chromium] › e2e/canvas.spec.ts:1091:1 › generating from a completed video reuses its original image links and request references (1.4s)
+  ✓  13 [chromium] › e2e/core.spec.ts:281:1 › text tasks return content, fail over automatically, and surface terminal failures (1.1s)
+  ✓  14 [chromium] › e2e/core.spec.ts:299:1 › image task persists a real media result and reuses the same request identity (1.1s)
+  ✓  15 [chromium] › e2e/core.spec.ts:324:1 › unified generation page reaches the local image protocol and restores its result (3.1s)
+  ✓  16 [chromium] › e2e/core.spec.ts:346:5 › video workbench completes text-to-video through the local protocol (1.0s)
+  ✓  17 [chromium] › e2e/core.spec.ts:346:5 › video workbench completes image-to-video through the local protocol (2.4s)
+  ✓  18 [chromium] › e2e/core.spec.ts:382:1 › video request replay and cancellation keep one upstream task (72ms)
+  ✓  19 [chromium] › e2e/core.spec.ts:410:1 › audio task stores a valid audio result (537ms)
+  ✓  20 [chromium] › e2e/core.spec.ts:417:1 › canvas projects round-trip two nodes and one connection (20ms)
+  ✓  21 [chromium] › e2e/image-video-workbench.spec.ts:23:1 › unified generation page keeps nine cards, theme, parameter menus and reference picker usable (12.5s)
+  ✓  22 [chromium] › e2e/image-video-workbench.spec.ts:216:1 › reference selection stays local until submission (2.1s)
+  ✓  23 [chromium] › e2e/image-video-workbench.spec.ts:247:1 › reference upload picker opens first on mobile (417ms)
+  ✓  24 [chromium] › e2e/image-video-workbench.spec.ts:285:1 › workbench receives durable log changes over SSE and coalesces slow refreshes (745ms)
+
+  24 passed (55.8s)

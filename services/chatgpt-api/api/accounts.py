@@ -38,7 +38,7 @@ from services.account_operation_events import (
 )
 from services.account_import_job import RemoteImportJobConflictError
 from services.account_test_service import account_test_service
-from services.account_service import account_service
+from services.account_service import account_service, is_account_cleanup_candidate
 from services.account_view import account_detail, account_row, account_status_category
 from services.config import config
 from services.cpa_service import cpa_config, cpa_import_service, list_remote_files
@@ -1240,6 +1240,46 @@ def create_router() -> APIRouter:
         require_admin(authorization)
         return await run_in_threadpool(_account_selection_preview, body.selection)
 
+    @router.get("/api/accounts/cleanup-abnormal")
+    async def preview_abnormal_account_cleanup(authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        count = sum(
+            1 for account in account_service.list_accounts()
+            if is_account_cleanup_candidate(account)
+            and _clean_text(account.get("access_token"))
+            and _clean_text(account.get("management_id"))
+        )
+        return {"count": count, "scope": ["异常", "禁用"]}
+
+    @router.post("/api/accounts/cleanup-abnormal")
+    async def cleanup_abnormal_accounts(authorization: str | None = Header(default=None)):
+        """Remove only accounts whose persisted native state is abnormal or disabled."""
+        require_admin(authorization)
+        # Resolve eligibility from the authoritative runtime snapshot at execution time.
+        candidates = [
+            account for account in account_service.list_accounts()
+            if is_account_cleanup_candidate(account)
+            and _clean_text(account.get("access_token"))
+            and _clean_text(account.get("management_id"))
+        ]
+        id_to_token = {
+            _clean_text(account.get("management_id")).lower(): _clean_text(account.get("access_token"))
+            for account in candidates
+        }
+        labels = _account_operation_labels([(token, account_id) for account_id, token in id_to_token.items()])
+        result = await run_in_threadpool(account_service.cleanup_abnormal_accounts)
+        removed_ids = list(result.get("removed_ids") or [])
+        errors = _account_not_found_errors([])
+        return _account_mutation_response(
+            checked=len(candidates), abnormal=len(removed_ids), removed=len(removed_ids), removed_ids=removed_ids,
+            errors=errors,
+            events=_account_mutation_events(
+                action="delete_account", removed_ids=removed_ids, errors=errors,
+                labels=labels, success_message="异常账号已清理", removed_message="异常账号已清理",
+            ),
+            include_items=False,
+        )
+
     @router.get("/api/accounts/{account_id}")
     async def get_account_detail(account_id: str, authorization: str | None = Header(default=None)):
         require_admin(authorization)
@@ -1269,6 +1309,7 @@ def create_router() -> APIRouter:
             request_text=body.prompt,
             image_request=body.mode == "image",
         )
+        call.attach_trace_metadata(payload)
         return await call.run(account_test_service.execute, payload)
 
     @router.get("/api/accounts/{account_id}/access-token")

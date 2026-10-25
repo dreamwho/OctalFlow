@@ -781,11 +781,11 @@ function interpretGroupDelay(delays: Map<string, number>, name: string): { delay
     if (delay !== undefined) return { delay };
     if (name === "DIRECT") return { error: "测速超时或节点不可用" };
     const direct = delays.get("DIRECT");
-    // 失败节点不在组测速结果里；用同一响应中的 DIRECT 区分「容器出网异常」与「节点拨号失败」。
+    // 失败节点不在组测速结果里；DIRECT 仅代表同一测速目标可以直连，不能确定失败节点的具体阶段。
     if (direct === undefined) {
         return { error: "Mihomo 容器直连出网不可用，与节点无关；请检查服务器出网、Docker 网络或防火墙，并重启 magic-proxy 容器后重试" };
     }
-    return { error: `Mihomo 出网正常（DIRECT ${direct}ms），但该节点拨号失败；可能是节点域名解析失败或服务器/端口不可达，请刷新订阅或更换节点` };
+    return { error: `DIRECT 访问测速目标成功（${direct}ms），但该节点访问测速目标失败；具体原因需结合 Mihomo 连接日志确认` };
 }
 
 /** 对单个地址做一次 TCP 可达性探测。 */
@@ -820,9 +820,9 @@ async function diagnoseNodeEndpoint(node: MagicProxyNode | undefined): Promise<s
     }
     const probes = await Promise.all(targets.map(async (address) => tcpReachable(address, port)));
     if (!probes.some(Boolean)) {
-        return `；但服务器可解析 ${host}（${targets.join("、")}）而 TCP ${port} 均不可达（端口不通或节点已下线）`;
+        return `；但服务器可解析 ${host}（${targets.join("、")}）而本次 TCP ${port} 探测均未连接成功；尚不能区分服务器网络、入口限制或节点故障`;
     }
-    return `；但服务器到 ${host}:${port} 的 TCP 可达，失败发生在 mihomo 拨号阶段（域名解析、凭据、协议参数或 TLS 不匹配）`;
+    return `；但服务器到 ${host}:${port} 的 TCP 可达；这不代表 Mihomo 的 DNS、协议握手或测速目标访问成功，具体失败阶段尚未确认`;
 }
 
 async function probeNodeDelay(runtime: MihomoRuntimeConfig, name: string, node?: MagicProxyNode): Promise<{ delay?: number; error?: string; inconclusive?: boolean }> {
@@ -852,7 +852,7 @@ async function probeNodeDelay(runtime: MihomoRuntimeConfig, name: string, node?:
         return { error: "该节点未出现在 Mihomo 运行时的 provider 中；请刷新订阅后重试，若仍失败说明节点未写入运行时配置" };
     }
     const diagnosis = await diagnoseNodeEndpoint(node);
-    if (response.status === 503) return { error: `节点拨号失败${diagnosis}` };
+    if (response.status === 503) return { error: `节点访问测速目标失败（HTTP 503）${diagnosis}` };
     // 504 是内核「本次没在时限内测出」，不是节点结论：并发通道密集时正常节点也会偶发超时。
     if (response.status === 504) return { error: `节点测速超时未出结果（并发压力下常见，可稍后重测）${diagnosis}`, inconclusive: true };
     return { error: `节点健康检查返回 HTTP ${response.status}${diagnosis}` };

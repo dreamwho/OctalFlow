@@ -5,6 +5,8 @@ from typing import Literal, cast
 
 from services.account_processing import account_processing_slot
 from services.account_service import account_service
+from services.image_failure import ImageGenerationError
+from services.log_service import current_call_id
 from services.openai_backend_api import OpenAIBackendAPI
 from services.protocol.conversation import (
     ConversationRequest,
@@ -47,6 +49,66 @@ def _quota_label(account: dict[str, object]) -> str:
     return str(max(0, int(account.get("quota") or 0)))
 
 
+def _account_disabled(account: dict[str, object]) -> bool:
+    status = str(account.get("status") or "").strip().lower()
+    return (
+        account_service._bool_value(account.get("auto_disabled"), False)
+        or (
+            account.get("enabled") is not None
+            and not account_service._bool_value(account.get("enabled"), True)
+        )
+        or status in {"禁用", "disabled"}
+    )
+
+
+def _upstream_error_event(event: object) -> tuple[str, str] | None:
+    if not isinstance(event, dict):
+        return None
+    candidates = [event, event.get("raw")]
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        error = candidate.get("error")
+        raw_type = str(candidate.get("type") or "").strip().lower()
+        if raw_type.endswith("error") or isinstance(error, dict):
+            detail = error if isinstance(error, dict) else candidate
+            code = str(detail.get("code") or detail.get("failure_code") or "upstream_error")
+            message = str(detail.get("message") or "上游请求失败")
+            return code, message
+    return None
+
+
+def _safe_error_message(error: object, account: dict[str, object]) -> str:
+    return sanitize_diagnostic_text(
+        error,
+        sensitive_values=(
+            account.get("access_token"),
+            account.get("refresh_token"),
+            account.get("id_token"),
+        ),
+        proxy_values=(account.get("proxy"),),
+    ).strip() or "账号测试失败"
+
+
+def _safe_error_code(error_code: object, account: dict[str, object]) -> str:
+    return sanitize_diagnostic_text(
+        error_code,
+        sensitive_values=(
+            account.get("access_token"),
+            account.get("refresh_token"),
+            account.get("id_token"),
+        ),
+        proxy_values=(account.get("proxy"),),
+    ).strip() or "account_test_failed"
+
+
+class AccountTestUpstreamError(RuntimeError):
+    def __init__(self, error_code: str, message: str, conversation_id: str = "") -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.conversation_id = conversation_id
+
+
 class AccountTestService:
     """Execute one upstream capability test against one selected account."""
 
@@ -61,20 +123,34 @@ class AccountTestService:
         )
         model = str(payload.get("model") or "").strip()
         prompt = str(payload.get("prompt") or "").strip()
-        call_id = str(payload.get("_call_id") or "").strip()
+        call_id = str(payload.get("_call_id") or current_call_id() or "").strip()
         trace_image_perf = bool(payload.get("_trace_image_perf"))
         started = time.perf_counter()
         account = account_service.get_account_by_id(account_id)
         if account is None:
             raise LookupError("account not found")
 
+        if _account_disabled(account):
+            return self._failed_result(
+                account_id=account_id,
+                account_label=_account_label(account, account_id),
+                mode=mode,
+                model=model,
+                started=started,
+                call_id=call_id,
+                quota_label=_quota_label(account),
+                error_code="account_disabled",
+                error_message="账号已禁用",
+            )
+
         label = _account_label(account, account_id)
         quota_before_label = _quota_label(account)
         quota_after_label = quota_before_label
         quota_deducted = False
+        conversation_id = ""
         try:
             if mode == "image":
-                images, updated_account = self._execute_image(
+                images, updated_account, conversation_id = self._execute_image(
                     account,
                     model=model,
                     prompt=prompt,
@@ -91,11 +167,16 @@ class AccountTestService:
                     and int(quota_after_label) < int(quota_before_label)
                 )
             else:
-                content = self._execute_chat(account, model=model, prompt=prompt)
+                content, conversation_id = self._execute_chat(account, model=model, prompt=prompt)
                 images = []
         except Exception as exc:
             duration_ms = int((time.perf_counter() - started) * 1000)
-            message = sanitize_diagnostic_text(str(exc)).strip() or "账号测试失败"
+            message = _safe_error_message(exc, account)
+            structured_failure = getattr(exc, "failure", None)
+            if isinstance(exc, ImageGenerationError) and structured_failure is not None:
+                error_code = _safe_error_code(structured_failure.code, account)
+            else:
+                error_code = _safe_error_code(getattr(exc, "error_code", ""), account)
             return {
                 **_base_result(
                     account_id=account_id,
@@ -108,14 +189,17 @@ class AccountTestService:
                 "status_label": "测试失败",
                 "tone": "danger",
                 "content": "",
+                "image_urls": [],
+                "call_id": call_id,
                 "quota_before_label": quota_before_label,
                 "quota_after_label": quota_before_label,
                 "quota_deducted": False,
-                "error_code": type(exc).__name__,
+                "error_code": error_code,
                 "error_message": message,
                 "_call_status": "failed",
                 "_call_error": message,
                 "_account_email": label,
+                "_conversation_id": str(getattr(exc, "conversation_id", "") or ""),
             }
 
         duration_ms = int((time.perf_counter() - started) * 1000)
@@ -131,17 +215,49 @@ class AccountTestService:
             "status_label": "测试通过",
             "tone": "success",
             "content": content,
+            "image_urls": images,
+            "call_id": call_id,
             "quota_before_label": quota_before_label,
             "quota_after_label": quota_after_label,
             "quota_deducted": quota_deducted,
             "error_code": "",
             "error_message": "",
             "_account_email": label,
-            "_image_urls": images,
+            "_conversation_id": conversation_id,
         }
 
     @staticmethod
-    def _execute_chat(account: dict[str, object], *, model: str, prompt: str) -> str:
+    def _failed_result(
+        *, account_id: str, account_label: str, mode: Literal["chat", "image"],
+        model: str, started: float, call_id: str, quota_label: str,
+        error_code: str, error_message: str,
+    ) -> dict[str, object]:
+        return {
+            **_base_result(
+                account_id=account_id,
+                account_label=account_label,
+                mode=mode,
+                model=model,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            ),
+            "status": "failed",
+            "status_label": "测试失败",
+            "tone": "danger",
+            "content": "",
+            "image_urls": [],
+            "call_id": call_id,
+            "quota_before_label": quota_label,
+            "quota_after_label": quota_label,
+            "quota_deducted": False,
+            "error_code": error_code,
+            "error_message": _safe_error_message(error_message, {}),
+            "_call_status": "failed",
+            "_call_error": _safe_error_message(error_message, {}),
+            "_account_email": account_label,
+        }
+
+    @staticmethod
+    def _execute_chat(account: dict[str, object], *, model: str, prompt: str) -> tuple[str, str]:
         access_token = str(account.get("access_token") or "").strip()
         active_token = account_service.ensure_access_token(
             access_token,
@@ -152,20 +268,30 @@ class AccountTestService:
         with account_processing_slot():
             try:
                 backend = OpenAIBackendAPI(access_token=active_token)
-                text = "".join(
-                    str(event.get("delta") or "")
-                    for event in conversation_events(
-                        backend,
-                        model=model,
-                        prompt=prompt,
-                    )
-                    if event.get("type") == "conversation.delta"
-                ).strip()
+                parts: list[str] = []
+                conversation_id = ""
+                for event in conversation_events(
+                    backend,
+                    model=model,
+                    prompt=prompt,
+                ):
+                    conversation_id = str(event.get("conversation_id") or conversation_id)
+                    upstream_error = _upstream_error_event(event)
+                    if upstream_error is not None:
+                        code, message = upstream_error
+                        raise AccountTestUpstreamError(code, message, conversation_id)
+                    if event.get("type") == "conversation.delta":
+                        parts.append(str(event.get("delta") or ""))
+                text = "".join(parts).strip()
             finally:
                 if backend is not None:
                     backend.close()
         account_service.mark_text_used(active_token)
-        return text
+        if not text:
+            raise AccountTestUpstreamError(
+                "empty_upstream_response", "上游未返回文本内容", conversation_id
+            )
+        return text, conversation_id
 
     @staticmethod
     def _execute_image(
@@ -175,7 +301,7 @@ class AccountTestService:
         prompt: str,
         call_id: str,
         trace_image_perf: bool,
-    ) -> tuple[list[str], dict[str, object]]:
+    ) -> tuple[list[str], dict[str, object], str]:
         access_token = str(account.get("access_token") or "").strip()
         active_token = account_service.ensure_access_token(
             access_token,
@@ -186,7 +312,7 @@ class AccountTestService:
         backend: OpenAIBackendAPI | None = None
         with account_processing_slot():
             try:
-                backend = OpenAIBackendAPI(access_token=active_token)
+                backend = OpenAIBackendAPI(access_token=active_token, reserve_image_egress=True)
                 request = ConversationRequest(
                     model=model,
                     prompt=prompt,
@@ -226,7 +352,7 @@ class AccountTestService:
         updated = account_service.mark_image_result(active_token, True)
         if updated is None:
             raise RuntimeError("图片已生成，但账号额度更新失败")
-        return list(dict.fromkeys(images)), updated
+        return list(dict.fromkeys(images)), updated, str(result.get("conversation_id") or "")
 
 
 account_test_service = AccountTestService()

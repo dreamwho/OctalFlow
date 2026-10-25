@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .dependencies import require_api_key
+from .dependencies import require_api_key, _extract_request_token
 from .state import runtime_state
 
 router = APIRouter(prefix="/v1/videos", tags=["videos"], dependencies=[Depends(require_api_key)])
@@ -29,7 +29,7 @@ def _service():
 
 
 @router.post("")
-def create_video(payload: VideoCreateRequest):
+def create_video(payload: VideoCreateRequest, request: Request):
     try:
         return _service().submit(
             model=payload.model,
@@ -38,6 +38,7 @@ def create_video(payload: VideoCreateRequest):
             resolution=payload.resolution,
             aspect=payload.aspect_ratio,
             reference_images=payload.images,
+            notification_key=_extract_request_token(request) or "",
         )
     except ValueError as exc:
         raise HTTPException(400, detail={"message": str(exc)}) from None

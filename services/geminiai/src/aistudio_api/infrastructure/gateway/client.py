@@ -37,7 +37,6 @@ _snapshot_cache = SnapshotCache()
 
 
 class AIStudioClient:
-    NATIVE_IMAGE_MODELS = {"gemini-3-pro-image", "gemini-3.1-flash-image"}
     IMAGE_ASPECT_RATIOS = {"1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9"}
     IMAGE_SIZES = {"1K", "2K", "4K"}
     IMAGE_SIZE_TO_OUTPUT_RESOLUTION = {
@@ -396,7 +395,9 @@ class AIStudioClient:
     ) -> ModelOutput:
         output_resolution = self.resolve_image_size(size, aspect_ratio=aspect_ratio, image_size=image_size)
         normalized_model = model.removeprefix("models/")
-        if normalized_model not in self.NATIVE_IMAGE_MODELS:
+        from .model_catalog import find_model
+        declaration = find_model(normalized_model)
+        if not declaration or declaration["capability"] != "image":
             raise RequestError(400, f"不支持的 GeminiAIStudio 生图模型: {normalized_model}")
         if image_search:
             raise RequestError(400, f"{normalized_model} 不支持独立图片搜索工具")

@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-21",
+  "scope": "GPTAPI cleanup HTTP404 and confirmed-invalid auto-disable",
+  "pythonVersionLocal": "3.14",
+  "pythonVersionLinux": "3.13",
+  "webBuild": "olNkUh-lqWJcSnTkri4l9",
+  "pythonTests": 111,
+  "failedTests": 0,
+  "realHttpEntry": true,
+  "runtimeGuardAndAdminAuthTested": true,
+  "confirmedInvalidAutoDisabledAndPersisted": true,
+  "transientErrorsRetained": true,
+  "realLinuxBrowserViewports": [
+    1440,
+    390,
+    430
+  ],
+  "browserMocks": false,
+  "browserOperations": [
+    "real preview GET 200 count2",
+    "real cleanup POST 200",
+    "invalid and disabled removed",
+    "network and uncertain retained",
+    "reload persisted",
+    "repeat preview GET 200 count0"
+  ],
+  "deploymentFixture": {
+    "baseline404Reproduced": true,
+    "apply200": true,
+    "onlyGptapiRecreated": true,
+    "appWorkerAndUnrelatedIdsUnchanged": true,
+    "idempotentNoContainerRestart": true,
+    "rollbackExactComposeAndOldSourceRestored": true
+  },
+  "deploymentMock": {
+    "failureAutoRestore": true,
+    "sigtermInterruptionAutoRestore": true,
+    "onlyGptapiRestarted": true,
+    "repeatInstall": true,
+    "repeatRollback": true
+  },
+  "liveProductionChanged": false,
+  "liveBilledUpstreamsUsed": false,
+  "evidenceSha256": {
+    "pytest.log": "78c08dff495ae2060e7ed4bd36ddfc2a10ce80276aaf596c82fe9b7c228ce81b",
+    "deploy-test.log": "62261e3ea6d9040714e2f8c1926fc285cc6f37745a0e4de3354b438521e0d7c5",
+    "browser.log": "590a278a8ed89f0a5516a6a21f0bee35743e434cbb0eb05e0792083e85e0b0cf",
+    "browser-390.log": "590a278a8ed89f0a5516a6a21f0bee35743e434cbb0eb05e0792083e85e0b0cf",
+    "browser-430.log": "590a278a8ed89f0a5516a6a21f0bee35743e434cbb0eb05e0792083e85e0b0cf",
+    "deploy.log": "847121f019512bd1b52d9335196951cd80b5968787963c25c80e5e41a07e8c83",
+    "reapply.log": "79e718d0a1a1d126d9ab47af50041f2866a2c8dbd1afba87d6e15cfce4699d97",
+    "rollback.log": "7b273473825292c56a83ba956d428b74f350fc3d84a19968eb940e1686c0ef5d"
+  }
+}

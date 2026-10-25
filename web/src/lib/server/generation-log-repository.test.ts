@@ -97,6 +97,23 @@ describe("generation log asset normalization", () => {
         expect(log.requestSnapshot?.references).toHaveLength(40);
     });
 
+    it("retains video first and last frame roles in restored reference snapshots", () => {
+        const log = normalizeStoredLog({
+            ...storedLogWithAssets(0),
+            requestSnapshot: {
+                version: 1,
+                userPrompt: "生成视频",
+                parameters: {},
+                references: [
+                    { id: "first", kind: "image", role: "first_frame", name: "first.png", mimeType: "image/png", url: "/first.png" },
+                    { id: "last", kind: "image", role: "last_frame", name: "last.png", mimeType: "image/png", url: "/last.png" },
+                ],
+                slots: [],
+            },
+        });
+        expect(log.requestSnapshot?.references.map((reference) => reference.role)).toEqual(["first_frame", "last_frame"]);
+    });
+
     it("retains the interior-design app and execution prompt for an exact retry", () => {
         const log = normalizeStoredLog({
             ...storedLogWithAssets(0),

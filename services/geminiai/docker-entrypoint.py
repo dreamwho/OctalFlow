@@ -36,6 +36,7 @@ def main() -> None:
 
     if os.geteuid() == 0:
         _harden_tree(accounts_dir)
+        _harden_tree(accounts_dir.parent / "videos")
         _harden_tree(tmp_dir)
         os.setgroups([])
         os.setgid(SERVICE_GID)

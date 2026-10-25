@@ -261,8 +261,18 @@ export function ErrorContent({ node, theme, onRetry, onRegenerate, scale = 1 }: 
     const fontSize = Math.max(12, 12 / readableScale);
     const controlHeight = Math.max(32, 32 / readableScale);
     const handleAction = onRegenerate || onRetry;
+    const referenceError = /^(?:reference_(?:upload|download):|reference image (?:upload|download))/i.test(node.metadata?.errorDetails || "");
     return (
         <div data-canvas-node-error className="flex h-full w-full flex-col items-center justify-center p-4 text-center">
+            {referenceError ? (
+                <div data-canvas-node-error-details className="mb-3 max-h-[50%] w-full overflow-y-auto break-words leading-snug" style={{ fontSize, color: theme.node.danger }}>
+                    <p>{/upload/i.test(node.metadata?.errorDetails || "") ? "参考图上传失败" : "参考图读取失败"}</p>
+                    <details className="mt-1 text-left">
+                        <summary className="cursor-pointer text-center" onClick={(event) => event.stopPropagation()}>查看失败原因</summary>
+                        <p className="mt-1" onClick={(event) => event.stopPropagation()}>{node.metadata?.errorDetails}</p>
+                    </details>
+                </div>
+            ) : null}
             {isDolaPortraitProtectionError(node.metadata?.errorDetails || "") ? (
                 <p className="mb-3 text-center leading-snug" style={{ fontSize, color: theme.node.danger }}>人脸未通过肖像保护审核</p>
             ) : null}

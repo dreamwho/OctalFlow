@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 
+import { useConfirmedModelFallback } from "@/hooks/use-confirmed-model-fallback";
 import { createFreshGenerationTaskContext } from "@/lib/generation-request-context";
 import { storeGeneratedAudio, waitForAudioGenerationTask } from "@/services/api/audio";
 import { createImageGenerationTask, waitForImageGenerationTask, type ImageGenerationTask, type ImageUpscaleResolution } from "@/services/api/image";
@@ -22,6 +23,7 @@ const DREAMINA_UPSCALE_MODEL = "dreamina-image-upscale";
 const DREAMINA_UPSCALE_CHANNEL = "dreamina-cli";
 
 export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
+    const { runWithFallback } = useConfirmedModelFallback();
     const {
         message,
         modal,
@@ -258,35 +260,45 @@ export function useCanvasTaskRuntime({ state }: { state: CanvasPageState }) {
 
     const startAndCompleteImageTask = useCallback(
         async (nodeId: string, generationConfig: AiConfig, prompt: string, references: ReferenceImage[] = [], mask: ReferenceImage | undefined, controller: AbortController, publicPrompt = prompt, provider?: { runningHubAppId?: string; panorama?: boolean }) => {
-            const task = await createImageGenerationTask(generationConfig, prompt, references, mask, {
-                signal: controller.signal,
-                logSource: "canvas",
-                logTitle: publicPrompt.slice(0, 36) || "画布生图",
-                publicPrompt,
-                conversationId: currentProject?.creativeConversationId,
-                surface: "canvas",
-                projectId,
-                runningHubAppId: provider?.runningHubAppId,
-                panorama: provider?.panorama,
-                ...createFreshGenerationTaskContext("canvas-image", [projectId, nodeId]),
-            });
-            setNodes((prev) =>
-                prev.map((node) =>
-                    node.id === nodeId
-                        ? {
-                              ...node,
-                              metadata: {
-                                  ...node.metadata,
-                                  imageTask: { id: task.id, kind: task.kind, model: task.model },
-                                  errorDetails: undefined,
-                              },
-                          }
-                        : node,
-                ),
-            );
-            await completeImageTask(nodeId, generationConfig, task, controller, publicPrompt);
+            const operation = async (attemptConfig: AiConfig) => {
+                const task = await createImageGenerationTask(attemptConfig, prompt, references, mask, {
+                    signal: controller.signal,
+                    logSource: "canvas",
+                    logTitle: publicPrompt.slice(0, 36) || "画布生图",
+                    publicPrompt,
+                    conversationId: currentProject?.creativeConversationId,
+                    surface: "canvas",
+                    projectId,
+                    runningHubAppId: provider?.runningHubAppId,
+                    panorama: provider?.panorama,
+                    ...createFreshGenerationTaskContext("canvas-image", [projectId, nodeId]),
+                });
+                setNodes((prev) =>
+                    prev.map((node) =>
+                        node.id === nodeId
+                            ? {
+                                  ...node,
+                                  metadata: {
+                                      ...node.metadata,
+                                      imageTask: { id: task.id, kind: task.kind, model: task.model },
+                                      errorDetails: undefined,
+                                  },
+                              }
+                            : node,
+                    ),
+                );
+                await completeImageTask(nodeId, attemptConfig, task, controller, publicPrompt);
+            };
+            try {
+                await runWithFallback(generationConfig, "image", operation, controller.signal);
+            } catch (error) {
+                if (!controller.signal.aborted && error instanceof Error && error.name === "AbortError") {
+                    setNodes((prev) => prev.map((node) => node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_IDLE, errorDetails: undefined, imageTask: undefined } } : node));
+                }
+                throw error;
+            }
         },
-        [completeImageTask, currentProject?.creativeConversationId, projectId],
+        [completeImageTask, currentProject?.creativeConversationId, projectId, runWithFallback],
     );
 
     const startAndCompleteUpscaleTask = useCallback(

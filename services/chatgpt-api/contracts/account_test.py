@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AccountTestRequest(BaseModel):
@@ -11,6 +11,14 @@ class AccountTestRequest(BaseModel):
     mode: Literal["chat", "image"]
     model: str = Field(min_length=1, max_length=120)
     prompt: str = Field(min_length=1, max_length=8000)
+
+    @field_validator("model", "prompt")
+    @classmethod
+    def reject_blank_values(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be blank")
+        return normalized
 
 
 class AccountTestResult(BaseModel):
@@ -31,3 +39,5 @@ class AccountTestResult(BaseModel):
     quota_deducted: bool = False
     error_code: str = ""
     error_message: str = ""
+    image_urls: list[str] = Field(default_factory=list)
+    call_id: str = ""

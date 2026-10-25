@@ -225,6 +225,27 @@ describe("video generation candidate failover", () => {
         }
     });
 
+    it("preserves signed audio and video references in a Dola protocol request", async () => {
+        vi.stubEnv("DREAMYO_ENCRYPTION_KEY", "a".repeat(64));
+        try {
+            mocks.getAuthSettings.mockResolvedValue({
+                ...settings,
+                systemChannels: [{ ...channels[0], id: "dola", models: ["dola-seedance-2-5"], advancedConfig: { protocol: "dola", createPath: "/v1/videos", imageToVideoPath: "/v1/videos", supportsReferenceImage: true, supportsReferenceVideo: true, supportsReferenceAudio: true } }],
+                logicalModels: [{ ...settings.logicalModels[0], bindings: [{ id: "dola-binding", channelId: "dola", upstreamModel: "dola-seedance-2-5", enabled: true, priority: 1 }] }],
+            });
+            mocks.fetchInternalApi.mockResolvedValue(json({ id: "dola-media-task", status: "queued" }));
+            const response = await POST(request({ model: "video", videoSeconds: "30", size: "9:16" }, [{ type: "video", url: "http://localhost/api/reference-assets/permanent/video.mp4" }, { type: "audio", url: "http://localhost/api/reference-assets/permanent/audio.mp3" }]));
+            expect(response.status).toBe(200);
+            const [url, init] = mocks.fetchInternalApi.mock.calls[0] as [string, RequestInit];
+            expect(url).toContain("/api/ai/system/dola/v1/videos");
+            const body = JSON.parse(String(init.body));
+            expect(body.references.map((reference: { type: string }) => reference.type)).toEqual(["video", "audio"]);
+            expect(body.references.every((reference: { url: string }) => reference.url.includes("purpose=provider-read") && reference.url.includes("signature="))).toBe(true);
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
     it("returns a portrait refusal immediately without trying another candidate", async () => {
         mocks.getAuthSettings.mockResolvedValue({
             ...settings,

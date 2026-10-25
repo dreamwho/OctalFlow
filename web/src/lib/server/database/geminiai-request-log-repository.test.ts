@@ -4,6 +4,12 @@ import type { QueryExecutor } from "./postgres";
 import { GeminiAiRequestLogRepository } from "./geminiai-request-log-repository";
 
 describe("GeminiAiRequestLogRepository", () => {
+    it("reads video capability without converting it to text", async () => {
+        const query = vi.fn().mockResolvedValue({ rows: [{ id: "video-log", created_at: new Date(), capability: "video", status_code: 200 }] });
+        const repository = new GeminiAiRequestLogRepository({ query } as unknown as QueryExecutor);
+        expect(await repository.findById("video-log")).toMatchObject({ capability: "video" });
+    });
+
     it("uses targeted filters, pagination and a database aggregate", async () => {
         const query = vi
             .fn()

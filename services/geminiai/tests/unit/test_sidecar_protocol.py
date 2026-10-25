@@ -50,7 +50,8 @@ def test_sidecar_exposes_health_models_and_required_protocol_routes():
     assert models.status_code == 200
     assert models.json()["object"] == "list"
     model_ids = {model["id"] for model in models.json()["data"]}
-    assert {"gemini-3.1-flash-image", "gemini-3-pro-image"}.issubset(model_ids)
+    assert {"gemini-3.1-flash-image", "gemini-3-pro-image", "gemini-nano-banana-2.1"}.issubset(model_ids)
+    assert client.get("/v1/models/gemini-nano-banana-2.1").json()["id"] == "gemini-nano-banana-2.1"
     assert "gemini-3.1-flash-lite-image" not in model_ids
     assert "gemini-3.1-flash-image-preview" not in model_ids
     assert {

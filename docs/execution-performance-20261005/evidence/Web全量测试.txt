@@ -1,0 +1,10 @@
+$ vitest run --no-file-parallelism
+
+ RUN  v4.1.11 /Users/dream/Desktop/Vibe Coding/PythonProject/Octal-Canvas/web
+
+
+ Test Files  711 passed | 7 skipped (718)
+      Tests  3583 passed | 14 skipped (3597)
+   Start at  00:21:35
+   Duration  162.30s (transform 5.98s, setup 0ms, import 54.75s, tests 32.34s, environment 41ms)
+

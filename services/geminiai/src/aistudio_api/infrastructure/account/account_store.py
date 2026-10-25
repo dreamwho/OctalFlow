@@ -104,13 +104,48 @@ class AccountMeta:
     email: str | None
     created_at: str
     last_used: str | None = None
+    health: dict[str, Any] | None = None
+    cookie_expiry_known: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AccountMeta:
-        return cls(**data)
+        fields = {
+            key: value
+            for key, value in data.items()
+            if key in {"id", "name", "email", "created_at", "last_used", "health", "cookie_expiry_known"}
+        }
+        health = fields.get("health")
+        if isinstance(health, dict):
+            status = health.get("status")
+            checked_at = health.get("checked_at")
+            message = health.get("message")
+            expires_at = health.get("cookie_expires_at")
+            expiry_known = health.get("cookie_expiry_known")
+            if (
+                isinstance(status, str)
+                and status in {"ready", "login_required", "unavailable", "error"}
+                and isinstance(checked_at, str)
+                and isinstance(message, str)
+                and isinstance(expiry_known, bool)
+                and (expires_at is None or isinstance(expires_at, str))
+            ):
+                fields["health"] = {
+                    "status": status,
+                    "checked_at": checked_at,
+                    "message": message,
+                    "cookie_expires_at": expires_at,
+                    "cookie_expiry_known": expiry_known,
+                }
+            else:
+                fields["health"] = None
+        elif health is not None:
+            fields["health"] = None
+        if not isinstance(fields.get("cookie_expiry_known"), bool):
+            fields["cookie_expiry_known"] = False
+        return cls(**fields)
 
 
 @dataclass
@@ -255,6 +290,43 @@ class AccountStore:
             return None
         return registry.accounts.get(registry.active_account_id)
 
+    def save_health(self, account_id: str, health: dict[str, Any]) -> AccountMeta | None:
+        """Persist only the bounded, public health summary for an account."""
+        if not is_safe_account_id(account_id):
+            return None
+        registry = self._load_registry()
+        account = registry.accounts.get(account_id)
+        if account is None:
+            return None
+        allowed_statuses = {"ready", "login_required", "unavailable", "error"}
+        status = health.get("status")
+        checked_at = health.get("checked_at")
+        message = health.get("message")
+        cookie_expires_at = health.get("cookie_expires_at")
+        cookie_expiry_known = health.get("cookie_expiry_known")
+        if (
+            not isinstance(status, str)
+            or status not in allowed_statuses
+            or not isinstance(checked_at, str)
+            or not isinstance(message, str)
+            or not isinstance(cookie_expiry_known, bool)
+            or (cookie_expires_at is not None and not isinstance(cookie_expires_at, str))
+        ):
+            raise ValueError("账号健康状态格式无效")
+        account.health = {
+            "status": status,
+            "checked_at": checked_at,
+            "message": message,
+            "cookie_expires_at": cookie_expires_at,
+            "cookie_expiry_known": cookie_expiry_known,
+        }
+        self._save_registry(registry)
+        account_dir = self._require_account_dir(account_id)
+        meta_path = account_dir / "meta.json"
+        if meta_path.is_file() and not meta_path.is_symlink():
+            _write_private_json(meta_path, account.to_dict())
+        return account
+
     def load_storage_state(self, account_id: str) -> dict | None:
         """读取指定账号的 auth.json（storage_state）；不存在返回 None。"""
         account_dir = self._account_dir(account_id)
@@ -292,6 +364,8 @@ class AccountStore:
         email: str | None,
         storage_state: dict[str, Any],
         account_id: str | None = None,
+        *,
+        cookie_expiry_known: bool = False,
     ) -> AccountMeta:
         """保存新账号。"""
         if account_id is not None and not is_safe_account_id(account_id):
@@ -315,6 +389,7 @@ class AccountStore:
             email=email,
             created_at=created_at,
             last_used=now,
+            cookie_expiry_known=cookie_expiry_known,
         )
         account_dir = self._ensure_account_dir(account_id)
         # 写入 auth.json

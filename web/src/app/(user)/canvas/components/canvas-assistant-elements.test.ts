@@ -215,7 +215,7 @@ describe("Canvas Agent current-turn references", () => {
 
         expect(inputRow).toContain('aria-label={canvasReferencePicking ? "正在从画布选择素材" : "从画布选择"}');
         expect(inputRow).toContain('aria-label={uploading ? "正在上传参考素材" : "上传本地素材"}');
-        expect(chatSource).toContain('accept="image/*,video/*,text/plain,text/markdown,.md,.markdown,.txt"');
+        expect(chatSource).toContain('accept="image/*,video/*,audio/*,text/plain,text/markdown,.md,.markdown,.txt"');
         expect(inputRow.indexOf('aria-label="本轮参考素材"')).toBeLessThan(inputRow.indexOf("<textarea"));
         expect(toolbar).toContain("data-canvas-agent-toolbar");
         expect(toolbar).not.toContain("添加参考素材");

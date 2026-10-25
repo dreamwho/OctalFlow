@@ -42,4 +42,10 @@ describe("GeminiAIStudio request log store", () => {
         await expect(clearGeminiAiRequestLogs()).resolves.toBe(2);
         await expect(listGeminiAiRequestLogs()).resolves.toMatchObject({ total: 0, items: [] });
     });
+
+    it("includes HTTP 200 video business failures in failed filters and statistics", async () => {
+        await appendGeminiAiRequestLog({ source: "runtime", capability: "video", method: "GET", path: "/v1/videos/vt_fixture", model: "gemini-omni-1.1-flash", statusCode: 200, durationMs: 20, phase: "failed", error: "reference image download failed" });
+        expect(await listGeminiAiRequestLogs({ capability: "video", status: "failed" })).toMatchObject({ total: 1, stats: { success: 0, failed: 1 } });
+        expect(await listGeminiAiRequestLogs({ capability: "video", status: "success" })).toMatchObject({ total: 0 });
+    });
 });

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     getStoredGenerationTaskByRequest: vi.fn(),
     rate: vi.fn(),
     withGenerationConcurrencyLimit: vi.fn(),
+    activeSlot: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/session", () => ({ getCurrentUser: vi.fn(async () => ({ id: "user-one", role: "user" })) }));
@@ -23,6 +24,7 @@ vi.mock("@/lib/server/security", () => ({
     rateLimitHeaders: vi.fn(() => ({})),
 }));
 vi.mock("@/lib/server/proxy-dispatcher", () => ({ configureServerProxyDispatcher: vi.fn() }));
+vi.mock("@/lib/server/generation-log-cancellation", () => ({ isActiveGenerationLogSlot: mocks.activeSlot, cancelGenerationTaskById: vi.fn() }));
 
 import { maxDuration, POST } from "./route";
 
@@ -60,6 +62,26 @@ describe("image task route", () => {
         expect(mocks.getStoredGenerationTaskByRequest).toHaveBeenCalledWith("image", "user-one", "image-workbench:conversation:slot", 3);
         expect(mocks.getAuthSettings).not.toHaveBeenCalled();
         expect(mocks.rate).not.toHaveBeenCalled();
+        expect(mocks.withGenerationConcurrencyLimit).not.toHaveBeenCalled();
+    });
+
+    it("does not create a workbench task after its pending log slot was deleted", async () => {
+        mocks.getStoredGenerationTaskByRequest.mockResolvedValue(null);
+        mocks.rate.mockResolvedValue({ allowed: true });
+        mocks.activeSlot.mockResolvedValue(false);
+        const response = await POST(new Request("http://localhost/api/image-tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                source: "image-workbench",
+                prompt: "fixture prompt",
+                context: { clientRequestId: "request-one", generationLogId: "log-one", generationSlotId: "slot-one" },
+            }),
+        }));
+
+        expect(response.status).toBe(409);
+        expect(mocks.activeSlot).toHaveBeenCalledWith("user-one", "log-one", "slot-one", "request-one", "image");
+        expect(mocks.getAuthSettings).not.toHaveBeenCalled();
         expect(mocks.withGenerationConcurrencyLimit).not.toHaveBeenCalled();
     });
 });

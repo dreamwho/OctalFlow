@@ -28,7 +28,7 @@ export type CanvasAgentChatAttachment = {
     id: string;
     name: string;
     url?: string;
-    type?: "image" | "video" | "text";
+    type?: "image" | "video" | "audio" | "text";
     text?: string;
     label?: string;
     status?: "uploading" | "ready" | "failed";
@@ -773,7 +773,7 @@ export function AgentChatComposer({
                         ref={fileInputRef}
                         hidden
                         type="file"
-                        accept="image/*,video/*,text/plain,text/markdown,.md,.markdown,.txt"
+                        accept="image/*,video/*,audio/*,text/plain,text/markdown,.md,.markdown,.txt"
                         multiple
                         onChange={(event) => {
                             void onAddFiles(event.target.files);

@@ -1,10 +1,10 @@
 "use client";
 
 import { LogDetailResizeHandle, useResizableDrawerWidth } from "@/hooks/use-resizable-drawer";
-import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Image, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Space, Switch, Tabs, Tag } from "antd";
+import { App, Alert, Button, Checkbox, Drawer, Empty, Form, Image, Input, InputNumber, Modal, Pagination, Popconfirm, Radio, Select, Space, Switch, Tabs, Tag } from "antd";
 import type { CheckboxChangeEvent } from "antd";
 import { BarChart3, ChevronRight, CircleUserRound, Clock, Copy, Download, Eye, EyeOff, KeyRound, Network, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
-import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Panel, PanelHeader } from "@/components/admin/admin-panel";
 import { AdminTrafficPanel } from "@/components/admin/admin-traffic-panel";
@@ -13,6 +13,8 @@ import { DEFAULT_TRAFFIC_DISPLAY_UNIT } from "@/lib/traffic-format";
 import { imagePreviewUrl, originalImageDownloadUrl } from "@/lib/media-image-url";
 import {
     activateGeminiAiAccount,
+    checkGeminiAiAccount,
+    addGeminiAiModel,
     clearGeminiAiLogs,
     createGeminiAiApiKey,
     deleteGeminiAiAccount,
@@ -42,7 +44,7 @@ import {
     type GeminiAiTestResult,
 } from "@/services/api/geminiai";
 
-import { geminiAiAccountUsage, geminiAiModelCapabilities, geminiAiModelLabel, geminiAiModelsForCapability, geminiAiSelectableModels, geminiAiSelectedModelIds, geminiAiStatusText, geminiAiTestTabs } from "./geminiai/geminiai-view-model";
+import { geminiAiAccountHealthText, geminiAiAccountUsage, geminiAiModelCapabilities, geminiAiModelLabel, geminiAiSelectableModels, geminiAiSelectedModelIds, geminiAiStatusText, geminiAiTestTabs } from "./geminiai/geminiai-view-model";
 import { MagicProxyBindingCard } from "./magic-proxy-binding-card";
 
 type GeminiAiCookieImportValues = { name?: string; email?: string; cookies: string };
@@ -62,10 +64,16 @@ export function AdminGeminiAiSection() {
     const [loadError, setLoadError] = useState("");
     const [syncing, setSyncing] = useState(false);
     const [accountActionId, setAccountActionId] = useState("");
+    const [checkingAccountId, setCheckingAccountId] = useState("");
+    const accountActionBusy = useRef(false);
     const [loginOpen, setLoginOpen] = useState(false);
     const [cookieImportOpen, setCookieImportOpen] = useState(false);
     const [renamingAccount, setRenamingAccount] = useState<GeminiAiAccount | null>(null);
     const [modelTestOpen, setModelTestOpen] = useState(false);
+    const [testModel, setTestModel] = useState<GeminiAiModel | null>(null);
+    const [modelAddOpen, setModelAddOpen] = useState(false);
+    const [modelAdding, setModelAdding] = useState(false);
+    const [modelForm] = Form.useForm<{ id: string; name?: string; capability: "text" | "image" }>();
     const [activeTab, setActiveTab] = useState<GeminiAiTab>("overview");
     const [keyOpen, setKeyOpen] = useState(false);
     const [keyDraft, setKeyDraft] = useState<GeminiAiKeyDraft>({ name: "外部调用密钥", expiresAt: "", allowedIps: "" });
@@ -112,8 +120,7 @@ export function AdminGeminiAiSection() {
         async (pageNumber = logPageNumber) => {
             setLogsLoading(true);
             try {
-                setLogPage(
-                    await getGeminiAiLogs({
+                const nextPage = await getGeminiAiLogs({
                         page: pageNumber,
                         pageSize: 20,
                         keyword: logKeyword || undefined,
@@ -122,8 +129,9 @@ export function AdminGeminiAiSection() {
                         source: logSource || undefined,
                         model: logModel || undefined,
                         accountId: logAccountId || undefined,
-                    }),
-                );
+                    });
+                setLogPage(nextPage);
+                setSelectedLog((current) => current ? nextPage.items.find((item) => item.id === current.id) || current : null);
             } catch (error) {
                 message.error(error instanceof Error ? error.message : "无法读取 GeminiAIStudio 请求日志");
             } finally {
@@ -146,6 +154,8 @@ export function AdminGeminiAiSection() {
     }, [activeTab, hasPendingLog, loadLogs]);
 
     const runAccountAction = async (accountId: string, work: () => Promise<unknown>, successMessage: string) => {
+        if (accountActionBusy.current) return false;
+        accountActionBusy.current = true;
         setAccountActionId(accountId);
         try {
             await work();
@@ -156,6 +166,26 @@ export function AdminGeminiAiSection() {
             message.error(error instanceof Error ? error.message : "账号操作失败");
             return false;
         } finally {
+            accountActionBusy.current = false;
+            setAccountActionId("");
+        }
+    };
+
+    const runAccountCheck = async (accountId: string) => {
+        if (accountActionBusy.current) return;
+        accountActionBusy.current = true;
+        setAccountActionId(accountId);
+        setCheckingAccountId(accountId);
+        try {
+            const result = await checkGeminiAiAccount(accountId);
+            setState((current) => current ? { ...current, accounts: current.accounts.map((item) => item.id === accountId ? result.account : item) } : current);
+            await loadState();
+            message.success("账号状态检测完成");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "检测 Google 账号状态失败");
+        } finally {
+            setCheckingAccountId("");
+            accountActionBusy.current = false;
             setAccountActionId("");
         }
     };
@@ -165,7 +195,7 @@ export function AdminGeminiAiSection() {
         try {
             await syncGeminiAiModels();
             await loadState();
-            message.success("GeminiAIStudio 模型目录已同步");
+            message.success("已从当前授权账号获取 AI Studio 模型目录");
         } catch (error) {
             message.error(error instanceof Error ? error.message : "模型目录同步失败");
         } finally {
@@ -182,6 +212,22 @@ export function AdminGeminiAiSection() {
         } catch (error) {
             message.error(error instanceof Error ? error.message : "Gemini AI Studio 渠道模型保存失败");
             return false;
+        }
+    };
+
+    const addModel = async (values: { id: string; name?: string; capability: "text" | "image" }) => {
+        if (modelAdding) return;
+        setModelAdding(true);
+        try {
+            await addGeminiAiModel(values);
+            await loadState();
+            modelForm.resetFields();
+            setModelAddOpen(false);
+            message.success("模型已添加到目录；测试通过后可勾选保存到渠道");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "添加模型失败");
+        } finally {
+            setModelAdding(false);
         }
     };
 
@@ -304,7 +350,7 @@ export function AdminGeminiAiSection() {
                             value={state?.accountsAvailable ? String(state.accounts.length) : "—"}
                             detail={!state?.accountsAvailable ? "Provider 未连接，无法读取账号；不表示账号已删除" : state.activeAccountId ? "已有当前使用账号" : "尚未选择当前账号"}
                         />
-                        <StatusMetric label="已声明模型" value={state ? String(state.models.filter((model) => model.enabled !== false).length) : "—"} detail="图片目录仅保留 gemini-3-pro-image 与 gemini-3.1-flash-image。" />
+                        <StatusMetric label="已声明模型" value={state ? String(state.models.filter((model) => model.enabled !== false).length) : "—"} detail="可从当前授权账号获取目录，或手动填写文本、图片模型 ID。添加到目录不代表该账号已通过生成测试。" />
                     </div>
                     <div className="p-3 sm:p-5">
                         <Alert
@@ -335,6 +381,7 @@ export function AdminGeminiAiSection() {
                             </Space>
                         }
                     />
+                    <Alert className="m-3 sm:m-4" type="info" showIcon message="状态检测只检查登录状态和 AI Studio 页面初始化，不会生成内容或检查额度。" description="检测不会续期 Cookie。原始 Cookie 通常不提供真实期限时会显示未知；即使记录了期限，也不保证届时仍有效。Google 正常访问时可能刷新登录状态，服务端撤销时点无法预测。系统不提供自动保活。" />
                     {loading && !state ? <SectionLoading /> : null}
                     {state ? (
                         !state.accountsAvailable ? (
@@ -358,22 +405,24 @@ export function AdminGeminiAiSection() {
                                                                 当前使用
                                                             </Tag>
                                                         ) : null}
-                                                        <AccountStatusTag status={account.status} />
+                                                        <Tag color={account.health?.status === "ready" ? "success" : account.health?.status === "login_required" ? "warning" : account.health?.status ? "error" : undefined} className="m-0">{geminiAiAccountHealthText(account.health?.status)}</Tag>
                                                     </div>
                                                     <div className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">{account.email || "授权后将显示已识别邮箱"}</div>
+                                                    {account.health ? <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">检测：{formatDate(account.health.checkedAt)} · {account.health.message}<br />Cookie 期限：{account.health.cookieExpiryKnown && account.health.cookieExpiresAt ? formatDate(account.health.cookieExpiresAt) : "未知（原始 Cookie 未提供真实期限）"}</div> : null}
                                                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-400 dark:text-zinc-500">
                                                         <span>用量：{geminiAiAccountUsage(account)}</span>
                                                         {account.lastUsedAt ? <span>最近使用：{formatDate(account.lastUsedAt)}</span> : null}
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap lg:shrink-0">
-                                                <Button size="small" disabled={active} loading={actionLoading && !active} onClick={() => void runAccountAction(account.id, () => activateGeminiAiAccount(account.id), "已切换当前 Google 账号")}>
+                                            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:shrink-0">
+                                                <Button size="small" disabled={active || (Boolean(accountActionId) && !actionLoading)} loading={actionLoading && !active && checkingAccountId !== account.id} onClick={() => void runAccountAction(account.id, () => activateGeminiAiAccount(account.id), "已切换当前 Google 账号")}>
                                                     {active ? "当前账号" : "设为当前"}
                                                 </Button>
-                                                <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => setRenamingAccount(account)}>
+                                                <Button size="small" disabled={Boolean(accountActionId) && !actionLoading} icon={<Pencil className="size-3.5" />} onClick={() => setRenamingAccount(account)}>
                                                     改名
                                                 </Button>
+                                                <Button size="small" disabled={Boolean(accountActionId) && !actionLoading} loading={checkingAccountId === account.id} onClick={() => void runAccountCheck(account.id)}>检测状态</Button>
                                                 <Popconfirm
                                                     title="删除这个 Google 授权？"
                                                     description="删除后此账号将无法再被 GeminiAIStudio Provider 使用。"
@@ -382,7 +431,7 @@ export function AdminGeminiAiSection() {
                                                     okButtonProps={{ danger: true, loading: actionLoading }}
                                                     onConfirm={() => runAccountAction(account.id, () => deleteGeminiAiAccount(account.id), "Google 授权已删除")}
                                                 >
-                                                    <Button size="small" danger icon={<Trash2 className="size-3.5" />} aria-label={`删除 ${account.name || account.email || "Google 账号"}`}>
+                                                    <Button size="small" disabled={Boolean(accountActionId) && !actionLoading} danger icon={<Trash2 className="size-3.5" />} aria-label={`删除 ${account.name || account.email || "Google 账号"}`}>
                                                         删除
                                                     </Button>
                                                 </Popconfirm>
@@ -416,14 +465,15 @@ export function AdminGeminiAiSection() {
                     <Panel>
                         <PanelHeader
                             title="Gemini AI Studio 渠道与模型"
-                            description="模型目录需要由管理员显式同步；不会在后台自动批量探测或保存实测历史。"
+                            description="获取账号模型或手动添加 ID，再逐个测试并勾选保存到渠道；获取目录不会发送生成请求。"
                             actions={
-                                <Button icon={<RefreshCw className="size-4" />} loading={syncing} disabled={!state?.configured} onClick={() => void syncModels()}>
-                                    同步模型目录
-                                </Button>
+                                <Space wrap>
+                                    <Button icon={<Plus className="size-4" />} disabled={!state?.configured} onClick={() => setModelAddOpen(true)}>手动添加模型</Button>
+                                    <Button icon={<RefreshCw className="size-4" />} loading={syncing} disabled={!state?.configured} onClick={() => void syncModels()}>获取账号模型</Button>
+                                </Space>
                             }
                         />
-                        {state ? <GeminiAiModelsSummary channels={channels} models={state.models} onSave={saveModels} /> : <SectionLoading />}
+                        {state ? <GeminiAiModelsSummary channels={channels} models={state.models} onSave={saveModels} onTest={(model) => { setTestModel(model); setModelTestOpen(true); }} /> : <SectionLoading />}
                     </Panel>
                 </div>
             </div>
@@ -584,7 +634,19 @@ export function AdminGeminiAiSection() {
                     if (await runAccountAction(renamingAccount.id, () => updateGeminiAiAccount(renamingAccount.id, { name }), "账号名称已更新")) setRenamingAccount(null);
                 }}
             />
-            <GeminiAiModelTestDialog state={state} open={modelTestOpen} onClose={() => setModelTestOpen(false)} />
+            <GeminiAiModelTestDialog state={state} open={modelTestOpen} initialModel={testModel} onClose={() => { setModelTestOpen(false); setTestModel(null); }} />
+            <Modal title="手动添加模型" open={modelAddOpen} centered width="min(560px, calc(100vw - 24px))" okText="添加到目录" cancelText="取消" confirmLoading={modelAdding} onOk={() => modelForm.submit()} onCancel={() => { if (!modelAdding) { setModelAddOpen(false); modelForm.resetFields(); } }}>
+                <Form form={modelForm} layout="vertical" initialValues={{ capability: "image" }} onFinish={(values) => void addModel(values)}>
+                    <Form.Item label="模型能力" name="capability" rules={[{ required: true }]}>
+                        <Radio.Group><Radio.Button value="image">图片生成</Radio.Button><Radio.Button value="text">文本对话</Radio.Button></Radio.Group>
+                    </Form.Item>
+                    <Form.Item label="模型 ID" name="id" rules={[{ required: true, whitespace: true, message: "请输入上游模型 ID" }]}>
+                        <Input placeholder="例如：gemini-nano-banana-2.1" autoComplete="off" />
+                    </Form.Item>
+                    <Form.Item label="显示名称（可选）" name="name"><Input placeholder="留空使用模型 ID" /></Form.Item>
+                    <Alert type="info" showIcon message="添加不会调用生成模型" description="模型 ID 与能力类型由你确认。添加后可逐个测试，再勾选保存到渠道；能否实际生成取决于账号权限、额度及上游支持。" />
+                </Form>
+            </Modal>
             <Modal
                 title="创建 GeminiAIStudio API 密钥"
                 open={keyOpen}
@@ -897,6 +959,8 @@ function GeminiAiRequestLogRow({ log, trafficSummary, trafficDisplayUnit, traffi
 
 function GeminiAiRequestLogDrawer({ log, trafficSummary, trafficDisplayUnit, trafficLoading, trafficError, onClose }: { log: GeminiAiRequestLog | null; trafficSummary?: import("@/lib/admin-traffic-types").RequestTrafficSummary; trafficDisplayUnit: import("@/lib/traffic-format").TrafficDisplayUnit; trafficLoading?: boolean; trafficError?: string; onClose: () => void }) {
     const { message } = App.useApp();
+    const pending = log?.phase === "queued" || log?.phase === "running";
+    const failed = log?.phase === "failed" || (log?.statusCode || 0) >= 400;
     const { width: drawerWidth, resizing: drawerResizing, onHandlePointerDown } = useResizableDrawerWidth({ defaultWidth: 640, minWidth: 440 });
     const [imageResults, setImageResults] = useState<string[] | null>(null);
 
@@ -931,8 +995,8 @@ function GeminiAiRequestLogDrawer({ log, trafficSummary, trafficDisplayUnit, tra
                 log ? (
                     <Space size="small">
                         <Tag className="m-0 font-mono text-xs uppercase">{log.method || "POST"}</Tag>
-                        <Tag color={log.statusCode === 0 ? "processing" : log.statusCode < 400 ? "success" : "error"}>
-                            {log.statusCode === 0 ? "执行中" : log.statusCode < 400 ? "成功" : "失败"} · {log.statusCode || 0}
+                        <Tag color={log.statusCode === 0 ? "processing" : failed ? "error" : "success"}>
+                            {pending || log.statusCode === 0 ? "执行中" : failed ? "失败" : "成功"} · {log.statusCode || 0}
                         </Tag>
                     </Space>
                 ) : null
@@ -1002,6 +1066,7 @@ function GeminiAiRequestLogDrawer({ log, trafficSummary, trafficDisplayUnit, tra
                     <section>
                         <h3 className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">请求基本信息</h3>
                         <div className="grid gap-x-4 gap-y-3 rounded-lg border border-zinc-200 p-3.5 text-sm dark:border-zinc-800 sm:grid-cols-2">
+                            {log.taskId ? <DetailItem label="上游任务 ID" value={log.taskId} /> : null}
                             <DetailItem label="模型 ID" value={log.model} />
                             <DetailItem label="实际账号" value={log.accountEmail || "未识别实际账号"} />
                             <DetailItem label="能力类型" value={capabilityLabel(log.capability)} />
@@ -1193,15 +1258,6 @@ function StatusMetric({ label, value, detail, tone = "neutral" }: { label: strin
     );
 }
 
-function AccountStatusTag({ status }: { status?: string }) {
-    const color = status === "failed" || status === "error" ? "error" : status === "pending" ? "warning" : status === "active" || status === "ready" || status === "healthy" || status === "available" ? "success" : undefined;
-    return (
-        <Tag color={color} className="m-0">
-            {geminiAiStatusText(status)}
-        </Tag>
-    );
-}
-
 function GeminiAiTabLabel({ label, compact }: { label: string; compact: string }) {
     return (
         <span aria-label={label} className="inline-flex min-w-0 items-center justify-center gap-1.5">
@@ -1339,7 +1395,7 @@ function GeminiAiRotationSettings({ rotation, onSave }: { rotation?: GeminiAiRot
     );
 }
 
-function GeminiAiModelsSummary({ channels, models, onSave }: { channels: NonNullable<GeminiAiAdminState["channels"]>; models: GeminiAiModel[]; onSave: (modelIds: string[]) => Promise<boolean> }) {
+function GeminiAiModelsSummary({ channels, models, onSave, onTest }: { channels: NonNullable<GeminiAiAdminState["channels"]>; models: GeminiAiModel[]; onSave: (modelIds: string[]) => Promise<boolean>; onTest: (model: GeminiAiModel) => void }) {
     const selectableModels = useMemo(() => geminiAiSelectableModels(models), [models]);
     const savedModelIds = useMemo(() => geminiAiSelectedModelIds(models), [models]);
     const [selectedModelIds, setSelectedModelIds] = useState(savedModelIds);
@@ -1401,7 +1457,9 @@ function GeminiAiModelsSummary({ channels, models, onSave }: { channels: NonNull
                                     {model.source === "geminiai" ? (savedModelIds.includes(model.id) ? "已保存" : "未保存") : model.enabled === false ? "已停用" : "可用"}
                                 </Tag>
                             </div>
+                            {model.name && model.name !== model.id ? <div className="mt-1 break-all text-xs text-zinc-500 dark:text-zinc-400">{model.id}</div> : null}
                             <div className="mt-2 flex flex-wrap gap-1.5">
+                                {model.catalogOrigin ? <Tag className="m-0">{model.catalogOrigin === "aistudio" ? "账号目录" : model.catalogOrigin === "manual" ? "手动添加" : "预置"}</Tag> : null}
                                 {geminiAiModelCapabilities(model).map((capability) => (
                                     <Tag key={capability} className="m-0">
                                         {capabilityLabel(capability)}
@@ -1425,11 +1483,12 @@ function GeminiAiModelsSummary({ channels, models, onSave }: { channels: NonNull
                                     保存到 Gemini AI Studio 渠道
                                 </Checkbox>
                             ) : null}
+                            {geminiAiModelCapabilities(model).length ? <Button className="mt-3" size="small" icon={<Play className="size-3.5" />} aria-label={`测试模型 ${model.id}`} onClick={() => onTest(model)}>测试模型</Button> : null}
                         </div>
                     ))}
                 </div>
             ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未同步 GeminiAIStudio 模型目录" />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="可获取账号模型目录或手动添加模型 ID" />
             )}
         </div>
     );
@@ -1611,7 +1670,7 @@ function GeminiAiRenameModal({ account, onClose, onSave }: { account: GeminiAiAc
     );
 }
 
-function GeminiAiModelTestDialog({ state, open, onClose }: { state: GeminiAiAdminState | null; open: boolean; onClose: () => void }) {
+function GeminiAiModelTestDialog({ state, open, initialModel, onClose }: { state: GeminiAiAdminState | null; open: boolean; initialModel: GeminiAiModel | null; onClose: () => void }) {
     const { message } = App.useApp();
     const [capability, setCapability] = useState<GeminiAiCapability>("text");
     const [modelId, setModelId] = useState("");
@@ -1622,10 +1681,18 @@ function GeminiAiModelTestDialog({ state, open, onClose }: { state: GeminiAiAdmi
     const [refreshing, setRefreshing] = useState(false);
     const [result, setResult] = useState<GeminiAiTestResult | null>(null);
     const [requestError, setRequestError] = useState("");
-    const models = useMemo(() => geminiAiModelsForCapability(state?.models || [], capability), [capability, state?.models]);
+    const models = useMemo(() => (state?.models || []).filter((model) => (model.source === "geminiai" || model.enabled !== false) && geminiAiModelCapabilities(model).includes(capability)), [capability, state?.models]);
 
     useEffect(() => {
-        setModelId(models[0]?.id || "");
+        if (!open || !initialModel) return;
+        const selectedCapability = geminiAiModelCapabilities(initialModel)[0] || "text";
+        setCapability(selectedCapability);
+        setModelId(initialModel.id);
+        setPrompt(selectedCapability === "image" ? "生成一张白色背景的红苹果图片。" : selectedCapability === "text" ? "请回复：连接成功。" : "生成一段海边日落视频。");
+    }, [initialModel, open]);
+
+    useEffect(() => {
+        setModelId((current) => models.some((model) => model.id === current) ? current : models[0]?.id || "");
         setResult(null);
         setRequestError("");
     }, [capability, models]);
@@ -1700,7 +1767,7 @@ function GeminiAiModelTestDialog({ state, open, onClose }: { state: GeminiAiAdmi
             styles={{ body: { maxHeight: "calc(100dvh - 150px)", overflowY: "auto" } }}
         >
             <div className="space-y-4 py-1">
-                <Alert type="info" showIcon message="每次只发起当前选中模型的一次真实请求" description="不会批量探测、不会写入测试历史。结果仅保留在当前对话框，关闭后即清空。" />
+                <Alert type="info" showIcon message="点击“开始实测”才调用当前模型，可能消耗账号额度" description="文本或图片收到有效结果才算成功。关闭窗口后清空本次结果。" />
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist" aria-label="GeminiAIStudio 实测能力">
                     {geminiAiTestTabs.map((tab) => {
                         const selected = capability === tab.capability;
@@ -1720,7 +1787,6 @@ function GeminiAiModelTestDialog({ state, open, onClose }: { state: GeminiAiAdmi
                 </div>
                 <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">{geminiAiTestTabs.find((tab) => tab.capability === capability)?.description}</p>
                 {capability === "video" ? <Alert type="info" showIcon message="Omni 模型走 GeminiAIStudio Provider，其余走官方 Gemini/Veo 渠道" description="选择 gemini-omni 模型时由 AI Studio 账号页面自动化提交（单次 3-10 秒，成片无水印，每账号每日配额有限）；其余视频模型需要已保存并启用的官方 Gemini/Veo 渠道。" /> : null}
-                {capability === "image" ? <Alert type="info" showIcon message="图片测试使用 AI Studio 页面原生生成" description="仅测试 gemini-3-pro-image 与 gemini-3.1-flash-image；比例和画质会同步到页面的 Aspect ratio 与 Resolution 设置。" /> : null}
                 <div className={`grid gap-3 ${capability === "image" ? "sm:grid-cols-[minmax(0,1fr)_140px_140px]" : "sm:grid-cols-[minmax(0,1fr)_180px]"}`}>
                     <label className="block text-sm font-medium text-zinc-800 dark:text-zinc-200">
                         模型

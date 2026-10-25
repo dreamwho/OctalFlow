@@ -1,0 +1,2 @@
+{'uid': 10001, 'omni_sha256': '7037cfb9e3749e66e60abc49fd47e1c447c948a3576867e0c722d27a6fdfca0d', 'browser_bundle_exists': True}
+{'browser_launched': True}

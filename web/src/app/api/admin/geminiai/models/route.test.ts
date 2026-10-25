@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
     auditFailure: vi.fn(),
     routeError: vi.fn((error: Error) => new Response(JSON.stringify({ code: 500, data: null, msg: error.message }), { status: 500, headers: { "content-type": "application/json" } })),
     listCatalog: vi.fn(),
+    syncCatalog: vi.fn(),
+    addModel: vi.fn(),
     saveSelection: vi.fn(),
 }));
 
@@ -20,9 +22,9 @@ vi.mock("@/lib/server/geminiai-admin", () => ({
     auditGeminiAiAdminFailure: mocks.auditFailure,
     geminiAiRouteError: mocks.routeError,
 }));
-vi.mock("@/lib/server/geminiai-service", () => ({ listGeminiAiCatalog: mocks.listCatalog, saveGeminiAiModelSelection: mocks.saveSelection }));
+vi.mock("@/lib/server/geminiai-service", () => ({ listGeminiAiCatalog: mocks.listCatalog, syncGeminiAiCatalog: mocks.syncCatalog, addGeminiAiCatalogModel: mocks.addModel, saveGeminiAiModelSelection: mocks.saveSelection }));
 
-import { PUT } from "./route";
+import { POST, PUT } from "./route";
 import { POST as syncModels } from "./sync/route";
 
 function request(body: unknown) {
@@ -34,6 +36,8 @@ describe("GeminiAI model synchronization and selection routes", () => {
         vi.clearAllMocks();
         mocks.requireAdmin.mockResolvedValue({ user });
         mocks.listCatalog.mockResolvedValue(models);
+        mocks.syncCatalog.mockResolvedValue(models);
+        mocks.addModel.mockResolvedValue(models);
         mocks.saveSelection.mockResolvedValue({ channel: { id: "geminiai", name: "Gemini AI Studio", enabled: true, models: models.map((model) => model.id) }, models: models.map((model) => ({ ...model, enabled: true })) });
     });
 
@@ -43,6 +47,22 @@ describe("GeminiAI model synchronization and selection routes", () => {
         expect(await response.json()).toEqual({ code: 0, data: { models }, msg: "GeminiAI 模型目录已同步" });
         expect(mocks.saveSelection).not.toHaveBeenCalled();
         expect(mocks.auditAction).toHaveBeenCalledWith(expect.any(Request), user, "admin.geminiai.models.sync", { type: "geminiai_model_catalog" }, { discoveredCount: 2 });
+    });
+
+    it("adds a declaration without saving or testing a model", async () => {
+        const body = { id: "gemini-new-render", name: "新模型", capability: "image" };
+        const response = (await POST(new Request("http://localhost/api/admin/geminiai/models", { method: "POST", body: JSON.stringify(body) })))!;
+        expect(response.status).toBe(200);
+        expect(mocks.addModel).toHaveBeenCalledWith(body);
+        expect(mocks.saveSelection).not.toHaveBeenCalled();
+    });
+
+    it("denies registry mutations without upstream permission", async () => {
+        mocks.requireAdmin.mockResolvedValue({ error: new Response(null, { status: 403 }) });
+        expect((await POST(new Request("http://localhost/api/admin/geminiai/models", { method: "POST" })))?.status).toBe(403);
+        expect((await syncModels(new Request("http://localhost/api/admin/geminiai/models/sync", { method: "POST" })))?.status).toBe(403);
+        expect(mocks.addModel).not.toHaveBeenCalled();
+        expect(mocks.syncCatalog).not.toHaveBeenCalled();
     });
 
     it("saves only the explicit multi-select list through PUT", async () => {

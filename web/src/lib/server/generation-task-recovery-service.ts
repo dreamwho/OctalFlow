@@ -38,11 +38,14 @@ export async function runGenerationTaskRecoveryBatch(input: { origin: string; pu
     try {
         const persistence = leases.filter(needsPersistence);
         const queries = leases.filter((lease) => !needsPersistence(lease));
-        const results = [
-            ...(await runWithConcurrency(queries, 20, (lease) => processGenerationTaskLease(lease, workerId, input.origin, input.publicOrigin || input.origin, input.cookie || ""))),
-            ...(await runWithConcurrency(persistence, 4, (lease) => processGenerationTaskLease(lease, workerId, input.origin, input.publicOrigin || input.origin, input.cookie || ""))),
-        ];
-        return summarize(results);
+        const persistSlots = Math.min(4, persistence.length);
+        const process = (lease: GenerationTaskLease) => processGenerationTaskLease(lease, workerId, input.origin, input.publicOrigin || input.origin, input.cookie || "");
+        // Reserve persistence slots within the existing 20-task budget. A slow
+        // query or planner must not hold results that are already ready to save.
+        const groups = await Promise.allSettled([runWithConcurrency(persistence, persistSlots, process), runWithConcurrency(queries, 20 - persistSlots, process)]);
+        const failed = groups.find((group) => group.status === "rejected");
+        if (failed?.status === "rejected") throw failed.reason;
+        return summarize(groups.flatMap((group) => (group.status === "fulfilled" ? group.value : [])));
     } finally {
         clearInterval(heartbeat);
     }

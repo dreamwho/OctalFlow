@@ -206,7 +206,7 @@ const dolaVideoOperations: ProtocolOperation = {
     statusField: "status",
     durationRange: "5、10、15、30 秒（按模型）",
     aspectRatios: ["1:1", "3:4", "4:3", "9:16", "16:9", "21:9"],
-    referenceRule: "Dola 通过 Cookie 初始化的 Camoufox 页面会话上传参考图；服务端按账号、凭据版本和通用代理目标固定同一会话出口。",
+    referenceRule: "支持图片参考，首尾帧使用图片；Seedance 2.5 同时支持音频和视频参考素材。",
     supportsReferenceImage: true,
 };
 
@@ -223,7 +223,7 @@ const dolaImageOperations: ProtocolOperation = {
 };
 
 const DOLA_VIDEO_MODELS = [
-    { id: "dola-seedance-2-5", label: "Dola Seedance 2.5", capability: "video" as const, operation: { ...dolaVideoOperations, durationRange: "5、10、15、30 秒" } },
+    { id: "dola-seedance-2-5", label: "Dola Seedance 2.5", capability: "video" as const, operation: { ...dolaVideoOperations, durationRange: "5、10、15、30 秒", supportsReferenceVideo: true, supportsReferenceAudio: true } },
     { id: "dola-seedance-2-0-fast", label: "Dola Seedance 2.0 Fast", capability: "video" as const, operation: { ...dolaVideoOperations, durationRange: "5、10、15 秒" } },
     { id: "dola-seedream-4-5", label: "Dola Seedream 4.5", capability: "image" as const, operation: dolaImageOperations },
 ];

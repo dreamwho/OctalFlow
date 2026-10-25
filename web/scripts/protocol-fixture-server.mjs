@@ -37,6 +37,8 @@ const GLOBAL_AIOPC_VIDEO_PATHS = new Set([
 export function createProtocolFixtureServer(options = {}) {
     const tasks = new Map();
     const googleSessions = new Map();
+    const geminiaiAccounts = new Map((Array.isArray(options.geminiaiAccounts) ? options.geminiaiAccounts : [{ id: "fixture-google-account", name: "Fixture Google 账号", email: "fixture@example.test" }]).map((account) => [String(account.id), { id: String(account.id), name: String(account.name || account.id), email: String(account.email || "") }]));
+    const modelCatalog = new Map(models.map((model) => [model.id, { ...model }]));
     const requests = [];
     let taskSequence = 0;
     const nextTaskId = (kind) => `fixture-${kind}-${++taskSequence}`;
@@ -45,7 +47,7 @@ export function createProtocolFixtureServer(options = {}) {
             const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
             const body = await readRequestBody(request);
             requests.push({ method: request.method || "GET", path: url.pathname + url.search, headers: request.headers, contentType: request.headers["content-type"] || "", body });
-            await handleFixtureRequest({ request, response, url, body, tasks, googleSessions, requests, nextTaskId, options });
+            await handleFixtureRequest({ request, response, url, body, tasks, googleSessions, geminiaiAccounts, modelCatalog, requests, nextTaskId, options });
         } catch (error) {
             sendJson(response, 500, { error: { message: error instanceof Error ? error.message : "fixture failed" } });
         }
@@ -53,11 +55,12 @@ export function createProtocolFixtureServer(options = {}) {
     return { server, requests, tasks };
 }
 
-async function handleFixtureRequest({ request, response, url, body, tasks, googleSessions, requests, nextTaskId, options }) {
+async function handleFixtureRequest({ request, response, url, body, tasks, googleSessions, geminiaiAccounts, modelCatalog, requests, nextTaskId, options }) {
     const path = fixturePath(url.pathname);
     const responseDelayMs = Math.max(0, Number(options.responseDelayMs) || 0);
     if (request.method === "POST" && responseDelayMs) await delay(responseDelayMs);
     if (request.method === "GET" && path === "/health") return sendJson(response, 200, { ok: true });
+    if (request.method === "GET" && path === "/api/proxy/generic-bindings") return sendJson(response, 200, { bindings: {} });
     if (request.method === "GET" && path === "/__state") {
         return sendJson(response, 200, {
             requests: requests
@@ -70,15 +73,47 @@ async function handleFixtureRequest({ request, response, url, body, tasks, googl
                     bodyBytes: item.body.byteLength,
                     model: requestedModel(item.body, item.contentType),
                     ...(item.path.endsWith("/accounts/headed-test") ? { headless: jsonBody(item.body).headless, timeoutSeconds: jsonBody(item.body).timeoutSeconds } : {}),
+                    ...(item.path.endsWith("/internal/runtime/v1/videos") ? { references: jsonBody(item.body).references } : {}),
                 })),
             tasks: Array.from(tasks.entries()).map(([id, task]) => ({ id, ...task })),
+            geminiaiAccounts: [...geminiaiAccounts.values()],
         });
     }
     if (request.method === "POST" && path === "/__reset") {
         requests.splice(0, requests.length);
         tasks.clear();
         googleSessions.clear();
+        for (const account of geminiaiAccounts.values()) delete account.health;
         return sendJson(response, 200, { ok: true });
+    }
+    // GeminiAI account-health fixture: status is deterministic by account id and each check is persisted for subsequent list calls.
+    if (request.method === "GET" && path === "/accounts") return sendJson(response, 200, { accounts: [...geminiaiAccounts.values()] });
+    if (request.method === "GET" && path === "/accounts/active") {
+        const account = [...geminiaiAccounts.values()][0];
+        return sendJson(response, 200, account ? { id: account.id } : { id: "" });
+    }
+    const accountCheck = request.method === "POST" ? path.match(/^\/accounts\/([^/]+)\/check$/) : null;
+    if (accountCheck) {
+        const id = decodeURIComponent(accountCheck[1]);
+        const account = geminiaiAccounts.get(id);
+        if (!account) return sendJson(response, 404, { detail: "Google 账号不存在" });
+        const forcedStatus = options.geminiaiAccountStatus;
+        const status = forcedStatus === "ready" || forcedStatus === "login_required"
+            ? forcedStatus
+            : /(?:expired|login-required|needs-login)/i.test(id) ? "login_required" : "ready";
+        account.health = {
+            status,
+            checked_at: new Date().toISOString(),
+            message: status === "ready" ? "登录正常，AI Studio 页面已初始化" : "需要重新授权后才能使用 AI Studio",
+            cookie_expires_at: null,
+            cookie_expiry_known: false,
+        };
+        return sendJson(response, 200, { ...account });
+    }
+    const accountItem = path.match(/^\/accounts\/([^/]+)$/);
+    if (accountItem && request.method === "GET") {
+        const account = geminiaiAccounts.get(decodeURIComponent(accountItem[1]));
+        return account ? sendJson(response, 200, { ...account }) : sendJson(response, 404, { detail: "Google 账号不存在" });
     }
     // Dola Camoufox Provider fixture：结果由导入账号的 Cookie 值驱动（expired→needs_login、verify→verification_required、boom→上游 500，其余 ready）。
     if (path.startsWith("/internal/runtime/v1/")) {
@@ -139,8 +174,18 @@ async function handleFixtureRequest({ request, response, url, body, tasks, googl
             return sendJson(response, 200, { ...task, taskId: decodeURIComponent(videoQuery[1]), diagnostics: { upstreamResponseText: task.conversationReply || "你的视频生成好了。" } });
         }
     }
+    if (request.method === "POST" && path === "/config/models") {
+        const input = jsonBody(body);
+        if (modelCatalog.has(input.id)) return sendJson(response, 409, { detail: { message: "模型已存在，请在目录中选择或测试该模型", type: "model_catalog_error" } });
+        modelCatalog.set(input.id, { id: input.id, name: input.name || input.id, capability: input.capability, catalog_origin: "manual" });
+        return sendJson(response, 200, { object: "list", data: [...modelCatalog.values()] });
+    }
+    if (request.method === "POST" && path === "/config/models/sync") {
+        modelCatalog.set("gemini-account-render", { id: "gemini-account-render", name: "账号图片模型", capability: "image", catalog_origin: "aistudio" });
+        return sendJson(response, 200, { object: "list", data: [...modelCatalog.values()] });
+    }
     if (request.method === "GET" && ["/models", "/api/v3/models"].includes(path)) {
-        const catalog = url.searchParams.has("protocol") ? [...models, { id: "opaque-catalog-model" }] : models;
+        const catalog = url.searchParams.has("protocol") ? [...modelCatalog.values(), { id: "opaque-catalog-model" }] : [...modelCatalog.values()];
         return sendJson(response, 200, { object: "list", data: catalog });
     }
     if (request.method === "GET" && path === "/sdapi/v1/sd-models") {

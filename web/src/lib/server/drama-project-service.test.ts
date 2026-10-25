@@ -129,6 +129,16 @@ describe("drama project service updates", () => {
         await expect(updateDramaProjectForUser("user-one", current.id, { ...project("2026-07-19T08:00:02.000Z", "新标题"), ratio: "5000x5000" })).resolves.toMatchObject({ ratio: "5000x5000" });
     });
 
+    it("persists per-shot audio and video references through normalization and reload", async () => {
+        const current = project("2026-07-19T08:00:01.000Z", "旧标题");
+        mocks.getDramaProject.mockResolvedValue(current);
+        mocks.updateDramaProject.mockImplementation(async (_userId, project) => project);
+        const videoReferences = [{ id: "sound", type: "audio", title: "参考声音", serverUrl: "/api/reference-assets/permanent/sound.mp3", storageKey: "permanent/sound.mp3", mimeType: "audio/mpeg" }, { id: "motion", type: "video", title: "参考动作", serverUrl: "/api/reference-assets/permanent/motion.mp4", storageKey: "permanent/motion.mp4", mimeType: "video/mp4" }];
+        const saved = await updateDramaProjectForUser("user-one", current.id, { ...project("2026-07-19T08:00:02.000Z", "新标题"), episodes: [{ id: "episode-one", shots: [{ id: "shot-one", videoReferences }] }] });
+        expect(saved.episodes[0].shots[0].videoReferences).toEqual(videoReferences);
+        expect(mocks.updateDramaProject.mock.calls[0][1].episodes[0].shots[0].videoReferences).toEqual(videoReferences);
+    });
+
     it("keeps projects beyond the former collection and text thresholds", async () => {
         const current = project("2026-07-19T08:00:01.000Z", "旧标题");
         mocks.getDramaProject.mockResolvedValue(current);

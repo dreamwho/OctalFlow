@@ -3,5 +3,5 @@ export function isCanvasAgentTextFile(file: File) {
 }
 
 export function isCanvasAgentAttachmentFile(file: File) {
-    return file.type.startsWith("image/") || file.type.startsWith("video/") || isCanvasAgentTextFile(file);
+    return file.type.startsWith("image/") || file.type.startsWith("video/") || file.type.startsWith("audio/") || isCanvasAgentTextFile(file);
 }

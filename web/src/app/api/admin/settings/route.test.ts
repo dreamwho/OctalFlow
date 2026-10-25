@@ -50,6 +50,23 @@ describe("admin settings model routing", () => {
         expect(mocks.safeRecordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "admin.settings.update", metadata: { fields: expect.arrayContaining(["systemChannels", "logicalModels", "defaultModels"]) } }));
     });
 
+    it("persists an uploaded model icon and removes it when default is restored", async () => {
+        const iconUrl = "data:image/png;base64,YQ==";
+        const response = await PATCH(request({ logicalModels: [{ ...savedSettings.logicalModels[0], iconUrl }] }));
+        expect(response.status).toBe(200);
+        expect(mocks.setAuthSettings).toHaveBeenLastCalledWith(expect.objectContaining({ logicalModels: [expect.objectContaining({ iconUrl })] }));
+        const restored = await PATCH(request({ logicalModels: savedSettings.logicalModels }));
+        expect(restored.status).toBe(200);
+        expect(mocks.setAuthSettings.mock.lastCall?.[0].logicalModels[0]).not.toHaveProperty("iconUrl");
+    });
+
+    it("rejects invalid icons without persisting or auditing the uploaded content", async () => {
+        const response = await PATCH(request({ logicalModels: [{ ...savedSettings.logicalModels[0], iconUrl: "data:text/html;base64,YQ==" }] }));
+        expect(response.status).toBe(400);
+        expect(mocks.setAuthSettings).not.toHaveBeenCalled();
+        expect(JSON.stringify(mocks.safeRecordAuditLog.mock.calls)).not.toContain("data:text/html");
+    });
+
     it("deletes a channel together with stale logical bindings and defaults", async () => {
         const response = await PATCH(request({ systemChannels: [], logicalModels: savedSettings.logicalModels, defaultModels: savedSettings.defaultModels }));
         expect(response.status).toBe(200);

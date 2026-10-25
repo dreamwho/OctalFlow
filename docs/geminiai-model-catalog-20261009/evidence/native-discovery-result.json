@@ -1,0 +1,6 @@
+{
+  "status": 502,
+  "type": "model_catalog_error",
+  "message": "当前 Google 授权已失效，请重新授权后获取模型目录",
+  "scope": "读取当前 Provider 活跃账号的原生模型选择器；未发送生成请求"
+}

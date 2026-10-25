@@ -31,6 +31,23 @@ const iconPaths: Record<ModelIconKey, string> = {
 
 const validIconKeys = new Set<string>(modelIconOptions.map(({ value }) => value));
 
+// 沿用后台品牌图片上传的 300KB 资源契约，图标随模型设置持久化。
+export const MODEL_ICON_MAX_BYTES = 300 * 1024;
+export const MODEL_ICON_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"];
+
+export function normalizeModelIconUrl(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const url = value.trim();
+    if (url.length > Math.ceil(MODEL_ICON_MAX_BYTES / 3) * 4 + "data:image/vnd.microsoft.icon;base64,".length) return undefined;
+    const match = /^data:(image\/[a-z.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/.exec(url);
+    if (!match || !MODEL_ICON_MIME_TYPES.includes(match[1])) return undefined;
+    try {
+        return atob(match[2]).length <= MODEL_ICON_MAX_BYTES ? url : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 export function normalizeModelIconKey(value: unknown): ModelIconKey | undefined {
     return typeof value === "string" && validIconKeys.has(value) ? (value as ModelIconKey) : undefined;
 }

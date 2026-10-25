@@ -1,0 +1,49 @@
+{
+  "baseline": "release-20261010-model-icons",
+  "appImage": "dreamyo-app:release-20261010-model-icons-account-health-20261016",
+  "providerImage": "dreamyo-geminiai:release-20261010-model-icons-account-health-20261016",
+  "buildId": "djFY9va-Bq2pHdPozrJ0I",
+  "sourceDiff": [
+    {
+      "path": "web/src/services/api/geminiai.ts",
+      "sha256": "97c280a1b6d24d1a894faf5db972f170a40c0f43faf4c5462706d8b6f8325fd3"
+    },
+    {
+      "path": "web/src/lib/server/geminiai-service.test.ts",
+      "sha256": "2d6dbd75ff329799bcca4854866a503920a830a6045b4548740650930416289d"
+    },
+    {
+      "path": "web/src/lib/server/magic-proxy-service.test.ts",
+      "sha256": "ff10f415d69932d260c90979ab609b3416306337dc909d1b20f8155ac9c17421"
+    },
+    {
+      "path": "web/src/lib/server/geminiai-service.ts",
+      "sha256": "e50f5e784bb622ff56771bb70ffc1e38d55e028f36b2b1581a9f73ef072cfe15"
+    },
+    {
+      "path": "web/src/lib/server/magic-proxy-service.ts",
+      "sha256": "cf9bfdf0076eb0282a1c72d4d2ba36d5ec26f7dfd7df9946c99c7e843a24f8a7"
+    },
+    {
+      "path": "web/src/components/admin/admin-geminiai-section.tsx",
+      "sha256": "be85e9c74a72ffd2e43bfee6b22d0b597af76fc3281a2d04e7584569fef4f844"
+    },
+    {
+      "path": "web/src/components/admin/geminiai/geminiai-view-model.ts",
+      "sha256": "1c9012518d5349be64bae45ff0e85c0ad1582806db371287ab09be92af016131"
+    },
+    {
+      "path": "web/src/components/admin/geminiai/geminiai-view-model.test.ts",
+      "sha256": "ce81f49536e6f6cecbf1bd048c73f35230df4e77ce71f755cdffd02196ea0178"
+    },
+    {
+      "path": "web/src/app/api/admin/geminiai/accounts/[accountId]/check/route.test.ts",
+      "sha256": "eba23e8d20a35029ff4ca27546af6da7a7e163b8db9525071603a5ba63bc9ba5"
+    },
+    {
+      "path": "web/src/app/api/admin/geminiai/accounts/[accountId]/check/route.ts",
+      "sha256": "d0625f6b674e16e34b5fc0aaeb76c8c13206054da7e3b784e39e73fd918a3910"
+    }
+  ],
+  "archiveSha256": "479f89e796e206b8f5335603b8aad3e87113083ce1010eca5ff5654696c35008"
+}

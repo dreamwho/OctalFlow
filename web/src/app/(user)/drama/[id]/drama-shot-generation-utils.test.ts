@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { shotReferenceImages, storyboardReferenceImages } from "./drama-shot-generation-utils";
+import { shotReferenceMedia, shotReferenceImages, storyboardReferenceImages } from "./drama-shot-generation-utils";
 
 describe("storyboardReferenceImages", () => {
+    it("splits persistent shot references into actual video and audio submissions", () => {
+        const media = shotReferenceMedia({ videoReferences: [{ id: "sound", type: "audio", title: "声音", serverUrl: "/api/reference-assets/permanent/s.mp3", storageKey: "permanent/s.mp3" }, { id: "motion", type: "video", title: "动作", serverUrl: "/api/reference-assets/permanent/v.mp4" }] } as never);
+        expect(media.audios).toMatchObject([{ id: "sound", type: "audio/mpeg", storageKey: "permanent/s.mp3" }]);
+        expect(media.videos).toMatchObject([{ id: "motion", type: "video/mp4" }]);
+    });
+
     it("marks the storyboard start and end images as explicit video frames", () => {
         const references = storyboardReferenceImages({
             id: "shot-one",

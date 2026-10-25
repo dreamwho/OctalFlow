@@ -747,11 +747,8 @@ async function submitTask(input, fromWorkspace = false) {
   const identity = await accountIdentity(account);
   const requestId = String(input.requestId || randomUUID());
   const body = { accountId: account.id, credentialVersion: account.credentialVersion, cookie, model, prompt, duration: isImage ? 0 : Number(input.duration || 5), ratio: String(input.ratio || "16:9"), references: references.map(({ id: _id, ...item }) => item), requestId, proxyMode: proxy.url ? "managed" : "direct", proxySource: proxy.source, proxyTarget: proxy.name, proxyUrl: proxy.url, imagexProxyMode: uploadProxy.url ? "managed" : "direct", imagexProxyUrl: uploadProxy.url, ...identity };
-  // >15 秒档必须走 provider 的 Camoufox 协议提交（与 Web 端同一请求构造和
-  // 签名链路，9-27/9-29 的 30 秒成功样本均出自该链路）；工作区浏览器签名
-  // 提交对该档位会被上游会话模型以“仅支持 4 到 15 秒”追问拦截。
-  const overQuarterMinute = !isImage && body.duration > 15;
-  if (fromWorkspace && !overQuarterMinute) {
+  // 工作区所有时长复用当前登录页面的身份与签名，和网页入口保持同一提交链路。
+  if (fromWorkspace) {
     if (workspaceSubmissionView) throw new Error("当前浏览器已有任务正在提交，请等待它取得 Dola 会话");
     const task = { id: `dola-${randomUUID()}`, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: "running", references: references.map((item) => ({ id: item.id, name: item.name, role: item.role })), conversationId: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [], source: "workspace-browser", diagnostics: { submitStage: references.length ? "uploading_references" : "submitting_to_dola", referenceCount: references.length } };
     store.state.tasks.unshift(task);
@@ -765,6 +762,7 @@ async function submitTask(input, fromWorkspace = false) {
   const created = await providerJson(endpoint, { method: "POST", body: JSON.stringify(body) });
   const id = created.taskId || created.id;
   if (!id) throw new Error("Dola 未返回任务 ID，请检查上游响应，避免重复提交");
+  const overQuarterMinute = !isImage && body.duration > 15;
   const task = { id, accountId: account.id, credentialVersion: account.credentialVersion, model, prompt, duration: body.duration, ratio: body.ratio, status: created.status || "queued", references: references.map((item) => ({ id: item.id, name: item.name, role: item.role })), conversationId: created.conversationId || "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resultUrls: [], source: overQuarterMinute ? "provider-protocol" : undefined, diagnostics: overQuarterMinute ? { submitStage: "protocol_submitting", referenceCount: references.length } : undefined };
   store.state.tasks.unshift(task);
   await store.save();
@@ -926,10 +924,11 @@ async function refreshTask(id, force = false) {
   if (!task) throw new Error("任务不存在");
   if (task.source === "workspace-browser" && !task.conversationId) return task;
   const endpoint = task.model === "dola-seedream-4-5" ? "images" : "videos";
-  // 只有工作区浏览器内提交的任务才以页面内签名查询为准；provider 协议任务
-  // 的会话由 provider 自己的 Camoufox 创建，强制浏览器查询只会让用户浏览器
-  // 被导航后遭 Dola 弹回首页，权威状态一律走 provider 轮询端点。
-  let result = force && task.source === "workspace-browser" && task.conversationId ? await queryTaskInBrowser(task) : await providerJson(`/internal/runtime/v1/${endpoint}/${encodeURIComponent(id)}`);
+  // 当前会话可能在早先失败后通过网页继续生成，显式查询须读取页面最新结果。
+  // 未在当前账号页面打开的 Provider 任务仍沿用协议轮询，避免跳转用户浏览器。
+  const currentConversationId = browserView && !browserView.webContents.isDestroyed() ? browserView.webContents.getURL().match(/^https:\/\/www\.dola\.com\/chat\/(\d{12,32})(?:[/?#]|$)/)?.[1] : "";
+  const useBrowser = force && task.conversationId && (["workspace-browser", "browser"].includes(task.source) || (task.accountId === activeAccountId && task.conversationId === currentConversationId));
+  let result = useBrowser ? await queryTaskInBrowser(task) : await providerJson(`/internal/runtime/v1/${endpoint}/${encodeURIComponent(id)}`);
   if (result.error === "task_state_cookie_unavailable" && task.conversationId) {
     const account = store.state.accounts.find((item) => item.id === task.accountId && item.cookieCiphertext);
     if (account) {

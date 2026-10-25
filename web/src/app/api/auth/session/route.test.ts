@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     getAuthSettings: vi.fn(),
+    getFreshAuthSettings: vi.fn(),
     getCurrentUser: vi.fn(),
     getInstallStatus: vi.fn(),
     serializeCurrentUser: vi.fn(),
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth/store", () => ({
     DEFAULT_SITE_SETTINGS: { title: "dreamyo", logoUrl: "/logo.svg" },
     getAuthSettings: mocks.getAuthSettings,
+    getFreshAuthSettings: mocks.getFreshAuthSettings,
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -50,7 +52,7 @@ describe("public session route before installation", () => {
     it("skips installation status for an authenticated user", async () => {
         const user = { id: "user-one", role: "user" };
         mocks.getCurrentUser.mockResolvedValue(user);
-        mocks.getAuthSettings.mockResolvedValue({ site: { title: "站点" } });
+        mocks.getFreshAuthSettings.mockResolvedValue({ site: { title: "站点" } });
         mocks.serializeCurrentUser.mockReturnValue(user);
         mocks.serializePublicSettings.mockReturnValue({ site: { title: "站点" } });
 
@@ -58,7 +60,8 @@ describe("public session route before installation", () => {
 
         await expect(response.json()).resolves.toMatchObject({ user, settings: { site: { title: "站点" } }, install: { ready: true, database: { healthy: true } } });
         expect(mocks.getInstallStatus).not.toHaveBeenCalled();
-        expect(mocks.getAuthSettings).toHaveBeenCalledTimes(1);
+        expect(mocks.getFreshAuthSettings).toHaveBeenCalledTimes(1);
+        expect(mocks.getAuthSettings).not.toHaveBeenCalled();
     });
 
     it("checks installation before loading settings for an anonymous installed session", async () => {

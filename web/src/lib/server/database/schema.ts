@@ -349,15 +349,19 @@ CREATE TABLE IF NOT EXISTS geminiai_request_logs (
     phase text NOT NULL DEFAULT 'success',
     lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb,
     CONSTRAINT geminiai_request_logs_source_check CHECK (source IN ('runtime', 'admin-test', 'external')),
-    CONSTRAINT geminiai_request_logs_capability_check CHECK (capability IN ('text', 'image', 'search'))
+    CONSTRAINT geminiai_request_logs_capability_check CHECK (capability IN ('text', 'image', 'search', 'video'))
 );
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_created_idx ON geminiai_request_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_status_idx ON geminiai_request_logs (status_code, created_at DESC);
 CREATE INDEX IF NOT EXISTS geminiai_request_logs_model_idx ON geminiai_request_logs (model, created_at DESC);
+ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS task_id varchar(128);
+CREATE UNIQUE INDEX IF NOT EXISTS geminiai_request_logs_task_idx ON geminiai_request_logs (task_id, source) WHERE task_id IS NOT NULL;
 ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS phase text NOT NULL DEFAULT 'success';
 ALTER TABLE geminiai_request_logs ADD COLUMN IF NOT EXISTS lifecycle jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE geminiai_request_logs DROP CONSTRAINT IF EXISTS geminiai_request_logs_source_check;
 ALTER TABLE geminiai_request_logs ADD CONSTRAINT geminiai_request_logs_source_check CHECK (source IN ('runtime', 'admin-test', 'external'));
+ALTER TABLE geminiai_request_logs DROP CONSTRAINT IF EXISTS geminiai_request_logs_capability_check;
+ALTER TABLE geminiai_request_logs ADD CONSTRAINT geminiai_request_logs_capability_check CHECK (capability IN ('text', 'image', 'search', 'video'));
 
 CREATE TABLE IF NOT EXISTS geminiai_api_keys (
     id text PRIMARY KEY,
@@ -879,6 +883,10 @@ CREATE TABLE IF NOT EXISTS generation_worker_heartbeats (
 );
 
 CREATE INDEX IF NOT EXISTS generation_worker_heartbeats_seen_idx ON generation_worker_heartbeats (last_seen_at DESC);
+
+CREATE INDEX IF NOT EXISTS generation_tasks_provider_upstream_idx ON generation_tasks (provider, upstream_task_id) WHERE upstream_task_id IS NOT NULL;
+
+
 
 CREATE TABLE IF NOT EXISTS generation_webhook_events (
     channel_id text NOT NULL,
@@ -1548,4 +1556,18 @@ ${POSTGRESQL_TRIGGER_SCHEMA_SQL}
 INSERT INTO schema_migrations (version)
 VALUES ('20260709_postgresql_commercial_base'), ('20260709_billing_foundation'), ('20260709_billing_checkout'), ('20260709_commercial_seed_products'), ('20260709_dreamyo_table_prefix'), ('20260711_generation_tasks'), ('20260716_billing_reconciliation'), ('20260725_account_deletion_requests'), ('20260726_promotion_coupon_commerce'), ('20260727_referral_growth_rewards'), ('20260727_work_publications'), ('20260727_work_community'), ('20260728_user_blocks')
 ON CONFLICT (version) DO NOTHING;
+CREATE OR REPLACE FUNCTION notify_generation_log_change()
+RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        PERFORM pg_notify('dreamyo_generation_logs', OLD.user_id);
+        RETURN OLD;
+    END IF;
+    PERFORM pg_notify('dreamyo_generation_logs', NEW.user_id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS generation_log_change ON generation_logs;
+CREATE TRIGGER generation_log_change AFTER INSERT OR UPDATE OR DELETE ON generation_logs
+FOR EACH ROW EXECUTE FUNCTION notify_generation_log_change();
 `;

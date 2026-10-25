@@ -1,5 +1,5 @@
 {
-  "route": "http://127.0.0.1:54915/canvas/canvas-6ufwyeu8b2zVM-p_2dYNj",
+  "route": "http://127.0.0.1:65295/canvas/canvas-g6jS-LyLAJiMoyaIwUbvZ",
   "theme": "light",
   "viewport": {
     "width": 1280,
@@ -19,9 +19,9 @@
     "backgroundImage": "linear-gradient(135deg, rgb(78, 70, 233), rgb(110, 83, 246) 55%, rgb(137, 121, 255))",
     "icon": {
       "left": 713,
-      "top": 411.171875,
+      "top": 411,
       "width": 20,
-      "height": 19.65625
+      "height": 20
     }
   },
   "configCreditVisual": {
@@ -36,6 +36,6 @@
     "buttonLeft": 705,
     "buttonTop": 403
   },
-  "buildId": "CP-i3Y2QwY3xBMV2x-Q3f",
-  "capturedAt": "2026-10-01T11:33:53.749Z"
+  "buildId": "FV80vPl9thJX3x0cGOc8E",
+  "capturedAt": "2026-10-21T12:07:04.049Z"
 }

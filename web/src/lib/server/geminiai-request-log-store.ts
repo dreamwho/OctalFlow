@@ -28,6 +28,7 @@ export type GeminiAiRequestLog = {
     method: string;
     path: string;
     model: string;
+    taskId?: string;
     accountId?: string;
     accountEmail?: string;
     statusCode: number;
@@ -121,6 +122,8 @@ export async function settleGeminiAiRequestLog(
     settle: {
         statusCode: number;
         durationMs: number;
+        phase?: GeminiAiRequestLogPhase;
+        taskId?: string;
         error?: string;
         responsePreview?: string;
         accountId?: string;
@@ -138,6 +141,9 @@ export async function settleGeminiAiRequestLog(
     },
 ) {
     await patchGeminiAiRequestLog(id, (log) => {
+        // A delayed pending poll cannot revert an already completed task.
+        if (log.taskId && (log.phase === "success" || log.phase === "failed") && settle.phase === "running") return;
+        if (settle.taskId) log.taskId = settle.taskId;
         log.statusCode = settle.statusCode;
         log.durationMs = settle.durationMs;
         if (settle.error) log.error = settle.error;
@@ -154,13 +160,18 @@ export async function settleGeminiAiRequestLog(
         if (settle.userAgent) log.userAgent = settle.userAgent;
         if (settle.proxyEgress) log.proxyEgress = settle.proxyEgress;
         const failed = settle.statusCode >= 400 || Boolean(settle.error);
-        log.phase = failed ? "failed" : "success";
+        log.phase = failed ? "failed" : settle.phase || "success";
         if (settle.lifecycle && settle.lifecycle.length > 0) {
             log.lifecycle = settle.lifecycle;
         } else {
             log.lifecycle = [...(log.lifecycle || []), { time: new Date().toISOString(), phase: log.phase, message: failed ? settle.error || `调用失败` : "调用完成" }];
         }
     });
+}
+
+export async function findGeminiAiRequestLogByTaskId(taskId: string, source: GeminiAiRequestSource) {
+    if (isPostgresDatabaseEnabled()) return (await postgresRepository()).findByTaskId(taskId, source);
+    return (await readDatabase()).logs.find((log) => log.taskId === taskId && log.source === source) || null;
 }
 
 async function patchGeminiAiRequestLog(id: string, mutate: (log: GeminiAiRequestLog) => void) {
@@ -250,9 +261,9 @@ export async function clearGeminiAiRequestLogs() {
 
 export function requestStats(logs: GeminiAiRequestLog[]): GeminiAiRequestStats {
     const total = logs.length;
-    const success = logs.filter((log) => log.statusCode < 400).length;
+    const success = logs.filter((log) => log.statusCode < 400 && (!log.phase || log.phase === "success")).length;
     const duration = logs.reduce((sum, log) => sum + Math.max(0, log.durationMs), 0);
-    return { total, success, failed: total - success, averageDurationMs: total ? Math.round(duration / total) : 0 };
+    return { total, success, failed: logs.filter((log) => log.statusCode >= 400 || log.phase === "failed").length, averageDurationMs: total ? Math.round(duration / total) : 0 };
 }
 
 let schemaEnsured = false;
@@ -283,8 +294,9 @@ async function mutateDatabase(mutator: (database: GeminiAiRequestLogDatabase) =>
 }
 
 function matches(log: GeminiAiRequestLog, input: { keyword: string; status?: "success" | "failed"; capability?: GeminiAiRequestCapability; source?: GeminiAiRequestSource; model?: string; accountId?: string }) {
-    if (input.status === "success" && log.statusCode >= 400) return false;
-    if (input.status === "failed" && log.statusCode < 400) return false;
+    const failed = log.statusCode >= 400 || log.phase === "failed";
+    if (input.status === "success" && (failed || (log.phase && log.phase !== "success"))) return false;
+    if (input.status === "failed" && !failed) return false;
     if (input.capability && log.capability !== input.capability) return false;
     if (input.source && log.source !== input.source) return false;
     if (input.model && log.model !== input.model) return false;

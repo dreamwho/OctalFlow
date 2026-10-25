@@ -76,3 +76,7 @@ web/web/
 web/verify_checks.py
 antigravity_tokens.json
 docs/dola-api-plan/evidence/
+
+# 服务器运行时覆盖补丁包（构建产物，不入库）
+/dreamyo-*.tar.gz
+/dreamyo-*.tar.gz.sha256

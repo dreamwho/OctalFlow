@@ -19,6 +19,7 @@ const mockUndiciFetch = (fetchMock: unknown) => {
 
 vi.mock("@/lib/server/geminiai-request-log-store", () => ({
     appendGeminiAiRequestLog: mocks.appendLog,
+    findGeminiAiRequestLogByTaskId: vi.fn().mockResolvedValue(null),
     openGeminiAiRequestLog: vi.fn((input) => {
         const id = `log-open-${Date.now()}`;
         mocks.openedLogs.set(id, input);
@@ -45,12 +46,47 @@ vi.mock("@/lib/server/magic-proxy-service", () => ({
         }
     },
 }));
+vi.mock("@/lib/server/geminiai-gateway-store", () => ({ getGeminiAiGatewaySettings: vi.fn().mockResolvedValue({ enabled: true, rotationLimit: 2 }) }));
 
 import { GeminiAiProviderError, geminiAiHealth, geminiAiProviderConfigured, geminiAiRuntimeRequest, geminiAiSidecarRequest } from "./geminiai-provider";
+import { withTrafficContext } from "./traffic-context";
 
 describe("GeminiAI sidecar provider", () => {
+    it("logs video acceptance before completion and preserves the full UTF-8 prompt", async () => {
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
+        const prompt = "参考卧室图片生成视频。".repeat(300);
+        mockUndiciFetch(vi.fn().mockResolvedValue(Response.json({ id: "vt_fixture", status: "processing" })));
+        await geminiAiRuntimeRequest("/v1/videos", { method: "POST", body: new TextEncoder().encode(JSON.stringify({ model: "gemini-omni-1.1-flash", prompt })) });
+        expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ capability: "video", source: "runtime", phase: "running", taskId: "vt_fixture", requestPreview: prompt, lifecycle: expect.arrayContaining([expect.objectContaining({ message: "视频任务已受理，等待生成结果（vt_fixture）" })]) }));
+    });
+
+    it.each(["failed", "succeeded"])("logs the %s video query and actual account without logging pending polls", async (status) => {
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
+        mockUndiciFetch(vi.fn()
+            .mockResolvedValueOnce(Response.json({ id: "vt_fixture", status: "processing" }))
+            .mockResolvedValueOnce(Response.json({ id: "vt_fixture", status, account_id: "actual-account", ...(status === "failed" ? { error: "reference image download failed" } : { video_url: "/v1/videos/vt_fixture/content" }) })));
+        const query = () => withTrafficContext({ model: "gemini-omni-1.1-flash" }, () => geminiAiRuntimeRequest("/v1/videos/vt_fixture", { method: "GET" }));
+        await query();
+        expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ phase: "running" }));
+        const response = await query();
+        expect(await response.json()).toMatchObject({ status });
+        expect(mocks.appendLog).toHaveBeenCalledTimes(2);
+        expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ capability: "video", method: "GET", path: "/v1/videos/vt_fixture", model: "gemini-omni-1.1-flash", accountId: "actual-account", phase: status === "failed" ? "failed" : "success", ...(status === "failed" ? { error: "reference image download failed" } : {}) }));
+    });
+
+    it("marks failed video polling transport as a failed log", async () => {
+        vi.stubEnv("DREAMYO_GEMINIAI_URL", "http://geminiai.test");
+        vi.stubEnv("DREAMYO_GEMINIAI_API_KEY", "sidecar-test-key");
+        mockUndiciFetch(vi.fn().mockRejectedValue(new Error("fixture connection failure")));
+        await expect(withTrafficContext({ model: "gemini-omni-1.1-flash" }, () => geminiAiRuntimeRequest("/v1/videos/vt_fixture"))).rejects.toMatchObject({ status: 502 });
+        expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ phase: "failed", error: "fixture connection failure" }));
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.openedLogs.clear();
         mocks.ensureMagicProxy.mockResolvedValue({ enabled: false });
     });
 

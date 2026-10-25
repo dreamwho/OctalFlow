@@ -1,0 +1,497 @@
+{
+  "scope": "Restore previous image compatibility catalog per final user confirmation; text remains live upstream",
+  "runtimeFiles": [
+    "services/chatgpt-api/services/model_catalog_service.py"
+  ],
+  "pythonTests": {
+    "passed": 147,
+    "warnings": 2,
+    "warningScope": "existing Starlette/httpx deprecations"
+  },
+  "webTests": {
+    "passed": 3656,
+    "skipped": 17,
+    "filesPassed": 720
+  },
+  "webTypecheck": true,
+  "webLint": true,
+  "webProductionBuild": true,
+  "linuxPythonCompile": "3.13.16",
+  "browser": [
+    {
+      "passed": true,
+      "width": 1440,
+      "theme": "dark",
+      "metrics": {
+        "overflow": false,
+        "panelOverflow": false,
+        "boxes": [
+          {
+            "text": "gpt-fixture-text-vnext",
+            "left": 285,
+            "right": 647,
+            "top": 1238.15625
+          },
+          {
+            "text": "gpt-image-2",
+            "left": 285,
+            "right": 647,
+            "top": 1304.15625
+          },
+          {
+            "text": "gpt-image-2.5",
+            "left": 655,
+            "right": 1017,
+            "top": 1304.15625
+          },
+          {
+            "text": "gpt-image-2.5-flare",
+            "left": 1025,
+            "right": 1387,
+            "top": 1304.15625
+          },
+          {
+            "text": "gpt-image-2.5-sunburst",
+            "left": 285,
+            "right": 647,
+            "top": 1334.15625
+          },
+          {
+            "text": "gpt-image-2.5-exact",
+            "left": 655,
+            "right": 1017,
+            "top": 1334.15625
+          },
+          {
+            "text": "gpt-image-2.5-flare-exact",
+            "left": 1025,
+            "right": 1387,
+            "top": 1334.15625
+          },
+          {
+            "text": "gpt-image-2.5-sunburst-exact",
+            "left": 285,
+            "right": 647,
+            "top": 1364.15625
+          }
+        ]
+      },
+      "productionBuild": "m3jm9QvxONtidslN7NEL2",
+      "realLinuxPython": true,
+      "realHttp": true,
+      "upstreamTcpFixture": true,
+      "manualSync": true,
+      "reload": true,
+      "failedRefreshPreserves": true,
+      "compatibilityNotMarkedUpstream": true,
+      "actualUpstreamImagePriority": true
+    },
+    {
+      "passed": true,
+      "width": 1440,
+      "theme": "light",
+      "metrics": {
+        "overflow": false,
+        "panelOverflow": false,
+        "boxes": [
+          {
+            "text": "gpt-fixture-text-vnext",
+            "left": 285,
+            "right": 647,
+            "top": 1238.15625
+          },
+          {
+            "text": "gpt-image-2",
+            "left": 285,
+            "right": 647,
+            "top": 1304.15625
+          },
+          {
+            "text": "gpt-image-2.5",
+            "left": 655,
+            "right": 1017,
+            "top": 1304.15625
+          },
+          {
+            "text": "gpt-image-2.5-flare",
+            "left": 1025,
+            "right": 1387,
+            "top": 1304.15625
+          },
+          {
+            "text": "gpt-image-2.5-sunburst",
+            "left": 285,
+            "right": 647,
+            "top": 1334.15625
+          },
+          {
+            "text": "gpt-image-2.5-exact",
+            "left": 655,
+            "right": 1017,
+            "top": 1334.15625
+          },
+          {
+            "text": "gpt-image-2.5-flare-exact",
+            "left": 1025,
+            "right": 1387,
+            "top": 1334.15625
+          },
+          {
+            "text": "gpt-image-2.5-sunburst-exact",
+            "left": 285,
+            "right": 647,
+            "top": 1364.15625
+          }
+        ]
+      },
+      "productionBuild": "m3jm9QvxONtidslN7NEL2",
+      "realLinuxPython": true,
+      "realHttp": true,
+      "upstreamTcpFixture": true,
+      "manualSync": true,
+      "reload": true,
+      "failedRefreshPreserves": true,
+      "compatibilityNotMarkedUpstream": true,
+      "actualUpstreamImagePriority": true
+    },
+    {
+      "passed": true,
+      "width": 390,
+      "theme": "dark",
+      "metrics": {
+        "overflow": false,
+        "panelOverflow": false,
+        "boxes": [
+          {
+            "text": "gpt-fixture-text-vnext",
+            "left": 25,
+            "right": 365,
+            "top": 963.4375
+          },
+          {
+            "text": "gpt-image-2",
+            "left": 25,
+            "right": 365,
+            "top": 1029.4375
+          },
+          {
+            "text": "gpt-image-2.5",
+            "left": 25,
+            "right": 365,
+            "top": 1059.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare",
+            "left": 25,
+            "right": 365,
+            "top": 1089.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst",
+            "left": 25,
+            "right": 365,
+            "top": 1119.4375
+          },
+          {
+            "text": "gpt-image-2.5-exact",
+            "left": 25,
+            "right": 365,
+            "top": 1149.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare-exact",
+            "left": 25,
+            "right": 365,
+            "top": 1179.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst-exact",
+            "left": 25,
+            "right": 365,
+            "top": 1209.4375
+          }
+        ]
+      },
+      "productionBuild": "m3jm9QvxONtidslN7NEL2",
+      "realLinuxPython": true,
+      "realHttp": true,
+      "upstreamTcpFixture": true,
+      "manualSync": true,
+      "reload": true,
+      "failedRefreshPreserves": true,
+      "compatibilityNotMarkedUpstream": true,
+      "actualUpstreamImagePriority": true
+    },
+    {
+      "passed": true,
+      "width": 390,
+      "theme": "light",
+      "metrics": {
+        "overflow": false,
+        "panelOverflow": false,
+        "boxes": [
+          {
+            "text": "gpt-fixture-text-vnext",
+            "left": 25,
+            "right": 365,
+            "top": 963.4375
+          },
+          {
+            "text": "gpt-image-2",
+            "left": 25,
+            "right": 365,
+            "top": 1029.4375
+          },
+          {
+            "text": "gpt-image-2.5",
+            "left": 25,
+            "right": 365,
+            "top": 1059.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare",
+            "left": 25,
+            "right": 365,
+            "top": 1089.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst",
+            "left": 25,
+            "right": 365,
+            "top": 1119.4375
+          },
+          {
+            "text": "gpt-image-2.5-exact",
+            "left": 25,
+            "right": 365,
+            "top": 1149.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare-exact",
+            "left": 25,
+            "right": 365,
+            "top": 1179.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst-exact",
+            "left": 25,
+            "right": 365,
+            "top": 1209.4375
+          }
+        ]
+      },
+      "productionBuild": "m3jm9QvxONtidslN7NEL2",
+      "realLinuxPython": true,
+      "realHttp": true,
+      "upstreamTcpFixture": true,
+      "manualSync": true,
+      "reload": true,
+      "failedRefreshPreserves": true,
+      "compatibilityNotMarkedUpstream": true,
+      "actualUpstreamImagePriority": true
+    },
+    {
+      "passed": true,
+      "width": 430,
+      "theme": "dark",
+      "metrics": {
+        "overflow": false,
+        "panelOverflow": false,
+        "boxes": [
+          {
+            "text": "gpt-fixture-text-vnext",
+            "left": 25,
+            "right": 405,
+            "top": 941.4375
+          },
+          {
+            "text": "gpt-image-2",
+            "left": 25,
+            "right": 405,
+            "top": 1007.4375
+          },
+          {
+            "text": "gpt-image-2.5",
+            "left": 25,
+            "right": 405,
+            "top": 1037.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare",
+            "left": 25,
+            "right": 405,
+            "top": 1067.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst",
+            "left": 25,
+            "right": 405,
+            "top": 1097.4375
+          },
+          {
+            "text": "gpt-image-2.5-exact",
+            "left": 25,
+            "right": 405,
+            "top": 1127.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare-exact",
+            "left": 25,
+            "right": 405,
+            "top": 1157.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst-exact",
+            "left": 25,
+            "right": 405,
+            "top": 1187.4375
+          }
+        ]
+      },
+      "productionBuild": "m3jm9QvxONtidslN7NEL2",
+      "realLinuxPython": true,
+      "realHttp": true,
+      "upstreamTcpFixture": true,
+      "manualSync": true,
+      "reload": true,
+      "failedRefreshPreserves": true,
+      "compatibilityNotMarkedUpstream": true,
+      "actualUpstreamImagePriority": true
+    },
+    {
+      "passed": true,
+      "width": 430,
+      "theme": "light",
+      "metrics": {
+        "overflow": false,
+        "panelOverflow": false,
+        "boxes": [
+          {
+            "text": "gpt-fixture-text-vnext",
+            "left": 25,
+            "right": 405,
+            "top": 941.4375
+          },
+          {
+            "text": "gpt-image-2",
+            "left": 25,
+            "right": 405,
+            "top": 1007.4375
+          },
+          {
+            "text": "gpt-image-2.5",
+            "left": 25,
+            "right": 405,
+            "top": 1037.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare",
+            "left": 25,
+            "right": 405,
+            "top": 1067.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst",
+            "left": 25,
+            "right": 405,
+            "top": 1097.4375
+          },
+          {
+            "text": "gpt-image-2.5-exact",
+            "left": 25,
+            "right": 405,
+            "top": 1127.4375
+          },
+          {
+            "text": "gpt-image-2.5-flare-exact",
+            "left": 25,
+            "right": 405,
+            "top": 1157.4375
+          },
+          {
+            "text": "gpt-image-2.5-sunburst-exact",
+            "left": 25,
+            "right": 405,
+            "top": 1187.4375
+          }
+        ]
+      },
+      "productionBuild": "m3jm9QvxONtidslN7NEL2",
+      "realLinuxPython": true,
+      "realHttp": true,
+      "upstreamTcpFixture": true,
+      "manualSync": true,
+      "reload": true,
+      "failedRefreshPreserves": true,
+      "compatibilityNotMarkedUpstream": true,
+      "actualUpstreamImagePriority": true
+    }
+  ],
+  "deployment": {
+    "passed": true,
+    "realDocker": true,
+    "productionPinUnchanged": "sha256:640c3f1482573ec994e96a4d18d0fc8eeab7a7fadcef6ed0e305448e6d5783ff",
+    "testImage": "sha256:f57f40f0f824ceaf9d99ca49320e24df165481318d83847342d7698bd750fee4",
+    "applyImages": 7,
+    "readonlyPythonMount": true,
+    "onlyChangedService": "chatgpt-api",
+    "idempotentNoRestart": true,
+    "rollbackExactCompose": true,
+    "rollbackExactPythonHash": "a8ec243d5412b0a392b8873b7ff50307acc3cf120002b2f8b02a9db6e1cbc429",
+    "rollbackImages": [],
+    "otherContainerIdsUnchanged": true,
+    "composeSemanticOnlyTargetMountChanged": true,
+    "baseline": {
+      "app": "12f429c178be5648cc2674c86b8247882e7d77bb32e3f92ef85665b104864e0e",
+      "generation-worker": "b5906fb0de33cbc2b098aa7132781e559b8f1cd30f1e1e30d17318dda3b67bd2",
+      "chatgpt-api": "a27ea9a233775688848507258efff4191a23aa4afb3414965be108ad086a9512",
+      "untouched": "8c1ed1423f93829f69b099df158e186bb59417c17ca17d26ae4140068870c4f6"
+    },
+    "applied": {
+      "app": "12f429c178be5648cc2674c86b8247882e7d77bb32e3f92ef85665b104864e0e",
+      "generation-worker": "b5906fb0de33cbc2b098aa7132781e559b8f1cd30f1e1e30d17318dda3b67bd2",
+      "chatgpt-api": "4c4f08fc513d0730400931cf5028ed35666b309838e00bdd6114feeccc28e6de",
+      "untouched": "8c1ed1423f93829f69b099df158e186bb59417c17ca17d26ae4140068870c4f6"
+    },
+    "rolledBack": {
+      "app": "12f429c178be5648cc2674c86b8247882e7d77bb32e3f92ef85665b104864e0e",
+      "generation-worker": "b5906fb0de33cbc2b098aa7132781e559b8f1cd30f1e1e30d17318dda3b67bd2",
+      "chatgpt-api": "8c2c061c8a2feddb4de30834462c93148c8d4efe7891304bf05f382a338658a0",
+      "untouched": "8c1ed1423f93829f69b099df158e186bb59417c17ca17d26ae4140068870c4f6"
+    },
+    "businessDatabaseSnapshotPreserved": true
+  },
+  "installerMocks": {
+    "passed": true,
+    "cases": [
+      "apply",
+      "idempotent apply",
+      "rollback",
+      "apply failure",
+      "rollback failure",
+      "SIGTERM apply recovery",
+      "SIGTERM rollback recovery",
+      "SIGKILL stopped-container journal recovery with changed container ID",
+      "unrelated Compose refusal",
+      "unknown Python baseline refusal",
+      "checksum refusal",
+      "both auth headers required"
+    ]
+  },
+  "baseline": {
+    "archive": "dreamyo-gptapi-models-update-20261021.tar.gz",
+    "currentBuildId": "m3jm9QvxONtidslN7NEL2",
+    "imageId": "sha256:640c3f1482573ec994e96a4d18d0fc8eeab7a7fadcef6ed0e305448e6d5783ff",
+    "files": {
+      "services/chatgpt-api/services/model_catalog_service.py": "a8ec243d5412b0a392b8873b7ff50307acc3cf120002b2f8b02a9db6e1cbc429"
+    },
+    "verifiedAgainstImmutableArchive": true
+  },
+  "boundaries": [
+    "No real image generation submitted; no billing test.",
+    "Flare/Sunburst/exact remain previous compatibility aliases; no independent model-selection claim.",
+    "Server deployment is user-run; local real Docker image digest was adapted only in a test copy.",
+    "Web runtime is unchanged and not included; production Linux browser uses deployed m3jm9QvxONtidslN7NEL2 runtime.",
+    "Additional native Mac build/start smoke reached liveness HTTP 200 after normalizing isolated tracing paths; worker requests in that supplementary native setup had a pg-types tracing error. This native artifact is not delivered. Real Linux app/worker fixture stayed healthy."
+  ]
+}

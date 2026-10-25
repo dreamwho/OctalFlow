@@ -16,10 +16,10 @@ describe("GeminiAIStudio request log route", () => {
         mocks.clear.mockResolvedValue(3);
     });
 
-    it("passes validated filters to the paginated store", async () => {
-        const response = (await GET(new Request("http://localhost/api/admin/geminiai/logs?page=2&pageSize=20&status=failed&capability=image&keyword=pro")))!;
+    it.each(["image", "video"])("passes validated %s filters to the paginated store", async (capability) => {
+        const response = (await GET(new Request(`http://localhost/api/admin/geminiai/logs?page=2&pageSize=20&status=failed&capability=${capability}&keyword=pro`)))!;
         expect(await response.json()).toMatchObject({ code: 0, data: { page: 2, stats: { total: 3 } } });
-        expect(mocks.list).toHaveBeenCalledWith({ page: 2, pageSize: 20, status: "failed", capability: "image", keyword: "pro" });
+        expect(mocks.list).toHaveBeenCalledWith({ page: 2, pageSize: 20, status: "failed", capability, keyword: "pro" });
     });
 
     it("clears logs with an audited count", async () => {

@@ -39,7 +39,9 @@ class ImageFailure:
 
     @property
     def switch_account(self) -> bool:
-        return self.outcome == "failure"
+        return self.outcome == "failure" and (
+            self.retryable or self.scope == "account"
+        )
 
     @property
     def account_failure(self) -> bool:
@@ -104,8 +106,7 @@ FAILURE_POLICIES: dict[str, FailurePolicy] = {
         verify_account=True,
     ),
     "image_tool_error": FailurePolicy(
-        "account", "image_generation", False, 502, "server_error",
-        verify_account=True,
+        "transient", "image_generation", False, 502, "server_error",
     ),
     "image_quota_exhausted": FailurePolicy(
         "account", "image_generation", False, 429, "insufficient_quota",
@@ -238,6 +239,8 @@ def image_failure(
 IMAGE_TIMEOUT_PUBLIC_MESSAGE = "Image generation timed out. Please try again."
 IMAGE_TOOL_ERROR_PUBLIC_MESSAGE = "The image generation tool encountered an error. Please try again."
 IMAGE_QUOTA_PUBLIC_MESSAGE = "No image generation quota is currently available."
+IMAGE_CONNECTION_FAILED_PUBLIC_MESSAGE = "连接上游失败，请检查代理或网络连通性后重试。"
+IMAGE_CONNECTION_TIMEOUT_PUBLIC_MESSAGE = "连接上游超时，请检查代理或网络后重试。"
 
 _PUBLIC_RAW_DETAIL_CODES = frozenset({
     "content_policy_violation",
@@ -332,6 +335,10 @@ def public_image_error_message(
 ) -> str:
     if failure.code == "image_poll_timeout":
         return IMAGE_TIMEOUT_PUBLIC_MESSAGE
+    if failure.code == "upstream_connection_failed":
+        return IMAGE_CONNECTION_FAILED_PUBLIC_MESSAGE
+    if failure.code == "upstream_connection_timeout":
+        return IMAGE_CONNECTION_TIMEOUT_PUBLIC_MESSAGE
     if failure.code in {"image_stream_interrupted", "image_stream_timeout"}:
         return IMAGE_TOOL_ERROR_PUBLIC_MESSAGE
 
@@ -452,7 +459,39 @@ def _structured_codes(value: Any) -> set[str]:
             )
         elif isinstance(current, (list, tuple)):
             pending.extend(current)
+        elif isinstance(current, str):
+            try:
+                decoded = json.loads(current)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(decoded, (Mapping, list, tuple)):
+                pending.append(decoded)
     return codes
+
+
+def _contains_generic_image_tool_error(value: Any) -> bool:
+    if isinstance(value, str):
+        return IMAGE_TOOL_ERROR_PUBLIC_MESSAGE in value
+    if isinstance(value, Mapping):
+        return any(_contains_generic_image_tool_error(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_generic_image_tool_error(item) for item in value)
+    return False
+
+
+def _unclassified_exception_has_generic_image_tool_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None:
+        identity = id(current)
+        if identity in visited:
+            return False
+        visited.add(identity)
+        detail = getattr(current, "detail", None)
+        if _contains_generic_image_tool_error(str(current)) or _contains_generic_image_tool_error(detail):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def structured_upstream_codes(value: Any) -> set[str]:
@@ -600,6 +639,18 @@ def classify_upstream_http_error(exc: UpstreamHTTPError) -> ImageFailure:
 
     if status_code == 401:
         return image_failure("auth_invalid", retry_after=retry_after, raw_detail=exc.body)
+    if structured_failure is not None and structured_failure.code in {
+        "auth_invalid",
+        "image_quota_exhausted",
+        "insufficient_quota",
+    }:
+        return replace(structured_failure, status_code=status_code)
+    if status_code >= 500 and _contains_generic_image_tool_error(exc.body):
+        return image_failure(
+            "image_tool_error",
+            retry_after=retry_after,
+            raw_detail=exc.body,
+        )
     if (
         structured_failure is not None
         and structured_failure.code == "conversation_not_ready"
@@ -647,8 +698,6 @@ def classify_upstream_http_error(exc: UpstreamHTTPError) -> ImageFailure:
 
 def classify_image_exception(exc: BaseException, *, code: str | None = None) -> ImageFailure:
     failure = getattr(exc, "failure", None)
-    if isinstance(failure, ImageFailure):
-        return failure
 
     def remember(resolved: ImageFailure) -> ImageFailure:
         try:
@@ -659,13 +708,30 @@ def classify_image_exception(exc: BaseException, *, code: str | None = None) -> 
 
     if isinstance(exc, UpstreamHTTPError):
         return remember(classify_upstream_http_error(exc))
+    if isinstance(failure, ImageFailure):
+        return failure
+
     structured_code = code or getattr(exc, "code", None)
-    if isinstance(structured_code, str) and structured_code.strip().lower() in (
-        FAILURE_POLICIES.keys() | FAILURE_CODE_ALIASES.keys()
-    ):
-        return remember(image_failure(structured_code, raw_detail=str(exc)))
+    if isinstance(structured_code, str) and structured_code.strip():
+        explicit_failure = _classify_structured_failure_codes(structured_code)
+        if explicit_failure is not None:
+            return remember(explicit_failure.with_raw_detail(str(exc)))
     if code:
         return remember(image_failure(code, raw_detail=str(exc)))
+    detail_failure = _classify_structured_failure_codes(
+        _structured_codes(getattr(exc, "detail", None))
+    )
+    if detail_failure is not None and detail_failure.code in {
+        "auth_invalid",
+        "image_quota_exhausted",
+        "insufficient_quota",
+    }:
+        return remember(detail_failure)
+    if _unclassified_exception_has_generic_image_tool_error(exc):
+        return remember(image_failure(
+            "image_tool_error",
+            raw_detail=IMAGE_TOOL_ERROR_PUBLIC_MESSAGE,
+        ))
     if isinstance(exc, (TimeoutError, curl_exceptions.Timeout)):
         return remember(image_failure("upstream_connection_timeout", raw_detail=str(exc)))
     if isinstance(

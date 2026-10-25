@@ -217,7 +217,7 @@ def _default_config() -> dict[str, Any]:
             "profiles": [
                 {
                     "name": "image_models",
-                    "match": {"contains": ["image"]},
+                    "match": {"contains": ["image"], "exact": ["gemini-nano-banana-2.1"]},
                     "is_image_model": True,
                     "generation_config_defaults": {
                         "response_mime_type": None,
@@ -299,11 +299,16 @@ def _compiled_model_overrides(config_path: str) -> dict[str, ModelDefaults]:
 
 def resolve_model_defaults(model: str, *, config_path: str | os.PathLike[str] | None = None) -> ModelDefaults:
     normalized = _normalize_model_name(model)
+    from .model_catalog import find_model
+    declaration = find_model(normalized)
     resolved_path = str(_resolve_config_path(config_path))
     profiles = _compiled_profiles(resolved_path)
     resolved = ModelDefaults()
     for profile in profiles:
-        if profile.matches(normalized):
+        matches = profile.matches(normalized)
+        if profile.name == "image_models" and declaration:
+            matches = declaration["capability"] == "image"
+        if matches:
             resolved = resolved.merged(profile.defaults)
     override = _compiled_model_overrides(resolved_path).get(normalized)
     if override is not None:
