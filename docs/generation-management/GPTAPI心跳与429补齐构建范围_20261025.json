@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-25",
+  "delivery": "precompiled-linux-amd64-standalone",
+  "buildId": "LZlaYnKGb0x89YyPVYLqa",
+  "node": "v22.23.2",
+  "modules": "127",
+  "platform": "linux/amd64 glibc",
+  "baseline": {
+    "expectedBuildId": "ja-z1noZmz9I3b9ZrddNp",
+    "note": "线上 chunk 实测仍为 20261020 部署（olNkUh 20261021 运行包未执行），基线沿用 expected-runtime-files.json"
+  },
+  "scope": [
+    "GPTAPI SSE 心跳修复：withSseHeartbeat 注入 3 秒注释行心跳，接入公共网关 /api/chatgpt-api 与系统渠道路由，消除思考期零字节空窗被中间代理/看门狗断连",
+    "GeminiTools 429 后自动刷新账号额度目录（补齐 20261020 二次构建未实际落地的修复）",
+    "并入 20261021 全部已验证待发布内容：GPTAPI 账号清理/自动禁用/账号测试/图片目录/模型目录、生成管理/备用模型/图片尺寸等 web 变更与两份 GPTAPI Python 覆盖"
+  ],
+  "exclusions": {
+    "sessionFiles": 6,
+    "note": "6 个未发布公共 Session/模型选择文件按线上哈希还原排除；model-picker.tsx 重构后 SHA-256 与 20261010 清单一致"
+  }
+}

@@ -1,4 +1,4 @@
-import { ChatGptApiError, chatGptErrorMessage, chatGptRuntimeRequest, getChatGptRuntimeConfig, readChatGptSignedMedia, resolveChatGptReferences, rewriteChatGptMedia, rewriteChatGptStream, syncChatGptMagicProxy } from "@/lib/server/chatgpt-api-service";
+import { ChatGptApiError, chatGptErrorMessage, chatGptRuntimeRequest, getChatGptRuntimeConfig, readChatGptSignedMedia, resolveChatGptReferences, rewriteChatGptMedia, rewriteChatGptStream, syncChatGptMagicProxy, withSseHeartbeat } from "@/lib/server/chatgpt-api-service";
 import { MAX_MEDIA_PROXY_BYTES } from "@/lib/server/media-response-limit";
 import { readRequestBodyBytes, RequestBodyTooLargeError } from "@/lib/server/request-body-limit";
 import { UnsafeOutboundUrlError } from "@/lib/server/safe-outbound-fetch";
@@ -53,7 +53,7 @@ async function handle(request: Request, context: Context) {
         if (!response.ok) return errorResponse(chatGptErrorMessage(await response.json().catch(() => null)), response.status);
         const origin = new URL(request.url).origin;
         if (response.headers.get("content-type")?.includes("text/event-stream") && response.body)
-            return new Response(rewriteChatGptStream(response.body, origin), { headers: { "content-type": "text/event-stream", "cache-control": "no-store", "x-accel-buffering": "no" } });
+            return new Response(withSseHeartbeat(rewriteChatGptStream(response.body, origin)), { headers: { "content-type": "text/event-stream", "cache-control": "no-store", "x-accel-buffering": "no" } });
         return Response.json(rewriteChatGptMedia(await response.json(), origin), { status: response.status, headers: { "cache-control": "no-store" } });
     } catch (error) {
         if (error instanceof RequestBodyTooLargeError) return errorResponse("请求超过媒体上传大小限制", 413);

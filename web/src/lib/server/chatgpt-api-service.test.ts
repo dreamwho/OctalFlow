@@ -13,7 +13,7 @@ const magic = vi.hoisted(() => {
     return { ensure: vi.fn(), uploadUrl: vi.fn(async () => ""), syncMihomoChainedProxy: vi.fn(), MagicProxyError: FixtureMagicProxyError };
 });
 vi.mock("@/lib/server/magic-proxy-service", () => ({ ensureMagicProxyProvider: magic.ensure, chatGptSignedUploadMagicProxyUrl: magic.uploadUrl, syncMihomoChainedProxy: magic.syncMihomoChainedProxy, MagicProxyError: magic.MagicProxyError }));
-import { chatGptRuntimeJson, chatGptRuntimeRequest, readChatGptSignedMedia, rewriteChatGptMedia, rewriteChatGptStream, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection, updateChatGptUploadProxySelection } from "./chatgpt-api-service";
+import { chatGptRuntimeJson, chatGptRuntimeRequest, readChatGptSignedMedia, rewriteChatGptMedia, rewriteChatGptStream, sanitizeChatGptAdminResult, syncChatGptMagicProxy, updateChatGptProxySelection, updateChatGptUploadProxySelection, withSseHeartbeat } from "./chatgpt-api-service";
 import { resolveSafeOutboundTarget } from "./outbound-url-security";
 
 let server: Server | undefined;
@@ -168,6 +168,61 @@ describe("ChatGPT internal transport", () => {
         const result = await new Response(rewriteChatGptStream(body, "https://canvas.example")).text();
         expect(result).toContain("https://canvas.example/api/chatgpt-api/media/images/result.png?");
         expect(result).toContain("\n\ndata: [DONE]\n\n");
+    });
+    it("injects SSE comment heartbeats during upstream silence but not around active chunks", async () => {
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+                controller.enqueue(encoder.encode('data: {"delta":"first"}\n\n'));
+                setTimeout(() => {
+                    controller.enqueue(encoder.encode('data: {"delta":"second"}\n\n'));
+                    controller.close();
+                }, 120);
+            },
+        });
+        const result = await new Response(withSseHeartbeat(body, 40)).text();
+        const pingCount = (result.match(/: ping\n\n/g) || []).length;
+        expect(result).toContain('data: {"delta":"first"}\n\n');
+        expect(result).toContain('data: {"delta":"second"}\n\n');
+        expect(result.indexOf('{"delta":"first"}')).toBeLessThan(result.indexOf(": ping"));
+        expect(result.indexOf(": ping")).toBeLessThan(result.indexOf('{"delta":"second"}'));
+        expect(pingCount).toBeGreaterThanOrEqual(2);
+    });
+    it("forwards rapid SSE chunks without inserting heartbeats", async () => {
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+                for (let index = 0; index < 20; index += 1) controller.enqueue(encoder.encode(`data: {"i":${index}}\n\n`));
+                controller.close();
+            },
+        });
+        const result = await new Response(withSseHeartbeat(body, 3_000)).text();
+        expect(result).not.toContain(": ping");
+        expect((result.match(/data: /g) || []).length).toBe(20);
+    });
+    it("propagates upstream stream errors after heartbeats have started", async () => {
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+                controller.enqueue(encoder.encode('data: {"delta":"first"}\n\n'));
+                setTimeout(() => controller.error(new Error("upstream reset")), 80);
+            },
+        });
+        const stream = withSseHeartbeat(body, 40);
+        const reader = stream.getReader();
+        const chunks: string[] = [];
+        await expect(
+            (async () => {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) return;
+                    chunks.push(new TextDecoder().decode(value));
+                }
+            })(),
+        ).rejects.toThrow("upstream reset");
+        const joined = chunks.join("");
+        expect(joined).toContain('{"delta":"first"}');
+        expect(joined).toContain(": ping");
     });
     it("rejects reference URLs in the administrator private-upstream allowlist when public-only is requested", async () => {
         vi.stubEnv("DREAMYO_ALLOW_PRIVATE_UPSTREAMS", "1");

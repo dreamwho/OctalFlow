@@ -365,3 +365,47 @@ export function rewriteChatGptStream(body: ReadableStream<Uint8Array>, origin: s
         )
         .pipeThrough(new TextEncoderStream());
 }
+
+// ChatGPT 文本流在思考/预填充期间可能长时间无增量字节，中间代理（nginx/frp 读超时）与
+// 客户端空闲看门狗会在此期间断连；按 SSE 规范注入注释行心跳（下游按规范忽略）。
+export function withSseHeartbeat(body: ReadableStream<Uint8Array>, intervalMs = 3_000) {
+    const reader = body.getReader();
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    return new ReadableStream<Uint8Array>({
+        async start(controller) {
+            let lastActivity = Date.now();
+            // 同一时刻只保留一个挂起的 read：超时竞速输掉的 read 必须复用，
+            // 否则其结果会被下一次新 read 抢占丢失。
+            let pendingRead: Promise<ReadableStreamReadResult<Uint8Array>> | undefined;
+            try {
+                while (!cancelled) {
+                    pendingRead ??= reader.read();
+                    let timer: ReturnType<typeof setTimeout> | undefined;
+                    const idle = new Promise<"idle">((resolve) => {
+                        timer = setTimeout(() => resolve("idle"), Math.max(0, intervalMs - (Date.now() - lastActivity)));
+                    });
+                    const result = await Promise.race([pendingRead, idle]).finally(() => clearTimeout(timer));
+                    if (result === "idle") {
+                        controller.enqueue(encoder.encode(": ping\n\n"));
+                        lastActivity = Date.now();
+                        continue;
+                    }
+                    pendingRead = undefined;
+                    if (result.done) break;
+                    controller.enqueue(result.value);
+                    lastActivity = Date.now();
+                }
+                if (!cancelled) controller.close();
+            } catch (error) {
+                if (!cancelled) controller.error(error);
+            } finally {
+                if (cancelled) void reader.cancel().catch(() => undefined);
+            }
+        },
+        cancel() {
+            cancelled = true;
+            void reader.cancel().catch(() => undefined);
+        },
+    });
+}

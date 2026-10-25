@@ -1,0 +1,10 @@
+{
+  "date": "2026-10-25",
+  "typecheck": "passed（工作区）",
+  "targetedTestsWorkspace": "chatgpt-api-service 12 项（含心跳 3 项）+ 系统渠道路由 40 项通过",
+  "targetedTestsLinuxContainer": "gemini-tools-service 23 项 + chatgpt-api-service 12 项 = 35 项通过",
+  "productionBuild": "linux/amd64 node:22-bookworm-slim 容器内通过",
+  "markers": { "withSseHeartbeat": "10 个服务端 chunk", "streamGenerateContent": "4 个", "未发布Session标记": 0 },
+  "isolation": "6 个 Session 文件还原；model-picker 重构哈希 940ef645… 与清单一致",
+  "pending": "真实 Linux 容器冒烟启动、服务器 stage/apply 与真实上游验收待执行"
+}

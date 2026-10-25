@@ -30,7 +30,7 @@ import { authorizedWorkerUserId } from "@/lib/server/maintenance-auth";
 import { authorizeGenerationMediaProxyRequest } from "@/lib/server/generation-media-access";
 import { userOwnsGenerationUpstreamTask } from "@/lib/server/generation-task-authorization";
 import { authorizeSystemAiProxyRequest } from "@/lib/server/system-ai-proxy-policy";
-import { chatGptErrorMessage, chatGptRuntimeRequest, getChatGptRuntimeConfig, resolveChatGptReferences, rewriteChatGptMedia, rewriteChatGptStream, syncChatGptMagicProxy } from "@/lib/server/chatgpt-api-service";
+import { chatGptErrorMessage, chatGptRuntimeRequest, getChatGptRuntimeConfig, resolveChatGptReferences, rewriteChatGptMedia, rewriteChatGptStream, syncChatGptMagicProxy, withSseHeartbeat } from "@/lib/server/chatgpt-api-service";
 import { CHATGPT_API_PROTOCOL, normalizeChatGptApiRuntimePath } from "@/lib/server/chatgpt-api-models";
 import { GEMINIAI_PROTOCOL, geminiAiProviderConfigured, geminiAiRuntimeRequest, isGeminiAiRuntimePath } from "@/lib/server/geminiai-provider";
 import { GEMINIVIDS_PROTOCOL, geminiVidsProviderConfigured, geminiVidsRuntimeRequest, isGeminiVidsRuntimePath } from "@/lib/server/geminivids-provider";
@@ -657,7 +657,7 @@ async function chatGptApiRuntimeResponse(upstream: Response, request: Request, p
     const origin = new URL(request.url).origin;
     if (upstream.headers.get("content-type")?.includes("text/event-stream") && upstream.body) {
         headers.set("x-accel-buffering", "no");
-        return new Response(rewriteChatGptStream(upstream.body, origin), { status: upstream.status, statusText: upstream.statusText, headers });
+        return new Response(withSseHeartbeat(rewriteChatGptStream(upstream.body, origin)), { status: upstream.status, statusText: upstream.statusText, headers });
     }
     const payload = await upstream.json().catch(() => null);
     if (payload === null) return NextResponse.json({ error: "GPTAPI 返回了无效 JSON" }, { status: 502, headers });
