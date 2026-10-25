@@ -384,7 +384,8 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                 detail: `账号: ${account.email || account.id}, 项目: ${project.projectId || "-"}, 方案: ${project.planType || "standard"}`,
             });
 
-            const nativePayload = protocolRequest(protocol, body || {});
+            const session = sessionKey(init, body, context.keyPrefix);
+            const nativePayload = protocolRequest(protocol, body || {}, session);
             const upstreamStart = Date.now();
             await pushPhase({
                 phase: "upstream",
@@ -451,6 +452,7 @@ async function geminiToolsRuntimeRequestInternal(path: string, init: RequestInit
                 });
                 return relayProtocolStream({
                     upstream,
+                    session,
                     translator: new NativeStreamTranslator(protocol === "anthropic" ? "anthropic" : "openai", model),
                     onSettled: async (settlement) => {
                         if (settlement.ok) {
@@ -875,7 +877,7 @@ async function geminiToolsProxyEgress(): Promise<MagicProxyEgressInfo | undefine
     return (await geminiToolsProxyBinding().catch(() => undefined))?.egress;
 }
 
-function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-test", body: Record<string, unknown>) {
+function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-test", body: Record<string, unknown>, session = "") {
     if (protocol === "gemini") return record(body);
     const messages: unknown[] = Array.isArray(body.messages) ? body.messages : [];
     const contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = [];
@@ -908,6 +910,7 @@ function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-te
             // 思考块正文不上游，但其中的签名必须暂存，供紧随其后的工具调用回传给 Gemini。
             if (type === "thinking" || type === "reasoning") {
                 lastSignature = text(block.signature, 100_000) || lastSignature;
+                if (lastSignature) rememberSessionSignature(session, lastSignature);
                 continue;
             }
             if (type === "tool_use") {
@@ -915,7 +918,9 @@ function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-te
                 if (!name) continue;
                 const callId = text(block.id, 200);
                 if (callId) toolCallNames.set(callId, name);
-                parts.push({ functionCall: { name, args: record(block.input) }, ...(lastSignature ? { thoughtSignature: lastSignature } : {}) });
+                const signature = lastSignature || cachedSessionSignature(session);
+                if (signature) rememberSessionSignature(session, signature);
+                parts.push({ functionCall: { name, args: record(block.input) }, ...(signature ? { thoughtSignature: signature } : {}) });
                 continue;
             }
             if (type === "tool_result") {
@@ -947,7 +952,9 @@ function protocolRequest(protocol: "openai" | "gemini" | "anthropic" | "admin-te
                 } catch {
                     args = {};
                 }
-                parts.push({ functionCall: { name, args }, ...(lastSignature ? { thoughtSignature: lastSignature } : {}) });
+                const signature = lastSignature || cachedSessionSignature(session);
+                if (signature) rememberSessionSignature(session, signature);
+                parts.push({ functionCall: { name, args }, ...(signature ? { thoughtSignature: signature } : {}) });
             }
         }
         if (parts.length) contents.push({ role: isAssistant ? "model" : "user", parts });
@@ -1252,6 +1259,14 @@ class NativeStreamTranslator {
         return [`data: ${JSON.stringify({ error: { type: "api_error", message } })}\n\n`, "data: [DONE]\n\n"];
     }
 
+    // 记录本轮流式响应中实际下发给客户端的 thoughtSignature，供网关会话缓存回补。
+    private emittedSignatures: string[] = [];
+    takeSignatures() {
+        const collected = this.emittedSignatures;
+        this.emittedSignatures = [];
+        return collected;
+    }
+
     settlement(error: string): StreamSettlement {
         const preview = [this.contentPreview, this.thinkingPreview ? `[思考] ${this.thinkingPreview}` : "", this.toolPreview ? `[工具调用: ${this.toolPreview}]` : "", !this.contentPreview && !this.thinkingPreview && !this.toolPreview && this.finishReason ? `[结束原因: ${this.finishReason}]` : ""]
             .filter(Boolean)
@@ -1324,7 +1339,10 @@ class NativeStreamTranslator {
     private closeBlock(): string[] {
         if (!this.blockType) return [];
         const frames: string[] = [];
-        if (this.blockType === "thinking" && this.pendingSignature) frames.push(this.blockDelta({ type: "signature_delta", signature: this.pendingSignature }));
+        if (this.blockType === "thinking" && this.pendingSignature) {
+            this.emittedSignatures.push(this.pendingSignature);
+            frames.push(this.blockDelta({ type: "signature_delta", signature: this.pendingSignature }));
+        }
         frames.push(this.frame("content_block_stop", { type: "content_block_stop", index: this.blockIndex }));
         this.blockIndex += 1;
         this.blockType = "";
@@ -1333,6 +1351,7 @@ class NativeStreamTranslator {
     }
 
     private syntheticSignatureBlock(signature: string): string[] {
+        this.emittedSignatures.push(signature);
         const index = this.blockIndex;
         this.blockIndex += 1;
         return [
@@ -1361,7 +1380,7 @@ class NativeStreamTranslator {
     }
 }
 
-function relayProtocolStream(options: { upstream: Response; translator: NativeStreamTranslator; onSettled: (settlement: StreamSettlement) => Promise<void> }) {
+function relayProtocolStream(options: { upstream: Response; session?: string; translator: NativeStreamTranslator; onSettled: (settlement: StreamSettlement) => Promise<void> }) {
     const encoder = new TextEncoder();
     const { upstream, translator } = options;
     let settled = false;
@@ -1383,6 +1402,9 @@ function relayProtocolStream(options: { upstream: Response; translator: NativeSt
                     }
                 };
                 // SSE 注释心跳：让 Agent CLI 与中间代理在首包前/思考间隙不因无字节而判死连接。
+                // 立即下发首个 ping：实测传输层在出现首批业务字节前不会透出周期心跳，
+                // 先发一帧把响应头与流通道激活，思考期的周期心跳才能正常到达下游。
+                send([": ping\n\n"]);
                 const heartbeat = setInterval(() => send([": ping\n\n"]), 3_000);
                 let error = "";
                 try {
@@ -1391,6 +1413,7 @@ function relayProtocolStream(options: { upstream: Response; translator: NativeSt
                         const parsed = safeJson(data);
                         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "continue";
                         send(translator.translate(record(parsed)));
+                        for (const signature of translator.takeSignatures()) rememberSessionSignature(options.session || "", signature);
                         return "continue";
                     });
                     send(translator.finish());
@@ -1521,6 +1544,22 @@ function stickyAccounts(accounts: GeminiToolsPrivateAccount[], key: string) {
     if (!key || accounts.length < 2) return accounts;
     const offset = createHash("sha256").update(key).digest().readUInt32BE(0) % accounts.length;
     return [...accounts.slice(offset), ...accounts.slice(0, offset)];
+}
+
+// 会话级 thoughtSignature 缓存：Gemini 多轮 function calling 要求回传签名，但部分 Agent 客户端
+// 不回传 thinking 块；网关按会话记住最近下发的签名，在客户端未携带时自动补注到 functionCall。
+const sessionSignatureCache = new Map<string, string>();
+const SESSION_SIGNATURE_CACHE_LIMIT = 512;
+function rememberSessionSignature(session: string, signature: string) {
+    if (!session || !signature) return;
+    if (sessionSignatureCache.size >= SESSION_SIGNATURE_CACHE_LIMIT && !sessionSignatureCache.has(session)) {
+        const oldest = sessionSignatureCache.keys().next().value;
+        if (oldest !== undefined) sessionSignatureCache.delete(oldest);
+    }
+    sessionSignatureCache.set(session, signature);
+}
+function cachedSessionSignature(session: string) {
+    return sessionSignatureCache.get(session) || "";
 }
 
 function sessionKey(init: RequestInit, body: Record<string, unknown> | null, keyPrefix = "") {

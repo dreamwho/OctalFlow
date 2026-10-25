@@ -404,6 +404,7 @@ describe("GeminiTools runtime", () => {
 
         expect(response.headers.get("content-type")).toBe("text/event-stream; charset=utf-8");
         const body = await response.text();
+        expect(body.startsWith(": ping\n\n")).toBe(true);
         expect(body).toContain("event: message_start");
         expect(body).toContain('"thinking_delta","thinking":"推理中"');
         expect(body).toContain('"signature_delta","signature":"sigQwCj"');
@@ -421,6 +422,44 @@ describe("GeminiTools runtime", () => {
         expect(mocks.recordUsage).toHaveBeenCalledWith("one", 18, false);
         expect(mocks.recordKeyTokens).toHaveBeenCalledWith("key-1", 18);
         expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({ totalTokens: 18, responsePreview: expect.stringContaining("[工具调用: get_weather]") }));
+    });
+
+    it("reinjects the cached session signature when the client replays tool_use without thinking blocks", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((url: string | URL) =>
+                Promise.resolve(
+                    isGenerationUrl(String(url))
+                        ? sseResponse([{ response: { candidates: [{ content: { parts: [{ text: "sigQwCj", thought: true, thoughtSignature: "sigSessionA" }] } }] } }, { response: { candidates: [{ content: { parts: [{ functionCall: { name: "get_weather", args: { city: "上海" } } }] } }], usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 5, totalTokenCount: 10 } } }, { response: { candidates: [{ finishReason: "STOP" }], usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 6, totalTokenCount: 11 } } }])
+                        : Promise.resolve(new Response("{}", { status: 200 })),
+                ),
+            ),
+        );
+        const headers = { "content-type": "application/json", "x-session-id": "sess-sign-cache" };
+
+        const first = await geminiToolsRuntimeRequest("/v1/messages", { method: "POST", headers, body: JSON.stringify({ model: "gemini-2.5-pro", stream: true, tools: [{ name: "get_weather", input_schema: { type: "object" } }], messages: [{ role: "user", content: "查天气" }] }) });
+        await first.text();
+
+        const second = await geminiToolsRuntimeRequest("/v1/messages", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                model: "gemini-2.5-pro",
+                stream: true,
+                tools: [{ name: "get_weather", input_schema: { type: "object" } }],
+                messages: [
+                    { role: "user", content: "查天气" },
+                    { role: "assistant", content: [{ type: "tool_use", "id": "toolu_replay", name: "get_weather", input: { city: "上海" } }] },
+                    { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_replay", content: "晴" }] },
+                ],
+            }),
+        });
+        expect(second.status).toBe(200);
+
+        const upstream = vi.mocked(fetch).mock.calls.filter(([url]) => isGenerationUrl(String(url))).at(-1);
+        const payload = JSON.parse(String(upstream?.[1]?.body)) as { request: { contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> } };
+        const callPart = payload.request.contents[1].parts[0];
+        expect(callPart).toMatchObject({ functionCall: { name: "get_weather" }, thoughtSignature: "sigSessionA" });
     });
 
     it("streams openai chat completions as incremental chunks with final usage", async () => {
